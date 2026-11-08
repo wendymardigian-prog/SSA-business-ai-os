@@ -21,7 +21,7 @@ const role = (over: Partial<RoleRow> = {}): RoleRow => ({
   name: "Setter senior",
   description: null,
   systemRole: null,
-  permissions: { keys: ["contacts.view"], scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, channels: { mode: "custom", byChannel: {} } },
+  permissions: { keys: ["contacts.view"], scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own" }, channels: { mode: "custom", byChannel: {} } },
   members: 0,
   ...over,
 });
@@ -91,7 +91,7 @@ describe("validar un rol (F71)", () => {
   it("sin alcance elegido, el mas restrictivo", () => {
     const result = validateRole({ name: "Setter", keys: ["contacts.view"], scopes: {} });
 
-    expect(result.ok && result.role.permissions.scopes).toEqual({ leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" });
+    expect(result.ok && result.role.permissions.scopes).toEqual({ leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own" });
   });
 });
 
@@ -179,7 +179,7 @@ describe("como se muestran (F71)", () => {
     expect(
       describeRole(
         role({
-          permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, channels: { mode: "custom", byChannel: {} } },
+          permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own" }, channels: { mode: "custom", byChannel: {} } },
         }),
       ),
     ).toBe("2 permisos · contactos: todos · bandeja: ninguna cuenta");
@@ -188,13 +188,13 @@ describe("como se muestran (F71)", () => {
   it("el alcance 'los suyos + los sin asignar' se nombra", () => {
     expect(
       describeRole(
-        role({ permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, channels: { mode: "custom", byChannel: {} } } }),
+        role({ permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own" }, channels: { mode: "custom", byChannel: {} } } }),
       ),
     ).toBe("1 permiso · contactos: los suyos + los sin asignar · bandeja: ninguna cuenta");
   });
 
   it("la bandeja se resume: todas las cuentas con su alcance, o cuantas cuentas (00249)", () => {
-    const scopes = { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" } as const;
+    const scopes = { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own" } as const;
     expect(
       describeRole(role({ permissions: { keys: [], scopes, channels: { mode: "all", all: { scope: "own_unassigned", reply: true } } } })),
     ).toBe("0 permisos · contactos: solo los suyos · bandeja: todas las cuentas (asignadas + sin asignar)");
@@ -210,7 +210,7 @@ describe("como se muestran (F71)", () => {
 
   it("uno vacio lo dice", () => {
     expect(
-      describeRole(role({ permissions: { keys: [], scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, channels: { mode: "custom", byChannel: {} } } })),
+      describeRole(role({ permissions: { keys: [], scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own" }, channels: { mode: "custom", byChannel: {} } } })),
     ).toBe("Sin permisos.");
   });
 });
@@ -251,7 +251,7 @@ describe("scopeFieldState (F12)", () => {
   });
 
   it("cada alcance vive dentro de su grupo", () => {
-    expect(SCOPE_GROUP).toEqual({ leads: "contacts", bookings: "scheduling", calls: "calls", sales: "sales", commissions: "commissions", tasks: "tasks" });
+    expect(SCOPE_GROUP).toEqual({ leads: "contacts", bookings: "scheduling", calls: "calls", sales: "sales", commissions: "commissions", tasks: "tasks", services: "services" });
   });
 });
 

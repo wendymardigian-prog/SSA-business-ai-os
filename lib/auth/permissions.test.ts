@@ -189,7 +189,7 @@ describe("preguntar por un permiso (F68)", () => {
     // Un permiso mal escrito no puede abrir una puerta, y renombrar una
     // clave cierra el acceso en vez de abrirlo.
     expect(can(role, "telepatia.usar")).toBe(false);
-    expect(can({ keys: ["telepatia.usar"], scopes: { leads: "all", bookings: "all", calls: "own", sales: "own", commissions: "own", tasks: "own" }, channels: { mode: "custom", byChannel: {} } }, "telepatia.usar")).toBe(false);
+    expect(can({ keys: ["telepatia.usar"], scopes: { leads: "all", bookings: "all", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own" }, channels: { mode: "custom", byChannel: {} } }, "telepatia.usar")).toBe(false);
   });
 
   it("sin rol, nada", () => {

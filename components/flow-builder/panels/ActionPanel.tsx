@@ -20,6 +20,8 @@ import type { AttributionPanelContext } from "./SendMessagePanel";
 import { SendEmailPanel } from "./SendEmailPanel";
 import { CancelBookingPanel, NotifyTeamPanel, SetBookingStatusPanel } from "./ExtraActionPanels";
 import { VariableChips } from "./variable-chips";
+import { ServiceActionPanel } from "./ServiceActionPanel"; // @plantilla-quitar(servicios)
+import type { ServiceActionType } from "@/lib/flow-engine/nodes/service-actions"; // @plantilla-quitar(servicios)
 
 interface ActionPanelData {
   actionType?: NodeType;
@@ -137,6 +139,15 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
       return <CancelBookingPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
     case "set_booking_status" as NodeType:
       return <SetBookingStatusPanel data={rawData} onChange={onChange} />;
+    // @plantilla-desde(servicios)
+    // Servicios (F25): las cinco acciones sobre el servicio del contacto.
+    case "svc_complete_step" as NodeType:
+    case "svc_change_phase" as NodeType:
+    case "svc_start_challenge" as NodeType:
+    case "svc_extend_service" as NodeType:
+    case "svc_pause_service" as NodeType:
+      return <ServiceActionPanel type={actionType as unknown as ServiceActionType} data={rawData} onChange={onChange} />;
+    // @plantilla-hasta(servicios)
     // Diseñador IA (F57): una pieza desde una plantilla para el contacto del disparador.
     case "designGenerate" as NodeType:
       return <DesignGeneratePanel data={rawData} onChange={onChange} availableVariables={availableVariables} variableLabels={variableLabels} />;

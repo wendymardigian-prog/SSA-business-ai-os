@@ -11,7 +11,10 @@
   - F2: `verify-auth-settings` sale **1** en producción: el registro público está prendido y "Leaked password protection" apagada. Es de panel: queda en PENDIENTE para Wendy. Paso sumado a `/setup`.
   - F3: `docs/seguridad-despliegue.md`.
   - `verify-servicios-migracion --todas` antes de aplicar nada: verde (huellas iguales).
-- [ ] **SV1** El servicio: F4, F5, F6, F7, F8, F9, F10, F11, F12, F93, F94, F96, F97, F99 (S01–S05)
+- [ ] **SV1** El servicio: F4, F5, F6, F7, F8, F9, F10, F11, F12, F93, F94, F96, F97, F99 (S01–S05) — **FRENADO en S02 (8/11)**
+  - S01 (00330) aplicada y verificada. Esquema `app_servicio` expuesto en la API (`public,graphql_public,app_servicio`), comprobado con `verify-api-schemas --con-app-servicio`.
+  - S02 (00331) falló `verify-forms` y se volvió atrás con su cabecera; la base quedó como antes (`verify-forms` otra vez en 0). Por la regla de la corrida, no se sigue con ningún bloque hasta que Wendy decida (PENDIENTE, «Corrida frenada en S02»).
+  - Escrito y sin aplicar: 00332 a 00336, las acciones, los 26 disparadores y los 5 pasos del editor (ocultos con el módulo apagado). Suite completa en verde.
 - [ ] **SV2** El camino: F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25 (S06–S07)
 - [ ] **PRD** Productos por variante: F114, F115, F116, F117, F31, F32
 - [ ] **SV3** Pantallas de Servicios: F26, F27, F28, F29, F30, F33, F95
@@ -31,8 +34,8 @@ La `00329` la ocupó otra sesión (`00329_contact_qualification`, aplicada el 8/
 
 | Id | Número | Archivo | Bloque | Estado |
 |---|---|---|---|---|
-| S01 | 00330 | `00330_app_servicio_core.sql` | SV1 | pendiente |
-| S02 | 00331 | `00331_app_servicio_journey_tables.sql` | SV1 | pendiente |
+| S01 | 00330 | `00330_app_servicio_core.sql` | SV1 | **aplicada y registrada** (8/11, versión `20261108082600`); `verify-servicios-migracion --s S01`, roles, rls y workspace-isolation en 0 |
+| S02 | 00331 | `00331_app_servicio_journey_tables.sql` | SV1 | **aplicada, falló `verify-forms` y se volvió atrás** (8/11). Ver PENDIENTE, «Corrida frenada en S02» |
 | S03 | 00332 | `00332_app_servicio_config_columns.sql` | SV1 | pendiente |
 | S04 | 00333 | `00333_app_servicio_engine.sql` | SV1 | pendiente |
 | S05 | 00334 | `00334_app_servicio_sales_triggers.sql` | SV1 | pendiente |

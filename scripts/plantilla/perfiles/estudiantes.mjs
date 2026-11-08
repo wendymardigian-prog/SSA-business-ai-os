@@ -249,6 +249,24 @@ export const MODULES = {
       "scripts/verify-inbound-webhooks.mjs",
     ],
   },
+  // Servicios, portal y afiliados (Servicios A1). Los esquemas `app_servicio` y `app_servicio_portal`, sus triggers y
+  // sus columnas no viajan: la plantilla arranca con sus propias migraciones.
+  servicios: {
+    label: "Servicios y portal (camino del cliente, accesos, programa)",
+    paths: [
+      "lib/services",
+      "lib/portal-admin",
+      "lib/actions/services.ts",
+      "lib/flow-engine/nodes/service-actions.ts",
+      "lib/flow-engine/registry/service-triggers.ts",
+      "components/flow-builder/panels/ServiceActionPanel.tsx",
+      "scripts/verify-services.mjs",
+      "scripts/verify-servicios-migracion.mjs",
+      "scripts/verify-servicios-migracion.spec.mjs",
+      "scripts/servicios-api-schema.mjs",
+      "scripts/verify-api-schemas.mjs",
+    ],
+  },
   // No es un modulo de la app: lo que solo tiene sentido en el proyecto y no viaja a
   // ninguna plantilla. Columnas que el sistema ya no lee (la plantilla no las crea),
   // tests que fijan una migracion vieja del proyecto y comentarios que cuentan su
@@ -276,7 +294,7 @@ export const EXCLUDED = Object.keys(MODULES);
  * modulos. Es una lista provisoria (F2): la F3 decide cuales se adaptan a la plantilla.
  * Formato: { path, modules: [...], why }.
  */
-const SCOPES = ["llamadas", "ventas", "comisiones", "tareas"];
+const SCOPES = ["llamadas", "ventas", "comisiones", "tareas", "servicios"];
 export const excludeTests = [
   { path: "components/automations/step-tree-render.test.ts", modules: ["formularios"], why: "arma el editor de pasos con el «Solo si…» de Formularios" },
   { path: "lib/automations/condition-builder-model.test.ts", modules: ["formularios"], why: "usa las preguntas de un formulario" },

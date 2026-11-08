@@ -31,6 +31,7 @@ import { createTaskNode } from "../nodes/create-task"; // @plantilla-quitar(tare
 import { completeTaskNode } from "../nodes/complete-task"; // @plantilla-quitar(tareas)
 import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
 import { sendMetaEventNode } from "../nodes/send-meta-event";
+import { serviceActionNodes } from "../nodes/service-actions"; // @plantilla-quitar(servicios)
 import { sendPollNode } from "../nodes/send-poll";
 import { designGenerateNode } from "../nodes/design-generate";
 
@@ -89,3 +90,5 @@ registerNode(sendMetaEventNode);
 registerNode(sendPollNode);
 // Diseñador IA (DS7, F57): genera un certificado, una constancia o cualquier pieza desde una plantilla.
 registerNode(designGenerateNode);
+// Servicios (F25, SV2): completar un paso, cambiar de fase, empezar el Reto, extender y pausar.
+for (const node of serviceActionNodes) registerNode(node); // @plantilla-quitar(servicios)

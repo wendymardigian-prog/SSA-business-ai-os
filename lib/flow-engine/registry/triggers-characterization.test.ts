@@ -40,7 +40,8 @@ describe("triggers registrados", () => {
     }
     // + los tres de Formularios, los seis de Ventas, el del reporte de fin de día y el de webhooks (ver abajo),
     // + los dos de Tareas (task_completed, task_overdue) y los tres de grupos de WhatsApp.
-    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1 + 2 + 3);
+    // + los 26 de Servicios (Servicios A1, 00336). Este bloque entero no viaja a la plantilla (es de Llamadas).
+    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1 + 2 + 3 + 26);
   });
   // @plantilla-hasta(llamadas)
 

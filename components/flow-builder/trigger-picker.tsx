@@ -15,8 +15,7 @@ import {
   Webhook,
   X,
   Zap,
-  type LucideIcon,
-} from "lucide-react";
+  type LucideIcon, GraduationCap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   filterTriggerChoices,
@@ -25,6 +24,7 @@ import {
   type TriggerChoice,
   type TriggerGroupKey,
 } from "@/lib/flow-engine/trigger-catalog";
+import { useFlowModules } from "./capabilities-context"; // @plantilla-quitar(servicios)
 
 /** El icono de cada grupo de disparadores (lo comparten el selector y el nodo del lienzo). */
 export const TRIGGER_GROUP_ICONS: Record<TriggerGroupKey, LucideIcon> = {
@@ -38,6 +38,7 @@ export const TRIGGER_GROUP_ICONS: Record<TriggerGroupKey, LucideIcon> = {
   llamadas: Phone, // @plantilla-quitar(llamadas)
   webhooks: Webhook, // @plantilla-quitar(webhooks)
   grupos_whatsapp: UsersRound,
+  servicios: GraduationCap, // @plantilla-quitar(servicios)
   equipo: Bot, // @plantilla-quitar(formularios)
 };
 
@@ -62,7 +63,10 @@ interface TriggerPickerProps {
 export function TriggerPicker({ open, currentKey, onPick, onClose, title = "¿Cómo arranca esta automatización?" }: TriggerPickerProps) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const all = useMemo(() => triggerChoices(), []);
+  const modules = useFlowModules(); // @plantilla-quitar(servicios)
+  // Con el modulo de Servicios apagado no se ofrecen sus disparadores (salvo el que ya tiene la automatizacion).
+  const all = useMemo(() => triggerChoices().filter((c) => modules.services || c.group !== "servicios" || c.key === currentKey), [modules.services, currentKey]); // @plantilla-quitar(servicios)
+  // @plantilla-sin(servicios): const all = useMemo(() => triggerChoices(), []);
   const filtered = useMemo(() => filterTriggerChoices(all, query), [all, query]);
 
   // Al abrir: el buscador vacio y con el foco. Se vacia al cerrar (no en un efecto: setState dentro de un efecto

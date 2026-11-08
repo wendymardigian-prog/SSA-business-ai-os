@@ -1,0 +1,47 @@
+{
+  "_comment": "Casos de la validacion de la configuracion del portal en columnas (decision 458). Corren contra lib/portal-admin/settings.ts (vitest) y contra app_servicio.validate_*_portal_settings (verify-services --bloque prd). kind = variant | program | workspace.",
+  "cases": [
+    { "name": "variante vacia", "kind": "variant", "settings": {}, "expected": [] },
+    {
+      "name": "variante valida",
+      "kind": "variant",
+      "settings": { "v": 1, "enabled": true, "ask_terms": true, "sections": [
+        { "section": "program", "included": true, "display": "locked", "content": { "modules": "all" }, "opens": { "type": "service_start" }, "until": { "type": "service" } },
+        { "section": "assistant", "included": true, "opens": { "type": "phase_completed", "ref": "ph_aaaaa1" }, "until": { "type": "months", "n": 12 }, "display": "coming_soon", "ai_limit_usd": 5 },
+        { "section": "community", "included": true, "opens": { "type": "days_after_start", "days": 7 }, "until": { "type": "forever" }, "limits": { "community_can_post": false } }
+      ] },
+      "expected": []
+    },
+    { "name": "variante con seccion de la extension", "kind": "variant", "settings": { "sections": [ { "section": "fame", "included": true } ] }, "expected": ["Todavía no está disponible"] },
+    { "name": "variante con seccion desconocida", "kind": "variant", "settings": { "sections": [ { "section": "chat", "included": true } ] }, "expected": ["sección desconocida: chat"] },
+    { "name": "variante con seccion repetida", "kind": "variant", "settings": { "sections": [ { "section": "program" }, { "section": "program" } ] }, "expected": ["la sección program está repetida"] },
+    { "name": "dias despues del inicio sin dias", "kind": "variant", "settings": { "sections": [ { "section": "community", "opens": { "type": "days_after_start" } } ] }, "expected": ["community: elegí cuántos días después del inicio"] },
+    { "name": "hasta meses sin cuantos", "kind": "variant", "settings": { "sections": [ { "section": "community", "until": { "type": "months" } } ] }, "expected": ["community: elegí cuánto dura"] },
+    { "name": "contenido en otra seccion", "kind": "variant", "settings": { "sections": [ { "section": "calendar", "content": { "modules": "all" } } ] }, "expected": ["calendar: solo el Programa elige contenido"] },
+    { "name": "limite de IA fuera del asistente", "kind": "variant", "settings": { "sections": [ { "section": "community", "ai_limit_usd": 3 } ] }, "expected": ["community: solo el Asistente IA tiene límite de gasto"] },
+    { "name": "variante con clave desconocida", "kind": "variant", "settings": { "enabled": true, "color": "x" }, "expected": ["clave desconocida: color"] },
+    { "name": "programa vacio", "kind": "program", "settings": {}, "expected": [] },
+    {
+      "name": "programa valido",
+      "kind": "program",
+      "settings": { "v": 1, "sections": { "program": true, "community": false }, "terms": { "enabled": false, "form_id": null, "ask_again_on_change": true },
+        "community": { "lesson_comments": true, "spaces": [ { "key": "general", "name": "General", "team_only": false }, { "key": "anuncios", "name": "Anuncios", "team_only": true } ] },
+        "affiliates": { "visible_link_keys": ["lk_a1b2c3"] },
+        "assistant": { "excluded_kb_ids": [], "monthly_limit_usd_per_student": 10, "credits_per_usd": 100, "credits_name": "créditos", "suggestions": ["¿Por dónde empiezo?"] } },
+      "expected": []
+    },
+    { "name": "programa con la sala de la fama", "kind": "program", "settings": { "sections": { "fame": true } }, "expected": ["Todavía no está disponible"] },
+    { "name": "terminos prendidos sin formulario", "kind": "program", "settings": { "terms": { "enabled": true } }, "expected": ["cargá los términos antes de prenderlos"] },
+    { "name": "espacio repetido", "kind": "program", "settings": { "community": { "spaces": [ { "key": "general", "name": "General" }, { "key": "general", "name": "Otro" } ] } }, "expected": ["el espacio general está repetido"] },
+    { "name": "ajustes vacios", "kind": "workspace", "settings": {}, "expected": [] },
+    {
+      "name": "ajustes validos",
+      "kind": "workspace",
+      "settings": { "v": 1, "host": "portal.ejemplo.com", "from_email": "portal@ejemplo.com", "welcome": { "home_text": "", "invite_subject": "", "invite_body": "" }, "login": { "password_allowed": true }, "support_whatsapp": "+50600000000", "extensions": { "projects": false } },
+      "expected": []
+    },
+    { "name": "host con https", "kind": "workspace", "settings": { "host": "https://portal.ejemplo.com" }, "expected": ["la dirección no es válida: escribila sin https:// ni barras"] },
+    { "name": "host en mayusculas", "kind": "workspace", "settings": { "host": "Portal.Ejemplo.com" }, "expected": ["la dirección no es válida: escribila sin https:// ni barras"] },
+    { "name": "whatsapp sin mas", "kind": "workspace", "settings": { "support_whatsapp": "50600000000" }, "expected": ["el WhatsApp de soporte tiene que empezar con + y el código de país"] }
+  ]
+}

@@ -23,6 +23,7 @@ export type TriggerGroupKey =
   | "llamadas" // @plantilla-quitar(llamadas)
   | "webhooks" // @plantilla-quitar(webhooks)
   | "grupos_whatsapp"
+  | "servicios" // @plantilla-quitar(servicios)
   | "equipo"; // @plantilla-quitar(formularios)
 
 export const TRIGGER_GROUPS: ReadonlyArray<{ key: TriggerGroupKey; label: string }> = [
@@ -36,6 +37,7 @@ export const TRIGGER_GROUPS: ReadonlyArray<{ key: TriggerGroupKey; label: string
   { key: "llamadas", label: "Llamadas" }, // @plantilla-quitar(llamadas)
   { key: "webhooks", label: "Webhooks" }, // @plantilla-quitar(webhooks)
   { key: "grupos_whatsapp", label: "Grupos de WhatsApp" },
+  { key: "servicios", label: "Servicios y portal" }, // @plantilla-quitar(servicios)
   { key: "equipo", label: "Equipo" }, // @plantilla-quitar(formularios)
 ];
 
@@ -85,6 +87,32 @@ export const TRIGGER_CATALOG: readonly TriggerCatalogEntry[] = [
   { type: "whatsapp_group_joined", label: "Se unió a un grupo de WhatsApp", description: "Cuando alguien entra a un grupo activado (por link o porque lo sumaron). Corre sobre el contacto", group: "grupos_whatsapp", synonyms: ["grupo", "comunidad", "whatsapp", "miembro", "entro"] },
   { type: "whatsapp_group_reaction", label: "Reaccionó a un mensaje de un grupo", description: "Cuando alguien reacciona con un emoji a un mensaje de un grupo activado", group: "grupos_whatsapp", synonyms: ["grupo", "reaccion", "emoji", "whatsapp"] },
   { type: "whatsapp_group_poll_vote", label: "Votó en una encuesta de un grupo", description: "Cuando alguien elige una opción (o cualquiera) en una encuesta de un grupo activado", group: "grupos_whatsapp", synonyms: ["grupo", "encuesta", "voto", "opcion", "whatsapp"] },
+  { type: "service_created", label: "Se creó un servicio", description: "Cuando nace un servicio, solo al cobrar o a mano", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_started", label: "Empezó un servicio", description: "El día de la fecha de inicio del servicio", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_ending_soon", label: "Un servicio está por terminar", description: "N días antes de la fecha de fin", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_status_changed", label: "Cambió el estado de un servicio", description: "Activo, pausado, completado, cancelado o renovado", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_extended", label: "Se extendió un servicio", description: "Cuando se corre la fecha de fin", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_paused", label: "Se pausó un servicio", description: "Cuando se pausa", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_resumed", label: "Se reanudó un servicio", description: "Cuando se reanuda", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_phase_started", label: "Empezó una fase del camino", description: "Al abrirse una fase", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_phase_completed", label: "Terminó una fase del camino", description: "Al cerrarse una fase", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_item_completed", label: "Se completó un paso del camino", description: "Cuando un paso queda completo", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_item_overdue", label: "Se venció un paso del camino", description: "Cuando un paso pasa su fecha", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "service_light_changed", label: "Cambió el semáforo de un servicio", description: "Cuando cambia el color", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "program_lesson_completed", label: "Completó una clase", description: "Cuando un estudiante termina una clase del programa", group: "servicios", synonyms: ["programa", "clase", "modulo", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "program_module_completed", label: "Completó un módulo", description: "Cuando un estudiante termina un módulo", group: "servicios", synonyms: ["programa", "clase", "modulo", "estudiante"] }, // @plantilla-quitar(servicios)
+  { type: "quiz_passed", label: "Aprobó una evaluación", description: "Cuando aprueba una evaluación automática", group: "servicios", synonyms: ["evaluacion", "examen", "nota"] }, // @plantilla-quitar(servicios)
+  { type: "quiz_failed", label: "No aprobó una evaluación", description: "Cuando no llega a la nota", group: "servicios", synonyms: ["evaluacion", "examen", "nota"] }, // @plantilla-quitar(servicios)
+  { type: "task_submission_received", label: "Entregó una actividad", description: "Cuando llega una entrega", group: "servicios", synonyms: ["actividad", "entrega"] }, // @plantilla-quitar(servicios)
+  { type: "task_submission_reviewed", label: "Se revisó una actividad", description: "Cuando el equipo la revisa o la califica", group: "servicios", synonyms: ["actividad", "entrega"] }, // @plantilla-quitar(servicios)
+  { type: "live_session_missed", label: "Faltó a una clase en vivo", description: "Al cerrarse la ventana de asistencia sin asistencia", group: "servicios", synonyms: ["clase en vivo", "asistencia"] }, // @plantilla-quitar(servicios)
+  { type: "challenge_started", label: "Empezó el Reto", description: "Cuando se abre la fase Reto", group: "servicios", synonyms: ["reto", "entrega"] }, // @plantilla-quitar(servicios)
+  { type: "challenge_occurrence_due_soon", label: "Se acerca una entrega del Reto", description: "Antes de que venza una repetición", group: "servicios", synonyms: ["reto", "entrega"] }, // @plantilla-quitar(servicios)
+  { type: "challenge_occurrence_overdue", label: "Se venció una entrega del Reto", description: "Cuando una repetición vence sin entregar", group: "servicios", synonyms: ["reto", "entrega"] }, // @plantilla-quitar(servicios)
+  { type: "challenge_completed", label: "Terminó el Reto", description: "Cuando se cierra la fase Reto", group: "servicios", synonyms: ["reto", "entrega"] }, // @plantilla-quitar(servicios)
+  { type: "certificate_issued", label: "Se emitió un certificado", description: "Cuando se genera el certificado del servicio", group: "servicios", synonyms: ["certificado", "diploma"] }, // @plantilla-quitar(servicios)
+  { type: "portal_access_expiring", label: "Un acceso al portal está por vencer", description: "Antes de que venza un acceso", group: "servicios", synonyms: ["portal", "acceso"] }, // @plantilla-quitar(servicios)
+  { type: "portal_access_expired", label: "Venció un acceso al portal", description: "Cuando un acceso llega a su fin", group: "servicios", synonyms: ["portal", "acceso"] }, // @plantilla-quitar(servicios)
   { type: "eod_submitted", label: "Se envió un reporte de fin de día", description: "Cuando alguien del equipo envía su reporte del día. Es sobre la persona, sin contacto", group: "equipo", synonyms: ["eod", "reporte"] }, // @plantilla-quitar(formularios)
 ];
 

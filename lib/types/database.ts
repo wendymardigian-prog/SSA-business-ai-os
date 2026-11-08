@@ -969,7 +969,34 @@ export type TriggerType =
   // Grupos de WhatsApp (CHECK de la migracion 00282): alguien se unio, reacciono o voto en un grupo activado.
   | "whatsapp_group_joined"
   | "whatsapp_group_reaction"
-  | "whatsapp_group_poll_vote";
+  | "whatsapp_group_poll_vote"
+  // Servicios (CHECK de la migracion 00336): los 26 disparadores del modulo.  @plantilla-quitar(servicios)
+  | "service_created" // @plantilla-quitar(servicios)
+  | "service_started" // @plantilla-quitar(servicios)
+  | "service_ending_soon" // @plantilla-quitar(servicios)
+  | "service_status_changed" // @plantilla-quitar(servicios)
+  | "service_extended" // @plantilla-quitar(servicios)
+  | "service_paused" // @plantilla-quitar(servicios)
+  | "service_resumed" // @plantilla-quitar(servicios)
+  | "service_phase_started" // @plantilla-quitar(servicios)
+  | "service_phase_completed" // @plantilla-quitar(servicios)
+  | "service_item_completed" // @plantilla-quitar(servicios)
+  | "service_item_overdue" // @plantilla-quitar(servicios)
+  | "service_light_changed" // @plantilla-quitar(servicios)
+  | "program_lesson_completed" // @plantilla-quitar(servicios)
+  | "program_module_completed" // @plantilla-quitar(servicios)
+  | "quiz_passed" // @plantilla-quitar(servicios)
+  | "quiz_failed" // @plantilla-quitar(servicios)
+  | "task_submission_received" // @plantilla-quitar(servicios)
+  | "task_submission_reviewed" // @plantilla-quitar(servicios)
+  | "live_session_missed" // @plantilla-quitar(servicios)
+  | "challenge_started" // @plantilla-quitar(servicios)
+  | "challenge_occurrence_due_soon" // @plantilla-quitar(servicios)
+  | "challenge_occurrence_overdue" // @plantilla-quitar(servicios)
+  | "challenge_completed" // @plantilla-quitar(servicios)
+  | "certificate_issued" // @plantilla-quitar(servicios)
+  | "portal_access_expiring" // @plantilla-quitar(servicios)
+  | "portal_access_expired" // @plantilla-quitar(servicios);
 export type FlowSessionStatus =
   | "active"
   | "completed"

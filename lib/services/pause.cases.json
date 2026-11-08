@@ -1,0 +1,33 @@
+{
+  "_comment": "Casos de resumeDays (F94). Corren contra la gemela TS (lib/services/engine-rules.ts) y contra app_servicio.svc_resume_plan (verify-services). Plata en centimos; fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "doce dias exactos",
+      "pausedAt": "2026-11-01T10:00:00Z",
+      "now": "2026-11-13T10:00:00Z",
+      "shiftDays": null,
+      "expected": 12
+    },
+    {
+      "name": "redondea hacia arriba",
+      "pausedAt": "2026-11-01T10:00:00Z",
+      "now": "2026-11-13T11:00:00Z",
+      "shiftDays": null,
+      "expected": 13
+    },
+    {
+      "name": "con otro numero",
+      "pausedAt": "2026-11-01T10:00:00Z",
+      "now": "2026-11-13T10:00:00Z",
+      "shiftDays": 15,
+      "expected": 15
+    },
+    {
+      "name": "el mismo dia",
+      "pausedAt": "2026-11-01T10:00:00Z",
+      "now": "2026-11-01T10:00:00Z",
+      "shiftDays": null,
+      "expected": 0
+    }
+  ]
+}

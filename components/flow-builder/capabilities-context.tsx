@@ -31,6 +31,25 @@ export function FlowCapabilitiesProvider({ capabilities, children }: { capabilit
   return <CapabilitiesContext.Provider value={capabilities}>{children}</CapabilitiesContext.Provider>;
 }
 
+// @plantilla-desde(servicios)
+/**
+ * Los modulos prendidos en el negocio que suman disparadores y pasos al editor. Apagados (y sin proveedor), el
+ * editor no los ofrece: es el mismo que antes del modulo. Lo ya guardado se sigue viendo y editando.
+ */
+export interface FlowModules {
+  services: boolean;
+}
+const FlowModulesContext = createContext<FlowModules>({ services: false });
+
+export function FlowModulesProvider({ modules, children }: { modules: FlowModules; children: ReactNode }) {
+  return <FlowModulesContext.Provider value={modules}>{children}</FlowModulesContext.Provider>;
+}
+
+export function useFlowModules(): FlowModules {
+  return useContext(FlowModulesContext);
+}
+// @plantilla-hasta(servicios)
+
 export function useFlowCapabilities(): Capabilities {
   return useContext(CapabilitiesContext);
 }

@@ -1,0 +1,89 @@
+{
+  "_comment": "Casos de la validacion de product_variants.service_settings (F5, F115). Corren contra validateServiceSettings (lib/services/settings.ts, vitest) y contra app_servicio.validate_service_settings (verify-services --bloque sv1). Sin contexto de la base: lo que depende de la base se prueba aparte en verify-services.",
+  "cases": [
+    { "name": "vacio = none", "settings": {}, "expected": [] },
+    { "name": "none explicito", "settings": { "v": 1, "mode": "none" }, "expected": [] },
+    { "name": "none con una clave de create", "settings": { "mode": "none", "confirm": true }, "expected": ["clave desconocida: confirm"] },
+    { "name": "modo desconocido", "settings": { "mode": "otro" }, "expected": ["modo desconocido"] },
+    {
+      "name": "create completo con reparto",
+      "settings": { "v": 1, "mode": "create", "when": { "rule": "non_reservation" }, "confirm": false, "start": "payment_date",
+        "owner": { "mode": "round_robin", "members": ["11111111-1111-4111-8111-111111111111"], "fallback_user_id": "22222222-2222-4222-8222-222222222222" },
+        "renewal": "new_linked", "light": { "overdue_red_days": 15 }, "overdue_cut": { "enabled": false, "days": 30, "restore": true } },
+      "expected": []
+    },
+    {
+      "name": "porcentaje 150",
+      "settings": { "mode": "create", "when": { "rule": "percent", "value": 150 }, "owner": { "mode": "previous", "fallback_user_id": "22222222-2222-4222-8222-222222222222" } },
+      "expected": ["el porcentaje va de 1 a 100"]
+    },
+    {
+      "name": "porcentaje 0",
+      "settings": { "mode": "create", "when": { "rule": "percent", "value": 0 }, "owner": { "mode": "previous", "fallback_user_id": "22222222-2222-4222-8222-222222222222" } },
+      "expected": ["el porcentaje va de 1 a 100"]
+    },
+    {
+      "name": "monto en cero",
+      "settings": { "mode": "create", "when": { "rule": "amount", "value": 0 }, "owner": { "mode": "previous", "fallback_user_id": "22222222-2222-4222-8222-222222222222" } },
+      "expected": ["el monto tiene que ser mayor a cero"]
+    },
+    {
+      "name": "persona fija sin persona",
+      "settings": { "mode": "create", "when": { "rule": "any_payment" }, "owner": { "mode": "fixed", "fallback_user_id": "22222222-2222-4222-8222-222222222222" } },
+      "expected": ["elegí la persona"]
+    },
+    {
+      "name": "create sin respaldo",
+      "settings": { "mode": "create", "when": { "rule": "any_payment" }, "owner": { "mode": "fixed", "user_id": "11111111-1111-4111-8111-111111111111" } },
+      "expected": ["elegí la persona de respaldo"]
+    },
+    {
+      "name": "reparto vacio",
+      "settings": { "mode": "create", "when": { "rule": "any_payment" }, "owner": { "mode": "round_robin", "members": [], "fallback_user_id": "22222222-2222-4222-8222-222222222222" } },
+      "expected": ["elegí las personas del reparto"]
+    },
+    {
+      "name": "condiciones vacias",
+      "settings": { "mode": "create", "when": { "rule": "any_payment" }, "owner": { "mode": "conditions", "conditions": [], "fallback_user_id": "22222222-2222-4222-8222-222222222222" } },
+      "expected": ["agregá al menos una condición"]
+    },
+    { "name": "create sin cuando ni responsable", "settings": { "mode": "create" }, "expected": ["elegí cuándo se crea", "elegí cómo se asigna el responsable"] },
+    {
+      "name": "create con extend adentro",
+      "settings": { "mode": "create", "when": { "rule": "any_payment" }, "owner": { "mode": "previous", "fallback_user_id": "22222222-2222-4222-8222-222222222222" }, "extend": { "n": 3 } },
+      "expected": ["clave desconocida: extend"]
+    },
+    {
+      "name": "extend sin respaldo",
+      "settings": { "mode": "extend", "when": { "rule": "any_payment" }, "extend": { "n": 3, "unit": "months" } },
+      "expected": ["elegí la variante de respaldo"]
+    },
+    {
+      "name": "extend completo",
+      "settings": { "mode": "extend", "when": { "rule": "any_payment" },
+        "extend": { "target_variant_ids": null, "n": 3, "unit": "months", "extend_accesses": false, "if_no_service": "confirm", "fallback_variant_id": "33333333-3333-4333-8333-333333333333" } },
+      "expected": []
+    },
+    {
+      "name": "extend con owner",
+      "settings": { "mode": "extend", "when": { "rule": "any_payment" }, "owner": { "mode": "previous" },
+        "extend": { "n": 1, "unit": "months", "fallback_variant_id": "33333333-3333-4333-8333-333333333333" } },
+      "expected": ["clave desconocida: owner"]
+    },
+    {
+      "name": "extend sin cuanto",
+      "settings": { "mode": "extend", "when": { "rule": "any_payment" }, "extend": { "n": 0, "fallback_variant_id": "33333333-3333-4333-8333-333333333333" } },
+      "expected": ["elegí cuánto suma"]
+    },
+    {
+      "name": "mora fuera de rango",
+      "settings": { "mode": "create", "when": { "rule": "any_payment" }, "owner": { "mode": "previous", "fallback_user_id": "22222222-2222-4222-8222-222222222222" }, "overdue_cut": { "enabled": true, "days": 0 } },
+      "expected": ["los días de mora van de 1 a 365"]
+    },
+    {
+      "name": "rojo por pagos fuera de rango",
+      "settings": { "mode": "create", "when": { "rule": "any_payment" }, "owner": { "mode": "previous", "fallback_user_id": "22222222-2222-4222-8222-222222222222" }, "light": { "overdue_red_days": 0 } },
+      "expected": ["los días para rojo por pagos van de 1 a 365"]
+    }
+  ]
+}

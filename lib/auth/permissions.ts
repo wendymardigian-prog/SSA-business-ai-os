@@ -42,6 +42,7 @@ export const PERMISSION_MODULES = [
   "finance", // @plantilla-quitar(finanzas)
   "commissions", // @plantilla-quitar(comisiones)
   "tasks", // @plantilla-quitar(tareas)
+  "services", // @plantilla-quitar(servicios)
   "integrations",
   "team",
   "settings",
@@ -69,6 +70,7 @@ export const MODULE_LABELS: Record<PermissionModule, string> = {
   finance: "Finanzas", // @plantilla-quitar(finanzas)
   commissions: "Comisiones", // @plantilla-quitar(comisiones)
   tasks: "Tareas", // @plantilla-quitar(tareas)
+  services: "Servicios y portal", // @plantilla-quitar(servicios)
   integrations: "Integraciones",
   team: "Equipo",
   settings: "Configuración",
@@ -205,6 +207,25 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "tasks.edit", module: "tasks", label: "Crear y editar tareas", description: "Crear tareas, editarlas, completarlas, reasignarlas y agregar seguidores. Mismo alcance que ver." }, // @plantilla-quitar(tareas)
   { key: "tasks.delete", module: "tasks", label: "Borrar tareas", description: "Borrar tareas. Se borran de forma lógica: dejan de verse pero quedan en el historial." }, // @plantilla-quitar(tareas)
 
+  // ── Servicios y portal (Servicios v12, Corrida A1) ───────────────────── // @plantilla-quitar(servicios)
+  { key: "services.view", module: "services", label: "Ver los servicios", description: "Clientes, sus fichas y sus servicios. El alcance decide si ve todos o solo donde es responsable, setter o vendedor del contacto." }, // @plantilla-quitar(servicios)
+  { key: "services.create", module: "services", label: "Crear servicios", description: "«+ Servicio» y «Crear servicio» desde Ventas, cuando la venta cumple la regla de su variante." }, // @plantilla-quitar(servicios)
+  { key: "services.create_off_rule", module: "services", label: "Crear servicios fuera de la regla", description: "Crear un servicio desde una venta que no cumple la regla, con motivo." }, // @plantilla-quitar(servicios)
+  { key: "services.confirm", module: "services", label: "Confirmar servicios", description: "Confirmar o descartar un servicio «Por confirmar»." }, // @plantilla-quitar(servicios)
+  { key: "services.items", module: "services", label: "Tildar pasos del camino", description: "Completar y destildar pasos. El alcance decide si son todos o solo los que tiene a cargo." }, // @plantilla-quitar(servicios)
+  { key: "services.change_phase", module: "services", label: "Cambiar de fase a mano", description: "Mover un servicio a otra fase y empezar el Reto desde la ficha." }, // @plantilla-quitar(servicios)
+  { key: "services.pause", module: "services", label: "Pausar servicios", description: "Pausar y reanudar un servicio." }, // @plantilla-quitar(servicios)
+  { key: "services.extend", module: "services", label: "Extender servicios", description: "Extender un servicio y revertir una extensión." }, // @plantilla-quitar(servicios)
+  { key: "services.complete", module: "services", label: "Completar servicios", description: "Dar por completado un servicio a mano, con motivo." }, // @plantilla-quitar(servicios)
+  { key: "services.cancel", module: "services", label: "Cancelar servicios", description: "Cancelar un servicio, con motivo. No se puede deshacer." }, // @plantilla-quitar(servicios)
+  { key: "services.change_owner", module: "services", label: "Cambiar el responsable", description: "Cambiar el responsable de un servicio y reasignar en bloque." }, // @plantilla-quitar(servicios)
+  { key: "services.import", module: "services", label: "Importar servicios", description: "Cargar servicios por CSV." }, // @plantilla-quitar(servicios)
+  { key: "services.configure", module: "services", label: "Configurar el servicio de cada variante", description: "En Productos › variante: el camino del cliente, cuándo se crea o extiende el servicio, el responsable y la mora." }, // @plantilla-quitar(servicios)
+  { key: "portal.sections", module: "services", label: "Prender el portal y sus secciones", description: "El acceso al portal de una variante, las secciones del programa y los términos al entrar." }, // @plantilla-quitar(servicios)
+  { key: "portal.access_rules", module: "services", label: "Reglas de las secciones del portal", description: "Cuándo se abre cada sección en una variante, cómo se ve cerrada, hasta cuándo dura y sus límites." }, // @plantilla-quitar(servicios)
+  { key: "portal.settings", module: "services", label: "Ajustes del portal", description: "La dirección del portal, el remitente, la bienvenida, cómo se entra y el soporte." }, // @plantilla-quitar(servicios)
+  { key: "portal.view_as", module: "services", label: "Ver como estudiante", description: "Abrir el portal de un estudiante en solo lectura por 30 minutos. Mismo alcance que ver los servicios." }, // @plantilla-quitar(servicios)
+
   // ── Integraciones ───────────────────────────────────────────────────────
   { key: "integrations.view", module: "integrations", label: "Ver las integraciones", description: "El estado de cada integración, sin las claves ni botones de cambio." },
   { key: "integrations.manage", module: "integrations", label: "Administrar integraciones", description: "Conectar cuentas del negocio y guardar claves: IA, email, Meta Ads, publicación." },
@@ -257,6 +278,7 @@ export const SCOPED_MODULES = [
   "sales", // @plantilla-quitar(ventas)
   "commissions", // @plantilla-quitar(comisiones)
   "tasks", // @plantilla-quitar(tareas)
+  "services", // @plantilla-quitar(servicios)
 ] as const;
 export type ScopedModule = (typeof SCOPED_MODULES)[number];
 
@@ -360,6 +382,12 @@ const MEMBER_KEYS = [
   // topes del negocio). NO publica, no genera desde plantillas, no anula ni administra estilos y fuentes.
   "designer.view",
   "designer.edit",
+  // Servicios (cambio aprobado M11): un Member ve los servicios donde es responsable o setter o // @plantilla-quitar(servicios)
+  // vendedor del contacto, tilda los pasos a su cargo y abre "Ver como estudiante" a esos clientes // @plantilla-quitar(servicios)
+  // (alcance `own` del modulo services). NO crea, confirma, pausa ni cancela servicios. // @plantilla-quitar(servicios)
+  "services.view", // @plantilla-quitar(servicios)
+  "services.items", // @plantilla-quitar(servicios)
+  "portal.view_as", // @plantilla-quitar(servicios)
 ] as const;
 
 /**
@@ -371,20 +399,20 @@ export const MEMBER_PERMISSION_KEYS: readonly string[] = MEMBER_KEYS;
 export const SYSTEM_ROLE_PERMISSIONS: Record<"owner" | "admin" | "member", RolePermissions> = {
   owner: {
     keys: [...ALL_PERMISSION_KEYS],
-    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all", services: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas,servicios)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "all", bookings: "all" },
     channels: ALL_CHANNELS,
   },
   admin: {
     // Todo salvo lo solo-Owner (transferir la propiedad, quitar personas).
     keys: ALL_PERMISSION_KEYS.filter((key) => !OWNER_ONLY_KEYS.includes(key)),
-    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all", services: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas,servicios)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "all", bookings: "all" },
     channels: ALL_CHANNELS,
   },
   member: {
     keys: [...MEMBER_KEYS],
-    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas,servicios)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "own", bookings: "own" },
     channels: MEMBER_CHANNELS,
   },
@@ -448,7 +476,7 @@ export function parsePermissions(value: unknown): RolePermissions {
     keys: Array.isArray(record.keys)
       ? record.keys.filter((key): key is string => typeof key === "string" && ALL_PERMISSION_KEYS.includes(key))
       : [],
-    scopes: { leads: scope("leads"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), commissions: scope("commissions"), tasks: scope("tasks") }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    scopes: { leads: scope("leads"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), commissions: scope("commissions"), tasks: scope("tasks"), services: scope("services") }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas,servicios)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: scope("leads"), bookings: scope("bookings") },
     channels: parseChannels(record.channels),
     ...(scopes.calls === "areas" ? { call_areas: parseCallAreas(record.call_areas) } : {}), // @plantilla-quitar(llamadas)

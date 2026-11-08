@@ -1,0 +1,58 @@
+{
+  "_comment": "Casos de dueDate (F15). Corren contra la gemela TS (lib/services/engine-rules.ts) y contra app_servicio.svc_due_date (verify-services). Plata en centimos; fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "tres dias desde completar A",
+      "rule": {
+        "from": "item_completed",
+        "days": 3
+      },
+      "anchors": {
+        "itemCompleted": "2026-11-10"
+      },
+      "expected": "2026-11-13"
+    },
+    {
+      "name": "cinco desde el inicio de la fase",
+      "rule": {
+        "from": "phase_start",
+        "days": 5
+      },
+      "anchors": {
+        "phaseStart": "2026-11-01"
+      },
+      "expected": "2026-11-06"
+    },
+    {
+      "name": "sin completar todavia no tiene fecha",
+      "rule": {
+        "from": "item_completed",
+        "days": 3
+      },
+      "anchors": {},
+      "expected": null
+    },
+    {
+      "name": "desde el inicio del servicio",
+      "rule": {
+        "from": "service_start",
+        "days": 0
+      },
+      "anchors": {
+        "serviceStart": "2026-12-31"
+      },
+      "expected": "2026-12-31"
+    },
+    {
+      "name": "desde la creacion cruza el anio",
+      "rule": {
+        "from": "service_created",
+        "days": 7
+      },
+      "anchors": {
+        "serviceCreated": "2026-12-28"
+      },
+      "expected": "2027-01-04"
+    }
+  ]
+}

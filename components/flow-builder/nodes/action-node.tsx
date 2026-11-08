@@ -2,7 +2,7 @@
 
 import { NodeMetricsBadge } from "../metrics-context";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { BarChart3,
+import { BarChart3, Flag, CalendarPlus, CirclePause,
   Tag,
   FileText,
   Globe,
@@ -33,6 +33,7 @@ import { BarChart3,
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
 import { NodeBlockedNotice } from "../capabilities-context";
+import { serviceActionDetail, type ServiceActionData, type ServiceActionType } from "@/lib/flow-engine/nodes/service-actions"; // @plantilla-quitar(servicios)
 
 export interface ActionNodeProps {
   label?: string;
@@ -170,6 +171,13 @@ const actionConfig: Record<
   },
   send_poll: { icon: BarChart3, label: "Enviar encuesta", color: "bg-gray-500" },
   send_meta_event: { icon: Target, label: "Enviar evento a Meta", color: "bg-gray-500" },
+  // @plantilla-desde(servicios)
+  svc_complete_step: { icon: ListChecks, label: "Completar un paso del servicio", color: "bg-gray-500" },
+  svc_change_phase: { icon: ArrowRightLeft, label: "Cambiar de fase", color: "bg-gray-500" },
+  svc_start_challenge: { icon: Flag, label: "Empezar la fase Reto", color: "bg-gray-500" },
+  svc_extend_service: { icon: CalendarPlus, label: "Extender servicio", color: "bg-gray-500" },
+  svc_pause_service: { icon: CirclePause, label: "Pausar servicio", color: "bg-gray-500" },
+  // @plantilla-hasta(servicios)
   enrollSequence: { icon: ListOrdered, label: "Inscribir en secuencia", color: "bg-gray-500" },
   notify_team: { icon: Bell, label: "Avisar en la campana", color: "bg-gray-500" },
   cancel_booking: { icon: CalendarX, label: "Cancelar la reunión", color: "bg-gray-500" },
@@ -255,6 +263,14 @@ function getSummary(nodeData: ActionNodeProps): string | null {
       return (nodeData as { question?: string }).question?.trim() || null;
     case "send_meta_event" as NodeType:
       return (nodeData as { eventName?: string }).eventName?.trim() || null;
+    // @plantilla-desde(servicios)
+    case "svc_complete_step" as NodeType:
+    case "svc_change_phase" as NodeType:
+    case "svc_start_challenge" as NodeType:
+    case "svc_extend_service" as NodeType:
+    case "svc_pause_service" as NodeType:
+      return serviceActionDetail(type as unknown as ServiceActionType, nodeData as unknown as ServiceActionData);
+    // @plantilla-hasta(servicios)
     case "privateReply":
       return (nodeData as { text?: string }).text?.trim() || null;
     // Diseñador IA (F57): la plantilla elegida.

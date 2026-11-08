@@ -41,19 +41,90 @@
     "agent_runs.agent_runs_agent_only_for_agent_sources": "CHECK (((agent_id IS NULL) OR (source = ANY (ARRAY['agent'::text, 'conversation_summary'::text, 'content_copy'::text]))))"
   },
   "triggers_en_tablas_que_se_enganchan": {
-    "payments": ["set_updated_at", "payments_protect_original_due_date", "payments_validate_method", "payments_fee_spec_from_snapshot", "payments_emit_status_change", "payments_refresh_sale_status", "payments_enqueue_commissions", "payments_mark_customer", "payments_enqueue_meta_capi_purchase"],
-    "sales": ["set_updated_at", "sales_emit_status_change"],
-    "form_submissions": ["set_updated_at"],
-    "contract_signatures": ["set_updated_at", "contract_signatures_protect"],
-    "bookings": ["set_updated_at"],
-    "tasks": ["tasks_before_write"],
-    "workspace_members": ["tasks_clean_member_refs"],
-    "contact_touches": ["set_updated_at", "contact_touches_content_code", "contact_touches_meta_match", "contact_touches_zz_channel"],
-    "products": ["set_updated_at", "products_audit"],
-    "product_variants": ["set_updated_at", "product_variants_audit"],
-    "workspaces": ["set_updated_at", "seed_booking_categories", "seed_copywriter_on_workspace", "seed_message_categories", "seed_roles_on_workspace", "seed_sales_defaults", "workspaces_commission_settings_guard", "workspaces_design_settings_check"]
+    "payments": [
+      "set_updated_at",
+      "payments_protect_original_due_date",
+      "payments_validate_method",
+      "payments_fee_spec_from_snapshot",
+      "payments_emit_status_change",
+      "payments_refresh_sale_status",
+      "payments_enqueue_commissions",
+      "payments_mark_customer",
+      "payments_enqueue_meta_capi_purchase"
+    ],
+    "sales": [
+      "set_updated_at",
+      "sales_emit_status_change"
+    ],
+    "form_submissions": [
+      "set_updated_at"
+    ],
+    "contract_signatures": [
+      "set_updated_at",
+      "contract_signatures_protect"
+    ],
+    "bookings": [
+      "set_updated_at"
+    ],
+    "tasks": [
+      "tasks_before_write"
+    ],
+    "workspace_members": [
+      "tasks_clean_member_refs"
+    ],
+    "contact_touches": [
+      "set_updated_at",
+      "contact_touches_content_code",
+      "contact_touches_meta_match",
+      "contact_touches_zz_channel"
+    ],
+    "products": [
+      "set_updated_at",
+      "products_audit"
+    ],
+    "product_variants": [
+      "set_updated_at",
+      "product_variants_audit"
+    ],
+    "workspaces": [
+      "set_updated_at",
+      "seed_booking_categories",
+      "seed_copywriter_on_workspace",
+      "seed_message_categories",
+      "seed_roles_on_workspace",
+      "seed_sales_defaults",
+      "workspaces_commission_settings_guard",
+      "workspaces_design_settings_check"
+    ]
   },
-  "audit_log_policies": ["audit_log_insert", "audit_log_select", "audit_log_select_audit", "audit_log_select_calls", "audit_log_select_commissions", "audit_log_select_finance", "audit_log_select_sales", "audit_log_select_tasks"],
-  "schemas": ["auth", "cron", "extensions", "graphql", "graphql_public", "net", "private", "public", "realtime", "storage", "supabase_migrations", "vault"],
-  "api_exposed_schemas": "se completa al aplicar S01 (lista vigente leida por la Management API antes de sumar app_servicio)"
+  "audit_log_policies": [
+    "audit_log_insert",
+    "audit_log_select",
+    "audit_log_select_audit",
+    "audit_log_select_calls",
+    "audit_log_select_commissions",
+    "audit_log_select_finance",
+    "audit_log_select_sales",
+    "audit_log_select_tasks"
+  ],
+  "schemas": [
+    "auth",
+    "cron",
+    "extensions",
+    "graphql",
+    "graphql_public",
+    "net",
+    "private",
+    "public",
+    "realtime",
+    "storage",
+    "supabase_migrations",
+    "vault"
+  ],
+  "api_exposed_schemas": {
+    "leido_el": "2026-11-08 (UTC), despues de aplicar y verificar S01",
+    "antes": "public,graphql_public",
+    "despues": "public,graphql_public,app_servicio",
+    "como_volver": "node scripts/servicios-api-schema.mjs --restaurar \"public,graphql_public\""
+  }
 }

@@ -5,6 +5,7 @@ import { FlowCanvas } from "@/components/flow-builder/flow-canvas";
 import { parseAttributionSettings } from "@/lib/attribution/settings";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadAutomationCapabilities } from "@/lib/flow-engine/capabilities";
+import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
 
 export default async function FlowEditorPage({
   params,
@@ -39,6 +40,7 @@ export default async function FlowEditorPage({
       <FlowCanvas
         flow={flow}
         capabilities={capabilities}
+        servicesEnabled={isModuleEnabled(workspace as { services_enabled?: boolean | null })} // @plantilla-quitar(servicios)
         attributionDefaults={{ append: attribution.links_append_default, trackClicks: attribution.links_track_clicks_default }}
       />
     </div>

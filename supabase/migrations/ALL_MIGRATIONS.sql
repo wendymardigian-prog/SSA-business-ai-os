@@ -60332,3 +60332,3896 @@ SELECT cron.schedule(
   $$DELETE FROM public.meta_capi_request_context WHERE created_at < now() - interval '8 days';
     DELETE FROM public.meta_capi_events WHERE created_at < now() - interval '180 days' AND status <> 'pending';$$
 );
+
+-- ============================================================
+-- MIGRATION 330: APP SERVICIO CORE
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00330_app_servicio_core  (Servicios v12, Corrida A1 · S01 · bloque SV1)
+-- ============================================================================
+-- 1. Esquema `app_servicio` (lo del equipo). Se expone a la API con RLS de SOLO LECTURA:
+--    USAGE para authenticated, sin politicas de escritura en ninguna tabla. Las tablas se
+--    escriben solo con funciones del modulo (SECURITY DEFINER, validan permiso y negocio).
+-- 2. `public.workspaces.services_enabled` (interruptor del modulo, F97): nace en false y NO tiene
+--    pantalla (decision 447). Solo lo cambia la plataforma con `app_servicio.set_module_enabled`
+--    (EXECUTE solo para service_role). `app_servicio.module_on(ws)` lo lee: todo trigger del modulo
+--    sale al principio si da false.
+-- 3. Guardia `trg_app_servicio_config_guard` (SV003): una sesion authenticated o anon no puede
+--    cambiar `services_enabled` con un UPDATE directo; en un INSERT de esos roles queda en su default.
+--    S03 extiende la misma guardia a las columnas de configuracion de workspaces, products y
+--    product_variants.
+-- 4. Tabla `app_servicio.services` (§8.2): las claves a contactos, productos y variantes son NO ACTION
+--    (no RESTRICT): protegen igual (no se borra un contacto con servicios) pero se comprueban al final
+--    de la sentencia, asi borrar un negocio entero no choca en el medio de la cascada (la misma regla
+--    que la 00246). Tambien `app_servicio.can_see_service` (siempre true/false):
+--    Owner y Admin; rol con `services.view` alcance `all`; o alcance `own` siendo responsable del
+--    servicio o setter o vendedor de su contacto. RLS: SELECT con eso; sin INSERT/UPDATE/DELETE.
+--    `app_servicio.can_view_as_student(contact)` (portal.view_as, mismo alcance) la usa "Ver como
+--    estudiante" (bloque AC).
+-- 5. Permisos: el Member de sistema suma `services.view` y `services.items` (alcance `own`) y
+--    `portal.view_as` (alcance `own`) — cambio aprobado M11. Se redefine
+--    `private.member_permission_keys()` COPIANDO la vigente en la base (00319) letra por letra y
+--    sumando las tres claves al final. `affiliates.use` la suma la 00342 (S13).
+--
+-- Aditiva + modifica estructura existente (columna en workspaces) + modifica la lista del Member.
+-- Va ANTES de desplegar el codigo. Con el modulo apagado (asi nace) no cambia nada de lo que existe.
+--
+-- Cómo volver atrás:
+--   DROP TRIGGER IF EXISTS trg_app_servicio_config_guard ON public.workspaces;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_keep_contacts ON public.contacts;
+--   DROP SCHEMA IF EXISTS app_servicio CASCADE;   -- (services vacia: el modulo nace apagado)
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS services_enabled;
+--   y `private.member_permission_keys()` vuelve a la definicion vigente antes de esta migracion,
+--   copiada aca abajo tal cual la devolvio pg_get_functiondef el 8/11/2026:
+--
+--   CREATE OR REPLACE FUNCTION private.member_permission_keys()
+--    RETURNS text[]
+--    LANGUAGE sql
+--    IMMUTABLE
+--    SET search_path TO ''
+--   AS $function$
+--     SELECT ARRAY[
+--       'dashboards.chat.view',
+--       'contacts.view',
+--       'contacts.edit',
+--       'contacts.assign',
+--       'flows.view',
+--       'flows.edit',
+--       'flows.publish',
+--       'sequences.view',
+--       'agents.view',
+--       'content.view',
+--       'content.create',
+--       'scheduling.use',
+--       'bookings.view',
+--       'bookings.manage',
+--       'calls.view',
+--       'forms.view',
+--       'sales.view',
+--       'sales.manage',
+--       'payments.manage',
+--       'tasks.view',
+--       'tasks.edit',
+--       'commissions.view',
+--       'designer.view',
+--       'designer.edit'
+--     ]::text[]
+--   $function$;
+--
+-- Riesgo: medio (columna nueva en workspaces; el Member suma tres claves que solo se ven con el
+-- modulo prendido).
+-- ============================================================================
+
+-- ─── 1. Esquema ─────────────────────────────────────────────────────────────
+CREATE SCHEMA IF NOT EXISTS app_servicio;
+REVOKE ALL ON SCHEMA app_servicio FROM public, anon;
+GRANT USAGE ON SCHEMA app_servicio TO authenticated, service_role;
+-- Las funciones nuevas del esquema nacen sin EXECUTE para public (cada una lo declara igual).
+ALTER DEFAULT PRIVILEGES IN SCHEMA app_servicio REVOKE EXECUTE ON FUNCTIONS FROM public;
+
+-- ─── 2. El interruptor del modulo ───────────────────────────────────────────
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS services_enabled boolean NOT NULL DEFAULT false;
+COMMENT ON COLUMN public.workspaces.services_enabled IS
+  'Modulo de Servicios prendido en este negocio (F97). Sin pantalla: lo cambia la plataforma con app_servicio.set_module_enabled (service_role). Apagado, ningun trigger del modulo hace nada (00330).';
+
+CREATE OR REPLACE FUNCTION app_servicio.module_on(p_workspace_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE((SELECT w.services_enabled FROM public.workspaces w WHERE w.id = p_workspace_id), false);
+$$;
+REVOKE ALL ON FUNCTION app_servicio.module_on(uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.module_on(uuid) TO authenticated, service_role;
+
+-- ─── 3. La guardia de configuracion (SV003) ─────────────────────────────────
+-- SECURITY INVOKER a proposito: mira el rol de quien escribe. Las funciones del modulo son
+-- SECURITY DEFINER (corren como el dueño) y el servidor usa service_role: los dos pasan.
+CREATE OR REPLACE FUNCTION app_servicio.config_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF current_user NOT IN ('authenticated', 'anon') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_TABLE_NAME = 'workspaces' THEN
+    IF TG_OP = 'INSERT' THEN
+      -- Un alta hecha por una sesion nace sin el modulo (su default).
+      NEW.services_enabled := false;
+    ELSIF NEW.services_enabled IS DISTINCT FROM OLD.services_enabled THEN
+      RAISE EXCEPTION 'La configuración del módulo se cambia desde sus pantallas' USING ERRCODE = 'SV003';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.config_guard() FROM public, anon;
+
+DROP TRIGGER IF EXISTS trg_app_servicio_config_guard ON public.workspaces;
+CREATE TRIGGER trg_app_servicio_config_guard
+  BEFORE INSERT OR UPDATE ON public.workspaces
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.config_guard();
+
+-- ─── 4. Servicios ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS app_servicio.services (
+  id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id         uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  contact_id           uuid NOT NULL REFERENCES public.contacts(id),
+  product_id           uuid NOT NULL REFERENCES public.products(id),
+  product_variant_id   uuid NULL REFERENCES public.product_variants(id),
+  sale_id              uuid NULL REFERENCES public.sales(id) ON DELETE SET NULL,
+  origin               text NOT NULL,
+  origin_reason        text NULL,
+  previous_service_id  uuid NULL REFERENCES app_servicio.services(id) ON DELETE SET NULL,
+  status               text NOT NULL,
+  starts_on            date NULL,
+  ends_on              date NULL,
+  owner_user_id        uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  product_snapshot     jsonb NOT NULL,
+  price_cents          bigint NULL,
+  currency             text NULL,
+  progress_pct         numeric(5,2) NULL,
+  light                text NOT NULL DEFAULT 'grey',
+  light_reason         text NULL,
+  light_at             timestamptz NULL,
+  paused_at            timestamptz NULL,
+  paused_days          integer NOT NULL DEFAULT 0,
+  pause_cut_access     boolean NULL,
+  pause_resume_on      date NULL,
+  extension_sale_ids   uuid[] NOT NULL DEFAULT '{}',
+  cancel_reason        text NULL,
+  completed_at         timestamptz NULL,
+  cancelled_at         timestamptz NULL,
+  is_test              boolean NOT NULL DEFAULT false,
+  flags                jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_by           uuid NULL,
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  updated_at           timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT services_origin_check CHECK (origin IN ('sale', 'courtesy', 'test', 'manual', 'recovery')),
+  CONSTRAINT services_status_check CHECK (status IN ('pending_confirmation', 'active', 'paused', 'completed', 'cancelled', 'renewed')),
+  CONSTRAINT services_light_check CHECK (light IN ('green', 'yellow', 'red', 'grey')),
+  CONSTRAINT services_dates_check CHECK (ends_on IS NULL OR starts_on IS NULL OR ends_on >= starts_on),
+  CONSTRAINT services_owner_check CHECK (owner_user_id IS NOT NULL OR status IN ('pending_confirmation', 'cancelled')),
+  CONSTRAINT services_reason_check CHECK (sale_id IS NOT NULL OR origin = 'sale' OR nullif(btrim(origin_reason), '') IS NOT NULL),
+  CONSTRAINT services_is_test_check CHECK (is_test = (origin = 'test')),
+  CONSTRAINT services_paused_days_check CHECK (paused_days >= 0),
+  CONSTRAINT services_flags_check CHECK (jsonb_typeof(flags) = 'object'),
+  CONSTRAINT services_snapshot_check CHECK (jsonb_typeof(product_snapshot) = 'object')
+);
+COMMENT ON TABLE app_servicio.services IS
+  'El servicio de un cliente (Servicios v12, F4). Se escribe SOLO con app_servicio.svc_create_service y las funciones svc_* (00330/00333). Una venta, un servicio.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_services_sale ON app_servicio.services (sale_id) WHERE sale_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_services_ws_status ON app_servicio.services (workspace_id, status);
+CREATE INDEX IF NOT EXISTS idx_services_contact_product ON app_servicio.services (contact_id, product_id);
+CREATE INDEX IF NOT EXISTS idx_services_owner_open ON app_servicio.services (owner_user_id) WHERE status IN ('active', 'paused');
+CREATE INDEX IF NOT EXISTS idx_services_variant ON app_servicio.services (product_variant_id);
+CREATE INDEX IF NOT EXISTS idx_services_previous ON app_servicio.services (previous_service_id) WHERE previous_service_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_services_extension_sales ON app_servicio.services USING gin (extension_sale_ids);
+
+DROP TRIGGER IF EXISTS set_updated_at ON app_servicio.services;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON app_servicio.services
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE app_servicio.services ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app_servicio.services FROM public, anon, authenticated;
+GRANT SELECT ON app_servicio.services TO authenticated;
+GRANT ALL ON app_servicio.services TO service_role;
+
+-- Quien ve un servicio. Siempre true o false, nunca NULL.
+CREATE OR REPLACE FUNCTION app_servicio.can_see_service_row(s app_servicio.services)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE(
+    public.is_workspace_member(s.workspace_id)
+    AND public.has_permission(s.workspace_id, 'services.view')
+    AND (
+      public.permission_scope(s.workspace_id, 'services') = 'all'
+      OR s.owner_user_id = auth.uid()
+      OR EXISTS (
+        SELECT 1 FROM public.contacts c
+        WHERE c.id = s.contact_id AND (c.setter_id = auth.uid() OR c.vendedor_id = auth.uid())
+      )
+    ),
+    false);
+$$;
+REVOKE ALL ON FUNCTION app_servicio.can_see_service_row(app_servicio.services) FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.can_see_service_row(app_servicio.services) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION app_servicio.can_see_service(p_service_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE((SELECT app_servicio.can_see_service_row(s) FROM app_servicio.services s WHERE s.id = p_service_id), false);
+$$;
+REVOKE ALL ON FUNCTION app_servicio.can_see_service(uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.can_see_service(uuid) TO authenticated, service_role;
+
+DROP POLICY IF EXISTS services_select ON app_servicio.services;
+CREATE POLICY services_select ON app_servicio.services
+  FOR SELECT TO authenticated
+  USING (app_servicio.can_see_service_row(services));
+
+-- "Ver como estudiante" (F42): portal.view_as con el alcance de services (own = un servicio del
+-- contacto donde es responsable, o setter o vendedor del contacto). Siempre true o false.
+CREATE OR REPLACE FUNCTION app_servicio.can_view_as_student(p_workspace_id uuid, p_contact_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE(
+    public.is_workspace_member(p_workspace_id)
+    AND public.has_permission(p_workspace_id, 'portal.view_as')
+    AND (
+      public.permission_scope(p_workspace_id, 'services') = 'all'
+      OR EXISTS (
+        SELECT 1 FROM public.contacts c
+        WHERE c.id = p_contact_id AND c.workspace_id = p_workspace_id
+          AND (c.setter_id = auth.uid() OR c.vendedor_id = auth.uid())
+      )
+      OR EXISTS (
+        SELECT 1 FROM app_servicio.services s
+        WHERE s.workspace_id = p_workspace_id AND s.contact_id = p_contact_id AND s.owner_user_id = auth.uid()
+      )
+    ),
+    false);
+$$;
+REVOKE ALL ON FUNCTION app_servicio.can_view_as_student(uuid, uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.can_view_as_student(uuid, uuid) TO authenticated, service_role;
+
+-- La purga diaria de BAIOS (`purge_soft_deleted`) borra de verdad los contactos borrados hace mas de
+-- 30 dias que no tienen ventas. Un contacto con un servicio (cortesia, prueba, a mano) no se puede
+-- borrar (FK RESTRICT): en vez de hacer fallar la purga de toda la instalacion, este trigger saltea
+-- ese contacto (BEFORE DELETE que devuelve NULL = esa fila no se borra, sin error). Vale aunque el
+-- modulo este apagado: protege datos que ya existen. Si algo falla, deja seguir (y la FK decide).
+CREATE OR REPLACE FUNCTION app_servicio.keep_contacts_with_services()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  -- Dentro de una cascada (se borra el negocio entero) no se saltea nada.
+  IF pg_trigger_depth() > 1 THEN RETURN OLD; END IF;
+  BEGIN
+    IF EXISTS (SELECT 1 FROM app_servicio.services s WHERE s.contact_id = OLD.id) THEN
+      RETURN NULL;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'app_servicio.keep_contacts_with_services: %', SQLERRM;
+  END;
+  RETURN OLD;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.keep_contacts_with_services() FROM public, anon;
+
+DROP TRIGGER IF EXISTS trg_app_servicio_keep_contacts ON public.contacts;
+CREATE TRIGGER trg_app_servicio_keep_contacts
+  BEFORE DELETE ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.keep_contacts_with_services();
+
+-- ─── 5. Prender y apagar el modulo (solo la plataforma) ─────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.set_module_enabled(p_workspace_id uuid, p_enabled boolean)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_before boolean;
+  v_active integer;
+BEGIN
+  SELECT services_enabled INTO v_before FROM public.workspaces WHERE id = p_workspace_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'No existe el negocio' USING ERRCODE = 'SV002';
+  END IF;
+  SELECT count(*) INTO v_active FROM app_servicio.services
+   WHERE workspace_id = p_workspace_id AND status IN ('active', 'paused', 'pending_confirmation');
+  IF v_before IS DISTINCT FROM p_enabled THEN
+    UPDATE public.workspaces SET services_enabled = p_enabled WHERE id = p_workspace_id;
+    INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, actor_type, actor_label)
+    VALUES (p_workspace_id, 'workspace', p_workspace_id, 'svc.module_toggled',
+            jsonb_build_object('services_enabled', jsonb_build_object('old', v_before, 'new', p_enabled), 'active_services', v_active),
+            'system', 'plataforma');
+  END IF;
+  RETURN jsonb_build_object(
+    'enabled', p_enabled,
+    'changed', v_before IS DISTINCT FROM p_enabled,
+    'active_services', v_active,
+    'message', CASE WHEN NOT p_enabled AND v_active > 0
+      THEN format('Hay %s servicios activos: quedan como están, pero no avanzan solos mientras el módulo esté apagado', v_active)
+      ELSE NULL END
+  );
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.set_module_enabled(uuid, boolean) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio.set_module_enabled(uuid, boolean) TO service_role;
+
+-- ─── 6. El Member de sistema (cambio aprobado M11) ──────────────────────────
+-- Copia de la vigente (00319) letra por letra + services.view, services.items y portal.view_as.
+CREATE OR REPLACE FUNCTION private.member_permission_keys()
+ RETURNS text[]
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT ARRAY[
+    'dashboards.chat.view',
+    'contacts.view',
+    'contacts.edit',
+    'contacts.assign',
+    'flows.view',
+    'flows.edit',
+    'flows.publish',
+    'sequences.view',
+    'agents.view',
+    'content.view',
+    'content.create',
+    'scheduling.use',
+    'bookings.view',
+    'bookings.manage',
+    'calls.view',
+    'forms.view',
+    'sales.view',
+    'sales.manage',
+    'payments.manage',
+    'tasks.view',
+    'tasks.edit',
+    'commissions.view',
+    'designer.view',
+    'designer.edit',
+    'services.view',
+    'services.items',
+    'portal.view_as'
+  ]::text[]
+$function$;
+
+-- ============================================================
+-- MIGRATION 331: APP SERVICIO JOURNEY TABLES
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00331_app_servicio_journey_tables  (Servicios v12, Corrida A1 · S02 · bloque SV1)
+-- ============================================================================
+-- 1. `app_servicio.service_phases` y `app_servicio.service_items` (§8.2): la copia del camino de la
+--    variante en cada servicio. Se escriben solo con las funciones svc_* (sin politicas de escritura);
+--    se leen con `can_see_service`.
+-- 2. Claves foraneas que faltaban: `form_submissions.service_id` y `contract_signatures.service_id`
+--    (existen vacias desde la 00150 y la 00157) pasan a apuntar a `app_servicio.services`. Se agregan
+--    NOT VALID y despues se validan (las columnas estan vacias en produccion).
+-- 3. Columnas nuevas: `form_submissions.service_item_id` (el paso que completa una respuesta, F17) y
+--    `contact_notes.service_id` (comentario interno de un servicio, F28).
+--
+-- Aditiva + modifica estructura existente (dos FK y dos columnas en tablas de BAIOS en uso).
+-- Va ANTES de desplegar el codigo.
+--
+-- Cómo volver atrás:
+--   ALTER TABLE public.contact_notes DROP COLUMN IF EXISTS service_id;
+--   ALTER TABLE public.form_submissions DROP COLUMN IF EXISTS service_item_id;
+--   ALTER TABLE public.contract_signatures DROP CONSTRAINT IF EXISTS contract_signatures_service_id_fkey;
+--   ALTER TABLE public.form_submissions DROP CONSTRAINT IF EXISTS form_submissions_service_id_fkey;
+--   DROP TABLE IF EXISTS app_servicio.service_items;
+--   DROP TABLE IF EXISTS app_servicio.service_phases;
+-- Riesgo: medio (FK nuevas sobre tablas en uso; las columnas service_id estan vacias).
+-- ============================================================================
+
+-- ─── 1. Fases ───────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS app_servicio.service_phases (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id    uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  service_id      uuid NOT NULL REFERENCES app_servicio.services(id) ON DELETE CASCADE,
+  template_key    text NOT NULL,
+  name            text NOT NULL,
+  position        integer NOT NULL,
+  status          text NOT NULL DEFAULT 'pending',
+  duration_days   integer NULL,
+  yellow_day      integer NULL,
+  red_day         integer NULL,
+  advance         text NOT NULL DEFAULT 'auto',
+  challenge       jsonb NULL,
+  awaiting_start  boolean NOT NULL DEFAULT false,
+  late_light      jsonb NULL,
+  started_at      timestamptz NULL,
+  completed_at    timestamptz NULL,
+  completed_via   text NULL,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT service_phases_status_check CHECK (status IN ('pending', 'in_progress', 'completed')),
+  CONSTRAINT service_phases_advance_check CHECK (advance IN ('auto', 'auto_all', 'manual')),
+  CONSTRAINT service_phases_via_check CHECK (completed_via IS NULL OR completed_via IN ('auto', 'manual', 'manual_move')),
+  CONSTRAINT service_phases_days_check CHECK (
+    (duration_days IS NULL OR duration_days > 0)
+    AND (yellow_day IS NULL OR yellow_day >= 0)
+    AND (red_day IS NULL OR red_day >= 0)
+    AND (yellow_day IS NULL OR red_day IS NULL OR yellow_day < red_day)
+  ),
+  CONSTRAINT service_phases_key_unique UNIQUE (service_id, template_key)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_service_phases_in_progress
+  ON app_servicio.service_phases (service_id) WHERE status = 'in_progress';
+CREATE INDEX IF NOT EXISTS idx_service_phases_ws ON app_servicio.service_phases (workspace_id);
+CREATE INDEX IF NOT EXISTS idx_service_phases_service ON app_servicio.service_phases (service_id, position);
+
+DROP TRIGGER IF EXISTS set_updated_at ON app_servicio.service_phases;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON app_servicio.service_phases
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ─── 2. Pasos ───────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS app_servicio.service_items (
+  id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id           uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  service_id             uuid NOT NULL REFERENCES app_servicio.services(id) ON DELETE CASCADE,
+  phase_id               uuid NOT NULL REFERENCES app_servicio.service_phases(id) ON DELETE CASCADE,
+  template_key           text NOT NULL,
+  kind                   text NOT NULL,
+  name                   text NOT NULL,
+  description            text NULL,
+  required               boolean NOT NULL DEFAULT true,
+  assignee               text NOT NULL DEFAULT 'student',
+  assignee_user_id       uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  visible_to_client      boolean NOT NULL DEFAULT true,
+  portal_button          boolean NOT NULL DEFAULT false,
+  ref                    jsonb NOT NULL DEFAULT '{}'::jsonb,
+  due_rule               jsonb NULL,
+  due_on                 date NULL,
+  due_at                 timestamptz NULL,
+  recurrence             jsonb NULL,
+  late                   jsonb NULL,
+  reminders              jsonb NULL,
+  is_recurring_template  boolean NOT NULL DEFAULT false,
+  parent_item_id         uuid NULL REFERENCES app_servicio.service_items(id) ON DELETE CASCADE,
+  occurrence_index       integer NULL,
+  status                 text NOT NULL DEFAULT 'pending',
+  completed_at           timestamptz NULL,
+  completed_by_kind      text NULL,
+  completed_by           uuid NULL,
+  completed_source       text NULL,
+  needs_attention        boolean NOT NULL DEFAULT false,
+  yellow_after_days      integer NULL,
+  red_after_days         integer NULL,
+  task_id                uuid NULL REFERENCES public.tasks(id) ON DELETE SET NULL,
+  position               integer NOT NULL,
+  created_at             timestamptz NOT NULL DEFAULT now(),
+  updated_at             timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT service_items_kind_check CHECK (kind IN (
+    'form', 'survey', 'contract', 'booking', 'quiz', 'activity', 'program_item', 'team_task', 'student_task',
+    'certificate', 'open_section', 'open_module', 'checkbox')),
+  CONSTRAINT service_items_assignee_check CHECK (assignee IN ('student', 'owner', 'user')),
+  CONSTRAINT service_items_status_check CHECK (status IN ('pending', 'completed')),
+  CONSTRAINT service_items_by_kind_check CHECK (completed_by_kind IS NULL OR completed_by_kind IN ('user', 'system', 'client')),
+  CONSTRAINT service_items_light_check CHECK (
+    (yellow_after_days IS NULL OR yellow_after_days >= 0)
+    AND (red_after_days IS NULL OR red_after_days >= 0)
+    AND (yellow_after_days IS NULL OR red_after_days IS NULL OR red_after_days >= yellow_after_days)
+  ),
+  CONSTRAINT service_items_occurrence_check CHECK ((parent_item_id IS NULL) = (occurrence_index IS NULL)),
+  CONSTRAINT service_items_ref_check CHECK (jsonb_typeof(ref) = 'object')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_service_items_key
+  ON app_servicio.service_items (service_id, template_key) WHERE parent_item_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_service_items_occurrence
+  ON app_servicio.service_items (parent_item_id, occurrence_index) WHERE parent_item_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_service_items_status_due ON app_servicio.service_items (status, due_on);
+CREATE INDEX IF NOT EXISTS idx_service_items_service ON app_servicio.service_items (service_id, position);
+CREATE INDEX IF NOT EXISTS idx_service_items_phase ON app_servicio.service_items (phase_id);
+CREATE INDEX IF NOT EXISTS idx_service_items_ws ON app_servicio.service_items (workspace_id);
+CREATE INDEX IF NOT EXISTS idx_service_items_task ON app_servicio.service_items (task_id) WHERE task_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_service_items_form ON app_servicio.service_items ((ref ->> 'form_id')) WHERE ref ? 'form_id';
+
+DROP TRIGGER IF EXISTS set_updated_at ON app_servicio.service_items;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON app_servicio.service_items
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ─── 3. RLS: solo lectura, con quien ve el servicio ─────────────────────────
+ALTER TABLE app_servicio.service_phases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_servicio.service_items ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app_servicio.service_phases FROM public, anon, authenticated;
+REVOKE ALL ON app_servicio.service_items FROM public, anon, authenticated;
+GRANT SELECT ON app_servicio.service_phases TO authenticated;
+GRANT SELECT ON app_servicio.service_items TO authenticated;
+GRANT ALL ON app_servicio.service_phases TO service_role;
+GRANT ALL ON app_servicio.service_items TO service_role;
+
+DROP POLICY IF EXISTS service_phases_select ON app_servicio.service_phases;
+CREATE POLICY service_phases_select ON app_servicio.service_phases
+  FOR SELECT TO authenticated USING (app_servicio.can_see_service(service_id));
+DROP POLICY IF EXISTS service_items_select ON app_servicio.service_items;
+CREATE POLICY service_items_select ON app_servicio.service_items
+  FOR SELECT TO authenticated USING (app_servicio.can_see_service(service_id));
+
+-- ─── 4. Claves foraneas y columnas en tablas de BAIOS ───────────────────────
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'form_submissions_service_id_fkey') THEN
+    ALTER TABLE public.form_submissions
+      ADD CONSTRAINT form_submissions_service_id_fkey FOREIGN KEY (service_id)
+      REFERENCES app_servicio.services(id) ON DELETE SET NULL NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contract_signatures_service_id_fkey') THEN
+    ALTER TABLE public.contract_signatures
+      ADD CONSTRAINT contract_signatures_service_id_fkey FOREIGN KEY (service_id)
+      REFERENCES app_servicio.services(id) ON DELETE SET NULL NOT VALID;
+  END IF;
+END $$;
+ALTER TABLE public.form_submissions VALIDATE CONSTRAINT form_submissions_service_id_fkey;
+ALTER TABLE public.contract_signatures VALIDATE CONSTRAINT contract_signatures_service_id_fkey;
+
+ALTER TABLE public.form_submissions
+  ADD COLUMN IF NOT EXISTS service_item_id uuid NULL REFERENCES app_servicio.service_items(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_form_submissions_service_item ON public.form_submissions (service_item_id) WHERE service_item_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_form_submissions_service ON public.form_submissions (service_id) WHERE service_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contract_signatures_service ON public.contract_signatures (service_id) WHERE service_id IS NOT NULL;
+
+ALTER TABLE public.contact_notes
+  ADD COLUMN IF NOT EXISTS service_id uuid NULL REFERENCES app_servicio.services(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_contact_notes_service ON public.contact_notes (service_id) WHERE service_id IS NOT NULL;
+
+COMMENT ON COLUMN public.form_submissions.service_item_id IS
+  'El paso del camino que completa esta respuesta (Servicios F17). Lo pone un trigger del modulo solo si el paso es del mismo servicio y contacto (00331/00335).';
+COMMENT ON COLUMN public.contact_notes.service_id IS
+  'Comentario interno de un servicio (Servicios F28). NULL = del cliente (00331).';
+
+-- ============================================================
+-- MIGRATION 332: APP SERVICIO CONFIG COLUMNS
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00332_app_servicio_config_columns  (Servicios v12, Corrida A1 · S03 · bloque SV1)
+-- ============================================================================
+-- Configuracion del modulo en COLUMNAS de tablas de BAIOS (decision 458):
+--   product_variants: journey_template (+_rev), service_settings (+_rev), portal_settings (+_rev)
+--   products:         portal_enabled (lo mantiene un trigger), portal_settings (+_rev)
+--   workspaces:       portal_settings (+_rev), con indice unico sobre lower(host) en toda la instalacion
+-- Nacen con su default ('{}', false, camino vacio) = "no hace nada": un producto sin configurar vende
+-- exactamente igual.
+--
+-- Cada columna tiene su validador `app_servicio.validate_*` (devuelve la lista de problemas; vacia =
+-- bien), gemelo de lib/services/settings.ts, lib/services/journey-template.ts y
+-- lib/portal-admin/settings.ts (los casos compartidos corren contra las dos), y un trigger BEFORE que
+-- rechaza (SV001) lo invalido. Solo las escriben las funciones del modulo (svc_save_*,
+-- portal_admin_save_*, svc_copy_variant_setup): la guardia `trg_app_servicio_config_guard` (00330)
+-- se extiende a estas columnas (SV003 para un UPDATE de authenticated/anon; un INSERT de esos roles
+-- las deja en su default).
+--
+-- Modifica estructura existente (columnas con default constante en tablas en uso; triggers BEFORE).
+-- Va ANTES de desplegar el codigo.
+--
+-- Cómo volver atrás (en este orden; las columnas no tienen datos de clientes):
+--   DROP TRIGGER IF EXISTS trg_app_servicio_portal_enabled ON public.product_variants;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_variant_validate ON public.product_variants;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_product_validate ON public.products;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_workspace_validate ON public.workspaces;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_config_guard ON public.products;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_config_guard ON public.product_variants;
+--   DROP INDEX IF EXISTS public.uq_workspaces_portal_host;
+--   ALTER TABLE public.product_variants DROP COLUMN IF EXISTS journey_template, DROP COLUMN IF EXISTS journey_template_rev,
+--     DROP COLUMN IF EXISTS service_settings, DROP COLUMN IF EXISTS service_settings_rev,
+--     DROP COLUMN IF EXISTS portal_settings, DROP COLUMN IF EXISTS portal_settings_rev;
+--   ALTER TABLE public.products DROP COLUMN IF EXISTS portal_enabled, DROP COLUMN IF EXISTS portal_settings,
+--     DROP COLUMN IF EXISTS portal_settings_rev;
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS portal_settings, DROP COLUMN IF EXISTS portal_settings_rev;
+--   DROP FUNCTION IF EXISTS app_servicio.validate_service_settings(jsonb, uuid), app_servicio.validate_journey_template(jsonb, uuid),
+--     app_servicio.validate_variant_portal_settings(jsonb, uuid), app_servicio.validate_program_portal_settings(jsonb, uuid),
+--     app_servicio.validate_workspace_portal_settings(jsonb, uuid), y las svc_save_* / portal_admin_save_* / svc_copy_variant_setup;
+--   y `app_servicio.config_guard()` vuelve a la de la 00330 (solo workspaces.services_enabled).
+-- Riesgo: medio.
+-- ============================================================================
+
+-- ─── 1. Columnas ────────────────────────────────────────────────────────────
+ALTER TABLE public.product_variants
+  ADD COLUMN IF NOT EXISTS journey_template      jsonb   NOT NULL DEFAULT '{"v":1,"phases":[]}'::jsonb,
+  ADD COLUMN IF NOT EXISTS journey_template_rev  integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS service_settings      jsonb   NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS service_settings_rev  integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS portal_settings       jsonb   NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS portal_settings_rev   integer NOT NULL DEFAULT 0;
+ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS portal_enabled        boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS portal_settings       jsonb   NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS portal_settings_rev   integer NOT NULL DEFAULT 0;
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS portal_settings       jsonb   NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS portal_settings_rev   integer NOT NULL DEFAULT 0;
+
+COMMENT ON COLUMN public.product_variants.service_settings IS 'Servicios v12: si la variante crea, extiende o no crea un servicio al cobrarse (F5, F115). {} = no crea. Solo la escribe app_servicio.svc_save_service_settings (00332).';
+COMMENT ON COLUMN public.product_variants.journey_template IS 'Servicios v12: el camino del cliente de la variante (F13). Solo lo escribe app_servicio.svc_save_journey_template (00332).';
+COMMENT ON COLUMN public.product_variants.portal_settings IS 'Servicios v12: acceso al portal y secciones de la variante (F36, F109, F116). Solo la escribe app_servicio.portal_admin_save_variant_portal (00332).';
+COMMENT ON COLUMN public.products.portal_enabled IS 'Servicios v12: true si al menos una variante viva tiene acceso al portal. Lo mantiene un trigger (00332).';
+COMMENT ON COLUMN public.products.portal_settings IS 'Servicios v12: lo del programa en el portal (F35, F113). Solo la escribe app_servicio.portal_admin_save_program_settings (00332).';
+COMMENT ON COLUMN public.workspaces.portal_settings IS 'Servicios v12: Ajustes del portal (F43). Solo la escribe app_servicio.portal_admin_save_settings; extensions solo la plataforma (00332).';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_workspaces_portal_host
+  ON public.workspaces (lower(portal_settings ->> 'host'))
+  WHERE nullif(portal_settings ->> 'host', '') IS NOT NULL;
+
+-- ─── 2. Ayudas de validacion ────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.j_int(p jsonb)
+RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT p IS NOT NULL AND jsonb_typeof(p) = 'number' AND (p::text)::numeric = trunc((p::text)::numeric);
+$$;
+CREATE OR REPLACE FUNCTION app_servicio.j_uuid(p jsonb)
+RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT p IS NOT NULL AND jsonb_typeof(p) = 'string'
+    AND (p #>> '{}') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+$$;
+CREATE OR REPLACE FUNCTION app_servicio.j_date(p jsonb)
+RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT p IS NOT NULL AND jsonb_typeof(p) = 'string' AND (p #>> '{}') ~ '^\d{4}-\d{2}-\d{2}$';
+$$;
+-- Las claves no permitidas, como mensajes, en el orden del jsonb (gemela de unknownKeyProblems).
+CREATE OR REPLACE FUNCTION app_servicio.unknown_keys(p jsonb, p_allowed text[])
+RETURNS text[] LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT COALESCE(array_agg('clave desconocida: ' || k ORDER BY ord), ARRAY[]::text[])
+  FROM jsonb_object_keys(p) WITH ORDINALITY AS t(k, ord)
+  WHERE NOT (k = ANY (p_allowed));
+$$;
+-- Un entero dentro del objeto (o NULL si no esta o no es entero).
+CREATE OR REPLACE FUNCTION app_servicio.j_num(p jsonb)
+RETURNS numeric LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT CASE WHEN p IS NOT NULL AND jsonb_typeof(p) = 'number' THEN (p::text)::numeric END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.j_int(jsonb), app_servicio.j_uuid(jsonb), app_servicio.j_date(jsonb),
+  app_servicio.unknown_keys(jsonb, text[]), app_servicio.j_num(jsonb) FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.j_int(jsonb), app_servicio.j_uuid(jsonb), app_servicio.j_date(jsonb),
+  app_servicio.unknown_keys(jsonb, text[]), app_servicio.j_num(jsonb) TO authenticated, service_role;
+
+-- ─── 3. validate_service_settings (gemela de validateServiceSettings) ───────
+CREATE OR REPLACE FUNCTION app_servicio.validate_service_settings(p jsonb, p_variant_id uuid DEFAULT NULL)
+RETURNS text[]
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  v_mode text;
+  v_allowed text[];
+  v_when jsonb; v_owner jsonb; v_ext jsonb; v_x jsonb;
+  v_product uuid; v_ws uuid;
+  v_fb_product uuid; v_fb_mode text;
+  v_n numeric;
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN
+    RETURN ARRAY['la configuración tiene que ser un objeto'];
+  END IF;
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'; END IF;
+  IF p ? 'mode' AND NOT COALESCE(p ->> 'mode' = ANY (ARRAY['create','extend','none']), false) THEN
+    RETURN v || 'modo desconocido';
+  END IF;
+  v_mode := COALESCE(p ->> 'mode', 'none');
+  v_allowed := CASE v_mode
+    WHEN 'none' THEN ARRAY['v','mode']
+    WHEN 'create' THEN ARRAY['v','mode','when','confirm','start','owner','renewal','light','overdue_cut']
+    ELSE ARRAY['v','mode','when','extend','light','overdue_cut'] END;
+  v := v || app_servicio.unknown_keys(p, v_allowed);
+  IF v_mode = 'none' THEN RETURN v; END IF;
+
+  IF p_variant_id IS NOT NULL THEN
+    SELECT pv.product_id, pv.workspace_id INTO v_product, v_ws FROM public.product_variants pv WHERE pv.id = p_variant_id;
+  END IF;
+
+  v_when := p -> 'when';
+  IF v_when IS NULL OR jsonb_typeof(v_when) <> 'object' OR NOT COALESCE(v_when ->> 'rule' = ANY (ARRAY['any_payment','non_reservation','percent','amount']), false) THEN
+    v := v || 'elegí cuándo se crea';
+  ELSIF v_when ->> 'rule' = 'percent' AND NOT (app_servicio.j_int(v_when -> 'value') AND app_servicio.j_num(v_when -> 'value') BETWEEN 1 AND 100) THEN
+    v := v || 'el porcentaje va de 1 a 100';
+  ELSIF v_when ->> 'rule' = 'amount' AND NOT (app_servicio.j_int(v_when -> 'value') AND app_servicio.j_num(v_when -> 'value') >= 1) THEN
+    v := v || 'el monto tiene que ser mayor a cero';
+  END IF;
+
+  IF p ? 'light' THEN
+    v_x := p -> 'light';
+    IF jsonb_typeof(v_x) <> 'object' OR (v_x ? 'overdue_red_days' AND NOT (app_servicio.j_int(v_x -> 'overdue_red_days') AND app_servicio.j_num(v_x -> 'overdue_red_days') BETWEEN 1 AND 365)) THEN
+      v := v || 'los días para rojo por pagos van de 1 a 365';
+    END IF;
+  END IF;
+  IF p ? 'overdue_cut' THEN
+    v_x := p -> 'overdue_cut';
+    IF jsonb_typeof(v_x) <> 'object' OR (v_x ? 'days' AND NOT (app_servicio.j_int(v_x -> 'days') AND app_servicio.j_num(v_x -> 'days') BETWEEN 1 AND 365)) THEN
+      v := v || 'los días de mora van de 1 a 365';
+    END IF;
+  END IF;
+
+  IF v_mode = 'create' THEN
+    IF p ? 'confirm' AND jsonb_typeof(p -> 'confirm') <> 'boolean' THEN v := v || '«Pedir confirmación» tiene que ser sí o no'; END IF;
+    IF p ? 'start' AND NOT COALESCE(p ->> 'start' = ANY (ARRAY['payment_date','sale_date','manual']), false) THEN v := v || 'elegí la fecha de inicio'; END IF;
+    IF p ? 'renewal' AND NOT COALESCE(p ->> 'renewal' = ANY (ARRAY['new_linked','extend','ask']), false) THEN v := v || 'elegí qué pasa si vuelve a comprar'; END IF;
+    v_owner := p -> 'owner';
+    IF v_owner IS NULL OR jsonb_typeof(v_owner) <> 'object' OR NOT COALESCE(v_owner ->> 'mode' = ANY (ARRAY['fixed','round_robin','conditions','previous']), false) THEN
+      v := v || 'elegí cómo se asigna el responsable';
+    ELSE
+      IF v_owner ->> 'mode' = 'fixed' AND NOT app_servicio.j_uuid(v_owner -> 'user_id') THEN v := v || 'elegí la persona'; END IF;
+      IF v_owner ->> 'mode' = 'round_robin' AND NOT (jsonb_typeof(v_owner -> 'members') = 'array' AND jsonb_array_length(v_owner -> 'members') > 0) THEN
+        v := v || 'elegí las personas del reparto';
+      END IF;
+      IF v_owner ->> 'mode' = 'conditions' AND NOT (jsonb_typeof(v_owner -> 'conditions') = 'array' AND jsonb_array_length(v_owner -> 'conditions') > 0) THEN
+        v := v || 'agregá al menos una condición';
+      END IF;
+      IF NOT app_servicio.j_uuid(v_owner -> 'fallback_user_id') THEN v := v || 'elegí la persona de respaldo'; END IF;
+      IF v_ws IS NOT NULL AND EXISTS (
+        SELECT 1 FROM (
+          SELECT x #>> '{}' AS uid FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v_owner -> 'members') = 'array' THEN v_owner -> 'members' ELSE '[]'::jsonb END) x
+          UNION ALL SELECT v_owner ->> 'user_id' WHERE jsonb_typeof(v_owner -> 'user_id') = 'string'
+          UNION ALL SELECT v_owner ->> 'fallback_user_id' WHERE jsonb_typeof(v_owner -> 'fallback_user_id') = 'string'
+        ) people
+        WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members m WHERE m.workspace_id = v_ws AND m.user_id::text = people.uid)
+      ) THEN
+        v := v || 'hay una persona que no es del equipo';
+      END IF;
+    END IF;
+  END IF;
+
+  IF v_mode = 'extend' THEN
+    v_ext := p -> 'extend';
+    IF v_ext IS NULL OR jsonb_typeof(v_ext) <> 'object' THEN
+      v := v || 'elegí cuánto suma';
+      v := v || 'elegí la variante de respaldo';
+    ELSE
+      IF NOT (app_servicio.j_int(v_ext -> 'n') AND app_servicio.j_num(v_ext -> 'n') BETWEEN 1 AND 1000) THEN v := v || 'elegí cuánto suma'; END IF;
+      IF v_ext ? 'unit' AND NOT COALESCE(v_ext ->> 'unit' = ANY (ARRAY['days','weeks','months']), false) THEN v := v || 'elegí días, semanas o meses'; END IF;
+      IF v_ext ? 'if_no_service' AND NOT COALESCE(v_ext ->> 'if_no_service' = ANY (ARRAY['confirm','create']), false) THEN
+        v := v || 'elegí qué pasa si no tiene un servicio para extender';
+      END IF;
+      IF v_ext ? 'target_variant_ids' AND jsonb_typeof(v_ext -> 'target_variant_ids') <> 'null'
+         AND NOT (jsonb_typeof(v_ext -> 'target_variant_ids') = 'array'
+                  AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_ext -> 'target_variant_ids') x WHERE NOT app_servicio.j_uuid(x))) THEN
+        v := v || 'las variantes a extender no son válidas';
+      END IF;
+      IF NOT app_servicio.j_uuid(v_ext -> 'fallback_variant_id') THEN
+        v := v || 'elegí la variante de respaldo';
+      ELSIF v_product IS NOT NULL THEN
+        SELECT pv.product_id, COALESCE(pv.service_settings ->> 'mode', 'none') INTO v_fb_product, v_fb_mode
+          FROM public.product_variants pv WHERE pv.id = (v_ext ->> 'fallback_variant_id')::uuid;
+        IF v_fb_product IS DISTINCT FROM v_product THEN v := v || 'la variante de respaldo tiene que ser de este producto';
+        ELSIF v_fb_mode <> 'create' THEN v := v || 'la variante de respaldo tiene que crear un servicio';
+        END IF;
+      END IF;
+      IF v_product IS NOT NULL AND jsonb_typeof(v_ext -> 'target_variant_ids') = 'array' AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(v_ext -> 'target_variant_ids') t(id)
+        WHERE NOT EXISTS (SELECT 1 FROM public.product_variants pv WHERE pv.id::text = t.id AND pv.product_id = v_product)
+      ) THEN
+        v := v || 'las variantes a extender tienen que ser de este producto';
+      END IF;
+    END IF;
+  END IF;
+  RETURN v;
+END;
+$$;
+
+-- ─── 4. validate_journey_template (gemela de validateJourneyTemplate) ───────
+-- Las referencias de un paso. Con p_ws NULL no mira la base (los casos compartidos).
+CREATE OR REPLACE FUNCTION app_servicio.journey_item_ref_problems(p_item jsonb, p_nm text, p_ws uuid, p_product uuid)
+RETURNS text[]
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  v_kind text := p_item ->> 'kind';
+  v_ref jsonb := CASE WHEN jsonb_typeof(p_item -> 'ref') = 'object' THEN p_item -> 'ref' ELSE '{}'::jsonb END;
+  v_co text := v_ref ->> 'complete_on';
+  v_form jsonb;
+  v_want text;
+  v_grading boolean;
+  v_ok boolean;
+BEGIN
+  IF v_kind = ANY (ARRAY['form','survey','contract','activity','quiz']) THEN
+    IF NOT app_servicio.j_uuid(v_ref -> 'form_id') THEN
+      v := v || format('«%s»: elegí el formulario', p_nm);
+    ELSE
+      IF v_ref ? 'complete_on' AND NOT COALESCE(v_co = ANY (CASE v_kind
+          WHEN 'form' THEN ARRAY['submitted','reviewed'] WHEN 'survey' THEN ARRAY['submitted','reviewed']
+          WHEN 'contract' THEN ARRAY['submitted'] WHEN 'activity' THEN ARRAY['submitted','reviewed','passed']
+          ELSE ARRAY['passed','finished'] END), false) THEN
+        v := v || format('«%s»: elegí cuándo se completa', p_nm);
+      END IF;
+      IF p_ws IS NOT NULL THEN
+        SELECT to_jsonb(f) INTO v_form FROM public.forms f WHERE f.id = (v_ref ->> 'form_id')::uuid AND f.workspace_id = p_ws;
+        IF v_form IS NULL THEN
+          v := v || format('«%s»: el formulario no existe', p_nm);
+        ELSE
+          v_want := CASE v_kind WHEN 'form' THEN 'custom' ELSE v_kind END;
+          IF v_form ->> 'type' IS DISTINCT FROM v_want THEN v := v || format('«%s»: el formulario no es del tipo del paso', p_nm); END IF;
+          IF v_kind IN ('quiz','activity') AND p_product IS NOT NULL AND (v_form ->> 'product_id') IS DISTINCT FROM p_product::text THEN
+            v := v || CASE v_kind WHEN 'quiz' THEN 'la evaluación tiene que ser de este programa' ELSE 'la actividad tiene que ser de este programa' END;
+          END IF;
+          IF v_kind = 'activity' AND v_co = 'passed' THEN
+            SELECT COALESCE((fv.definition #>> '{grading,enabled}')::boolean, false) INTO v_grading
+              FROM public.form_versions fv WHERE fv.id = (v_form ->> 'current_version_id')::uuid;
+            IF NOT COALESCE(v_grading, false) THEN v := v || format('«%s»: «al aprobar» necesita una actividad con calificación', p_nm); END IF;
+          END IF;
+        END IF;
+      END IF;
+    END IF;
+  ELSIF v_kind = 'booking' THEN
+    IF NOT app_servicio.j_uuid(v_ref -> 'event_type_id') THEN
+      v := v || format('«%s»: elegí el tipo de reunión', p_nm);
+    ELSIF p_ws IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.event_types e WHERE e.id = (v_ref ->> 'event_type_id')::uuid AND e.workspace_id = p_ws) THEN
+      v := v || format('«%s»: el tipo de reunión no existe', p_nm);
+    END IF;
+    IF v_ref ? 'complete_on' AND NOT COALESCE(v_co = ANY (ARRAY['booked','attended']), false) THEN v := v || format('«%s»: elegí cuándo se completa', p_nm); END IF;
+  ELSIF v_kind IN ('program_item','open_module') THEN
+    IF NOT app_servicio.j_uuid(v_ref -> 'program_item_id') THEN
+      v := v || format('«%s»: elegí el módulo o la clase', p_nm);
+    ELSIF p_product IS NOT NULL THEN
+      v_ok := false;
+      IF to_regclass('app_servicio.program_items') IS NOT NULL THEN
+        EXECUTE 'SELECT EXISTS (SELECT 1 FROM app_servicio.program_items WHERE id = $1 AND product_id = $2)'
+          INTO v_ok USING (v_ref ->> 'program_item_id')::uuid, p_product;
+      END IF;
+      IF NOT v_ok THEN v := v || format('«%s»: el módulo o la clase no es de este programa', p_nm); END IF;
+    END IF;
+  ELSIF v_kind = 'certificate' THEN
+    IF NOT app_servicio.j_uuid(v_ref -> 'template_id') THEN
+      v := v || 'Elegí la plantilla del certificado';
+    ELSIF p_ws IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM public.design_templates t WHERE t.id = (v_ref ->> 'template_id')::uuid AND t.workspace_id = p_ws AND t.doc_type = 'certificado'
+    ) THEN
+      v := v || format('«%s»: la plantilla no es de un certificado de este negocio', p_nm);
+    END IF;
+  ELSIF v_kind = 'open_section' THEN
+    IF NOT COALESCE(v_ref ->> 'section' = ANY (ARRAY['program','calendar','challenge','certificate','assistant','community','affiliates']), false) THEN
+      v := v || format('«%s»: elegí la sección', p_nm);
+    END IF;
+  END IF;
+  RETURN v;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.journey_recurrence_problems(p_item jsonb, p_nm text)
+RETURNS text[]
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  r jsonb := p_item -> 'recurrence';
+BEGIN
+  IF r IS NULL OR jsonb_typeof(r) = 'null' THEN RETURN v; END IF;
+  IF jsonb_typeof(r) <> 'object' THEN RETURN ARRAY[format('«%s»: la repetición no es válida', p_nm)]; END IF;
+  IF NOT COALESCE(r ->> 'every' = ANY (ARRAY['day','week','n_days']), false) THEN v := v || format('«%s»: elegí cada cuánto se repite', p_nm); END IF;
+  IF r ->> 'every' = 'n_days' AND NOT (app_servicio.j_int(r -> 'n') AND app_servicio.j_num(r -> 'n') BETWEEN 1 AND 365) THEN
+    v := v || format('«%s»: elegí cada cuántos días se repite', p_nm);
+  END IF;
+  IF NOT COALESCE(r ->> 'until' = ANY (ARRAY['phase_end','service_end','n_days','n_times']), false) THEN v := v || format('«%s»: elegí hasta cuándo se repite', p_nm); END IF;
+  IF r ->> 'until' IN ('n_days','n_times') AND NOT (app_servicio.j_int(r -> 'n_until') AND app_servicio.j_num(r -> 'n_until') BETWEEN 1 AND 1000) THEN
+    v := v || format('«%s»: elegí cuántas veces o días', p_nm);
+  END IF;
+  RETURN v;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.validate_journey_template(p jsonb, p_variant_id uuid DEFAULT NULL)
+RETURNS text[]
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  v_ws uuid; v_product uuid;
+  ph jsonb; it jsonb; due jsonb; lt jsonb; ch jsonb; ll jsonb;
+  v_phase_keys text[] := ARRAY[]::text[];
+  v_item_keys text[] := ARRAY[]::text[];
+  v_before text[] := ARRAY[]::text[];
+  v_name text; v_label text; v_nm text; v_key text;
+  y numeric; r numeric; d numeric;
+  v_has_rule boolean;
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN ARRAY['el camino tiene que ser un objeto']; END IF;
+  IF p_variant_id IS NOT NULL THEN
+    SELECT pv.workspace_id, pv.product_id INTO v_ws, v_product FROM public.product_variants pv WHERE pv.id = p_variant_id;
+  END IF;
+  v := v || app_servicio.unknown_keys(p, ARRAY['v','future_visibility','phases']);
+  IF p -> 'v' IS DISTINCT FROM '1'::jsonb THEN v := v || 'versión desconocida'; END IF;
+  IF p ? 'future_visibility' AND NOT COALESCE(p ->> 'future_visibility' = ANY (ARRAY['names','names_and_descriptions','hidden']), false) THEN
+    v := v || 'elegí qué ve el cliente de las fases que vienen';
+  END IF;
+  IF jsonb_typeof(p -> 'phases') IS DISTINCT FROM 'array' THEN RETURN v || 'faltan las fases'; END IF;
+
+  FOR ph IN SELECT x FROM jsonb_array_elements(p -> 'phases') x LOOP
+    IF jsonb_typeof(ph) <> 'object' THEN v := v || 'hay una fase que no es válida'; CONTINUE; END IF;
+    v := v || app_servicio.unknown_keys(ph, ARRAY['key','name','duration_days','yellow_day','red_day','advance','challenge','late_light','items']);
+    v_key := CASE WHEN jsonb_typeof(ph -> 'key') = 'string' THEN ph ->> 'key' END;
+    IF v_key IS NULL OR v_key !~ '^ph_[a-z0-9]{6}$' THEN v := v || 'hay una fase con una clave inválida';
+    ELSIF v_key = ANY (v_phase_keys) THEN v := v || format('la clave %s está repetida', v_key);
+    ELSE v_phase_keys := v_phase_keys || v_key;
+    END IF;
+    v_name := CASE WHEN jsonb_typeof(ph -> 'name') = 'string' THEN btrim(ph ->> 'name') ELSE '' END;
+    IF v_name = '' THEN v := v || 'hay una fase sin nombre'; END IF;
+    v_label := CASE WHEN v_name = '' THEN 'la fase' ELSE v_name END;
+    IF NOT (ph -> 'duration_days' IS NULL OR jsonb_typeof(ph -> 'duration_days') = 'null'
+            OR (app_servicio.j_int(ph -> 'duration_days') AND app_servicio.j_num(ph -> 'duration_days') >= 0))
+       OR app_servicio.j_num(ph -> 'duration_days') = 0 THEN
+      v := v || format('«%s»: la duración tiene que ser mayor a cero', v_label);
+    END IF;
+    IF NOT (ph -> 'yellow_day' IS NULL OR jsonb_typeof(ph -> 'yellow_day') = 'null' OR (app_servicio.j_int(ph -> 'yellow_day') AND app_servicio.j_num(ph -> 'yellow_day') >= 0))
+       OR NOT (ph -> 'red_day' IS NULL OR jsonb_typeof(ph -> 'red_day') = 'null' OR (app_servicio.j_int(ph -> 'red_day') AND app_servicio.j_num(ph -> 'red_day') >= 0)) THEN
+      v := v || format('«%s»: los días de amarillo y rojo tienen que ser enteros', v_label);
+    ELSE
+      y := CASE WHEN app_servicio.j_int(ph -> 'yellow_day') THEN app_servicio.j_num(ph -> 'yellow_day') END;
+      r := CASE WHEN app_servicio.j_int(ph -> 'red_day') THEN app_servicio.j_num(ph -> 'red_day') END;
+      d := CASE WHEN app_servicio.j_int(ph -> 'duration_days') THEN app_servicio.j_num(ph -> 'duration_days') END;
+      IF y IS NOT NULL AND r IS NOT NULL AND y >= r THEN v := v || format('«%s»: el amarillo tiene que ser antes que el rojo', v_label); END IF;
+      IF r IS NOT NULL AND d IS NOT NULL AND r > d THEN v := v || format('«%s»: el rojo no puede pasar la duración de la fase', v_label); END IF;
+    END IF;
+    IF ph ? 'advance' AND NOT COALESCE(ph ->> 'advance' = ANY (ARRAY['auto','auto_all','manual']), false) THEN v := v || format('«%s»: elegí cómo avanza', v_label); END IF;
+    ch := ph -> 'challenge';
+    IF ch IS NOT NULL AND jsonb_typeof(ch) <> 'null' THEN
+      IF jsonb_typeof(ch) <> 'object' THEN v := v || format('«%s»: el Reto no es válido', v_label);
+      ELSIF ch -> 'enabled' = 'true'::jsonb THEN
+        IF NOT COALESCE(ch ->> 'start' = ANY (ARRAY['previous_phase','student','automation','fixed_date']), false) THEN v := v || format('«%s»: elegí cómo empieza el Reto', v_label); END IF;
+        IF ch ->> 'start' = 'fixed_date' AND NOT app_servicio.j_date(ch -> 'fixed_date') THEN v := v || format('«%s»: elegí la fecha del Reto', v_label); END IF;
+      END IF;
+    END IF;
+    ll := ph -> 'late_light';
+    IF ll IS NOT NULL AND jsonb_typeof(ll) <> 'null' THEN
+      IF jsonb_typeof(ll) <> 'object' THEN v := v || format('«%s»: el semáforo por entregas no es válido', v_label);
+      ELSIF ll -> 'enabled' = 'true'::jsonb AND NOT (
+        app_servicio.j_int(ll -> 'yellow_at') AND app_servicio.j_num(ll -> 'yellow_at') >= 1
+        AND app_servicio.j_int(ll -> 'red_at') AND app_servicio.j_num(ll -> 'red_at') >= app_servicio.j_num(ll -> 'yellow_at')) THEN
+        v := v || format('«%s»: el rojo por entregas tiene que ser igual o mayor que el amarillo', v_label);
+      END IF;
+    END IF;
+    IF jsonb_typeof(ph -> 'items') IS DISTINCT FROM 'array' THEN v := v || format('«%s»: faltan los pasos', v_label); CONTINUE; END IF;
+
+    FOR it IN SELECT x FROM jsonb_array_elements(ph -> 'items') x LOOP
+      IF jsonb_typeof(it) <> 'object' THEN v := v || format('«%s»: hay un paso que no es válido', v_label); CONTINUE; END IF;
+      v_nm := CASE WHEN jsonb_typeof(it -> 'name') = 'string' THEN it ->> 'name' ELSE 'el paso' END;
+      v := v || app_servicio.unknown_keys(it, ARRAY['key','kind','name','description','required','assignee','assignee_user_id','visible_to_client',
+        'portal_button','ref','due_rule','light','recurrence','late','reminders']);
+      v_key := CASE WHEN jsonb_typeof(it -> 'key') = 'string' THEN it ->> 'key' END;
+      IF v_key IS NULL OR v_key !~ '^it_[a-z0-9]{6}$' THEN v := v || 'hay un paso con una clave inválida';
+      ELSIF v_key = ANY (v_item_keys) THEN v := v || format('la clave %s está repetida', v_key);
+      ELSE v_item_keys := v_item_keys || v_key;
+      END IF;
+      IF NOT COALESCE(it ->> 'kind' = ANY (ARRAY['form','survey','contract','booking','quiz','activity','program_item','team_task','student_task',
+          'certificate','open_section','open_module','checkbox']), false) THEN
+        v := v || format('«%s»: tipo de paso desconocido', v_nm);
+        CONTINUE;
+      END IF;
+      IF NOT (jsonb_typeof(it -> 'name') = 'string' AND btrim(it ->> 'name') <> '') THEN v := v || 'hay un paso sin nombre'; END IF;
+      IF it ? 'assignee' AND NOT COALESCE(it ->> 'assignee' = ANY (ARRAY['student','owner','user']), false) THEN v := v || format('«%s»: elegí a cargo de quién está', v_nm); END IF;
+      IF it ->> 'assignee' = 'user' AND NOT app_servicio.j_uuid(it -> 'assignee_user_id') THEN v := v || format('«%s»: elegí la persona a cargo', v_nm); END IF;
+      v := v || app_servicio.journey_item_ref_problems(it, v_nm, v_ws, v_product);
+
+      due := it -> 'due_rule';
+      IF due IS NOT NULL AND jsonb_typeof(due) <> 'null' THEN
+        IF jsonb_typeof(due) <> 'object' OR NOT COALESCE(due ->> 'from' = ANY (ARRAY['service_created','service_start','phase_start','item_completed']), false)
+           OR NOT (app_servicio.j_int(due -> 'days') AND app_servicio.j_num(due -> 'days') BETWEEN 0 AND 3650) THEN
+          v := v || format('«%s»: el plazo no es válido', v_nm);
+        ELSIF due ->> 'from' = 'item_completed' THEN
+          IF jsonb_typeof(due -> 'item_key') IS DISTINCT FROM 'string' OR NOT ((due ->> 'item_key') = ANY (v_before)) THEN
+            v := v || 'un paso solo puede depender de uno anterior';
+          END IF;
+        END IF;
+      END IF;
+      v := v || app_servicio.journey_recurrence_problems(it, v_nm);
+      lt := it -> 'light';
+      IF lt IS NOT NULL AND jsonb_typeof(lt) <> 'null' THEN
+        IF jsonb_typeof(lt) <> 'object'
+           OR NOT (lt -> 'yellow_after_days' IS NULL OR jsonb_typeof(lt -> 'yellow_after_days') = 'null' OR (app_servicio.j_int(lt -> 'yellow_after_days') AND app_servicio.j_num(lt -> 'yellow_after_days') >= 0))
+           OR NOT (lt -> 'red_after_days' IS NULL OR jsonb_typeof(lt -> 'red_after_days') = 'null' OR (app_servicio.j_int(lt -> 'red_after_days') AND app_servicio.j_num(lt -> 'red_after_days') >= 0)) THEN
+          v := v || format('«%s»: el semáforo del paso tiene que ser un número de días', v_nm);
+        ELSE
+          v_has_rule := (due IS NOT NULL AND jsonb_typeof(due) <> 'null') OR (it -> 'recurrence' IS NOT NULL AND jsonb_typeof(it -> 'recurrence') <> 'null');
+          IF NOT v_has_rule THEN v := v || format('«%s»: el semáforo del paso necesita un plazo o que se repita', v_nm); END IF;
+          IF app_servicio.j_int(lt -> 'yellow_after_days') AND app_servicio.j_int(lt -> 'red_after_days')
+             AND app_servicio.j_num(lt -> 'red_after_days') < app_servicio.j_num(lt -> 'yellow_after_days') THEN
+            v := v || format('«%s»: el rojo tiene que ser igual o mayor que el amarillo', v_nm);
+          END IF;
+        END IF;
+      END IF;
+      IF v_key IS NOT NULL THEN v_before := v_before || v_key; END IF;
+    END LOOP;
+  END LOOP;
+  RETURN v;
+END;
+$$;
+
+-- ─── 5. Validadores del portal (gemelos de lib/portal-admin/settings.ts) ────
+CREATE OR REPLACE FUNCTION app_servicio.portal_section_rule_problems(p_rule jsonb)
+RETURNS text[]
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  sec text := p_rule ->> 'section';
+  o jsonb; u jsonb; c jsonb; l jsonb; a jsonb;
+BEGIN
+  v := v || app_servicio.unknown_keys(p_rule, ARRAY['section','included','display','content','opens','until','limits','ai_limit_usd']);
+  IF NOT COALESCE(sec = ANY (ARRAY['program','calendar','challenge','certificate','assistant','community','affiliates','fame','projects']), false) THEN
+    RETURN v || ('sección desconocida: ' || COALESCE(sec, 'undefined'));
+  END IF;
+  IF NOT COALESCE(sec = ANY (ARRAY['program','calendar','challenge','certificate','assistant','community','affiliates']), false) THEN
+    RETURN v || 'Todavía no está disponible'::text;
+  END IF;
+  IF p_rule ? 'display' AND NOT COALESCE(p_rule ->> 'display' = ANY (ARRAY['locked','coming_soon','hidden']), false) THEN v := v || (sec || ': elegí cómo se ve mientras está cerrada'); END IF;
+  IF p_rule ? 'content' THEN
+    c := p_rule -> 'content';
+    IF NOT (jsonb_typeof(c) = 'object' AND (c -> 'modules' = '"all"'::jsonb OR (jsonb_typeof(c -> 'modules') = 'array' AND jsonb_array_length(c -> 'modules') > 0
+         AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(c -> 'modules') m WHERE NOT app_servicio.j_uuid(m))))) THEN
+      v := v || (sec || ': elegí el contenido incluido');
+    ELSIF sec <> 'program' THEN
+      v := v || (sec || ': solo el Programa elige contenido');
+    END IF;
+  END IF;
+  IF p_rule ? 'opens' THEN
+    o := p_rule -> 'opens';
+    IF jsonb_typeof(o) <> 'object' OR NOT COALESCE(o ->> 'type' = ANY (ARRAY['service_start','days_after_start','fixed_date','phase_completed','item_completed',
+         'module_completed','challenge_started','journey_item','automation']), false) THEN
+      v := v || (sec || ': elegí cuándo se abre');
+    ELSE
+      IF o ->> 'type' = 'days_after_start' AND NOT (app_servicio.j_int(o -> 'days') AND app_servicio.j_num(o -> 'days') BETWEEN 1 AND 3650) THEN v := v || (sec || ': elegí cuántos días después del inicio'); END IF;
+      IF o ->> 'type' = 'fixed_date' AND NOT app_servicio.j_date(o -> 'date') THEN v := v || (sec || ': elegí la fecha en que se abre'); END IF;
+      IF o ->> 'type' IN ('phase_completed','item_completed','module_completed') AND NOT (jsonb_typeof(o -> 'ref') = 'string' AND o ->> 'ref' <> '') THEN
+        v := v || (sec || ': elegí qué la abre');
+      END IF;
+    END IF;
+  END IF;
+  IF p_rule ? 'until' THEN
+    u := p_rule -> 'until';
+    IF jsonb_typeof(u) <> 'object' OR NOT COALESCE(u ->> 'type' = ANY (ARRAY['service','days','months','fixed_date','phase_completed','item_completed','forever']), false) THEN
+      v := v || (sec || ': elegí hasta cuándo dura');
+    ELSE
+      IF u ->> 'type' IN ('days','months') AND NOT (app_servicio.j_int(u -> 'n') AND app_servicio.j_num(u -> 'n') BETWEEN 1 AND 3650) THEN v := v || (sec || ': elegí cuánto dura'); END IF;
+      IF u ->> 'type' = 'fixed_date' AND NOT app_servicio.j_date(u -> 'date') THEN v := v || (sec || ': elegí la fecha en que termina'); END IF;
+      IF u ->> 'type' IN ('phase_completed','item_completed') AND NOT (jsonb_typeof(u -> 'ref') = 'string' AND u ->> 'ref' <> '') THEN v := v || (sec || ': elegí qué la termina'); END IF;
+    END IF;
+  END IF;
+  IF p_rule ? 'limits' THEN
+    l := p_rule -> 'limits';
+    IF jsonb_typeof(l) <> 'object' OR (l ? 'community_can_post' AND jsonb_typeof(l -> 'community_can_post') <> 'boolean') THEN v := v || (sec || ': los límites no son válidos'); END IF;
+  END IF;
+  IF p_rule ? 'ai_limit_usd' AND jsonb_typeof(p_rule -> 'ai_limit_usd') <> 'null' THEN
+    a := p_rule -> 'ai_limit_usd';
+    IF NOT (jsonb_typeof(a) = 'number' AND app_servicio.j_num(a) BETWEEN 0 AND 10000) THEN v := v || (sec || ': el límite de IA va de 0 a 10.000 dólares');
+    ELSIF sec <> 'assistant' THEN v := v || (sec || ': solo el Asistente IA tiene límite de gasto');
+    END IF;
+  END IF;
+  RETURN v;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.validate_variant_portal_settings(p jsonb, p_variant_id uuid DEFAULT NULL)
+RETURNS text[]
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  s jsonb;
+  v_seen text[] := ARRAY[]::text[];
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN ARRAY['la configuración tiene que ser un objeto']; END IF;
+  v := v || app_servicio.unknown_keys(p, ARRAY['v','enabled','ask_terms','sections']);
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'; END IF;
+  IF p ? 'enabled' AND jsonb_typeof(p -> 'enabled') <> 'boolean' THEN v := v || '«Acceso al portal» tiene que ser sí o no'; END IF;
+  IF p ? 'ask_terms' AND jsonb_typeof(p -> 'ask_terms') <> 'boolean' THEN v := v || '«Esta variante los pide» tiene que ser sí o no'; END IF;
+  IF p ? 'sections' THEN
+    IF jsonb_typeof(p -> 'sections') <> 'array' THEN v := v || 'las secciones no son válidas';
+    ELSE
+      FOR s IN SELECT x FROM jsonb_array_elements(p -> 'sections') x LOOP
+        IF jsonb_typeof(s) <> 'object' THEN v := v || 'hay una sección que no es válida'; CONTINUE; END IF;
+        IF jsonb_typeof(s -> 'section') = 'string' THEN
+          IF (s ->> 'section') = ANY (v_seen) THEN v := v || format('la sección %s está repetida', s ->> 'section'); END IF;
+          v_seen := v_seen || (s ->> 'section');
+        END IF;
+        v := v || app_servicio.portal_section_rule_problems(s);
+      END LOOP;
+    END IF;
+  END IF;
+  RETURN v;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.validate_program_portal_settings(p jsonb, p_product_id uuid DEFAULT NULL)
+RETURNS text[]
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  k text; t jsonb; c jsonb; sp jsonb; a jsonb;
+  v_keys text[] := ARRAY[]::text[];
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN ARRAY['la configuración tiene que ser un objeto']; END IF;
+  v := v || app_servicio.unknown_keys(p, ARRAY['v','sections','terms','community','affiliates','assistant']);
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'; END IF;
+  IF p ? 'sections' THEN
+    IF jsonb_typeof(p -> 'sections') <> 'object' THEN v := v || 'las secciones no son válidas';
+    ELSE
+      FOR k IN SELECT key FROM jsonb_object_keys(p -> 'sections') WITH ORDINALITY AS t(key, ord) ORDER BY ord LOOP
+        IF NOT COALESCE(k = ANY (ARRAY['program','calendar','challenge','certificate','assistant','community','affiliates','fame','projects']), false) THEN v := v || ('sección desconocida: ' || k);
+        ELSIF NOT COALESCE(k = ANY (ARRAY['program','calendar','challenge','certificate','assistant','community','affiliates']), false) THEN v := v || 'Todavía no está disponible'::text;
+        ELSIF jsonb_typeof(p -> 'sections' -> k) <> 'boolean' THEN v := v || (k || ': tiene que ser sí o no');
+        END IF;
+      END LOOP;
+    END IF;
+  END IF;
+  IF p ? 'terms' THEN
+    t := p -> 'terms';
+    IF jsonb_typeof(t) <> 'object' THEN v := v || 'los términos no son válidos';
+    ELSE
+      v := v || app_servicio.unknown_keys(t, ARRAY['enabled','form_id','ask_again_on_change']);
+      IF t -> 'enabled' = 'true'::jsonb AND NOT app_servicio.j_uuid(t -> 'form_id') THEN v := v || 'cargá los términos antes de prenderlos'; END IF;
+    END IF;
+  END IF;
+  IF p ? 'community' THEN
+    c := p -> 'community';
+    IF jsonb_typeof(c) <> 'object' THEN v := v || 'la comunidad no es válida';
+    ELSE
+      v := v || app_servicio.unknown_keys(c, ARRAY['lesson_comments','spaces']);
+      IF c ? 'spaces' THEN
+        IF jsonb_typeof(c -> 'spaces') <> 'array' THEN v := v || 'los espacios no son válidos';
+        ELSE
+          FOR sp IN SELECT x FROM jsonb_array_elements(c -> 'spaces') x LOOP
+            IF jsonb_typeof(sp) <> 'object' OR jsonb_typeof(sp -> 'key') IS DISTINCT FROM 'string' OR (sp ->> 'key') !~ '^[a-z0-9_]{1,40}$'
+               OR jsonb_typeof(sp -> 'name') IS DISTINCT FROM 'string' OR btrim(sp ->> 'name') = '' THEN
+              v := v || 'hay un espacio sin nombre o con una clave inválida';
+              CONTINUE;
+            END IF;
+            IF (sp ->> 'key') = ANY (v_keys) THEN v := v || format('el espacio %s está repetido', sp ->> 'key'); END IF;
+            v_keys := v_keys || (sp ->> 'key');
+          END LOOP;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+  IF p ? 'affiliates' THEN
+    a := p -> 'affiliates';
+    IF jsonb_typeof(a) <> 'object' OR (a ? 'visible_link_keys' AND NOT (jsonb_typeof(a -> 'visible_link_keys') = 'array'
+       AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(a -> 'visible_link_keys') x WHERE jsonb_typeof(x) <> 'string' OR (x #>> '{}') !~ '^lk_[a-z0-9]{6}$'))) THEN
+      v := v || 'los links de afiliados no son válidos';
+    END IF;
+  END IF;
+  IF p ? 'assistant' THEN
+    a := p -> 'assistant';
+    IF jsonb_typeof(a) <> 'object' THEN v := v || 'el asistente no es válido';
+    ELSE
+      v := v || app_servicio.unknown_keys(a, ARRAY['excluded_kb_ids','monthly_limit_usd_per_student','credits_per_usd','credits_name','suggestions']);
+      IF a ? 'monthly_limit_usd_per_student' AND NOT (jsonb_typeof(a -> 'monthly_limit_usd_per_student') = 'number'
+         AND app_servicio.j_num(a -> 'monthly_limit_usd_per_student') BETWEEN 0 AND 10000) THEN
+        v := v || 'el límite por estudiante va de 0 a 10.000 dólares';
+      END IF;
+      IF a ? 'credits_per_usd' AND NOT (app_servicio.j_int(a -> 'credits_per_usd') AND app_servicio.j_num(a -> 'credits_per_usd') BETWEEN 1 AND 100000) THEN
+        v := v || 'los créditos por dólar tienen que ser un número entero positivo';
+      END IF;
+    END IF;
+  END IF;
+  RETURN v;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.validate_workspace_portal_settings(p jsonb, p_workspace_id uuid DEFAULT NULL)
+RETURNS text[]
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  w jsonb; l jsonb; e jsonb;
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN ARRAY['la configuración tiene que ser un objeto']; END IF;
+  v := v || app_servicio.unknown_keys(p, ARRAY['v','host','from_email','welcome','login','support_whatsapp','extensions']);
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'; END IF;
+  IF p ? 'host' AND jsonb_typeof(p -> 'host') <> 'null' AND NOT (jsonb_typeof(p -> 'host') = 'string' AND length(p ->> 'host') <= 253
+     AND (p ->> 'host') ~ '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$') THEN
+    v := v || 'la dirección no es válida: escribila sin https:// ni barras';
+  END IF;
+  IF p ? 'from_email' AND jsonb_typeof(p -> 'from_email') <> 'null' AND NOT (jsonb_typeof(p -> 'from_email') = 'string' AND (p ->> 'from_email') ~ '^[^\s@]+@[^\s@]+\.[^\s@]+$') THEN
+    v := v || 'el email de «Enviar desde» no es válido';
+  END IF;
+  IF p ? 'welcome' THEN
+    w := p -> 'welcome';
+    IF jsonb_typeof(w) <> 'object' THEN v := v || 'la bienvenida no es válida';
+    ELSE v := v || app_servicio.unknown_keys(w, ARRAY['home_text','invite_subject','invite_body']);
+    END IF;
+  END IF;
+  IF p ? 'login' THEN
+    l := p -> 'login';
+    IF jsonb_typeof(l) <> 'object' OR (l ? 'password_allowed' AND jsonb_typeof(l -> 'password_allowed') <> 'boolean') THEN v := v || '«Cómo entran» no es válido'; END IF;
+  END IF;
+  IF p ? 'support_whatsapp' AND jsonb_typeof(p -> 'support_whatsapp') <> 'null' AND NOT (jsonb_typeof(p -> 'support_whatsapp') = 'string' AND (p ->> 'support_whatsapp') ~ '^\+\d{6,15}$') THEN
+    v := v || 'el WhatsApp de soporte tiene que empezar con + y el código de país';
+  END IF;
+  IF p ? 'extensions' THEN
+    e := p -> 'extensions';
+    IF jsonb_typeof(e) <> 'object' OR (e ? 'projects' AND jsonb_typeof(e -> 'projects') <> 'boolean') THEN v := v || 'las extensiones no son válidas'; END IF;
+  END IF;
+  RETURN v;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app_servicio.validate_service_settings(jsonb, uuid), app_servicio.journey_item_ref_problems(jsonb, text, uuid, uuid),
+  app_servicio.journey_recurrence_problems(jsonb, text), app_servicio.validate_journey_template(jsonb, uuid),
+  app_servicio.portal_section_rule_problems(jsonb), app_servicio.validate_variant_portal_settings(jsonb, uuid),
+  app_servicio.validate_program_portal_settings(jsonb, uuid), app_servicio.validate_workspace_portal_settings(jsonb, uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.validate_service_settings(jsonb, uuid), app_servicio.validate_journey_template(jsonb, uuid),
+  app_servicio.validate_variant_portal_settings(jsonb, uuid), app_servicio.validate_program_portal_settings(jsonb, uuid),
+  app_servicio.validate_workspace_portal_settings(jsonb, uuid) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION app_servicio.journey_item_ref_problems(jsonb, text, uuid, uuid), app_servicio.journey_recurrence_problems(jsonb, text),
+  app_servicio.portal_section_rule_problems(jsonb) TO service_role;
+
+-- ─── 6. Triggers de validacion (SV001) ──────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.variant_validate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v text[] := ARRAY[]::text[];
+BEGIN
+  IF TG_OP = 'INSERT' OR NEW.service_settings IS DISTINCT FROM OLD.service_settings THEN
+    v := v || app_servicio.validate_service_settings(NEW.service_settings, NEW.id);
+  END IF;
+  IF TG_OP = 'INSERT' OR NEW.journey_template IS DISTINCT FROM OLD.journey_template THEN
+    v := v || app_servicio.validate_journey_template(NEW.journey_template, NEW.id);
+  END IF;
+  IF TG_OP = 'INSERT' OR NEW.portal_settings IS DISTINCT FROM OLD.portal_settings THEN
+    v := v || app_servicio.validate_variant_portal_settings(NEW.portal_settings, NEW.id);
+  END IF;
+  IF array_length(v, 1) > 0 THEN
+    RAISE EXCEPTION 'La configuración no es válida: %', array_to_string(v, '; ') USING ERRCODE = 'SV001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_app_servicio_variant_validate ON public.product_variants;
+CREATE TRIGGER trg_app_servicio_variant_validate
+  BEFORE INSERT OR UPDATE OF service_settings, journey_template, portal_settings ON public.product_variants
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.variant_validate();
+
+CREATE OR REPLACE FUNCTION app_servicio.product_validate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v text[];
+BEGIN
+  v := app_servicio.validate_program_portal_settings(NEW.portal_settings, NEW.id);
+  IF array_length(v, 1) > 0 THEN
+    RAISE EXCEPTION 'La configuración no es válida: %', array_to_string(v, '; ') USING ERRCODE = 'SV001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_app_servicio_product_validate ON public.products;
+CREATE TRIGGER trg_app_servicio_product_validate
+  BEFORE INSERT OR UPDATE OF portal_settings ON public.products
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.product_validate();
+
+CREATE OR REPLACE FUNCTION app_servicio.workspace_validate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v text[];
+BEGIN
+  v := app_servicio.validate_workspace_portal_settings(NEW.portal_settings, NEW.id);
+  IF array_length(v, 1) > 0 THEN
+    RAISE EXCEPTION 'La configuración no es válida: %', array_to_string(v, '; ') USING ERRCODE = 'SV001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_app_servicio_workspace_validate ON public.workspaces;
+CREATE TRIGGER trg_app_servicio_workspace_validate
+  BEFORE INSERT OR UPDATE OF portal_settings ON public.workspaces
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.workspace_validate();
+REVOKE ALL ON FUNCTION app_servicio.variant_validate(), app_servicio.product_validate(), app_servicio.workspace_validate() FROM public, anon;
+
+-- ─── 7. La guardia, extendida a estas columnas (SV003) ──────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.config_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF current_user NOT IN ('authenticated', 'anon') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_TABLE_NAME = 'workspaces' THEN
+    IF TG_OP = 'INSERT' THEN
+      NEW.services_enabled := false;
+      NEW.portal_settings := '{}'::jsonb;
+      NEW.portal_settings_rev := 0;
+    ELSIF NEW.services_enabled IS DISTINCT FROM OLD.services_enabled
+       OR NEW.portal_settings IS DISTINCT FROM OLD.portal_settings
+       OR NEW.portal_settings_rev IS DISTINCT FROM OLD.portal_settings_rev THEN
+      RAISE EXCEPTION 'La configuración del módulo se cambia desde sus pantallas' USING ERRCODE = 'SV003';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'products' THEN
+    IF TG_OP = 'INSERT' THEN
+      NEW.portal_enabled := false;
+      NEW.portal_settings := '{}'::jsonb;
+      NEW.portal_settings_rev := 0;
+    ELSIF NEW.portal_enabled IS DISTINCT FROM OLD.portal_enabled
+       OR NEW.portal_settings IS DISTINCT FROM OLD.portal_settings
+       OR NEW.portal_settings_rev IS DISTINCT FROM OLD.portal_settings_rev THEN
+      RAISE EXCEPTION 'La configuración del módulo se cambia desde sus pantallas' USING ERRCODE = 'SV003';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'product_variants' THEN
+    IF TG_OP = 'INSERT' THEN
+      NEW.journey_template := '{"v":1,"phases":[]}'::jsonb;
+      NEW.journey_template_rev := 0;
+      NEW.service_settings := '{}'::jsonb;
+      NEW.service_settings_rev := 0;
+      NEW.portal_settings := '{}'::jsonb;
+      NEW.portal_settings_rev := 0;
+    ELSIF NEW.journey_template IS DISTINCT FROM OLD.journey_template
+       OR NEW.journey_template_rev IS DISTINCT FROM OLD.journey_template_rev
+       OR NEW.service_settings IS DISTINCT FROM OLD.service_settings
+       OR NEW.service_settings_rev IS DISTINCT FROM OLD.service_settings_rev
+       OR NEW.portal_settings IS DISTINCT FROM OLD.portal_settings
+       OR NEW.portal_settings_rev IS DISTINCT FROM OLD.portal_settings_rev THEN
+      RAISE EXCEPTION 'La configuración del módulo se cambia desde sus pantallas' USING ERRCODE = 'SV003';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.config_guard() FROM public, anon;
+
+DROP TRIGGER IF EXISTS trg_app_servicio_config_guard ON public.products;
+CREATE TRIGGER trg_app_servicio_config_guard
+  BEFORE INSERT OR UPDATE ON public.products
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.config_guard();
+DROP TRIGGER IF EXISTS trg_app_servicio_config_guard ON public.product_variants;
+CREATE TRIGGER trg_app_servicio_config_guard
+  BEFORE INSERT OR UPDATE ON public.product_variants
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.config_guard();
+
+-- ─── 8. products.portal_enabled lo mantiene la base ─────────────────────────
+-- true si al menos una variante viva del producto tiene el acceso al portal. Nunca hace fallar la
+-- operacion sobre la variante.
+CREATE OR REPLACE FUNCTION app_servicio.sync_product_portal_enabled()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_product uuid := COALESCE(NEW.product_id, OLD.product_id);
+  v_on boolean;
+BEGIN
+  BEGIN
+    SELECT EXISTS (
+      SELECT 1 FROM public.product_variants pv
+      WHERE pv.product_id = v_product AND pv.archived_at IS NULL AND pv.portal_settings -> 'enabled' = 'true'::jsonb
+    ) INTO v_on;
+    UPDATE public.products SET portal_enabled = v_on WHERE id = v_product AND portal_enabled IS DISTINCT FROM v_on;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'app_servicio.sync_product_portal_enabled: %', SQLERRM;
+  END;
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.sync_product_portal_enabled() FROM public, anon;
+DROP TRIGGER IF EXISTS trg_app_servicio_portal_enabled ON public.product_variants;
+CREATE TRIGGER trg_app_servicio_portal_enabled
+  AFTER INSERT OR UPDATE OF portal_settings, archived_at OR DELETE ON public.product_variants
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.sync_product_portal_enabled();
+
+-- ─── 9. Guardar (solo con estas funciones) ──────────────────────────────────
+-- Permiso del que llama en un negocio (la sesion). Owner y Admin, por has_permission.
+CREATE OR REPLACE FUNCTION app_servicio.require_permission(p_workspace_id uuid, p_key text)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_workspace_member(p_workspace_id) OR NOT public.has_permission(p_workspace_id, p_key) THEN
+    RAISE EXCEPTION 'No tenés permiso para hacer esto' USING ERRCODE = 'SV004';
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.require_permission(uuid, text) FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.require_permission(uuid, text) TO authenticated, service_role;
+
+-- Resultado comun de los guardados: {status: ok|conflict|invalid, rev, current?, problems?}
+CREATE OR REPLACE FUNCTION app_servicio.svc_save_service_settings(p_variant_id uuid, p_settings jsonb, p_rev integer)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_row public.product_variants;
+  v_new jsonb := p_settings;
+  v_problems text[];
+  v_before_mode text; v_after_mode text;
+BEGIN
+  SELECT * INTO v_row FROM public.product_variants WHERE id = p_variant_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'No existe la variante' USING ERRCODE = 'SV002'; END IF;
+  PERFORM app_servicio.require_permission(v_row.workspace_id, 'services.configure');
+  v_before_mode := COALESCE(v_row.service_settings ->> 'mode', 'none');
+  v_after_mode := COALESCE(v_new ->> 'mode', 'none');
+  -- when.enabled_at lo pone la base (F5): al pasar de none a create/extend, ahora; al volver a none, se va.
+  IF v_after_mode = 'none' THEN
+    v_new := v_new - 'when';
+  ELSIF jsonb_typeof(v_new -> 'when') = 'object' THEN
+    v_new := jsonb_set(v_new, '{when,enabled_at}', to_jsonb(CASE
+      WHEN v_before_mode = 'none' OR v_row.service_settings #>> '{when,enabled_at}' IS NULL THEN now()::text
+      ELSE v_row.service_settings #>> '{when,enabled_at}' END));
+  END IF;
+  v_problems := app_servicio.validate_service_settings(v_new, p_variant_id);
+  IF array_length(v_problems, 1) > 0 THEN
+    RETURN jsonb_build_object('status', 'invalid', 'problems', to_jsonb(v_problems));
+  END IF;
+  UPDATE public.product_variants
+     SET service_settings = v_new, service_settings_rev = service_settings_rev + 1
+   WHERE id = p_variant_id AND service_settings_rev = p_rev;
+  IF NOT FOUND THEN
+    SELECT * INTO v_row FROM public.product_variants WHERE id = p_variant_id;
+    RETURN jsonb_build_object('status', 'conflict', 'current', v_row.service_settings, 'rev', v_row.service_settings_rev);
+  END IF;
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, performed_by, actor_type)
+  VALUES (v_row.workspace_id, 'product_variant', p_variant_id, 'svc.config_saved',
+          jsonb_build_object('part', 'service', 'old', v_row.service_settings, 'new', v_new), auth.uid(), 'user');
+  RETURN jsonb_build_object('status', 'ok', 'rev', p_rev + 1, 'current', v_new);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_save_journey_template(p_variant_id uuid, p_template jsonb, p_rev integer)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_row public.product_variants;
+  v_problems text[];
+BEGIN
+  SELECT * INTO v_row FROM public.product_variants WHERE id = p_variant_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'No existe la variante' USING ERRCODE = 'SV002'; END IF;
+  PERFORM app_servicio.require_permission(v_row.workspace_id, 'services.configure');
+  v_problems := app_servicio.validate_journey_template(p_template, p_variant_id);
+  IF array_length(v_problems, 1) > 0 THEN
+    RETURN jsonb_build_object('status', 'invalid', 'problems', to_jsonb(v_problems));
+  END IF;
+  UPDATE public.product_variants
+     SET journey_template = p_template, journey_template_rev = journey_template_rev + 1
+   WHERE id = p_variant_id AND journey_template_rev = p_rev;
+  IF NOT FOUND THEN
+    SELECT * INTO v_row FROM public.product_variants WHERE id = p_variant_id;
+    RETURN jsonb_build_object('status', 'conflict', 'current', v_row.journey_template, 'rev', v_row.journey_template_rev);
+  END IF;
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, performed_by, actor_type)
+  VALUES (v_row.workspace_id, 'product_variant', p_variant_id, 'svc.config_saved',
+          jsonb_build_object('part', 'journey', 'phases', jsonb_array_length(COALESCE(p_template -> 'phases', '[]'::jsonb))), auth.uid(), 'user');
+  RETURN jsonb_build_object('status', 'ok', 'rev', p_rev + 1, 'current', p_template);
+END;
+$$;
+
+-- Las partes de una regla de seccion que son "reglas" (portal.access_rules); el resto es portal.sections.
+CREATE OR REPLACE FUNCTION app_servicio.portal_rules_part(p jsonb)
+RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('section', s ->> 'section') || (s - 'section' - 'included') ORDER BY s ->> 'section'), '[]'::jsonb)
+  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p -> 'sections') = 'array' THEN p -> 'sections' ELSE '[]'::jsonb END) s;
+$$;
+CREATE OR REPLACE FUNCTION app_servicio.portal_sections_part(p jsonb)
+RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT jsonb_build_object('enabled', p -> 'enabled', 'ask_terms', p -> 'ask_terms', 'sections',
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('section', s ->> 'section', 'included', s -> 'included') ORDER BY s ->> 'section')
+              FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p -> 'sections') = 'array' THEN p -> 'sections' ELSE '[]'::jsonb END) s), '[]'::jsonb));
+$$;
+REVOKE ALL ON FUNCTION app_servicio.portal_rules_part(jsonb), app_servicio.portal_sections_part(jsonb) FROM public, anon;
+
+CREATE OR REPLACE FUNCTION app_servicio.portal_admin_save_variant_portal(p_variant_id uuid, p_settings jsonb, p_rev integer)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_row public.product_variants;
+  v_problems text[];
+BEGIN
+  SELECT * INTO v_row FROM public.product_variants WHERE id = p_variant_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'No existe la variante' USING ERRCODE = 'SV002'; END IF;
+  IF app_servicio.portal_sections_part(p_settings) IS DISTINCT FROM app_servicio.portal_sections_part(v_row.portal_settings) THEN
+    PERFORM app_servicio.require_permission(v_row.workspace_id, 'portal.sections');
+  END IF;
+  IF app_servicio.portal_rules_part(p_settings) IS DISTINCT FROM app_servicio.portal_rules_part(v_row.portal_settings) THEN
+    PERFORM app_servicio.require_permission(v_row.workspace_id, 'portal.access_rules');
+  END IF;
+  -- Sin cambios: igual pide alguno de los dos (no se guarda nada con una sesion cualquiera).
+  IF NOT (public.has_permission(v_row.workspace_id, 'portal.sections') OR public.has_permission(v_row.workspace_id, 'portal.access_rules')) THEN
+    RAISE EXCEPTION 'No tenés permiso para hacer esto' USING ERRCODE = 'SV004';
+  END IF;
+  v_problems := app_servicio.validate_variant_portal_settings(p_settings, p_variant_id);
+  IF array_length(v_problems, 1) > 0 THEN
+    RETURN jsonb_build_object('status', 'invalid', 'problems', to_jsonb(v_problems));
+  END IF;
+  UPDATE public.product_variants
+     SET portal_settings = p_settings, portal_settings_rev = portal_settings_rev + 1
+   WHERE id = p_variant_id AND portal_settings_rev = p_rev;
+  IF NOT FOUND THEN
+    SELECT * INTO v_row FROM public.product_variants WHERE id = p_variant_id;
+    RETURN jsonb_build_object('status', 'conflict', 'current', v_row.portal_settings, 'rev', v_row.portal_settings_rev);
+  END IF;
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, performed_by, actor_type)
+  VALUES (v_row.workspace_id, 'product_variant', p_variant_id, 'svc.config_saved',
+          jsonb_build_object('part', 'portal', 'old', v_row.portal_settings, 'new', p_settings), auth.uid(), 'user');
+  RETURN jsonb_build_object('status', 'ok', 'rev', p_rev + 1, 'current', p_settings);
+END;
+$$;
+
+-- Lo del programa: un parche por claves de primer nivel (sections, terms, community, affiliates, assistant).
+-- Cada clave pide su permiso.
+CREATE OR REPLACE FUNCTION app_servicio.portal_admin_save_program_settings(p_product_id uuid, p_patch jsonb, p_rev integer)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_row public.products;
+  v_new jsonb;
+  v_problems text[];
+  k text;
+BEGIN
+  SELECT * INTO v_row FROM public.products WHERE id = p_product_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'No existe el producto' USING ERRCODE = 'SV002'; END IF;
+  IF p_patch IS NULL OR jsonb_typeof(p_patch) <> 'object' THEN RAISE EXCEPTION 'El cambio no es válido' USING ERRCODE = 'SV001'; END IF;
+  FOR k IN SELECT jsonb_object_keys(p_patch) LOOP
+    PERFORM app_servicio.require_permission(v_row.workspace_id, CASE k
+      WHEN 'sections' THEN 'portal.sections'
+      WHEN 'terms' THEN 'portal.sections'
+      WHEN 'affiliates' THEN 'portal.sections'
+      WHEN 'community' THEN 'community.spaces'
+      WHEN 'assistant' THEN 'tutor.manage'
+      ELSE 'portal.sections' END);
+  END LOOP;
+  v_new := COALESCE(v_row.portal_settings, '{}'::jsonb) || p_patch;
+  v_problems := app_servicio.validate_program_portal_settings(v_new, p_product_id);
+  IF array_length(v_problems, 1) > 0 THEN
+    RETURN jsonb_build_object('status', 'invalid', 'problems', to_jsonb(v_problems));
+  END IF;
+  UPDATE public.products
+     SET portal_settings = v_new, portal_settings_rev = portal_settings_rev + 1
+   WHERE id = p_product_id AND portal_settings_rev = p_rev;
+  IF NOT FOUND THEN
+    SELECT * INTO v_row FROM public.products WHERE id = p_product_id;
+    RETURN jsonb_build_object('status', 'conflict', 'current', v_row.portal_settings, 'rev', v_row.portal_settings_rev);
+  END IF;
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, performed_by, actor_type)
+  VALUES (v_row.workspace_id, 'product', p_product_id, 'svc.config_saved',
+          jsonb_build_object('part', 'program', 'keys', (SELECT jsonb_agg(x) FROM jsonb_object_keys(p_patch) x)), auth.uid(), 'user');
+  RETURN jsonb_build_object('status', 'ok', 'rev', p_rev + 1, 'current', v_new);
+END;
+$$;
+
+-- Ajustes del portal. `extensions` se conserva tal cual: solo la plataforma lo cambia (F43).
+CREATE OR REPLACE FUNCTION app_servicio.portal_admin_save_settings(p_workspace_id uuid, p_patch jsonb, p_rev integer)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_row public.workspaces;
+  v_new jsonb;
+  v_problems text[];
+BEGIN
+  PERFORM app_servicio.require_permission(p_workspace_id, 'portal.settings');
+  SELECT * INTO v_row FROM public.workspaces WHERE id = p_workspace_id;
+  IF p_patch IS NULL OR jsonb_typeof(p_patch) <> 'object' THEN RAISE EXCEPTION 'El cambio no es válido' USING ERRCODE = 'SV001'; END IF;
+  v_new := (COALESCE(v_row.portal_settings, '{}'::jsonb) || (p_patch - 'extensions')) - 'extensions';
+  IF v_row.portal_settings ? 'extensions' THEN v_new := v_new || jsonb_build_object('extensions', v_row.portal_settings -> 'extensions'); END IF;
+  IF v_new ? 'host' AND jsonb_typeof(v_new -> 'host') = 'string' THEN v_new := jsonb_set(v_new, '{host}', to_jsonb(lower(btrim(v_new ->> 'host')))); END IF;
+  v_problems := app_servicio.validate_workspace_portal_settings(v_new, p_workspace_id);
+  IF array_length(v_problems, 1) > 0 THEN
+    RETURN jsonb_build_object('status', 'invalid', 'problems', to_jsonb(v_problems));
+  END IF;
+  BEGIN
+    UPDATE public.workspaces
+       SET portal_settings = v_new, portal_settings_rev = portal_settings_rev + 1
+     WHERE id = p_workspace_id AND portal_settings_rev = p_rev;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'Esa dirección ya la usa otro negocio' USING ERRCODE = 'AC010';
+  END;
+  IF NOT FOUND THEN
+    SELECT * INTO v_row FROM public.workspaces WHERE id = p_workspace_id;
+    RETURN jsonb_build_object('status', 'conflict', 'current', v_row.portal_settings - 'extensions', 'rev', v_row.portal_settings_rev);
+  END IF;
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, performed_by, actor_type)
+  VALUES (p_workspace_id, 'workspace', p_workspace_id, 'portal.settings_saved',
+          jsonb_build_object('keys', (SELECT jsonb_agg(x) FROM jsonb_object_keys(p_patch) x)), auth.uid(), 'user');
+  RETURN jsonb_build_object('status', 'ok', 'rev', p_rev + 1, 'current', v_new - 'extensions');
+END;
+$$;
+
+-- "Copiar de otra variante" (F13): copia UNA VEZ las partes elegidas, con claves nuevas. Lo que apunta a
+-- algo de otro programa (formularios, modulos, clases) no se puede copiar tal cual: el paso queda como
+-- casilla "(Requiere atención)" con la descripcion del original, y el contenido del Programa vuelve a
+-- "todos los modulos".
+CREATE OR REPLACE FUNCTION app_servicio.svc_copy_variant_setup(p_from_variant_id uuid, p_to_variant_id uuid, p_parts text[])
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_from public.product_variants;
+  v_to public.product_variants;
+  v_same_product boolean;
+  v_map jsonb := '{}'::jsonb;
+  v_tpl jsonb; v_phases jsonb := '[]'::jsonb; v_items jsonb;
+  ph jsonb; it jsonb; v_new_key text; v_ref jsonb; v_attention integer := 0;
+  v_portal jsonb; v_settings jsonb;
+BEGIN
+  SELECT * INTO v_from FROM public.product_variants WHERE id = p_from_variant_id;
+  SELECT * INTO v_to FROM public.product_variants WHERE id = p_to_variant_id;
+  IF v_from.id IS NULL OR v_to.id IS NULL OR v_from.workspace_id <> v_to.workspace_id THEN
+    RAISE EXCEPTION 'No existe la variante' USING ERRCODE = 'SV002';
+  END IF;
+  IF p_from_variant_id = p_to_variant_id THEN RAISE EXCEPTION 'Elegí otra variante' USING ERRCODE = 'SV001'; END IF;
+  IF 'journey' = ANY (p_parts) OR 'service' = ANY (p_parts) THEN
+    PERFORM app_servicio.require_permission(v_to.workspace_id, 'services.configure');
+  END IF;
+  IF 'portal' = ANY (p_parts) THEN
+    PERFORM app_servicio.require_permission(v_to.workspace_id, 'portal.sections');
+    PERFORM app_servicio.require_permission(v_to.workspace_id, 'portal.access_rules');
+  END IF;
+  v_same_product := v_from.product_id = v_to.product_id;
+
+  IF 'journey' = ANY (p_parts) THEN
+    -- Claves nuevas para fases y pasos; se remapean las dependencias "al completar otro paso".
+    FOR ph IN SELECT x FROM jsonb_array_elements(COALESCE(v_from.journey_template -> 'phases', '[]'::jsonb)) x LOOP
+      v_map := v_map || jsonb_build_object(ph ->> 'key', 'ph_' || substr(md5(random()::text || clock_timestamp()::text), 1, 6));
+      FOR it IN SELECT y FROM jsonb_array_elements(COALESCE(ph -> 'items', '[]'::jsonb)) y LOOP
+        v_map := v_map || jsonb_build_object(it ->> 'key', 'it_' || substr(md5(random()::text || clock_timestamp()::text), 1, 6));
+      END LOOP;
+    END LOOP;
+    FOR ph IN SELECT x FROM jsonb_array_elements(COALESCE(v_from.journey_template -> 'phases', '[]'::jsonb)) x LOOP
+      v_items := '[]'::jsonb;
+      FOR it IN SELECT y FROM jsonb_array_elements(COALESCE(ph -> 'items', '[]'::jsonb)) y LOOP
+        v_new_key := v_map ->> (it ->> 'key');
+        it := jsonb_set(it, '{key}', to_jsonb(v_new_key));
+        IF it #>> '{due_rule,from}' = 'item_completed' AND v_map ? (it #>> '{due_rule,item_key}') THEN
+          it := jsonb_set(it, '{due_rule,item_key}', to_jsonb(v_map ->> (it #>> '{due_rule,item_key}')));
+        END IF;
+        IF NOT v_same_product AND it ->> 'kind' IN ('quiz','activity','program_item','open_module') THEN
+          it := jsonb_build_object('key', v_new_key, 'kind', 'checkbox', 'name', (it ->> 'name') || ' (Requiere atención)',
+            'description', 'Copiado de otro programa: elegí de nuevo el contenido de este paso.', 'required', COALESCE(it -> 'required', 'true'::jsonb),
+            'assignee', 'owner') || CASE WHEN it ? 'due_rule' THEN jsonb_build_object('due_rule', it -> 'due_rule') ELSE '{}'::jsonb END;
+          v_attention := v_attention + 1;
+        END IF;
+        v_items := v_items || jsonb_build_array(it);
+      END LOOP;
+      v_phases := v_phases || jsonb_build_array(jsonb_set(jsonb_set(ph, '{key}', to_jsonb(v_map ->> (ph ->> 'key'))), '{items}', v_items));
+    END LOOP;
+    v_tpl := jsonb_set(v_from.journey_template, '{phases}', v_phases);
+    UPDATE public.product_variants SET journey_template = v_tpl, journey_template_rev = journey_template_rev + 1 WHERE id = p_to_variant_id;
+  END IF;
+
+  IF 'service' = ANY (p_parts) THEN
+    v_settings := v_from.service_settings;
+    IF v_settings ? 'when' THEN v_settings := jsonb_set(v_settings, '{when,enabled_at}', to_jsonb(now()::text)); END IF;
+    IF NOT v_same_product AND v_settings ->> 'mode' = 'extend' THEN
+      RAISE EXCEPTION 'Una variante que extiende solo se copia dentro del mismo producto' USING ERRCODE = 'SV001';
+    END IF;
+    UPDATE public.product_variants SET service_settings = v_settings, service_settings_rev = service_settings_rev + 1 WHERE id = p_to_variant_id;
+  END IF;
+
+  IF 'portal' = ANY (p_parts) THEN
+    v_portal := v_from.portal_settings;
+    -- Las referencias a fases o pasos del camino se remapean si el camino tambien se copio.
+    IF jsonb_typeof(v_portal -> 'sections') = 'array' THEN
+      v_portal := jsonb_set(v_portal, '{sections}', (
+        SELECT COALESCE(jsonb_agg(
+          CASE WHEN NOT v_same_product AND s ? 'content' THEN (s - 'content') || jsonb_build_object('content', jsonb_build_object('modules', 'all')) ELSE s END
+          || CASE WHEN s #>> '{opens,ref}' IS NOT NULL AND v_map ? (s #>> '{opens,ref}') THEN jsonb_build_object('opens', jsonb_set(s -> 'opens', '{ref}', to_jsonb(v_map ->> (s #>> '{opens,ref}')))) ELSE '{}'::jsonb END
+          || CASE WHEN s #>> '{until,ref}' IS NOT NULL AND v_map ? (s #>> '{until,ref}') THEN jsonb_build_object('until', jsonb_set(s -> 'until', '{ref}', to_jsonb(v_map ->> (s #>> '{until,ref}')))) ELSE '{}'::jsonb END
+        ), '[]'::jsonb) FROM jsonb_array_elements(v_portal -> 'sections') s));
+    END IF;
+    UPDATE public.product_variants SET portal_settings = v_portal, portal_settings_rev = portal_settings_rev + 1 WHERE id = p_to_variant_id;
+  END IF;
+
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, performed_by, actor_type)
+  VALUES (v_to.workspace_id, 'product_variant', p_to_variant_id, 'svc.config_copied',
+          jsonb_build_object('from_variant_id', p_from_variant_id, 'parts', to_jsonb(p_parts), 'needs_attention', v_attention), auth.uid(), 'user');
+  RETURN jsonb_build_object('status', 'ok', 'needs_attention', v_attention);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app_servicio.svc_save_service_settings(uuid, jsonb, integer), app_servicio.svc_save_journey_template(uuid, jsonb, integer),
+  app_servicio.portal_admin_save_variant_portal(uuid, jsonb, integer), app_servicio.portal_admin_save_program_settings(uuid, jsonb, integer),
+  app_servicio.portal_admin_save_settings(uuid, jsonb, integer), app_servicio.svc_copy_variant_setup(uuid, uuid, text[]) FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_save_service_settings(uuid, jsonb, integer), app_servicio.svc_save_journey_template(uuid, jsonb, integer),
+  app_servicio.portal_admin_save_variant_portal(uuid, jsonb, integer), app_servicio.portal_admin_save_program_settings(uuid, jsonb, integer),
+  app_servicio.portal_admin_save_settings(uuid, jsonb, integer), app_servicio.svc_copy_variant_setup(uuid, uuid, text[]) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 333: APP SERVICIO ENGINE
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00333_app_servicio_engine  (Servicios v12, Corrida A1 · S04 · bloque SV1)
+-- ============================================================================
+-- El motor del servicio: crear (la UNICA entrada a services), copiar el camino, abrir fases,
+-- completar y destildar pasos, plazos, repeticiones, avance, semaforo (con el de los items, F24),
+-- extender, pausar y reanudar, responsable, completar, cancelar, confirmar y descartar.
+--
+-- Las reglas puras son funciones IMMUTABLE gemelas de lib/services/engine-rules.ts y comparten sus
+-- casos (*.cases.json): svc_rule_met, svc_renewal_plan, svc_due_date, svc_phase_should_advance,
+-- svc_occurrence_dates, svc_light, svc_extend_plan, svc_resume_plan, svc_owner_pick_plan y
+-- svc_conditions_match (gemela de lib/assignment/conditions.ts).
+--
+-- Quien llama: las funciones que puede llamar una sesion (authenticated) piden su clave adentro y
+-- respetan el alcance (can_see_service). Las llamadas del sistema (triggers, cron) marcan la
+-- transaccion con app_servicio.as_system() y no piden clave.
+--
+-- Los accesos al portal (svc_grant_initial_access, svc_open_access, svc_cut_access,
+-- svc_shift_access, svc_suspend_for_pause) quedan aca como puntos VACIOS: los reemplaza la 00338
+-- (S09, bloque AC) con CREATE OR REPLACE. Abrir un modulo a una persona (svc_open_module) lo
+-- reemplaza la 00339 (S10). Emitir el certificado de un paso lo encola un job (bloque CE).
+--
+-- Aditiva (funciones nuevas). Va ANTES de desplegar el codigo.
+--
+-- Cómo volver atrás: DROP de cada funcion app_servicio.svc_* creada aca y de
+--   app_servicio.svc_progress_trigger (con su trigger trg_svc_items_progress en service_items).
+-- Riesgo: medio.
+-- ============================================================================
+
+-- ─── 0. Ayudas ──────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.ws_tz(p_workspace_id uuid)
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT COALESCE(NULLIF((SELECT w.timezone FROM public.workspaces w WHERE w.id = p_workspace_id), ''), 'UTC');
+$$;
+CREATE OR REPLACE FUNCTION app_servicio.today_in(p_workspace_id uuid)
+RETURNS date LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT (now() AT TIME ZONE app_servicio.ws_tz(p_workspace_id))::date;
+$$;
+CREATE OR REPLACE FUNCTION app_servicio.local_date(p_ts timestamptz, p_workspace_id uuid)
+RETURNS date LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT CASE WHEN p_ts IS NULL THEN NULL ELSE (p_ts AT TIME ZONE app_servicio.ws_tz(p_workspace_id))::date END;
+$$;
+-- Las 23:59:59 de un dia en una zona.
+CREATE OR REPLACE FUNCTION app_servicio.end_of_day(p_day date, p_tz text)
+RETURNS timestamptz LANGUAGE sql STABLE SET search_path = '' AS $$
+  SELECT ((p_day + 1)::timestamp AT TIME ZONE COALESCE(NULLIF(p_tz, ''), 'UTC')) - interval '1 second';
+$$;
+
+-- El sistema (triggers, cron) marca la transaccion: las funciones no piden clave.
+CREATE OR REPLACE FUNCTION app_servicio.as_system()
+RETURNS void LANGUAGE sql SET search_path = '' AS $$
+  SELECT set_config('app_servicio.system', 'on', true);
+$$;
+CREATE OR REPLACE FUNCTION app_servicio.is_system()
+RETURNS boolean LANGUAGE sql STABLE SET search_path = '' AS $$
+  SELECT auth.uid() IS NULL OR COALESCE(current_setting('app_servicio.system', true), '') = 'on';
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.audit(p_workspace_id uuid, p_entity_type text, p_entity_id uuid, p_action text, p_changes jsonb, p_actor text DEFAULT NULL)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_actor text := COALESCE(p_actor, CASE WHEN app_servicio.is_system() THEN 'system' ELSE 'user' END);
+BEGIN
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, performed_by, actor_type, actor_label)
+  VALUES (p_workspace_id, p_entity_type, p_entity_id, p_action, p_changes,
+          CASE WHEN v_actor = 'user' THEN auth.uid() END,
+          CASE WHEN v_actor = 'client' THEN 'system' ELSE v_actor END,
+          CASE WHEN v_actor = 'client' THEN 'cliente' END);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.notify(p_workspace_id uuid, p_recipient uuid, p_type text, p_title text, p_body text, p_entity_type text, p_entity_id uuid, p_metadata jsonb DEFAULT '{}'::jsonb)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF p_recipient IS NULL THEN RETURN; END IF;
+  INSERT INTO public.notifications (workspace_id, type, title, body, entity_type, entity_id, metadata, recipient_id)
+  VALUES (p_workspace_id, p_type, p_title, p_body, p_entity_type, p_entity_id, COALESCE(p_metadata, '{}'::jsonb), p_recipient);
+END;
+$$;
+CREATE OR REPLACE FUNCTION app_servicio.notify_admins(p_workspace_id uuid, p_type text, p_title text, p_body text, p_entity_type text, p_entity_id uuid, p_metadata jsonb DEFAULT '{}'::jsonb)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN SELECT m.user_id FROM public.workspace_members m WHERE m.workspace_id = p_workspace_id AND m.role IN ('owner', 'admin') LOOP
+    PERFORM app_servicio.notify(p_workspace_id, r.user_id, p_type, p_title, p_body, p_entity_type, p_entity_id, p_metadata);
+  END LOOP;
+END;
+$$;
+
+-- Un evento de Automatizaciones. Solo escalares, nunca booking_id. Nunca hace fallar lo que lo origina.
+CREATE OR REPLACE FUNCTION app_servicio.emit(p_service app_servicio.services, p_event text, p_extra jsonb DEFAULT '{}'::jsonb)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NOT app_servicio.module_on(p_service.workspace_id) THEN RETURN; END IF;
+  PERFORM public.emit_automation_event(p_service.workspace_id, p_event, p_service.contact_id,
+    jsonb_build_object('service_id', p_service.id, 'product_id', p_service.product_id, 'variant_id', p_service.product_variant_id,
+                       'service_status', p_service.status) || COALESCE(p_extra, '{}'::jsonb));
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'app_servicio.emit %: %', p_event, SQLERRM;
+END;
+$$;
+
+-- Permiso de una sesion sobre un servicio: la clave y ver el servicio. El sistema pasa.
+CREATE OR REPLACE FUNCTION app_servicio.require_service(p_service app_servicio.services, p_key text)
+RETURNS void LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF app_servicio.is_system() THEN RETURN; END IF;
+  IF NOT public.has_permission(p_service.workspace_id, p_key) OR NOT app_servicio.can_see_service_row(p_service) THEN
+    RAISE EXCEPTION 'No tenés permiso para hacer esto' USING ERRCODE = 'SV004';
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_get(p_service_id uuid, p_lock boolean DEFAULT false)
+RETURNS app_servicio.services LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+BEGIN
+  IF p_lock THEN
+    SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id FOR UPDATE;
+  ELSE
+    SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id;
+  END IF;
+  IF s.id IS NULL THEN RAISE EXCEPTION 'No existe el servicio' USING ERRCODE = 'SV002'; END IF;
+  RETURN s;
+END;
+$$;
+
+-- ─── 1. Reglas puras (gemelas de lib/services/engine-rules.ts) ──────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_rule_met(p jsonb)
+RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT CASE p ->> 'rule'
+    WHEN 'any_payment' THEN COALESCE((p ->> 'hasAnyPaid')::boolean, false) AND COALESCE((p ->> 'collectedCents')::numeric, 0) > 0
+    WHEN 'non_reservation' THEN COALESCE((p ->> 'hasNonReservationPaid')::boolean, false)
+    WHEN 'percent' THEN COALESCE((p ->> 'totalCents')::numeric, 0) > 0 AND (p ->> 'value') IS NOT NULL
+      AND (p ->> 'collectedCents')::numeric * 100 >= (p ->> 'value')::numeric * (p ->> 'totalCents')::numeric
+    WHEN 'amount' THEN (p ->> 'value') IS NOT NULL AND COALESCE((p ->> 'collectedCents')::numeric, 0) >= (p ->> 'value')::numeric
+    ELSE false END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_renewal_plan(p jsonb)
+RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path = '' AS $$
+DECLARE
+  prev jsonb := p -> 'prev';
+  v_today date := (p ->> 'today')::date;
+  v_status text; v_running boolean; v_ended date; v_ends date;
+BEGIN
+  IF prev IS NULL OR jsonb_typeof(prev) = 'null' OR prev ->> 'status' IN ('cancelled', 'pending_confirmation') THEN
+    RETURN jsonb_build_object('action', 'new', 'startsOn', NULL);
+  END IF;
+  v_status := prev ->> 'status';
+  v_running := v_status IN ('active', 'paused');
+  v_ends := (prev ->> 'endsOn')::date;
+  v_ended := COALESCE((prev ->> 'endedOn')::date, v_ends);
+  IF NOT v_running AND v_ended IS NOT NULL AND (v_today - v_ended) > 60 THEN
+    RETURN jsonb_build_object('action', 'recovery', 'startsOn', NULL);
+  END IF;
+  IF p ->> 'renewal' = 'extend' THEN RETURN jsonb_build_object('action', 'extend', 'startsOn', NULL); END IF;
+  IF p ->> 'renewal' = 'ask' THEN RETURN jsonb_build_object('action', 'ask', 'startsOn', NULL); END IF;
+  RETURN jsonb_build_object('action', 'new_linked', 'startsOn',
+    CASE WHEN v_running AND v_ends IS NOT NULL AND v_ends >= v_today THEN to_char(v_ends + 1, 'YYYY-MM-DD') END);
+END;
+$$;
+
+-- anchors: {serviceCreated, serviceStart, phaseStart, itemCompleted} (fechas YYYY-MM-DD)
+CREATE OR REPLACE FUNCTION app_servicio.svc_due_date(p_rule jsonb, p_anchors jsonb)
+RETURNS date LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT CASE WHEN p_rule IS NULL OR jsonb_typeof(p_rule) <> 'object' THEN NULL ELSE
+    (CASE p_rule ->> 'from'
+      WHEN 'service_created' THEN (p_anchors ->> 'serviceCreated')::date
+      WHEN 'service_start' THEN (p_anchors ->> 'serviceStart')::date
+      WHEN 'phase_start' THEN (p_anchors ->> 'phaseStart')::date
+      WHEN 'item_completed' THEN (p_anchors ->> 'itemCompleted')::date
+     END) + COALESCE((p_rule ->> 'days')::integer, 0) END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_phase_should_advance(p_advance text, p_req_total integer, p_req_done integer, p_all_total integer, p_all_done integer)
+RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT CASE p_advance WHEN 'auto' THEN p_req_done >= p_req_total WHEN 'auto_all' THEN p_all_done >= p_all_total ELSE false END;
+$$;
+
+-- Las repeticiones que ya llegaron (occursOn <= p_upto). Devuelve [{index, occursOn, dueOn}].
+CREATE OR REPLACE FUNCTION app_servicio.svc_occurrence_dates(p_recurrence jsonb, p_start date, p_phase_end date, p_service_end date, p_upto date)
+RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path = '' AS $$
+DECLARE
+  v_step integer := CASE p_recurrence ->> 'every' WHEN 'day' THEN 1 WHEN 'week' THEN 7
+                       ELSE GREATEST(1, COALESCE((p_recurrence ->> 'n')::integer, 1)) END;
+  v_limit date := CASE p_recurrence ->> 'until'
+                    WHEN 'phase_end' THEN p_phase_end WHEN 'service_end' THEN p_service_end
+                    WHEN 'n_days' THEN p_start + (GREATEST(1, COALESCE((p_recurrence ->> 'n_until')::integer, 1)) - 1) END;
+  v_max integer := CASE WHEN p_recurrence ->> 'until' = 'n_times' THEN GREATEST(1, COALESCE((p_recurrence ->> 'n_until')::integer, 1)) ELSE 1000 END;
+  v_out jsonb := '[]'::jsonb;
+  v_day date;
+  k integer;
+BEGIN
+  IF p_start IS NULL THEN RETURN v_out; END IF;
+  FOR k IN 0 .. v_max - 1 LOOP
+    v_day := p_start + k * v_step;
+    EXIT WHEN v_limit IS NOT NULL AND v_day > v_limit;
+    EXIT WHEN v_day > p_upto;
+    v_out := v_out || jsonb_build_array(jsonb_build_object('index', k + 1, 'occursOn', to_char(v_day, 'YYYY-MM-DD'),
+                                                           'dueOn', to_char(v_day + v_step - 1, 'YYYY-MM-DD')));
+  END LOOP;
+  RETURN v_out;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_day_word(n integer)
+RETURNS text LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT CASE WHEN n = 1 THEN '1 día' ELSE n::text || ' días' END;
+$$;
+
+-- El semaforo (F24). Entrada con la misma forma que LightInput de TS.
+CREATE OR REPLACE FUNCTION app_servicio.svc_light(p jsonb)
+RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path = '' AS $$
+DECLARE
+  v_best_color text := 'green'; v_best_reason text := NULL;
+  v_rank_best integer := 0;
+  ph jsonb := p -> 'phase';
+  lt jsonb := p -> 'late';
+  it jsonb;
+  v_d integer; v_color text; v_since integer; v_word text; v_reason text;
+  w_color text := NULL; w_d integer; w_reason text;
+  v_days integer; v_yd integer; v_rd integer; v_od integer; v_red integer; v_cnt integer;
+  found_colors text[] := ARRAY[]::text[]; found_reasons text[] := ARRAY[]::text[];
+  i integer;
+BEGIN
+  IF COALESCE((p ->> 'grey')::boolean, false) THEN RETURN jsonb_build_object('color', 'grey', 'reason', NULL); END IF;
+  -- 1. Fase
+  IF ph IS NOT NULL AND jsonb_typeof(ph) = 'object' THEN
+    v_days := (ph ->> 'daysIn')::integer; v_yd := (ph ->> 'yellowDay')::integer; v_rd := (ph ->> 'redDay')::integer;
+    IF v_rd IS NOT NULL AND v_days >= v_rd THEN
+      found_colors := found_colors || 'red'::text; found_reasons := found_reasons || format('Fase %s · lleva %s · rojo desde el día %s', ph ->> 'name', app_servicio.svc_day_word(v_days), v_rd);
+    ELSIF v_yd IS NOT NULL AND v_days >= v_yd THEN
+      found_colors := found_colors || 'yellow'::text; found_reasons := found_reasons || format('Fase %s · lleva %s · amarillo desde el día %s', ph ->> 'name', app_servicio.svc_day_word(v_days), v_yd);
+    END IF;
+  END IF;
+  -- 2. Pagos
+  IF (p ->> 'oldestOverdueDays') IS NOT NULL THEN
+    v_od := (p ->> 'oldestOverdueDays')::integer; v_red := (p ->> 'overdueRedDays')::integer;
+    found_colors := found_colors || CASE WHEN v_od > v_red THEN 'red' ELSE 'yellow' END;
+    found_reasons := found_reasons || format('Pago vencido hace %s', app_servicio.svc_day_word(v_od));
+  END IF;
+  -- 3. Entregas atrasadas
+  IF lt IS NOT NULL AND jsonb_typeof(lt) = 'object' AND COALESCE((lt ->> 'enabled')::boolean, false) AND (lt ->> 'count')::integer > 0 THEN
+    v_cnt := (lt ->> 'count')::integer;
+    v_reason := format('%s %s en %s', v_cnt, CASE WHEN v_cnt = 1 THEN 'entrega atrasada' ELSE 'entregas atrasadas' END, lt ->> 'phaseName');
+    IF v_cnt >= (lt ->> 'redAt')::integer THEN found_colors := found_colors || 'red'::text; found_reasons := found_reasons || v_reason;
+    ELSIF v_cnt >= (lt ->> 'yellowAt')::integer THEN found_colors := found_colors || 'yellow'::text; found_reasons := found_reasons || v_reason;
+    END IF;
+  END IF;
+  -- 4. Items vencidos con su regla
+  FOR it IN SELECT x FROM jsonb_array_elements(COALESCE(p -> 'items', '[]'::jsonb)) x LOOP
+    v_d := (it ->> 'daysOverdue')::integer;
+    v_color := NULL; v_since := NULL;
+    IF (it ->> 'redAfter') IS NOT NULL AND v_d >= (it ->> 'redAfter')::integer THEN v_color := 'red'; v_since := (it ->> 'redAfter')::integer;
+    ELSIF (it ->> 'yellowAfter') IS NOT NULL AND v_d >= (it ->> 'yellowAfter')::integer THEN v_color := 'yellow'; v_since := (it ->> 'yellowAfter')::integer;
+    END IF;
+    CONTINUE WHEN v_color IS NULL;
+    v_word := CASE v_color WHEN 'red' THEN 'rojo' ELSE 'amarillo' END;
+    v_reason := CASE WHEN v_d = 0 THEN format('Ítem vence hoy: %s · %s desde el día %s', it ->> 'name', v_word, v_since)
+                ELSE format('Ítem vencido hace %s: %s · %s desde el día %s', app_servicio.svc_day_word(v_d), it ->> 'name', v_word, v_since) END;
+    IF w_color IS NULL
+       OR (CASE v_color WHEN 'red' THEN 2 ELSE 1 END) > (CASE w_color WHEN 'red' THEN 2 ELSE 1 END)
+       OR ((CASE v_color WHEN 'red' THEN 2 ELSE 1 END) = (CASE w_color WHEN 'red' THEN 2 ELSE 1 END) AND v_d > w_d) THEN
+      w_color := v_color; w_d := v_d; w_reason := v_reason;
+    END IF;
+  END LOOP;
+  IF w_color IS NOT NULL THEN found_colors := found_colors || w_color; found_reasons := found_reasons || w_reason; END IF;
+  -- Gana el peor; con empate, el primero.
+  FOR i IN 1 .. COALESCE(array_length(found_colors, 1), 0) LOOP
+    IF (CASE found_colors[i] WHEN 'red' THEN 2 WHEN 'yellow' THEN 1 ELSE 0 END) > v_rank_best THEN
+      v_rank_best := CASE found_colors[i] WHEN 'red' THEN 2 WHEN 'yellow' THEN 1 ELSE 0 END;
+      v_best_color := found_colors[i]; v_best_reason := found_reasons[i];
+    END IF;
+  END LOOP;
+  RETURN jsonb_build_object('color', v_best_color, 'reason', v_best_reason);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_extend_plan(p jsonb)
+RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path = '' AS $$
+DECLARE
+  v_status text := p ->> 'status';
+  v_today date := (p ->> 'today')::date;
+  v_ends date := (p ->> 'endsOn')::date;
+  v_n integer := (p ->> 'n')::integer;
+  v_from text; v_base date; v_new date;
+BEGIN
+  IF NOT COALESCE(v_status = ANY (ARRAY['active','paused','completed']), false) THEN RETURN jsonb_build_object('ok', false, 'error', 'SV030'); END IF;
+  IF p ->> 'mode' = 'end_date' THEN
+    IF (p ->> 'endOn') IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'SV032'); END IF;
+    v_new := (p ->> 'endOn')::date;
+  ELSE
+    IF v_n IS NULL OR v_n < 1 THEN RETURN jsonb_build_object('ok', false, 'error', 'SV032'); END IF;
+    v_from := COALESCE(p ->> 'from', CASE WHEN v_status IN ('active','paused') AND v_ends IS NOT NULL THEN 'current_end' ELSE 'today' END);
+    v_base := CASE WHEN v_from = 'current_end' AND v_ends IS NOT NULL THEN v_ends ELSE v_today END;
+    v_new := CASE p ->> 'unit' WHEN 'months' THEN (v_base + make_interval(months => v_n))::date
+                               WHEN 'weeks' THEN v_base + v_n * 7 ELSE v_base + v_n END;
+  END IF;
+  IF v_new <= v_today THEN RETURN jsonb_build_object('ok', false, 'error', 'SV031'); END IF;
+  RETURN jsonb_build_object('ok', true, 'newEnd', to_char(v_new, 'YYYY-MM-DD'), 'reactivate', v_status = 'completed');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_resume_plan(p_paused_at timestamptz, p_now timestamptz, p_shift_days integer)
+RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT CASE WHEN p_shift_days IS NOT NULL THEN GREATEST(0, p_shift_days)
+              ELSE GREATEST(0, ceil(extract(epoch FROM (p_now - p_paused_at)) / 86400.0)::integer) END;
+$$;
+
+-- El responsable (F96). Entrada con la forma de OwnerPickInput de TS.
+CREATE OR REPLACE FUNCTION app_servicio.svc_owner_pick_rr(p jsonb, p_members jsonb)
+RETURNS text LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT m FROM jsonb_array_elements_text(COALESCE(p_members, '[]'::jsonb)) m
+  WHERE (p -> 'activeMembers') ? m
+  ORDER BY COALESCE((p -> 'activeCounts' ->> m)::integer, 0), COALESCE(p -> 'lastAssignedAt' ->> m, ''), m
+  LIMIT 1;
+$$;
+CREATE OR REPLACE FUNCTION app_servicio.svc_owner_pick_plan(p jsonb)
+RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path = '' AS $$
+DECLARE
+  v text;
+  live jsonb := COALESCE(p -> 'activeMembers', '[]'::jsonb);
+BEGIN
+  CASE p ->> 'mode'
+    WHEN 'fixed' THEN v := CASE WHEN live ? (p ->> 'userId') THEN p ->> 'userId' END;
+    WHEN 'round_robin' THEN v := app_servicio.svc_owner_pick_rr(p, p -> 'members');
+    WHEN 'previous' THEN v := CASE WHEN live ? (p ->> 'previousOwner') THEN p ->> 'previousOwner' END;
+    WHEN 'conditions' THEN
+      v := CASE WHEN live ? (p ->> 'conditionUserId') THEN p ->> 'conditionUserId' END;
+      IF v IS NULL AND jsonb_typeof(p -> 'conditionMembers') = 'array' THEN v := app_servicio.svc_owner_pick_rr(p, p -> 'conditionMembers'); END IF;
+      IF v IS NULL AND jsonb_array_length(COALESCE(p -> 'members', '[]'::jsonb)) > 0 THEN v := app_servicio.svc_owner_pick_rr(p, p -> 'members'); END IF;
+    ELSE v := NULL;
+  END CASE;
+  IF v IS NOT NULL THEN RETURN jsonb_build_object('userId', v, 'usedFallback', false); END IF;
+  RETURN jsonb_build_object('userId', CASE WHEN live ? (p ->> 'fallback') THEN p ->> 'fallback' END, 'usedFallback', true);
+END;
+$$;
+
+-- El arbol de condiciones (gemela de lib/assignment/conditions.ts).
+CREATE OR REPLACE FUNCTION app_servicio.svc_condition_eval(p_c jsonb, p_ctx jsonb)
+RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT CASE p_c ->> 'operator'
+    WHEN 'is' THEN a = e
+    WHEN 'is_not' THEN a <> e
+    WHEN 'contains' THEN e <> '' AND position(e IN a) > 0
+    WHEN 'not_contains' THEN e <> '' AND position(e IN a) = 0
+    WHEN 'starts_with' THEN e <> '' AND left(a, length(e)) = e
+    WHEN 'is_empty' THEN a = ''
+    WHEN 'is_not_empty' THEN a <> ''
+    ELSE false END
+  FROM (SELECT lower(btrim(COALESCE(p_ctx ->> (p_c ->> 'field'), ''))) AS a, lower(btrim(COALESCE(p_c ->> 'value', ''))) AS e) t;
+$$;
+CREATE OR REPLACE FUNCTION app_servicio.svc_conditions_match(p_tree jsonb, p_ctx jsonb)
+RETURNS boolean LANGUAGE plpgsql IMMUTABLE SET search_path = '' AS $$
+DECLARE
+  v_results boolean[] := ARRAY[]::boolean[];
+  c jsonb; g jsonb; v_group boolean[];
+  v_root text := COALESCE(p_tree ->> 'rootConjunction', 'and');
+BEGIN
+  FOR c IN SELECT x FROM jsonb_array_elements(COALESCE(p_tree -> 'conditions', '[]'::jsonb)) x LOOP
+    v_results := v_results || app_servicio.svc_condition_eval(c, p_ctx);
+  END LOOP;
+  FOR g IN SELECT x FROM jsonb_array_elements(COALESCE(p_tree -> 'groups', '[]'::jsonb)) x LOOP
+    CONTINUE WHEN jsonb_array_length(COALESCE(g -> 'conditions', '[]'::jsonb)) = 0;
+    SELECT array_agg(app_servicio.svc_condition_eval(x, p_ctx)) INTO v_group FROM jsonb_array_elements(g -> 'conditions') x;
+    v_results := v_results || CASE WHEN g ->> 'conjunction' = 'or' THEN true = ANY (v_group) ELSE NOT (false = ANY (v_group)) END;
+  END LOOP;
+  IF COALESCE(array_length(v_results, 1), 0) = 0 THEN RETURN false; END IF;
+  RETURN CASE WHEN v_root = 'or' THEN true = ANY (v_results) ELSE NOT (false = ANY (v_results)) END;
+END;
+$$;
+
+-- El contexto del contacto para las condiciones (gemela parcial de buildAssignmentContext: pais,
+-- email, telefono, canal y primer/ultimo toque de la atribucion canonica).
+CREATE OR REPLACE FUNCTION app_servicio.svc_contact_context(p_contact_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  c public.contacts;
+  v jsonb := '{}'::jsonb;
+  f text; t jsonb; pre text;
+  v_channel text;
+BEGIN
+  SELECT * INTO c FROM public.contacts WHERE id = p_contact_id;
+  IF c.id IS NULL THEN RETURN v; END IF;
+  FOREACH pre IN ARRAY ARRAY['first', 'last'] LOOP
+    t := c.attribution -> (pre || '_touch');
+    FOREACH f IN ARRAY ARRAY['source','medium','campaign','content','term','ad_id','adset_id','campaign_id','fbclid','gclid','ttclid',
+                             'referrer_url','landing_page','origin','social_post_id','content_post_id'] LOOP
+      v := v || jsonb_build_object(pre || '_' || f, COALESCE(t ->> f, ''));
+    END LOOP;
+    v := v || jsonb_build_object(pre || '_combined', lower(concat_ws('|', COALESCE(t ->> 'source', ''), COALESCE(t ->> 'medium', ''),
+      COALESCE(t ->> 'campaign', ''), COALESCE(t ->> 'content', ''), COALESCE(t ->> 'term', ''))));
+  END LOOP;
+  SELECT ch.platform INTO v_channel FROM public.conversations cv JOIN public.channels ch ON ch.id = cv.channel_id
+   WHERE cv.contact_id = p_contact_id ORDER BY cv.last_message_at DESC NULLS LAST LIMIT 1;
+  RETURN v || jsonb_build_object('country', btrim(COALESCE(c.country, '')), 'channel', COALESCE(v_channel, ''),
+    'has_email', CASE WHEN btrim(COALESCE(c.email, '')) <> '' THEN 'true' ELSE 'false' END,
+    'has_phone', CASE WHEN btrim(COALESCE(c.phone, '')) <> '' OR btrim(COALESCE(c.whatsapp_phone, '')) <> '' THEN 'true' ELSE 'false' END);
+END;
+$$;
+
+-- Elige al responsable de un servicio nuevo con la regla de su variante.
+CREATE OR REPLACE FUNCTION app_servicio.svc_pick_owner(p_variant_id uuid, p_contact_id uuid, p_previous_owner uuid DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_var public.product_variants;
+  o jsonb;
+  v_live jsonb; v_counts jsonb; v_last jsonb;
+  v_ctx jsonb; r jsonb; v_cond_user text := NULL; v_cond_members jsonb := NULL;
+BEGIN
+  SELECT * INTO v_var FROM public.product_variants WHERE id = p_variant_id;
+  o := COALESCE(v_var.service_settings -> 'owner', '{}'::jsonb);
+  SELECT COALESCE(jsonb_agg(m.user_id::text), '[]'::jsonb) INTO v_live FROM public.workspace_members m WHERE m.workspace_id = v_var.workspace_id;
+  SELECT COALESCE(jsonb_object_agg(owner_user_id::text, n), '{}'::jsonb) INTO v_counts
+    FROM (SELECT s.owner_user_id, count(*) n FROM app_servicio.services s
+          WHERE s.product_id = v_var.product_id AND s.status IN ('active','paused') AND s.owner_user_id IS NOT NULL GROUP BY 1) t;
+  SELECT COALESCE(jsonb_object_agg(owner_user_id::text, last_at), '{}'::jsonb) INTO v_last
+    FROM (SELECT s.owner_user_id, to_char(max(s.created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') last_at FROM app_servicio.services s
+          WHERE s.product_id = v_var.product_id AND s.owner_user_id IS NOT NULL GROUP BY 1) t;
+  IF o ->> 'mode' = 'conditions' THEN
+    v_ctx := app_servicio.svc_contact_context(p_contact_id);
+    FOR r IN SELECT x FROM jsonb_array_elements(COALESCE(o -> 'conditions', '[]'::jsonb)) x LOOP
+      CONTINUE WHEN COALESCE((r ->> 'is_active')::boolean, true) = false;
+      IF app_servicio.svc_conditions_match(r -> 'conditions', v_ctx) THEN
+        IF r #>> '{destination,type}' = 'user' THEN v_cond_user := r #>> '{destination,user_id}';
+        ELSIF r #>> '{destination,type}' = 'round_robin' THEN v_cond_members := r #> '{destination,members}';
+        END IF;
+        EXIT;
+      END IF;
+    END LOOP;
+  END IF;
+  RETURN app_servicio.svc_owner_pick_plan(jsonb_build_object(
+    'mode', o ->> 'mode', 'userId', o ->> 'user_id', 'members', COALESCE(o -> 'members', '[]'::jsonb),
+    'activeCounts', v_counts, 'lastAssignedAt', v_last, 'conditionUserId', v_cond_user, 'conditionMembers', v_cond_members,
+    'previousOwner', p_previous_owner::text, 'fallback', o ->> 'fallback_user_id', 'activeMembers', v_live));
+END;
+$$;
+
+-- ─── 2. Puntos vacios que completan otros bloques ───────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_grant_initial_access(p_service_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN; END; $$;
+CREATE OR REPLACE FUNCTION app_servicio.svc_open_access(p_service_id uuid, p_section text, p_scope text, p_source text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN; END; $$;
+-- p_reason: cancelled | refunded | completed | renewed
+CREATE OR REPLACE FUNCTION app_servicio.svc_cut_access(p_service_id uuid, p_reason text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN; END; $$;
+CREATE OR REPLACE FUNCTION app_servicio.svc_shift_access(p_service_id uuid, p_days integer, p_new_end date, p_extend_own boolean)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN 0; END; $$;
+CREATE OR REPLACE FUNCTION app_servicio.svc_suspend_for_pause(p_service_id uuid, p_suspend boolean)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN; END; $$;
+CREATE OR REPLACE FUNCTION app_servicio.svc_open_module(p_service_id uuid, p_program_item_id uuid, p_source text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN; END; $$;
+
+-- ─── 3. Plazos ──────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_compute_due(p_item_id uuid)
+RETURNS date LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  it app_servicio.service_items;
+  s app_servicio.services;
+  ph app_servicio.service_phases;
+  v_done timestamptz;
+  v_due date;
+BEGIN
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id;
+  IF it.id IS NULL OR it.due_rule IS NULL OR it.parent_item_id IS NOT NULL OR it.is_recurring_template THEN RETURN NULL; END IF;
+  SELECT * INTO s FROM app_servicio.services WHERE id = it.service_id;
+  SELECT * INTO ph FROM app_servicio.service_phases WHERE id = it.phase_id;
+  IF it.due_rule ->> 'from' = 'item_completed' THEN
+    SELECT o.completed_at INTO v_done FROM app_servicio.service_items o
+     WHERE o.service_id = it.service_id AND o.template_key = it.due_rule ->> 'item_key' AND o.parent_item_id IS NULL AND o.status = 'completed';
+  END IF;
+  v_due := app_servicio.svc_due_date(it.due_rule, jsonb_build_object(
+    'serviceCreated', app_servicio.local_date(s.created_at, s.workspace_id),
+    'serviceStart', s.starts_on,
+    'phaseStart', app_servicio.local_date(ph.started_at, s.workspace_id),
+    'itemCompleted', app_servicio.local_date(v_done, s.workspace_id)));
+  UPDATE app_servicio.service_items SET due_on = v_due WHERE id = p_item_id AND due_on IS DISTINCT FROM v_due;
+  IF it.task_id IS NOT NULL THEN
+    UPDATE public.tasks SET due_date = v_due WHERE id = it.task_id AND status <> 'completed' AND due_date IS DISTINCT FROM v_due;
+  END IF;
+  RETURN v_due;
+END;
+$$;
+
+-- ─── 4. Tareas del equipo (F20) ─────────────────────────────────────────────
+-- Un paso "del equipo" crea UNA tarea al abrirse su fase (o crearse su repeticion). Una sola vez:
+-- service_items.task_id se escribe bajo el candado del servicio.
+CREATE OR REPLACE FUNCTION app_servicio.svc_ensure_task(p_item_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  it app_servicio.service_items;
+  s app_servicio.services;
+  v_owner uuid;
+  v_task uuid;
+BEGIN
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id FOR UPDATE;
+  IF it.id IS NULL OR it.kind <> 'team_task' OR it.task_id IS NOT NULL OR it.status = 'completed' OR it.is_recurring_template THEN RETURN; END IF;
+  SELECT * INTO s FROM app_servicio.services WHERE id = it.service_id;
+  v_owner := CASE it.assignee WHEN 'user' THEN it.assignee_user_id ELSE s.owner_user_id END;
+  INSERT INTO public.tasks (workspace_id, title, description, status, priority, due_date, owner_id, contact_id, source, source_ref, created_by)
+  VALUES (s.workspace_id, left(it.name, 200), it.description, 'pending', 'normal',
+          COALESCE(it.due_on, app_servicio.local_date(it.due_at, s.workspace_id)), v_owner, s.contact_id, 'cx', 'svc_item:' || it.id::text, NULL)
+  RETURNING id INTO v_task;
+  UPDATE app_servicio.service_items SET task_id = v_task WHERE id = it.id;
+  IF v_owner IS NOT NULL THEN
+    PERFORM app_servicio.notify(s.workspace_id, v_owner, 'task_assigned', 'Tenés una tarea nueva', it.name, 'task', v_task,
+                                jsonb_build_object('service_id', s.id));
+  END IF;
+END;
+$$;
+
+-- ─── 5. Repeticiones (F21) ──────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_generate_occurrences(p_service_id uuid)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  m app_servicio.service_items;
+  ph app_servicio.service_phases;
+  v_tz text; v_student_tz text; v_today date; v_start date; v_phase_start date;
+  v_occ jsonb; o jsonb; v_created integer := 0; v_new uuid;
+  v_grace integer;
+BEGIN
+  SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id;
+  IF s.id IS NULL OR s.status <> 'active' OR NOT app_servicio.module_on(s.workspace_id) THEN RETURN 0; END IF;
+  v_tz := app_servicio.ws_tz(s.workspace_id);
+  -- Las repeticiones que hace el estudiante usan SU zona (con la del negocio de respaldo).
+  SELECT COALESCE(NULLIF(c.timezone, ''), v_tz) INTO v_student_tz FROM public.contacts c WHERE c.id = s.contact_id;
+  v_today := (now() AT TIME ZONE v_student_tz)::date;
+  FOR m IN SELECT i.* FROM app_servicio.service_items i JOIN app_servicio.service_phases p ON p.id = i.phase_id
+            WHERE i.service_id = p_service_id AND i.is_recurring_template AND p.status = 'in_progress' LOOP
+    SELECT * INTO ph FROM app_servicio.service_phases WHERE id = m.phase_id;
+    v_phase_start := app_servicio.local_date(ph.started_at, s.workspace_id);
+    v_start := COALESCE(app_servicio.svc_due_date(m.recurrence -> 'from', jsonb_build_object(
+                 'serviceCreated', app_servicio.local_date(s.created_at, s.workspace_id), 'serviceStart', s.starts_on,
+                 'phaseStart', v_phase_start)), v_phase_start);
+    v_occ := app_servicio.svc_occurrence_dates(m.recurrence, v_start,
+               CASE WHEN ph.duration_days IS NOT NULL THEN v_phase_start + ph.duration_days - 1 END, s.ends_on, v_today);
+    v_grace := COALESCE((m.late ->> 'grace_hours')::integer, 0);
+    FOR o IN SELECT x FROM jsonb_array_elements(v_occ) x LOOP
+      INSERT INTO app_servicio.service_items (workspace_id, service_id, phase_id, template_key, kind, name, description, required, assignee,
+        assignee_user_id, visible_to_client, portal_button, ref, late, reminders, parent_item_id, occurrence_index, position,
+        yellow_after_days, red_after_days, due_on, due_at)
+      VALUES (s.workspace_id, s.id, m.phase_id, m.template_key, m.kind, m.name, m.description, m.required, m.assignee,
+        m.assignee_user_id, m.visible_to_client, m.portal_button, m.ref, m.late, m.reminders, m.id, (o ->> 'index')::integer,
+        m.position, m.yellow_after_days, m.red_after_days, (o ->> 'dueOn')::date,
+        app_servicio.end_of_day((o ->> 'dueOn')::date, v_student_tz) + make_interval(hours => v_grace))
+      ON CONFLICT (parent_item_id, occurrence_index) WHERE parent_item_id IS NOT NULL DO NOTHING
+      RETURNING id INTO v_new;
+      IF v_new IS NOT NULL THEN
+        v_created := v_created + 1;
+        PERFORM app_servicio.svc_ensure_task(v_new);
+        v_new := NULL;
+      END IF;
+    END LOOP;
+  END LOOP;
+  RETURN v_created;
+END;
+$$;
+
+-- ─── 6. Copiar el camino y abrir fases (F14, F16, F19, F22) ─────────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_instantiate_journey(p_service_id uuid)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  v_tpl jsonb;
+  ph jsonb; it jsonb;
+  v_phase_id uuid;
+  v_pos integer := 0; v_ipos integer;
+  v_first uuid := NULL;
+BEGIN
+  SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id;
+  IF EXISTS (SELECT 1 FROM app_servicio.service_phases WHERE service_id = p_service_id) THEN RETURN 0; END IF;
+  SELECT pv.journey_template INTO v_tpl FROM public.product_variants pv WHERE pv.id = s.product_variant_id;
+  FOR ph IN SELECT x FROM jsonb_array_elements(COALESCE(v_tpl -> 'phases', '[]'::jsonb)) x LOOP
+    v_pos := v_pos + 1;
+    INSERT INTO app_servicio.service_phases (workspace_id, service_id, template_key, name, position, status, duration_days, yellow_day, red_day,
+      advance, challenge, late_light)
+    VALUES (s.workspace_id, s.id, ph ->> 'key', ph ->> 'name', v_pos, 'pending', (ph ->> 'duration_days')::integer, (ph ->> 'yellow_day')::integer,
+      (ph ->> 'red_day')::integer, COALESCE(ph ->> 'advance', 'auto'), NULLIF(ph -> 'challenge', 'null'::jsonb), NULLIF(ph -> 'late_light', 'null'::jsonb))
+    RETURNING id INTO v_phase_id;
+    IF v_first IS NULL THEN v_first := v_phase_id; END IF;
+    v_ipos := 0;
+    FOR it IN SELECT x FROM jsonb_array_elements(COALESCE(ph -> 'items', '[]'::jsonb)) x LOOP
+      v_ipos := v_ipos + 1;
+      INSERT INTO app_servicio.service_items (workspace_id, service_id, phase_id, template_key, kind, name, description, required, assignee,
+        assignee_user_id, visible_to_client, portal_button, ref, due_rule, recurrence, late, reminders, is_recurring_template, position,
+        yellow_after_days, red_after_days)
+      VALUES (s.workspace_id, s.id, v_phase_id, it ->> 'key', it ->> 'kind', it ->> 'name', it ->> 'description', COALESCE((it ->> 'required')::boolean, true),
+        COALESCE(it ->> 'assignee', 'student'), (it ->> 'assignee_user_id')::uuid, COALESCE((it ->> 'visible_to_client')::boolean, true),
+        COALESCE((it ->> 'portal_button')::boolean, false), COALESCE(NULLIF(it -> 'ref', 'null'::jsonb), '{}'::jsonb),
+        NULLIF(it -> 'due_rule', 'null'::jsonb), NULLIF(it -> 'recurrence', 'null'::jsonb), NULLIF(it -> 'late', 'null'::jsonb),
+        NULLIF(it -> 'reminders', 'null'::jsonb), (it -> 'recurrence') IS NOT NULL AND jsonb_typeof(it -> 'recurrence') = 'object', v_ipos,
+        (it #>> '{light,yellow_after_days}')::integer, (it #>> '{light,red_after_days}')::integer);
+    END LOOP;
+  END LOOP;
+  -- La primera fase se abre si el servicio ya empezo; si empieza en el futuro, la abre el cron ese dia.
+  IF v_first IS NOT NULL AND (s.starts_on IS NULL OR s.starts_on <= app_servicio.today_in(s.workspace_id)) THEN
+    PERFORM app_servicio.svc_open_phase(v_first);
+  END IF;
+  RETURN v_pos;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_open_phase(p_phase_id uuid, p_force boolean DEFAULT false)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  ph app_servicio.service_phases;
+  s app_servicio.services;
+  it record;
+  v_start text;
+BEGIN
+  SELECT * INTO ph FROM app_servicio.service_phases WHERE id = p_phase_id FOR UPDATE;
+  IF ph.id IS NULL OR ph.status <> 'pending' THEN RETURN; END IF;
+  SELECT * INTO s FROM app_servicio.services WHERE id = ph.service_id;
+  -- La fase Reto que arranca el estudiante, una automatizacion o una fecha fija futura queda esperando.
+  IF NOT p_force AND ph.challenge IS NOT NULL AND COALESCE((ph.challenge ->> 'enabled')::boolean, false) THEN
+    v_start := ph.challenge ->> 'start';
+    IF v_start IN ('student', 'automation')
+       OR (v_start = 'fixed_date' AND (ph.challenge ->> 'fixed_date')::date > app_servicio.today_in(s.workspace_id)) THEN
+      UPDATE app_servicio.service_phases SET awaiting_start = true WHERE id = ph.id;
+      RETURN;
+    END IF;
+  END IF;
+  UPDATE app_servicio.service_phases SET status = 'in_progress', started_at = now(), awaiting_start = false WHERE id = ph.id;
+  FOR it IN SELECT id FROM app_servicio.service_items WHERE phase_id = ph.id AND parent_item_id IS NULL AND NOT is_recurring_template LOOP
+    PERFORM app_servicio.svc_compute_due(it.id);
+    PERFORM app_servicio.svc_ensure_task(it.id);
+  END LOOP;
+  -- Los pasos de fases todavia no abiertas que dependen del inicio del servicio tambien se calculan.
+  PERFORM app_servicio.svc_generate_occurrences(s.id);
+  PERFORM app_servicio.audit(s.workspace_id, 'service_phase', ph.id, 'svc.phase_started', jsonb_build_object('service_id', s.id, 'phase_key', ph.template_key));
+  PERFORM app_servicio.emit(s, 'service_phase_started', jsonb_build_object('phase_key', ph.template_key));
+  IF ph.challenge IS NOT NULL AND COALESCE((ph.challenge ->> 'enabled')::boolean, false) THEN
+    PERFORM app_servicio.emit(s, 'challenge_started', jsonb_build_object('phase_key', ph.template_key));
+  END IF;
+  PERFORM app_servicio.svc_check_open_items(ph.id);
+  PERFORM app_servicio.svc_try_advance_phase(s.id);
+END;
+$$;
+
+-- "Se abre una seccion" y "Se abre un modulo o clase" se completan solos cuando estan completos todos
+-- los pasos anteriores de su fase (F19, F100).
+CREATE OR REPLACE FUNCTION app_servicio.svc_check_open_items(p_phase_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  it app_servicio.service_items;
+BEGIN
+  FOR it IN SELECT i.* FROM app_servicio.service_items i
+             WHERE i.phase_id = p_phase_id AND i.status = 'pending' AND i.kind IN ('open_section', 'open_module') AND i.parent_item_id IS NULL
+             ORDER BY i.position LOOP
+    IF NOT EXISTS (SELECT 1 FROM app_servicio.service_items o
+                   WHERE o.phase_id = p_phase_id AND o.position < it.position AND o.status <> 'completed' AND NOT o.is_recurring_template) THEN
+      IF it.kind = 'open_section' THEN
+        PERFORM app_servicio.svc_open_access(it.service_id, it.ref ->> 'section', COALESCE(it.ref ->> 'scope', 'product'), 'journey_item');
+      ELSE
+        PERFORM app_servicio.svc_open_module(it.service_id, (it.ref ->> 'program_item_id')::uuid, 'journey_item');
+      END IF;
+      PERFORM app_servicio.svc_mark_item(it.id, 'auto', 'system', NULL);
+    END IF;
+  END LOOP;
+END;
+$$;
+
+-- ─── 7. Completar y destildar pasos ─────────────────────────────────────────
+-- El nucleo (sin permisos): lo usan la accion de una persona, los triggers y el cron.
+CREATE OR REPLACE FUNCTION app_servicio.svc_mark_item(p_item_id uuid, p_source text, p_by_kind text, p_by uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  it app_servicio.service_items;
+  s app_servicio.services;
+  ph app_servicio.service_phases;
+  d record;
+BEGIN
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id FOR UPDATE;
+  IF it.id IS NULL OR it.status = 'completed' OR it.is_recurring_template THEN RETURN false; END IF;
+  SELECT * INTO s FROM app_servicio.services WHERE id = it.service_id;
+  SELECT * INTO ph FROM app_servicio.service_phases WHERE id = it.phase_id;
+  UPDATE app_servicio.service_items
+     SET status = 'completed', completed_at = now(), completed_by_kind = p_by_kind, completed_by = p_by, completed_source = p_source
+   WHERE id = it.id;
+  IF it.task_id IS NOT NULL THEN
+    UPDATE public.tasks SET status = 'completed', completed_at = now() WHERE id = it.task_id AND status <> 'completed';
+  END IF;
+  -- Los pasos que vencen "al completar este" ya tienen fecha.
+  FOR d IN SELECT o.id FROM app_servicio.service_items o
+            WHERE o.service_id = it.service_id AND o.status = 'pending' AND o.due_rule ->> 'from' = 'item_completed'
+              AND o.due_rule ->> 'item_key' = it.template_key LOOP
+    PERFORM app_servicio.svc_compute_due(d.id);
+  END LOOP;
+  PERFORM app_servicio.audit(s.workspace_id, 'service_item', it.id, 'svc.item_completed',
+    jsonb_build_object('service_id', s.id, 'item_key', it.template_key, 'source', p_source), CASE p_by_kind WHEN 'client' THEN 'client' WHEN 'user' THEN 'user' ELSE 'system' END);
+  PERFORM app_servicio.emit(s, 'service_item_completed', jsonb_build_object('phase_key', ph.template_key, 'item_key', it.template_key, 'item_kind', it.kind));
+  IF ph.status = 'in_progress' THEN
+    PERFORM app_servicio.svc_check_open_items(ph.id);
+    PERFORM app_servicio.svc_try_advance_phase(s.id);
+  END IF;
+  PERFORM app_servicio.svc_compute_light(s.id);
+  RETURN true;
+END;
+$$;
+
+-- Una persona tilda un paso: services.items con su alcance (own = los pasos a su cargo).
+CREATE OR REPLACE FUNCTION app_servicio.svc_complete_item(p_item_id uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  it app_servicio.service_items;
+  s app_servicio.services;
+BEGIN
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id;
+  IF it.id IS NULL THEN RAISE EXCEPTION 'No existe el paso' USING ERRCODE = 'SV002'; END IF;
+  s := app_servicio.svc_get(it.service_id);
+  PERFORM app_servicio.svc_require_item(s, it);
+  RETURN app_servicio.svc_mark_item(it.id, 'manual', 'user', auth.uid());
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_require_item(s app_servicio.services, it app_servicio.service_items)
+RETURNS void LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF app_servicio.is_system() THEN RETURN; END IF;
+  IF NOT public.has_permission(s.workspace_id, 'services.items') OR NOT app_servicio.can_see_service_row(s) THEN
+    RAISE EXCEPTION 'No tenés permiso para hacer esto' USING ERRCODE = 'SV004';
+  END IF;
+  IF public.permission_scope(s.workspace_id, 'services') <> 'all'
+     AND NOT ((it.assignee = 'owner' AND s.owner_user_id = auth.uid()) OR (it.assignee = 'user' AND it.assignee_user_id = auth.uid())) THEN
+    RAISE EXCEPTION 'Este paso no está a tu cargo' USING ERRCODE = 'SV004';
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_uncomplete_item(p_item_id uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  it app_servicio.service_items;
+  s app_servicio.services;
+  ph app_servicio.service_phases;
+BEGIN
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id FOR UPDATE;
+  IF it.id IS NULL THEN RAISE EXCEPTION 'No existe el paso' USING ERRCODE = 'SV002'; END IF;
+  s := app_servicio.svc_get(it.service_id);
+  PERFORM app_servicio.svc_require_item(s, it);
+  SELECT * INTO ph FROM app_servicio.service_phases WHERE id = it.phase_id;
+  IF ph.status = 'completed' THEN
+    RAISE EXCEPTION 'Un paso de una fase cerrada no se destilda' USING ERRCODE = 'SV020';
+  END IF;
+  IF it.status <> 'completed' THEN RETURN false; END IF;
+  UPDATE app_servicio.service_items SET status = 'pending', completed_at = NULL, completed_by_kind = NULL, completed_by = NULL, completed_source = NULL
+   WHERE id = it.id;
+  IF it.task_id IS NOT NULL THEN
+    UPDATE public.tasks SET status = 'pending', completed_at = NULL WHERE id = it.task_id AND status = 'completed';
+  END IF;
+  PERFORM app_servicio.audit(s.workspace_id, 'service_item', it.id, 'svc.item_uncompleted', jsonb_build_object('service_id', s.id, 'item_key', it.template_key));
+  PERFORM app_servicio.svc_compute_light(s.id);
+  RETURN true;
+END;
+$$;
+
+-- ─── 8. Avance de fase (F16) ────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_try_advance_phase(p_service_id uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  ph app_servicio.service_phases;
+  v_next uuid;
+  rt integer; rd integer; at integer; ad integer;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('svc_advance:' || p_service_id::text, 0));
+  SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id;
+  IF s.status <> 'active' THEN RETURN false; END IF;
+  SELECT * INTO ph FROM app_servicio.service_phases WHERE service_id = p_service_id AND status = 'in_progress';
+  IF ph.id IS NULL THEN RETURN false; END IF;
+  SELECT count(*) FILTER (WHERE required), count(*) FILTER (WHERE required AND status = 'completed'),
+         count(*), count(*) FILTER (WHERE status = 'completed')
+    INTO rt, rd, at, ad
+    FROM app_servicio.service_items WHERE phase_id = ph.id AND NOT is_recurring_template;
+  IF NOT app_servicio.svc_phase_should_advance(ph.advance, rt, rd, at, ad) THEN RETURN false; END IF;
+  UPDATE app_servicio.service_phases SET status = 'completed', completed_at = now(), completed_via = 'auto' WHERE id = ph.id;
+  PERFORM app_servicio.audit(s.workspace_id, 'service_phase', ph.id, 'svc.phase_completed', jsonb_build_object('service_id', s.id, 'phase_key', ph.template_key));
+  PERFORM app_servicio.emit(s, 'service_phase_completed', jsonb_build_object('phase_key', ph.template_key));
+  IF ph.challenge IS NOT NULL AND COALESCE((ph.challenge ->> 'enabled')::boolean, false) THEN
+    PERFORM app_servicio.emit(s, 'challenge_completed', jsonb_build_object('phase_key', ph.template_key));
+  END IF;
+  SELECT id INTO v_next FROM app_servicio.service_phases WHERE service_id = p_service_id AND status = 'pending' AND position > ph.position ORDER BY position LIMIT 1;
+  IF v_next IS NULL THEN
+    PERFORM app_servicio.svc_finish(p_service_id, 'Completó el camino');
+  ELSE
+    PERFORM app_servicio.svc_open_phase(v_next);
+  END IF;
+  RETURN true;
+END;
+$$;
+
+-- El nucleo de "cambiar de fase a mano" (sin permisos): lo usan la accion y la carga inicial.
+CREATE OR REPLACE FUNCTION app_servicio.svc_move_core(p_service_id uuid, p_phase_id uuid, p_reason text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  target app_servicio.service_phases;
+  cur app_servicio.service_phases;
+BEGIN
+  SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id;
+  SELECT * INTO target FROM app_servicio.service_phases WHERE id = p_phase_id AND service_id = p_service_id;
+  IF target.id IS NULL THEN RAISE EXCEPTION 'No existe la fase' USING ERRCODE = 'SV002'; END IF;
+  SELECT * INTO cur FROM app_servicio.service_phases WHERE service_id = p_service_id AND status = 'in_progress';
+  IF cur.id = target.id THEN RETURN; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('svc_advance:' || p_service_id::text, 0));
+  -- Las salteadas (y la actual) quedan completadas como "movidas a mano"; las posteriores vuelven a pendiente.
+  UPDATE app_servicio.service_phases SET status = 'completed', completed_at = now(), completed_via = 'manual_move', awaiting_start = false
+   WHERE service_id = p_service_id AND position < target.position AND status <> 'completed';
+  UPDATE app_servicio.service_phases SET status = 'pending', started_at = NULL, completed_at = NULL, completed_via = NULL
+   WHERE service_id = p_service_id AND position > target.position AND status <> 'pending';
+  IF target.status <> 'pending' THEN
+    UPDATE app_servicio.service_phases SET status = 'pending', started_at = NULL, completed_at = NULL, completed_via = NULL WHERE id = target.id;
+  END IF;
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.phase_moved',
+    jsonb_build_object('from_phase', cur.template_key, 'to_phase', target.template_key, 'reason', p_reason));
+  PERFORM app_servicio.svc_open_phase(target.id, true);
+  PERFORM app_servicio.svc_compute_light(s.id);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_move_to_phase(p_service_id uuid, p_phase_id uuid, p_reason text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+BEGIN
+  s := app_servicio.svc_get(p_service_id, true);
+  PERFORM app_servicio.require_service(s, 'services.change_phase');
+  IF nullif(btrim(p_reason), '') IS NULL THEN RAISE EXCEPTION 'Escribí el motivo' USING ERRCODE = 'SV016'; END IF;
+  IF s.status <> 'active' THEN RAISE EXCEPTION 'El servicio no está activo' USING ERRCODE = 'SV017'; END IF;
+  PERFORM app_servicio.svc_move_core(p_service_id, p_phase_id, p_reason);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_start_challenge(p_service_id uuid, p_actor text DEFAULT 'team')
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  ph app_servicio.service_phases;
+BEGIN
+  s := app_servicio.svc_get(p_service_id);
+  IF p_actor = 'team' THEN PERFORM app_servicio.require_service(s, 'services.change_phase'); END IF;
+  SELECT * INTO ph FROM app_servicio.service_phases WHERE service_id = p_service_id AND awaiting_start ORDER BY position LIMIT 1;
+  IF ph.id IS NULL OR s.status <> 'active' THEN RETURN false; END IF;
+  IF EXISTS (SELECT 1 FROM app_servicio.service_phases WHERE service_id = p_service_id AND status = 'in_progress') THEN RETURN false; END IF;
+  PERFORM app_servicio.svc_open_phase(ph.id, true);
+  RETURN true;
+END;
+$$;
+
+-- ─── 9. Avance y semaforo ───────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_progress_trigger()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_service uuid := COALESCE(NEW.service_id, OLD.service_id);
+  v_total integer; v_done integer;
+BEGIN
+  SELECT count(*) FILTER (WHERE required AND NOT is_recurring_template),
+         count(*) FILTER (WHERE required AND NOT is_recurring_template AND status = 'completed')
+    INTO v_total, v_done FROM app_servicio.service_items WHERE service_id = v_service;
+  UPDATE app_servicio.services
+     SET progress_pct = CASE WHEN v_total = 0 THEN NULL ELSE round(v_done * 100.0 / v_total, 2) END
+   WHERE id = v_service AND progress_pct IS DISTINCT FROM CASE WHEN v_total = 0 THEN NULL ELSE round(v_done * 100.0 / v_total, 2) END;
+  RETURN NULL;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_svc_items_progress ON app_servicio.service_items;
+CREATE TRIGGER trg_svc_items_progress
+  AFTER INSERT OR UPDATE OF status, required OR DELETE ON app_servicio.service_items
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.svc_progress_trigger();
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_compute_light(p_service_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  ph app_servicio.service_phases;
+  v_today date;
+  v_grey boolean;
+  v_phase jsonb := NULL; v_late jsonb := NULL; v_items jsonb;
+  v_overdue integer := NULL; v_red_days integer;
+  v_result jsonb;
+BEGIN
+  SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id;
+  IF s.id IS NULL THEN RETURN NULL; END IF;
+  v_today := app_servicio.today_in(s.workspace_id);
+  SELECT * INTO ph FROM app_servicio.service_phases WHERE service_id = s.id AND status = 'in_progress';
+  v_grey := s.status <> 'active' OR s.is_test OR (s.starts_on IS NOT NULL AND s.starts_on > v_today);
+  IF NOT v_grey THEN
+    IF ph.id IS NOT NULL THEN
+      v_phase := jsonb_build_object('name', ph.name, 'daysIn', v_today - app_servicio.local_date(ph.started_at, s.workspace_id),
+                                    'yellowDay', ph.yellow_day, 'redDay', ph.red_day);
+      IF ph.late_light IS NOT NULL THEN
+        v_late := jsonb_build_object('enabled', COALESCE((ph.late_light ->> 'enabled')::boolean, false),
+          'yellowAt', COALESCE((ph.late_light ->> 'yellow_at')::integer, 1), 'redAt', COALESCE((ph.late_light ->> 'red_at')::integer, 3),
+          'phaseName', ph.name,
+          'count', (SELECT count(*) FROM app_servicio.service_items i WHERE i.phase_id = ph.id AND i.parent_item_id IS NOT NULL
+                     AND i.status = 'pending' AND i.due_at < now()));
+      END IF;
+      SELECT COALESCE(jsonb_agg(jsonb_build_object('name', i.name,
+               'daysOverdue', v_today - COALESCE(i.due_on, app_servicio.local_date(i.due_at, s.workspace_id)),
+               'yellowAfter', i.yellow_after_days, 'redAfter', i.red_after_days)), '[]'::jsonb)
+        INTO v_items
+        FROM app_servicio.service_items i
+       WHERE i.phase_id = ph.id AND i.status = 'pending' AND NOT i.is_recurring_template
+         AND (i.yellow_after_days IS NOT NULL OR i.red_after_days IS NOT NULL)
+         AND COALESCE(i.due_on, app_servicio.local_date(i.due_at, s.workspace_id)) <= v_today;
+    END IF;
+    IF s.sale_id IS NOT NULL THEN
+      SELECT max(v_today - p.due_date) INTO v_overdue FROM public.payments p
+       WHERE p.sale_id = s.sale_id AND p.status = 'overdue' AND p.due_date IS NOT NULL;
+    END IF;
+    SELECT COALESCE((pv.service_settings #>> '{light,overdue_red_days}')::integer, 15) INTO v_red_days
+      FROM public.product_variants pv WHERE pv.id = s.product_variant_id;
+  END IF;
+  v_result := app_servicio.svc_light(jsonb_build_object('grey', v_grey, 'phase', v_phase, 'oldestOverdueDays', v_overdue,
+    'overdueRedDays', COALESCE(v_red_days, 15), 'late', v_late, 'items', COALESCE(v_items, '[]'::jsonb)));
+  IF s.light IS DISTINCT FROM (v_result ->> 'color') OR s.light_reason IS DISTINCT FROM (v_result ->> 'reason') THEN
+    UPDATE app_servicio.services SET light = v_result ->> 'color', light_reason = v_result ->> 'reason', light_at = now() WHERE id = s.id;
+    IF s.light IS DISTINCT FROM (v_result ->> 'color') THEN
+      PERFORM app_servicio.emit(s, 'service_light_changed', jsonb_build_object('light', v_result ->> 'color', 'previous_light', s.light));
+    END IF;
+  END IF;
+  RETURN v_result;
+END;
+$$;
+
+-- ─── 10. Crear (la UNICA entrada a services, F8) ────────────────────────────
+-- p: {workspace_id?, contact_id, product_id?, variant_id, sale_id?, origin, origin_reason?, status?, starts_on?,
+--     ends_on?, owner_user_id?, previous_service_id?, flags?, off_rule?}
+CREATE OR REPLACE FUNCTION app_servicio.svc_create_service(p jsonb)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_contact public.contacts;
+  v_var public.product_variants;
+  v_product public.products;
+  v_sale public.sales;
+  v_existing uuid;
+  v_origin text := COALESCE(p ->> 'origin', 'manual');
+  v_status text := COALESCE(p ->> 'status', 'active');
+  v_reason text := nullif(btrim(p ->> 'origin_reason'), '');
+  v_start date; v_end date; v_owner uuid; v_pick jsonb;
+  v_id uuid;
+  s app_servicio.services;
+BEGIN
+  SELECT * INTO v_contact FROM public.contacts WHERE id = (p ->> 'contact_id')::uuid;
+  IF v_contact.id IS NULL THEN RAISE EXCEPTION 'No existe el contacto' USING ERRCODE = 'SV002'; END IF;
+  IF p ? 'workspace_id' AND (p ->> 'workspace_id')::uuid <> v_contact.workspace_id THEN RAISE EXCEPTION 'El contacto es de otro negocio' USING ERRCODE = 'SV002'; END IF;
+  IF NOT app_servicio.is_system() THEN
+    IF NOT public.is_workspace_member(v_contact.workspace_id) OR NOT public.has_permission(v_contact.workspace_id, 'services.create') THEN
+      RAISE EXCEPTION 'No tenés permiso para hacer esto' USING ERRCODE = 'SV004';
+    END IF;
+  END IF;
+  IF NOT COALESCE(v_origin = ANY (ARRAY['sale','courtesy','test','manual','recovery']), false) THEN
+    RAISE EXCEPTION 'Origen desconocido' USING ERRCODE = 'SV012';
+  END IF;
+  SELECT * INTO v_var FROM public.product_variants WHERE id = (p ->> 'variant_id')::uuid AND workspace_id = v_contact.workspace_id;
+  IF v_var.id IS NULL THEN RAISE EXCEPTION 'Elegí la variante' USING ERRCODE = 'SV012'; END IF;
+  SELECT * INTO v_product FROM public.products WHERE id = v_var.product_id;
+  IF p ? 'sale_id' AND (p ->> 'sale_id') IS NOT NULL THEN
+    SELECT * INTO v_sale FROM public.sales WHERE id = (p ->> 'sale_id')::uuid AND workspace_id = v_contact.workspace_id;
+    IF v_sale.id IS NULL OR v_sale.contact_id <> v_contact.id THEN RAISE EXCEPTION 'La venta no es de este contacto' USING ERRCODE = 'SV002'; END IF;
+    SELECT id INTO v_existing FROM app_servicio.services WHERE sale_id = v_sale.id;
+    IF v_existing IS NOT NULL THEN
+      RAISE EXCEPTION 'Esta venta ya tiene su servicio' USING ERRCODE = 'SV013', DETAIL = v_existing::text;
+    END IF;
+  ELSIF v_reason IS NULL THEN
+    RAISE EXCEPTION 'Sin venta, escribí el motivo' USING ERRCODE = 'SV012';
+  END IF;
+  -- Crear desde una venta que no cumple la regla pide su clave y motivo (F95).
+  IF COALESCE((p ->> 'off_rule')::boolean, false) AND NOT app_servicio.is_system() THEN
+    IF NOT public.has_permission(v_contact.workspace_id, 'services.create_off_rule') THEN
+      RAISE EXCEPTION 'No tenés permiso para crear un servicio fuera de la regla' USING ERRCODE = 'SV004';
+    END IF;
+    IF v_reason IS NULL THEN RAISE EXCEPTION 'Escribí el motivo' USING ERRCODE = 'SV014'; END IF;
+  END IF;
+
+  -- Fechas (F9): un Evento empieza en su fecha; si no, la que llega o hoy.
+  v_start := COALESCE((p ->> 'starts_on')::date,
+                      CASE WHEN v_product.product_type = 'evento' THEN v_var.event_date END,
+                      app_servicio.today_in(v_contact.workspace_id));
+  v_end := COALESCE((p ->> 'ends_on')::date, CASE v_var.duration_type
+             WHEN 'days' THEN v_start + v_var.duration_value - 1
+             WHEN 'weeks' THEN v_start + v_var.duration_value * 7 - 1
+             WHEN 'months' THEN (v_start + make_interval(months => v_var.duration_value))::date - 1
+             ELSE NULL END);
+  v_owner := (p ->> 'owner_user_id')::uuid;
+  IF v_owner IS NULL AND v_status <> 'pending_confirmation' THEN
+    v_pick := app_servicio.svc_pick_owner(v_var.id, v_contact.id,
+      (SELECT owner_user_id FROM app_servicio.services WHERE id = (p ->> 'previous_service_id')::uuid));
+    v_owner := (v_pick ->> 'userId')::uuid;
+    IF v_owner IS NULL THEN RAISE EXCEPTION 'Elegí el responsable' USING ERRCODE = 'SV015'; END IF;
+  ELSIF v_owner IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.workspace_members m WHERE m.workspace_id = v_contact.workspace_id AND m.user_id = v_owner) THEN
+    RAISE EXCEPTION 'El responsable no es del equipo' USING ERRCODE = 'SV015';
+  END IF;
+
+  BEGIN
+    INSERT INTO app_servicio.services (workspace_id, contact_id, product_id, product_variant_id, sale_id, origin, origin_reason, previous_service_id,
+      status, starts_on, ends_on, owner_user_id, product_snapshot, price_cents, currency, is_test, flags, created_by)
+    VALUES (v_contact.workspace_id, v_contact.id, v_var.product_id, v_var.id, v_sale.id, v_origin, v_reason, (p ->> 'previous_service_id')::uuid,
+      v_status, v_start, v_end, v_owner,
+      jsonb_build_object('product_name', v_product.name, 'product_type', v_product.product_type, 'variant_name', v_var.name,
+                         'duration_type', v_var.duration_type, 'duration_value', v_var.duration_value, 'event_date', v_var.event_date),
+      CASE WHEN v_sale.id IS NOT NULL THEN round(v_sale.final_amount * 100)::bigint ELSE round(v_var.price * 100)::bigint END,
+      COALESCE(v_sale.currency, 'USD'), v_origin = 'test',
+      COALESCE(p -> 'flags', '{}'::jsonb) || CASE WHEN v_pick IS NOT NULL AND (v_pick ->> 'usedFallback')::boolean THEN '{"owner_fallback": true}'::jsonb ELSE '{}'::jsonb END,
+      auth.uid())
+    RETURNING id INTO v_id;
+  EXCEPTION WHEN unique_violation THEN
+    SELECT id INTO v_existing FROM app_servicio.services WHERE sale_id = v_sale.id;
+    RAISE EXCEPTION 'Esta venta ya tiene su servicio' USING ERRCODE = 'SV013', DETAIL = COALESCE(v_existing::text, '');
+  END;
+  SELECT * INTO s FROM app_servicio.services WHERE id = v_id;
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.created',
+    jsonb_build_object('origin', v_origin, 'status', v_status, 'sale_id', v_sale.id, 'variant_id', v_var.id, 'reason', v_reason));
+  IF v_pick IS NOT NULL AND (v_pick ->> 'usedFallback')::boolean THEN
+    PERFORM app_servicio.notify_admins(s.workspace_id, 'svc_owner_fallback', 'Servicio a nombre del respaldo',
+      'La regla del responsable no encontró a nadie activo: el servicio quedó a nombre de la persona de respaldo.', 'service', s.id);
+  END IF;
+  IF v_status = 'active' THEN
+    PERFORM app_servicio.svc_activate(s.id);
+    -- Carga inicial (F99): empieza en la fase indicada; las anteriores quedan "movidas a mano".
+    IF nullif(btrim(p ->> 'start_phase_name'), '') IS NOT NULL THEN
+      PERFORM app_servicio.svc_move_core(s.id, ph.id, 'Carga inicial')
+        FROM app_servicio.service_phases ph
+       WHERE ph.service_id = s.id AND lower(btrim(ph.name)) = lower(btrim(p ->> 'start_phase_name')) AND ph.status = 'pending'
+       LIMIT 1;
+    END IF;
+  END IF;
+  SELECT * INTO s FROM app_servicio.services WHERE id = v_id;
+  PERFORM app_servicio.emit(s, 'service_created', jsonb_build_object('origin', v_origin));
+  RETURN v_id;
+END;
+$$;
+
+-- Al pasar a activo (crear activo o confirmar): copia el camino, da los accesos, semaforo.
+CREATE OR REPLACE FUNCTION app_servicio.svc_activate(p_service_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+BEGIN
+  PERFORM app_servicio.svc_instantiate_journey(p_service_id);
+  PERFORM app_servicio.svc_grant_initial_access(p_service_id);
+  PERFORM app_servicio.svc_compute_light(p_service_id);
+  SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id;
+  IF s.starts_on IS NULL OR s.starts_on <= app_servicio.today_in(s.workspace_id) THEN
+    PERFORM app_servicio.emit(s, 'service_started');
+    UPDATE app_servicio.services SET flags = flags || '{"started_emitted": true}'::jsonb WHERE id = p_service_id;
+  END IF;
+END;
+$$;
+
+-- ─── 11. Confirmar y descartar (F7) ─────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_confirm_service(p_service_id uuid, p_start_on date, p_owner_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  v_var public.product_variants;
+  v_start date; v_end date; v_owner uuid;
+BEGIN
+  s := app_servicio.svc_get(p_service_id, true);
+  PERFORM app_servicio.require_service(s, 'services.confirm');
+  IF s.status <> 'pending_confirmation' THEN RAISE EXCEPTION 'Este servicio no está por confirmar' USING ERRCODE = 'SV010'; END IF;
+  SELECT * INTO v_var FROM public.product_variants WHERE id = s.product_variant_id;
+  v_start := COALESCE(p_start_on, s.starts_on, app_servicio.today_in(s.workspace_id));
+  v_end := CASE WHEN s.ends_on IS NOT NULL AND s.starts_on IS NOT NULL THEN v_start + (s.ends_on - s.starts_on) ELSE CASE v_var.duration_type
+             WHEN 'days' THEN v_start + v_var.duration_value - 1
+             WHEN 'weeks' THEN v_start + v_var.duration_value * 7 - 1
+             WHEN 'months' THEN (v_start + make_interval(months => v_var.duration_value))::date - 1
+             ELSE NULL END END;
+  v_owner := COALESCE(p_owner_id, s.owner_user_id, (app_servicio.svc_pick_owner(s.product_variant_id, s.contact_id) ->> 'userId')::uuid);
+  IF v_owner IS NULL THEN RAISE EXCEPTION 'Elegí el responsable' USING ERRCODE = 'SV015'; END IF;
+  UPDATE app_servicio.services SET status = 'active', starts_on = v_start, ends_on = v_end, owner_user_id = v_owner,
+    flags = flags - 'renewal_choice_pending' WHERE id = s.id;
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.confirmed', jsonb_build_object('starts_on', v_start, 'owner_user_id', v_owner));
+  PERFORM app_servicio.svc_activate(s.id);
+  SELECT * INTO s FROM app_servicio.services WHERE id = s.id;
+  PERFORM app_servicio.emit(s, 'service_status_changed', jsonb_build_object('previous_status', 'pending_confirmation'));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_discard_service(p_service_id uuid, p_reason text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+BEGIN
+  s := app_servicio.svc_get(p_service_id, true);
+  PERFORM app_servicio.require_service(s, 'services.confirm');
+  IF nullif(btrim(p_reason), '') IS NULL THEN RAISE EXCEPTION 'Escribí el motivo' USING ERRCODE = 'SV011'; END IF;
+  IF s.status <> 'pending_confirmation' THEN RAISE EXCEPTION 'Este servicio no está por confirmar' USING ERRCODE = 'SV010'; END IF;
+  UPDATE app_servicio.services SET status = 'cancelled', cancel_reason = p_reason, cancelled_at = now() WHERE id = s.id;
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.discarded', jsonb_build_object('reason', p_reason));
+  SELECT * INTO s FROM app_servicio.services WHERE id = s.id;
+  PERFORM app_servicio.emit(s, 'service_status_changed', jsonb_build_object('previous_status', 'pending_confirmation'));
+END;
+$$;
+
+-- ─── 12. Terminar, completar y cancelar (F10, F11, F38) ─────────────────────
+-- Termino natural del camino o completado a mano.
+CREATE OR REPLACE FUNCTION app_servicio.svc_finish(p_service_id uuid, p_reason text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  v_prev text;
+BEGIN
+  SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id FOR UPDATE;
+  IF s.status NOT IN ('active', 'paused') THEN RETURN; END IF;
+  v_prev := s.status;
+  UPDATE app_servicio.services SET status = 'completed', completed_at = now(), paused_at = NULL, pause_cut_access = NULL, pause_resume_on = NULL
+   WHERE id = s.id;
+  PERFORM app_servicio.svc_cut_access(s.id, 'completed');
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.completed', jsonb_build_object('reason', p_reason));
+  SELECT * INTO s FROM app_servicio.services WHERE id = s.id;
+  PERFORM app_servicio.svc_compute_light(s.id);
+  PERFORM app_servicio.emit(s, 'service_status_changed', jsonb_build_object('previous_status', v_prev));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_complete(p_service_id uuid, p_reason text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+BEGIN
+  s := app_servicio.svc_get(p_service_id);
+  PERFORM app_servicio.require_service(s, 'services.complete');
+  IF nullif(btrim(p_reason), '') IS NULL THEN RAISE EXCEPTION 'Escribí el motivo' USING ERRCODE = 'SV016'; END IF;
+  IF s.status NOT IN ('active', 'paused') THEN RAISE EXCEPTION 'El servicio no está activo' USING ERRCODE = 'SV017'; END IF;
+  PERFORM app_servicio.svc_finish(p_service_id, p_reason);
+END;
+$$;
+
+-- Cancelar corta TODOS los accesos, tambien los extras (F38).
+CREATE OR REPLACE FUNCTION app_servicio.svc_cancel_core(p_service_id uuid, p_reason text, p_cut text DEFAULT 'cancelled')
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  v_prev text;
+BEGIN
+  SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id FOR UPDATE;
+  IF s.status IN ('cancelled', 'renewed') THEN RETURN; END IF;
+  v_prev := s.status;
+  UPDATE app_servicio.services SET status = 'cancelled', cancel_reason = p_reason, cancelled_at = now() WHERE id = s.id;
+  PERFORM app_servicio.svc_cut_access(s.id, p_cut);
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.cancelled', jsonb_build_object('reason', p_reason, 'previous_status', v_prev));
+  SELECT * INTO s FROM app_servicio.services WHERE id = s.id;
+  PERFORM app_servicio.svc_compute_light(s.id);
+  PERFORM app_servicio.emit(s, 'service_status_changed', jsonb_build_object('previous_status', v_prev));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_cancel(p_service_id uuid, p_reason text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+BEGIN
+  s := app_servicio.svc_get(p_service_id);
+  PERFORM app_servicio.require_service(s, 'services.cancel');
+  IF nullif(btrim(p_reason), '') IS NULL THEN RAISE EXCEPTION 'Escribí el motivo' USING ERRCODE = 'SV016'; END IF;
+  IF s.status IN ('cancelled', 'renewed') THEN RAISE EXCEPTION 'El servicio ya está cerrado' USING ERRCODE = 'SV017'; END IF;
+  PERFORM app_servicio.svc_cancel_core(p_service_id, p_reason, 'cancelled');
+END;
+$$;
+
+-- ─── 13. Responsable (F11, F96) ─────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_set_owner_core(p_service_id uuid, p_user_id uuid, p_reason text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+BEGIN
+  SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id FOR UPDATE;
+  IF NOT EXISTS (SELECT 1 FROM public.workspace_members m WHERE m.workspace_id = s.workspace_id AND m.user_id = p_user_id) THEN
+    RAISE EXCEPTION 'El responsable no es del equipo' USING ERRCODE = 'SV015';
+  END IF;
+  IF s.owner_user_id IS NOT DISTINCT FROM p_user_id THEN RETURN; END IF;
+  UPDATE app_servicio.services SET owner_user_id = p_user_id, flags = flags - 'owner_fallback' - 'owner_departed' WHERE id = s.id;
+  -- Las tareas abiertas de los pasos "del responsable" pasan a la persona nueva.
+  UPDATE public.tasks t SET owner_id = p_user_id
+    FROM app_servicio.service_items i
+   WHERE i.service_id = s.id AND i.task_id = t.id AND i.assignee = 'owner' AND t.status <> 'completed';
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.owner_changed',
+    jsonb_build_object('old', s.owner_user_id, 'new', p_user_id, 'reason', p_reason));
+  PERFORM app_servicio.notify(s.workspace_id, p_user_id, 'svc_owner_assigned', 'Tenés un servicio a cargo',
+    COALESCE(s.product_snapshot ->> 'product_name', ''), 'service', s.id);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_set_owner(p_service_id uuid, p_user_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+BEGIN
+  s := app_servicio.svc_get(p_service_id);
+  PERFORM app_servicio.require_service(s, 'services.change_owner');
+  PERFORM app_servicio.svc_set_owner_core(p_service_id, p_user_id, NULL);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_bulk_set_owner(p_service_ids uuid[], p_user_id uuid, p_reason text)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_id uuid;
+  s app_servicio.services;
+  n integer := 0;
+BEGIN
+  IF nullif(btrim(p_reason), '') IS NULL THEN RAISE EXCEPTION 'Escribí el motivo' USING ERRCODE = 'SV016'; END IF;
+  FOREACH v_id IN ARRAY p_service_ids LOOP
+    s := app_servicio.svc_get(v_id);
+    PERFORM app_servicio.require_service(s, 'services.change_owner');
+    PERFORM app_servicio.svc_set_owner_core(v_id, p_user_id, p_reason);
+    n := n + 1;
+  END LOOP;
+  RETURN n;
+END;
+$$;
+
+-- ─── 14. Extender (F93, F115) ───────────────────────────────────────────────
+-- p: {mode: end_date|period, end_on?, n?, unit?, from?, kind: bonus|compensation|courtesy|purchase, reason, sale_id?, extend_own?}
+CREATE OR REPLACE FUNCTION app_servicio.svc_extend(p_service_id uuid, p jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  v_plan jsonb;
+  v_new date;
+  v_shifted integer;
+  v_prev text;
+BEGIN
+  s := app_servicio.svc_get(p_service_id, true);
+  PERFORM app_servicio.require_service(s, 'services.extend');
+  IF nullif(btrim(p ->> 'reason'), '') IS NULL AND COALESCE(p ->> 'kind', '') <> 'purchase' THEN
+    RAISE EXCEPTION 'Escribí el motivo' USING ERRCODE = 'SV016';
+  END IF;
+  v_plan := app_servicio.svc_extend_plan(jsonb_build_object('status', s.status, 'endsOn', s.ends_on, 'today', app_servicio.today_in(s.workspace_id),
+    'mode', p ->> 'mode', 'endOn', p ->> 'end_on', 'n', (p ->> 'n')::integer, 'unit', COALESCE(p ->> 'unit', 'days'), 'from', p ->> 'from'));
+  IF NOT (v_plan ->> 'ok')::boolean THEN
+    RAISE EXCEPTION '%', CASE v_plan ->> 'error'
+      WHEN 'SV030' THEN 'Este servicio no se puede extender' WHEN 'SV031' THEN 'La fecha nueva tiene que ser posterior a hoy'
+      ELSE 'Elegí hasta cuándo' END USING ERRCODE = v_plan ->> 'error';
+  END IF;
+  v_new := (v_plan ->> 'newEnd')::date;
+  v_prev := s.status;
+  UPDATE app_servicio.services
+     SET ends_on = v_new,
+         status = CASE WHEN (v_plan ->> 'reactivate')::boolean THEN 'active' ELSE status END,
+         completed_at = CASE WHEN (v_plan ->> 'reactivate')::boolean THEN NULL ELSE completed_at END,
+         extension_sale_ids = CASE WHEN (p ->> 'sale_id') IS NOT NULL AND NOT ((p ->> 'sale_id')::uuid = ANY (extension_sale_ids))
+                                   THEN extension_sale_ids || (p ->> 'sale_id')::uuid ELSE extension_sale_ids END
+   WHERE id = s.id;
+  v_shifted := app_servicio.svc_shift_access(s.id, 0, v_new, COALESCE((p ->> 'extend_own')::boolean, false));
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.extended',
+    jsonb_build_object('old_end', s.ends_on, 'new_end', v_new, 'kind', COALESCE(p ->> 'kind', 'bonus'), 'reason', p ->> 'reason',
+                       'sale_id', p ->> 'sale_id', 'reactivated', (v_plan ->> 'reactivate')::boolean, 'accesses', v_shifted));
+  SELECT * INTO s FROM app_servicio.services WHERE id = s.id;
+  PERFORM app_servicio.svc_compute_light(s.id);
+  PERFORM app_servicio.emit(s, 'service_extended', jsonb_build_object('new_end', v_new, 'kind', COALESCE(p ->> 'kind', 'bonus')));
+  IF v_prev <> s.status THEN PERFORM app_servicio.emit(s, 'service_status_changed', jsonb_build_object('previous_status', v_prev)); END IF;
+  RETURN jsonb_build_object('ends_on', v_new, 'reactivated', (v_plan ->> 'reactivate')::boolean, 'accesses', v_shifted);
+END;
+$$;
+
+-- "Revertir la extension" de una venta (F115): vuelve ends_on a la fecha anterior a esa extension.
+CREATE OR REPLACE FUNCTION app_servicio.svc_revert_extension(p_service_id uuid, p_sale_id uuid)
+RETURNS date LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  v_old date;
+BEGIN
+  s := app_servicio.svc_get(p_service_id, true);
+  PERFORM app_servicio.require_service(s, 'services.extend');
+  IF NOT (p_sale_id = ANY (s.extension_sale_ids)) THEN RAISE EXCEPTION 'Esa venta no extendió este servicio' USING ERRCODE = 'SV002'; END IF;
+  SELECT (a.changes ->> 'old_end')::date INTO v_old FROM public.audit_log a
+   WHERE a.entity_type = 'service' AND a.entity_id = s.id AND a.action = 'svc.extended' AND a.changes ->> 'sale_id' = p_sale_id::text
+   ORDER BY a.performed_at DESC LIMIT 1;
+  UPDATE app_servicio.services SET ends_on = v_old, extension_sale_ids = array_remove(extension_sale_ids, p_sale_id) WHERE id = s.id;
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.extension_reverted', jsonb_build_object('sale_id', p_sale_id, 'old_end', s.ends_on, 'new_end', v_old));
+  RETURN v_old;
+END;
+$$;
+
+-- ─── 15. Pausar y reanudar (F94) ────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_pause(p_service_id uuid, p jsonb)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  v_cut boolean := COALESCE((p ->> 'cut_access')::boolean, true);
+BEGIN
+  s := app_servicio.svc_get(p_service_id, true);
+  PERFORM app_servicio.require_service(s, 'services.pause');
+  IF nullif(btrim(p ->> 'reason'), '') IS NULL THEN RAISE EXCEPTION 'Escribí el motivo' USING ERRCODE = 'SV016'; END IF;
+  IF s.status <> 'active' THEN RAISE EXCEPTION 'Solo se pausa un servicio activo' USING ERRCODE = 'SV017'; END IF;
+  UPDATE app_servicio.services SET status = 'paused', paused_at = now(), pause_cut_access = v_cut, pause_resume_on = (p ->> 'resume_on')::date
+   WHERE id = s.id;
+  IF v_cut THEN PERFORM app_servicio.svc_suspend_for_pause(s.id, true); END IF;
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.paused',
+    jsonb_build_object('reason', p ->> 'reason', 'cut_access', v_cut, 'resume_on', p ->> 'resume_on'));
+  SELECT * INTO s FROM app_servicio.services WHERE id = s.id;
+  PERFORM app_servicio.svc_compute_light(s.id);
+  PERFORM app_servicio.emit(s, 'service_paused');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_resume(p_service_id uuid, p jsonb DEFAULT '{}'::jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  n integer;
+  v_items integer; v_tasks integer; v_access integer;
+  v_old_end date;
+BEGIN
+  s := app_servicio.svc_get(p_service_id, true);
+  PERFORM app_servicio.require_service(s, 'services.pause');
+  IF s.status <> 'paused' THEN RAISE EXCEPTION 'El servicio no está pausado' USING ERRCODE = 'SV017'; END IF;
+  n := app_servicio.svc_resume_plan(s.paused_at, now(), (p ->> 'shift_days')::integer);
+  v_old_end := s.ends_on;
+  UPDATE app_servicio.services
+     SET status = 'active', ends_on = CASE WHEN ends_on IS NULL THEN NULL ELSE ends_on + n END, paused_days = paused_days + n,
+         paused_at = NULL, pause_cut_access = NULL, pause_resume_on = NULL
+   WHERE id = s.id;
+  -- Se corren los vencimientos pendientes y las tareas abiertas de esos pasos.
+  UPDATE app_servicio.service_items SET due_on = due_on + n, due_at = due_at + make_interval(days => n)
+   WHERE service_id = s.id AND status = 'pending' AND (due_on IS NOT NULL OR due_at IS NOT NULL);
+  GET DIAGNOSTICS v_items = ROW_COUNT;
+  UPDATE public.tasks t SET due_date = t.due_date + n
+    FROM app_servicio.service_items i
+   WHERE i.service_id = s.id AND i.task_id = t.id AND t.status <> 'completed' AND t.due_date IS NOT NULL;
+  GET DIAGNOSTICS v_tasks = ROW_COUNT;
+  -- La fase en curso no cuenta los dias de pausa.
+  UPDATE app_servicio.service_phases SET started_at = started_at + make_interval(days => n) WHERE service_id = s.id AND status = 'in_progress';
+  v_access := app_servicio.svc_shift_access(s.id, n, NULL, false);
+  PERFORM app_servicio.svc_suspend_for_pause(s.id, false);
+  PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.resumed',
+    jsonb_build_object('shift_days', n, 'old_end', v_old_end, 'items', v_items, 'tasks', v_tasks, 'accesses', v_access));
+  SELECT * INTO s FROM app_servicio.services WHERE id = s.id;
+  -- Un Reto con fecha fija que cayo durante la pausa se abre al reanudar.
+  PERFORM app_servicio.svc_open_due_challenges(s.id);
+  PERFORM app_servicio.svc_generate_occurrences(s.id);
+  PERFORM app_servicio.svc_compute_light(s.id);
+  PERFORM app_servicio.emit(s, 'service_resumed', jsonb_build_object('shift_days', n));
+  RETURN jsonb_build_object('shift_days', n, 'ends_on', s.ends_on, 'items', v_items, 'tasks', v_tasks, 'accesses', v_access);
+END;
+$$;
+
+-- Abre los Retos de fecha fija que ya llegaron (cron diario y al reanudar).
+CREATE OR REPLACE FUNCTION app_servicio.svc_open_due_challenges(p_service_id uuid)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  ph app_servicio.service_phases;
+  s app_servicio.services;
+  n integer := 0;
+BEGIN
+  SELECT * INTO s FROM app_servicio.services WHERE id = p_service_id;
+  IF s.status <> 'active' THEN RETURN 0; END IF;
+  FOR ph IN SELECT * FROM app_servicio.service_phases WHERE service_id = p_service_id AND awaiting_start AND status = 'pending'
+             AND challenge ->> 'start' = 'fixed_date' AND (challenge ->> 'fixed_date')::date <= app_servicio.today_in(s.workspace_id) LOOP
+    IF NOT EXISTS (SELECT 1 FROM app_servicio.service_phases WHERE service_id = p_service_id AND status = 'in_progress') THEN
+      PERFORM app_servicio.svc_open_phase(ph.id, true);
+      n := n + 1;
+    END IF;
+  END LOOP;
+  RETURN n;
+END;
+$$;
+
+-- ─── 16. Permisos de ejecucion ──────────────────────────────────────────────
+DO $$
+DECLARE
+  f record;
+BEGIN
+  FOR f IN SELECT p.oid::regprocedure AS sig, p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'app_servicio' AND p.proname IN (
+              'ws_tz','today_in','local_date','end_of_day','as_system','is_system','audit','notify','notify_admins','emit','require_service','svc_get',
+              'svc_rule_met','svc_renewal_plan','svc_due_date','svc_phase_should_advance','svc_occurrence_dates','svc_day_word','svc_light',
+              'svc_extend_plan','svc_resume_plan','svc_owner_pick_rr','svc_owner_pick_plan','svc_condition_eval','svc_conditions_match',
+              'svc_contact_context','svc_pick_owner','svc_grant_initial_access','svc_open_access','svc_cut_access','svc_shift_access',
+              'svc_suspend_for_pause','svc_open_module','svc_compute_due','svc_ensure_task','svc_generate_occurrences','svc_instantiate_journey',
+              'svc_open_phase','svc_check_open_items','svc_mark_item','svc_complete_item','svc_require_item','svc_uncomplete_item',
+              'svc_try_advance_phase','svc_move_core','svc_move_to_phase','svc_start_challenge','svc_progress_trigger','svc_compute_light','svc_create_service',
+              'svc_activate','svc_confirm_service','svc_discard_service','svc_finish','svc_complete','svc_cancel_core','svc_cancel',
+              'svc_set_owner_core','svc_set_owner','svc_bulk_set_owner','svc_extend','svc_revert_extension','svc_pause','svc_resume',
+              'svc_open_due_challenges') LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM public, anon', f.sig);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', f.sig);
+  END LOOP;
+END $$;
+
+-- Lo que puede llamar una sesion (piden su clave adentro) y las reglas puras (para la pantalla).
+GRANT EXECUTE ON FUNCTION
+  app_servicio.svc_create_service(jsonb),
+  app_servicio.svc_confirm_service(uuid, date, uuid),
+  app_servicio.svc_discard_service(uuid, text),
+  app_servicio.svc_complete_item(uuid),
+  app_servicio.svc_uncomplete_item(uuid),
+  app_servicio.svc_move_to_phase(uuid, uuid, text),
+  app_servicio.svc_start_challenge(uuid, text),
+  app_servicio.svc_complete(uuid, text),
+  app_servicio.svc_cancel(uuid, text),
+  app_servicio.svc_set_owner(uuid, uuid),
+  app_servicio.svc_bulk_set_owner(uuid[], uuid, text),
+  app_servicio.svc_extend(uuid, jsonb),
+  app_servicio.svc_revert_extension(uuid, uuid),
+  app_servicio.svc_pause(uuid, jsonb),
+  app_servicio.svc_resume(uuid, jsonb),
+  app_servicio.svc_rule_met(jsonb),
+  app_servicio.svc_renewal_plan(jsonb),
+  app_servicio.svc_due_date(jsonb, jsonb),
+  app_servicio.svc_phase_should_advance(text, integer, integer, integer, integer),
+  app_servicio.svc_occurrence_dates(jsonb, date, date, date, date),
+  app_servicio.svc_light(jsonb),
+  app_servicio.svc_extend_plan(jsonb),
+  app_servicio.svc_resume_plan(timestamptz, timestamptz, integer),
+  app_servicio.svc_owner_pick_plan(jsonb),
+  app_servicio.svc_conditions_match(jsonb, jsonb),
+  app_servicio.svc_day_word(integer),
+  app_servicio.svc_owner_pick_rr(jsonb, jsonb),
+  app_servicio.svc_condition_eval(jsonb, jsonb)
+TO authenticated;
+
+-- ============================================================
+-- MIGRATION 334: APP SERVICIO SALES TRIGGERS
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00334_app_servicio_sales_triggers  (Servicios v12, Corrida A1 · S05 · bloque SV1)
+-- ============================================================================
+-- Los enganches sobre Ventas:
+-- 1. `trg_app_servicio_payment` (AFTER INSERT OR UPDATE OF status ON payments):
+--    - un pago que queda `paid` llama a `svc_evaluate_auto_creation` (F6, F9, F115): crea el servicio,
+--      lo deja por confirmar, crea uno enlazado, extiende el que ya tiene o no hace nada, segun la
+--      `service_settings` de LA VARIANTE de la venta (`sales.product_variant_id`, NOT NULL);
+--    - un pago que deja de estar `paid` despues de creado el servicio: el servicio queda, se anota
+--      `svc.payment_reverted` y se avisa (F10);
+--    - un cambio de un pago a/desde `overdue` recalcula el semaforo (F24).
+-- 2. `trg_app_servicio_sale` (AFTER UPDATE ON sales):
+--    - venta `cancelled` → cancela su servicio (tambien el por confirmar) y corta todos los accesos;
+--      `refunded` → lo cancela con motivo "reembolso" (F10);
+--    - un servicio completado queda completado y avisa; una venta de extension avisa con
+--      "Revertir la extension" (F115);
+--    - una venta editada despues (producto, variante o contacto) no cambia el servicio: aviso
+--      "La venta cambió: revisá el servicio".
+-- 3. `svc_sale_facts` (lo cobrado, en centimos) y `svc_rule_check` (si la venta cumple la regla, con el
+--    motivo; F95), sobre la regla pura `svc_rule_met`.
+--
+-- NUNCA hacen fallar el pago ni la venta: todo va en EXCEPTION WHEN OTHERS → RAISE WARNING + una fila
+-- `svc.hook_failed` en audit_log (sin datos personales) + aviso a Owner y Admin. Con el modulo apagado
+-- en el negocio, salen sin hacer nada.
+--
+-- Modifica logica existente (triggers nuevos sobre tablas de Ventas en uso). Riesgo ALTO.
+-- Va ANTES de desplegar el codigo.
+--
+-- Cómo volver atrás:
+--   DROP TRIGGER IF EXISTS trg_app_servicio_payment ON public.payments;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_sale ON public.sales;
+--   DROP FUNCTION IF EXISTS app_servicio.payment_hook(), app_servicio.sale_hook(),
+--     app_servicio.svc_evaluate_auto_creation(uuid), app_servicio.svc_rule_check(uuid), app_servicio.svc_sale_facts(uuid),
+--     app_servicio.hook_failed(uuid, text, text, uuid);
+-- Los triggers que ya existian sobre payments y sales (ver docs/servicios/punto-de-partida.json) no se tocan.
+-- ============================================================================
+
+-- Anota que un enganche fallo, sin datos personales, y avisa.
+CREATE OR REPLACE FUNCTION app_servicio.hook_failed(p_workspace_id uuid, p_hook text, p_error text, p_entity_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  RAISE WARNING 'app_servicio %: %', p_hook, p_error;
+  BEGIN
+    INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, actor_type, actor_label)
+    VALUES (p_workspace_id, 'service_hook', COALESCE(p_entity_id, p_workspace_id), 'svc.hook_failed',
+            jsonb_build_object('hook', p_hook, 'error', left(p_error, 300)), 'system', 'servicios');
+    PERFORM app_servicio.notify_admins(p_workspace_id, 'svc_hook_failed', 'Algo del módulo de Servicios no se pudo hacer solo',
+      'Revisalo a mano. El detalle quedó en la actividad.', 'service_hook', p_entity_id, jsonb_build_object('hook', p_hook));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'app_servicio.hook_failed: %', SQLERRM;
+  END;
+END;
+$$;
+
+-- Lo cobrado de una venta, en centimos: pagos paid que no son reembolso, menos los reembolsos paid.
+CREATE OR REPLACE FUNCTION app_servicio.svc_sale_facts(p_sale_id uuid)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT jsonb_build_object(
+    'collectedCents', COALESCE(sum(round(p.amount * 100)) FILTER (WHERE p.status = 'paid' AND p.type <> 'refund'), 0)
+                    - COALESCE(sum(abs(round(p.amount * 100))) FILTER (WHERE p.status = 'paid' AND p.type = 'refund'), 0),
+    'totalCents', (SELECT round(s.final_amount * 100) FROM public.sales s WHERE s.id = p_sale_id),
+    'hasNonReservationPaid', COALESCE(bool_or(p.status = 'paid' AND p.type NOT IN ('reservation', 'refund')), false),
+    'hasAnyPaid', COALESCE(bool_or(p.status = 'paid' AND p.type <> 'refund'), false),
+    'lastPaidAt', max(p.paid_at) FILTER (WHERE p.status = 'paid' AND p.type <> 'refund'))
+  FROM public.payments p WHERE p.sale_id = p_sale_id;
+$$;
+
+-- Si la venta cumple la regla de su variante, con el motivo (F95). {met, reason, mode, variant_id}
+-- reason: met | no_rule | already_has_service | before_enabled | only_reservation | below_percent |
+--         below_amount | no_payment
+CREATE OR REPLACE FUNCTION app_servicio.svc_rule_check(p_sale_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_sale public.sales;
+  v_settings jsonb;
+  v_facts jsonb;
+  v_rule text;
+  v_input jsonb;
+  v_enabled timestamptz;
+BEGIN
+  SELECT * INTO v_sale FROM public.sales WHERE id = p_sale_id;
+  IF v_sale.id IS NULL THEN RAISE EXCEPTION 'No existe la venta' USING ERRCODE = 'SV002'; END IF;
+  IF NOT app_servicio.is_system() AND NOT (public.is_workspace_member(v_sale.workspace_id) AND public.can_see_sale(v_sale)) THEN
+    RAISE EXCEPTION 'No tenés permiso para hacer esto' USING ERRCODE = 'SV004';
+  END IF;
+  SELECT pv.service_settings INTO v_settings FROM public.product_variants pv WHERE pv.id = v_sale.product_variant_id;
+  IF COALESCE(v_settings ->> 'mode', 'none') = 'none' THEN
+    RETURN jsonb_build_object('met', false, 'reason', 'no_rule', 'mode', 'none', 'variant_id', v_sale.product_variant_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM app_servicio.services s WHERE s.sale_id = p_sale_id OR p_sale_id = ANY (s.extension_sale_ids)) THEN
+    RETURN jsonb_build_object('met', false, 'reason', 'already_has_service', 'mode', v_settings ->> 'mode', 'variant_id', v_sale.product_variant_id);
+  END IF;
+  v_facts := app_servicio.svc_sale_facts(p_sale_id);
+  v_rule := v_settings #>> '{when,rule}';
+  v_enabled := (v_settings #>> '{when,enabled_at}')::timestamptz;
+  IF NOT (v_facts ->> 'hasAnyPaid')::boolean THEN
+    RETURN jsonb_build_object('met', false, 'reason', 'no_payment', 'mode', v_settings ->> 'mode', 'variant_id', v_sale.product_variant_id);
+  END IF;
+  IF v_enabled IS NOT NULL AND (v_facts ->> 'lastPaidAt')::timestamptz < v_enabled THEN
+    RETURN jsonb_build_object('met', false, 'reason', 'before_enabled', 'mode', v_settings ->> 'mode', 'variant_id', v_sale.product_variant_id);
+  END IF;
+  v_input := v_facts || jsonb_build_object('rule', v_rule, 'value', v_settings #> '{when,value}');
+  IF app_servicio.svc_rule_met(v_input) THEN
+    RETURN jsonb_build_object('met', true, 'reason', 'met', 'mode', v_settings ->> 'mode', 'variant_id', v_sale.product_variant_id);
+  END IF;
+  RETURN jsonb_build_object('met', false, 'mode', v_settings ->> 'mode', 'variant_id', v_sale.product_variant_id, 'reason',
+    CASE v_rule WHEN 'non_reservation' THEN 'only_reservation' WHEN 'percent' THEN 'below_percent' WHEN 'amount' THEN 'below_amount' ELSE 'no_payment' END);
+END;
+$$;
+
+-- La creacion automatica al cobrar (F6, F9, F115). La llama el trigger de payments.
+CREATE OR REPLACE FUNCTION app_servicio.svc_evaluate_auto_creation(p_payment_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_pay public.payments;
+  v_sale public.sales;
+  v_var public.product_variants;
+  v_settings jsonb;
+  v_check jsonb;
+  v_prev app_servicio.services;
+  v_target app_servicio.services;
+  v_plan jsonb;
+  v_pay_day date;
+  v_start date;
+  v_status text;
+  v_flags jsonb := '{}'::jsonb;
+  v_id uuid;
+  v_n integer; v_unit text; v_base date; v_new_end date;
+  v_fallback uuid;
+BEGIN
+  PERFORM app_servicio.as_system();
+  SELECT * INTO v_pay FROM public.payments WHERE id = p_payment_id;
+  IF v_pay.id IS NULL OR v_pay.status <> 'paid' OR v_pay.type = 'refund' THEN RETURN jsonb_build_object('action', 'none'); END IF;
+  IF NOT app_servicio.module_on(v_pay.workspace_id) THEN RETURN jsonb_build_object('action', 'module_off'); END IF;
+  SELECT * INTO v_sale FROM public.sales WHERE id = v_pay.sale_id;
+  SELECT * INTO v_var FROM public.product_variants WHERE id = v_sale.product_variant_id;
+  v_settings := v_var.service_settings;
+  IF COALESCE(v_settings ->> 'mode', 'none') = 'none' THEN RETURN jsonb_build_object('action', 'none'); END IF;
+  -- Corregir o resincronizar un pago viejo nunca crea un servicio (F6, regla 2).
+  IF (v_settings #>> '{when,enabled_at}') IS NOT NULL AND COALESCE(v_pay.paid_at, now()) < (v_settings #>> '{when,enabled_at}')::timestamptz THEN
+    RETURN jsonb_build_object('action', 'before_enabled');
+  END IF;
+  v_check := app_servicio.svc_rule_check(v_sale.id);
+  IF NOT (v_check ->> 'met')::boolean THEN RETURN jsonb_build_object('action', 'none', 'reason', v_check ->> 'reason'); END IF;
+  v_pay_day := COALESCE(v_pay.paid_on, app_servicio.local_date(v_pay.paid_at, v_pay.workspace_id), app_servicio.today_in(v_pay.workspace_id));
+
+  IF v_settings ->> 'mode' = 'create' THEN
+    v_start := CASE COALESCE(v_settings ->> 'start', 'payment_date')
+      WHEN 'payment_date' THEN v_pay_day
+      WHEN 'sale_date' THEN COALESCE(v_sale.service_starts_at, v_sale.sale_date)
+      ELSE NULL END;
+    v_status := CASE WHEN COALESCE((v_settings ->> 'confirm')::boolean, false) OR v_settings ->> 'start' = 'manual' THEN 'pending_confirmation' ELSE 'active' END;
+    -- El servicio previo del mismo producto (el mas reciente que no se cancelo).
+    SELECT * INTO v_prev FROM app_servicio.services s
+     WHERE s.contact_id = v_sale.contact_id AND s.product_id = v_var.product_id AND s.status NOT IN ('cancelled', 'pending_confirmation')
+     ORDER BY COALESCE(s.ends_on, 'infinity'::date) DESC, s.created_at DESC LIMIT 1;
+    v_plan := app_servicio.svc_renewal_plan(jsonb_build_object('renewal', COALESCE(v_settings ->> 'renewal', 'new_linked'),
+      'today', v_pay_day, 'prev', CASE WHEN v_prev.id IS NULL THEN NULL ELSE jsonb_build_object('status', v_prev.status, 'endsOn', v_prev.ends_on,
+      'endedOn', COALESCE(app_servicio.local_date(v_prev.completed_at, v_prev.workspace_id), v_prev.ends_on)) END));
+    -- ¿Venta repetida? (mismo producto y variante, activo que empezo hace menos de 7 dias)
+    IF v_prev.id IS NOT NULL AND v_prev.status = 'active' AND v_prev.product_variant_id = v_var.id
+       AND v_prev.starts_on IS NOT NULL AND v_pay_day - v_prev.starts_on < 7 THEN
+      v_status := 'pending_confirmation';
+      v_flags := v_flags || jsonb_build_object('possible_duplicate', true);
+    END IF;
+    CASE v_plan ->> 'action'
+      WHEN 'extend' THEN
+        v_n := v_var.duration_value;
+        IF v_var.duration_type = 'lifetime' OR v_n IS NULL THEN RETURN jsonb_build_object('action', 'none', 'reason', 'lifetime'); END IF;
+        PERFORM app_servicio.svc_extend(v_prev.id, jsonb_build_object('mode', 'period', 'n', v_n, 'unit', v_var.duration_type,
+          'kind', 'purchase', 'sale_id', v_sale.id, 'reason', 'Compró otra vez'));
+        RETURN jsonb_build_object('action', 'extended', 'service_id', v_prev.id);
+      WHEN 'ask' THEN
+        v_status := 'pending_confirmation';
+        v_flags := v_flags || jsonb_build_object('renewal_choice_pending', true);
+        v_id := app_servicio.svc_create_service(jsonb_build_object('contact_id', v_sale.contact_id, 'variant_id', v_var.id, 'sale_id', v_sale.id,
+          'origin', 'sale', 'status', v_status, 'starts_on', v_start, 'previous_service_id', v_prev.id, 'flags', v_flags));
+      WHEN 'new_linked' THEN
+        v_id := app_servicio.svc_create_service(jsonb_build_object('contact_id', v_sale.contact_id, 'variant_id', v_var.id, 'sale_id', v_sale.id,
+          'origin', 'sale', 'status', v_status, 'starts_on', COALESCE((v_plan ->> 'startsOn')::date, v_start), 'previous_service_id', v_prev.id,
+          'owner_user_id', CASE WHEN v_settings #>> '{owner,mode}' = 'previous' OR v_prev.status IN ('active','paused') THEN v_prev.owner_user_id END,
+          'flags', v_flags || CASE WHEN (v_plan ->> 'startsOn') IS NOT NULL THEN '{"renews_previous": true}'::jsonb ELSE '{}'::jsonb END));
+      WHEN 'recovery' THEN
+        v_id := app_servicio.svc_create_service(jsonb_build_object('contact_id', v_sale.contact_id, 'variant_id', v_var.id, 'sale_id', v_sale.id,
+          'origin', 'recovery', 'origin_reason', 'Volvió a comprar', 'status', v_status, 'starts_on', v_start, 'previous_service_id', v_prev.id, 'flags', v_flags));
+      ELSE
+        v_id := app_servicio.svc_create_service(jsonb_build_object('contact_id', v_sale.contact_id, 'variant_id', v_var.id, 'sale_id', v_sale.id,
+          'origin', 'sale', 'status', v_status, 'starts_on', v_start, 'flags', v_flags));
+    END CASE;
+    RETURN jsonb_build_object('action', 'created', 'service_id', v_id, 'status', v_status);
+  END IF;
+
+  -- mode = extend (renovaciones, F115): extiende el servicio del contacto del mismo producto.
+  SELECT * INTO v_target FROM app_servicio.services s
+   WHERE s.contact_id = v_sale.contact_id AND s.product_id = v_var.product_id AND s.status IN ('active', 'paused', 'completed')
+     AND (jsonb_typeof(v_settings #> '{extend,target_variant_ids}') IS DISTINCT FROM 'array'
+          OR s.product_variant_id::text IN (SELECT jsonb_array_elements_text(v_settings #> '{extend,target_variant_ids}')))
+   ORDER BY s.ends_on DESC NULLS FIRST, s.created_at DESC LIMIT 1;
+  IF v_target.id IS NOT NULL THEN
+    v_n := (v_settings #>> '{extend,n}')::integer;
+    v_unit := COALESCE(v_settings #>> '{extend,unit}', 'months');
+    v_base := CASE WHEN v_target.status IN ('active', 'paused') AND v_target.ends_on IS NOT NULL THEN v_target.ends_on ELSE v_pay_day END;
+    v_new_end := CASE v_unit WHEN 'months' THEN (v_base + make_interval(months => v_n))::date WHEN 'weeks' THEN v_base + v_n * 7 ELSE v_base + v_n END;
+    PERFORM app_servicio.svc_extend(v_target.id, jsonb_build_object('mode', 'end_date', 'end_on', v_new_end, 'kind', 'purchase',
+      'sale_id', v_sale.id, 'reason', 'Renovación', 'extend_own', COALESCE((v_settings #>> '{extend,extend_accesses}')::boolean, false)));
+    RETURN jsonb_build_object('action', 'extended', 'service_id', v_target.id);
+  END IF;
+  -- Sin servicio para extender: la variante de respaldo (por confirmar, por defecto, o activo).
+  v_fallback := (v_settings #>> '{extend,fallback_variant_id}')::uuid;
+  v_status := CASE WHEN COALESCE(v_settings #>> '{extend,if_no_service}', 'confirm') = 'create' THEN 'active' ELSE 'pending_confirmation' END;
+  v_id := app_servicio.svc_create_service(jsonb_build_object('contact_id', v_sale.contact_id, 'variant_id', v_fallback, 'sale_id', v_sale.id,
+    'origin', 'sale', 'status', v_status, 'starts_on', v_pay_day, 'flags', jsonb_build_object('renewal_without_previous', true)));
+  PERFORM app_servicio.notify_admins(v_sale.workspace_id, 'svc_renewal_without_previous', 'Compró una renovación sin servicio anterior',
+    'Se creó el servicio con la variante de respaldo. Revisalo.', 'service', v_id);
+  RETURN jsonb_build_object('action', 'created_fallback', 'service_id', v_id, 'status', v_status);
+END;
+$$;
+
+-- El trigger de payments. Nunca hace fallar el pago.
+CREATE OR REPLACE FUNCTION app_servicio.payment_hook()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s record;
+  v_prev_system text := COALESCE(current_setting('app_servicio.system', true), '');
+BEGIN
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NULL; END IF;
+  BEGIN
+    PERFORM app_servicio.as_system();
+    IF NEW.status = 'paid' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'paid') THEN
+      BEGIN
+        PERFORM app_servicio.svc_evaluate_auto_creation(NEW.id);
+      EXCEPTION
+        WHEN SQLSTATE 'SV013' THEN NULL;  -- otro pago de la misma venta lo creo en el mismo instante
+      END;
+    ELSIF TG_OP = 'UPDATE' AND OLD.status = 'paid' AND NEW.status <> 'paid' AND NEW.type <> 'refund' THEN
+      -- Un cobro revertido despues de creado el servicio: el servicio queda (F10).
+      FOR s IN SELECT * FROM app_servicio.services WHERE sale_id = NEW.sale_id AND status NOT IN ('cancelled') LOOP
+        PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.payment_reverted', jsonb_build_object('payment_id', NEW.id), 'system');
+        PERFORM app_servicio.notify(s.workspace_id, s.owner_user_id, 'svc_payment_reverted', 'Se revirtió un pago de un servicio',
+          'El servicio sigue igual. Revisá la venta.', 'service', s.id);
+        PERFORM app_servicio.notify_admins(s.workspace_id, 'svc_payment_reverted', 'Se revirtió un pago de un servicio',
+          'El servicio sigue igual. Revisá la venta.', 'service', s.id);
+      END LOOP;
+    END IF;
+    -- Un pago que entra o sale de mora cambia el semaforo.
+    IF TG_OP = 'UPDATE' AND (OLD.status = 'overdue' OR NEW.status = 'overdue') AND OLD.status IS DISTINCT FROM NEW.status THEN
+      FOR s IN SELECT id FROM app_servicio.services WHERE sale_id = NEW.sale_id LOOP
+        PERFORM app_servicio.svc_compute_light(s.id);
+      END LOOP;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(NEW.workspace_id, 'payment', SQLSTATE || ' ' || SQLERRM, NEW.id);
+  END;
+  -- La marca de "sistema" vale solo mientras corre el enganche.
+  PERFORM set_config('app_servicio.system', v_prev_system, true);
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_app_servicio_payment ON public.payments;
+CREATE TRIGGER trg_app_servicio_payment
+  AFTER INSERT OR UPDATE OF status ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.payment_hook();
+
+-- El trigger de sales. Nunca hace fallar la venta.
+CREATE OR REPLACE FUNCTION app_servicio.sale_hook()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio.services;
+  v_prev_system text := COALESCE(current_setting('app_servicio.system', true), '');
+BEGIN
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NULL; END IF;
+  BEGIN
+    PERFORM app_servicio.as_system();
+    IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status IN ('cancelled', 'refunded') THEN
+      FOR s IN SELECT * FROM app_servicio.services WHERE sale_id = NEW.id LOOP
+        IF s.status = 'completed' THEN
+          PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.sale_closed_after_completion', jsonb_build_object('sale_status', NEW.status), 'system');
+          PERFORM app_servicio.notify_admins(s.workspace_id, 'svc_sale_closed', 'Se canceló la venta de un servicio completado',
+            'El servicio queda completado. Revisalo si hace falta.', 'service', s.id);
+        ELSIF s.status NOT IN ('cancelled', 'renewed') THEN
+          PERFORM app_servicio.svc_cancel_core(s.id,
+            CASE WHEN NEW.status = 'refunded' THEN 'reembolso' ELSE COALESCE(nullif(btrim(NEW.cancellation_reason), ''), 'Venta cancelada') END,
+            CASE WHEN NEW.status = 'refunded' THEN 'refunded' ELSE 'cancelled' END);
+        END IF;
+      END LOOP;
+      -- Una venta que extendio un servicio no se revierte sola (F115): aviso con "Revertir la extension".
+      FOR s IN SELECT * FROM app_servicio.services WHERE NEW.id = ANY (extension_sale_ids) LOOP
+        PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.extension_sale_closed', jsonb_build_object('sale_id', NEW.id, 'sale_status', NEW.status), 'system');
+        PERFORM app_servicio.notify_admins(s.workspace_id, 'svc_extension_sale_closed', 'Se canceló una venta que extendió un servicio',
+          'Podés revertir la extensión desde la ficha del servicio.', 'service', s.id, jsonb_build_object('sale_id', NEW.id));
+      END LOOP;
+    END IF;
+    -- La venta cambio despues: el servicio no cambia solo (F10, §14f).
+    IF NEW.product_variant_id IS DISTINCT FROM OLD.product_variant_id OR NEW.contact_id IS DISTINCT FROM OLD.contact_id
+       OR (NEW.product_snapshot ->> 'product_id') IS DISTINCT FROM (OLD.product_snapshot ->> 'product_id') THEN
+      FOR s IN SELECT * FROM app_servicio.services WHERE sale_id = NEW.id AND status NOT IN ('cancelled') LOOP
+        UPDATE app_servicio.services SET flags = flags || '{"sale_changed": true}'::jsonb WHERE id = s.id;
+        PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.sale_changed', jsonb_build_object('sale_id', NEW.id), 'system');
+        PERFORM app_servicio.notify(s.workspace_id, s.owner_user_id, 'svc_sale_changed', 'La venta cambió: revisá el servicio',
+          COALESCE(s.product_snapshot ->> 'product_name', ''), 'service', s.id);
+      END LOOP;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(NEW.workspace_id, 'sale', SQLSTATE || ' ' || SQLERRM, NEW.id);
+  END;
+  PERFORM set_config('app_servicio.system', v_prev_system, true);
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_app_servicio_sale ON public.sales;
+CREATE TRIGGER trg_app_servicio_sale
+  AFTER UPDATE ON public.sales
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.sale_hook();
+
+REVOKE ALL ON FUNCTION app_servicio.hook_failed(uuid, text, text, uuid), app_servicio.svc_sale_facts(uuid), app_servicio.svc_rule_check(uuid),
+  app_servicio.svc_evaluate_auto_creation(uuid), app_servicio.payment_hook(), app_servicio.sale_hook() FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.hook_failed(uuid, text, text, uuid), app_servicio.svc_sale_facts(uuid),
+  app_servicio.svc_evaluate_auto_creation(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_rule_check(uuid) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 335: APP SERVICIO COMPLETION TRIGGERS
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00335_app_servicio_completion_triggers  (Servicios v12, Corrida A1 · S06 · bloque SV2)
+-- ============================================================================
+-- Los pasos del camino se completan solos (F17, F18, F20) y se avisa cuando alguien deja el equipo (F96):
+-- 1. form_submissions:
+--    - BEFORE INSERT (`trg_app_servicio_submission_item`): el servidor pone el paso del link firmado en
+--      `meta.service_item_id` (submit_form_response guarda el meta SIN filtrar, 00204: rama A de F17).
+--      Se copia a `service_item_id` solo si el paso es del mismo servicio y del mismo contacto; si no,
+--      se descarta (y la respuesta se guarda igual).
+--    - AFTER INSERT (`trg_app_servicio_submission`): formulario o encuesta. Con paso firmado completa ESE
+--      paso; sin el, el paso pendiente con ese form_id del servicio mas antiguo del contacto (y anota
+--      `svc.item_ambiguous` si habia varios). Las actividades y evaluaciones las suma la 00340 (S11).
+-- 2. contract_signatures AFTER INSERT (`trg_app_servicio_signature`): igual, con el formulario de contrato.
+-- 3. bookings AFTER INSERT OR UPDATE OF status (`trg_app_servicio_booking`): un paso de agenda por
+--    `event_type_id` (NUNCA por el nombre). `booked` al agendar; `attended` cuando la reunion pasa a un
+--    resultado (`status_group = 'outcome'`: no existe el estado "asistio"). `utm.svc_item` se respeta
+--    solo si el contacto es el del servicio. create_booking no se toca.
+-- 4. tasks AFTER UPDATE OF status (`trg_app_servicio_task`): completar la tarea `cx` de un paso completa
+--    el paso; reabrirla lo destilda (si la fase sigue abierta).
+-- 5. workspace_members AFTER DELETE (`trg_app_servicio_member_removed`): quien deja el equipo con
+--    servicios a cargo: marca y aviso a Owner y Admin "X tiene N servicios: reasignalos".
+--
+-- NINGUNO hace fallar lo que lo dispara: EXCEPTION WHEN OTHERS → RAISE WARNING + svc.hook_failed + aviso.
+-- Con el modulo apagado en el negocio, salen sin hacer nada.
+--
+-- Modifica logica existente (triggers nuevos en tablas en uso). Riesgo ALTO. Va ANTES del codigo.
+--
+-- Cómo volver atrás:
+--   DROP TRIGGER IF EXISTS trg_app_servicio_submission_item ON public.form_submissions;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_submission ON public.form_submissions;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_signature ON public.contract_signatures;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_booking ON public.bookings;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_task ON public.tasks;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_member_removed ON public.workspace_members;
+--   DROP FUNCTION IF EXISTS app_servicio.submission_item_hook(), app_servicio.submission_hook(), app_servicio.signature_hook(),
+--     app_servicio.booking_hook(), app_servicio.task_hook(), app_servicio.member_removed_hook(),
+--     app_servicio.svc_complete_by_form(uuid, uuid, uuid, uuid, text, text), app_servicio.svc_unmark_item(uuid);
+-- ============================================================================
+
+-- Destilda sin pedir permiso (lo usa la tarea reabierta). Nunca en una fase cerrada.
+CREATE OR REPLACE FUNCTION app_servicio.svc_unmark_item(p_item_id uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  it app_servicio.service_items;
+  ph app_servicio.service_phases;
+BEGIN
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id FOR UPDATE;
+  IF it.id IS NULL OR it.status <> 'completed' THEN RETURN false; END IF;
+  SELECT * INTO ph FROM app_servicio.service_phases WHERE id = it.phase_id;
+  IF ph.status = 'completed' THEN RETURN false; END IF;
+  UPDATE app_servicio.service_items SET status = 'pending', completed_at = NULL, completed_by_kind = NULL, completed_by = NULL, completed_source = NULL
+   WHERE id = it.id;
+  PERFORM app_servicio.audit(it.workspace_id, 'service_item', it.id, 'svc.item_uncompleted', jsonb_build_object('service_id', it.service_id, 'source', 'task'), 'system');
+  PERFORM app_servicio.svc_compute_light(it.service_id);
+  RETURN true;
+END;
+$$;
+
+-- Completa el paso que pide ese formulario para ese contacto (F17). Devuelve el paso completado o NULL.
+-- p_kinds: los tipos de paso que acepta (form/survey, contract); p_signed_item: el paso del link firmado.
+CREATE OR REPLACE FUNCTION app_servicio.svc_complete_by_form(p_workspace_id uuid, p_contact_id uuid, p_form_id uuid, p_signed_item uuid, p_kinds text, p_source text)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  it app_servicio.service_items;
+  v_count integer;
+  v_kinds text[] := string_to_array(p_kinds, ',');
+BEGIN
+  IF p_signed_item IS NOT NULL THEN
+    SELECT i.* INTO it FROM app_servicio.service_items i JOIN app_servicio.services s ON s.id = i.service_id
+     WHERE i.id = p_signed_item AND s.contact_id = p_contact_id AND i.status = 'pending' AND i.kind = ANY (v_kinds)
+       AND i.ref ->> 'form_id' = p_form_id::text AND COALESCE(i.ref ->> 'complete_on', 'submitted') = 'submitted';
+    IF it.id IS NOT NULL THEN
+      PERFORM app_servicio.svc_mark_item(it.id, p_source, 'client', NULL);
+      RETURN it.id;
+    END IF;
+    RETURN NULL;
+  END IF;
+  -- Sin paso firmado: los pasos pendientes con ese formulario en servicios activos del contacto, primero
+  -- los de la fase en curso; si hay varios servicios, el mas antiguo.
+  SELECT count(DISTINCT i.service_id) INTO v_count
+    FROM app_servicio.service_items i JOIN app_servicio.services s ON s.id = i.service_id JOIN app_servicio.service_phases ph ON ph.id = i.phase_id
+   WHERE s.workspace_id = p_workspace_id AND s.contact_id = p_contact_id AND s.status = 'active' AND i.status = 'pending' AND NOT i.is_recurring_template
+     AND i.kind = ANY (v_kinds) AND i.ref ->> 'form_id' = p_form_id::text AND COALESCE(i.ref ->> 'complete_on', 'submitted') = 'submitted'
+     AND ph.status <> 'completed';
+  IF v_count = 0 THEN RETURN NULL; END IF;
+  SELECT i.* INTO it
+    FROM app_servicio.service_items i JOIN app_servicio.services s ON s.id = i.service_id JOIN app_servicio.service_phases ph ON ph.id = i.phase_id
+   WHERE s.workspace_id = p_workspace_id AND s.contact_id = p_contact_id AND s.status = 'active' AND i.status = 'pending' AND NOT i.is_recurring_template
+     AND i.kind = ANY (v_kinds) AND i.ref ->> 'form_id' = p_form_id::text AND COALESCE(i.ref ->> 'complete_on', 'submitted') = 'submitted'
+     AND ph.status <> 'completed'
+   ORDER BY s.created_at, (ph.status = 'in_progress') DESC, ph.position, i.position, i.occurrence_index NULLS FIRST
+   LIMIT 1;
+  IF v_count > 1 THEN
+    PERFORM app_servicio.audit(p_workspace_id, 'service_item', it.id, 'svc.item_ambiguous',
+      jsonb_build_object('service_id', it.service_id, 'form_id', p_form_id, 'services', v_count), 'system');
+  END IF;
+  PERFORM app_servicio.svc_mark_item(it.id, p_source, 'client', NULL);
+  RETURN it.id;
+END;
+$$;
+
+-- ─── 1. form_submissions ────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.submission_item_hook()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_item uuid;
+BEGIN
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NEW; END IF;
+  BEGIN
+    IF NEW.meta ? 'service_item_id' AND (NEW.meta ->> 'service_item_id') ~* '^[0-9a-f-]{36}$' THEN
+      SELECT i.id INTO v_item FROM app_servicio.service_items i JOIN app_servicio.services s ON s.id = i.service_id
+       WHERE i.id = (NEW.meta ->> 'service_item_id')::uuid AND s.workspace_id = NEW.workspace_id
+         AND s.contact_id IS NOT DISTINCT FROM NEW.contact_id AND (NEW.service_id IS NULL OR s.id = NEW.service_id);
+      NEW.service_item_id := v_item;  -- NULL si no es del mismo servicio y contacto: se descarta
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'app_servicio.submission_item_hook: %', SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_app_servicio_submission_item ON public.form_submissions;
+CREATE TRIGGER trg_app_servicio_submission_item
+  BEFORE INSERT ON public.form_submissions
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.submission_item_hook();
+
+CREATE OR REPLACE FUNCTION app_servicio.submission_hook()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_type text;
+  v_done uuid;
+  v_owner uuid;
+  v_prev_system text := COALESCE(current_setting('app_servicio.system', true), '');
+BEGIN
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NULL; END IF;
+  BEGIN
+    PERFORM app_servicio.as_system();
+    IF NEW.status = 'received' AND NEW.contact_id IS NOT NULL THEN
+      SELECT f.type INTO v_type FROM public.forms f WHERE f.id = NEW.form_id;
+      IF v_type IN ('custom', 'survey') THEN
+        v_done := app_servicio.svc_complete_by_form(NEW.workspace_id, NEW.contact_id, NEW.form_id, NEW.service_item_id,
+                    CASE v_type WHEN 'survey' THEN 'survey' ELSE 'form' END, 'form_submission');
+        -- Un link firmado que no se pudo ubicar: no completa nada y avisa al responsable (F17).
+        IF v_done IS NULL AND (NEW.meta ? 'service_item_id' OR NEW.service_id IS NOT NULL) THEN
+          SELECT s.owner_user_id INTO v_owner FROM app_servicio.services s WHERE s.id = NEW.service_id;
+          PERFORM app_servicio.notify(NEW.workspace_id, v_owner, 'svc_item_unmatched', 'Llegó una respuesta que no se pudo ubicar',
+            'No completó ningún paso del camino. Revisala.', 'form_submission', NEW.id);
+          PERFORM app_servicio.audit(NEW.workspace_id, 'form_submission', NEW.id, 'svc.item_unmatched', jsonb_build_object('form_id', NEW.form_id), 'system');
+        END IF;
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(NEW.workspace_id, 'form_submission', SQLSTATE || ' ' || SQLERRM, NEW.id);
+  END;
+  PERFORM set_config('app_servicio.system', v_prev_system, true);
+  RETURN NULL;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_app_servicio_submission ON public.form_submissions;
+CREATE TRIGGER trg_app_servicio_submission
+  AFTER INSERT ON public.form_submissions
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.submission_hook();
+
+-- ─── 2. contract_signatures ─────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.signature_hook()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_contact uuid;
+  v_item uuid;
+  v_prev_system text := COALESCE(current_setting('app_servicio.system', true), '');
+BEGIN
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NULL; END IF;
+  BEGIN
+    PERFORM app_servicio.as_system();
+    SELECT fs.contact_id, fs.service_item_id INTO v_contact, v_item FROM public.form_submissions fs WHERE fs.id = NEW.submission_id;
+    v_contact := COALESCE(NEW.contact_id, v_contact);
+    IF v_contact IS NOT NULL THEN
+      PERFORM app_servicio.svc_complete_by_form(NEW.workspace_id, v_contact, NEW.form_id, v_item, 'contract', 'contract_signature');
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(NEW.workspace_id, 'contract_signature', SQLSTATE || ' ' || SQLERRM, NEW.id);
+  END;
+  PERFORM set_config('app_servicio.system', v_prev_system, true);
+  RETURN NULL;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_app_servicio_signature ON public.contract_signatures;
+CREATE TRIGGER trg_app_servicio_signature
+  AFTER INSERT ON public.contract_signatures
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.signature_hook();
+
+-- ─── 3. bookings (F18) ──────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.booking_hook()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_when text;
+  it app_servicio.service_items;
+  v_count integer;
+  v_signed uuid;
+  v_prev_system text := COALESCE(current_setting('app_servicio.system', true), '');
+BEGIN
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NULL; END IF;
+  BEGIN
+    PERFORM app_servicio.as_system();
+    IF NEW.contact_id IS NULL OR NEW.status LIKE 'cancelled%' THEN
+      PERFORM set_config('app_servicio.system', v_prev_system, true);
+      RETURN NULL;
+    END IF;
+    -- booked: al agendar. attended: al pasar a un resultado (status_group = outcome).
+    v_when := CASE WHEN TG_OP = 'INSERT' THEN 'booked'
+                   WHEN NEW.status_group = 'outcome' AND OLD.status_group IS DISTINCT FROM 'outcome' THEN 'attended' END;
+    IF v_when IS NOT NULL THEN
+      -- El paso que viene en el link de la agenda, solo si es del mismo contacto.
+      IF (NEW.utm ->> 'svc_item') ~* '^[0-9a-f-]{36}$' THEN
+        SELECT i.id INTO v_signed FROM app_servicio.service_items i JOIN app_servicio.services s ON s.id = i.service_id
+         WHERE i.id = (NEW.utm ->> 'svc_item')::uuid AND s.contact_id = NEW.contact_id AND s.workspace_id = NEW.workspace_id;
+      END IF;
+      SELECT count(DISTINCT i.service_id) INTO v_count
+        FROM app_servicio.service_items i JOIN app_servicio.services s ON s.id = i.service_id JOIN app_servicio.service_phases ph ON ph.id = i.phase_id
+       WHERE s.workspace_id = NEW.workspace_id AND s.contact_id = NEW.contact_id AND s.status = 'active' AND i.status = 'pending'
+         AND i.kind = 'booking' AND i.ref ->> 'event_type_id' = NEW.event_type_id::text AND COALESCE(i.ref ->> 'complete_on', 'booked') = v_when
+         AND ph.status <> 'completed' AND (v_signed IS NULL OR i.id = v_signed);
+      IF v_count > 0 THEN
+        SELECT i.* INTO it
+          FROM app_servicio.service_items i JOIN app_servicio.services s ON s.id = i.service_id JOIN app_servicio.service_phases ph ON ph.id = i.phase_id
+         WHERE s.workspace_id = NEW.workspace_id AND s.contact_id = NEW.contact_id AND s.status = 'active' AND i.status = 'pending'
+           AND i.kind = 'booking' AND i.ref ->> 'event_type_id' = NEW.event_type_id::text AND COALESCE(i.ref ->> 'complete_on', 'booked') = v_when
+           AND ph.status <> 'completed' AND (v_signed IS NULL OR i.id = v_signed)
+         ORDER BY s.created_at, (ph.status = 'in_progress') DESC, ph.position, i.position LIMIT 1;
+        IF v_count > 1 THEN
+          PERFORM app_servicio.audit(NEW.workspace_id, 'service_item', it.id, 'svc.item_ambiguous',
+            jsonb_build_object('service_id', it.service_id, 'event_type_id', NEW.event_type_id, 'services', v_count), 'system');
+        END IF;
+        PERFORM app_servicio.svc_mark_item(it.id, 'booking_' || v_when, 'client', NULL);
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(NEW.workspace_id, 'booking', SQLSTATE || ' ' || SQLERRM, NEW.id);
+  END;
+  PERFORM set_config('app_servicio.system', v_prev_system, true);
+  RETURN NULL;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_app_servicio_booking ON public.bookings;
+CREATE TRIGGER trg_app_servicio_booking
+  AFTER INSERT OR UPDATE OF status ON public.bookings
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.booking_hook();
+
+-- ─── 4. tasks (F20) ─────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.task_hook()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_item uuid;
+  v_prev_system text := COALESCE(current_setting('app_servicio.system', true), '');
+BEGIN
+  IF NEW.source <> 'cx' OR NEW.source_ref IS NULL OR NEW.source_ref NOT LIKE 'svc\_item:%' THEN RETURN NULL; END IF;
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NULL; END IF;
+  BEGIN
+    PERFORM app_servicio.as_system();
+    SELECT i.id INTO v_item FROM app_servicio.service_items i
+     WHERE i.id = substr(NEW.source_ref, 10)::uuid AND i.workspace_id = NEW.workspace_id AND i.task_id = NEW.id;
+    IF v_item IS NOT NULL THEN
+      IF NEW.status = 'completed' AND OLD.status IS DISTINCT FROM 'completed' THEN
+        PERFORM app_servicio.svc_mark_item(v_item, 'task', 'user', NULL);
+      ELSIF OLD.status = 'completed' AND NEW.status <> 'completed' THEN
+        PERFORM app_servicio.svc_unmark_item(v_item);
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(NEW.workspace_id, 'task', SQLSTATE || ' ' || SQLERRM, NEW.id);
+  END;
+  PERFORM set_config('app_servicio.system', v_prev_system, true);
+  RETURN NULL;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_app_servicio_task ON public.tasks;
+CREATE TRIGGER trg_app_servicio_task
+  AFTER UPDATE OF status ON public.tasks
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.task_hook();
+
+-- ─── 5. workspace_members: alguien deja el equipo (F96) ─────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.member_removed_hook()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_n integer;
+  v_name text;
+BEGIN
+  IF NOT app_servicio.module_on(OLD.workspace_id) THEN RETURN NULL; END IF;
+  BEGIN
+    UPDATE app_servicio.services SET flags = flags || '{"owner_departed": true}'::jsonb
+     WHERE workspace_id = OLD.workspace_id AND owner_user_id = OLD.user_id AND status IN ('active', 'paused', 'pending_confirmation');
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    IF v_n > 0 THEN
+      SELECT COALESCE(NULLIF(u.raw_user_meta_data ->> 'full_name', ''), 'Una persona') INTO v_name FROM auth.users u WHERE u.id = OLD.user_id;
+      PERFORM app_servicio.notify_admins(OLD.workspace_id, 'svc_owner_departed',
+        format('%s tiene %s servicios: reasignalos', COALESCE(v_name, 'Una persona'), v_n),
+        'Dejó el equipo y quedaron a su nombre. Reasignalos desde Clientes.', 'workspace', OLD.workspace_id,
+        jsonb_build_object('user_id', OLD.user_id, 'services', v_n));
+      PERFORM app_servicio.audit(OLD.workspace_id, 'workspace', OLD.workspace_id, 'svc.owner_departed', jsonb_build_object('user_id', OLD.user_id, 'services', v_n), 'system');
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(OLD.workspace_id, 'workspace_member', SQLSTATE || ' ' || SQLERRM, OLD.workspace_id);
+  END;
+  RETURN NULL;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_app_servicio_member_removed ON public.workspace_members;
+CREATE TRIGGER trg_app_servicio_member_removed
+  AFTER DELETE ON public.workspace_members
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.member_removed_hook();
+
+REVOKE ALL ON FUNCTION app_servicio.svc_unmark_item(uuid), app_servicio.svc_complete_by_form(uuid, uuid, uuid, uuid, text, text),
+  app_servicio.submission_item_hook(), app_servicio.submission_hook(), app_servicio.signature_hook(), app_servicio.booking_hook(),
+  app_servicio.task_hook(), app_servicio.member_removed_hook() FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_unmark_item(uuid), app_servicio.svc_complete_by_form(uuid, uuid, uuid, uuid, text, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 336: APP SERVICIO AUDIT AND TRIGGERS CHECK
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00336_app_servicio_audit_and_triggers_check  (Servicios v12, Corrida A1 · S07 · bloque SV2)
+-- ============================================================================
+-- 1. Politica ADICIONAL `audit_log_select_services` (F12): ve las filas del historial de un servicio,
+--    de sus fases y de sus pasos quien puede ver ese servicio. `audit_log_select` NO se toca (las
+--    politicas de SELECT se suman).
+-- 2. CHECK de `triggers.type` suma los 26 disparadores del modulo (F25). Los 3 de afiliados los suma la
+--    00342 (S13). Se parte de la definicion VIGENTE en la base (pg_get_constraintdef, 8/11/2026): solo
+--    suma valores; todo lo que ya aceptaba sigue valiendo.
+--
+-- Modifica estructura existente (CHECK) + una politica nueva. Riesgo ALTO. Va ANTES del codigo.
+--
+-- Cómo volver atrás:
+--   DROP POLICY IF EXISTS audit_log_select_services ON public.audit_log;
+--   ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+--   ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK ((type = ANY (ARRAY['keyword'::text,
+--     'postback'::text, 'quick_reply'::text, 'welcome'::text, 'default'::text, 'comment_keyword'::text, 'new_contact'::text,
+--     'crm_event'::text, 'inactivity'::text, 'email_received'::text, 'booking_created'::text, 'booking_rescheduled'::text,
+--     'booking_cancelled'::text, 'booking_updated'::text, 'booking_ended'::text, 'booking_status_changed'::text,
+--     'booking_before_start'::text, 'booking_after_end'::text, 'booking_after_created'::text, 'call_analyzed'::text,
+--     'call_linked'::text, 'form_submitted'::text, 'survey_answered'::text, 'contract_signed'::text, 'sale_created'::text,
+--     'sale_status_changed'::text, 'payment_created'::text, 'payment_status_changed'::text, 'payment_before_due'::text,
+--     'payment_after_due'::text, 'eod_submitted'::text, 'webhook_received'::text, 'task_completed'::text, 'task_overdue'::text,
+--     'whatsapp_group_joined'::text, 'whatsapp_group_reaction'::text, 'whatsapp_group_poll_vote'::text])));
+--   (es la definicion vigente el 8/11/2026, copiada de pg_get_constraintdef). Antes de volver atras, borrar
+--   o desactivar las filas de triggers con los tipos nuevos.
+-- ============================================================================
+
+-- ─── 1. Historial del modulo ────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.can_see_audit_entity(p_entity_type text, p_entity_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT COALESCE(CASE p_entity_type
+    WHEN 'service' THEN app_servicio.can_see_service(p_entity_id)
+    WHEN 'service_phase' THEN (SELECT app_servicio.can_see_service(ph.service_id) FROM app_servicio.service_phases ph WHERE ph.id = p_entity_id)
+    WHEN 'service_item' THEN (SELECT app_servicio.can_see_service(i.service_id) FROM app_servicio.service_items i WHERE i.id = p_entity_id)
+    ELSE false END, false);
+$$;
+REVOKE ALL ON FUNCTION app_servicio.can_see_audit_entity(text, uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.can_see_audit_entity(text, uuid) TO authenticated, service_role;
+
+DROP POLICY IF EXISTS audit_log_select_services ON public.audit_log;
+CREATE POLICY audit_log_select_services ON public.audit_log
+  FOR SELECT TO authenticated
+  USING (
+    entity_type IN ('service', 'service_phase', 'service_item')
+    AND (SELECT public.is_workspace_member(workspace_id))
+    AND app_servicio.can_see_audit_entity(entity_type, entity_id)
+  );
+
+-- ─── 2. Los disparadores del modulo ─────────────────────────────────────────
+ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK ((type = ANY (ARRAY['keyword'::text,
+  'postback'::text, 'quick_reply'::text, 'welcome'::text, 'default'::text, 'comment_keyword'::text, 'new_contact'::text,
+  'crm_event'::text, 'inactivity'::text, 'email_received'::text, 'booking_created'::text, 'booking_rescheduled'::text,
+  'booking_cancelled'::text, 'booking_updated'::text, 'booking_ended'::text, 'booking_status_changed'::text,
+  'booking_before_start'::text, 'booking_after_end'::text, 'booking_after_created'::text, 'call_analyzed'::text,
+  'call_linked'::text, 'form_submitted'::text, 'survey_answered'::text, 'contract_signed'::text, 'sale_created'::text,
+  'sale_status_changed'::text, 'payment_created'::text, 'payment_status_changed'::text, 'payment_before_due'::text,
+  'payment_after_due'::text, 'eod_submitted'::text, 'webhook_received'::text, 'task_completed'::text, 'task_overdue'::text,
+  'whatsapp_group_joined'::text, 'whatsapp_group_reaction'::text, 'whatsapp_group_poll_vote'::text,
+  'service_created'::text, 'service_started'::text, 'service_ending_soon'::text, 'service_status_changed'::text,
+  'service_extended'::text, 'service_paused'::text, 'service_resumed'::text, 'service_phase_started'::text,
+  'service_phase_completed'::text, 'service_item_completed'::text, 'service_item_overdue'::text, 'service_light_changed'::text,
+  'program_lesson_completed'::text, 'program_module_completed'::text, 'quiz_passed'::text, 'quiz_failed'::text,
+  'task_submission_received'::text, 'task_submission_reviewed'::text, 'live_session_missed'::text, 'challenge_started'::text,
+  'challenge_occurrence_due_soon'::text, 'challenge_occurrence_overdue'::text, 'challenge_completed'::text,
+  'certificate_issued'::text, 'portal_access_expiring'::text, 'portal_access_expired'::text])));

@@ -60,7 +60,9 @@ describe("registro de nodos", () => {
     // + `send_poll` ("Enviar encuesta", Grupos de WhatsApp).
     // + `designGenerate` ("Generar desde plantilla", Diseñador IA, F57).
     // + `send_meta_event` ("Enviar evento a Meta", API de Conversiones, 00328).
-    expect(listNodes()).toHaveLength(35); // @plantilla-quitar(ventas,webhooks,tareas)
+    // + las cinco acciones de Servicios (svc_complete_step, svc_change_phase, svc_start_challenge, svc_extend_service,
+    //   svc_pause_service; Servicios A1, F25).  @plantilla-quitar(servicios)
+    expect(listNodes()).toHaveLength(40); // @plantilla-quitar(ventas,webhooks,tareas,servicios)
     // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(29);
   });
 
