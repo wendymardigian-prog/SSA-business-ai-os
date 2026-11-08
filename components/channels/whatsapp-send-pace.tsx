@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Gauge, Loader2 } from "lucide-react";
 import { getChannelSendPolicy, saveChannelSendPolicy } from "@/lib/actions/broadcasts";
 import { DEFAULT_WHATSAPP_POLICY, describePolicy, type SendPolicy } from "@/lib/send-queue/pace";
+import { BusinessTimeNote } from "@/components/ui/business-time-note";
 
 /**
  * El ritmo de los envíos masivos por este número (00285): el TECHO que ningún
@@ -75,7 +76,7 @@ export function WhatsappSendPace({ channelId }: { channelId: string }) {
               </div>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={policy.window.enabled} onChange={(e) => set({ window: { ...policy.window, enabled: e.target.checked } })} />
-                Solo en un horario (hora del negocio)
+                Solo en un horario
               </label>
               {policy.window.enabled && (
                 <div className="space-y-2">
@@ -100,6 +101,7 @@ export function WhatsappSendPace({ channelId }: { channelId: string }) {
                     <span>a</span>
                     <input type="time" value={policy.window.end} onChange={(e) => set({ window: { ...policy.window, end: e.target.value } })} className={field} aria-label="Hasta" />
                   </div>
+                  <BusinessTimeNote times={[policy.window.start, policy.window.end]} />
                 </div>
               )}
               <p className="text-muted-foreground">Queda: {describePolicy(policy)}</p>

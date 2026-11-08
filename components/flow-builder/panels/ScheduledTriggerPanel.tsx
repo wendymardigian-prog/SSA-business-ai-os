@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { useViewerTimezone } from "@/components/dashboard-chrome";
-import { loadBusinessTimeZone } from "@/lib/actions/flow-capabilities";
-import { timeZoneLabel } from "@/lib/dates";
-import { isValidTimeZone } from "@/lib/timezone";
+import { BusinessTimeNote, useBusinessTimeZone } from "@/components/ui/business-time-note";
+import { formatInstantIn, zoneLabel } from "@/lib/business-time";
 import {
   describeSchedule,
   MAX_LATE_MINUTES,
@@ -29,33 +27,13 @@ const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const inputClass =
   "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 
-function formatIn(instant: Date, timeZone: string): string {
-  const text = instant.toLocaleString("es", { timeZone, weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  return `${text} (${timeZoneLabel(timeZone, instant)})`;
-}
-
 /**
  * El panel de «En una fecha y hora». La hora es la del NEGOCIO (`workspaces.timezone`): es una regla del flujo, no
  * depende de quién la armó. El panel lo dice y muestra la próxima vez, también en la hora de quien mira si es otra.
  */
 export function ScheduledTriggerPanel({ data, onChange }: { data: Record<string, unknown>; onChange: (data: Record<string, unknown>) => void }) {
-  const viewerZone = useViewerTimezone();
-  const [businessZone, setBusinessZone] = useState<string | null>(null);
+  const businessZone = useBusinessTimeZone();
   const config = parseScheduleConfig(data);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadBusinessTimeZone()
-      .then((zone) => {
-        if (!cancelled) setBusinessZone(zone && isValidTimeZone(zone) ? zone : "UTC");
-      })
-      .catch(() => {
-        // Sin la zona no se muestra la próxima vez: lo que se guarda no cambia.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const next = useMemo(() => (businessZone ? nextOccurrence(data, new Date(), businessZone) : null), [data, businessZone]);
 
@@ -151,19 +129,16 @@ export function ScheduledTriggerPanel({ data, onChange }: { data: Record<string,
       <div>
         <label htmlFor="st-time" className="mb-1.5 block text-xs font-medium text-foreground">Hora</label>
         <input id="st-time" type="time" value={config.time ?? ""} onChange={(e) => set({ time: e.target.value || undefined })} className={inputClass} />
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          En la hora del negocio{businessZone ? ` (${timeZoneLabel(businessZone)})` : ""}, la misma para todo el equipo.
-        </p>
+        <BusinessTimeNote className="mt-1.5" instant={next} times={[config.time]} />
       </div>
 
       <div className="rounded-md bg-muted px-3 py-2 text-xs text-foreground">
         <p className="font-medium">{describeSchedule(data)}</p>
         {businessZone && (
           next ? (
-            <>
-              <p className="mt-0.5 text-muted-foreground">Próxima vez: {formatIn(next, businessZone)}</p>
-              {viewerZone !== businessZone && <p className="text-muted-foreground">En tu hora: {formatIn(next, viewerZone)}</p>}
-            </>
+            <p className="mt-0.5 text-muted-foreground">
+              Próxima vez: {formatInstantIn(next, businessZone)} ({zoneLabel(businessZone, next)})
+            </p>
           ) : (
             config.repeat === "once" && config.date && config.time && <p className="mt-0.5 text-amber-700 dark:text-amber-400">Esa fecha y hora ya pasó: no va a correr.</p>
           )
