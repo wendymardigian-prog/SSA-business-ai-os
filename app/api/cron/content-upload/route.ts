@@ -30,6 +30,14 @@ const STALE_CLAIM_MS = 10 * 60_000;
 
 const MAX_ATTEMPTS = 3;
 
+/**
+ * Un UPDATE que la base rechaza no puede pasar en silencio: el job quedaria
+ * en `processing` y a los diez minutos otra corrida lo volveria a subir.
+ */
+function logSaveError(jobId: string, what: string, message: string) {
+  console.error(`[cron/content-upload] job ${jobId}: no pude ${what}:`, message);
+}
+
 export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);
   if (denied) return denied;
@@ -55,11 +63,12 @@ export async function GET(request: NextRequest) {
 
   let processed = 0;
   let failed = 0;
+  let unsaved = 0;
 
   for (const job of jobs ?? []) {
     // El mismo claim que el cron general: si el UPDATE no toca ninguna fila,
     // otra corrida se lo llevo y este no lo toca.
-    const { data: claimed } = await supabase
+    const { data: claimed, error: claimError } = await supabase
       .from("scheduled_jobs")
       .update({ status: "processing", claimed_at: new Date().toISOString() })
       .eq("id", job.id)
@@ -67,24 +76,37 @@ export async function GET(request: NextRequest) {
       .select("id")
       .maybeSingle();
 
+    if (claimError) {
+      logSaveError(job.id, "reclamarlo", claimError.message);
+      unsaved++;
+      continue;
+    }
     if (!claimed) continue;
 
     const handler = getJobHandler(job.type);
     if (!handler) {
-      await supabase
+      const { error: saveError } = await supabase
         .from("scheduled_jobs")
-        .update({ status: "failed", error: `sin handler para "${job.type}"` })
+        .update({ status: "failed", last_error: `sin handler para "${job.type}"` })
         .eq("id", job.id);
+      if (saveError) {
+        logSaveError(job.id, "marcarlo como fallido", saveError.message);
+        unsaved++;
+      }
       failed++;
       continue;
     }
 
     try {
       await handler({ supabase, job: { ...job, attempts: job.attempts ?? 0 } });
-      await supabase
+      const { error: saveError } = await supabase
         .from("scheduled_jobs")
-        .update({ status: "completed", completed_at: new Date().toISOString() })
+        .update({ status: "completed" })
         .eq("id", job.id);
+      if (saveError) {
+        logSaveError(job.id, "marcarlo como completado", saveError.message);
+        unsaved++;
+      }
       processed++;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -92,15 +114,15 @@ export async function GET(request: NextRequest) {
       failed++;
       console.error(`[cron/content-upload] job ${job.id}:`, detail);
 
-      await supabase
+      const { error: saveError } = await supabase
         .from("scheduled_jobs")
         .update(
           attempts >= MAX_ATTEMPTS
-            ? { status: "failed", attempts, error: detail }
+            ? { status: "failed", attempts, last_error: detail }
             : {
                 status: "pending",
                 attempts,
-                error: detail,
+                last_error: detail,
                 claimed_at: null,
                 // Espera creciente: si YouTube esta caido, insistir cada
                 // minuto no ayuda.
@@ -108,8 +130,12 @@ export async function GET(request: NextRequest) {
               },
         )
         .eq("id", job.id);
+      if (saveError) {
+        logSaveError(job.id, "guardar el fallo", saveError.message);
+        unsaved++;
+      }
     }
   }
 
-  return NextResponse.json({ ok: true, processed, failed });
+  return NextResponse.json({ ok: true, processed, failed, unsaved });
 }
