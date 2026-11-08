@@ -164,6 +164,26 @@ medio, `paused` (no se toma nada hasta reanudar) y `cancelled` (lo que falta
 queda `cancelled`, lo enviado no se deshace). Un destinatario: `pending`,
 `sending`, `sent`, `failed`, `skipped` (con motivo) o `cancelled`.
 
+## La lista: filtro por estado y eliminar (8/11/2026)
+
+- **Orden**: siempre por fecha de creación, lo más nuevo arriba. Un programado
+  muestra «creado el … · sale el …».
+- **Filtro por estado** (`?estado=borrador|programado|enviando|pausado|terminado|cancelado`,
+  `lib/broadcasts/list.ts`): se aplica en la consulta, así aparecen también los
+  viejos (la lista trae hasta 200). Cada píldora lleva su cantidad; los estados
+  sin ninguno no se muestran. Se combina con el buscador (`?q=`).
+- **Eliminar = nunca salió nada.** Se puede eliminar un broadcast si ningún
+  destinatario está `sending`, `sent` ni `failed` y no se está enviando (si se
+  está enviando, primero se pausa): borrador, programado, pausado, cancelado o
+  terminado con todos salteados. Se va con toda su cola (`on delete cascade`).
+  Lo decide la base, en una transacción, con `delete_unsent_broadcast` (00347):
+  bloquea el broadcast y las filas abiertas, así un reclamo de la cola a mitad
+  de camino se ve como `sending` y no se pierde el registro de un envío.
+  **Lo que mandó algo no se elimina**: es la historia de quién recibió qué y
+  sus resultados de email; para el ruido está el filtro. El botón está en la
+  lista (ícono de papelera) y en el detalle; `canDeleteBroadcast` es solo la
+  pista para mostrarlo.
+
 ## La API
 
 `GET /api/v1/broadcasts`, `POST /api/v1/broadcasts` (crea un borrador:
@@ -182,9 +202,13 @@ queda `cancelled`, lo enviado no se deshace). Un destinatario: `pending`,
 - `00286_send_queue_cron`: reescribe `private.call_app_cron` (suma
   `send-queue`) y agenda el cron cada 15 s. **Va DESPUÉS del deploy** (antes la
   ruta no existe).
+- `00347_delete_unsent_broadcast` (aditiva: una función, solo `service_role`).
+  Puede ir antes o después del código; sin ella, «Eliminar» responde un error
+  claro.
 
 ```
 node scripts/verify-broadcasts.mjs   # RLS, índice único, claim_lane_slot (10 a la vez = 1), claim_broadcast_recipient, contadores
+node scripts/verify-broadcasts.mjs --despues-de-00347   # además, eliminar lo que nunca salió
 ```
 
 ## Pendiente

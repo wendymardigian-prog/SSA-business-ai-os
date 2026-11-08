@@ -21,7 +21,7 @@ import { combinePolicies, describePolicy, estimateFinish, paceExceedsCeiling, pa
 import type { BroadcastChannelKind } from "@/lib/broadcasts/audience";
 import { formatEta } from "@/lib/broadcasts/status";
 import {
-  deleteBroadcastDraftAction,
+  deleteBroadcastAction,
   previewBroadcastAudience,
   previewBroadcastMessage,
   queueBroadcastAction,
@@ -272,7 +272,7 @@ export function BroadcastEditor({
   function remove() {
     if (!window.confirm("¿Borrar este borrador? No se mandó nada todavía.")) return;
     startDelete(async () => {
-      const res = await deleteBroadcastDraftAction(draft.id);
+      const res = await deleteBroadcastAction(draft.id);
       if (res.ok) router.push("/dashboard/broadcasts");
       else setSaveError(res.error);
     });
