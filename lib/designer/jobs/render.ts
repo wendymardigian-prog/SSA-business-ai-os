@@ -231,8 +231,8 @@ async function runTemplateExport(db: Db, payload: DesignRenderPayload, deps: Req
   }
 }
 
-/** El documento de la última publicación de un diseño propio, o null si no hay (o no se pudo leer: vale el vigente). */
-async function latestPublishedDoc(db: Db, designId: string): Promise<unknown | null> {
+/** El documento de la última publicación de un diseño propio; null si nunca se publicó (vale el vigente); "error" si no se pudo leer. */
+async function latestPublishedDoc(db: Db, designId: string): Promise<unknown | null | "error"> {
   try {
     const { data, error } = await db
       .from("design_versions")
@@ -244,12 +244,12 @@ async function latestPublishedDoc(db: Db, designId: string): Promise<unknown | n
       .maybeSingle();
     if (error) {
       console.error("[design_render] no pude leer la última publicación:", error.message);
-      return null;
+      return "error";
     }
     return (data as { doc?: unknown } | null)?.doc ?? null;
   } catch (error) {
     console.error("[design_render] no pude leer la última publicación:", error instanceof Error ? error.message : "error");
-    return null;
+    return "error";
   }
 }
 
@@ -275,7 +275,15 @@ export async function runDesignRender(db: Db, payload: DesignRenderPayload, deps
 
   // Publicar de un diseño propio arma los archivos de lo PUBLICADO (la última versión `publish`), no del borrador:
   // lo que se edita después recién llega al link con «Publicar cambios» (auditoría de la Ola 2, igual que la 00325).
-  const sourceDoc = payload.purpose === "publish" && !row.template_id ? ((await latestPublishedDoc(db, row.id)) ?? row.doc) : row.doc;
+  let sourceDoc: unknown = row.doc;
+  if (payload.purpose === "publish" && !row.template_id) {
+    const published = await latestPublishedDoc(db, row.id);
+    // Un error de lectura nunca abre: no se arma el link con el borrador, se reintenta (1, 5 y 15 minutos).
+    if (published === "error") {
+      return noteFailure(db, row, payload, new RenderFailed("No se pudo leer la última publicación.", { retryable: true, userMessage: "No se pudo preparar la versión publicada. Se vuelve a intentar solo." }), deps);
+    }
+    sourceDoc = published ?? row.doc;
+  }
   const parsed = parseDesignDoc(sourceDoc);
   if (!parsed.ok) return noteFailure(db, row, payload, new RenderFailed("El documento del diseño no es válido.", { retryable: false }), deps);
   const doc = parsed.doc;

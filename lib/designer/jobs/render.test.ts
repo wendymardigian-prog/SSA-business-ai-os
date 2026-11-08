@@ -7,12 +7,12 @@ const WS = "11111111-2222-3333-4444-555555555555";
 const DESIGN = "aaaaaaaa-2222-3333-4444-555555555555";
 
 /** Un cliente de Supabase en memoria con lo justo que usa el job. */
-function fakeDb(row: Record<string, unknown>, opts: { signFails?: boolean; template?: Record<string, unknown>; publishedDoc?: unknown } = {}) {
+function fakeDb(row: Record<string, unknown>, opts: { signFails?: boolean; template?: Record<string, unknown>; publishedDoc?: unknown; publishedFails?: boolean } = {}) {
   const state = { row: { ...row }, uploads: [] as string[], updates: [] as Record<string, unknown>[] };
   const db = {
     from(table: string) {
       if (table === "design_versions") {
-        const chain = { eq: () => chain, order: () => chain, limit: () => chain, maybeSingle: async () => ({ data: opts.publishedDoc ? { doc: opts.publishedDoc } : null, error: null }) };
+        const chain = { eq: () => chain, order: () => chain, limit: () => chain, maybeSingle: async () => (opts.publishedFails ? { data: null, error: { message: "caída" } } : { data: opts.publishedDoc ? { doc: opts.publishedDoc } : null, error: null }) };
         return { select: () => chain };
       }
       return {
@@ -206,5 +206,16 @@ describe("publicar arma los archivos de lo PUBLICADO (auditoría de la Ola 2)", 
       schedule: vi.fn() as never,
     });
     expect(seen.join("").toLowerCase()).toContain("#000000");
+  });
+
+  it("si no se puede leer la última publicación, NO usa el borrador: reagenda (un error de lectura nunca abre)", async () => {
+    const { db, state } = fakeDb(baseRow({ doc: emptyDoc("v45", "#000000") }), { publishedFails: true });
+    const render = vi.fn();
+    const schedule = vi.fn(async () => ({ id: "j" }));
+    const out = await runDesignRender(db, { designId: DESIGN, purpose: "publish" }, { render: render as never, schedule: schedule as never, now: () => new Date("2026-11-08T00:00:00Z") });
+    expect(out.status).toBe("retry");
+    expect(render).not.toHaveBeenCalled();
+    expect(schedule).toHaveBeenCalledTimes(1);
+    expect(state.uploads).toEqual([]);
   });
 });

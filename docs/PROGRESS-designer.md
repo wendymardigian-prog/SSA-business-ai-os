@@ -468,6 +468,7 @@ Lo que nunca hace:
 - Revisión visual.
 - Commit y push.
 
+
 ### Ola 3 — DS6 y DS8 (2 subagentes en paralelo)
 
 **DS6 — plantillas y generaciones** (F49–F56)
@@ -700,52 +701,64 @@ Formato de cada renglón: `- [ ] F — qué` · **prueba:** test o comando y su 
 
 #### DS2 · Editor manual (subagente)
 > Integrado (`c3697e5`). `verify-designer --bloque ds2`: 27/27. Las pruebas son de `lib/designer/screens/*` (puras) y `lib/actions/designer/designs*.test.ts`.
-- [~] F15 — Lista de Diseños y Plantillas · prueba: `screens/list.test.ts` (filtros ↔ URL), `thumbs.test.ts`; verify ds2 (una generación nunca aparece, ni para un Member; contadores) · auditado: —
-- [~] F16 — Crear (3 pasos, 4 caminos con ilustración) · prueba: `screens/new-flow.test.ts`, `starter-docs.test.ts`, `uploads.test.ts` (SVG rechazado), `lib/actions/designer/designs.test.ts` · auditado: —
-- [~] F17 — Barra superior · prueba: `screens/toolbar.test.ts` (`editorActions`: lo que el permiso no da se oculta), `panels.test.ts` · auditado: —
-  - [~] F17 / V3 — botón "Emitir <tipo>" desde `verification.ts` · prueba: `toolbar.test.ts` · auditado: —
-- [~] F18 — Seleccionar y editar texto · prueba: `screens/selection.test.ts`, `variables.test.ts` (texto con fichas), `keyboard.test.ts` · auditado: —
-- [~] F19 — Mover, imanes, tamaño y rotación · prueba: `screens/canvas-session.test.ts`, `zoom.test.ts`, `canvas-boundary.test.ts` (el lienzo no calcula posiciones fuera de `canvas-math`) · auditado: —
-- [~] F20 — Capas · prueba: `screens/layers.test.ts` (reordenar y las 4 acciones; página cargada con `isImportedPage`) · auditado: —
-- [~] F21 — Barra del elemento · prueba: `screens/element-toolbar.test.ts` · auditado: —
-- [~] F22 — Agregar · prueba: `starter-docs.test.ts`, `uploads.test.ts`; panel `editor/add-panel.tsx` · auditado: —
-- [~] F23 — Fondo y capa de color · prueba: `screens/background.test.ts` · auditado: —
-- [~] F24 — Variables en el lienzo · prueba: `screens/variables.test.ts` (`serializeText`/`parseText`, variables propias validadas, `design.code` solo con verificación) · auditado: —
-- [~] F25 — Páginas · prueba: `screens/pages.test.ts` (máx. 20, la web sin tira) · auditado: —
-- [~] F26 — Deshacer y rehacer · prueba: `screens/history.test.ts` (un arrastre es un paso) · auditado: —
-- [~] F27 — Guardar (`rev`) y versiones · prueba: `save.test.ts`, `versions.test.ts`, `designs-ops.test.ts`; verify ds2 (conflict con la misma rev, una versión por sesión de 10 min, restaurar no borra) · auditado: —
-- [~] F28 — Configuración (drawer) · prueba: `screens/config.test.ts`, `format-change.test.ts`, `designs-ops.test.ts`; verify ds2 (archivar uno publicado confirma y despublica; borrar con generaciones se rechaza) · auditado: —
-  - [~] F28 / V2 — "Se puede verificar" y tipo solo en impresos; al cambiar a no impreso se apaga con "Este formato no admite verificación" · prueba: `format-change.test.ts`, `config.test.ts` (`updateTemplateSettings` con `verifyAfterFormatChange` + `validateTemplateVerification`) · auditado: —
-- [~] F29 — Página web · prueba: `screens/web.test.ts` (sin desplazamiento horizontal a 390 px) · auditado: —
-- [~] F30 — Desde una imagen y en blanco · prueba: `starter-docs.test.ts`, `designs.test.ts` (`createDesign`: imagen de fondo bloqueada «Cubrir»; en blanco con el color de la marca) · auditado: —
-- [~] F48 — Miniaturas en vivo (`renderPageHTML` reducido); guardar una versión no encola renders · prueba: `designs-ops.test.ts` (espía: guardar no encola salvo un diseño publicado), `thumbs.test.ts`; verify ds2 (guardar y restaurar no encolan) · auditado: —
+- [x] F15 — Lista de Diseños y Plantillas · prueba: `screens/list.test.ts` (filtros ↔ URL), `thumbs.test.ts`; verify ds2 (una generación nunca aparece, ni para un Member; contadores) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F16 — Crear (3 pasos, 4 caminos con ilustración) · prueba: `screens/new-flow.test.ts`, `starter-docs.test.ts`, `uploads.test.ts` (SVG rechazado), `lib/actions/designer/designs.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F17 — Barra superior · prueba: `screens/toolbar.test.ts` (`editorActions`: lo que el permiso no da se oculta), `panels.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+  - [x] F17 / V3 — botón "Emitir <tipo>" desde `verification.ts` · prueba: `toolbar.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F18 — Seleccionar y editar texto · prueba: `screens/selection.test.ts`, `variables.test.ts` (texto con fichas), `keyboard.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F19 — Mover, imanes, tamaño y rotación · prueba: `screens/canvas-session.test.ts`, `zoom.test.ts`, `canvas-boundary.test.ts` (el lienzo no calcula posiciones fuera de `canvas-math`) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F20 — Capas · prueba: `screens/layers.test.ts` (reordenar y las 4 acciones; página cargada con `isImportedPage`) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F21 — Barra del elemento · prueba: `screens/element-toolbar.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F22 — Agregar · prueba: `starter-docs.test.ts`, `uploads.test.ts`; panel `editor/add-panel.tsx` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F23 — Fondo y capa de color · prueba: `screens/background.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F24 — Variables en el lienzo · prueba: `screens/variables.test.ts` (`serializeText`/`parseText`, variables propias validadas, `design.code` solo con verificación) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F25 — Páginas · prueba: `screens/pages.test.ts` (máx. 20, la web sin tira) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F26 — Deshacer y rehacer · prueba: `screens/history.test.ts` (un arrastre es un paso) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F27 — Guardar (`rev`) y versiones · prueba: `save.test.ts`, `versions.test.ts`, `designs-ops.test.ts`; verify ds2 (conflict con la misma rev, una versión por sesión de 10 min, restaurar no borra) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F28 — Configuración (drawer) · prueba: `screens/config.test.ts`, `format-change.test.ts`, `designs-ops.test.ts`; verify ds2 (archivar uno publicado confirma y despublica; borrar con generaciones se rechaza) · auditado: cumple (auditor Ola 2, 3ª pasada)
+  - [x] F28 / V2 — "Se puede verificar" y tipo solo en impresos; al cambiar a no impreso se apaga con "Este formato no admite verificación" · prueba: `format-change.test.ts`, `config.test.ts` (`updateTemplateSettings` con `verifyAfterFormatChange` + `validateTemplateVerification`) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F29 — Página web · prueba: `screens/web.test.ts` (sin desplazamiento horizontal a 390 px) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F30 — Desde una imagen y en blanco · prueba: `starter-docs.test.ts`, `designs.test.ts` (`createDesign`: imagen de fondo bloqueada «Cubrir»; en blanco con el color de la marca) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F48 — Miniaturas en vivo (`renderPageHTML` reducido); guardar una versión no encola renders · prueba: `designs-ops.test.ts` (espía: guardar no encola salvo un diseño publicado), `thumbs.test.ts`; verify ds2 (guardar y restaurar no encolan) · auditado: cumple (auditor Ola 2, 3ª pasada)
 
 #### DS3 · IA (subagente)
-- [~] F31 — La conversación (en `ai_threads` / `ai_messages`, canal `designer`) · prueba: `lib/designer/ai/merge.test.ts`, `requests.test.ts`, `lib/actions/designer/ai.test.ts`, `screens/ai-panel.test.ts`, `ai-panel.test.ts`; todo por `lib/ai-threads/store.ts` · auditado: —
-- [~] F32 — El motor (proveedor, salida estructurada, reglas) · prueba: `ai/schema.test.ts`, `prompt.test.ts` (zonas seguras y densidad del estilo; el pedido viaja como dato), `patch.test.ts`, `normalize.test.ts`, `run.test.ts` (un reintento ante validación); lo que escribe pasa por `sanitizeAiDoc` + `sanitizeDocHtml` (`doc-sanitize.test.ts`) · auditado: —
-- [~] F33 — Primera versión · prueba: `jobs/ai-generate.test.ts` (26: con una imagen, `pages[0].background.type = "image"` y capa con opacidad > 0), `run.test.ts` · auditado: —
-- [~] F34 — Cambios por página o de todo · prueba: `ai/scope.test.ts` · auditado: —
-- [~] F35 — Estilos en la IA · prueba: `run.test.ts` y `ai-generate.test.ts` (cambiar de estilo conserva los textos) · auditado: —
-  - [~] F35–F36 / V2 — la IA propone prender la verificación (Hacerlo / No) · prueba: `ai/proposals.test.ts`, `requests.test.ts` («Hacerlo» valida con `validateTemplateVerification`), `ai-generate.test.ts` · auditado: —
-- [~] F36 — Revisión automática · prueba: `ai/qa.test.ts` (los 5 problemas; nunca más de 2 pasadas), `measure.test.ts`, `run.test.ts` · auditado: —
-- [~] F37 — Estilos propios (y pantalla de Ajustes con Fuentes) · prueba: `style-extract.test.ts` (estilo extraído valida, fuente fuera de la lista se corrige), `settings-requests.test.ts`, `lib/actions/designer/settings.test.ts`, `screens/settings.test.ts`, `settings-screen.test.ts`; F11 fuentes en las mismas acciones · auditado: —
-- [~] F38 — Costos y topes · prueba: `ai/cost.test.ts`, `ai-generate.test.ts` (con el tope alcanzado NO se llama al proveedor) · auditado: —
+- [x] F31 — La conversación (en `ai_threads` / `ai_messages`, canal `designer`) · prueba: `lib/designer/ai/merge.test.ts`, `requests.test.ts`, `lib/actions/designer/ai.test.ts`, `screens/ai-panel.test.ts`, `ai-panel.test.ts`; todo por `lib/ai-threads/store.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F32 — El motor (proveedor, salida estructurada, reglas) · prueba: `ai/schema.test.ts`, `prompt.test.ts` (zonas seguras y densidad del estilo; el pedido viaja como dato), `patch.test.ts`, `normalize.test.ts`, `run.test.ts` (un reintento ante validación); lo que escribe pasa por `sanitizeAiDoc` + `sanitizeDocHtml` (`doc-sanitize.test.ts`) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F33 — Primera versión · prueba: `jobs/ai-generate.test.ts` (26: con una imagen, `pages[0].background.type = "image"` y capa con opacidad > 0), `run.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F34 — Cambios por página o de todo · prueba: `ai/scope.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F35 — Estilos en la IA · prueba: `run.test.ts` y `ai-generate.test.ts` (cambiar de estilo conserva los textos) · auditado: cumple (auditor Ola 2, 3ª pasada)
+  - [x] F35–F36 / V2 — la IA propone prender la verificación (Hacerlo / No) · prueba: `ai/proposals.test.ts`, `requests.test.ts` («Hacerlo» valida con `validateTemplateVerification`), `ai-generate.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F36 — Revisión automática · prueba: `ai/qa.test.ts` (los 5 problemas; nunca más de 2 pasadas), `measure.test.ts`, `run.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F37 — Estilos propios (y pantalla de Ajustes con Fuentes) · prueba: `style-extract.test.ts` (estilo extraído valida, fuente fuera de la lista se corrige), `settings-requests.test.ts`, `lib/actions/designer/settings.test.ts`, `screens/settings.test.ts`, `settings-screen.test.ts`; F11 fuentes en las mismas acciones · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F38 — Costos y topes · prueba: `ai/cost.test.ts`, `ai-generate.test.ts` (con el tope alcanzado NO se llama al proveedor) · auditado: cumple (auditor Ola 2, 3ª pasada)
 
 #### DS4 · Cargar HTML (subagente)
-- [~] F39 — Subir (`.html` / `.zip`) · prueba: `import/zip.test.ts` (28: `../evil.html` y 301 archivos se rechazan; absolutas, `\\`, enlaces simbólicos, >50 MB, cifrado), `lib/actions/designer/import.test.ts`, `pipeline.test.ts`, `screens/html-step.test.ts`; tope de 51 MB en `next.config.ts` · auditado: —
-- [~] F40 — Limpiar (≥ 20 ataques) · prueba: `import/sanitize.test.ts` (54 ataques, comprobados con un lector de etiquetas), `css.test.ts` · auditado: —
-- [~] F41 — Detectar el formato (6 fixtures) · prueba: `import/detect.test.ts` (2 landings → web, 2 presentaciones 16:9 → wide, carrusel → v45 de 6, ambiguo → web) · auditado: —
-- [~] F42 — Editar lo cargado · prueba: `import/mark-text.test.ts` (editar un texto marcado cambia solo ese nodo; un parche con `<script>` queda limpio) · auditado: —
+- [x] F39 — Subir (`.html` / `.zip`) · prueba: `import/zip.test.ts` (28: `../evil.html` y 301 archivos se rechazan; absolutas, `\\`, enlaces simbólicos, >50 MB, cifrado), `lib/actions/designer/import.test.ts`, `pipeline.test.ts`, `screens/html-step.test.ts`; tope de 51 MB en `next.config.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F40 — Limpiar (≥ 20 ataques) · prueba: `import/sanitize.test.ts` (54 ataques, comprobados con un lector de etiquetas), `css.test.ts` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F41 — Detectar el formato (6 fixtures) · prueba: `import/detect.test.ts` (2 landings → web, 2 presentaciones 16:9 → wide, carrusel → v45 de 6, ambiguo → web) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F42 — Editar lo cargado · prueba: `import/mark-text.test.ts` (editar un texto marcado cambia solo ese nodo; un parche con `<script>` queda limpio) · auditado: cumple (auditor Ola 2, 3ª pasada)
 
 #### DS5 · Publicar y exportar (subagente)
-- [~] F43 — Link público (sin pie) · prueba: `lib/designer/public/{model,serve,guard,boundary}.test.ts` (sin «Hecho con», `sandbox` sin `allow-scripts`, tope por IP, 404 con tiempo parejo; generación solo `ready`/`void`); `verify-designer ds5` 75/75 · auditado: —
-  - [~] F43 / V3 — recuadro con `verificationText` según el tipo · prueba: `public/model.test.ts` (4 tipos × válido/anulado) · auditado: —
-  - [~] F43 / V4 — link, copiar link, descarga y Open Graph con `publicBaseUrl` · prueba: `public/share.test.ts` (dominio propio vs. principal) · auditado: —
-- [~] F44 — Descargar · prueba: `public/download.test.ts`, `serve.test.ts` (nombre legible, 404 con descarga apagada o anulada, 202 mientras se prepara); `verify-designer ds5` · auditado: —
-- [~] F45 — Publicar y despublicar · prueba: `publishing.test.ts` (despublicar → 404 en el siguiente pedido, el código se conserva), `publish-actions.test.ts`, `screens/publish-menu.test.ts`; `verify-designer ds5` · auditado: —
-- [~] F46 — Exportar · prueba: `export.test.ts`, `exporting.test.ts` (incluye `error.json`; 00324 para que el bucket lo acepte), `screens/export-menu.test.ts`; `verify-designer ds5` · auditado: —
-- [~] F47 — Verificación y anular (apagada por defecto; CHECK + acción) · prueba: `void.test.ts` (motivo obligatorio, nunca se borra, link «anulado» sin Descargar); CHECK en `verify-designer ds0`; la acción que rechaza `verify` es de DS2 · auditado: —
-- [~] F48b — Un solo juego de archivos por diseño · prueba: `jobs/render-replace.test.ts`; `verify-designer ds5` (en el bucket quedan solo los archivos nuevos, mirando `storage.objects`) · auditado: —
+- [x] F43 — Link público (sin pie) · prueba: `lib/designer/public/{model,serve,guard,boundary}.test.ts` (sin «Hecho con», `sandbox` sin `allow-scripts`, tope por IP, 404 con tiempo parejo; generación solo `ready`/`void`); `verify-designer ds5` 75/75 · auditado: cumple (auditor Ola 2, 3ª pasada)
+  - [x] F43 / V3 — recuadro con `verificationText` según el tipo · prueba: `public/model.test.ts` (4 tipos × válido/anulado) · auditado: cumple (auditor Ola 2, 3ª pasada)
+  - [x] F43 / V4 — link, copiar link, descarga y Open Graph con `publicBaseUrl` · prueba: `public/share.test.ts` (dominio propio vs. principal) · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F44 — Descargar · prueba: `public/download.test.ts`, `serve.test.ts` (nombre legible, 404 con descarga apagada o anulada, 202 mientras se prepara); `verify-designer ds5` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F45 — Publicar y despublicar · prueba: `publishing.test.ts` (despublicar → 404 en el siguiente pedido, el código se conserva), `publish-actions.test.ts`, `screens/publish-menu.test.ts`; `verify-designer ds5` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F46 — Exportar · prueba: `export.test.ts`, `exporting.test.ts` (incluye `error.json`; 00324 para que el bucket lo acepte), `screens/export-menu.test.ts`; `verify-designer ds5` · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F47 — Verificación y anular (apagada por defecto; CHECK + acción) · prueba: `void.test.ts` (motivo obligatorio, nunca se borra, link «anulado» sin Descargar); CHECK en `verify-designer ds0`; la acción que rechaza `verify` es de DS2 · auditado: cumple (auditor Ola 2, 3ª pasada)
+- [x] F48b — Un solo juego de archivos por diseño · prueba: `jobs/render-replace.test.ts`; `verify-designer ds5` (en el bucket quedan solo los archivos nuevos, mirando `storage.objects`) · auditado: cumple (auditor Ola 2, 3ª pasada)
+
+### Auditoría de la Ola 2 (F15–F48b) — resultado final
+
+Auditor Opus de solo lectura, tres pasadas (8/11/2026 UTC). **Veredicto final: todo «cumple»** (lo no construido, en PENDIENTE con motivo y decisión).
+
+- **1ª pasada:** 5 «falta». F42 (la IA no editaba textos de un HTML cargado), F36 (punto ámbar), F17 («Usar en contenido» sin mirar el permiso), «lo que el permiso no da se oculta» (Agregar y el drawer), y guardar un publicado re-renderizaba (un Member cambiaba el link). Se arreglaron en `feat/disenador-ia-ds2-fix` y `-ds3-fix`, más la migración 00325 (una web publicada muestra lo publicado).
+- **2ª pasada:** 2 «falta» medios y 1 bajo. La IA todavía podía cambiar una pieza emitida; el render de publicar de una pieza PNG/PDF salía del borrador; faltaba anotar que la IA no edita el CSS de un HTML cargado. Arreglados en `3b8994b`.
+- **3ª pasada:** todo «cumple». Pruebas: 1408 tests de `lib/designer`, `lib/actions/designer`, `components/designer` y `lib/ai-threads`; `verify-designer ds2` 27/27 y `ds5` 82/82.
+- **Observaciones de la 3ª pasada:** la primera se arregló al cierre (si no se puede leer la última publicación, el render reagenda en vez de usar el borrador, con test). Las otras dos son cosméticas: la carpeta de un render de publicar lleva la `rev` del borrador, y no hay test de una generación con versión `publish` porque no puede pasar.
+- **Fuera de la ola:** «volver a generar» de F47 (DS6), «Automatizar» de F17 (DS7), «Usar en contenido», «Dónde se usa › contenido» y el aviso de TikTok (DS8).
+- **Revisión visual:** parcial (lista, modal Nuevo, Ajustes y el 404 del link, a 1440 y 390 px, claro y oscuro). El editor y un link publicado con datos quedan en PENDIENTE: requieren crear un diseño en la base real.
+- **Incidente:** el 8/11 a la madrugada (UTC) el proyecto de Supabase quedó «Unhealthy» (plan Free, máquina NANO, sin memoria). Pasó a Pro y a Micro; Postgres volvió a las 01:11 UTC. Mientras tanto no se corrió nada contra la base.
 
 ### Ola 3
 
@@ -794,10 +807,10 @@ Formato de cada renglón: `- [ ] F — qué` · **prueba:** test o comando y su 
 | Subagente | Rama | Estado | Informe | Integrado | Auditado |
 |---|---|---|---|---|---|
 | R (render) | `feat/disenador-ia-render` | terminado (`7c2d34e`) | F5 completo, 57 tests; Playwright 1.65.0; Docker sin probar (no hay Docker) | sí (merge en la Ola 1) | sí (auditor Ola 1) |
-| DS2 | `feat/disenador-ia-ds2` | terminado (`9f73da7`) | F15–F30, F48; verify-ds2 27/27 | sí (`c3697e5`) | no |
-| DS3 | `feat/disenador-ia-ds3` | terminado (`a3406c2`) | F31–F38, F11, V2; 17.257 tests en su rama | sí (`063d970`; `sanitizeAiDoc` enganchado a `sanitizeDocHtml`) | no |
-| DS4 | `feat/disenador-ia-ds4` | terminado (`978d3a8`) | F39–F42, 54 ataques | sí (`2365ee6`; tope de 51 MB y `@import` primero) | no |
-| DS5 | `feat/disenador-ia-ds5` | terminado (`d65b6b2`) | F43–F47, F48b; verify-ds5 75/75 tras la 00324 | sí (`002ec98`; acciones propias en el historial) | no |
+| DS2 | `feat/disenador-ia-ds2` (+ `-ds2-fix`) | terminado (`9f73da7`, `eaa0cb5`) | F15–F30, F48; verify-ds2 27/27 | sí (`c3697e5`, `2c47b49`) | sí (Ola 2) |
+| DS3 | `feat/disenador-ia-ds3` | terminado (`a3406c2`) | F31–F38, F11, V2; 17.257 tests en su rama | sí (`063d970`, `8940152`; `sanitizeAiDoc` enganchado a `sanitizeDocHtml`) | sí (Ola 2) |
+| DS4 | `feat/disenador-ia-ds4` | terminado (`978d3a8`) | F39–F42, 54 ataques | sí (`2365ee6`; tope de 51 MB y `@import` primero) | sí (Ola 2) |
+| DS5 | `feat/disenador-ia-ds5` | terminado (`d65b6b2`) | F43–F47, F48b; verify-ds5 75/75 tras la 00324 | sí (`002ec98`; acciones propias en el historial) | sí (Ola 2) |
 | DS6 | `feat/disenador-ia-ds6` | sin arrancar | — | no | no |
 | DS8 | `feat/disenador-ia-ds8` | sin arrancar | — | no | no |
 | Auditor ola 1–5 | — (solo lectura) | sin arrancar | — | — | — |
