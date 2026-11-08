@@ -418,6 +418,85 @@ try {
     check(sql(`SELECT count(*)::int n FROM public.booking_categories WHERE workspace_id = ${lit(wsOff.id)} AND system_key = 'servicio.clase'`)[0]?.n === 0, "un negocio nuevo con el módulo apagado nace igual que antes (sin «Clase»)");
   }
 
+  if (run("co") && hasTable("app_servicio_portal.community_posts")) {
+    console.log("\nco · Casos compartidos (quién puede publicar)");
+    const cc = json("lib/program/community.cases.json").cases;
+    const gotCc = sql(`SELECT jsonb_build_array(${cc.map((c) => `app_servicio.community_can_post_plan(${jlit(c.input)})`).join(", ")}) AS r`)[0]?.r ?? [];
+    const badCc = cc.filter((c, i) => !eq(gotCc[i], c.expected)).map((c) => c.name);
+    check(badCc.length === 0, `community_can_post_plan: los ${cc.length} casos dan lo mismo que en TypeScript`, badCc.join(" | "));
+
+    console.log("\nco · Tablas (F76)");
+    const vCo = await mkVariant("zz-test Comunidad");
+    sql(`UPDATE public.product_variants SET portal_settings = ${jlit({ v: 1, enabled: true, sections: [{ section: "program", included: true, content: { modules: "all" } }, { section: "community", included: true }] })} WHERE id = ${lit(vCo.id)}`);
+    const student = await newContact("comunidad");
+    const sCo = mkService(student.id, vCo.id);
+    sql(`SELECT app_servicio.svc_open_access(${lit(sCo)}, 'community', NULL, 'automation')`);
+    sql(`SELECT app_servicio.svc_open_access(${lit(sCo)}, 'program', NULL, 'automation')`);
+    const post = (cols) => sql(`INSERT INTO app_servicio_portal.community_posts (workspace_id, product_id, space_key, parent_id, program_item_id, author_contact_id, author_user_id, as_business, body, created_at)
+      VALUES (${lit(ws.id)}, ${lit(prod.id)}, ${lit(cols.space ?? "general")}, ${cols.parent ? lit(cols.parent) : "NULL"}, ${cols.item ? lit(cols.item) : "NULL"}, ${cols.contact ? lit(cols.contact) : "NULL"},
+              ${cols.user ? lit(cols.user) : "NULL"}, ${cols.business ? "true" : "false"}, ${lit(cols.body ?? "zz-test")}, ${lit(cols.at ?? new Date().toISOString())}) RETURNING id`)[0]?.id;
+    const both = sqlErr(`INSERT INTO app_servicio_portal.community_posts (workspace_id, product_id, space_key, author_contact_id, author_user_id, body) VALUES (${lit(ws.id)}, ${lit(prod.id)}, 'general', ${lit(student.id)}, ${lit(owner.id)}, 'x')`);
+    check(/community_posts_author_check/.test(both ?? ""), "un post es de un contacto O del equipo, nunca de los dos (CHECK)");
+    const top = post({ contact: student.id, body: "zz-test hola" });
+    const child = post({ parent: top, user: owner.id });
+    const grand = sqlErr(`INSERT INTO app_servicio_portal.community_posts (workspace_id, product_id, space_key, parent_id, author_contact_id, body) VALUES (${lit(ws.id)}, ${lit(prod.id)}, 'general', ${lit(child)}, ${lit(student.id)}, 'x')`);
+    check(/CO001/.test(grand ?? ""), "un comentario de un comentario se rechaza (CO001)", grand?.slice(0, 160));
+    const noItem = sqlErr(`INSERT INTO app_servicio_portal.community_posts (workspace_id, product_id, space_key, author_contact_id, body) VALUES (${lit(ws.id)}, ${lit(prod.id)}, 'clases', ${lit(student.id)}, 'x')`);
+    check(/community_posts_lesson_check/.test(noItem ?? ""), "un post del espacio «clases» necesita su clase");
+
+    console.log("\nco · Quién puede publicar (F77, F111)");
+    const can = (c, space, item = null) => sql(`SELECT app_servicio.community_can_post(${c ? lit(c) : "NULL"}, ${lit(prod.id)}, ${lit(space)}, ${item ? lit(item) : "NULL"}) ok`)[0]?.ok;
+    check(can(student.id, "general") === true, "un estudiante con acceso publica en General");
+    check(can(student.id, "anuncios") === false, "en Anuncios publica solo el equipo");
+    const outsider = await newContact("sin comunidad");
+    check(can(outsider.id, "general") === false, "sin acceso a la comunidad no publica");
+    sql(`SELECT app_servicio.svc_open_access(${lit(sCo)}, 'community', NULL, 'automation')`);
+    const muteByMember = asUser(member.id, `SELECT app_servicio.community_set_muted(${lit(prod.id)}, ${lit(student.id)}, true, 'x') r`);
+    check(!muteByMember.ok && /SV004|permiso/.test(muteByMember.error), "sin community.moderate no se silencia", muteByMember.error);
+    const muted = await rpcAs(owner, "community_set_muted", { p_product_id: prod.id, p_contact_id: student.id, p_muted: true, p_reason: "zz-test" });
+    check(!muted.error && can(student.id, "general") === false, "un silenciado no publica (community_can_post)", muted.error);
+    await rpcAs(owner, "community_set_muted", { p_product_id: prod.id, p_contact_id: student.id, p_muted: false });
+    const mOpen = item("module", "zz-test Módulo comunidad");
+    const lOpen = item("lesson", "zz-test Clase abierta", mOpen);
+    const mLocked = item("module", "zz-test Módulo cerrado", null, { rule: { type: "fixed_date", date: "2099-01-01" } });
+    const lLocked = item("lesson", "zz-test Clase cerrada", mLocked, { rule: { type: "fixed_date", date: "2099-01-01" } });
+    check(can(student.id, "clases", lOpen) === true, "comenta una clase que tiene abierta");
+    check(can(student.id, "clases", lLocked) === false, "un comentario en una clase que no tiene abierta se rechaza");
+    sql(`UPDATE app_servicio.program_items SET comments_enabled = false WHERE id = ${lit(lOpen)}`);
+    check(can(student.id, "clases", lOpen) === false && can(null, "clases", lOpen) === false, "con los comentarios apagados en la clase, nadie comenta");
+    sql(`UPDATE app_servicio.program_items SET comments_enabled = true, status = 'inactive' WHERE id = ${lit(lOpen)}`);
+    check(can(student.id, "clases", lOpen) === false, "una clase inactiva no se comenta");
+    sql(`UPDATE app_servicio.program_items SET status = 'active' WHERE id = ${lit(lOpen)}`);
+
+    console.log("\nco · Sin contestar (F77, F111)");
+    const before = sql(`SELECT app_servicio.community_unanswered(${lit(prod.id)}, 30) n`)[0]?.n;
+    post({ user: owner.id, body: "zz-test del equipo" });
+    const answered = post({ contact: student.id, body: "zz-test contestado" });
+    post({ parent: answered, business: true, body: "zz-test respuesta" });
+    post({ contact: student.id, body: "zz-test viejo", at: new Date(Date.now() - 40 * 86_400_000).toISOString() });
+    const open = post({ contact: student.id, body: "zz-test sin contestar" });
+    post({ contact: student.id, space: "clases", item: lOpen, body: "zz-test comentario de clase" });
+    const after = sql(`SELECT app_servicio.community_unanswered(${lit(prod.id)}, 30) n`)[0]?.n;
+    check(after - before === 2, "cuenta solo los posts de estudiantes sin respuesta del equipo (incluidos los de las clases)", `${before} → ${after}`);
+    const counts = (await rpcAs(owner, "community_item_counts", { p_product_id: prod.id })).data;
+    check(counts?.unanswered === after && counts?.by_item?.[lOpen] === 1, "los contadores coinciden con «sin contestar» y separan por clase", JSON.stringify(counts));
+    const seen = await rpcAs(owner, "community_mark_seen", { p_post_id: open });
+    check(!seen.error && sql(`SELECT app_servicio.community_unanswered(${lit(prod.id)}, 30) n`)[0]?.n === after - 1, "«Marcar como visto» lo saca de sin contestar", seen.error);
+    const feed = (await rpcAs(owner, "community_feed", { p_product_id: prod.id, p: { filter: "unanswered" } })).data ?? [];
+    check(feed.length === after - 1 && feed.every((x) => x.unanswered), "el filtro «Sin contestar» de la pantalla es la misma consulta", String(feed.length));
+
+    console.log("\nco · El equipo (permisos)");
+    const byMember = asUser(member.id, `SELECT app_servicio.community_team_post(${lit(prod.id)}, '{"body":"x","space_key":"general"}'::jsonb) r`);
+    check(!byMember.ok && /SV004|permiso/.test(byMember.error), "sin community.reply no se publica", byMember.error);
+    const reply = await rpcAs(owner, "community_team_post", { p_product_id: prod.id, p: { body: "zz-test respuesta del equipo", parent_id: top, as_business: true } });
+    check(!reply.error && sql(`SELECT app_servicio.community_is_unanswered(${lit(top)}) u`)[0]?.u === false, "responder un post lo saca de sin contestar", reply.error);
+    const hideNoReason = asUser(owner.id, `SELECT app_servicio.community_moderate(${lit(top)}, 'hide', NULL) r`);
+    check(!hideNoReason.ok && /CO002|motivo/.test(hideNoReason.error), "ocultar sin motivo se rechaza");
+    const roleNoneFeed = asUser(roleNone.id, `SELECT app_servicio.community_feed(${lit(prod.id)}, '{}'::jsonb) r`);
+    check(!roleNoneFeed.ok, "un rol sin community.view no lee la comunidad");
+    check(sql(`SELECT has_schema_privilege('authenticated', 'app_servicio_portal', 'USAGE') u`)[0]?.u === false, "el esquema del portal sigue cerrado para la sesión");
+  }
+
   console.log("\nHuellas de las funciones protegidas");
   checkProtectedFunctions(sql, check);
 } catch (e) {

@@ -135,6 +135,14 @@ Formato: **qué quedó · por qué · qué se decidió**. Lo que encontró la ex
 - **Un error al completar el paso no frena el diseño:** queda en `audit_log` (`svc.hook_failed`).
 - **La 1ª pasada de `verify-program --bloque ce` dio «anular»: la pieza no estaba lista**, y en las dos siguientes pasó. No se encontró la causa; se vuelve a correr en el cierre (X) y, si se repite, se anota acá.
 
+## Decisiones de CO (8/11)
+
+- **Los espacios de fábrica son Anuncios (solo el equipo), General y Victorias**, mientras el programa no los configure. «clases» es reservado: no se puede usar como espacio del muro.
+- **La pestaña «Comentarios» del editor de cada clase es un link a la Comunidad filtrada por esa clase** (`?tab=comunidad&clase=`), con el mismo muro, respuestas y moderación. El interruptor «Comentarios» de la clase ya existía (PR).
+- **Una persona del equipo que se va deja su post como del negocio** (`author_user_id` pasa a NULL): el CHECK de autor lo admite.
+- **`saveProgramSettings` deja pasar también `community.spaces` y `tutor.manage`**: la base pide la clave de cada parte del parche, así que nadie guarda lo que no le toca.
+- **Borrar oculta y la purga a los 30 días va en el cron de la S16** (bloque X).
+
 ## Revisión visual (8/11)
 
 - **No se pudo hacer en esta corrida.** · La app local (`localhost:3097`) pide iniciar sesión y en el navegador de la sesión no hay una abierta; la regla es no escribir credenciales. Además, las pantallas nuevas solo se ven con el módulo prendido, y solo se puede prender en un negocio de prueba. · Queda para Wendy, a 1440 y 390 px y en claro y oscuro, comparando con `claude/v12/prototipo-v12-panel.html`: Ajustes › Productos (tarjetas, producto, variante con sus cuatro pestañas, el drawer del paso, la regla de una sección del portal y la línea de workflows), Clientes (Servicios en tabla y tablero, Clientes, ficha del cliente, ficha del servicio, Importar servicios), la sección Servicios del contacto y de la venta, la columna Servicio en Ventas y los cinco pasos de Servicios en Automatizaciones. Con el módulo apagado, comprobar que Productos, Ventas, la ficha del contacto y de la venta y el editor de automatizaciones se ven iguales que antes.

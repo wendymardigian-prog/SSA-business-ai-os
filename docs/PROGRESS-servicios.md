@@ -55,11 +55,16 @@
   - El certificado es una generación del Diseñador IA con el servicio como sujeto. El módulo registra en el Diseñador el grupo de variables «Servicio» (`service.product`, `service.variant`, `service.start_on`, `service.end_on`, `service.completed_on`, `service.owner`) y el origen «Servicio», y se suscribe a `onDesignGenerated`: al quedar lista una generación de una plantilla de tipo Certificado, completa el paso Certificado pendiente y emite `certificate_issued`, venga de donde venga.
   - El paso Certificado del camino elige la plantilla (solo de tipo Certificado, con «+ Crear con el Diseñador IA») y «Emitirlo solo». La ficha del servicio (Datos) muestra el certificado con su link y PDF, Emitir, Anular (motivo) y Volver a emitir. Acción «Emitir certificado» en Automatizaciones. Claves `certificates.issue` y `certificates.void`.
   - `verify-program --bloque ce` (TypeScript con `vite-node`, render simulado) en 21/21: emitir dos veces devuelve el mismo, las variables se resuelven, el paso se completa al quedar listo (también si lo genera una automatización), anular y volver a emitir dejan uno vigente, un servicio cancelado no emite (CE001). Huellas protegidas iguales.
-- [ ] **CO** Comunidad: F76, F77, F111 (S14)
+- [x] **CO** Comunidad: F76, F77, F111 (S14) — **listo el 8/11** (revisión visual pendiente)
+  - `00351` aplicada y registrada (8/11, versión `20261108182448`), después de ensayarla (la 00347 a la 00350 las ocuparon otras sesiones). Posts y comentarios (un nivel, CO001) en el esquema cerrado del portal, reacciones y reportes, bucket `community-media`, la gemela de «quién puede publicar», «sin contestar» y lo que hace el equipo (publicar, responder, visto, fijar, ocultar, borrar, silenciar, resolver reportes), cada cosa con su clave.
+  - Pantallas: la pestaña Comunidad del programa (Todo, Sin contestar · 30 días, Reportados, un filtro por espacio y Clases; Publicar como el negocio o con su nombre; la tuerca de los espacios con «Permitir comentarios en las clases»), el aviso «N comentarios nuevos» en el árbol de Contenido, «Ver los comentarios» en cada clase y la parte Comentarios de Portal › Por revisar. Claves `community.view`, `community.reply`, `community.moderate` y `community.spaces`.
+  - Gemela `community` (14 casos) contra la base; `verify-program --bloque co` en 0 (30 comprobaciones: CHECK de autor, CO001, quién publica, silenciado, clase cerrada o inactiva o con comentarios apagados, los cuatro posts de «sin contestar», visto, responder, permisos y el esquema cerrado).
 - [ ] **IA** Tutor: F83, F84, F85, F86, F87, F110 (S15)
 - [ ] **X** Cierre: F88, F89, F90, F91, F92, F108 (S16)
 
 ## Migraciones (S0x → número real)
+
+**Renumeración del 8/11 (4ª):** la `00347` a la `00350` las ocuparon otras sesiones (borrado de broadcasts, mensajes diarios de WhatsApp, crons agrupados), así que **S14 pasa a la 00351, S15 a la 00352 y S16 a la 00353**.
 
 **Renumeración del 8/11 (3ª):** otra rama local (`community-groups-display`) usa la `00344`, así que **S11 pasa a la 00345, S12 a la 00346, S14 a la 00347, S15 a la 00348 y S16 a la 00349**.
 
@@ -80,9 +85,9 @@
 | S11 | 00345 | `00345_app_servicio_portal_forms.sql` | EV | **aplicada y registrada** (8/11, versión `20261108171604`), después de ensayarla; `--s S11` y `verify-program --bloque ev` en 0 |
 | S12 | 00346 | `00346_app_servicio_calendar.sql` | CA | **aplicada y registrada** (8/11, versión `20261108173804`), después de ensayarla; corregida el mismo día (permiso por columnas del link y «Clase» al prender el módulo) y el SQL registrado es el corregido; `--s S12`, `verify-program --bloque ca` y `verify-scheduling` en 0 |
 | S13 | 00343 | `00343_affiliates.sql` | AF | **aplicada y registrada** (8/11, versión `20261108161154`), después de ensayarla en una transacción que se deshizo sola; `--s S13` en 0 |
-| S14 | 00347 | `00347_app_servicio_community.sql` | CO | pendiente |
-| S15 | 00348 | `00348_app_servicio_tutor.sql` | IA | pendiente |
-| S16 | 00349 | `00349_app_servicio_merge_and_cron.sql` | X | pendiente |
+| S14 | 00351 | `00351_app_servicio_community.sql` | CO | **aplicada y registrada** (8/11, versión `20261108182448`), después de ensayarla; `verify-program --bloque co` en 0 |
+| S15 | 00352 | `00352_app_servicio_tutor.sql` | IA | pendiente (confirmar el número antes) |
+| S16 | 00353 | `00353_app_servicio_merge_and_cron.sql` | X | pendiente (confirmar el número antes) |
 
 ## Punto de partida (8/11/2026)
 

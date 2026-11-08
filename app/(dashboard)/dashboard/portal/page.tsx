@@ -10,6 +10,7 @@ import { AddProgramDialog } from "@/components/services/portal/add-program-dialo
 import { PortalSettingsForm } from "@/components/services/portal/portal-settings-form";
 import { ReviewList } from "@/components/services/portal/review-list";
 import { loadReviewItems } from "@/lib/program/load-review";
+import { svcRpc } from "@/lib/services/db";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { cn } from "@/lib/utils";
@@ -21,12 +22,12 @@ export const dynamic = "force-dynamic";
  * clave del portal; cada pestaña la suya. Con el módulo apagado, 404. Se lee con la sesión de quien mira.
  */
 export default async function PortalPage({ searchParams }: { searchParams: Promise<{ tab?: string; estudiante?: string }> }) {
-  const ctx = await requireAnyPermission(["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "submissions.review"]);
+  const ctx = await requireAnyPermission(["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "submissions.review", "community.view"]);
   const { workspace, supabase } = ctx;
   if (!moduleShows("route.portal", { servicesEnabled: isModuleEnabled(workspace as { services_enabled?: boolean | null }) })) notFound();
   const tabs = [
     { key: "programas", label: "Programas", show: ctx.can("portal.view") || ctx.can("portal.sections") || ctx.can("portal.access_rules") },
-    { key: "revisar", label: "Por revisar", show: ctx.can("portal.view") || ctx.can("submissions.review") },
+    { key: "revisar", label: "Por revisar", show: ctx.can("portal.view") || ctx.can("submissions.review") || ctx.can("community.view") },
     { key: "ajustes", label: "Ajustes del portal", show: ctx.can("portal.settings") || ctx.can("portal.view") },
   ].filter((t) => t.show);
   const sp = await searchParams;
@@ -38,7 +39,42 @@ export default async function PortalPage({ searchParams }: { searchParams: Promi
   if (tab.key === "revisar") {
     // Por revisar (F57): las entregas de todos los programas, leídas con el cliente de servicio después del permiso.
     const items = await loadReviewItems(await createServiceClient(), workspace.id, { contactId: sp.estudiante && /^[0-9a-f-]{36}$/i.test(sp.estudiante) ? sp.estudiante : null });
-    body = <ReviewList items={items} canReview={ctx.can("submissions.review")} timeZone={await resolveViewerTimezone((workspace as { timezone?: string }).timezone)} />;
+    // Comentarios (F111): lo sin contestar de la comunidad y de las clases, por programa (con community.view).
+    let comments: Array<{ id: string; name: string; unanswered: number }> = [];
+    if (ctx.can("community.view")) {
+      const { data: programs } = await supabase.from("products").select("id, name").eq("workspace_id", workspace.id).eq("portal_enabled" as never, true as never).is("archived_at", null);
+      const counted = await Promise.all(
+        ((programs ?? []) as Array<{ id: string; name: string }>).map(async (pr) => {
+          const c = await svcRpc<{ unanswered?: number }>(supabase, "community_item_counts", { p_product_id: pr.id });
+          return { id: pr.id, name: pr.name, unanswered: c.ok ? c.data?.unanswered ?? 0 : 0 };
+        }),
+      );
+      comments = counted.filter((c) => c.unanswered > 0);
+    }
+    body = (
+      <div className="space-y-6">
+        <ReviewList items={items} canReview={ctx.can("submissions.review")} timeZone={await resolveViewerTimezone((workspace as { timezone?: string }).timezone)} />
+        {ctx.can("community.view") && (
+          <section aria-labelledby="comentarios" className="space-y-2">
+            <h2 id="comentarios" className="text-sm font-semibold">Comentarios</h2>
+            {comments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay comentarios sin contestar en los últimos 30 días.</p>
+            ) : (
+              <ul className="divide-y divide-border rounded-xl border border-border">
+                {comments.map((c) => (
+                  <li key={c.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                    <span>{c.name}</span>
+                    <Link href={`/dashboard/portal/${c.id}?tab=comunidad&filtro=sin-contestar`} className="text-xs text-primary-ink hover:underline">
+                      {c.unanswered === 1 ? "1 sin contestar" : `${c.unanswered} sin contestar`}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+      </div>
+    );
   } else if (tab.key === "ajustes") {
     const { data } = await supabase.from("workspaces").select("portal_settings, portal_settings_rev").eq("id", workspace.id).maybeSingle();
     const row = data as { portal_settings?: Record<string, unknown> | null; portal_settings_rev?: number | null } | null;

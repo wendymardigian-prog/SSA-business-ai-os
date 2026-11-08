@@ -2,6 +2,7 @@
 // @plantilla-quitar(servicios)
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
 import { createProgramItem, reorderProgramItems, saveLessonTranscript, setProgramItemStatus, updateProgramItem, uploadProgramFile, type ProgramUploadKind } from "@/lib/actions/program";
@@ -39,7 +40,20 @@ const UNLOCK_LABEL: Record<string, string> = {
  * apaga (lo nuevo nace inactivo), se sube o se baja (botones y Alt+↑/↓), y abre su drawer con el contenido, el
  * desbloqueo y la transcripción.
  */
-export function ProgramContentEditor({ productId, rows, canManage, canActivate }: { productId: string; rows: ContentRow[]; canManage: boolean; canActivate: boolean }) {
+export function ProgramContentEditor({
+  productId,
+  rows,
+  canManage,
+  canActivate,
+  commentCounts = {},
+}: {
+  productId: string;
+  rows: ContentRow[];
+  canManage: boolean;
+  canActivate: boolean;
+  /** Comentarios sin contestar por clase (F111, «N comentarios nuevos»). */
+  commentCounts?: Record<string, number>;
+}) {
   const router = useRouter();
   const tree = useMemo(() => buildTree(rows), [rows]);
   const flat = useMemo(() => flattenTree(tree), [tree]);
@@ -123,6 +137,11 @@ export function ProgramContentEditor({ productId, rows, canManage, canActivate }
                   {n.kind === "lesson" && n.lesson_type === "video" && !byId.get(n.id)?.hasTranscript ? " · Sin transcripción" : ""}
                 </span>
               </button>
+              {(commentCounts[n.id] ?? 0) > 0 && (
+                <Link href={`/dashboard/portal/${productId}?tab=comunidad&clase=${n.id}`} className="rounded-full bg-warn/15 px-2 py-0.5 text-xs text-foreground hover:underline">
+                  {commentCounts[n.id] === 1 ? "1 comentario nuevo" : `${commentCounts[n.id]} comentarios nuevos`}
+                </Link>
+              )}
               <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{STATUS_LABEL[n.status]}</span>
               {canActivate && (
                 <button type="button" onClick={() => toggle(n)} disabled={pending} className="rounded-md px-2 py-1 text-xs hover:bg-accent">
@@ -327,6 +346,11 @@ function ItemDrawer({ productId, item, canManage, canActivate, onClose }: { prod
           {item.kind === "lesson" && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={comments} disabled={disabled} onChange={(e) => setComments(e.target.checked)} /> Comentarios
+              {item.kind === "lesson" && (
+                <Link href={`/dashboard/portal/${productId}?tab=comunidad&clase=${item.id}`} className="ml-2 text-xs text-primary-ink hover:underline">
+                  Ver los comentarios
+                </Link>
+              )}
             </label>
           )}
         </div>

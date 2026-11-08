@@ -260,7 +260,9 @@ export async function saveVariantPortal(variantId: string, settings: unknown, re
 
 /** Lo del programa que vale para todas sus variantes (F116: «En el programa»; F113: términos). Solo cambia lo que viene. */
 export async function saveProgramSettings(productId: string, patch: Record<string, unknown>, rev: number): Promise<SvcResult<SaveResult>> {
-  const ctx = await getAnyPermissionAction(["portal.sections", "portal.settings"]);
+  // La base pide la clave de CADA parte del parche (secciones, comunidad, asistente): esto solo deja pasar a quien
+  // tiene alguna de ellas.
+  const ctx = await getAnyPermissionAction(["portal.sections", "portal.settings", "community.spaces", "tutor.manage"]);
   if (!ctx) return NOT_ALLOWED;
   return svcRpc<SaveResult>(ctx.supabase, "portal_admin_save_program_settings", { p_product_id: productId, p_patch: patch, p_rev: rev });
 }

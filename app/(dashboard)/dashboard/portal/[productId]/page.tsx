@@ -12,6 +12,11 @@ import { ProgramTermsPanel } from "@/components/services/portal/program-terms-pa
 import { ProgramContentEditor, type ContentRow } from "@/components/services/portal/program-content-editor";
 import { ProgramCalendar } from "@/components/services/portal/program-calendar";
 import { loadCalendar } from "@/lib/program/load-calendar";
+import { ProgramCommunity, type CommunityPost } from "@/components/services/portal/program-community";
+import { lessonCommentsOn, programSpaces, LESSON_SPACE } from "@/lib/program/community";
+import { svcRpc } from "@/lib/services/db";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
+import { resolveBrand } from "@/lib/brand";
 import { svcSchema } from "@/lib/services/db";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { PortalFormInitial } from "@/components/services/portal/portal-form-editor";
@@ -25,10 +30,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * Portal › un programa: Ajustes del programa (secciones prendidas y el resumen de variantes) y Afiliados (qué links ven
  * los estudiantes, F106). El contenido, las evaluaciones, el calendario y la comunidad se suman con sus bloques.
  */
-export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string }> }) {
+export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string; filtro?: string; espacio?: string; clase?: string }> }) {
   const [{ productId }, sp] = await Promise.all([params, searchParams]);
   if (!UUID.test(productId)) notFound();
-  const ctx = await requireAnyPermission(["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "program.manage", "program.activate", "live_sessions.manage", "attendance.manage"]);
+  const ctx = await requireAnyPermission(["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "program.manage", "program.activate", "live_sessions.manage", "attendance.manage", "community.view", "community.spaces"]);
   const { workspace, supabase } = ctx;
   if (!moduleShows("route.portal", { servicesEnabled: isModuleEnabled(workspace as { services_enabled?: boolean | null }) })) notFound();
   const [{ data: product }, { data: variants }] = await Promise.all([
@@ -37,7 +42,7 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   ]);
   const p = product as unknown as { id: string; name: string; portal_enabled: boolean; portal_settings: Record<string, unknown> | null; portal_settings_rev: number; links: { items?: Array<{ key: string; name: string; active: boolean }> } | null } | null;
   if (!p || !p.portal_enabled) notFound();
-  const tab = sp.tab === "afiliados" ? "afiliados" : sp.tab === "ajustes" ? "ajustes" : sp.tab === "calendario" ? "calendario" : "contenido";
+  const tab = sp.tab === "afiliados" ? "afiliados" : sp.tab === "ajustes" ? "ajustes" : sp.tab === "calendario" ? "calendario" : sp.tab === "comunidad" ? "comunidad" : "contenido";
   const ps = (p.portal_settings ?? {}) as { sections?: Record<string, boolean>; affiliates?: { visible_link_keys?: string[] } };
   const vs = ((variants ?? []) as unknown as Array<{ id: string; name: string; portal_settings: unknown }>).map((v) => ({ id: v.id, name: v.name, portal: readVariantPortal(v.portal_settings) }));
   const canEdit = ctx.can("portal.sections");
@@ -74,7 +79,8 @@ export default async function PortalProgramPage({ params, searchParams }: { para
       const d = (f?.draft_definition ?? {}) as { intro?: string; fields?: PortalFormInitial["fields"]; quiz?: PortalFormInitial["quiz"]; grading?: PortalFormInitial["grading"] };
       return { ...r, hasTranscript: withTranscript.has(r.id), portalForm: f ? { name: f.name, intro: d.intro ?? "", fields: d.fields ?? [], quiz: d.quiz ?? {}, grading: d.grading ?? { enabled: false } } : null };
     });
-    return <ProgramContentEditor productId={productId} rows={rows} canManage={ctx.can("program.manage")} canActivate={ctx.can("program.activate")} />;
+    const counts = await svcRpc<{ by_item?: Record<string, number> }>(supabase, "community_item_counts", { p_product_id: productId });
+    return <ProgramContentEditor productId={productId} rows={rows} canManage={ctx.can("program.manage")} canActivate={ctx.can("program.activate")} commentCounts={counts.ok ? counts.data?.by_item ?? {} : {}} />;
   }
 
   // Calendario (F58-F63): sesiones, fechas, asistencia y grabaciones, todo en paralelo.
@@ -97,6 +103,37 @@ export default async function PortalProgramPage({ params, searchParams }: { para
     );
   }
 
+  // Comunidad (F77, F111): el muro y los comentarios de las clases, por la función que vuelve a pedir community.view.
+  async function communityTab() {
+    const filter = sp.filtro === "sin-contestar" ? "unanswered" : sp.filtro === "reportados" ? "reported" : "all";
+    const space = sp.espacio && /^[a-z0-9_]{1,40}$/.test(sp.espacio) ? sp.espacio : null;
+    const lessonId = sp.clase && UUID.test(sp.clase) ? sp.clase : null;
+    const canView = ctx.can("community.view");
+    const [feed, counts, team, { data: lessons }] = await Promise.all([
+      canView ? svcRpc<CommunityPost[]>(supabase, "community_feed", { p_product_id: productId, p: { filter, space: lessonId ? LESSON_SPACE : space, program_item_id: lessonId, limit: 50 } }) : Promise.resolve({ ok: true as const, data: [] as CommunityPost[] }),
+      canView ? svcRpc<{ unanswered: number; reported: number }>(supabase, "community_item_counts", { p_product_id: productId }) : Promise.resolve({ ok: true as const, data: { unanswered: 0, reported: 0 } }),
+      getWorkspaceMembers(workspace.id),
+      svcSchema(supabase).from("program_items").select("id, title").eq("product_id", productId).eq("kind", "lesson"),
+    ]);
+    return (
+      <ProgramCommunity
+        productId={productId}
+        posts={feed.ok ? feed.data ?? [] : []}
+        spaces={programSpaces(p!.portal_settings)}
+        lessonComments={lessonCommentsOn(p!.portal_settings)}
+        rev={p!.portal_settings_rev ?? 0}
+        counts={counts.ok && counts.data ? { unanswered: counts.data.unanswered ?? 0, reported: counts.data.reported ?? 0 } : { unanswered: 0, reported: 0 }}
+        filter={filter}
+        space={lessonId ? null : space}
+        lessonId={lessonId}
+        teamNames={Object.fromEntries(team.map((m) => [m.userId, m.name]))}
+        businessName={resolveBrand(workspace as never).name}
+        lessonTitles={Object.fromEntries(((lessons ?? []) as Array<{ id: string; title: string }>).map((l) => [l.id, l.title]))}
+        can={{ reply: ctx.can("community.reply"), moderate: ctx.can("community.moderate"), spaces: ctx.can("community.spaces") }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -114,6 +151,7 @@ export default async function PortalProgramPage({ params, searchParams }: { para
             {[
               { key: "contenido", label: "Contenido" },
               { key: "calendario", label: "Calendario" },
+              { key: "comunidad", label: "Comunidad" },
               { key: "ajustes", label: "Ajustes del programa" },
               { key: "afiliados", label: "Afiliados" },
             ].map((t) => (
@@ -131,6 +169,8 @@ export default async function PortalProgramPage({ params, searchParams }: { para
             await contentTab()
           ) : tab === "calendario" ? (
             await calendarTab()
+          ) : tab === "comunidad" ? (
+            await communityTab()
           ) : tab === "ajustes" ? (
             <div className="space-y-6">
               <section aria-labelledby="secciones" className="space-y-2">
