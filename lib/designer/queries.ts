@@ -215,6 +215,8 @@ export interface EditorRecord {
   voidInfo: { status: "valid" | "void" } | null;
   /** Publicado y con un documento distinto del de la última publicación («Hay cambios sin publicar», F48b). */
   publishedDiffers: boolean;
+  /** `designs.last_qa` (solo diseños): marca con un punto ámbar la página de la tira que tiene algo para mirar (F36). */
+  lastQa: unknown;
   // Plantillas.
   customVars: CustomVar[];
   dateFormat: DateFormat;
@@ -224,7 +226,7 @@ export interface EditorRecord {
 }
 
 const DESIGN_COLUMNS =
-  "id, name, format, doc, rev, origin, style, code, published, allow_download, allow_indexing, template_id, content_post_id, content_network, subject_ref, status, archived_at, updated_at";
+  "id, name, format, doc, rev, origin, style, code, published, allow_download, allow_indexing, template_id, content_post_id, content_network, subject_ref, status, archived_at, updated_at, last_qa";
 const TEMPLATE_COLUMNS = "id, name, format, doc, rev, origin, style, custom_vars, date_format, verify, doc_type, doc_type_label, allow_download, archived_at, updated_at";
 
 export type EditorLoad = { ok: true; record: EditorRecord } | { ok: false; reason: "not_found" | "invalid_doc" };
@@ -259,6 +261,7 @@ export async function loadEditorRecord(db: Db, workspaceId: string, kind: Design
         generation: null,
         voidInfo: null,
         publishedDiffers: false,
+        lastQa: null,
         customVars: parseCustomVars(data.custom_vars),
         dateFormat: data.date_format,
         verify: data.verify,
@@ -306,6 +309,7 @@ export async function loadEditorRecord(db: Db, workspaceId: string, kind: Design
       generation,
       voidInfo: generation ? { status: data.status === "void" ? "void" : "valid" } : null,
       publishedDiffers,
+      lastQa: (data as { last_qa?: unknown }).last_qa ?? null,
       customVars: [],
       dateFormat: "long",
       verify: false,

@@ -707,6 +707,7 @@ export function DesignEditor(props: DesignEditorProps) {
               <PageStrip
                 doc={doc}
                 current={pageIndex}
+                lastQa={record.lastQa}
                 assetUrls={assetUrls}
                 uploadedFonts={props.uploadedFonts}
                 customVars={customVars}
