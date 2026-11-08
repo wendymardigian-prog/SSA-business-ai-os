@@ -36,7 +36,7 @@
 --   DROP FUNCTION IF EXISTS public.purge_stale_unread_notifications(integer);
 -- (el comando de antes, el de la 00052).
 --
--- Se aplica en produccion SOLO con el OK de Wendy.
+-- Se aplica en produccion SOLO con el OK de quien administra la instalacion.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.purge_stale_unread_notifications(p_retention_days integer DEFAULT 60)
