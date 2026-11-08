@@ -2277,7 +2277,7 @@ El 8/11/2026 la base quedo "Unhealthy": pg_cron llamaba a la app ~16.500 veces p
 
 ## Migracion
 
-`00327_cron_guards` (aditiva: el codigo no cambia; puede ir antes o despues de un deploy). **Escrita y SIN aplicar**: espera el OK de Wendy. Se ensayo contra produccion en una transaccion que se deshizo sola (compila, y los 44 casos de `verify-cron-guards` dan lo esperado). **La proxima libre es la `00328`** (confirmar con `list_migrations` y las ramas locales).
+`00327_cron_guards` (aditiva: el codigo no cambia; puede ir antes o despues de un deploy): **aplicada y registrada** el 8/11/2026 UTC (version `20261108050809`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-cron-guards` en verde. En los primeros 10 minutos todas las corridas salieron bien y, por ejemplo, `agent-bursts` corrio 41 veces y llamo a la app 2. **La proxima libre es la `00328`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-cron-guards.mjs   # despues de aplicar: decision SQL = TS, comandos, permisos, Realtime y cada guarda con y sin el dato justo

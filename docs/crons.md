@@ -69,7 +69,9 @@ Antes (24 h hasta el 8/11/2026 04:45 UTC):
 | `content-upload` | 719 |
 | Realtime leyendo cambios | ~2 por segundo, 8 ms cada una |
 
-Estimación con lo que hubo ese día (tics con trabajo + llamadas de seguridad): ~2.400 llamadas por día, un 85 % menos. Las corridas de pg_cron siguen siendo las mismas (cambia lo que hace cada una: una consulta de milisegundos en vez de un pedido HTTP).
+Estimación con lo que hubo ese día (tics con trabajo + llamadas de seguridad): ~2.400 llamadas por día, un 85 % menos.
+
+La 00327 se aplicó el 8/11/2026 a las 05:08 UTC. En los primeros 10 minutos todas las corridas salieron bien. Llamadas a la app sobre corridas: `agent-bursts` 2 de 41, `send-queue` 2 de 41, `jobs` 2 de 10, `automation-events` y `sequences` 1 de 10, `content-upload` 1 de 5. Las corridas de pg_cron siguen siendo las mismas (cambia lo que hace cada una: una consulta de milisegundos en vez de un pedido HTTP).
 
 ## Verificación
 
