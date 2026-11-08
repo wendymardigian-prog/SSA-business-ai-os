@@ -35,6 +35,22 @@ export function groupsCanMatch(filters: InboxFilters): boolean {
   );
 }
 
+/**
+ * Las comunidades para el filtro de la bandeja (00344), una por JID, por nombre. Una comunidad sin nombre guardado
+ * se llama «Comunidad».
+ */
+export function communityOptions(rows: ReadonlyArray<{ parent_group_jid: string | null; community_subject: string | null }>): Array<{ jid: string; subject: string }> {
+  const byJid = new Map<string, string>();
+  for (const row of rows) {
+    if (!row.parent_group_jid) continue;
+    const current = byJid.get(row.parent_group_jid);
+    if (!current || current === "Comunidad") byJid.set(row.parent_group_jid, row.community_subject?.trim() || "Comunidad");
+  }
+  return [...byJid.entries()]
+    .map(([jid, subject]) => ({ jid, subject }))
+    .sort((a, b) => a.subject.localeCompare(b.subject, "es", { sensitivity: "base" }));
+}
+
 export interface PageBounds {
   page: number;
   /** El ultimo mensaje de la primera conversacion de esta pagina. `undefined` si la pagina no tiene ninguna. */

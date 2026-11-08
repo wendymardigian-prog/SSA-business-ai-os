@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { getEvolutionConfig, getEvolutionWebhookToken } from "@/lib/evolution-config";
 import { EvolutionError, ensureGroupsNotIgnored, fetchAllGroups, setWebhook } from "@/lib/evolution-client";
+import { ownerJidOf, refreshSavedGroup, refreshSavedGroupsFromLive } from "@/lib/whatsapp-groups/refresh";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import { normalizeGroupJid } from "@/lib/phone";
 import { scheduleJob } from "@/lib/scheduler";
@@ -51,12 +52,21 @@ export async function listWhatsappGroups(channelId: string): Promise<Result<{ gr
 
   const { data: saved } = await service
     .from("whatsapp_groups")
-    .select("id, group_jid, subject, in_inbox, save_contacts, left_at")
+    .select("id, group_jid, subject, in_inbox, save_contacts, left_at, kind, parent_group_jid, community_subject")
     .eq("channel_id", channelId)
     .eq("workspace_id", ctx.workspace.id);
 
   try {
-    const live = await fetchAllGroups(config, instance);
+    // Con el numero, Evolution trae tambien los miembros: asi se sabe en que grupos es admin.
+    const ownerJid = await ownerJidOf(config, instance);
+    const live = await fetchAllGroups(config, instance, { ownerJid });
+    // De paso, lo guardado queda al dia (nombre, comunidad, permisos). Nunca frena la lista.
+    await refreshSavedGroupsFromLive(service, {
+      workspaceId: ctx.workspace.id,
+      channelId,
+      live,
+      savedJids: (saved ?? []).map((row) => row.group_jid),
+    });
     return { ok: true, groups: mergeGroupLists(live, saved ?? []) };
   } catch (err) {
     console.error("[grupos] no pude leer los grupos:", err instanceof EvolutionError ? err.message : String(err));
@@ -111,6 +121,8 @@ export async function saveWhatsappGroup(
 
   // Que Evolution avise lo de los grupos. Si falla, el grupo ya quedo guardado: se avisa en el log y no se frena.
   if (input.inInbox || input.saveContacts) {
+    // Comunidad, permisos y si el numero es admin, para la bandeja. Nunca lanza.
+    await refreshSavedGroup(service, { workspaceId: ctx.workspace.id, channelId, groupJid: jid, config, instance });
     try {
       await ensureGroupsNotIgnored(config, instance);
       const token = await getEvolutionWebhookToken(service, ctx.workspace.id);

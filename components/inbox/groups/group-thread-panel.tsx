@@ -7,6 +7,7 @@ import { ChevronLeft, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { markGroupRead } from "@/lib/actions/whatsapp-group-inbox";
 import type { SelectedGroup, ThreadMessage } from "@/lib/whatsapp-groups/thread";
+import { groupDisplayName } from "@/lib/whatsapp-groups/settings";
 import { GroupMessageBubble } from "./group-message-bubble";
 import { GroupComposer } from "./group-composer";
 
@@ -31,6 +32,7 @@ export function GroupThreadPanel({
   const bottomRef = useRef<HTMLDivElement>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const groupId = group.id;
+  const display = groupDisplayName(group);
 
   // Tiempo real: un mensaje, una reaccion o un voto nuevo vuelven a pedir la pagina (sin parpadeo, con un respiro).
   useEffect(() => {
@@ -65,8 +67,10 @@ export function GroupThreadPanel({
           <ChevronLeft className="h-4 w-4" aria-hidden />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{group.subject}</p>
-          <p className="truncate text-[11px] text-muted-foreground">{group.channelLabel}</p>
+          <p className="truncate text-sm font-semibold">{display.name}</p>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {display.community ? `Comunidad ${display.community} · ${group.channelLabel}` : group.channelLabel}
+          </p>
         </div>
         <button
           type="button"
@@ -75,7 +79,7 @@ export function GroupThreadPanel({
           className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted"
         >
           <Users className="h-3.5 w-3.5" aria-hidden />
-          {group.members.length} miembros
+          {group.size ?? group.members.length} miembros
         </button>
       </div>
       <div className="flex min-h-0 flex-1">
@@ -88,7 +92,9 @@ export function GroupThreadPanel({
             )}
             <div ref={bottomRef} />
           </div>
-          {group.canWrite ? (
+          {group.canWrite && group.writeBlockedReason ? (
+            <p className="border-t border-border p-3 text-center text-xs text-muted-foreground">{group.writeBlockedReason}</p>
+          ) : group.canWrite ? (
             <GroupComposer groupId={group.id} onSent={() => router.refresh()} />
           ) : (
             <p className="border-t border-border p-3 text-center text-xs text-muted-foreground">Tu rol puede leer este grupo pero no escribir.</p>

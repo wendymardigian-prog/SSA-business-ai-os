@@ -5180,6 +5180,13 @@ export interface Database {
           last_message_preview: string | null;
           unread_count: number;
           left_at: string | null;
+          /** 00344: 'group' | 'announce' (el de Avisos de una comunidad). */
+          kind: string;
+          parent_group_jid: string | null;
+          community_subject: string | null;
+          description: string | null;
+          restrict: boolean;
+          number_is_admin: boolean | null;
           created_at: string;
           updated_at: string;
         };
@@ -5198,6 +5205,12 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           left_at?: string | null;
+          kind?: string;
+          parent_group_jid?: string | null;
+          community_subject?: string | null;
+          description?: string | null;
+          restrict?: boolean;
+          number_is_admin?: boolean | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -5216,6 +5229,12 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           left_at?: string | null;
+          kind?: string;
+          parent_group_jid?: string | null;
+          community_subject?: string | null;
+          description?: string | null;
+          restrict?: boolean;
+          number_is_admin?: boolean | null;
           created_at?: string;
           updated_at?: string;
         };

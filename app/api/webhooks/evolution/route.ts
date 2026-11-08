@@ -42,8 +42,8 @@ import { resolveWhatsappSender, type WhatsappMessageKey, type WhatsappSender } f
 import { handleWhatsappReaction, parseBaileysReaction } from "@/lib/messages/reactions-inbound";
 import { parseBaileysPollVote } from "@/lib/messages/poll-votes";
 import { withKnownLid } from "@/lib/whatsapp-known-lid";
-import { groupJidOfMessage, parseGroupParticipantsEvent } from "@/lib/whatsapp-groups/parse";
-import { handleGroupMessage, handleGroupParticipants, loadActiveGroup } from "@/lib/whatsapp-groups/inbound";
+import { groupJidOfMessage, parseGroupParticipantsEvent, parseGroupsUpdateEvent } from "@/lib/whatsapp-groups/parse";
+import { handleGroupMessage, handleGroupParticipants, handleGroupsUpdate, loadActiveGroup } from "@/lib/whatsapp-groups/inbound";
 import {
   describeAttachment,
   extractText,
@@ -181,6 +181,20 @@ async function handleWebhook(request: NextRequest) {
       }
     });
     return NextResponse.json({ ok: true, queued: "group-participants" });
+  }
+
+  // Un grupo nuevo o un cambio de nombre, permisos o comunidad (00344). Solo actualiza los grupos ya guardados.
+  if (event === "groups.upsert" || event === "groups.update" || event === "group.update") {
+    const updates = parseGroupsUpdateEvent(payload.data);
+    if (updates.length === 0) return NextResponse.json({ ok: true, skipped: "aviso de grupo ilegible" });
+    after(async () => {
+      try {
+        await handleGroupsUpdate(supabase, channel.id, updates);
+      } catch (err) {
+        console.error("[evolution] error procesando el cambio de grupo:", err instanceof Error ? err.message : err);
+      }
+    });
+    return NextResponse.json({ ok: true, queued: "groups-update" });
   }
 
   if (event !== "messages.upsert") {

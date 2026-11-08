@@ -16,6 +16,10 @@ export interface GroupListRow {
   lastMessageAt: string | null;
   preview: string | null;
   unread: number;
+  /** 00344: 'group' o 'announce' (el de Avisos de una comunidad). */
+  kind: string;
+  /** El nombre de la comunidad, si el grupo es de una. */
+  communitySubject: string | null;
 }
 
 /** El grupo abierto: lo que necesita su panel, ademas del hilo. */
@@ -24,6 +28,20 @@ export interface SelectedGroup {
   subject: string;
   channelLabel: string;
   canWrite: boolean;
+  /** 00344: 'group' o 'announce'. */
+  kind: string;
+  communitySubject: string | null;
+  description: string | null;
+  /** Cuantos miembros tiene segun WhatsApp (los guardados pueden ser menos). null si no se sabe. */
+  size: number | null;
+  /** Si el numero no puede escribir (solo admins envian y no es admin), el motivo. */
+  writeBlockedReason: string | null;
+  /** Lo que se puede cambiar del grupo desde la bandeja (`channels.manage`). */
+  manage: {
+    announce: boolean;
+    restrict: boolean;
+    numberIsAdmin: boolean | null;
+  } | null;
   members: Array<{ key: string; label: string; contactId: string | null }>;
 }
 

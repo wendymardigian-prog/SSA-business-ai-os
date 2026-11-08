@@ -4,6 +4,15 @@ import {
   checkWhatsappNumber,
   ensureGroupsNotIgnored,
   fetchAllGroups,
+  createGroup,
+  updateGroupSubject,
+  updateGroupDescription,
+  updateGroupPicture,
+  updateGroupSetting,
+  updateGroupParticipants,
+  fetchGroupInviteLink,
+  revokeGroupInviteLink,
+  leaveGroup,
   fetchGroupParticipants,
   sendPoll,
   createInstance,
@@ -584,24 +593,96 @@ describe("historial guardado en Evolution (solo lectura)", () => {
 });
 
 describe("grupos de WhatsApp", () => {
-  it("fetchAllGroups devuelve los grupos limpios y deja afuera las comunidades", async () => {
+  it("fetchAllGroups devuelve grupos y comunidades, con el vinculo de cada grupo a su comunidad", async () => {
     const calls = mockFetch([
       {
         body: [
-          { id: "120363001122334455@g.us", subject: " Comunidad SSA ", size: 42, pictureUrl: "https://pic", announce: true },
+          { id: "120363001122334455@g.us", subject: " Grupo SSA ", size: 42, pictureUrl: "https://pic", announce: true, restrict: true, desc: " Hola " },
           { id: "120363009999999999@g.us", subject: "La comunidad madre", isCommunity: true },
+          { id: "120363007777777777@g.us", subject: "La comunidad madre", isCommunityAnnounce: true, linkedParent: "120363009999999999@g.us", announce: true },
           { id: "no-es-un-grupo" },
-          { id: "120363008888888888@g.us", subject: "" },
+          { id: "120363008888888888@g.us", subject: "", linkedParent: "basura" },
         ],
       },
     ]);
     const groups = await fetchAllGroups(config, "ssa-abc");
     expect(calls[0].url).toBe("https://evo.test/group/fetchAllGroups/ssa-abc?getParticipants=false");
     expect(calls[0].method).toBe("GET");
+    const base = { size: null, pictureUrl: null, isCommunity: false, isCommunityAnnounce: false, parentJid: null, description: null, announce: false, restrict: false, numberIsAdmin: null };
     expect(groups).toEqual([
-      { jid: "120363001122334455@g.us", subject: "Comunidad SSA", size: 42, pictureUrl: "https://pic", isCommunity: false, announce: true },
-      { jid: "120363008888888888@g.us", subject: "120363008888888888@g.us", size: null, pictureUrl: null, isCommunity: false, announce: false },
+      { ...base, jid: "120363001122334455@g.us", subject: "Grupo SSA", size: 42, pictureUrl: "https://pic", announce: true, restrict: true, description: "Hola" },
+      { ...base, jid: "120363009999999999@g.us", subject: "La comunidad madre", isCommunity: true },
+      { ...base, jid: "120363007777777777@g.us", subject: "La comunidad madre", isCommunityAnnounce: true, parentJid: "120363009999999999@g.us", announce: true },
+      { ...base, jid: "120363008888888888@g.us", subject: "120363008888888888@g.us" },
     ]);
+  });
+
+  it("fetchAllGroups con el numero pide los miembros y dice si es admin (null si no lo encuentra)", async () => {
+    const calls = mockFetch([
+      {
+        body: [
+          { id: "120363001122334455@g.us", subject: "A", participants: [{ id: "111@lid", phoneNumber: "5491122334455@s.whatsapp.net", admin: "superadmin" }] },
+          { id: "120363001122334456@g.us", subject: "B", participants: [{ id: "5491122334455@s.whatsapp.net", admin: null }] },
+          { id: "120363001122334457@g.us", subject: "C", participants: [{ id: "5491122334455@lid", admin: "admin" }] },
+        ],
+      },
+    ]);
+    const groups = await fetchAllGroups(config, "ssa-abc", { ownerJid: "5491122334455@s.whatsapp.net" });
+    expect(calls[0].url).toBe("https://evo.test/group/fetchAllGroups/ssa-abc?getParticipants=true");
+    expect(groups.map((g) => g.numberIsAdmin)).toEqual([true, false, null]);
+  });
+
+  it("administrar un grupo: cada ruta con el grupo en la query", async () => {
+    const jid = "120363001122334455@g.us";
+    const q = `ssa-abc?groupJid=${encodeURIComponent(jid)}`;
+    const calls = mockFetch([
+      { body: { id: jid } },
+      { body: {} },
+      { body: {} },
+      { body: {} },
+      { body: {} },
+      { body: { updateParticipants: [{ status: "200", jid: "5491111111111@s.whatsapp.net" }, { status: "403", jid: "5492222222222@s.whatsapp.net" }, { status: "409", jid: "x" }] } },
+      { body: { inviteUrl: "https://chat.whatsapp.com/AbC123", inviteCode: "AbC123" } },
+      { body: { revoked: true } },
+      { body: { inviteCode: "Nuevo9" } },
+      { body: { leave: true } },
+    ]);
+    expect(await createGroup(config, "ssa-abc", { subject: "Nuevo", description: "Desc", participants: ["+54 9 11 1111-1111", "basura"] })).toBe(jid);
+    await updateGroupSubject(config, "ssa-abc", jid, "Otro");
+    await updateGroupDescription(config, "ssa-abc", jid, "Nueva");
+    await updateGroupPicture(config, "ssa-abc", jid, "https://img");
+    await updateGroupSetting(config, "ssa-abc", jid, "announcement");
+    expect(await updateGroupParticipants(config, "ssa-abc", jid, "add", ["5491111111111", "5492222222222", "5493333333333"])).toEqual([
+      { jid: "5491111111111@s.whatsapp.net", status: "ok" },
+      { jid: "5492222222222@s.whatsapp.net", status: "needs_invite" },
+      { jid: "x", status: "failed" },
+    ]);
+    expect(await fetchGroupInviteLink(config, "ssa-abc", jid)).toBe("https://chat.whatsapp.com/AbC123");
+    expect(await revokeGroupInviteLink(config, "ssa-abc", jid)).toBe("https://chat.whatsapp.com/Nuevo9");
+    await leaveGroup(config, "ssa-abc", jid);
+
+    expect(calls.map((c) => `${c.method} ${c.url.replace("https://evo.test", "")}`)).toEqual([
+      "POST /group/create/ssa-abc",
+      `POST /group/updateGroupSubject/${q}`,
+      `POST /group/updateGroupDescription/${q}`,
+      `POST /group/updateGroupPicture/${q}`,
+      `POST /group/updateSetting/${q}`,
+      `POST /group/updateParticipant/${q}`,
+      `GET /group/inviteCode/${q}`,
+      `POST /group/revokeInviteCode/${q}`,
+      `GET /group/inviteCode/${q}`,
+      `DELETE /group/leaveGroup/${q}`,
+    ]);
+    expect(calls[0].body).toEqual({ subject: "Nuevo", description: "Desc", participants: ["5491111111111"] });
+    expect(calls[1].body).toEqual({ subject: "Otro" });
+    expect(calls[4].body).toEqual({ action: "announcement" });
+    expect(calls[5].body).toEqual({ action: "add", participants: ["5491111111111", "5492222222222", "5493333333333"] });
+  });
+
+  it("administrar un grupo rechaza un JID invalido sin llamar a Evolution", async () => {
+    const calls = mockFetch([]);
+    await expect(updateGroupSubject(config, "ssa-abc", "no-es-grupo", "x")).rejects.toThrow(/invalido/);
+    expect(calls).toHaveLength(0);
   });
 
   it("fetchGroupParticipants trae telefono, @lid y si es admin", async () => {

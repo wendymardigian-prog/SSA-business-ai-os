@@ -9,11 +9,13 @@ import { canWriteWhatsappGroup, grantFor } from "@/lib/auth/channel-permissions"
 import type { InboxFilters } from "@/lib/inbox/filters";
 import { buildThread, participantLabel, type GroupListRow, type SelectedGroup, type ThreadInput, type ThreadMessage } from "@/lib/whatsapp-groups/thread";
 import type { RolePermissions } from "@/lib/auth/permissions";
+import { cannotWriteReason } from "@/lib/whatsapp-groups/settings";
 
 /** Cuantos mensajes del hilo se cargan (los mas nuevos). */
 const THREAD_LIMIT = 150;
 
-const LIST_COLUMNS = "id, channel_id, group_jid, subject, last_message_at, last_message_preview, unread_count";
+const LIST_COLUMNS = "id, channel_id, group_jid, subject, last_message_at, last_message_preview, unread_count, kind, parent_group_jid, community_subject";
+const SELECTED_COLUMNS = `${LIST_COLUMNS}, description, size, announce, restrict, number_is_admin`;
 
 function labelFor(channels: AccountSource[], channelId: string): string {
   const channel = channels.find((c) => c.id === channelId);
@@ -28,7 +30,7 @@ export async function loadInboxGroups(
   supabase: SupabaseClient,
   workspaceId: string,
   channels: AccountSource[],
-  filters: Pick<InboxFilters, "search" | "channelIds">,
+  filters: Pick<InboxFilters, "search" | "channelIds" | "communityJid">,
   range: { from: string | null; to: string | null },
 ): Promise<GroupListRow[]> {
   let query = supabase
@@ -37,8 +39,9 @@ export async function loadInboxGroups(
     .eq("workspace_id", workspaceId)
     .eq("in_inbox", true)
     .is("left_at", null);
-  // `sanitizeSearch` ya saco los comodines de lo que se busca.
-  if (filters.search) query = query.ilike("subject", `%${filters.search}%`);
+  // `sanitizeSearch` ya saco los comodines de lo que se busca. Se busca tambien por el nombre de la comunidad.
+  if (filters.search) query = query.or(`subject.ilike.%${filters.search}%,community_subject.ilike.%${filters.search}%`);
+  if (filters.communityJid) query = query.eq("parent_group_jid", filters.communityJid);
   if (filters.channelIds.length > 0) query = query.in("channel_id", filters.channelIds);
   if (range.from) query = query.gte("last_message_at", range.from);
   if (range.to) query = query.lte("last_message_at", range.to);
@@ -56,6 +59,8 @@ export async function loadInboxGroups(
     lastMessageAt: g.last_message_at,
     preview: g.last_message_preview,
     unread: g.unread_count,
+    kind: g.kind,
+    communitySubject: g.community_subject,
   }));
 }
 
@@ -72,7 +77,7 @@ export async function loadSelectedGroup(
 ): Promise<{ group: SelectedGroup; thread: ThreadMessage[] } | null> {
   const { data: row, error } = await supabase
     .from("whatsapp_groups")
-    .select(LIST_COLUMNS)
+    .select(SELECTED_COLUMNS)
     .eq("id", groupId)
     .eq("workspace_id", workspaceId)
     .eq("in_inbox", true)
@@ -129,6 +134,13 @@ export async function loadSelectedGroup(
       subject: row.subject,
       channelLabel: labelFor(channels, row.channel_id),
       canWrite: viewer.isAdmin || canWriteWhatsappGroup(grantFor(viewer.permissions?.channels, row.channel_id)),
+      kind: row.kind,
+      communitySubject: row.community_subject,
+      description: row.description,
+      size: row.size,
+      writeBlockedReason: cannotWriteReason({ announce: row.announce, numberIsAdmin: row.number_is_admin }),
+      // Quien llama lo deja en null si la persona no tiene `channels.manage`.
+      manage: { announce: row.announce, restrict: row.restrict, numberIsAdmin: row.number_is_admin },
       members: (members ?? []).map((m) => ({
         key: m.participant_id,
         label: participantLabel(input, m.participant_id) ?? m.participant_id,

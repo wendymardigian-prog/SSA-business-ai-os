@@ -30,6 +30,7 @@ import {
   parsePollCreation,
   type GroupMessageKey,
   type GroupParticipantsEvent,
+  type GroupUpdate,
 } from "./parse";
 import { resolveGroupContact, type GroupChannel } from "./contacts";
 import { emitGroupEvent } from "./automation/emit";
@@ -127,6 +128,40 @@ export async function handleGroupParticipants(
     }
   }
   return result;
+}
+
+// ── Cambios de un grupo (00344) ───────────────────────────────────────────────
+
+/**
+ * Aplica un aviso GROUPS_UPSERT / GROUP_UPDATE a los grupos YA guardados del numero: nombre, descripcion, permisos y
+ * comunidad. Nunca activa un grupo nuevo. El nombre de una comunidad madre se copia a sus grupos. Nunca lanza.
+ */
+export async function handleGroupsUpdate(db: Db, channelId: string, updates: readonly GroupUpdate[]): Promise<number> {
+  let changed = 0;
+  for (const update of updates) {
+    try {
+      if (update.isCommunity) {
+        if (!update.patch.subject) continue;
+        const { error } = await db
+          .from("whatsapp_groups")
+          .update({ community_subject: update.patch.subject })
+          .eq("channel_id", channelId)
+          .eq("parent_group_jid", update.jid);
+        if (error) console.error("[grupos] no pude actualizar el nombre de la comunidad:", error.message);
+        else changed++;
+        continue;
+      }
+      if (Object.keys(update.patch).length === 0) continue;
+      // El nombre de la comunidad nueva no viene en el aviso: lo completa la proxima vez que se abre la lista.
+      const patch = { ...update.patch, ...(update.patch.parent_group_jid === null ? { community_subject: null } : {}) };
+      const { error } = await db.from("whatsapp_groups").update(patch).eq("channel_id", channelId).eq("group_jid", update.jid);
+      if (error) console.error("[grupos] no pude actualizar el grupo:", error.message);
+      else changed++;
+    } catch (err) {
+      console.error("[grupos] no pude procesar un cambio de grupo:", err instanceof Error ? err.message : err);
+    }
+  }
+  return changed;
 }
 
 // ── Mensajes, reacciones y votos ──────────────────────────────────────────────

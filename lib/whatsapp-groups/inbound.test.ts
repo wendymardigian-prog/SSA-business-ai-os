@@ -13,7 +13,7 @@ vi.mock("@/lib/evolution-config", () => ({ getEvolutionConfig }));
 const downloadAttachments = vi.fn();
 vi.mock("@/lib/inbound-media", () => ({ downloadAttachments, chatMediaEnabled: vi.fn(async () => true) }));
 
-const { handleGroupMessage, handleGroupParticipants, loadActiveGroup } = await import("./inbound");
+const { handleGroupMessage, handleGroupParticipants, handleGroupsUpdate, loadActiveGroup } = await import("./inbound");
 
 const WS = "ws-1";
 const CH = "ch-1";
@@ -302,5 +302,29 @@ describe("votos de una encuesta de un grupo", () => {
     const memory = setup({ whatsapp_group_messages: [{ ...poll, poll: null }] });
     await handleGroupMessage(memory.client as never, channel, groupRow() as never, vote(["Lunes"]));
     expect(memory.rows("whatsapp_poll_votes")).toHaveLength(0);
+  });
+});
+
+describe("handleGroupsUpdate (00344)", () => {
+  const COMMUNITY = "120363009999999999@g.us";
+
+  it("actualiza un grupo guardado y nunca crea uno nuevo", async () => {
+    const memory = setup();
+    const changed = await handleGroupsUpdate(memory.client as never, CH, [
+      { jid: GROUP_JID, isCommunity: false, patch: { subject: "Otro nombre", announce: true } },
+      { jid: "120363000000000001@g.us", isCommunity: false, patch: { subject: "Desconocido" } },
+    ]);
+    expect(changed).toBe(2);
+    const rows = memory.rows("whatsapp_groups");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ subject: "Otro nombre", announce: true });
+  });
+
+  it("el nombre de la comunidad madre se copia a sus grupos; salir de la comunidad borra el nombre", async () => {
+    const memory = setup({ whatsapp_groups: [groupRow({ parent_group_jid: COMMUNITY, community_subject: "Vieja" })] });
+    await handleGroupsUpdate(memory.client as never, CH, [{ jid: COMMUNITY, isCommunity: true, patch: { subject: "Nueva" } }]);
+    expect(memory.rows("whatsapp_groups")[0]).toMatchObject({ community_subject: "Nueva" });
+    await handleGroupsUpdate(memory.client as never, CH, [{ jid: GROUP_JID, isCommunity: false, patch: { parent_group_jid: null, kind: "group" } }]);
+    expect(memory.rows("whatsapp_groups")[0]).toMatchObject({ parent_group_jid: null, community_subject: null, kind: "group" });
   });
 });
