@@ -12,11 +12,14 @@ import { MessageText } from "@/components/inbox/message-text";
 
 /**
  * Un mensaje del hilo de un grupo: quién lo escribió (con link a su ficha si es contacto), los adjuntos, el texto,
- * los resultados de una encuesta y las reacciones. El «⋯» ofrece «Crear automatización» en los mensajes del
+ * los resultados de una encuesta (con «Ver quién votó»: los nombres de cada opción, con link a la ficha si es
+ * contacto) y las reacciones. El «⋯» ofrece «Crear automatización» en los mensajes del
  * negocio y en las encuestas.
  */
 export function GroupMessageBubble({ message, canCreateAutomation }: { message: ThreadMessage; canCreateAutomation: boolean }) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  // «Ver quién votó»: antes los nombres solo salían pasando el mouse (no andaba en el celular).
+  const [showVoters, setShowVoters] = useState(false);
   const timeZone = useViewerTimezone();
   const time = new Date(message.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit", timeZone });
   const offerAutomation = canCreateAutomation && !message.failed && (message.outbound || message.poll !== null);
@@ -57,7 +60,7 @@ export function GroupMessageBubble({ message, canCreateAutomation }: { message: 
             {message.poll.options.map((option) => {
               const percent = message.poll!.totalVoters > 0 ? Math.round((option.count / message.poll!.totalVoters) * 100) : 0;
               return (
-                <div key={option.name} title={option.voters.join(", ")}>
+                <div key={option.name} title={option.voters.map((v) => v.name).join(", ")}>
                   <div className="flex items-baseline justify-between gap-2 text-xs">
                     <span>{option.name}</span>
                     <span className="tabular-nums">{option.count}</span>
@@ -65,9 +68,43 @@ export function GroupMessageBubble({ message, canCreateAutomation }: { message: 
                   <div className={cn("h-1.5 overflow-hidden rounded-full", message.outbound ? "bg-primary-foreground/25" : "bg-background")}>
                     <div className={cn("h-full rounded-full", message.outbound ? "bg-primary-foreground" : "bg-primary")} style={{ width: `${percent}%` }} />
                   </div>
+                  {showVoters && (
+                    <p className={cn("mt-1 text-[11px] leading-snug", message.outbound ? "text-primary-foreground/90" : "text-muted-foreground")}>
+                      {option.voters.length === 0
+                        ? "Nadie"
+                        : option.voters.map((voter, i) => (
+                            <span key={`${voter.name}-${i}`}>
+                              {i > 0 && ", "}
+                              {voter.contactId ? (
+                                <Link
+                                  href={`/dashboard/contacts/${voter.contactId}`}
+                                  className={cn("underline underline-offset-2", message.outbound ? "text-primary-foreground" : "text-primary-ink")}
+                                >
+                                  {voter.name}
+                                </Link>
+                              ) : (
+                                voter.name
+                              )}
+                            </span>
+                          ))}
+                    </p>
+                  )}
                 </div>
               );
             })}
+            {message.poll.totalVoters > 0 && (
+              <button
+                type="button"
+                aria-expanded={showVoters}
+                onClick={() => setShowVoters((v) => !v)}
+                className={cn(
+                  "pt-0.5 text-[11px] font-medium underline underline-offset-2",
+                  message.outbound ? "text-primary-foreground/90 hover:text-primary-foreground" : "text-primary-ink",
+                )}
+              >
+                {showVoters ? "Ocultar quién votó" : "Ver quién votó"}
+              </button>
+            )}
           </div>
         ) : (
           message.text && (
