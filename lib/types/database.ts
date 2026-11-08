@@ -7958,6 +7958,11 @@ export interface Database {
         Args: { p_broadcast_id: string };
         Returns: string;
       };
+      /** Borra un broadcast que nunca mando nada (00347). Solo service_role. */
+      delete_unsent_broadcast: {
+        Args: { p_workspace_id: string; p_broadcast_id: string };
+        Returns: string;
+      };
       /**
        * Reclama las inscripciones vencidas para una corrida del cron
        * (migracion 00042). El claim es lo que evita que dos corridas

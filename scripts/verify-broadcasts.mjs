@@ -16,7 +16,12 @@
  *     broadcast cuando no queda nada;
  *   - las tres funciones no las puede llamar un usuario con sesion;
  *   - (00288) `claim_broadcast_recipient` da primero al contacto con actividad mas
- *     reciente (`sort_key`) y deja al final a los que no tienen dato.
+ *     reciente (`sort_key`) y deja al final a los que no tienen dato;
+ *   - (00347) `delete_unsent_broadcast`: borra un pausado o cancelado que no mando
+ *     nada (con su cola), y se niega con uno enviando, uno con un envio o uno de
+ *     otro workspace.
+ *
+ *   node scripts/verify-broadcasts.mjs --despues-de-00347   # suma el bloque 7
  *
  * Crea y borra todo lo suyo (prefijo zz-test-). No se corre a la vez que otro
  * verify-*: comparten prefijo. Tomar el candado /private/tmp/ssa-verify.lock.
@@ -191,6 +196,55 @@ try {
     const { data: p } = await svc.from("broadcasts").insert({ workspace_id: ws.id, name: "zz-test-pausado", status: "paused", channel_id: ch.id }).select("id").single();
     const res = await svc.rpc("refresh_broadcast_counts", { p_broadcast_id: p.id });
     check(res.data === "paused", "sin destinatarios pendientes, un pausado sigue pausado");
+  }
+
+  // -------------------------------------------------------------------------
+  if (process.argv.includes("--despues-de-00347")) {
+    console.log("\n7. (00347) eliminar un broadcast que nunca mando nada");
+    const mk = async (name, status, recipientStatus) => {
+      const { data, error } = await svc.from("broadcasts").insert({ workspace_id: ws.id, name, status, channel_id: ch.id }).select("id").single();
+      if (error) throw new Error(`no pude crear ${name}: ${error.message}`);
+      if (recipientStatus) {
+        const ins = await svc.from("broadcast_recipients").insert(contacts.map((c, i) => ({
+          broadcast_id: data.id, workspace_id: ws.id, contact_id: c, channel_id: ch.id, target: "+1",
+          status: i === 0 ? recipientStatus : "cancelled",
+        })));
+        if (ins.error) throw new Error(`no pude crear los destinatarios de ${name}: ${ins.error.message}`);
+      }
+      return data.id;
+    };
+    const del = (id, workspaceId = ws.id) => svc.rpc("delete_unsent_broadcast", { p_workspace_id: workspaceId, p_broadcast_id: id });
+    const exists = async (id) => ((await svc.from("broadcasts").select("id").eq("id", id)).data ?? []).length === 1;
+
+    const cancelled = await mk("zz-test-borrar-cancelado", "cancelled", "cancelled");
+    const r1 = await del(cancelled);
+    const left = await svc.from("broadcast_recipients").select("id").eq("broadcast_id", cancelled);
+    check(r1.data === "deleted" && !(await exists(cancelled)) && (left.data ?? []).length === 0, "un cancelado sin envios se borra con toda su cola", r1.error?.message ?? r1.data);
+
+    const paused = await mk("zz-test-borrar-pausado", "paused", "pending");
+    const r2 = await del(paused);
+    check(r2.data === "deleted" && !(await exists(paused)), "un pausado con pendientes (sin envios) se borra", r2.error?.message ?? r2.data);
+
+    const withSent = await mk("zz-test-borrar-con-envio", "cancelled", "sent");
+    const r3 = await del(withSent);
+    check(r3.data === "has_sends" && (await exists(withSent)), "uno con un enviado NO se borra (queda como historia)", r3.data);
+
+    const withFailed = await mk("zz-test-borrar-con-fallo", "paused", "failed");
+    check((await del(withFailed)).data === "has_sends", "uno con un fallido NO se borra");
+
+    const inFlight = await mk("zz-test-borrar-saliendo", "paused", "sending");
+    check((await del(inFlight)).data === "has_sends", "uno con un envio a mitad de camino NO se borra");
+
+    const sending = await mk("zz-test-borrar-enviando", "sending", null);
+    check((await del(sending)).data === "sending" && (await exists(sending)), "uno que se esta enviando NO se borra (primero se pausa)");
+
+    const draft = await mk("zz-test-borrar-borrador", "draft", null);
+    const { data: otherWs } = await svc.from("workspaces").insert({ name: "zz-test-broadcasts-otro", slug: `zz-test-broadcasts-otro-${stamp}` }).select("id").single();
+    check((await del(draft, otherWs.id)).data === "not_found" && (await exists(draft)), "con otro workspace no lo encuentra ni lo borra");
+    check((await del(draft)).data === "deleted", "un borrador se sigue borrando");
+
+    const asUser = await owner.client.rpc("delete_unsent_broadcast", { p_workspace_id: ws.id, p_broadcast_id: withSent });
+    check(Boolean(asUser.error), "un usuario con sesion no puede llamarla");
   }
 } catch (err) {
   fail("la verificacion se corto", err instanceof Error ? err.message : String(err));

@@ -3,12 +3,13 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Loader2, Pause, Play, XCircle } from "lucide-react";
+import { AlertTriangle, Loader2, Pause, Play, Trash2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BroadcastRecipientStatus, BroadcastStatus } from "@/lib/types/database";
 import { BROADCAST_STATUS, RECIPIENT_STATUS, TONE_CLASS, formatEta } from "@/lib/broadcasts/status";
 import { describePolicy, estimateFinish, type SendPolicy } from "@/lib/send-queue/pace";
-import { cancelBroadcastAction, pauseBroadcastAction, resumeBroadcastAction, resumeLaneAction } from "@/lib/actions/broadcasts";
+import { cancelBroadcastAction, deleteBroadcastAction, pauseBroadcastAction, resumeBroadcastAction, resumeLaneAction } from "@/lib/actions/broadcasts";
+import { canDeleteBroadcast } from "@/lib/broadcasts/list";
 import { EMAIL_RESULT_FILTERS, emailResultTiles, type EmailResultCounts, type EmailResultFilter } from "@/lib/broadcasts/email-results-view";
 
 /**
@@ -71,6 +72,8 @@ export function BroadcastProgress({
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   const open = counts.pending + counts.sending;
   const live = broadcast.status === "sending" || broadcast.status === "scheduled";
+  // Lo que esta saliendo cuenta como enviado: la base tampoco lo deja borrar.
+  const deletable = canDeleteBroadcast({ status: broadcast.status, sent: counts.sent + counts.sending, failed: counts.failed });
 
   useEffect(() => {
     if (!live) return;
@@ -85,6 +88,16 @@ export function BroadcastProgress({
       const res = await action();
       if (!res.ok) setError(res.error);
       router.refresh();
+    });
+  }
+
+  function remove() {
+    if (!window.confirm("¿Eliminar este broadcast? No salió ningún mensaje: se borra junto con su cola y no se puede deshacer.")) return;
+    setError(null);
+    start(async () => {
+      const res = await deleteBroadcastAction(broadcast.id);
+      if (res.ok) router.push("/dashboard/broadcasts");
+      else setError(res.error);
     });
   }
 
@@ -125,6 +138,11 @@ export function BroadcastProgress({
             className={cn(btn, "text-red-700 dark:text-red-400")}
           >
             <XCircle className="h-4 w-4" aria-hidden /> Cancelar
+          </button>
+        )}
+        {deletable && (
+          <button type="button" disabled={pending} onClick={remove} className={cn(btn, "text-red-700 dark:text-red-400")}>
+            <Trash2 className="h-4 w-4" aria-hidden /> Eliminar
           </button>
         )}
         {pending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden />}
