@@ -486,10 +486,12 @@ Casi todos los cron llaman a una ruta /api/cron/<nombre> de la app con
 private.call_app_cron, que lee la URL de la app y el secreto del cron desde Vault
 (se cargan con private.set_system_secret). Los que corren seguido pasan antes por
 una guarda (private.call_app_cron_if_work): solo llaman si hay algo que hacer, y
-igual una vez cada tanto por seguridad. Los demas corren en la base: las purgas
+igual una vez cada tanto por seguridad. Los de la misma frecuencia (15 s, 1 min y
+5 min) son un solo trabajo de pg_cron (private.cron_tick_*), con cada parte en su
+bloque: una que falla no frena a las otras. Los demas corren en la base: las purgas
 de lo borrado (pasados 30 dias) y de lo vencido (mensajes, borradores, eventos, avisos,
 historial de cron y de pg_net).`,
-    tables: ["public.scheduled_jobs", "public.webhook_events", "public.rate_limits", "private.system_config", "private.cron_guard_state"],
+    tables: ["public.scheduled_jobs", "public.webhook_events", "public.rate_limits", "private.system_config", "private.cron_guard_state", "private.cron_tick_errors"],
     functions: [
       "public.push_debounced_job",
       "public.bump_rate_limit",
@@ -499,6 +501,7 @@ historial de cron y de pg_net).`,
       "private.cron_guard_decide",
       "private.cron_has_work",
       /^private\.cron_work_/,
+      /^private\.cron_tick_/,
       "private.purge_scheduled_jobs",
       "private.purge_cron_run_details",
       "private.purge_pg_net_responses",
