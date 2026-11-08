@@ -43,7 +43,7 @@ import { handleWhatsappReaction, parseBaileysReaction } from "@/lib/messages/rea
 import { parseBaileysPollVote } from "@/lib/messages/poll-votes";
 import { withKnownLid } from "@/lib/whatsapp-known-lid";
 import { groupJidOfMessage, parseGroupParticipantsEvent, parseGroupsUpdateEvent } from "@/lib/whatsapp-groups/parse";
-import { handleGroupMessage, handleGroupParticipants, handleGroupsUpdate, loadActiveGroup } from "@/lib/whatsapp-groups/inbound";
+import { ensureInboxGroup, handleGroupMessage, handleGroupParticipants, handleGroupsUpdate } from "@/lib/whatsapp-groups/inbound";
 import {
   describeAttachment,
   extractText,
@@ -189,7 +189,7 @@ async function handleWebhook(request: NextRequest) {
     if (updates.length === 0) return NextResponse.json({ ok: true, skipped: "aviso de grupo ilegible" });
     after(async () => {
       try {
-        await handleGroupsUpdate(supabase, channel.id, updates);
+        await handleGroupsUpdate(supabase, channel, updates);
       } catch (err) {
         console.error("[evolution] error procesando el cambio de grupo:", err instanceof Error ? err.message : err);
       }
@@ -201,17 +201,18 @@ async function handleWebhook(request: NextRequest) {
     return NextResponse.json({ ok: true, skipped: event || "sin evento" });
   }
 
-  // Un mensaje de un GRUPO: solo se guarda si el negocio activo ese grupo (si no, se ignora como siempre). No es
-  // una conversacion con un lead: no pasa por el agente, ni por los flujos de mensajes, ni suma a la bandeja privada.
+  // Un mensaje de un GRUPO: todos los grupos del numero van a la bandeja (8/11/2026). Uno que no estaba guardado se
+  // suma en el momento (leyendo su nombre y su comunidad de WhatsApp, despues de responder). No es una conversacion
+  // con un lead: no pasa por el agente, ni por los flujos de mensajes, ni suma a la bandeja privada.
   const groupJid = groupJidOfMessage(payload.data?.key);
   if (groupJid) {
-    const group = await loadActiveGroup(supabase, channel.id, groupJid);
-    if (!group) return NextResponse.json({ ok: true, skipped: "grupo no activado" });
     const groupMessageId = payload.data?.key?.id ?? null;
     const claimedGroup = await claimWebhookEvent(supabase, groupMessageId ? `evolution:${channel.id}:${groupJid}:${groupMessageId}` : null);
     if (!claimedGroup) return NextResponse.json({ ok: true, skipped: "evento repetido" });
     after(async () => {
       try {
+        const group = await ensureInboxGroup(supabase, channel, groupJid);
+        if (!group) return;
         await handleGroupMessage(supabase, channel, group, payload.data ?? {});
       } catch (err) {
         console.error("[evolution] error procesando el mensaje del grupo:", err instanceof Error ? err.message : err);

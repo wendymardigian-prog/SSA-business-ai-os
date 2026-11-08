@@ -6,6 +6,8 @@ import { Check, Copy, Crown, Link2, Loader2, LogOut, RefreshCw, UserMinus, UserP
 import {
   changeWhatsappGroupParticipants,
   getWhatsappGroupInvite,
+  importWhatsappGroupMembersFromInbox,
+  setWhatsappGroupSaveContacts,
   leaveWhatsappGroup,
   listWhatsappGroupParticipants,
   sendWhatsappGroupInvite,
@@ -28,6 +30,7 @@ export function GroupManagePanel({ group, onClose }: { group: SelectedGroup; onC
   const [description, setDescription] = useState(group.description ?? "");
   const [announce, setAnnounce] = useState(manage.announce);
   const [restrict, setRestrict] = useState(manage.restrict);
+  const [saveContacts, setSaveContacts] = useState(manage.saveContacts);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [saving, startSaving] = useTransition();
   const [invite, setInvite] = useState<string | null>(null);
@@ -51,11 +54,39 @@ export function GroupManagePanel({ group, onClose }: { group: SelectedGroup; onC
     setDescription(group.description ?? "");
     setAnnounce(manage.announce);
     setRestrict(manage.restrict);
+    setSaveContacts(manage.saveContacts);
     setInvite(null);
     setParticipants(null);
     setNeedsInvite([]);
     setMessage(null);
-  }, [group.id, group.subject, group.description, manage.announce, manage.restrict]);
+  }, [group.id, group.subject, group.description, manage.announce, manage.restrict, manage.saveContacts]);
+
+  function toggleSaveContacts(next: boolean) {
+    setSaveContacts(next);
+    setMessage(null);
+    startSaving(async () => {
+      const result = await setWhatsappGroupSaveContacts(group.id, next);
+      if (!result.ok) {
+        setSaveContacts(!next);
+        setMessage({ tone: "error", text: result.error });
+        return;
+      }
+      setMessage({ tone: "ok", text: next ? "Desde ahora, quien se une queda como contacto." : "Ya no se guarda como contacto a quien se une." });
+      router.refresh();
+    });
+  }
+
+  function importMembers() {
+    setMessage(null);
+    startSaving(async () => {
+      const result = await importWhatsappGroupMembersFromInbox(group.id);
+      setMessage(
+        result.ok
+          ? { tone: "ok", text: "Importando los miembros. Puede tardar unos minutos; van a aparecer en Contactos (sin disparar automatizaciones)." }
+          : { tone: "error", text: result.error },
+      );
+    });
+  }
 
   function run(task: () => Promise<{ ok: boolean; error?: string } & Record<string, unknown>>, okText: string | null) {
     setMessage(null);
@@ -187,9 +218,28 @@ export function GroupManagePanel({ group, onClose }: { group: SelectedGroup; onC
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3 text-sm">
         {notAdmin && (
           <p className="rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-            Este número no es admin del grupo: WhatsApp solo deja ver los miembros. Para cambiar algo, un admin lo tiene que hacer admin.
+            Este número no es admin del grupo: WhatsApp no deja cambiar el grupo ni sus miembros (solo verlos). Lo de contactos sí se elige igual.
           </p>
         )}
+
+        <section className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contactos</h3>
+          <label className="flex items-start gap-2 text-xs">
+            <input type="checkbox" checked={saveContacts} disabled={saving} onChange={(e) => toggleSaveContacts(e.target.checked)} className="mt-0.5" />
+            <span>Guardar como contacto a quien se une (queda con el origen «Grupo de WhatsApp»)</span>
+          </label>
+          {saveContacts && (
+            <button
+              type="button"
+              onClick={importMembers}
+              disabled={saving}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+            >
+              <UserPlus className="h-3 w-3" aria-hidden />
+              Importar a los que ya están
+            </button>
+          )}
+        </section>
 
         <section className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Información</h3>

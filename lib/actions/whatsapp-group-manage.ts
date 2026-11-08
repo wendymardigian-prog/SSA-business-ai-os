@@ -26,6 +26,8 @@ import { normalizePhone } from "@/lib/phone";
 import { parseAvatarDataUrl } from "@/lib/account/validation";
 import { sendEvolutionDirect } from "@/lib/flow-engine/send";
 import { refreshSavedGroup } from "@/lib/whatsapp-groups/refresh";
+import { scheduleJob } from "@/lib/scheduler";
+import { GROUP_IMPORT_JOB, groupImportDedupeKey } from "@/lib/whatsapp-groups/import";
 import {
   GROUP_PARTICIPANTS_MAX,
   inviteMessage,
@@ -169,6 +171,43 @@ export async function updateWhatsappGroupDetails(
   if (error) console.error("[grupos] no pude guardar el cambio:", error.message);
   await audit(loaded, "details", changes);
   done();
+  return { ok: true };
+}
+
+/**
+ * Si el grupo guarda como contacto a quien se une (lo mismo que el tilde de Ajustes → WhatsApp → Grupos, desde el
+ * chat). No pide que el numero sea admin: es una eleccion del negocio, no un cambio en WhatsApp.
+ */
+export async function setWhatsappGroupSaveContacts(groupId: string, saveContacts: boolean): Promise<Result> {
+  if (typeof saveContacts !== "boolean") return { ok: false, error: "Pedido inválido." };
+  const loaded = await loadManagedGroup(groupId);
+  if ("error" in loaded) return { ok: false, error: loaded.error ?? NOT_FOUND };
+  const { group, service } = loaded;
+  const { data: before } = await service.from("whatsapp_groups").select("save_contacts").eq("id", group.id).maybeSingle();
+  const { error } = await service.from("whatsapp_groups").update({ save_contacts: saveContacts, in_inbox: true }).eq("id", group.id);
+  if (error) {
+    console.error("[grupos] no pude guardar la opcion de contactos:", error.message);
+    return { ok: false, error: "No pude guardar el cambio. Probá de nuevo." };
+  }
+  await audit(loaded, "save_contacts", { save_contacts: { old: before?.save_contacts ?? null, new: saveContacts } });
+  done();
+  return { ok: true };
+}
+
+/** «Importar miembros» desde el chat: trae como contactos a los que ya estaban (sin disparar automatizaciones). */
+export async function importWhatsappGroupMembersFromInbox(groupId: string): Promise<Result> {
+  const loaded = await loadManagedGroup(groupId);
+  if ("error" in loaded) return { ok: false, error: loaded.error ?? NOT_FOUND };
+  const { ctx, group, service } = loaded;
+  try {
+    await scheduleJob(service, GROUP_IMPORT_JOB, { workspaceId: ctx.workspace.id, groupId: group.id, requestedBy: ctx.user.id }, new Date(), groupImportDedupeKey(group.id));
+  } catch (err) {
+    // 23505 = ya hay una importacion de este grupo en la cola: no es un error.
+    if ((err as { code?: string })?.code !== "23505") {
+      console.error("[grupos] no pude encolar la importacion:", err instanceof Error ? err.message : String(err));
+      return { ok: false, error: "No pude empezar la importación. Probá de nuevo." };
+    }
+  }
   return { ok: true };
 }
 

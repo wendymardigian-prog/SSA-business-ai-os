@@ -277,6 +277,8 @@ export async function createInstance(
           // WhatsApp solo manda el historial al escanear el QR: se pide completo
           // desde el arranque, porque despues ya no se puede pedir sin reconectar.
           syncFullHistory: true,
+          // Todos los grupos del numero van a la bandeja (8/11/2026): que Evolution no los ignore.
+          groupsIgnore: false,
         }
       : {
           instanceName,

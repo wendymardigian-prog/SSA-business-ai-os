@@ -41,6 +41,8 @@ export interface SelectedGroup {
     announce: boolean;
     restrict: boolean;
     numberIsAdmin: boolean | null;
+    /** Si guarda como contacto a quien se une. */
+    saveContacts: boolean;
   } | null;
   members: Array<{ key: string; label: string; contactId: string | null }>;
 }

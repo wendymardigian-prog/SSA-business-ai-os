@@ -1792,8 +1792,9 @@ Una comunidad es una comunidad madre (sin mensajes), un grupo de Avisos (mismo n
 - **La comunidad madre nunca se guarda** (`kind IN ('group','announce')`): no tiene mensajes. Cada grupo lleva `parent_group_jid` y una copia del nombre (`community_subject`). `fetchAllGroups` devuelve las madres marcadas (`isCommunity`) y `mergeGroupLists` las saca de la lista.
 - **Evolution no tiene rutas de comunidades** (ni la 2.3.7 ni la última): crear una comunidad o vincular un grupo se hace desde el celular. Tampoco ve grupos donde el número no está.
 - **`number_is_admin` null = no se sabe**, y nunca pisa uno conocido (`liveGroupColumns`). Solo se frena escribir cuando se SABE que no es admin y solo escriben admins (`cannotWriteReason`).
-- **Los avisos `GROUPS_UPSERT` / `GROUP_UPDATE` solo actualizan grupos ya guardados** (`handleGroupsUpdate`); nunca activan uno. Un número viejo los recibe recién al guardar «Grupos» una vez.
+- **Todos los grupos del número van solos a la bandeja** (decisión del 8/11/2026): `syncChannelGroups` al abrir la lista de Grupos, `ensureInboxGroup` cuando llega un mensaje, un aviso de miembros o `GROUPS_UPSERT` de un grupo que no estaba. La comunidad madre nunca. Lo único que se elige por grupo es «Guardar como contacto a quien se une», en Ajustes o desde el chat (Configurar → Contactos).
 - **Configurar y crear piden `channels.manage`** (`lib/actions/whatsapp-group-manage.ts`), escriben con el cliente de servicio filtrando por el workspace de la sesión y quedan en `audit_log` (`section: whatsapp_group_manage`). El link por privado a quien no se pudo agregar respeta «no contactar».
+- **Un número nuevo se crea con `groupsIgnore: false`**; abrir la lista de Grupos se lo pide de nuevo a uno viejo.
 - **`?comunidad=<jid>` es «solo grupos»**: la página pone `listType: "grupos"` para que el Realtime de chats no meta ninguno.
 - **Los pasos de grupos saltean con `skipGroupStep`** y usan `flow_send_claims` y el tope de WhatsApp como «Enviar encuesta».
 

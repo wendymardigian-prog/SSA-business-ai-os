@@ -32,7 +32,7 @@ export function GroupSelect({ id, value, onChange }: { id: string; value: string
   if (groups && groups.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        No hay grupos activados. Se activan en{" "}
+        Todavía no hay grupos. Aparecen solos cuando llega un mensaje, o al abrir{" "}
         <Link href="/dashboard/settings/integrations/evolution" className="text-primary-ink underline">
           Ajustes → Integraciones → WhatsApp → Grupos
         </Link>

@@ -51,23 +51,23 @@ agregar a alguien por su privacidad, se ofrece **mandarle el link por privado** 
 Todo queda en el historial del canal (`section: whatsapp_group_manage`). Reglas puras en `lib/whatsapp-groups/manage.ts`;
 acciones en `lib/actions/whatsapp-group-manage.ts`.
 
-## Cómo se activa
+## Cómo entran a la bandeja
 
-**Ajustes → Integraciones → WhatsApp → (el número) → Grupos.** Lista los grupos en los que está el número y, por
-grupo, dos interruptores:
+**Todos los grupos del número aparecen solos en la bandeja** (decisión del 8/11/2026; antes había que activarlos uno
+por uno con «Ver en la bandeja»). Entran:
 
-- **Ver en la bandeja**: el grupo aparece en la lista de la bandeja, mezclado con los chats por la fecha de su último
-  mensaje (Filtros → «Chats y grupos» deja ver solo unos u otros). Se leen los mensajes, se escribe, se mandan
-  fotos, videos, archivos y encuestas, y se arma una automatización desde un mensaje.
-- **Guardar como contacto a quien se une**: quien entre desde ahora queda como contacto (o se vincula al que ya
-  existía), con su toque de atribución.
+- al abrir **Ajustes → Integraciones → WhatsApp → (el número) → Grupos** (trae todos los grupos del número de una vez y
+  marca como dejados los que el número ya no tiene);
+- cuando llega un mensaje o un aviso de miembros de un grupo que no estaba guardado (`ensureInboxGroup`);
+- cuando WhatsApp avisa que el número entró a un grupo nuevo (`GROUPS_UPSERT`).
 
-Con uno activado aparece **Importar miembros**, que trae como contactos a los que ya estaban en el grupo (en segundo
-plano y por partes, **sin disparar automatizaciones**).
+Lo que se elige por grupo es **«Guardar como contacto a quien se une»**: quien entre desde ahora queda como contacto (o
+se vincula al que ya existía), con su toque de atribución. Se elige en Ajustes → WhatsApp → Grupos **o desde el chat
+del grupo** (Configurar → Contactos), con `channels.manage`. Con eso prendido aparece **Importar miembros**, que trae
+como contactos a los que ya estaban (en segundo plano y por partes, **sin disparar automatizaciones**).
 
-Activar un grupo también le dice a Evolution que avise lo de los grupos (`groupsIgnore` en false) y registra el
-webhook con el evento de miembros. Un número conectado antes de esta versión empieza a recibir los grupos recién
-después de activar uno.
+Un número nuevo se crea con `groupsIgnore: false`, y abrir la lista de Grupos se lo vuelve a pedir a Evolution a un
+número viejo.
 
 ## Quién ve y quién escribe
 
@@ -164,8 +164,7 @@ número. El tope de 200 mensajes automáticos por hora del canal sigue valiendo.
 - **Las tablas no tienen `contact_id`.** Cada participante se guarda con su identidad de WhatsApp (`participant_id`:
   teléfono o `@lid`, la misma de `contact_channels.platform_sender_id`) y el contacto se encuentra por
   `contact_channels`. Así la fusión de contactos las cubre sin tocar `merge_contacts`.
-- **Un grupo no activado se ignora como siempre.** Solo se guarda lo de los grupos con una fila en `whatsapp_groups`
-  (con algún interruptor prendido).
+- **Todos los grupos van a la bandeja** (`in_inbox` siempre prendido). Lo único que se elige es guardar contactos.
 - **Los contactos nacen por la regla única** (`find_or_link_contact`), y solo si el grupo guarda contactos (o con
   «Importar miembros»). Importar no dispara automatizaciones.
 - **Escribe solo el servidor.** La app lee con la RLS (`can_see_whatsapp_group`); escribir se chequea en TypeScript con

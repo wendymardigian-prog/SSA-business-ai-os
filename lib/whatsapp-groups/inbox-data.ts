@@ -15,7 +15,7 @@ import { cannotWriteReason } from "@/lib/whatsapp-groups/settings";
 const THREAD_LIMIT = 150;
 
 const LIST_COLUMNS = "id, channel_id, group_jid, subject, last_message_at, last_message_preview, unread_count, kind, parent_group_jid, community_subject";
-const SELECTED_COLUMNS = `${LIST_COLUMNS}, description, size, announce, restrict, number_is_admin`;
+const SELECTED_COLUMNS = `${LIST_COLUMNS}, description, size, announce, restrict, number_is_admin, save_contacts`;
 
 function labelFor(channels: AccountSource[], channelId: string): string {
   const channel = channels.find((c) => c.id === channelId);
@@ -140,7 +140,7 @@ export async function loadSelectedGroup(
       size: row.size,
       writeBlockedReason: cannotWriteReason({ announce: row.announce, numberIsAdmin: row.number_is_admin }),
       // Quien llama lo deja en null si la persona no tiene `channels.manage`.
-      manage: { announce: row.announce, restrict: row.restrict, numberIsAdmin: row.number_is_admin },
+      manage: { announce: row.announce, restrict: row.restrict, numberIsAdmin: row.number_is_admin, saveContacts: row.save_contacts },
       members: (members ?? []).map((m) => ({
         key: m.participant_id,
         label: participantLabel(input, m.participant_id) ?? m.participant_id,

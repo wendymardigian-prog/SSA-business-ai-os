@@ -23,30 +23,6 @@ export async function ownerJidOf(config: EvolutionConfig, instance: string): Pro
 }
 
 /**
- * Escribe en las filas guardadas de un numero lo que vino de `fetchAllGroups` (la lista entera, con las
- * comunidades). Una fila por grupo guardado que siga entre los del numero.
- */
-export async function refreshSavedGroupsFromLive(
-  service: Service,
-  params: { workspaceId: string; channelId: string; live: readonly EvolutionGroup[]; savedJids: readonly string[] },
-): Promise<void> {
-  const names = communityNames(params.live);
-  const saved = new Set(params.savedJids);
-  const updates = params.live
-    .filter((group) => !group.isCommunity && saved.has(group.jid))
-    .map(async (group) => {
-      const { error } = await service
-        .from("whatsapp_groups")
-        .update(liveGroupColumns(group, group.parentJid ? (names.get(group.parentJid) ?? null) : null))
-        .eq("workspace_id", params.workspaceId)
-        .eq("channel_id", params.channelId)
-        .eq("group_jid", group.jid);
-      if (error) console.error("[grupos] no pude actualizar un grupo:", error.message);
-    });
-  await Promise.all(updates);
-}
-
-/**
  * Refresca UN grupo guardado preguntandole a WhatsApp (`findGroupInfos`, y el de su comunidad para el nombre).
  * Devuelve lo leido, o null si no se pudo.
  */
@@ -78,5 +54,48 @@ export async function refreshSavedGroup(
   } catch (err) {
     console.error("[grupos] no pude leer el grupo:", err instanceof Error ? err.message : String(err));
     return null;
+  }
+}
+
+/**
+ * Todos los grupos del numero van a la bandeja (decision del 8/11/2026): deja una fila por grupo (nunca la comunidad
+ * madre) con `in_inbox` prendido y los datos de WhatsApp al dia, y marca como dejados (`left_at`) los guardados de
+ * los que el numero ya no es parte. `save_contacts` no se toca: eso lo elige el negocio.
+ *
+ * Solo se llama con la lista COMPLETA de `fetchAllGroups` (si fallo, no se llama: no se marca nada como dejado).
+ * Nunca lanza.
+ */
+export async function syncChannelGroups(
+  service: Service,
+  params: { workspaceId: string; channelId: string; live: readonly EvolutionGroup[]; now?: Date },
+): Promise<void> {
+  try {
+    const names = communityNames(params.live);
+    const groups = params.live.filter((group) => !group.isCommunity);
+    if (groups.length > 0) {
+      const rows = groups.map((group) => ({
+        workspace_id: params.workspaceId,
+        channel_id: params.channelId,
+        group_jid: group.jid,
+        in_inbox: true,
+        left_at: null,
+        ...liveGroupColumns(group, group.parentJid ? (names.get(group.parentJid) ?? null) : null),
+      }));
+      // `defaultToNull: false`: lo que una fila no trae (por ejemplo `number_is_admin` desconocido) no se pisa.
+      const { error } = await service.from("whatsapp_groups").upsert(rows, { onConflict: "channel_id,group_jid", defaultToNull: false });
+      if (error) console.error("[grupos] no pude sumar los grupos del numero:", error.message);
+    }
+    const present = groups.map((group) => group.jid);
+    let gone = service
+      .from("whatsapp_groups")
+      .update({ left_at: (params.now ?? new Date()).toISOString() })
+      .eq("workspace_id", params.workspaceId)
+      .eq("channel_id", params.channelId)
+      .is("left_at", null);
+    if (present.length > 0) gone = gone.not("group_jid", "in", `(${present.map((jid) => `"${jid}"`).join(",")})`);
+    const { error: goneError } = await gone;
+    if (goneError) console.error("[grupos] no pude marcar los grupos dejados:", goneError.message);
+  } catch (err) {
+    console.error("[grupos] no pude sincronizar los grupos:", err instanceof Error ? err.message : String(err));
   }
 }

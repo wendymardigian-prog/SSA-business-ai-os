@@ -5,7 +5,7 @@ import { Loader2, Megaphone, Plus, UserPlus, Users, UsersRound } from "lucide-re
 import { importWhatsappGroupMembers, listWhatsappGroups, saveWhatsappGroup } from "@/lib/actions/whatsapp-groups";
 import { createWhatsappGroup } from "@/lib/actions/whatsapp-group-manage";
 import { GROUP_DESCRIPTION_MAX, GROUP_SUBJECT_MAX } from "@/lib/whatsapp-groups/manage";
-import { groupListSections, isActiveItem, type GroupListItem } from "@/lib/whatsapp-groups/settings";
+import { groupListSections, type GroupListItem } from "@/lib/whatsapp-groups/settings";
 
 /**
  * Los grupos de un número de WhatsApp (00280), en su tarjeta de canal.
@@ -65,14 +65,14 @@ export function WhatsappGroupSettings({ channelId }: { channelId: string }) {
     if (next && groups === null) load();
   }
 
-  function change(item: GroupListItem, patch: { inInbox?: boolean; saveContacts?: boolean }) {
-    const inInbox = patch.inInbox ?? item.saved?.inInbox ?? false;
-    const saveContacts = patch.saveContacts ?? item.saved?.saveContacts ?? false;
+  function change(item: GroupListItem, patch: { saveContacts: boolean }) {
+    const inInbox = true;
+    const saveContacts = patch.saveContacts;
     setError(null);
     setNotice(null);
     setBusyJid(item.jid);
     startSaving(async () => {
-      const result = await saveWhatsappGroup(channelId, { jid: item.jid, subject: item.subject, inInbox, saveContacts });
+      const result = await saveWhatsappGroup(channelId, { jid: item.jid, subject: item.subject, saveContacts });
       setBusyJid(null);
       if (!result.ok) {
         setError(result.error);
@@ -82,28 +82,6 @@ export function WhatsappGroupSettings({ channelId }: { channelId: string }) {
         (list ?? []).map((g) => (g.jid === item.jid ? { ...g, saved: { id: result.groupId, inInbox, saveContacts } } : g)),
       );
     });
-  }
-
-  async function activateCommunity(items: GroupListItem[]) {
-    const pending = items.filter((item) => !item.missing && !item.saved?.inInbox);
-    if (pending.length === 0) return;
-    setError(null);
-    setNotice(null);
-    for (const item of pending) {
-      setBusyJid(item.jid);
-      const saveContacts = item.saved?.saveContacts ?? false;
-      const result = await saveWhatsappGroup(channelId, { jid: item.jid, subject: item.subject, inInbox: true, saveContacts });
-      if (!result.ok) {
-        setBusyJid(null);
-        setError(result.error);
-        return;
-      }
-      setGroups((list) =>
-        (list ?? []).map((g) => (g.jid === item.jid ? { ...g, saved: { id: result.groupId, inInbox: true, saveContacts } } : g)),
-      );
-    }
-    setBusyJid(null);
-    setNotice(`Listo: ${pending.length === 1 ? "1 grupo quedó" : `${pending.length} grupos quedaron`} en la bandeja.`);
   }
 
   function importMembers(item: GroupListItem) {
@@ -122,7 +100,6 @@ export function WhatsappGroupSettings({ channelId }: { channelId: string }) {
 
   function renderItem(item: GroupListItem) {
     const busy = busyJid === item.jid;
-    const active = isActiveItem(item);
     return (
       <li key={item.jid} className="space-y-1.5 px-2 py-1.5">
         <div className="flex items-center gap-2">
@@ -142,22 +119,13 @@ export function WhatsappGroupSettings({ channelId }: { channelId: string }) {
           <label className="flex items-center gap-1.5">
             <input
               type="checkbox"
-              checked={item.saved?.inInbox ?? false}
-              disabled={busy}
-              onChange={(e) => change(item, { inInbox: e.target.checked })}
-            />
-            Ver en la bandeja
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
               checked={item.saved?.saveContacts ?? false}
               disabled={busy}
               onChange={(e) => change(item, { saveContacts: e.target.checked })}
             />
             Guardar como contacto a quien se une
           </label>
-          {active && !item.missing && (
+          {item.saved?.saveContacts && !item.missing && (
             <button
               type="button"
               onClick={() => importMembers(item)}
@@ -187,8 +155,9 @@ export function WhatsappGroupSettings({ channelId }: { channelId: string }) {
       {open && (
         <div className="space-y-2 border-t border-border px-2.5 py-2 text-[11px]">
           <p className="text-muted-foreground">
-            Activá los grupos que querés ver en la bandeja o usar para sumar contactos. Quien se une a un grupo que guarda contactos queda
-            con el origen «Grupo de WhatsApp». Las automatizaciones de grupos (alguien se une, reacciona o vota) se arman en Automatizaciones.
+            Todos los grupos de este número aparecen solos en la bandeja. Acá (o desde «Configurar» en el chat del grupo) elegís en cuáles
+            se guarda como contacto a quien se une: queda con el origen «Grupo de WhatsApp». Las automatizaciones de grupos (alguien se
+            une, reacciona o vota) se arman en Automatizaciones.
           </p>
           {creating ? (
             <div className="space-y-1.5 rounded-md border border-border p-2">
@@ -251,7 +220,6 @@ export function WhatsappGroupSettings({ channelId }: { channelId: string }) {
           ) : groups ? (
             <div className="space-y-2">
               {groupListSections(groups).map((section) => {
-                const pendingInSection = section.items.filter((item) => !item.missing && !item.saved?.inInbox).length;
                 return (
                   <section key={section.community?.jid ?? "sueltos"} className="space-y-1">
                     <div className="flex items-center gap-1.5">
@@ -263,16 +231,6 @@ export function WhatsappGroupSettings({ channelId }: { channelId: string }) {
                       <h4 className="min-w-0 flex-1 truncate font-semibold">
                         {section.community ? `Comunidad · ${section.community.subject}` : "Grupos sueltos"}
                       </h4>
-                      {section.community && pendingInSection > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => void activateCommunity(section.items)}
-                          disabled={busyJid !== null}
-                          className="shrink-0 rounded-md border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50"
-                        >
-                          Ver todos en la bandeja
-                        </button>
-                      )}
                     </div>
                     <ul className="divide-y divide-border rounded-md border border-border">
                       {section.items.map((item) => renderItem(item))}

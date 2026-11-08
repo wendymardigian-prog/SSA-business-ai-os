@@ -13,7 +13,7 @@ vi.mock("@/lib/evolution-config", () => ({ getEvolutionConfig }));
 const downloadAttachments = vi.fn();
 vi.mock("@/lib/inbound-media", () => ({ downloadAttachments, chatMediaEnabled: vi.fn(async () => true) }));
 
-const { handleGroupMessage, handleGroupParticipants, handleGroupsUpdate, loadActiveGroup } = await import("./inbound");
+const { ensureInboxGroup, handleGroupMessage, handleGroupParticipants, handleGroupsUpdate, loadActiveGroup } = await import("./inbound");
 
 const WS = "ws-1";
 const CH = "ch-1";
@@ -129,10 +129,11 @@ describe("handleGroupParticipants", () => {
     expect(memory.rows("whatsapp_group_members")).toHaveLength(0);
   });
 
-  it("un grupo no activado no guarda nada", async () => {
+  it("un grupo que no estaba guardado entra a la bandeja, pero sin guardar contactos (eso lo elige el negocio)", async () => {
     const memory = setup({ whatsapp_groups: [] });
     const result = await handleGroupParticipants(memory.client as never, channel, { groupJid: GROUP_JID, action: "add", participants: [ANA] });
-    expect(result).toEqual({ joined: 0, emitted: 0 });
+    expect(result.joined).toBe(1);
+    expect(memory.rows("whatsapp_groups")[0]).toMatchObject({ in_inbox: true });
     expect(upsertContactForSender).not.toHaveBeenCalled();
   });
 
@@ -308,23 +309,40 @@ describe("votos de una encuesta de un grupo", () => {
 describe("handleGroupsUpdate (00344)", () => {
   const COMMUNITY = "120363009999999999@g.us";
 
-  it("actualiza un grupo guardado y nunca crea uno nuevo", async () => {
+  it("actualiza un grupo guardado y suma a la bandeja uno que no estaba (la comunidad madre no)", async () => {
     const memory = setup();
-    const changed = await handleGroupsUpdate(memory.client as never, CH, [
+    const changed = await handleGroupsUpdate(memory.client as never, channel, [
       { jid: GROUP_JID, isCommunity: false, patch: { subject: "Otro nombre", announce: true } },
-      { jid: "120363000000000001@g.us", isCommunity: false, patch: { subject: "Desconocido" } },
+      { jid: "120363000000000001@g.us", isCommunity: false, patch: { subject: "Nuevo" } },
+      { jid: COMMUNITY, isCommunity: true, patch: { subject: "Madre" } },
     ]);
-    expect(changed).toBe(2);
+    expect(changed).toBe(3);
     const rows = memory.rows("whatsapp_groups");
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ subject: "Otro nombre", announce: true });
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.group_jid === GROUP_JID)).toMatchObject({ subject: "Otro nombre", announce: true });
+    expect(rows.find((r) => r.group_jid === "120363000000000001@g.us")).toMatchObject({ subject: "Nuevo", in_inbox: true, left_at: null });
   });
 
   it("el nombre de la comunidad madre se copia a sus grupos; salir de la comunidad borra el nombre", async () => {
     const memory = setup({ whatsapp_groups: [groupRow({ parent_group_jid: COMMUNITY, community_subject: "Vieja" })] });
-    await handleGroupsUpdate(memory.client as never, CH, [{ jid: COMMUNITY, isCommunity: true, patch: { subject: "Nueva" } }]);
+    await handleGroupsUpdate(memory.client as never, channel, [{ jid: COMMUNITY, isCommunity: true, patch: { subject: "Nueva" } }]);
     expect(memory.rows("whatsapp_groups")[0]).toMatchObject({ community_subject: "Nueva" });
-    await handleGroupsUpdate(memory.client as never, CH, [{ jid: GROUP_JID, isCommunity: false, patch: { parent_group_jid: null, kind: "group" } }]);
+    await handleGroupsUpdate(memory.client as never, channel, [{ jid: GROUP_JID, isCommunity: false, patch: { parent_group_jid: null, kind: "group" } }]);
     expect(memory.rows("whatsapp_groups")[0]).toMatchObject({ parent_group_jid: null, community_subject: null, kind: "group" });
+  });
+});
+
+describe("ensureInboxGroup (todos los grupos a la bandeja)", () => {
+  it("un grupo guardado y activo se devuelve tal cual", async () => {
+    const memory = setup();
+    expect(await ensureInboxGroup(memory.client as never, channel, GROUP_JID)).toMatchObject({ id: "g-1" });
+    expect(memory.rows("whatsapp_groups")).toHaveLength(1);
+  });
+
+  it("uno desconocido, apagado o dejado entra a la bandeja aunque WhatsApp no conteste", async () => {
+    const memory = setup({ whatsapp_groups: [groupRow({ in_inbox: false, save_contacts: false })] });
+    expect(await ensureInboxGroup(memory.client as never, channel, GROUP_JID)).toMatchObject({ in_inbox: true, save_contacts: false });
+    const fresh = setup({ whatsapp_groups: [] });
+    expect(await ensureInboxGroup(fresh.client as never, channel, "120363000000000002@g.us")).toMatchObject({ subject: "120363000000000002@g.us", in_inbox: true });
   });
 });

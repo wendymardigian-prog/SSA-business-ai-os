@@ -589,14 +589,14 @@ function GroupRow({
   );
 }
 
-/** Se pidio ver solo grupos y no hay ninguno activado: se dice donde se activan. */
+/** Se pidio ver solo grupos y todavia no hay ninguno: aparecen solos; abrir la lista de Grupos los trae ya. */
 function NoGroupsYet({ canManageGroups }: { canManageGroups: boolean }) {
   return (
     <div className="space-y-2 p-6 text-center text-sm text-muted-foreground">
       <UsersRound className="mx-auto h-8 w-8" aria-hidden />
       <p>Todavía no hay grupos para ver acá.</p>
       <p className="text-xs">
-        Se activan por número en{" "}
+        Aparecen solos cuando llega un mensaje. Para traerlos ya, abrí{" "}
         {canManageGroups ? (
           <Link href="/dashboard/settings/integrations/evolution" className="text-primary-ink underline">
             Ajustes → Integraciones → WhatsApp → Grupos
