@@ -1799,7 +1799,7 @@ Una comunidad es una comunidad madre (sin mensajes), un grupo de Avisos (mismo n
 
 ## Migración
 
-`00344_whatsapp_communities` (aditiva: seis columnas en `whatsapp_groups`, sus CHECK y un índice) va **ANTES** de desplegar el código: la bandeja y la lista de Grupos leen sus columnas. Ensayada el 8/11/2026 en una transacción que se deshizo sola; **sin aplicar todavía**. La `00340`, `00341` y `00343` son de otras sesiones y la `00342` parece reservada. **La próxima libre es la `00345`** (confirmar con `list_migrations` y las ramas locales).
+`00344_whatsapp_communities` (aditiva: seis columnas en `whatsapp_groups`, sus CHECK y un índice) va **ANTES** de desplegar el código: la bandeja y la lista de Grupos leen sus columnas. Ensayada en una transacción que se deshizo sola y **aplicada y registrada** el 8/11/2026 UTC (versión `20261108170116`), con `verify-whatsapp-groups --despues-de-00344` en verde. La `00340`, `00341` y `00343` son de otras sesiones y la `00342` parece reservada. **La próxima libre es la `00345`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-whatsapp-groups.mjs --despues-de-00344

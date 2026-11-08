@@ -9,7 +9,7 @@ Hasta noviembre de 2026 el sistema descartaba todo lo que pasaba en un grupo de 
 
 Migraciones: `00280` (tablas y permisos), `00281` (el toque) y `00282` (los disparadores). Las tres son aditivas y
 van **antes** de desplegar el código. En producción están aplicadas y registradas desde el 3/11/2026. La `00344`
-(comunidades, 8/11/2026) también es aditiva y va **antes** del código.
+(comunidades, 8/11/2026) también es aditiva y va **antes** del código: aplicada y registrada el 8/11/2026.
 
 ## Comunidades (00344)
 
