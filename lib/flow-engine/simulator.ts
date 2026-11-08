@@ -604,7 +604,8 @@ export function simulateFlow(
       case "svc_change_phase":
       case "svc_start_challenge":
       case "svc_extend_service":
-      case "svc_pause_service": {
+      case "svc_pause_service":
+      case "svc_issue_certificate": {
         steps.push({
           nodeId: node.id,
           nodeType: switchType,

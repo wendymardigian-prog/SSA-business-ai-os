@@ -74,6 +74,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "payments_overdue_sweep", // @plantilla-quitar(ventas)
       // La asignacion automatica de un contacto (B2).
       "sales_contact_eval",
+      // Servicios A1 (CE, F67): emitir el certificado al llegar al paso. // @plantilla-quitar(servicios)
+      "svc_certificate_issue", // @plantilla-quitar(servicios)
       // Tareas (Extra A, F18): el barrido de vencimientos. // @plantilla-quitar(tareas)
       "tasks_due_sweep", // @plantilla-quitar(tareas)
       "transcribe_audio",

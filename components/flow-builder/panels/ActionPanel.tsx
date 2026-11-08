@@ -146,6 +146,7 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
     case "svc_start_challenge" as NodeType:
     case "svc_extend_service" as NodeType:
     case "svc_pause_service" as NodeType:
+    case "svc_issue_certificate" as NodeType:
       return <ServiceActionPanel type={actionType as unknown as ServiceActionType} data={rawData} onChange={onChange} />;
     // @plantilla-hasta(servicios)
     // Diseñador IA (F57): una pieza desde una plantilla para el contacto del disparador.

@@ -126,6 +126,15 @@ Formato: **qué quedó · por qué · qué se decidió**. Lo que encontró la ex
 - **Sacarle a `authenticated` una sola columna no sirve si tiene la tabla entera.** · La 1ª versión de la 00346 hacía `REVOKE SELECT (meeting_url)` y el link se seguía leyendo (lo atrapó `verify-program`). Ahora el permiso de `live_sessions` es por columnas, sin `meeting_url`. Una columna nueva que lea la pantalla se suma a ese `GRANT`.
 - **Quedan para después:** la pestaña Asistencia de la ficha del servicio (la grilla del Calendario ya la tiene por estudiante); el disparador «Faltó» (lo emite el cron de la S16); la descripción con el resumen de la IA en «Agregar al portal» (hoy arranca vacía y se escribe a mano); el desbloqueo de la clase nueva se configura después en Contenido.
 
+## Decisiones de CE (8/11)
+
+- **El sujeto del certificado es `{module: "service", type: "service", id}`.** · El Diseñador acepta un sujeto solo si su `module` es un grupo registrado, y el grupo es `service` (el plano decía `servicios`).
+- **El registro en el Diseñador se carga en los puntos de entrada del servidor** (las acciones de generar y listar generaciones, el nodo «Generar desde plantilla», el arranque de la cola), con `lib/designer/module-extensions.ts`, nunca al importar `generate-core`: así los tests del Diseñador siguen viendo el registro vacío.
+- **«Emitirlo solo al llegar al paso» lo encola la base en la S16** (bloque X): el plano decía «sin migración» para CE, pero saber que un paso Certificado quedó abierto es del motor del camino. El job `svc_certificate_issue` ya existe y está registrado; hasta la S16, el paso se emite desde la ficha o con la acción de Automatizaciones.
+- **«Uno vigente por servicio» lo cuida el módulo** (busca uno válido antes de generar), además de `replaceExisting: false` del Diseñador (que lo hace por contacto).
+- **Un error al completar el paso no frena el diseño:** queda en `audit_log` (`svc.hook_failed`).
+- **La 1ª pasada de `verify-program --bloque ce` dio «anular»: la pieza no estaba lista**, y en las dos siguientes pasó. No se encontró la causa; se vuelve a correr en el cierre (X) y, si se repite, se anota acá.
+
 ## Revisión visual (8/11)
 
 - **No se pudo hacer en esta corrida.** · La app local (`localhost:3097`) pide iniciar sesión y en el navegador de la sesión no hay una abierta; la regla es no escribir credenciales. Además, las pantallas nuevas solo se ven con el módulo prendido, y solo se puede prender en un negocio de prueba. · Queda para Wendy, a 1440 y 390 px y en claro y oscuro, comparando con `claude/v12/prototipo-v12-panel.html`: Ajustes › Productos (tarjetas, producto, variante con sus cuatro pestañas, el drawer del paso, la regla de una sección del portal y la línea de workflows), Clientes (Servicios en tabla y tablero, Clientes, ficha del cliente, ficha del servicio, Importar servicios), la sección Servicios del contacto y de la venta, la columna Servicio en Ventas y los cinco pasos de Servicios en Automatizaciones. Con el módulo apagado, comprobar que Productos, Ventas, la ficha del contacto y de la venta y el editor de automatizaciones se ven iguales que antes.

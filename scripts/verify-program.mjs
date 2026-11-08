@@ -16,7 +16,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { runCleanup } from "./test-cleanup.mjs";
 import { dbTargetArgs } from "./lib/db-target.mjs";
@@ -38,6 +38,13 @@ const svc = createClient(URL_, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistS
 const bloqueArg = process.argv.indexOf("--bloque");
 const ONLY = bloqueArg >= 0 ? process.argv[bloqueArg + 1] : null;
 const run = (b) => !ONLY || ONLY === b;
+
+/** El bloque ce corre en TypeScript (emitir y completar el paso son código), con vite-node y el render SIMULADO. */
+function runCe() {
+  const { status } = spawnSync("npx", ["vite-node", "-c", "vitest.config.ts", "scripts/verify-program/verify-ce.ts"], { stdio: "inherit", env: { ...process.env, DESIGNER_FAKE_RENDER: "1" } });
+  return status ?? 1;
+}
+if (ONLY === "ce") process.exit(runCe());
 
 let failures = 0;
 const ok = (m) => console.log("  ok  ", m);
@@ -418,6 +425,11 @@ try {
 } finally {
   const cleanupOk = await runCleanup(svc);
   if (!cleanupOk) failures++;
+}
+
+if (!ONLY) {
+  console.log("\nce · Certificados (vite-node)");
+  if (runCe() !== 0) failures++;
 }
 
 console.log(failures === 0 ? "\nTodo verde" : `\n${failures} FALLAS`);

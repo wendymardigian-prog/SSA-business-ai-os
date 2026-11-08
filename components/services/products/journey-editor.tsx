@@ -53,6 +53,8 @@ const FUTURE_LABELS: Record<(typeof FUTURE_VISIBILITY)[number], string> = {
 export interface JourneyRefs {
   forms: Array<NamedOption & { type: string }>;
   eventTypes: NamedOption[];
+  /** Plantillas del Diseñador IA de tipo Certificado (F66). */
+  certificates?: NamedOption[];
 }
 
 type DragData = { kind: "phase"; key: string } | { kind: "item"; key: string };
@@ -489,6 +491,34 @@ function ItemDrawer({
                 <option value="attended">Cuando asistió</option>
               </select>
             </div>
+          </div>
+        )}
+
+        {item.kind === "certificate" && (
+          <div className="space-y-2">
+            <div>
+              <label htmlFor="it-cert" className={label}>
+                Plantilla del certificado
+              </label>
+              <select id="it-cert" value={(ref.template_id as string) ?? ""} onChange={(e) => setRef({ template_id: e.target.value || undefined })} className={input}>
+                <option value="">Elegí…</option>
+                {(refs.certificates ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Solo plantillas de tipo Certificado.{" "}
+                <a href="/dashboard/disenos" target="_blank" rel="noopener noreferrer" className="text-primary-ink hover:underline">
+                  + Crear con el Diseñador IA
+                </a>
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={ref.auto_issue === true} onChange={(e) => setRef({ auto_issue: e.target.checked })} />
+              Emitirlo solo al llegar a este paso
+            </label>
           </div>
         )}
 

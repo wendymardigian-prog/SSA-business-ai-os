@@ -80,8 +80,11 @@ export function ServiceDetailView({
   timeZone,
   permissions,
   accesses,
+  certificate,
 }: {
   data: ServiceDetailData;
+  /** El certificado (bloque CE), arriba de los datos: se arma en el servidor. */
+  certificate?: React.ReactNode;
   /** La pestaña Accesos (bloque AC): se arma en el servidor con lo que la persona puede ver. */
   accesses?: React.ReactNode;
   initialTab: Tab;
@@ -285,6 +288,7 @@ export function ServiceDetailView({
               </ol>
             )}
             {tab === "accesos" && accesses}
+            {tab === "datos" && certificate}
             {tab === "datos" && (
               <dl className="grid gap-3 text-sm sm:grid-cols-2">
                 <Datum label="Origen" value={`${data.origin}${data.originReason ? ` · ${data.originReason}` : ""}`} />

@@ -6,7 +6,8 @@
  *   - «Empezar la fase Reto»            (svc_start_challenge)
  *   - «Extender servicio»               (svc_extend_service)
  *   - «Pausar servicio»                 (svc_pause_service)
- * Las de accesos, modulos, invitacion y certificado las suman los bloques AC, PR y CE.
+ *   - «Emitir certificado»              (svc_issue_certificate, bloque CE: con la plantilla del paso Certificado)
+ * Las de accesos, modulos e invitacion las suman los bloques AC y PR.
  *
  * Sobre que servicio: el del evento que disparo el flujo (`service_id` en el payload, que llega como
  * `event_service_id`) o, si el evento no lo trae, el servicio activo mas reciente del contacto (del
@@ -16,8 +17,10 @@
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { interpolateVariables } from "../interpolate";
 import { svcRpc, svcSchema } from "@/lib/services/db";
+import { issueCertificateCore } from "@/lib/services/certificate-core";
+import { loadModuleDesignExtensions } from "@/lib/designer/module-extensions";
 
-export const SERVICE_ACTION_TYPES = ["svc_complete_step", "svc_change_phase", "svc_start_challenge", "svc_extend_service", "svc_pause_service"] as const;
+export const SERVICE_ACTION_TYPES = ["svc_complete_step", "svc_change_phase", "svc_start_challenge", "svc_extend_service", "svc_pause_service", "svc_issue_certificate"] as const;
 export type ServiceActionType = (typeof SERVICE_ACTION_TYPES)[number];
 
 export interface ServiceActionData {
@@ -72,6 +75,8 @@ export function serviceActionDetail(type: ServiceActionType, data: ServiceAction
       return data.n ? `extendería ${data.n} ${data.unit === "months" ? "meses" : "días"}` : "(sin cuánto)";
     case "svc_pause_service":
       return "pausaría el servicio";
+    case "svc_issue_certificate":
+      return "emitiría el certificado del servicio";
   }
 }
 
@@ -127,6 +132,14 @@ function makeExecute(type: ServiceActionType) {
           p: { reason, cut_access: data.cutAccess !== false, resume_on: data.resumeOn ?? null },
         });
         break;
+      case "svc_issue_certificate": {
+        // Uno vigente por servicio: si ya tiene uno, no genera otro. El paso Certificado se completa cuando el Diseñador
+        // termina de generarlo (F68), venga de donde venga.
+        loadModuleDesignExtensions();
+        const out = await issueCertificateCore(supabase as never, { workspaceId: context.workspaceId, serviceId, actorUserId: null });
+        res = out.ok ? { ok: true } : { ok: false, error: { message: out.error } };
+        break;
+      }
     }
     if (!res.ok) note("failed", res.error?.message ?? "No se pudo hacer.");
   };
@@ -138,6 +151,7 @@ const LABELS: Record<ServiceActionType, string> = {
   svc_start_challenge: "Empezar la fase Reto",
   svc_extend_service: "Extender servicio",
   svc_pause_service: "Pausar servicio",
+  svc_issue_certificate: "Emitir certificado",
 };
 
 export const serviceActionNodes: Array<NodeDefinition<ServiceActionData>> = SERVICE_ACTION_TYPES.map((type) => ({

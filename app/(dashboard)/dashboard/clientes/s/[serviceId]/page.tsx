@@ -9,6 +9,11 @@ import { todayIn } from "@/lib/services/screens/today";
 import { ServiceDetailView, type ServiceDetailData } from "@/components/services/clients/service-detail-view";
 import { ServiceAccessesPanel } from "@/components/services/clients/service-accesses-panel";
 import { loadServiceAccesses } from "@/lib/portal-admin/load";
+import { ServiceCertificateCard, type CertificateView } from "@/components/services/clients/service-certificate-card";
+import { serviceCertificates } from "@/lib/services/certificate-core";
+import { certificateState } from "@/lib/services/certificate";
+import { loadDesignLinks } from "@/lib/designer/public-links";
+import { createServiceClient } from "@/lib/supabase/server";
 import { accessViewRows, pendingSections } from "@/lib/portal-admin/accesses-view";
 import { programSections, readVariantPortal } from "@/lib/services/screens/variant-portal-form";
 
@@ -85,6 +90,33 @@ export default async function ServicePage({ params, searchParams }: { params: Pr
       canManage={ctx.can("services.access")}
     />
   );
+  // El certificado (F67, F69): las generaciones con este servicio como sujeto, con el cliente de servicio del negocio
+  // de la sesión (el servicio ya se leyó con la sesión: quien llegó hasta acá lo ve).
+  const hasCertificateStep = data.phases.some((ph) => ph.items.some((i) => i.kind === "certificate"));
+  let certificate: React.ReactNode = null;
+  if (tab === "datos") {
+    const service = await createServiceClient();
+    const designs = await serviceCertificates(service as never, workspace.id, s.id);
+    if (designs.length || hasCertificateStep) {
+      const toView = async (d: (typeof designs)[number]): Promise<CertificateView> => {
+        const links = await loadDesignLinks(service, workspace.id, d.code);
+        return { id: d.id, code: d.code, status: d.status, createdAt: d.created_at, link: links.link, pdfUrl: links.pdfUrl };
+      };
+      const st = certificateState(designs);
+      const fmt = new Intl.DateTimeFormat("es", { timeZone, day: "numeric", month: "short", year: "numeric" });
+      certificate = (
+        <ServiceCertificateCard
+          serviceId={s.id}
+          current={st.current ? await toView(st.current) : null}
+          previous={await Promise.all(st.previous.slice(0, 5).map(toView))}
+          hasStep={hasCertificateStep}
+          canIssue={ctx.can("certificates.issue")}
+          canVoid={ctx.can("certificates.void")}
+          formatDate={Object.fromEntries(designs.map((d) => [d.id, fmt.format(new Date(d.created_at))]))}
+        />
+      );
+    }
+  }
   return (
     <ServiceDetailView
       data={data}
@@ -95,6 +127,7 @@ export default async function ServicePage({ params, searchParams }: { params: Pr
       timeZone={timeZone}
       permissions={ctx.permissions.keys}
       accesses={accesses}
+      certificate={certificate}
     />
   );
 }
