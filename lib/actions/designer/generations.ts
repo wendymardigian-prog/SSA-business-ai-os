@@ -15,7 +15,10 @@
 import { z } from "zod";
 import { getPermissionAction } from "@/lib/auth/guards";
 import type { ActionResult } from "@/lib/designer/contracts";
-import { generationDetailCore, listGenerationsCore, loadGenerateContextCore, searchContactsCore, type ContactChoice, type GenerateContext, type GenerationDetail, type GenerationListView } from "@/lib/designer/generations-query";
+import { loadContactFilterOptions } from "@/lib/contacts/filter-options-load";
+import type { CustomFieldRef } from "@/lib/contacts/list-filters";
+import type { MultiFilterOption } from "@/lib/ui/multi-filter";
+import { generationDetailCore, listGenerationsCore, loadGenerateContextCore, loadManyContextCore, searchContactsCore, type ContactChoice, type GenerateContext, type GenerationDetail, type GenerationListView, type ManyContext } from "@/lib/designer/generations-query";
 import { designLinksFor } from "@/lib/designer/public-links";
 import { parseGenerationFilters } from "@/lib/designer/screens/generations";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
@@ -80,6 +83,23 @@ export async function loadGenerateContext(input: { templateId: string }): Promis
   } catch (error) {
     console.error("[designer] loadGenerateContext falló:", error instanceof Error ? error.message : "error");
     return { ok: false, error: "No pudimos abrir la plantilla. Probá de nuevo." };
+  }
+}
+
+/** Para «Generar para varios»: la plantilla y las opciones de los filtros de Contactos (etiquetas, segmentos, campos…). */
+export async function loadGenerateManyContext(input: { templateId: string }): Promise<ActionResult<ManyContext & { filters: { options: Record<string, MultiFilterOption[]>; customFields: CustomFieldRef[]; hasAnonymous: boolean } }>> {
+  const ctx = await getPermissionAction("designer.generate");
+  if (!ctx) return { ok: false, error: "No tenés permiso para generar piezas." };
+  const parsed = z.object({ templateId: uuid }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: BAD_REQUEST };
+  try {
+    const loaded = await loadManyContextCore(ctx.supabase, ctx.workspace.id, parsed.data.templateId);
+    if (!loaded) return { ok: false, error: "No encontramos esa plantilla." };
+    const { options, customFields, hasAnonymous } = await loadContactFilterOptions(ctx.supabase, ctx.workspace.id);
+    return { ok: true, data: { ...loaded, filters: { options, customFields, hasAnonymous } } };
+  } catch (error) {
+    console.error("[designer] loadGenerateManyContext falló:", error instanceof Error ? error.message : "error");
+    return { ok: false, error: "No pudimos abrir los filtros. Probá de nuevo." };
   }
 }
 

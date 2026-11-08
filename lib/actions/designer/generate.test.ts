@@ -4,7 +4,7 @@ const T = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const C = "c0000001-1111-4111-8111-cccccccccccc";
 const D = "d0000001-1111-4111-8111-dddddddddddd";
 
-const { getPermissionAction, createServiceClient, revalidatePath, ops, bulk, email, query } = vi.hoisted(() => ({
+const { getPermissionAction, createServiceClient, revalidatePath, ops, bulk, email, query, filterOptions } = vi.hoisted(() => ({
   getPermissionAction: vi.fn(),
   createServiceClient: vi.fn(async () => ({ servicio: true })),
   revalidatePath: vi.fn(),
@@ -20,7 +20,9 @@ const { getPermissionAction, createServiceClient, revalidatePath, ops, bulk, ema
     generateManyCore: vi.fn(async (..._a: unknown[]) => ({ ok: true as const, data: { queued: 2 } })),
   },
   email: { sendGenerationEmailCore: vi.fn(async (..._a: unknown[]) => ({ ok: true as const, data: { to: "a@b.co" } })) },
+  filterOptions: { loadContactFilterOptions: vi.fn(async (..._a: unknown[]) => ({ options: { tag: [] }, customFields: [], hasAnonymous: false })) },
   query: {
+    loadManyContextCore: vi.fn(async (..._a: unknown[]) => ({ template: { id: "t", name: "T", verify: true, docType: "certificado", docTypeLabel: null, noun: "certificado", archived: false } })),
     listGenerationsCore: vi.fn(async (..._a: unknown[]) => ({ rows: [], counts: {}, total: 0, page: 1, pages: 1, polling: false, template: {} })),
     generationDetailCore: vi.fn(async (..._a: unknown[]) => ({ id: "d" })),
     loadGenerateContextCore: vi.fn(async (..._a: unknown[]) => ({ template: { id: "t" } })),
@@ -36,9 +38,10 @@ vi.mock("@/lib/designer/generate-ops", () => ops);
 vi.mock("@/lib/designer/bulk-core", () => bulk);
 vi.mock("@/lib/designer/generation-email", () => email);
 vi.mock("@/lib/designer/generations-query", () => query);
+vi.mock("@/lib/contacts/filter-options-load", () => filterOptions);
 
 import { countGenerationAudience, generateMany, generateOne, previewGeneration, regenerate, retryFailedGenerations, retryGeneration, sendGenerationEmail } from "./generate";
-import { generationDetail, listGenerations, loadGenerateContext, searchGenerateContacts } from "./generations";
+import { generationDetail, listGenerations, loadGenerateContext, loadGenerateManyContext, searchGenerateContacts } from "./generations";
 
 const session = {
   workspace: { id: "ws-de-la-sesion", timezone: "America/Argentina/Buenos_Aires", custom_domain: null },
@@ -154,6 +157,14 @@ describe("las lecturas de la pestaña Generaciones", () => {
   it("si la lectura falla, devuelve un error en español y no lanza", async () => {
     query.listGenerationsCore.mockRejectedValueOnce(new Error("boom"));
     expect(await listGenerations({ templateId: T })).toEqual({ ok: false, error: "No pudimos cargar las generaciones. Probá de nuevo." });
+  });
+
+  it("«Generar para varios» trae la plantilla y las opciones de los filtros de Contactos, con la sesión de la persona", async () => {
+    const out = await loadGenerateManyContext({ templateId: T });
+    expect(out).toMatchObject({ ok: true, data: { template: { id: "t" }, filters: { options: { tag: [] }, customFields: [], hasAnonymous: false } } });
+    expect(filterOptions.loadContactFilterOptions).toHaveBeenCalledWith({ persona: true }, "ws-de-la-sesion");
+    getPermissionAction.mockResolvedValue(null);
+    expect(await loadGenerateManyContext({ templateId: T })).toMatchObject({ ok: false });
   });
 
   it("preparar el modal y buscar contactos piden designer.generate", async () => {

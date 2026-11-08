@@ -117,6 +117,27 @@ export async function loadGenerateContextCore(
   };
 }
 
+// ─── La plantilla para «Generar para varios» ────────────────────────────────
+
+export interface ManyContext {
+  template: { id: string; name: string; verify: boolean; docType: string | null; docTypeLabel: string | null; noun: string | null; archived: boolean };
+}
+
+/** Lo mínimo de la plantilla para el modal de varios (el documento y sus archivos no hacen falta). */
+export async function loadManyContextCore(user: Db, workspaceId: string, templateId: string): Promise<ManyContext | null> {
+  const { data, error } = await user.from("design_templates").select("id, name, verify, doc_type, doc_type_label, archived_at").eq("id", templateId).eq("workspace_id", workspaceId).maybeSingle();
+  if (error) {
+    console.error("[designer] no pude leer la plantilla para generar:", error.message);
+    return null;
+  }
+  if (!data) return null;
+  const row = data as unknown as { id: string; name: string; verify: boolean; doc_type: string | null; doc_type_label: string | null; archived_at: string | null };
+  const verify = row.verify && isDocType(row.doc_type);
+  return {
+    template: { id: row.id, name: row.name, verify: row.verify, docType: row.doc_type, docTypeLabel: row.doc_type_label, noun: verify ? docTypeNoun(row.doc_type as DocType, row.doc_type_label).toLowerCase() : null, archived: !!row.archived_at },
+  };
+}
+
 // ─── Buscar un contacto ─────────────────────────────────────────────────────
 
 export interface ContactChoice {

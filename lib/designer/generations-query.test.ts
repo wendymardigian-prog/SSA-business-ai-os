@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generationDetailCore, listGenerationsCore, loadGenerateContextCore, searchContactsCore } from "./generations-query";
+import { generationDetailCore, listGenerationsCore, loadGenerateContextCore, loadManyContextCore, searchContactsCore } from "./generations-query";
 import { GENERATIONS_PAGE_SIZE } from "./screens/generations";
 import { DIEGO, LUCIA, OTHER_WS, TEMPLATE, TOMAS, USER, WS, generationDb, generationRow } from "./testing/generation-fixtures";
 
@@ -181,5 +181,18 @@ describe("searchContactsCore (F50)", () => {
   it("con menos de dos letras no busca", async () => {
     expect(await searchContactsCore(db().client, { workspaceId: WS, query: "l", timeZone: "UTC" })).toEqual([]);
     expect(await searchContactsCore(db().client, { workspaceId: WS, query: "   ", timeZone: "UTC" })).toEqual([]);
+  });
+});
+
+describe("loadManyContextCore (F51)", () => {
+  it("trae lo mínimo de la plantilla: nombre, si verifica y el sustantivo del tipo", async () => {
+    expect(await loadManyContextCore(generationDb().client, WS, TEMPLATE)).toEqual({
+      template: { id: TEMPLATE, name: "Certificado del programa", verify: true, docType: "certificado", docTypeLabel: null, noun: "certificado", archived: false },
+    });
+    expect((await loadManyContextCore(generationDb({ template: { verify: false, doc_type: null } }).client, WS, TEMPLATE))?.template.noun).toBeNull();
+  });
+
+  it("de otro negocio no existe", async () => {
+    expect(await loadManyContextCore(generationDb().client, OTHER_WS, TEMPLATE)).toBeNull();
   });
 });

@@ -20,6 +20,7 @@ import { docVariables, parseDesignDoc } from "./doc/schema";
 import { findValidForContacts } from "./generate-core";
 import { emailProblems } from "./generation-email";
 import { DESIGN_GENERATE_MANY_JOB, MAX_GENERATE_MANY, type GenerateManyPayload } from "./jobs/generate-many";
+import { blockersMessage } from "./screens/generate-many";
 import { parseCustomVarsList, requiredCustomVars } from "./variables/custom";
 
 type Db = SupabaseClient<Database>;
@@ -98,10 +99,7 @@ async function readTemplate(db: Db, workspaceId: string, templateId: string): Pr
   return { id: row.id, verify: row.verify, blockers };
 }
 
-/** Un dato propio sin valor por defecto no se puede completar «para varios»: todas saldrían fallidas. */
-export function blockersMessage(blockers: readonly string[]): string {
-  return `Estos datos de la plantilla no tienen un valor por defecto: ${blockers.join(", ")}. Poné uno en la plantilla, o generá de a una pieza.`;
-}
+export { blockersMessage };
 
 export interface AudienceCount {
   total: number;
