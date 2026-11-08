@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, Megaphone, UserPlus, Users, UsersRound } from "lucide-react";
+import { Loader2, Megaphone, Plus, UserPlus, Users, UsersRound } from "lucide-react";
 import { importWhatsappGroupMembers, listWhatsappGroups, saveWhatsappGroup } from "@/lib/actions/whatsapp-groups";
+import { createWhatsappGroup } from "@/lib/actions/whatsapp-group-manage";
+import { GROUP_DESCRIPTION_MAX, GROUP_SUBJECT_MAX } from "@/lib/whatsapp-groups/manage";
 import { groupListSections, isActiveItem, type GroupListItem } from "@/lib/whatsapp-groups/settings";
 
 /**
@@ -23,6 +25,27 @@ export function WhatsappGroupSettings({ channelId }: { channelId: string }) {
   const [busyJid, setBusyJid] = useState<string | null>(null);
   const [loading, startLoading] = useTransition();
   const [, startSaving] = useTransition();
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState({ subject: "", description: "", participants: "" });
+  const [createPending, startCreate] = useTransition();
+
+  function create() {
+    setError(null);
+    setNotice(null);
+    startCreate(async () => {
+      const result = await createWhatsappGroup(channelId, draft);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setCreating(false);
+      setDraft({ subject: "", description: "", participants: "" });
+      setNotice(
+        `Grupo «${draft.subject.trim()}» creado y visible en la bandeja.${result.summary ? ` ${result.summary}` : ""} Para sumarlo a una comunidad, vinculalo desde el celular.`,
+      );
+      load();
+    });
+  }
 
   function load() {
     setError(null);
@@ -167,6 +190,60 @@ export function WhatsappGroupSettings({ channelId }: { channelId: string }) {
             Activá los grupos que querés ver en la bandeja o usar para sumar contactos. Quien se une a un grupo que guarda contactos queda
             con el origen «Grupo de WhatsApp». Las automatizaciones de grupos (alguien se une, reacciona o vota) se arman en Automatizaciones.
           </p>
+          {creating ? (
+            <div className="space-y-1.5 rounded-md border border-border p-2">
+              <p className="font-semibold">Crear un grupo</p>
+              <input
+                value={draft.subject}
+                onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+                maxLength={GROUP_SUBJECT_MAX}
+                placeholder="Nombre del grupo"
+                aria-label="Nombre del grupo"
+                className="w-full rounded-md border border-border bg-background px-2 py-1"
+              />
+              <textarea
+                value={draft.description}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                maxLength={GROUP_DESCRIPTION_MAX}
+                rows={2}
+                placeholder="Descripción (opcional)"
+                aria-label="Descripción del grupo"
+                className="w-full resize-y rounded-md border border-border bg-background px-2 py-1"
+              />
+              <textarea
+                value={draft.participants}
+                onChange={(e) => setDraft({ ...draft, participants: e.target.value })}
+                rows={2}
+                placeholder="Teléfonos de quienes entran, con código de país (WhatsApp pide al menos uno)"
+                aria-label="Teléfonos de los miembros"
+                className="w-full resize-y rounded-md border border-border bg-background px-2 py-1"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={create}
+                  disabled={createPending || !draft.subject.trim() || !draft.participants.trim()}
+                  className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 font-medium text-primary-foreground disabled:opacity-50"
+                >
+                  {createPending && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
+                  Crear grupo
+                </button>
+                <button type="button" onClick={() => setCreating(false)} className="rounded-md border border-border px-2 py-1 hover:bg-muted">
+                  Cancelar
+                </button>
+              </div>
+              <p className="text-muted-foreground">Las comunidades se crean desde el celular: WhatsApp no deja crearlas ni vincular grupos desde acá.</p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 hover:bg-muted"
+            >
+              <Plus className="h-3 w-3" aria-hidden />
+              Crear un grupo
+            </button>
+          )}
           {loading && groups === null ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Cargando" />
           ) : groups && groups.length === 0 ? (

@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Users } from "lucide-react";
+import { ChevronLeft, Settings2, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { markGroupRead } from "@/lib/actions/whatsapp-group-inbox";
 import type { SelectedGroup, ThreadMessage } from "@/lib/whatsapp-groups/thread";
 import { groupDisplayName } from "@/lib/whatsapp-groups/settings";
 import { GroupMessageBubble } from "./group-message-bubble";
 import { GroupComposer } from "./group-composer";
+import { GroupManagePanel } from "./group-manage-panel";
 
 /**
  * El hilo de un grupo de WhatsApp en la bandeja (00280): quién escribió, reacciones y encuestas. Lo que llega se ve
@@ -29,6 +30,7 @@ export function GroupThreadPanel({
 }) {
   const router = useRouter();
   const [membersOpen, setMembersOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const groupId = group.id;
@@ -72,9 +74,26 @@ export function GroupThreadPanel({
             {display.community ? `Comunidad ${display.community} · ${group.channelLabel}` : group.channelLabel}
           </p>
         </div>
+        {group.manage && (
+          <button
+            type="button"
+            onClick={() => {
+              setManageOpen((v) => !v);
+              setMembersOpen(false);
+            }}
+            aria-expanded={manageOpen}
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted"
+          >
+            <Settings2 className="h-3.5 w-3.5" aria-hidden />
+            Configurar
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => setMembersOpen((v) => !v)}
+          onClick={() => {
+            setMembersOpen((v) => !v);
+            setManageOpen(false);
+          }}
           aria-expanded={membersOpen}
           className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted"
         >
@@ -100,6 +119,7 @@ export function GroupThreadPanel({
             <p className="border-t border-border p-3 text-center text-xs text-muted-foreground">Tu rol puede leer este grupo pero no escribir.</p>
           )}
         </div>
+        {manageOpen && group.manage && <GroupManagePanel group={group} onClose={() => setManageOpen(false)} />}
         {membersOpen && (
           <aside className="fixed inset-0 z-40 flex flex-col bg-background md:static md:z-auto md:w-72 md:border-l md:border-border" aria-label="Miembros del grupo">
             <div className="flex h-12 items-center justify-between border-b border-border px-3">
