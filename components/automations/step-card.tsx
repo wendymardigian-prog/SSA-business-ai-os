@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Lock, MoreHorizontal } from "lucide-react";
 import { InsertAssetButton } from "@/components/response-assets/insert-asset-button";
 import { EmailCategoryField } from "./email-category-field";
+import { MetaEventFields } from "./meta-event-fields";
+import type { MetaEventStepData } from "@/lib/meta/capi/events";
 import { PopoverMenu, type MenuItem } from "@/components/automations/popover-menu";
 import { useStepEditor } from "@/components/automations/step-tree-context";
 import { BOOKING_STATUSES } from "@/lib/scheduling/booking-status";
@@ -78,6 +80,16 @@ export function ActionCard({ step, index, steps }: { step: ActionStep; index: nu
       {kind?.key === "booking_status" && <BookingStatusEditor name={name} step={step} patch={patch} disabled={disabled} />}
       {kind?.key === "cancel_booking" && <CancelEditor name={name} step={step} patch={patch} disabled={disabled} />}
       {kind?.key === "notify_team" && <NotifyEditor name={name} step={step} patch={patch} disabled={disabled} />}
+      {kind?.key === "meta_event" && (
+        <MetaEventFields
+          idPrefix={name}
+          data={step.data as MetaEventStepData}
+          patch={(next) => patch(next as NodeData)}
+          disabled={disabled}
+          bookingToggle={screen === "agenda" ? "show" : "hide"}
+          inputClassName={inputClass}
+        />
+      )}
       {!kind && <p className="text-xs text-muted-foreground">Este paso se edita en el canvas. Acá se puede mover o borrar.</p>}
 
       {problem && <p className="text-[11px] text-amber-700 dark:text-amber-300">{problem}</p>}

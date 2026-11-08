@@ -165,6 +165,11 @@ export interface SubmitPorts {
     contactId: string;
     action: MarketingConsentAction;
   }): Promise<void>;
+  /**
+   * La IP y el navegador de quien respondió, para la API de Conversiones de Meta (00327): Meta los pide para un evento
+   * de web y la respuesta solo guarda un hash de la IP. Opcional para los puertos de prueba. No lanza.
+   */
+  rememberRequestContext?(input: { form: LoadedForm; submissionId: string; ip: string; userAgent: string | null }): Promise<void>;
   /** Avisa de la respuesta nueva a quien corresponda. */
   notify(input: {
     form: LoadedForm;
@@ -523,7 +528,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   }
 
   // 11. Lo que va DESPUÉS del commit: el toque y el aviso. Una falla acá se registra y nada más.
-  if (!saved.duplicate) await afterSave(ports, form, saved, attribution, values);
+  if (!saved.duplicate) await afterSave(ports, form, saved, attribution, values, input);
 
   // 12. Responder.
   logResult(form.id, saved.duplicate ? "duplicate" : "saved", saved.submissionId);
@@ -581,6 +586,7 @@ async function afterSave(
   saved: Extract<SaveResult, { ok: true }>,
   attribution: Record<string, unknown>,
   values: Record<string, unknown>,
+  input: Pick<SubmitInput, "ip" | "userAgent">,
 ): Promise<void> {
   if (saved.contactId) {
     try {
@@ -602,6 +608,13 @@ async function afterSave(
   }
   // Una respuesta marcada como spam no avisa a nadie.
   if (saved.status === "spam") return;
+  if (ports.rememberRequestContext) {
+    try {
+      await ports.rememberRequestContext({ form, submissionId: saved.submissionId, ip: input.ip, userAgent: input.userAgent });
+    } catch {
+      console.error(`[forms] no pude guardar el contexto para Meta (form=${form.id}, submission=${saved.submissionId})`);
+    }
+  }
   try {
     await ports.notify({ form, submissionId: saved.submissionId, contactId: saved.contactId, contactCreated: saved.contactCreated });
   } catch {

@@ -584,6 +584,18 @@ export function simulateFlow(
         break;
       }
 
+      // API de Conversiones (00327): en la simulación no se le manda nada a Meta.
+      case "send_meta_event": {
+        const eventName = typeof data.eventName === "string" && data.eventName.trim() ? data.eventName.trim() : "";
+        steps.push({
+          nodeId: node.id,
+          nodeType: "send_meta_event",
+          nodeLabel: label,
+          result: { type: "action", actionType: "send_meta_event", detail: eventName ? `le avisaría a Meta: ${eventName}` : "(sin evento)" },
+        });
+        break;
+      }
+
       // Diseñador IA (F57): en la simulación no se genera ningún diseño ni se llama al render.
       case "designGenerate": {
         const name = typeof data.templateName === "string" && data.templateName.trim() ? data.templateName.trim() : "";

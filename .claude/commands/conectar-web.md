@@ -62,7 +62,16 @@ const data = await res.json();
 
 - La atribución se guarda cuando la persona LLEGA a la web (por ejemplo, en `sessionStorage`), no al enviar, porque para entonces puede haber cambiado de página: `entry_url` y `landing_page` son el `location.href` de esa primera página, `referrer_url` es su `document.referrer`, y los UTM y los ids del anuncio salen de la URL. `page_url` es la página donde está el formulario al enviar. Con estos nombres exactos se ven en la tabla de respuestas; una clave con otro nombre se descarta.
 - `fbp` y `fbc` van dentro de `attribution` porque las cookies `_fbp` y `_fbc` de la web no viajan a otro dominio.
-- `meta_event_id` (el id del evento del Pixel) se guarda con la respuesta, para no contar dos veces el mismo lead cuando se sume la API de Conversiones de Meta.
+- `meta_event_id` es el código del evento del Pixel. Si la web tiene el Pixel de Meta, genera un código por envío (por ejemplo `crypto.randomUUID()`), dispara el Pixel con él y lo manda igual en `attribution`:
+
+  ```js
+  const metaEventId = crypto.randomUUID();
+  fbq("track", "Lead", {}, { eventID: metaEventId });
+  // ...y en el fetch: attribution: { ..., meta_event_id: metaEventId }
+  ```
+
+  Con la API de Conversiones configurada (Ajustes → Integraciones → «Meta: API de Conversiones») y el paso «Enviar evento a Meta» en las automatizaciones del formulario, el sistema le manda a Meta el mismo evento desde el servidor con ese código, y Meta lo cuenta una sola vez. El nombre del evento del Pixel (`Lead`) tiene que ser el mismo que el elegido en el paso.
+- Una agenda embebida avisa `agenda:bookingSuccessful` con `metaEventId`: si la web tiene el Pixel, `fbq("track", "Schedule", {}, { eventID: payload.metaEventId })`.
 
 Respuestas:
 

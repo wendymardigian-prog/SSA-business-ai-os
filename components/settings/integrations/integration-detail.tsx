@@ -11,6 +11,7 @@ import { CHIP_LABELS, chipsOf, type ProviderDefinition } from "@/lib/integration
 import { formatLastRefreshed, formatLongDate, formatOAuthExpiry } from "@/lib/integrations/format";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { CredentialsForm } from "./credentials-form";
+import { MetaCapiSection, type MetaCapiEventRow } from "./meta-capi-section";
 import { AccountsTab, hasAccountsTab } from "./accounts-tab";
 import type { Channel } from "@/components/channels/channels-panel";
 import type { SocialAccountRow } from "./publisher-defaults";
@@ -44,6 +45,7 @@ export function IntegrationDetail({
   activityEntries,
   readOnly = false,
   resend = null,
+  capiEvents = null,
 }: {
   provider: ProviderDefinition;
   data: IntegrationCardData;
@@ -58,6 +60,8 @@ export function IntegrationDetail({
   readOnly?: boolean;
   /** La tarjeta Resend (conexion de Resend): webhook, recepcion y estado. Solo para el proveedor `resend`. */
   resend?: ResendPanelData | null;
+  /** La API de Conversiones de Meta (00327): los ultimos envios. Solo para el proveedor `meta_capi`. */
+  capiEvents?: MetaCapiEventRow[] | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -147,6 +151,15 @@ export function IntegrationDetail({
               <CredentialsForm provider={provider} data={data} webhookUrl={webhookUrl} />
               {/* Los remitentes de Resend (E8): usuario + dominio verificado, en su propio formulario. */}
               {provider.id === "resend" && <ResendSendersForm config={data.config} connected={data.status !== "not_connected"} />}
+              {/* La API de Conversiones de Meta (00327): compras y ultimos envios. */}
+              {provider.id === "meta_capi" && (
+                <MetaCapiSection
+                  connected={data.status !== "not_connected"}
+                  purchaseEnabled={data.config.purchase_enabled === "true"}
+                  events={capiEvents ?? []}
+                  readOnly={readOnly}
+                />
+              )}
             </>
           )
         )}

@@ -21,6 +21,7 @@ import { registerMetricsHandlers } from "@/lib/jobs/handlers/metrics-sync";
 import { registerMetaAdsHandlers } from "@/lib/jobs/handlers/meta-ads-sync";
 import { registerMetaAdThumbnailsHandler } from "@/lib/jobs/handlers/meta-ad-thumbnails";
 import { registerZernioAdOriginHandler } from "@/lib/jobs/handlers/zernio-ad-origin";
+import { registerMetaCapiHandler } from "@/lib/jobs/handlers/meta-capi";
 import { registerWhatsappGroupImportHandler } from "@/lib/jobs/handlers/whatsapp-group-import";
 import { registerInboxImportHandlers } from "@/lib/jobs/handlers/inbox-import";
 import { registerWhatsappHistoryImportHandler } from "@/lib/jobs/handlers/whatsapp-history-import";
@@ -102,6 +103,8 @@ export function registerPublishing(): void {
   registerMetaAdThumbnailsHandler();
   // El anuncio de origen de una conversacion de Instagram, desde Zernio (Tiron 2, A1).
   registerZernioAdOriginHandler();
+  // La API de Conversiones de Meta: cada evento que se le manda (00327).
+  registerMetaCapiHandler();
   // «Importar miembros» de un grupo de WhatsApp (00280).
   registerWhatsappGroupImportHandler();
   // La importacion de conversaciones de Zernio, por partes y sin tope (00267).

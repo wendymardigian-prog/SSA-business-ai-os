@@ -6,8 +6,8 @@
  * estaba guardado).
  *
  * Agenda: email (al contacto, al anfitrion o a una direccion fija), mensaje,
- * esperar, poner o sacar un tag, Condiciones, cambiar el estado de la reunion
- * y cancelarla.
+ * esperar, poner o sacar un tag, Condiciones, cambiar el estado de la reunion,
+ * cancelarla y enviar un evento a Meta (API de Conversiones, 00327).
  * Formularios: lo mismo, sin lo de la reunion.  @plantilla-quitar(formularios)
  * Reporte de fin de dia (E15, un flujo SIN contacto): email (a quien envio el reporte,  @plantilla-quitar(formularios)
  * a personas del equipo o a una direccion fija), esperar, avisar en la campana y  @plantilla-quitar(formularios)
@@ -17,11 +17,12 @@
 import { z } from "zod";
 import { BOOKING_STATUSES, isBookingStatus } from "@/lib/scheduling/booking-status";
 import { actionTypeOf, newStepId, type ActionStep, type NodeData } from "./step-tree";
+import { checkStepEventName, SEND_META_EVENT_TYPE } from "@/lib/meta/capi/events";
 
 export type EditorScreen = "forms" | "agenda" | "eod"; // @plantilla-quitar(formularios)
 // @plantilla-sin(formularios): export type EditorScreen = "agenda";
 
-export type ActionKindKey = "email" | "message" | "delay" | "tag_add" | "tag_remove" | "booking_status" | "cancel_booking" | "notify_team";
+export type ActionKindKey = "email" | "message" | "delay" | "tag_add" | "tag_remove" | "booking_status" | "cancel_booking" | "notify_team" | "meta_event";
 
 export interface ActionKind {
   key: ActionKindKey;
@@ -111,6 +112,17 @@ export const ACTION_KINDS: ActionKind[] = [
     blank: () => ({ actionType: "cancel_booking", status: "cancelled_other" }),
   },
   {
+    // La API de Conversiones de Meta (00327): le avisa a Meta que llegó un lead o se agendó una reunión.
+    key: "meta_event",
+    menuLabel: "Enviar evento a Meta",
+    title: "Evento a Meta",
+    nodeType: "action",
+    screens: ["forms", "agenda"], // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): screens: ["agenda"],
+    matches: (s) => isAction(s, SEND_META_EVENT_TYPE),
+    blank: () => ({ actionType: SEND_META_EVENT_TYPE, eventName: "Lead", value: "", currency: "USD", contentName: "", onlyLeadBookings: true }),
+  },
+  {
     key: "notify_team",
     menuLabel: "Avisar en la campana",
     title: "Aviso en la campana",
@@ -129,6 +141,8 @@ export const ACTION_KINDS: ActionKind[] = [
 export function blankFor(kind: ActionKind, screen: EditorScreen): NodeData {
   const data = kind.blank();
   if (screen === "eod" && kind.key === "email") return { ...data, to: "member" }; // @plantilla-quitar(formularios)
+  // En la Agenda, lo que pasó es una reunión agendada: arranca en «Schedule».
+  if (screen === "agenda" && kind.key === "meta_event") return { ...data, eventName: "Schedule" };
   return data;
 }
 
@@ -232,6 +246,8 @@ export function describeAction(step: ActionStep, screen: EditorScreen): string {
       return "Cancelar la reunión";
     case "notify_team":
       return `Aviso en la campana ${NOTIFY_RECIPIENT_LABELS[String(d.to ?? "users")] ?? ""}`.trim();
+    case "meta_event":
+      return String(d.eventName ?? "").trim() ? `Enviar «${String(d.eventName).trim()}» a Meta` : "Enviar evento a Meta";
     default: {
       const label = typeof d.label === "string" && d.label.trim() ? d.label.trim() : undefined;
       return label ?? OTHER_LABELS[actionTypeOf(step)] ?? actionTypeOf(step);
@@ -264,6 +280,10 @@ export function actionProblem(step: ActionStep, screen: EditorScreen): string | 
     case "tag_add":
     case "tag_remove":
       return String(d.tagName ?? "").trim() ? null : "Falta el nombre del tag.";
+    case "meta_event": {
+      const name = checkStepEventName(d.eventName);
+      return name.ok ? null : name.error;
+    }
     default:
       return null;
   }
@@ -345,6 +365,21 @@ const cancelData = z
   })
   .passthrough();
 
+const metaEventData = z
+  .object({
+    actionType: z.literal(SEND_META_EVENT_TYPE),
+    eventName: z.string().superRefine((value, ctx) => {
+      const check = checkStepEventName(value);
+      if (!check.ok) ctx.addIssue({ code: "custom", message: check.error });
+    }),
+    value: z.string().max(200).optional(),
+    currency: z.string().regex(/^[A-Z]{3}$/, "La moneda tiene que ser un código de 3 letras (USD, ARS…).").optional(),
+    contentName: z.string().max(200).optional(),
+    onlyLeadBookings: z.boolean().optional(),
+    label,
+  })
+  .passthrough();
+
 /** Los datos de un paso editable, validados. `null` si estan bien, o el motivo. */
 export function validateActionData(step: ActionStep, screen: EditorScreen): string | null {
   const kind = kindOfStep(step, screen);
@@ -367,6 +402,8 @@ export function validateActionData(step: ActionStep, screen: EditorScreen): stri
         return cancelData;
       case "notify_team":
         return notifyData;
+      case "meta_event":
+        return metaEventData;
     }
   })();
   const parsed = schema.safeParse(step.data);

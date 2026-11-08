@@ -28,6 +28,7 @@ import { BarChart3,
   Ban,
   UserRoundPlus,
   Smartphone,
+  Target,
 } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Search } from "lucide-react";
@@ -251,6 +252,16 @@ const categories: PaletteCategory[] = [
         description: "Un aviso a un número fijo o de una variable (no necesita contacto)",
         synonyms: ["whatsapp", "aviso", "telefono"],
         actionType: "send_whatsapp_number",
+      },
+      // API de Conversiones (00327): le avisa a Meta que pasó algo que vale (un lead, una reunión).
+      {
+        type: "action",
+        nodeType: "send_meta_event",
+        label: "Enviar evento a Meta",
+        icon: Target,
+        description: "Le avisa a Meta un lead o una reunión, desde el servidor",
+        synonyms: ["meta", "facebook", "pixel", "conversiones", "capi", "anuncio", "lead"],
+        actionType: "send_meta_event",
       },
       // Grupos de WhatsApp: una encuesta a un grupo activado (sirve sin contacto).
       {

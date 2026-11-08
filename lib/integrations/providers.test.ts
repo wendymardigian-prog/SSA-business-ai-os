@@ -179,7 +179,7 @@ describe("catalogo extendido (F1)", () => {
     }
   });
 
-  it("Conexiones trae las ocho de afuera (Resend en una sola tarjeta); IA, las cinco propias (Bloque G)", () => {
+  it("Conexiones trae las nueve de afuera (Resend en una sola tarjeta, + API de Conversiones); IA, las cinco propias (Bloque G)", () => {
     const bySection = Object.fromEntries(
       providersBySection().map((g) => [g.section, g.providers.map((p) => p.id)]),
     );
@@ -192,6 +192,8 @@ describe("catalogo extendido (F1)", () => {
       "threads",
       "google",
       "meta",
+      // La API de Conversiones de Meta (00327).
+      "meta_capi",
       // Cambio aprobado (conexion de Resend): "resend_inbound" oculta.
       "resend",
     ]);

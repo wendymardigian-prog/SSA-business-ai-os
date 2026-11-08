@@ -17,7 +17,8 @@ describe("filterSections", () => {
     const result = filterSections(sections, statusOf({}), { chip: null, onlyAttention: false });
     expect(result.map((g) => g.section)).toEqual(["connections", "ai"]);
     // Cambio aprobado (conexion de Resend): "Resend (email entrante)" quedo oculta.
-    expect(result.flatMap((g) => g.providers).length).toBe(13);
+    // + «Meta: API de Conversiones» (00327).
+    expect(result.flatMap((g) => g.providers).length).toBe(14);
   });
 
   it("un chip solo filtra Conexiones; Inteligencia artificial no se toca", () => {
@@ -50,7 +51,7 @@ describe("filterSections", () => {
   it("Meta aparece con el chip 'anuncios'", () => {
     const result = filterSections(sections, statusOf({}), { chip: "anuncios", onlyAttention: false });
     const connections = result.find((g) => g.section === "connections");
-    expect(connections?.providers.map((p) => p.id)).toEqual(["meta"]);
+    expect(connections?.providers.map((p) => p.id)).toEqual(["meta", "meta_capi"]);
   });
 
   it("'Requiere atencion' se aplica a las dos secciones a la vez que un chip", () => {
@@ -83,7 +84,7 @@ describe("countByChip", () => {
     const counts = countByChip(sections);
     expect(counts.mensajeria).toBe(2); // zernio, evolution
     expect(counts.publicacion).toBe(5); // zernio, postproxy, linkedin, threads, google
-    expect(counts.anuncios).toBe(1); // meta
+    expect(counts.anuncios).toBe(2); // meta y meta_capi (00327)
     expect(counts.email).toBe(1); // resend (cambio aprobado: la entrante quedo oculta en la tarjeta Resend)
   });
 });

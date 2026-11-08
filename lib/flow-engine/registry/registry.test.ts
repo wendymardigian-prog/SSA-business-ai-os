@@ -41,6 +41,8 @@ const NODOS_DE_ACCION = [
   "complete_task", // @plantilla-quitar(tareas)
   // Diseñador IA (F57).
   "designGenerate",
+  // API de Conversiones de Meta (00327).
+  "send_meta_event",
 ] as const;
 
 describe("registro de nodos", () => {
@@ -57,8 +59,9 @@ describe("registro de nodos", () => {
     // + `send_whatsapp_number` ("Enviar WhatsApp a un número", Extra L Tirón 2, D3).
     // + `send_poll` ("Enviar encuesta", Grupos de WhatsApp).
     // + `designGenerate` ("Generar desde plantilla", Diseñador IA, F57).
-    expect(listNodes()).toHaveLength(34); // @plantilla-quitar(ventas,webhooks,tareas)
-    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(28);
+    // + `send_meta_event` ("Enviar evento a Meta", API de Conversiones, 00327).
+    expect(listNodes()).toHaveLength(35); // @plantilla-quitar(ventas,webhooks,tareas)
+    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(29);
   });
 
   it.each(NODOS_DE_ACCION)(

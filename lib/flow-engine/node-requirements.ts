@@ -25,11 +25,11 @@ import { designGenerateProblem, hasDesignStepBefore, isDesignGenerateNode, type 
 import { isDesignAttachment, parseEmailAttachments } from "@/lib/email/attachment-limits";
 import { designFlowFormProblem } from "@/lib/designer/automation/flow-template";
 
-export type Requirement = "email" | "whatsapp_channel" | "ai" | "agent" | "channel";
+export type Requirement = "email" | "whatsapp_channel" | "ai" | "agent" | "channel" | "meta_capi";
 export type Capabilities = Record<Requirement, boolean>;
 
 /** Todo conectado: lo que se usa cuando no se sabe (una pantalla que no cargo las conexiones no bloquea nada). */
-export const ALL_CONNECTED: Capabilities = { email: true, whatsapp_channel: true, ai: true, agent: true, channel: true };
+export const ALL_CONNECTED: Capabilities = { email: true, whatsapp_channel: true, ai: true, agent: true, channel: true, meta_capi: true };
 
 export interface RequirementInfo {
   /** Lo que falta, corto: "Email (Resend)". */
@@ -46,6 +46,7 @@ export const REQUIREMENT_INFO: Record<Requirement, RequirementInfo> = {
   ai: { label: "Una IA conectada", href: "/dashboard/settings/integrations", cta: "Conectar una IA" },
   agent: { label: "Un agente de IA", href: "/dashboard/agents", cta: "Ir a Agentes IA" },
   channel: { label: "Un canal de mensajería (Instagram, WhatsApp o email)", href: "/dashboard/settings/integrations", cta: "Conectar un canal" },
+  meta_capi: { label: "La API de Conversiones de Meta", href: "/dashboard/settings/integrations/meta_capi", cta: "Conectar la API de Conversiones" },
 };
 
 /** Por tipo canonico del registro (no por el `type` del canvas: un nodo "action" lo resuelve `canonicalNodeType`). */
@@ -58,6 +59,7 @@ export const NODE_REQUIREMENTS: Readonly<Record<string, readonly Requirement[]>>
   resumeAgent: ["agent"],
   sendMessage: ["channel"],
   sendAsset: ["channel"],
+  send_meta_event: ["meta_capi"],
 };
 
 /** El nombre de las acciones con requisitos, para decir cual esta bloqueada sin importar el registro. */
@@ -70,6 +72,7 @@ const NODE_NAMES: Readonly<Record<string, string>> = {
   resumeAgent: "Reanudar agente de IA",
   sendMessage: "Enviar mensaje",
   sendAsset: "Enviar recurso",
+  send_meta_event: "Enviar evento a Meta",
 };
 
 export function requirementsOfType(type: string): readonly Requirement[] {

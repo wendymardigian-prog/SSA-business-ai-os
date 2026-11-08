@@ -1369,6 +1369,24 @@ En la tabla Meta vs CRM, una venta sin anuncio en su toque cuenta para el últim
 
 `00318_meta_match_rules_similar` (aditiva: la tabla, las funciones, los CHECK de la tarea de IA y, al final, el re-vínculo y el canal de lo existente) va **ANTES** de desplegar el código: **aplicada y registrada** el 7/11/2026 (versión `20261107215432`), después de ensayarla en una transacción que se deshizo sola. Resultado: «Sin vincular» quedó en 0, 87 toques de anuncios en «Para revisar» y 37 orgánicos fuera de la lista. **La próxima libre es la `00319`** (confirmar con `list_migrations` y las ramas locales).
 
+# API de Conversiones de Meta (00327, 8/11/2026)
+
+SSA le manda a Meta, desde el servidor, los leads, las reuniones y los pagos cobrados con los datos de la persona juntos; si la web mandó el mismo evento por Pixel con el mismo código, Meta lo cuenta una vez. Tarjeta **Ajustes → Integraciones → «Meta: API de Conversiones»** (Pixel + token, aparte de la de lectura); leads y reuniones con el paso **«Enviar evento a Meta»** (editor de pasos de Formularios y Agenda, y el lienzo); compras con el interruptor de la tarjeta. Detalle en [docs/meta-capi.md](docs/meta-capi.md).
+
+## Lo que no se puede romper
+
+- **Un evento se manda una sola vez**: índice único `(workspace_id, event_name, event_id)` en `meta_capi_events`. El código sale de `capiEventId` (el `meta_event_id` de la web, `form.<id>`, `booking.<id>`, `payment.<id>` o `flow.<ejecución>.<paso>`): siempre el mismo para lo mismo. Una reunión nunca usa su código público (es una credencial).
+- **Nada tumba lo que lo origina**: el paso solo anota y encola (`enqueueCapiEvent`), el trigger de `payments` va en `EXCEPTION WHEN OTHERS` y guardar la IP nunca lanza. El job `meta_capi_send` no lanza por Meta: reagenda a 1, 5 y 15 minutos y después queda `failed`.
+- **Los datos de la persona se leen al mandar y nunca se guardan ni se loguean**: `meta_capi_events` no tiene `contact_id` (así `merge_contacts` no cambia), ni hashes ni IP. El token va en el cuerpo, nunca en la URL.
+- **La IP y el navegador** (`meta_capi_request_context`) solo se guardan si el negocio configuró la API, solo `service_role`, y se borran a los 8 días (cron `meta-capi-cleanup`).
+- **La hora es la de lo que pasó**, nunca la de cuando corre el flujo; más de 7 días se saltea (Meta rechazaría el lote).
+- **Purchase no se ofrece en el paso**: lo manda cada pago cobrado, así no hay dos caminos para la misma plata.
+- **`lib/meta/capi/events.ts` es lo único que importa el navegador**; `normalize.ts` usa `node:crypto`. La versión de la Graph API es propia (`CAPI_GRAPH_VERSION`).
+
+## Migración
+
+`00327_meta_capi` (aditiva: las dos tablas, el trigger de `payments` y la limpieza diaria). Puede ir antes o después del código: hasta que alguien configure la tarjeta, el trigger no encola nada. **Sin aplicar todavía.** **La próxima libre es la `00328`** (confirmar con `list_migrations` y las ramas locales).
+
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 
 Webhooks que no repiten, flujos sin contacto con origen, leads de Meta sin duplicados, la tabla Meta vs CRM con detalle, el anuncio de origen y el vinculo

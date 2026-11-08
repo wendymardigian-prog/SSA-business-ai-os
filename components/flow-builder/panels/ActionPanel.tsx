@@ -12,6 +12,8 @@ import { CreateTaskPanel } from "./CreateTaskPanel"; // @plantilla-quitar(tareas
 import { CompleteTaskPanel } from "./CompleteTaskPanel"; // @plantilla-quitar(tareas)
 import { SendWhatsAppNumberPanel } from "./SendWhatsAppNumberPanel";
 import { SendPollPanel } from "./SendPollPanel";
+import { MetaEventFields } from "@/components/automations/meta-event-fields";
+import type { MetaEventStepData } from "@/lib/meta/capi/events";
 import { DesignGeneratePanel } from "./DesignGeneratePanel";
 import { PrivateReplyPanel } from "./PrivateReplyPanel";
 import type { AttributionPanelContext } from "./SendMessagePanel";
@@ -97,6 +99,17 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
     // Grupos de WhatsApp: una encuesta a un grupo activado.
     case "send_poll" as NodeType:
       return <SendPollPanel data={rawData} onChange={onChange} />;
+    // API de Conversiones (00327): el mismo formulario que en Formularios y Agenda.
+    case "send_meta_event" as NodeType:
+      return (
+        <MetaEventFields
+          idPrefix="meta-event"
+          data={rawData as MetaEventStepData}
+          patch={(next) => onChange({ ...rawData, ...next })}
+          bookingToggle="hint"
+          inputClassName="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      );
     // Etapa 4 (F46) + Tirón 2, D4: el email, ahora también a la dirección de una variable.
     case "send_email" as NodeType:
       return <SendEmailPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;

@@ -13,6 +13,7 @@ import type { Channel } from "@/components/channels/channels-panel";
 import type { SocialAccountRow } from "@/components/settings/integrations/publisher-defaults";
 import type { AuditAction } from "@/lib/types/database";
 import type { ResendPanelData } from "@/lib/email/resend-config";
+import type { MetaCapiEventRow } from "@/components/settings/integrations/meta-capi-section";
 
 /**
  * El detalle de una integracion (G5): credenciales, cuentas y actividad, en
@@ -110,6 +111,19 @@ export default async function IntegrationDetailPage({
     resend = await loadResendPanelData(await createServiceClient(), workspace.id).catch(() => null);
   }
 
+  // La API de Conversiones de Meta (00327): los ultimos envios. Con la sesion: la RLS pide `integrations.view` o
+  // `integrations.manage`, que es lo mismo que pide esta pagina para un proveedor del negocio.
+  let capiEvents: MetaCapiEventRow[] | null = null;
+  if (provider.id === "meta_capi") {
+    const { data: rows } = await supabase
+      .from("meta_capi_events")
+      .select("id, event_name, source_type, status, skip_reason, error, test, action_source, created_at, sent_at")
+      .eq("workspace_id", workspace.id)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    capiEvents = rows ?? [];
+  }
+
   return (
     <IntegrationDetail
       provider={serializableProvider(provider)}
@@ -123,6 +137,7 @@ export default async function IntegrationDetailPage({
       activityEntries={activityEntries}
       readOnly={access === "view"}
       resend={resend}
+      capiEvents={capiEvents}
     />
   );
 }

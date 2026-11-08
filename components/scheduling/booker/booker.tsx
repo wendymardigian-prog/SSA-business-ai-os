@@ -249,7 +249,7 @@ export function Booker({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const body = (await res.json()) as { uid?: string; redirectUrl?: string | null; message?: string; fields?: Record<string, string>; reason?: string };
+      const body = (await res.json()) as { uid?: string; redirectUrl?: string | null; message?: string; fields?: Record<string, string>; reason?: string; metaEventId?: string };
 
       if (!res.ok) {
         dispatch({ type: "failed", message: body.message ?? messageFor(body.reason), fields: body.fields });
@@ -264,6 +264,8 @@ export function Booker({
         startTime: state.selectedSlot.startUtc,
         endTime: new Date(new Date(state.selectedSlot.startUtc).getTime() + event.durationMinutes * 60_000).toISOString(),
         eventSlug: slug,
+        // El código del evento de Meta (00327): la web con Pixel lo usa como `eventID` y Meta no la cuenta dos veces.
+        ...(body.metaEventId ? { metaEventId: body.metaEventId } : {}),
       });
 
       // Solo https: un `javascript:` en la redireccion correria en el dominio de la app (00310).
