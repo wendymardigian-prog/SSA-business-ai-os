@@ -228,6 +228,6 @@ export const SPECS = {
     file: "00353_app_servicio_merge_and_cron.sql",
     title: "Fusion de contactos y cron diario del servicio",
     functions: ["app_servicio.merge_contacts_hook", "private.enqueue_svc_daily", "app_servicio.svc_daily_run", "app_servicio.assistant_set_own_limit", "app_servicio.program_card_metrics"],
-    triggers: ["service_phases:trg_app_servicio_phase_certificate"],
+    triggers: ["app_servicio.service_phases:trg_app_servicio_phase_certificate"],
   },
 };
