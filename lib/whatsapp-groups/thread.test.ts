@@ -62,9 +62,30 @@ describe("buildThread", () => {
       multiple: true,
       totalVoters: 2,
       options: [
-        { name: "Lunes", count: 2, voters: ["Ana", "+5491199"] },
-        { name: "Martes", count: 1, voters: ["Ana"] },
+        { name: "Lunes", count: 2, voters: [{ name: "+5491199", contactId: null }, { name: "Ana", contactId: "c1" }] },
+        { name: "Martes", count: 1, voters: [{ name: "Ana", contactId: "c1" }] },
       ],
     });
+  });
+});
+
+describe("quién votó una encuesta", () => {
+  it("cada votante lleva su contacto si lo hay; «Vos» va primero y el resto en orden alfabético", () => {
+    const [m] = buildThread({
+      ...base,
+      contacts: { p1: { id: "c1", name: "Zoe" }, p2: { id: "c2", name: "Bruno" } },
+      messages: [msg({ id: "poll", direction: "outbound", text: null, poll: { name: "¿Venís?", options: ["Sí", "No"], selectableCount: 1 } })],
+      votes: [
+        { message_id: "poll", participant_id: "p1", selected_options: ["Sí"] },
+        { message_id: "poll", participant_id: "me", selected_options: ["Sí"] },
+        { message_id: "poll", participant_id: "p2", selected_options: ["Sí"] },
+      ],
+    });
+    expect(m.poll?.options[0].voters).toEqual([
+      { name: "Vos", contactId: null },
+      { name: "Bruno", contactId: "c2" },
+      { name: "Zoe", contactId: "c1" },
+    ]);
+    expect(m.poll?.options[1]).toEqual({ name: "No", count: 0, voters: [] });
   });
 });
