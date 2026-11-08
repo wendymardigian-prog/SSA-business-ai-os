@@ -192,7 +192,7 @@ describe("catalogo extendido (F1)", () => {
       "threads",
       "google",
       "meta",
-      // La API de Conversiones de Meta (00327).
+      // La API de Conversiones de Meta (00328).
       "meta_capi",
       // Cambio aprobado (conexion de Resend): "resend_inbound" oculta.
       "resend",

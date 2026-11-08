@@ -7,7 +7,7 @@
  *
  * Agenda: email (al contacto, al anfitrion o a una direccion fija), mensaje,
  * esperar, poner o sacar un tag, Condiciones, cambiar el estado de la reunion,
- * cancelarla y enviar un evento a Meta (API de Conversiones, 00327).
+ * cancelarla y enviar un evento a Meta (API de Conversiones, 00328).
  * Formularios: lo mismo, sin lo de la reunion.  @plantilla-quitar(formularios)
  * Reporte de fin de dia (E15, un flujo SIN contacto): email (a quien envio el reporte,  @plantilla-quitar(formularios)
  * a personas del equipo o a una direccion fija), esperar, avisar en la campana y  @plantilla-quitar(formularios)
@@ -112,7 +112,7 @@ export const ACTION_KINDS: ActionKind[] = [
     blank: () => ({ actionType: "cancel_booking", status: "cancelled_other" }),
   },
   {
-    // La API de Conversiones de Meta (00327): le avisa a Meta que llegó un lead o se agendó una reunión.
+    // La API de Conversiones de Meta (00328): le avisa a Meta que llegó un lead o se agendó una reunión.
     key: "meta_event",
     menuLabel: "Enviar evento a Meta",
     title: "Evento a Meta",

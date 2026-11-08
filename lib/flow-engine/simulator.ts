@@ -584,7 +584,7 @@ export function simulateFlow(
         break;
       }
 
-      // API de Conversiones (00327): en la simulación no se le manda nada a Meta.
+      // API de Conversiones (00328): en la simulación no se le manda nada a Meta.
       case "send_meta_event": {
         const eventName = typeof data.eventName === "string" && data.eventName.trim() ? data.eventName.trim() : "";
         steps.push({

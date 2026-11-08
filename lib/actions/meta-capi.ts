@@ -7,7 +7,7 @@ import { META_CAPI_PROVIDER_ID } from "@/lib/meta/capi/config";
 import type { Json } from "@/lib/types/database";
 
 /**
- * La sección propia de la tarjeta «Meta: API de Conversiones» (00327): el interruptor «Mandar cada pago cobrado como
+ * La sección propia de la tarjeta «Meta: API de Conversiones» (00328): el interruptor «Mandar cada pago cobrado como
  * compra». Pide `integrations.manage`, como el resto de la tarjeta. El token y el Pixel se guardan con el formulario
  * genérico (`saveIntegration`), que conserva este valor.
  */

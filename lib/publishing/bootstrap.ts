@@ -103,7 +103,7 @@ export function registerPublishing(): void {
   registerMetaAdThumbnailsHandler();
   // El anuncio de origen de una conversacion de Instagram, desde Zernio (Tiron 2, A1).
   registerZernioAdOriginHandler();
-  // La API de Conversiones de Meta: cada evento que se le manda (00327).
+  // La API de Conversiones de Meta: cada evento que se le manda (00328).
   registerMetaCapiHandler();
   // «Importar miembros» de un grupo de WhatsApp (00280).
   registerWhatsappGroupImportHandler();

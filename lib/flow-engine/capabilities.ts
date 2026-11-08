@@ -61,7 +61,7 @@ export async function loadAutomationCapabilities(service: Db, workspaceId: strin
       },
       ALL_CONNECTED.agent,
     ),
-    // La API de Conversiones de Meta (00327): la integracion activa y con el Pixel. El token lo exige el guardado.
+    // La API de Conversiones de Meta (00328): la integracion activa y con el Pixel. El token lo exige el guardado.
     safely(
       "la API de Conversiones",
       async () => {

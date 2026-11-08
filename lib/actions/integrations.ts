@@ -88,7 +88,7 @@ const DISCOVERED_CONFIG_KEYS = [
   ...SENDER_CONFIG_KEYS,
   // La tarjeta Resend (conexion de Resend): el acceso de la key, el webhook y la recepcion. Mismo motivo.
   ...RESEND_CONNECTION_CONFIG_KEYS,
-  // La API de Conversiones (00327): «Mandar cada pago cobrado como compra» y el nombre del Pixel. Mismo motivo.
+  // La API de Conversiones (00328): «Mandar cada pago cobrado como compra» y el nombre del Pixel. Mismo motivo.
   ...META_CAPI_OWN_CONFIG_KEYS,
 ] as const;
 

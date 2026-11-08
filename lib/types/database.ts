@@ -2369,7 +2369,7 @@ export interface Database {
         Update: Record<string, never>;
         Relationships: [];
       };
-      /** API de Conversiones de Meta (00327): cada evento que se manda o se saltea. Escribe solo el servidor. */
+      /** API de Conversiones de Meta (00328): cada evento que se manda o se saltea. Escribe solo el servidor. */
       meta_capi_events: {
         Row: {
           id: string;
@@ -2428,7 +2428,7 @@ export interface Database {
         };
         Relationships: [];
       };
-      /** API de Conversiones de Meta (00327): IP y navegador de quien respondió o agendó. Solo service_role; 8 días. */
+      /** API de Conversiones de Meta (00328): IP y navegador de quien respondió o agendó. Solo service_role; 8 días. */
       meta_capi_request_context: {
         Row: {
           id: string;

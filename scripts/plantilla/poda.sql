@@ -746,6 +746,20 @@ COMMENT ON TABLE public.products IS
 COMMENT ON TABLE public.whatsapp_calls IS
   'Llamadas de WhatsApp recibidas: lo que avisa Evolution por el evento CALL. Se ven en el hilo; no son mensajes.';
 
+-- 1.9 La guarda del cron de jobs (00327): lo que suman los modulos opcionales.
+-- La plantilla no tiene ninguno, asi que no hay nada extra que mirar.
+CREATE OR REPLACE FUNCTION private.cron_work_jobs_extra(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+BEGIN
+  RETURN false;
+END;
+$$;
+
 -- ============================================================================
 -- 2. Disparadores, cron, storage y politicas de los modulos
 -- ============================================================================

@@ -99,7 +99,7 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
     // Grupos de WhatsApp: una encuesta a un grupo activado.
     case "send_poll" as NodeType:
       return <SendPollPanel data={rawData} onChange={onChange} />;
-    // API de Conversiones (00327): el mismo formulario que en Formularios y Agenda.
+    // API de Conversiones (00328): el mismo formulario que en Formularios y Agenda.
     case "send_meta_event" as NodeType:
       return (
         <MetaEventFields

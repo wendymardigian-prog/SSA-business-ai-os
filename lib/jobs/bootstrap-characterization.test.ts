@@ -64,7 +64,7 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       // Catalogo de Meta (Extra L, AT2): las miniaturas de los anuncios.
       "meta_ad_thumbnails",
       "meta_ads_sync",
-      // La API de Conversiones de Meta (00327): cada evento que se le manda.
+      // La API de Conversiones de Meta (00328): cada evento que se le manda.
       "meta_capi_send",
       "metrics_sync",
       // Mi cuenta → Notificaciones (00275): la entrega de un aviso por email y WhatsApp.

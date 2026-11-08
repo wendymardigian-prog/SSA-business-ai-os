@@ -1,0 +1,12 @@
+[
+  { "name": "hay trabajo: llama aunque haya llamado recien", "hasWork": true, "lastCalledAt": "2026-11-08T12:00:00Z", "safetyMinutes": 10, "now": "2026-11-08T12:00:15Z", "expected": true },
+  { "name": "la guarda no sabe (null): llama", "hasWork": null, "lastCalledAt": "2026-11-08T12:00:00Z", "safetyMinutes": 10, "now": "2026-11-08T12:00:15Z", "expected": true },
+  { "name": "sin trabajo y llamo hace 15 s: no llama", "hasWork": false, "lastCalledAt": "2026-11-08T12:00:00Z", "safetyMinutes": 10, "now": "2026-11-08T12:00:15Z", "expected": false },
+  { "name": "sin trabajo y nunca llamo: llama", "hasWork": false, "lastCalledAt": null, "safetyMinutes": 10, "now": "2026-11-08T12:00:15Z", "expected": true },
+  { "name": "sin trabajo, justo en el intervalo: llama", "hasWork": false, "lastCalledAt": "2026-11-08T12:00:00Z", "safetyMinutes": 10, "now": "2026-11-08T12:10:00Z", "expected": true },
+  { "name": "sin trabajo, un segundo antes del intervalo: no llama", "hasWork": false, "lastCalledAt": "2026-11-08T12:00:00Z", "safetyMinutes": 10, "now": "2026-11-08T12:09:59Z", "expected": false },
+  { "name": "sin trabajo, pasado el intervalo: llama", "hasWork": false, "lastCalledAt": "2026-11-08T12:00:00Z", "safetyMinutes": 10, "now": "2026-11-08T13:00:00Z", "expected": true },
+  { "name": "ultima llamada en el futuro (reloj raro): llama", "hasWork": false, "lastCalledAt": "2026-11-08T12:30:00Z", "safetyMinutes": 10, "now": "2026-11-08T12:00:00Z", "expected": true },
+  { "name": "sin intervalo de seguridad: llama", "hasWork": false, "lastCalledAt": "2026-11-08T12:00:00Z", "safetyMinutes": null, "now": "2026-11-08T12:00:15Z", "expected": true },
+  { "name": "intervalo de un dia, a las 23 h: no llama", "hasWork": false, "lastCalledAt": "2026-11-08T00:00:00Z", "safetyMinutes": 1440, "now": "2026-11-08T23:00:00Z", "expected": false }
+]

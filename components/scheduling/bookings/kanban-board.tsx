@@ -21,7 +21,7 @@ import { BOOKING_STATUSES, statusDef } from "@/lib/scheduling/booking-status";
 import { groupForKanban, needsOutcome } from "@/lib/scheduling/bookings-view";
 import { evaluateDrop, needsCancelModal, isDraggable, DEFAULT_COLLAPSED_COLUMNS } from "@/lib/scheduling/kanban";
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
-import { NeedsOutcomeChip } from "./status-chip";
+import { NeedsOutcomeChip, SlotReleasedChip } from "./status-chip";
 import { statusDotClass } from "./status-chip";
 import { MeetJoinLink } from "./meet-join-link";
 
@@ -137,7 +137,7 @@ export function BookingsKanban({
                       onDragStart={() => setDragging(item)}
                       onDragEnd={() => setDragging(null)}
                       onClick={() => onOpen(item.id)}
-                      className="flex w-full flex-col gap-1.5 rounded-lg border border-border bg-card p-2.5 text-left text-sm hover:border-ring"
+                      className={`flex w-full flex-col gap-1.5 rounded-lg border bg-card p-2.5 text-left text-sm hover:border-ring ${item.slotReleasedAt ? "border-dashed border-violet-400" : "border-border"}`}
                     >
                       <span className={`flex items-center gap-1.5 text-xs text-muted-foreground${item.meetUrl ? " pr-7" : ""}`}>
                         <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: item.eventColor ?? "currentColor" }} />
@@ -148,6 +148,7 @@ export function BookingsKanban({
                         {capitalize(formatDateTimeWithZone(item.startAt, timezone, timeFormat))}
                       </span>
                       {needsOutcome({ status: item.status, end_at: item.endAt }, now) && <NeedsOutcomeChip />}
+                      {item.slotReleasedAt && <SlotReleasedChip />}
                     </button>
                   </div>
                 );

@@ -1,5 +1,5 @@
 -- ============================================================================
--- 00327 — API de Conversiones de Meta (CAPI)
+-- 00328 — API de Conversiones de Meta (CAPI)
 -- ============================================================================
 -- SSA le manda a Meta, desde el servidor, los eventos que valen (un lead, una reunión, un pago cobrado) con todos los
 -- datos de la persona juntos. Si la web también lo mandó por Pixel con el mismo código, Meta junta los dos envíos.
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS public.meta_capi_events (
 );
 
 COMMENT ON TABLE public.meta_capi_events IS
-  'Cada evento de la API de Conversiones de Meta (00327). Un evento se manda una sola vez (índice único por workspace, evento y código). Sin contact_id ni datos de la persona a propósito.';
+  'Cada evento de la API de Conversiones de Meta (00328). Un evento se manda una sola vez (índice único por workspace, evento y código). Sin contact_id ni datos de la persona a propósito.';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_capi_events_event
   ON public.meta_capi_events(workspace_id, event_name, event_id);
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS public.meta_capi_request_context (
 );
 
 COMMENT ON TABLE public.meta_capi_request_context IS
-  'La IP y el navegador de quien respondió un formulario o agendó, para la API de Conversiones de Meta (00327). Solo service_role; se borra a los 8 días.';
+  'La IP y el navegador de quien respondió un formulario o agendó, para la API de Conversiones de Meta (00328). Solo service_role; se borra a los 8 días.';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_capi_request_context_source
   ON public.meta_capi_request_context(source_type, source_id);

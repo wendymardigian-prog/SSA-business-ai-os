@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   const userAgent = request.headers.get("user-agent");
   after(async () => {
     await notifyBooking(service, bookingId, "booking_created");
-    // La IP y el navegador de quien agendo, para la API de Conversiones de Meta (00327). Solo si el negocio la
+    // La IP y el navegador de quien agendo, para la API de Conversiones de Meta (00328). Solo si el negocio la
     // configuro; nunca lanza.
     const { data: booking } = await service.from("bookings").select("workspace_id").eq("id", bookingId).maybeSingle();
     if (booking) await rememberCapiRequestContext(service, { workspaceId: booking.workspace_id, sourceType: "booking", sourceId: bookingId, ip, userAgent });

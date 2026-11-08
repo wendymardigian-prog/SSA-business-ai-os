@@ -1,5 +1,5 @@
 /**
- * El job que manda un evento a la API de Conversiones de Meta (00327).
+ * El job que manda un evento a la API de Conversiones de Meta (00328).
  *
  * Toda la lógica está en `lib/meta/capi/run.ts`. Este handler solo valida el payload: ni este ni aquel lanzan por un
  * fallo de Meta (la cola reintentaría a los 10 segundos encima del reintento propio de 1, 5 y 15 minutos). Solo lanza

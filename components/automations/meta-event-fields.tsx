@@ -4,7 +4,7 @@ import { useState } from "react";
 import { META_CURRENCIES, STEP_META_EVENTS, checkStepEventName, isStepEventName, type MetaEventStepData } from "@/lib/meta/capi/events";
 
 /**
- * Lo que se configura de «Enviar evento a Meta» (00327): qué evento, el valor (opcional, admite variables), la moneda,
+ * Lo que se configura de «Enviar evento a Meta» (00328): qué evento, el valor (opcional, admite variables), la moneda,
  * el nombre del contenido y, en una reunión, si solo cuentan las que agendó el lead. Lo usan el editor de pasos de
  * Formularios y Agenda y el panel del lienzo: es el mismo paso en los dos lados.
  *

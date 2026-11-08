@@ -51,7 +51,7 @@ NO reescribir (ya existe en ZernFlow, solo verificar/extender):
 - Broadcasts (tablas y UI del fork; desde el 3/11/2026 rehechos con canal, filtros de Contactos y cola de envíos: ver "Broadcasts y la cola de envíos").
 - Webhook event ledger para idempotencia (tabla `webhook_events`).
 - Flow versions (historial al publicar).
-- Realtime en `conversations` y `messages`.
+- Realtime en `conversations` (`messages` salio de la publicacion en la 00327: nadie la escuchaba; ver "Los cron y su guarda").
 - Integracion base con Zernio para Instagram (DMs, comentarios, story replies).
 
 # Stack
@@ -481,6 +481,8 @@ sus automatizaciones y la habilidad del agente. El detalle en
   docs/agendamiento.md.
 - **Una reunion la ve tambien el setter de su contacto** (00241, `can_see_booking`).
   Los flujos de un evento los toca solo quien puede editar ese evento.
+- **Un espacio liberado se ofrece aunque Google lo marque ocupado**: `busyRanges` resta del ocupado de Google el rango de cada reunión liberada y de la que se reagenda (`freed`, `splitHostBookings`). Es la doble reserva a propósito; lo que excede ese rango sigue bloqueando.
+- **El detalle de una reunión se pide aparte** (`loadBookingDetail`, `lib/actions/scheduling/booking-detail.ts`): abrir o cerrar el panel cambia `?agenda=` con la API del navegador y NO recarga la página. La página de Agenda carga en dos tandas en paralelo; los contadores de las pastillas salen de `listBookingStatuses` (tres columnas), nunca de traer reuniones completas.
 - **Cambiar el anfitrion de un evento** (00290, editor → Detalles, pide
   `scheduling.manage_others`) solo cambia las reuniones NUEVAS: las ya agendadas
   conservan su `host_user_id`. Va por `change_event_type_host`, en una transaccion,
@@ -1300,6 +1302,7 @@ cuentan los toques que pueden traer datos de anuncio)** y `00195` (`ads_crm_metr
   del CRM va en centavos y se pasa con `fromCents`; el Total calcula los cocientes sobre los totales.
 - **La pantalla Anuncios (`/dashboard/anuncios`, menú → Adquisición) es la misma tabla del dashboard**, con el mismo permiso y la misma consulta (`loadCrmForRows`): si se cambia una, cambian las dos.
 - **El desglose de anuncios es siempre la tabla de `crm-table.tsx`** (dashboard, detalles y Anuncios), con las columnas por nivel. Lo que devuelve el CRM es de toda la cuenta: un detalle la filtra con `scope` (`filterByParent`), y entonces «Leads totales» del total se pide para lo que se ve (igual con cualquier filtro). El dashboard y los detalles usan `CrmLevelTable`; **Anuncios arma la misma tabla con `useCrmLevelTable` + `CrmLevelBody` y lleva pestañas, buscador, estado, Filtros, Columnas y Exportar a la barra superior**, todo en la URL (`lib/dashboards/ads-table-filters.ts`, `ads-drill.ts`). En Anuncios un clic en una fila abre un menú y baja de nivel sin salir; en el resto lleva al detalle. En las tres, el encabezado ordena y fija columnas (`ads-table-view.ts`, fijas en `localStorage`) y las métricas de eficiencia se pintan contra la mediana de lo que se ve (`ads-tone.ts`, ±20 %, nunca volúmenes ni el Total). Detalle en docs/dashboards.md («La barra superior», «Ordenar, fijar columnas y el semáforo»).
+- **El funnel de un detalle sigue la optimización del AdSet** (`lib/dashboards/ads-funnel.ts`): cambian solo los pasos de Meta; los leads (Meta y CRM contra el mismo paso), agendas y ventas son iguales en todos, y desde los leads se calcula sobre el CRM. Las visitas al perfil solo vienen en `results` de Meta y se guardan en `actions` como `result:<indicador>`.
 - **Los tooltips de los gráficos usan `TOOLTIP_TEXT`** (`ads-charts.tsx`): sin `itemStyle`, recharts pinta de negro lo que no trae color y no se lee en el tema oscuro.
 - **Alcance y Frec. de cada fila los da Meta en vivo, los dos de la misma respuesta** (`fetchObjectReach`), y solo se piden si esas columnas están a la vista (`loadCrmObjectReach`). No calcular la frecuencia con las impresiones guardadas: lo guardado llega hasta el último sync y daría menos de 1. Lo que Meta no dio es la suma de los días y se ve con «≈» (`CrmRow.reachIsSum`). **El valor de compras usa un solo nombre, igual que el conteo** (`purchaseValueOf`); lo guardado antes del 6/11/2026 no se puede recontar sin releer de Meta (pasos en docs/dashboards.md).
 - **La Frecuencia de las tarjetas también es la de Meta** (`fetchUniqueReach`, tercer parámetro de `computeTotals`): con alcance en vivo nunca se divide lo guardado, y si Meta no la dio es «—». La variación del período anterior pasa por `computePreviousTotals` en el dashboard y los detalles: alcance en vivo contra sumado no se compara.
@@ -1369,7 +1372,7 @@ En la tabla Meta vs CRM, una venta sin anuncio en su toque cuenta para el últim
 
 `00318_meta_match_rules_similar` (aditiva: la tabla, las funciones, los CHECK de la tarea de IA y, al final, el re-vínculo y el canal de lo existente) va **ANTES** de desplegar el código: **aplicada y registrada** el 7/11/2026 (versión `20261107215432`), después de ensayarla en una transacción que se deshizo sola. Resultado: «Sin vincular» quedó en 0, 87 toques de anuncios en «Para revisar» y 37 orgánicos fuera de la lista. **La próxima libre es la `00319`** (confirmar con `list_migrations` y las ramas locales).
 
-# API de Conversiones de Meta (00327, 8/11/2026)
+# API de Conversiones de Meta (00328, 8/11/2026)
 
 SSA le manda a Meta, desde el servidor, los leads, las reuniones y los pagos cobrados con los datos de la persona juntos; si la web mandó el mismo evento por Pixel con el mismo código, Meta lo cuenta una vez. Tarjeta **Ajustes → Integraciones → «Meta: API de Conversiones»** (Pixel + token, aparte de la de lectura); leads y reuniones con el paso **«Enviar evento a Meta»** (editor de pasos de Formularios y Agenda, y el lienzo); compras con el interruptor de la tarjeta. Detalle en [docs/meta-capi.md](docs/meta-capi.md).
 
@@ -1385,7 +1388,7 @@ SSA le manda a Meta, desde el servidor, los leads, las reuniones y los pagos cob
 
 ## Migración
 
-`00327_meta_capi` (aditiva: las dos tablas, el trigger de `payments` y la limpieza diaria). Puede ir antes o después del código: hasta que alguien configure la tarjeta, el trigger no encola nada. **Sin aplicar todavía.** **La próxima libre es la `00328`** (confirmar con `list_migrations` y las ramas locales).
+`00328_meta_capi` (aditiva: las dos tablas, el trigger de `payments` y la limpieza diaria). Puede ir antes o después del código: hasta que alguien configure la tarjeta, el trigger no encola nada. **Sin aplicar todavía.** **La próxima libre es la `00329`** (la `00327` es de los crons con guarda) (confirmar con `list_migrations` y las ramas locales).
 
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 
@@ -2277,6 +2280,30 @@ Dos cosas que se pisaban: el barrido que cierra las conversaciones inactivas y e
 ## Migracion
 
 `00306_closable_inactive_conversations` (aditiva, una funcion de lectura) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 7/11/2026 UTC (version `20261107060614`), con los permisos comprobados (solo `service_role`) y la funcion devolviendo las mismas 165 conversaciones que un conteo independiente. La `00307` y la `00308` son de Grabaciones (Etapa 5). **La proxima libre es la `00309`** (confirmar con `list_migrations` y las ramas locales).
+
+# Los cron y su guarda (8/11/2026)
+
+El 8/11/2026 la base quedo "Unhealthy": pg_cron llamaba a la app ~16.500 veces por dia aunque no hubiera nada que hacer (`agent-bursts` y `send-queue` cada 15 s, `jobs`, `sequences` y `automation-events` cada minuto). Desde la 00327 cada cron pasa antes por una guarda en SQL. Detalle, la tabla de que mira cada una y la medicion en [docs/crons.md](docs/crons.md).
+
+## Lo que no se puede romper
+
+- **La guarda copia el `WHERE` del handler**: `private.cron_work_<ruta>` mira lo mismo que `app/api/cron/<ruta>`. **Si un handler cambia, cambia su guarda** en una migracion nueva: `lib/cron/guards.test.ts` ata cada umbral a la constante del codigo y tiene una "alarma" con lo que llama cada handler (un barrido nuevo lo hace fallar). Lo que la guarda no mira a proposito lo cubre la llamada de seguridad y se anota en `coveredBySafetyCall` (`lib/cron/guards.json`).
+- **Ante la duda, llama**: un error de la guarda o una ruta sin guarda llaman a la app. Y cada cron llama igual una vez cada tanto (10 min los rapidos; 1 h, 2 h o 1 dia los lentos): si la guarda se equivoca, se pierde ese rato, nunca el trabajo. Mira 5 s hacia adelante en los limites de arriba.
+- **`private.call_app_cron` no se reescribe**: la envuelve `private.call_app_cron_if_work`. Un cron nuevo que llama a la app va con guarda o en `UNGUARDED_CRONS` con el motivo (el test lo exige). `bg-dispatch` y `metrics-sync` quedan sin guarda a proposito (deciden por la hora de cada negocio en TypeScript).
+- **`private.cron_guard_state` es UNLOGGED**: no escribe WAL y vacia es valida (se llama). Tiene los contadores de llamadas y salteadas.
+- **La decision tiene gemelas**: `private.cron_guard_decide` y `shouldCallCron`, con `lib/cron/guard-decide.cases.json`.
+- **Realtime publica exactamente `lib/realtime/tables.ts`** (las tablas que escucha la interfaz; lo compara `lib/realtime/tables.test.ts`). Una tabla publicada que nadie escucha le cuesta a la base en cada cambio.
+- **Purgas**: `scheduled_jobs` completados y cancelados a los 30 dias, fallidos a los 90, pendientes nunca (`purge-scheduled-jobs`); `cron.job_run_details` a 1 dia.
+- En la plantilla de estudiantes, la poda deja `private.cron_work_jobs_extra` en `false` (no tiene webhooks propios).
+
+## Migracion
+
+`00327_cron_guards` (aditiva: el codigo no cambia; puede ir antes o despues de un deploy): **aplicada y registrada** el 8/11/2026 UTC (version `20261108050809`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-cron-guards` en verde. En los primeros 10 minutos todas las corridas salieron bien y, por ejemplo, `agent-bursts` corrio 41 veces y llamo a la app 2. **La proxima libre es la `00328`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-cron-guards.mjs   # despues de aplicar: decision SQL = TS, comandos, permisos, Realtime y cada guarda con y sin el dato justo
+node scripts/measure-cron-load.mjs    # antes y despues (solo lee)
+```
 
 # Buenas practicas de desarrollo
 

@@ -498,7 +498,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     docsUrl: "https://business.facebook.com/settings/system-users",
   },
 
-  // La API de Conversiones de Meta (00327): SSA le manda a un Pixel los eventos que valen (leads, reuniones, pagos)
+  // La API de Conversiones de Meta (00328): SSA le manda a un Pixel los eventos que valen (leads, reuniones, pagos)
   // desde el servidor. Va aparte de la de arriba (que solo lee): otro token, que solo sirve para mandar eventos a ESE
   // Pixel, y desconectar una no toca la otra.
   {

@@ -21,7 +21,7 @@ const IDS = [
   "groq",
   "linkedin",
   "meta",
-  // La API de Conversiones de Meta (00327): una tarjeta aparte de la de lectura.
+  // La API de Conversiones de Meta (00328): una tarjeta aparte de la de lectura.
   "meta_capi",
   "openai",
   "postproxy",
@@ -33,7 +33,7 @@ const IDS = [
 ];
 
 describe("el conjunto de proveedores no cambia", () => {
-  it("son los catorce de siempre (sin Turnstile desde R1) mas la API de Conversiones (00327)", () => {
+  it("son los catorce de siempre (sin Turnstile desde R1) mas la API de Conversiones (00328)", () => {
     expect(PROVIDERS.map((p) => p.id).sort()).toEqual(IDS);
   });
 

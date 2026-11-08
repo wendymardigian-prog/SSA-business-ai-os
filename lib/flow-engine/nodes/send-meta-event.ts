@@ -1,5 +1,5 @@
 /**
- * «Enviar evento a Meta» (00327): le avisa a la API de Conversiones de Meta que pasó algo que vale (un lead, una
+ * «Enviar evento a Meta» (00328): le avisa a la API de Conversiones de Meta que pasó algo que vale (un lead, una
  * reunión agendada...). Se arma desde Formularios y Agenda (el editor de pasos) o en el lienzo.
  *
  * El paso NO manda en el momento: anota el evento y lo encola (`lib/meta/capi/run.ts`), y el flujo sigue. Un fallo de

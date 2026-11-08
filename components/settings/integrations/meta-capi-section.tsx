@@ -43,7 +43,7 @@ function detailOf(row: MetaCapiEventRow): string | null {
 }
 
 /**
- * La sección propia de la tarjeta «Meta: API de Conversiones» (00327): mandar cada pago cobrado como compra y los
+ * La sección propia de la tarjeta «Meta: API de Conversiones» (00328): mandar cada pago cobrado como compra y los
  * últimos envíos (qué se mandó, qué no y por qué). Los leads y las reuniones se mandan con el paso «Enviar evento a
  * Meta» de las automatizaciones.
  */

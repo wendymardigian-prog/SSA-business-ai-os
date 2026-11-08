@@ -794,7 +794,7 @@ Paso del grupo **Diseñador IA** (`type: "designGenerate"`, alias `action/design
 Pruebas: `design-generate.test.ts`, `send-email-design.test.ts`, `node-config.test.ts`, `flow-template.test.ts`, `node-outputs.test.ts`, `node-requirements.test.ts`; `verify-designer --bloque ds7`.
 
 
-## «Enviar evento a Meta» (API de Conversiones, 00327)
+## «Enviar evento a Meta» (API de Conversiones, 00328)
 
 El nodo `send_meta_event` le avisa a la API de Conversiones de Meta que pasó algo que vale. Se arma en el editor de pasos
 de Formularios y de la Agenda (`meta_event` en `ACTION_KINDS`) y en el lienzo. El detalle del módulo está en

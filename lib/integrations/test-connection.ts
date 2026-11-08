@@ -90,7 +90,7 @@ export async function testConnection(input: TestInput): Promise<ConnectionTest> 
       };
     }
 
-    // La API de Conversiones (00327): que el token sirva para ESE Pixel. Cambiar el Pixel exige volver a escribir el
+    // La API de Conversiones (00328): que el token sirva para ESE Pixel. Cambiar el Pixel exige volver a escribir el
     // token (`secretBoundTo`), asi que nunca queda un Pixel sin probar.
     case "meta_capi": {
       const token = (input.secrets.access_token ?? "").trim();

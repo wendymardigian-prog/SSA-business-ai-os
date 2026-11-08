@@ -256,7 +256,8 @@ export function BookingsCalendar({
                     onDragStart={canDrag ? (e) => startBooking(item, e) : undefined}
                     onDragEnd={canDrag ? endDrag : undefined}
                     style={{ borderLeftColor: it.eventColor ?? "var(--primary)" }}
-                    className="truncate rounded border-l-2 bg-muted/60 px-1.5 py-0.5 text-left text-[11px] hover:bg-muted"
+                    title={item.slotReleasedAt ? "Espacio liberado: se puede agendar encima" : undefined}
+                    className={`truncate rounded border-l-2 bg-muted/60 px-1.5 py-0.5 text-left text-[11px] hover:bg-muted${item.slotReleasedAt ? " border-dashed opacity-60" : ""}`}
                   >
                     {formatSlotLabel(item.startAt, timezone, timeFormat)} {item.contactName || item.bookerName || ""}
                   </button>
@@ -325,7 +326,10 @@ export function BookingsCalendar({
                   // una caja con la posicion. Sin Meet, la tarjeta es exactamente la de siempre.
                   const join = canJoinMeet(item);
                   const box = { top, height, ...(lane ? laneStyle(lane) : null) };
-                  const cardClass = "overflow-hidden rounded-md border border-border border-l-2 bg-card px-1.5 py-1 text-left text-[11px] hover:border-ring";
+                  // Un espacio liberado se ve punteado; el resto, exactamente como siempre (lo fija la caracterización).
+                  const cardClass = item.slotReleasedAt
+                    ? "overflow-hidden rounded-md border border-dashed border-violet-400 border-l-2 bg-card px-1.5 py-1 text-left text-[11px] opacity-70 hover:border-ring"
+                    : "overflow-hidden rounded-md border border-border border-l-2 bg-card px-1.5 py-1 text-left text-[11px] hover:border-ring";
                   const card = (
                     <button
                       key={item.id}
@@ -340,7 +344,7 @@ export function BookingsCalendar({
                       <span className={join ? "block truncate pr-6 font-medium tabular-nums" : "block truncate font-medium tabular-nums"}>
                         {formatSlotLabel(item.startAt, timezone, timeFormat)} {item.contactName || item.bookerName || ""}
                       </span>
-                      <span className="block truncate text-muted-foreground">{it.statusLabel}</span>
+                      <span className="block truncate text-muted-foreground">{item.slotReleasedAt ? `${it.statusLabel} · Espacio liberado` : it.statusLabel}</span>
                     </button>
                   );
                   if (!join) return card;
@@ -411,7 +415,7 @@ export function BookingsCalendar({
                     >
                       <span className="block tabular-nums">{formatSlotLabel(item.startAt, timezone, timeFormat)}</span>
                       <span className="block text-xs text-muted-foreground">
-                        {item.contactName || item.bookerName || "Sin nombre"} · {it.statusLabel}
+                        {item.contactName || item.bookerName || "Sin nombre"} · {item.slotReleasedAt ? `${it.statusLabel} · Espacio liberado` : it.statusLabel}
                       </span>
                     </button>
                   );

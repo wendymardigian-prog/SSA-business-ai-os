@@ -264,7 +264,7 @@ export function Booker({
         startTime: state.selectedSlot.startUtc,
         endTime: new Date(new Date(state.selectedSlot.startUtc).getTime() + event.durationMinutes * 60_000).toISOString(),
         eventSlug: slug,
-        // El código del evento de Meta (00327): la web con Pixel lo usa como `eventID` y Meta no la cuenta dos veces.
+        // El código del evento de Meta (00328): la web con Pixel lo usa como `eventID` y Meta no la cuenta dos veces.
         ...(body.metaEventId ? { metaEventId: body.metaEventId } : {}),
       });
 

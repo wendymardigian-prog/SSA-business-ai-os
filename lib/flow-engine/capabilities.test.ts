@@ -53,7 +53,7 @@ describe("que conexiones tiene el negocio", () => {
     expect(await loadAutomationCapabilities(world({ channels: [off] }), WS)).toMatchObject({ channel: false, whatsapp_channel: false });
   });
 
-  it("API de Conversiones: la integracion activa y con el ID del Pixel (00327)", async () => {
+  it("API de Conversiones: la integracion activa y con el ID del Pixel (00328)", async () => {
     expect((await loadAutomationCapabilities(world(), WS)).meta_capi).toBe(false);
     expect((await loadAutomationCapabilities(world({ capi: { is_active: true, config: { pixel_id: "1234567890" } } }), WS)).meta_capi).toBe(true);
     expect((await loadAutomationCapabilities(world({ capi: { is_active: false, config: { pixel_id: "1234567890" } } }), WS)).meta_capi).toBe(false);

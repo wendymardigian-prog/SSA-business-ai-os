@@ -514,3 +514,16 @@ select.select-bare {
     visibility: visible;
   }
 }
+
+/*
+ * La barrita de "cargando" de las tablas (Agenda y las que usen el kit): un tercio
+ * que recorre el ancho mientras el servidor trae los datos de un filtro nuevo.
+ */
+@keyframes agenda-loading {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}

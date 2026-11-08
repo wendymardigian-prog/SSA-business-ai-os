@@ -43,9 +43,9 @@ const VIDEO_FIELDS = ["video_p25_watched_actions", "video_p50_watched_actions", 
 /** Los campos que se piden en cada nivel. */
 const FIELDS: Record<AdsLevel, string[]> = {
   account: ["spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", ...VIDEO_FIELDS],
-  campaign: ["campaign_id", "campaign_name", "objective", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", ...VIDEO_FIELDS],
-  adset: ["adset_id", "adset_name", "campaign_id", "campaign_name", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", ...VIDEO_FIELDS],
-  ad: ["ad_id", "ad_name", "adset_id", "adset_name", "campaign_id", "campaign_name", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", "quality_ranking", "engagement_rate_ranking", "conversion_rate_ranking", ...VIDEO_FIELDS],
+  campaign: ["campaign_id", "campaign_name", "objective", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", "results", ...VIDEO_FIELDS],
+  adset: ["adset_id", "adset_name", "campaign_id", "campaign_name", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", "results", ...VIDEO_FIELDS],
+  ad: ["ad_id", "ad_name", "adset_id", "adset_name", "campaign_id", "campaign_name", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", "results", "quality_ranking", "engagement_rate_ranking", "conversion_rate_ranking", ...VIDEO_FIELDS],
 };
 
 interface ActionEntry {
@@ -119,6 +119,23 @@ export function countPurchases(actions: ActionEntry[] | undefined): number | nul
   return countPurchaseActions(actions);
 }
 
+/**
+ * El resultado del objetivo, con el prefijo `result:` para guardarlo junto a las acciones (`ads-funnel.ts`). Algunos, como
+ * las visitas al perfil, solo vienen por aca: no estan en `actions`. Una campaña que mezcla objetivos trae `mixed`, que no
+ * dice nada: se descarta.
+ */
+export function resultsMap(results: RawInsight["results"]): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const result of results ?? []) {
+    if (!result.indicator || result.indicator === "mixed") continue;
+    const value = number(result.values?.[0]?.value);
+    if (value === null) continue;
+    const key = `result:${result.indicator}`;
+    map[key] = (map[key] ?? 0) + value;
+  }
+  return map;
+}
+
 /** Todas las acciones, como mapa, para guardarlas crudas. */
 export function actionsMap(actions: ActionEntry[] | undefined): Record<string, number> {
   const map: Record<string, number> = {};
@@ -147,6 +164,8 @@ interface RawInsight {
   actions?: ActionEntry[];
   action_values?: ActionEntry[];
   outbound_clicks?: ActionEntry[];
+  /** El resultado del objetivo (visitas al perfil, leads…): `indicator` dice que es. */
+  results?: Array<{ indicator?: string; values?: Array<{ value?: string | number }> }>;
   quality_ranking?: string;
   engagement_rate_ranking?: string;
   conversion_rate_ranking?: string;
@@ -230,7 +249,7 @@ export function normalizeInsight(
     qualityRanking: raw.quality_ranking ?? null,
     engagementRanking: raw.engagement_rate_ranking ?? null,
     conversionRanking: raw.conversion_rate_ranking ?? null,
-    actions: actionsMap(raw.actions),
+    actions: { ...actionsMap(raw.actions), ...resultsMap(raw.results) },
   };
 }
 

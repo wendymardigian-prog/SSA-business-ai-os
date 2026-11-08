@@ -95,7 +95,7 @@ describe("actionProblem y validateActionData", () => {
   });
 });
 
-describe("Enviar evento a Meta (00327)", () => {
+describe("Enviar evento a Meta (00328)", () => {
   const meta = (data: Record<string, unknown>): ActionStep => ({ kind: "action", id: "m1", nodeType: "action", data: { actionType: "send_meta_event", ...data } });
 
   it("nace en «Lead» en Formularios y en «Schedule» en la Agenda", () => {

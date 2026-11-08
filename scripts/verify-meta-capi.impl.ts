@@ -1,5 +1,5 @@
 /**
- * La API de Conversiones de Meta contra la base real (00327).
+ * La API de Conversiones de Meta contra la base real (00328).
  *
  * Lo que un test con Vitest no puede probar: la RLS de las dos tablas, el índice único con diez envíos a la vez, que el
  * trigger de `payments` encole la compra solo con el interruptor prendido (una vez por pago, sin reembolsos), que un pago

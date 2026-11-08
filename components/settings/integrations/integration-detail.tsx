@@ -60,7 +60,7 @@ export function IntegrationDetail({
   readOnly?: boolean;
   /** La tarjeta Resend (conexion de Resend): webhook, recepcion y estado. Solo para el proveedor `resend`. */
   resend?: ResendPanelData | null;
-  /** La API de Conversiones de Meta (00327): los ultimos envios. Solo para el proveedor `meta_capi`. */
+  /** La API de Conversiones de Meta (00328): los ultimos envios. Solo para el proveedor `meta_capi`. */
   capiEvents?: MetaCapiEventRow[] | null;
 }) {
   const router = useRouter();
@@ -151,7 +151,7 @@ export function IntegrationDetail({
               <CredentialsForm provider={provider} data={data} webhookUrl={webhookUrl} />
               {/* Los remitentes de Resend (E8): usuario + dominio verificado, en su propio formulario. */}
               {provider.id === "resend" && <ResendSendersForm config={data.config} connected={data.status !== "not_connected"} />}
-              {/* La API de Conversiones de Meta (00327): compras y ultimos envios. */}
+              {/* La API de Conversiones de Meta (00328): compras y ultimos envios. */}
               {provider.id === "meta_capi" && (
                 <MetaCapiSection
                   connected={data.status !== "not_connected"}

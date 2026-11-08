@@ -253,7 +253,7 @@ const categories: PaletteCategory[] = [
         synonyms: ["whatsapp", "aviso", "telefono"],
         actionType: "send_whatsapp_number",
       },
-      // API de Conversiones (00327): le avisa a Meta que pasó algo que vale (un lead, una reunión).
+      // API de Conversiones (00328): le avisa a Meta que pasó algo que vale (un lead, una reunión).
       {
         type: "action",
         nodeType: "send_meta_event",

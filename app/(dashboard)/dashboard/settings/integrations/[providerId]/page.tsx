@@ -111,7 +111,7 @@ export default async function IntegrationDetailPage({
     resend = await loadResendPanelData(await createServiceClient(), workspace.id).catch(() => null);
   }
 
-  // La API de Conversiones de Meta (00327): los ultimos envios. Con la sesion: la RLS pide `integrations.view` o
+  // La API de Conversiones de Meta (00328): los ultimos envios. Con la sesion: la RLS pide `integrations.view` o
   // `integrations.manage`, que es lo mismo que pide esta pagina para un proveedor del negocio.
   let capiEvents: MetaCapiEventRow[] | null = null;
   if (provider.id === "meta_capi") {

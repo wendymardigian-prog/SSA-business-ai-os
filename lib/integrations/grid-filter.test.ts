@@ -17,7 +17,7 @@ describe("filterSections", () => {
     const result = filterSections(sections, statusOf({}), { chip: null, onlyAttention: false });
     expect(result.map((g) => g.section)).toEqual(["connections", "ai"]);
     // Cambio aprobado (conexion de Resend): "Resend (email entrante)" quedo oculta.
-    // + «Meta: API de Conversiones» (00327).
+    // + «Meta: API de Conversiones» (00328).
     expect(result.flatMap((g) => g.providers).length).toBe(14);
   });
 
@@ -84,7 +84,7 @@ describe("countByChip", () => {
     const counts = countByChip(sections);
     expect(counts.mensajeria).toBe(2); // zernio, evolution
     expect(counts.publicacion).toBe(5); // zernio, postproxy, linkedin, threads, google
-    expect(counts.anuncios).toBe(2); // meta y meta_capi (00327)
+    expect(counts.anuncios).toBe(2); // meta y meta_capi (00328)
     expect(counts.email).toBe(1); // resend (cambio aprobado: la entrante quedo oculta en la tarjeta Resend)
   });
 });
