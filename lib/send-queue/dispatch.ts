@@ -370,12 +370,15 @@ function audienceTagIds(audience: Broadcast["audience_params"]): readonly string
 
 async function deliver(service: Client, ctx: LaneContext, b: Broadcast, r: Recipient): Promise<RecipientOutcome> {
   try {
-    const { data: contact } = await service
+    const { data: contact, error: contactError } = await service
       .from("contacts")
       .select("id, deleted_at, do_not_contact, is_subscribed, email")
       .eq("id", r.contact_id)
       .eq("workspace_id", ctx.workspaceId)
       .maybeSingle();
+    // Un error al leer NO es "el contacto no existe": se reintenta. Antes caía como "Contacto borrado" y la persona se perdía
+    // el envío para siempre (pasó el 6/11/2026 con dos contactos que nunca se borraron, con la base cargada).
+    if (contactError) throw new Error(`No pude leer el contacto: ${contactError.message}`);
     if (!contact || contact.deleted_at) return { kind: "skipped", reason: "deleted" };
     if (contact.do_not_contact) return { kind: "skipped", reason: "do_not_contact" };
     if (ctx.channel.kind === "whatsapp" && contact.is_subscribed === false) return { kind: "skipped", reason: "chat_unsubscribed" };

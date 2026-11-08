@@ -61363,3 +61363,1106 @@ BEGIN
     );
   END IF;
 END $$;
+
+-- ============================================================
+-- MIGRATION 344: WHATSAPP COMMUNITIES
+-- ============================================================
+-- ============================================================
+-- 00344_whatsapp_communities
+-- ============================================================
+-- Comunidades de WhatsApp (noviembre 2026).
+--
+-- Una comunidad de WhatsApp es una "comunidad madre" (no tiene mensajes: solo
+-- agrupa), un grupo de Avisos (con el MISMO nombre que la comunidad y todos
+-- sus miembros; solo escriben los admins) y los demas grupos de la comunidad.
+-- Hasta aca la lista de grupos de un numero era plana: el grupo de Avisos se
+-- veia como si fuera la comunidad y los demas grupos quedaban mezclados, sin
+-- decir de que comunidad eran.
+--
+-- La comunidad madre NO se guarda: no tiene mensajes y no se puede activar.
+-- Cada grupo guardado lleva el JID de su comunidad y el nombre de la comunidad
+-- (una copia, para mostrar "Comunidad > grupo" sin preguntarle a WhatsApp).
+-- Lo refrescan la lista de Grupos de la tarjeta del numero y los avisos
+-- GROUPS_UPSERT / GROUP_UPDATE de Evolution.
+--
+--   kind              'group' (un grupo) | 'announce' (el de Avisos de una comunidad)
+--   parent_group_jid  el JID de la comunidad, o null si es un grupo suelto
+--   community_subject el nombre de la comunidad (copia)
+--   description       la descripcion del grupo
+--   restrict          true = solo los admins editan el nombre, la foto y la descripcion
+--   number_is_admin   si el numero es admin del grupo; null = no se sabe
+--
+-- Solo suma columnas: los permisos (RLS y GRANT de la 00280) no cambian, y
+-- escribe solo el servidor, como siempre.
+--
+-- Aditiva: se aplica ANTES de desplegar el codigo que la usa (la bandeja y la
+-- lista de grupos leen estas columnas).
+--
+-- Como volver atras:
+--   DROP INDEX IF EXISTS public.idx_whatsapp_groups_parent;
+--   ALTER TABLE public.whatsapp_groups
+--     DROP COLUMN IF EXISTS kind, DROP COLUMN IF EXISTS parent_group_jid,
+--     DROP COLUMN IF EXISTS community_subject, DROP COLUMN IF EXISTS description,
+--     DROP COLUMN IF EXISTS restrict, DROP COLUMN IF EXISTS number_is_admin;
+--
+-- Idempotente.
+-- ============================================================
+
+ALTER TABLE public.whatsapp_groups
+  ADD COLUMN IF NOT EXISTS kind              text NOT NULL DEFAULT 'group',
+  ADD COLUMN IF NOT EXISTS parent_group_jid  text,
+  ADD COLUMN IF NOT EXISTS community_subject text,
+  ADD COLUMN IF NOT EXISTS description       text,
+  ADD COLUMN IF NOT EXISTS restrict          boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS number_is_admin   boolean;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_groups_kind_check') THEN
+    ALTER TABLE public.whatsapp_groups ADD CONSTRAINT whatsapp_groups_kind_check
+      CHECK (kind IN ('group', 'announce'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_groups_parent_jid_check') THEN
+    ALTER TABLE public.whatsapp_groups ADD CONSTRAINT whatsapp_groups_parent_jid_check
+      CHECK (parent_group_jid IS NULL OR parent_group_jid ~ '^[0-9]{6,}(-[0-9]+)?@g\.us$');
+  END IF;
+  -- El de Avisos siempre es de una comunidad.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_groups_announce_parent_check') THEN
+    ALTER TABLE public.whatsapp_groups ADD CONSTRAINT whatsapp_groups_announce_parent_check
+      CHECK (kind <> 'announce' OR parent_group_jid IS NOT NULL);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_groups_description_check') THEN
+    ALTER TABLE public.whatsapp_groups ADD CONSTRAINT whatsapp_groups_description_check
+      CHECK (description IS NULL OR char_length(description) <= 4000);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.whatsapp_groups.kind IS
+  'group = un grupo; announce = el grupo de Avisos de una comunidad (00344).';
+COMMENT ON COLUMN public.whatsapp_groups.parent_group_jid IS
+  'El JID de la comunidad de WhatsApp a la que pertenece el grupo, o null si es un grupo suelto (00344).';
+COMMENT ON COLUMN public.whatsapp_groups.community_subject IS
+  'Copia del nombre de la comunidad, para mostrar "Comunidad > grupo" (00344).';
+COMMENT ON COLUMN public.whatsapp_groups.number_is_admin IS
+  'Si el numero es admin del grupo; null = no se sabe (00344).';
+
+-- El filtro de la bandeja por comunidad.
+CREATE INDEX IF NOT EXISTS idx_whatsapp_groups_parent
+  ON public.whatsapp_groups (workspace_id, parent_group_jid)
+  WHERE parent_group_jid IS NOT NULL;
+
+-- ============================================================
+-- MIGRATION 347: DELETE UNSENT BROADCAST
+-- ============================================================
+-- ============================================================
+-- 00347_delete_unsent_broadcast.sql
+-- ============================================================
+-- Eliminar un broadcast que nunca mando nada (docs/broadcasts.md).
+--
+-- Hasta hoy solo se borraba un borrador. Uno que se puso en cola y despues se
+-- pauso o se cancelo sin mandar ni un mensaje quedaba para siempre en la lista,
+-- con todos sus destinatarios `cancelled` en la cola.
+--
+-- La regla: se borra si ningun destinatario esta `sending`, `sent` ni `failed`
+-- y el broadcast no se esta enviando (si se esta enviando, primero se pausa).
+-- Lo que mando algo queda como historia. Los destinatarios se van con el
+-- broadcast (la FK es `on delete cascade` desde la 00001).
+--
+-- Por que en la base y no con dos consultas desde la app: entre "contar" y
+-- "borrar" la cola podria reclamar un destinatario y mandarlo, y su registro se
+-- perderia. La funcion bloquea el broadcast (asi la cola no lo puede pasar de
+-- programado a enviando en el medio) y las filas abiertas (asi espera a un
+-- reclamo que este a mitad de camino y lo ve como `sending`).
+--
+-- Aditiva: una funcion nueva, solo `service_role`. Puede ir antes o despues del
+-- codigo (sin ella, eliminar responde un error claro).
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.delete_unsent_broadcast(p_workspace_id uuid, p_broadcast_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_status text;
+BEGIN
+  SELECT b.status INTO v_status
+  FROM public.broadcasts b
+  WHERE b.id = p_broadcast_id AND b.workspace_id = p_workspace_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN 'not_found';
+  END IF;
+
+  IF v_status = 'sending' THEN
+    RETURN 'sending';
+  END IF;
+
+  -- Espera a un reclamo de la cola en curso: despues de esto, lo que salio se ve.
+  PERFORM 1
+  FROM public.broadcast_recipients r
+  WHERE r.broadcast_id = p_broadcast_id AND r.status IN ('pending', 'sending')
+  FOR UPDATE;
+
+  IF EXISTS (
+    SELECT 1 FROM public.broadcast_recipients r
+    WHERE r.broadcast_id = p_broadcast_id AND r.status IN ('sending', 'sent', 'failed')
+  ) THEN
+    RETURN 'has_sends';
+  END IF;
+
+  DELETE FROM public.broadcasts WHERE id = p_broadcast_id AND workspace_id = p_workspace_id;
+  RETURN 'deleted';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.delete_unsent_broadcast(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_unsent_broadcast(uuid, uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 348: WHATSAPP DAILY MESSAGES
+-- ============================================================
+-- ============================================================
+-- 00348_whatsapp_daily_messages
+-- ============================================================
+-- El grafico diario de un numero de WhatsApp (noviembre 2026): cuantos
+-- mensajes salieron y entraron por dia, y los que salieron separados por
+-- quien los mando. Es lo que hay que mirar para no hacer que WhatsApp bloquee
+-- el numero (WhatsApp mide lo que SALE).
+--
+-- Una sola funcion de lectura que cuenta en la base (traer los mensajes a la
+-- app para contarlos seria traer miles por mes). Por dia, en la zona que se
+-- pide (la de quien mira):
+--
+--   received   mensajes que entraron en chats privados (los de grupos no:
+--              un grupo de 700 personas taparia todo lo demas)
+--   automation salieron por un flujo, una secuencia o un broadcast
+--   agent      el agente de IA en envio directo
+--   approved   un borrador del agente aprobado por una persona
+--   human      escritos por una persona desde el sistema
+--   external   desde fuera del sistema (el celular, ManyChat, otra app)
+--
+-- Lo que salio cuenta igual sea a una persona o a un grupo (para WhatsApp es
+-- lo mismo). Un envio fallido o que todavia no salio no cuenta. Los mismos
+-- criterios que `public.chat_reply_is_human` (00261): `origin = 'agent'` con
+-- `sent_by_user_id` es un borrador aprobado; sin persona, envio directo.
+--
+-- Solo `service_role`: la llama el servidor DESPUES de chequear
+-- `channels.manage`, con el workspace de la sesion. Devuelve solo cuentas.
+--
+-- Aditiva. Como volver atras:
+--   DROP FUNCTION IF EXISTS public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text);
+--
+-- Idempotente.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.whatsapp_channel_daily_messages(
+  p_workspace_id uuid,
+  p_channel_id   uuid,
+  p_since        timestamptz,
+  p_time_zone    text
+)
+RETURNS TABLE (
+  day        date,
+  received   integer,
+  automation integer,
+  agent      integer,
+  approved   integer,
+  human      integer,
+  external   integer
+)
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+  WITH chat AS (
+    SELECT
+      (m.created_at AT TIME ZONE p_time_zone)::date AS day,
+      m.direction,
+      CASE
+        WHEN m.direction <> 'outbound' THEN NULL
+        WHEN m.origin IN ('flow', 'sequence', 'broadcast') THEN 'automation'
+        WHEN m.origin = 'agent' AND m.sent_by_user_id IS NOT NULL THEN 'approved'
+        WHEN m.origin = 'agent' THEN 'agent'
+        WHEN m.origin = 'user' THEN 'human'
+        ELSE 'external'
+      END AS who
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE c.channel_id = p_channel_id
+      AND c.workspace_id = p_workspace_id
+      AND m.created_at >= p_since
+      AND (m.direction = 'inbound' OR coalesce(m.status, 'sent') NOT IN ('failed', 'pending'))
+  ),
+  grp AS (
+    SELECT
+      (gm.created_at AT TIME ZONE p_time_zone)::date AS day,
+      CASE gm.origin WHEN 'flow' THEN 'automation' WHEN 'app' THEN 'human' ELSE 'external' END AS who
+    FROM public.whatsapp_group_messages gm
+    JOIN public.whatsapp_groups g ON g.id = gm.group_id
+    WHERE g.channel_id = p_channel_id
+      AND g.workspace_id = p_workspace_id
+      AND gm.direction = 'outbound'
+      AND gm.status = 'sent'
+      AND gm.created_at >= p_since
+  ),
+  all_rows AS (
+    SELECT day, direction, who FROM chat
+    UNION ALL
+    SELECT day, 'outbound', who FROM grp
+  )
+  SELECT
+    day,
+    count(*) FILTER (WHERE direction = 'inbound')::integer,
+    count(*) FILTER (WHERE who = 'automation')::integer,
+    count(*) FILTER (WHERE who = 'agent')::integer,
+    count(*) FILTER (WHERE who = 'approved')::integer,
+    count(*) FILTER (WHERE who = 'human')::integer,
+    count(*) FILTER (WHERE who = 'external')::integer
+  FROM all_rows
+  GROUP BY day
+  ORDER BY day;
+$$;
+
+COMMENT ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) IS
+  'Mensajes por dia de un numero de WhatsApp: recibidos en chats y enviados por quien los mando (00348). Solo service_role.';
+
+REVOKE ALL ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 349: WHATSAPP DAILY MESSAGES BROADCAST
+-- ============================================================
+-- ============================================================
+-- 00349_whatsapp_daily_messages_broadcast
+-- ============================================================
+-- El grafico diario de un numero de WhatsApp separa los BROADCASTS de las
+-- demas automatizaciones (pedido del 8/11/2026). Misma funcion que la 00348,
+-- con una columna mas: `broadcast` (`messages.origin = 'broadcast'`), y
+-- `automation` queda para flujos y secuencias.
+--
+-- Cambiar las columnas que devuelve una funcion obliga a borrarla y crearla
+-- de nuevo (CREATE OR REPLACE no puede). Mismos permisos: solo service_role.
+--
+-- Aditiva (una funcion de lectura). Va ANTES de desplegar el codigo: el
+-- grafico lee la columna nueva.
+--
+-- Como volver atras: volver a correr la 00348 (despues de
+--   DROP FUNCTION IF EXISTS public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text);).
+--
+-- Idempotente.
+-- ============================================================
+
+DROP FUNCTION IF EXISTS public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text);
+
+CREATE OR REPLACE FUNCTION public.whatsapp_channel_daily_messages(
+  p_workspace_id uuid,
+  p_channel_id   uuid,
+  p_since        timestamptz,
+  p_time_zone    text
+)
+RETURNS TABLE (
+  day        date,
+  received   integer,
+  automation integer,
+  broadcast  integer,
+  agent      integer,
+  approved   integer,
+  human      integer,
+  external   integer
+)
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+  WITH chat AS (
+    SELECT
+      (m.created_at AT TIME ZONE p_time_zone)::date AS day,
+      m.direction,
+      CASE
+        WHEN m.direction <> 'outbound' THEN NULL
+        WHEN m.origin = 'broadcast' THEN 'broadcast'
+        WHEN m.origin IN ('flow', 'sequence') THEN 'automation'
+        WHEN m.origin = 'agent' AND m.sent_by_user_id IS NOT NULL THEN 'approved'
+        WHEN m.origin = 'agent' THEN 'agent'
+        WHEN m.origin = 'user' THEN 'human'
+        ELSE 'external'
+      END AS who
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE c.channel_id = p_channel_id
+      AND c.workspace_id = p_workspace_id
+      AND m.created_at >= p_since
+      AND (m.direction = 'inbound' OR coalesce(m.status, 'sent') NOT IN ('failed', 'pending'))
+  ),
+  grp AS (
+    SELECT
+      (gm.created_at AT TIME ZONE p_time_zone)::date AS day,
+      CASE gm.origin WHEN 'flow' THEN 'automation' WHEN 'app' THEN 'human' ELSE 'external' END AS who
+    FROM public.whatsapp_group_messages gm
+    JOIN public.whatsapp_groups g ON g.id = gm.group_id
+    WHERE g.channel_id = p_channel_id
+      AND g.workspace_id = p_workspace_id
+      AND gm.direction = 'outbound'
+      AND gm.status = 'sent'
+      AND gm.created_at >= p_since
+  ),
+  all_rows AS (
+    SELECT day, direction, who FROM chat
+    UNION ALL
+    SELECT day, 'outbound', who FROM grp
+  )
+  SELECT
+    day,
+    count(*) FILTER (WHERE direction = 'inbound')::integer,
+    count(*) FILTER (WHERE who = 'automation')::integer,
+    count(*) FILTER (WHERE who = 'broadcast')::integer,
+    count(*) FILTER (WHERE who = 'agent')::integer,
+    count(*) FILTER (WHERE who = 'approved')::integer,
+    count(*) FILTER (WHERE who = 'human')::integer,
+    count(*) FILTER (WHERE who = 'external')::integer
+  FROM all_rows
+  GROUP BY day
+  ORDER BY day;
+$$;
+
+COMMENT ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) IS
+  'Mensajes por dia de un numero de WhatsApp: recibidos en chats y enviados por quien los mando (00349). Solo service_role.';
+
+REVOKE ALL ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 350: CRON TICKS
+-- ============================================================
+-- ============================================================================
+-- 00350: un solo trabajo de pg_cron por frecuencia
+-- ============================================================================
+--
+-- Por que: despues de la 00327 (las guardas) los cron casi no llaman a la app,
+-- pero pg_cron sigue haciendo ~18.000 corridas por dia. Cada corrida le cuesta
+-- a la base lo mismo aunque no haga nada:
+--   - abre una conexion nueva (cron.use_background_workers = off en Supabase):
+--     ~400 ms de promedio por corrida el 8/11/2026, y 316 corridas fallaron con
+--     "job startup timeout" mientras la base estaba saturada;
+--   - escribe tres veces en cron.job_run_details (alta, arranque y fin), que es
+--     una tabla con WAL. cron.log_run no se puede apagar en Supabase.
+--
+-- Que hace (sin cambiar lo que hace el sistema): junta en UN trabajo los cron
+-- que corren con la misma frecuencia. Cada parte va en su propio bloque
+-- BEGIN ... EXCEPTION, asi una que falla no frena a las otras.
+--
+--   every-15-seconds  (15 s)            agent-bursts + send-queue
+--   every-minute      (* * * * *)       automation-events + jobs + sequences
+--   every-5-minutes   (3-59/5 * * * *)  agent-drafts-sweep + draft-window-alerts
+--                                       + drafts-refresh + whatsapp-health
+--
+-- El de 5 minutos corre en los minutos 3, 8, 13... (antes en 0, 5, 10...): asi
+-- no arranca junto con los de cada 10 y 15 minutos (fathom-sync, bg-dispatch,
+-- bg-collect, inactivity, eod-reminders-enqueue) ni con los de cada hora (7, 10,
+-- 15, 17 y 30). Que corra 3 minutos mas tarde no cambia nada: ninguno de los cuatro
+-- depende de la hora exacta.
+--
+-- Cuentas (por dia): 2 x 5.760 + 3 x 1.440 + 4 x 288 = 16.992 corridas pasan a
+-- 5.760 + 1.440 + 288 = 7.488. Son 9.504 corridas, 9.504 conexiones y 28.512
+-- escrituras en cron.job_run_details menos por dia.
+--
+-- Lo que se mantiene igual:
+--   - private.call_app_cron_if_work y las guardas de la 00327: cada parte de la
+--     app sigue pasando por su guarda, con la misma llamada de seguridad.
+--   - private.alert_draft_windows y private.sweep_agent_drafts: se llaman igual
+--     que antes (las definiciones de la base no se tocan).
+--   - Las llamadas a la app salen con pg_net: net.http_get solo encola el
+--     pedido, que sale cuando el trabajo termina. Juntar las partes no las
+--     pone en fila detras de un pedido HTTP.
+--
+-- Lo que cambia y hay que saber:
+--   1. Una corrida es UNA transaccion. Si una parte falla con un error que se
+--      ataja (casi todos), se deshace solo esa parte. Si fallara con uno que no
+--      se ataja (cancelar la consulta a mano), se deshace la corrida entera: el
+--      estado de las guardas tambien, asi que el tic siguiente vuelve a llamar.
+--      No se pierde trabajo, se corre un tic mas tarde.
+--   2. cron.job_run_details ya no muestra el error de una parte (la corrida
+--      dice "succeeded"). El error queda en private.cron_tick_errors (UNLOGGED:
+--      sin WAL) y en el log de Postgres (RAISE WARNING). Lo muestra
+--      scripts/measure-cron-load.mjs.
+--   3. lock_timeout de 10 s por corrida: una parte que espera un candado (un
+--      UPDATE de sweep_agent_drafts sobre un borrador que otra transaccion tiene
+--      tomado) falla esa vez en lugar de frenar a las demas. Se reintenta en el
+--      tic siguiente, que es lo que ya pasaba cuando una corrida fallaba.
+--   4. Dentro de una corrida las partes corren en orden: el barrido de
+--      borradores vencidos (agent-drafts-sweep) va antes que los avisos de
+--      ventana y que la guarda de drafts-refresh, asi no avisan ni refrescan un
+--      borrador que el barrido acaba de vencer.
+--
+-- Parte de la base: lee cron.job y aborta si alguno de los nueve cron ya no
+-- tiene el comando que dejo la 00327 o esta apagado (no se junta algo que
+-- alguien cambio sin mirar). Idempotente: una segunda pasada no encuentra los
+-- nueve viejos y vuelve a dejar los tres nuevos igual.
+--
+-- Aditiva: puede ir antes o despues del deploy (el codigo de la app no cambia).
+--
+-- ---------------------------------------------------------------------------
+-- Leido de la base el 8/11/2026 05:10 UTC (con la 00327 aplicada) y vuelto a
+-- leer el 8/11/2026 ~18:30 UTC, con la base hasta la 00348: los nueve comandos y
+-- las cuatro huellas son las mismas, y ninguna migracion posterior sumo un cron
+-- de 15 s, 1 minuto o 5 minutos.
+--
+-- cron.job (jobname | schedule | command):
+--   agent-bursts         | 15 seconds  | SELECT private.call_app_cron_if_work('agent-bursts', interval '10 minutes')
+--   send-queue           | 15 seconds  | SELECT private.call_app_cron_if_work('send-queue', interval '10 minutes')
+--   automation-events    | * * * * *   | SELECT private.call_app_cron_if_work('automation-events', interval '10 minutes')
+--   jobs                 | * * * * *   | SELECT private.call_app_cron_if_work('jobs', interval '10 minutes')
+--   sequences            | * * * * *   | SELECT private.call_app_cron_if_work('sequences', interval '10 minutes')
+--   agent-drafts-sweep   | */5 * * * * | SELECT private.sweep_agent_drafts()
+--   draft-window-alerts  | */5 * * * * | SELECT private.alert_draft_windows()
+--   drafts-refresh       | */5 * * * * | SELECT private.call_app_cron_if_work('drafts-refresh', interval '1 hour')
+--   whatsapp-health      | */5 * * * * | SELECT private.call_app_cron_if_work('whatsapp-health', interval '1 hour')
+--   (todos activos, usuario postgres, base postgres)
+--
+-- Las funciones que se llaman y NO se tocan (md5 de pg_get_functiondef):
+--   private.call_app_cron_if_work(text,interval)  988b9d1e0622994ace99215bd9a488a8  -> bigint
+--   private.call_app_cron(text)                   fa1c8e4243e54277f5787c5d29ad1a7d  -> bigint
+--   private.sweep_agent_drafts()                  6360067849706877b4291de4ac07d3cf  -> jsonb
+--   private.alert_draft_windows()                 88a589c216dabdbdc0e09f8c9eaa69b3  -> jsonb
+--
+-- cron.use_background_workers = off, cron.log_run = on, pg_cron 1.6.4.
+--
+-- ---------------------------------------------------------------------------
+-- Para volver atras (vuelven los nueve trabajos como estaban):
+--   SELECT cron.schedule('agent-bursts', '15 seconds', $c$SELECT private.call_app_cron_if_work('agent-bursts', interval '10 minutes')$c$);
+--   SELECT cron.schedule('send-queue', '15 seconds', $c$SELECT private.call_app_cron_if_work('send-queue', interval '10 minutes')$c$);
+--   SELECT cron.schedule('automation-events', '* * * * *', $c$SELECT private.call_app_cron_if_work('automation-events', interval '10 minutes')$c$);
+--   SELECT cron.schedule('jobs', '* * * * *', $c$SELECT private.call_app_cron_if_work('jobs', interval '10 minutes')$c$);
+--   SELECT cron.schedule('sequences', '* * * * *', $c$SELECT private.call_app_cron_if_work('sequences', interval '10 minutes')$c$);
+--   SELECT cron.schedule('agent-drafts-sweep', '*/5 * * * *', $c$SELECT private.sweep_agent_drafts()$c$);
+--   SELECT cron.schedule('draft-window-alerts', '*/5 * * * *', $c$SELECT private.alert_draft_windows()$c$);
+--   SELECT cron.schedule('drafts-refresh', '*/5 * * * *', $c$SELECT private.call_app_cron_if_work('drafts-refresh', interval '1 hour')$c$);
+--   SELECT cron.schedule('whatsapp-health', '*/5 * * * *', $c$SELECT private.call_app_cron_if_work('whatsapp-health', interval '1 hour')$c$);
+--   SELECT cron.unschedule(jobname) FROM cron.job WHERE jobname IN ('every-15-seconds', 'every-minute', 'every-5-minutes');
+-- (todo en la misma transaccion; las funciones nuevas pueden quedar, no las llama nadie)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 0. Lo que esta migracion necesita de la base
+-- ----------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF to_regprocedure('private.call_app_cron_if_work(text,interval)') IS NULL THEN
+    RAISE EXCEPTION '00350: falta private.call_app_cron_if_work (la 00327 va antes)';
+  END IF;
+  IF to_regprocedure('private.sweep_agent_drafts()') IS NULL OR to_regprocedure('private.alert_draft_windows()') IS NULL THEN
+    RAISE EXCEPTION '00350: falta private.sweep_agent_drafts o private.alert_draft_windows';
+  END IF;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 1. Donde queda el error de una parte (UNLOGGED: sin WAL; vacia es valida)
+-- ----------------------------------------------------------------------------
+CREATE UNLOGGED TABLE IF NOT EXISTS private.cron_tick_errors (
+  -- La parte: la ruta de la app ('jobs', 'send-queue'...) o el cron de la base ('agent-drafts-sweep').
+  part text PRIMARY KEY,
+  error_count bigint NOT NULL DEFAULT 0,
+  last_error_at timestamptz NOT NULL,
+  -- El mensaje del error (SQLERRM), recortado. Nunca lleva el secreto del cron: call_app_cron no lo pone en sus errores.
+  last_error text NOT NULL,
+  counted_since timestamptz NOT NULL DEFAULT now()
+);
+REVOKE ALL ON TABLE private.cron_tick_errors FROM PUBLIC, anon, authenticated;
+COMMENT ON TABLE private.cron_tick_errors IS
+  'Errores de las partes de los cron agrupados (00350): cuantos y el ultimo. UNLOGGED a proposito: sin WAL, y se vacia si la base se reinicia.';
+
+-- Anota el error de una parte. Nunca lanza: si no puede anotar, avisa en el log
+-- y la corrida sigue con la parte siguiente.
+CREATE OR REPLACE FUNCTION private.cron_tick_note_error(p_part text, p_error text)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path TO ''
+AS $$
+BEGIN
+  RAISE WARNING 'cron %: %', p_part, p_error;
+  BEGIN
+    INSERT INTO private.cron_tick_errors AS e (part, error_count, last_error_at, last_error)
+    VALUES (p_part, 1, now(), left(COALESCE(p_error, '(sin mensaje)'), 500))
+    ON CONFLICT (part) DO UPDATE
+      SET error_count = e.error_count + 1, last_error_at = EXCLUDED.last_error_at, last_error = EXCLUDED.last_error;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'cron_tick_errors(%) no se pudo anotar: %', p_part, SQLERRM;
+  END;
+END;
+$$;
+REVOKE ALL ON FUNCTION private.cron_tick_note_error(text, text) FROM PUBLIC, anon, authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 2. Los tres trabajos. Cada parte en su bloque: una que falla no frena a las
+--    otras. Gemela: CRON_TICKS en lib/cron/ticks.json (lib/cron/guards.test.ts
+--    compara esta lista con la de cada guarda).
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.cron_tick_15_seconds()
+RETURNS void
+LANGUAGE plpgsql
+SET search_path TO ''
+SET lock_timeout TO '10s'
+AS $$
+BEGIN
+  BEGIN
+    PERFORM private.call_app_cron_if_work('agent-bursts', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('agent-bursts', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('send-queue', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('send-queue', SQLERRM);
+  END;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION private.cron_tick_minute()
+RETURNS void
+LANGUAGE plpgsql
+SET search_path TO ''
+SET lock_timeout TO '10s'
+AS $$
+BEGIN
+  BEGIN
+    PERFORM private.call_app_cron_if_work('automation-events', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('automation-events', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('jobs', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('jobs', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('sequences', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('sequences', SQLERRM);
+  END;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION private.cron_tick_5_minutes()
+RETURNS void
+LANGUAGE plpgsql
+SET search_path TO ''
+SET lock_timeout TO '10s'
+AS $$
+BEGIN
+  -- Primero se vencen los borradores cuya ventana ya cerro: los avisos y la
+  -- guarda de drafts-refresh, que van despues, ya no los ven.
+  BEGIN
+    PERFORM private.sweep_agent_drafts();
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('agent-drafts-sweep', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.alert_draft_windows();
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('draft-window-alerts', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('drafts-refresh', interval '1 hour');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('drafts-refresh', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('whatsapp-health', interval '1 hour');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('whatsapp-health', SQLERRM);
+  END;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.cron_tick_15_seconds() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_tick_minute() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_tick_5_minutes() FROM PUBLIC, anon, authenticated;
+
+COMMENT ON FUNCTION private.cron_tick_15_seconds() IS
+  'Cron every-15-seconds (00350): agent-bursts y send-queue, cada uno por su guarda y en su bloque.';
+COMMENT ON FUNCTION private.cron_tick_minute() IS
+  'Cron every-minute (00350): automation-events, jobs y sequences, cada uno por su guarda y en su bloque.';
+COMMENT ON FUNCTION private.cron_tick_5_minutes() IS
+  'Cron every-5-minutes (00350): sweep_agent_drafts, alert_draft_windows, drafts-refresh y whatsapp-health, cada uno en su bloque.';
+
+-- ----------------------------------------------------------------------------
+-- 3. Los nueve cron pasan a ser tres. Se comprueba que cada uno siga como lo
+--    dejo la 00327 antes de sacarlo; los tres nuevos se agendan en la misma
+--    transaccion, asi nunca hay un momento sin cron.
+-- ----------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_old CONSTANT jsonb := jsonb_build_object(
+    'agent-bursts', 'SELECT private.call_app_cron_if_work(''agent-bursts'', interval ''10 minutes'')',
+    'send-queue', 'SELECT private.call_app_cron_if_work(''send-queue'', interval ''10 minutes'')',
+    'automation-events', 'SELECT private.call_app_cron_if_work(''automation-events'', interval ''10 minutes'')',
+    'jobs', 'SELECT private.call_app_cron_if_work(''jobs'', interval ''10 minutes'')',
+    'sequences', 'SELECT private.call_app_cron_if_work(''sequences'', interval ''10 minutes'')',
+    'agent-drafts-sweep', 'SELECT private.sweep_agent_drafts()',
+    'draft-window-alerts', 'SELECT private.alert_draft_windows()',
+    'drafts-refresh', 'SELECT private.call_app_cron_if_work(''drafts-refresh'', interval ''1 hour'')',
+    'whatsapp-health', 'SELECT private.call_app_cron_if_work(''whatsapp-health'', interval ''1 hour'')'
+  );
+  r record;
+BEGIN
+  FOR r IN SELECT j.jobname, j.command, j.active FROM cron.job j WHERE v_old ? j.jobname
+  LOOP
+    IF btrim(r.command, E' ;\n\t') IS DISTINCT FROM v_old ->> r.jobname THEN
+      RAISE EXCEPTION '00350: el cron "%" cambio desde la 00327 (hoy: %). Revisalo antes de juntarlo.', r.jobname, r.command;
+    END IF;
+    IF NOT r.active THEN
+      RAISE EXCEPTION '00350: el cron "%" esta apagado. Juntarlo lo prenderia: revisalo antes.', r.jobname;
+    END IF;
+  END LOOP;
+
+  PERFORM cron.schedule('every-15-seconds', '15 seconds', 'SELECT private.cron_tick_15_seconds()');
+  PERFORM cron.schedule('every-minute', '* * * * *', 'SELECT private.cron_tick_minute()');
+  PERFORM cron.schedule('every-5-minutes', '3-59/5 * * * *', 'SELECT private.cron_tick_5_minutes()');
+
+  PERFORM cron.unschedule(j.jobid) FROM cron.job j WHERE v_old ? j.jobname;
+END $$;
+
+-- ============================================================
+-- MIGRATION 354: OUTBOUND REOPENS CONVERSATION
+-- ============================================================
+-- ============================================================
+-- 00354_outbound_reopens_conversation.sql
+-- ============================================================
+-- Un mensaje que mandamos nosotros reabre una conversacion cerrada.
+--
+-- Hasta hoy una conversacion solo se reabria cuando el contacto escribia
+-- (`lib/inbound.ts`). Un broadcast, una automatizacion, una secuencia o el
+-- agente mandaban el mensaje, quedaba guardado como ultimo mensaje, pero la
+-- conversacion seguia `closed` y la bandeja (que muestra "Abiertas" por
+-- defecto) no la mostraba. Paso con los broadcasts de WhatsApp a chats
+-- importados del historial, que nacen cerrados.
+--
+-- La regla, una sola para todo lo que sale (la decide la base, venga de donde
+-- venga el envio):
+--   - un mensaje SALIENTE que salio (ni `failed` ni `pending`),
+--   - recien enviado (creado hace menos de 10 minutos): lo importado del
+--     historial trae su fecha vieja y no reabre nada,
+--   - en una conversacion `closed` que se cerro ANTES de ese mensaje: "respondo
+--     y cierro" sigue dejandola cerrada.
+-- Una conversacion pospuesta (`snoozed`) no se toca. `closed_at` se conserva
+-- al reabrir, igual que cuando reabre un entrante (comentario de la 00067).
+--
+-- Nunca tumba el insert de un mensaje (EXCEPTION WHEN OTHERS).
+--
+-- Al final reabre las conversaciones de broadcasts que ya salieron con la
+-- conversacion cerrada (la misma regla, sin el limite de 10 minutos).
+--
+-- Aditiva: una funcion y dos triggers nuevos. Puede ir antes o despues del
+-- codigo (no hay codigo que la necesite).
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.messages_reopen_conversation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  BEGIN
+    IF NEW.direction::text = 'outbound'
+       AND NEW.created_at >= now() - interval '10 minutes' THEN
+      UPDATE public.conversations c
+      SET status = 'open'
+      WHERE c.id = NEW.conversation_id
+        AND c.status = 'closed'
+        AND c.deleted_at IS NULL
+        AND (c.closed_at IS NULL OR c.closed_at <= NEW.created_at);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'messages_reopen_conversation: no pude reabrir la conversacion % (%)', NEW.conversation_id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.messages_reopen_conversation() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS messages_zzz_reopen_conversation ON public.messages;
+CREATE TRIGGER messages_zzz_reopen_conversation
+  AFTER INSERT ON public.messages
+  FOR EACH ROW
+  WHEN (
+    NEW.direction::text = 'outbound'
+    AND NEW.status IS DISTINCT FROM 'failed'
+    AND NEW.status IS DISTINCT FROM 'pending'
+  )
+  EXECUTE FUNCTION public.messages_reopen_conversation();
+
+-- Un envio que se guardo `pending` y salio despues (o un reintento que salio).
+DROP TRIGGER IF EXISTS messages_zzz_reopen_conversation_update ON public.messages;
+CREATE TRIGGER messages_zzz_reopen_conversation_update
+  AFTER UPDATE OF status ON public.messages
+  FOR EACH ROW
+  WHEN (
+    NEW.direction::text = 'outbound'
+    AND OLD.status IN ('failed', 'pending')
+    AND NEW.status IS DISTINCT FROM 'failed'
+    AND NEW.status IS DISTINCT FROM 'pending'
+  )
+  EXECUTE FUNCTION public.messages_reopen_conversation();
+
+-- ------------------------------------------------------------
+-- Lo que ya salio: las conversaciones de broadcasts que quedaron cerradas.
+-- ------------------------------------------------------------
+UPDATE public.conversations c
+SET status = 'open'
+WHERE c.status = 'closed'
+  AND c.deleted_at IS NULL
+  AND EXISTS (
+    SELECT 1 FROM public.broadcast_recipients r
+    WHERE r.conversation_id = c.id
+      AND r.status = 'sent'
+      AND (c.closed_at IS NULL OR c.closed_at <= r.sent_at)
+  );
+
+-- ============================================================
+-- MIGRATION 355: REOPEN UNSENT BROADCAST
+-- ============================================================
+-- ============================================================
+-- 00355_reopen_unsent_broadcast.sql
+-- ============================================================
+-- «Editar» un broadcast programado o pausado que todavia no mando nada
+-- (docs/broadcasts.md).
+--
+-- Solo un borrador se edita: al ponerlo en cola se congela la audiencia en
+-- `broadcast_recipients`. Para editar TODO (nombre, canal, filtros, mensaje,
+-- fecha) el broadcast vuelve a borrador: se vacia su cola y, al programarlo de
+-- nuevo, la audiencia se arma otra vez con los filtros de ese momento.
+--
+-- La regla es la misma de «Eliminar» (00347): ningun destinatario `sending`,
+-- `sent` ni `failed`. Ademas tiene que estar `scheduled` o `paused` (uno que se
+-- esta enviando primero se pausa; uno terminado o cancelado ya no se edita).
+-- Bloquea el broadcast (la cola no lo puede pasar de programado a enviando en
+-- el medio) y las filas abiertas (espera a un reclamo a mitad de camino y lo ve
+-- como `sending`).
+--
+-- Un broadcast pausado que YA mando algunos no vuelve a borrador: ahi se edita
+-- solo el mensaje (el texto se arma al mandar cada uno), desde la app.
+--
+-- Aditiva: una funcion nueva, solo `service_role`. Puede ir antes o despues del
+-- codigo (sin ella, «Editar» responde un error claro).
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.reopen_unsent_broadcast(p_workspace_id uuid, p_broadcast_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_status text;
+BEGIN
+  SELECT b.status INTO v_status
+  FROM public.broadcasts b
+  WHERE b.id = p_broadcast_id AND b.workspace_id = p_workspace_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN 'not_found';
+  END IF;
+
+  IF v_status = 'draft' THEN
+    RETURN 'already_draft';
+  END IF;
+
+  IF v_status = 'sending' THEN
+    RETURN 'sending';
+  END IF;
+
+  IF v_status NOT IN ('scheduled', 'paused') THEN
+    RETURN 'not_editable';
+  END IF;
+
+  PERFORM 1
+  FROM public.broadcast_recipients r
+  WHERE r.broadcast_id = p_broadcast_id AND r.status IN ('pending', 'sending')
+  FOR UPDATE;
+
+  IF EXISTS (
+    SELECT 1 FROM public.broadcast_recipients r
+    WHERE r.broadcast_id = p_broadcast_id AND r.status IN ('sending', 'sent', 'failed')
+  ) THEN
+    RETURN 'has_sends';
+  END IF;
+
+  DELETE FROM public.broadcast_recipients WHERE broadcast_id = p_broadcast_id;
+
+  UPDATE public.broadcasts
+  SET status = 'draft',
+      total_recipients = 0,
+      sent = 0,
+      delivered = 0,
+      failed = 0,
+      skipped = 0,
+      started_at = NULL,
+      paused_at = NULL,
+      cancelled_at = NULL,
+      completed_at = NULL,
+      updated_at = now()
+  WHERE id = p_broadcast_id AND workspace_id = p_workspace_id;
+
+  RETURN 'reopened';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.reopen_unsent_broadcast(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.reopen_unsent_broadcast(uuid, uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 356: MESSAGES DELETED FOR EVERYONE
+-- ============================================================
+-- ============================================================
+-- 00356_messages_deleted_for_everyone
+--
+-- Un mensaje de WhatsApp borrado "para todos" (desde el celular de cualquiera
+-- de las dos partes, o por la API de Evolution) seguia apareciendo en la
+-- bandeja como si nada: `messages` no tenia un estado de borrado.
+--
+-- 1. Tres columnas: cuando se borro, quien lo borro (`contact`: el contacto;
+--    `business`: el telefono del negocio o la API de Evolution; `app`: el
+--    boton «Eliminar para todos» de la bandeja) y, si fue desde la app, que
+--    persona. La FILA NO SE BORRA: el texto queda guardado para el equipo
+--    («Ver lo que decia»).
+-- 2. `mark_message_deleted_for_everyone`: la unica puerta para marcarlo, solo
+--    `service_role`. Busca el mensaje por su id de WhatsApp dentro del canal
+--    (usa el indice `idx_messages_workspace_platform_message_id`) y no pisa un
+--    borrado anterior: el aviso de Evolution puede llegar dos veces (por
+--    `MESSAGES_DELETE` y por `MESSAGES_EDITED`), y despues del boton de la
+--    app llega el eco.
+-- 3. La guardia: con la sesion de una persona no se puede escribir nada de
+--    esto (ni al insertar ni al editar). Hoy `messages` no tiene politica de
+--    UPDATE, pero si de INSERT.
+-- 4. La vista previa de la lista: si el ultimo mensaje se borro, dice
+--    «Mensaje eliminado» (`messages_refresh_last_message`, copia de la 00265
+--    con el cambio marcado «00356») y se recalcula al marcarlo (trigger nuevo
+--    `messages_zz_last_message_deleted`). El texto de la etiqueta es
+--    `DELETED_MESSAGE_LABEL` (lib/messages/revoke.ts); un test los compara.
+--
+-- La definicion anterior de `messages_refresh_last_message` esta completa en
+-- supabase/migrations/00265_conversation_last_message_fix.sql (sin cambios
+-- desde entonces).
+--
+-- Aditiva e idempotente. Va ANTES de desplegar el codigo: la burbuja y el
+-- receptor leen y escriben estas columnas.
+-- ============================================================
+
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS deleted_for_everyone_at timestamptz,
+  ADD COLUMN IF NOT EXISTS deleted_for_everyone_source text,
+  ADD COLUMN IF NOT EXISTS deleted_for_everyone_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'messages_deleted_for_everyone_source_check') THEN
+    ALTER TABLE public.messages
+      ADD CONSTRAINT messages_deleted_for_everyone_source_check
+      CHECK (
+        (deleted_for_everyone_at IS NULL AND deleted_for_everyone_source IS NULL AND deleted_for_everyone_by IS NULL)
+        OR (deleted_for_everyone_at IS NOT NULL AND deleted_for_everyone_source IN ('contact', 'business', 'app'))
+      );
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.messages.deleted_for_everyone_at IS
+  'Cuando se borro "para todos" en WhatsApp. La fila y el texto se conservan para el equipo. Se escribe solo con mark_message_deleted_for_everyone (00356).';
+COMMENT ON COLUMN public.messages.deleted_for_everyone_source IS
+  'Quien lo borro: contact (el contacto), business (el telefono del negocio o la API de Evolution) o app (el boton de la bandeja).';
+COMMENT ON COLUMN public.messages.deleted_for_everyone_by IS
+  'La persona que lo borro desde la bandeja (solo con source = app).';
+
+-- ------------------------------------------------------------
+-- La guardia: una persona no marca ni desmarca un borrado
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.messages_guard_deleted_for_everyone()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO ''
+AS $$
+BEGIN
+  -- Sin JWT (migraciones, cron) o con service role, como siempre.
+  IF coalesce(auth.role(), '') NOT IN ('authenticated', 'anon') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.deleted_for_everyone_at IS NOT NULL
+       OR NEW.deleted_for_everyone_source IS NOT NULL
+       OR NEW.deleted_for_everyone_by IS NOT NULL THEN
+      RAISE EXCEPTION 'un mensaje nuevo no puede nacer borrado' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.deleted_for_everyone_at IS DISTINCT FROM OLD.deleted_for_everyone_at
+     OR NEW.deleted_for_everyone_source IS DISTINCT FROM OLD.deleted_for_everyone_source
+     OR NEW.deleted_for_everyone_by IS DISTINCT FROM OLD.deleted_for_everyone_by THEN
+    RAISE EXCEPTION 'el borrado de un mensaje solo lo escribe el servidor' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.messages_guard_deleted_for_everyone() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.messages_guard_deleted_for_everyone() TO service_role;
+
+DROP TRIGGER IF EXISTS messages_guard_deleted_for_everyone ON public.messages;
+CREATE TRIGGER messages_guard_deleted_for_everyone
+  BEFORE INSERT OR UPDATE OF deleted_for_everyone_at, deleted_for_everyone_source, deleted_for_everyone_by ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.messages_guard_deleted_for_everyone();
+
+-- ------------------------------------------------------------
+-- La unica puerta para marcar un borrado
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.mark_message_deleted_for_everyone(
+  p_workspace_id uuid,
+  p_channel_id uuid,
+  p_platform_message_id text,
+  p_source text,
+  p_by uuid DEFAULT NULL,
+  p_at timestamptz DEFAULT now()
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_count integer;
+BEGIN
+  IF p_source IS NULL OR p_source NOT IN ('contact', 'business', 'app') THEN
+    RAISE EXCEPTION 'origen de borrado invalido: %', p_source USING ERRCODE = '22023';
+  END IF;
+  IF COALESCE(p_platform_message_id, '') = '' THEN
+    RETURN 0;
+  END IF;
+
+  UPDATE public.messages m
+  SET deleted_for_everyone_at = COALESCE(m.deleted_for_everyone_at, p_at, now()),
+      deleted_for_everyone_source = p_source,
+      deleted_for_everyone_by = CASE WHEN p_source = 'app' THEN p_by ELSE NULL END
+  FROM public.conversations c
+  WHERE m.workspace_id = p_workspace_id
+    AND m.platform_message_id = p_platform_message_id
+    -- No se pisa un borrado anterior. Excepcion: el boton de la app gana sobre el eco de Evolution, que puede
+    -- llegar ANTES de que la accion termine de marcar y diria "desde el telefono del negocio".
+    AND (
+      m.deleted_for_everyone_at IS NULL
+      OR (p_source = 'app' AND m.deleted_for_everyone_source = 'business')
+    )
+    AND c.id = m.conversation_id
+    AND c.channel_id = p_channel_id;
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.mark_message_deleted_for_everyone(uuid, uuid, text, text, uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_message_deleted_for_everyone(uuid, uuid, text, text, uuid, timestamptz) TO service_role;
+
+-- ------------------------------------------------------------
+-- La vista previa de la lista
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.message_list_preview(
+  p_text text,
+  p_transcript text,
+  p_attachments jsonb,
+  p_deleted_at timestamptz
+)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN p_deleted_at IS NOT NULL THEN 'Mensaje eliminado'
+    ELSE private.message_preview_text(p_text, p_transcript, p_attachments)
+  END;
+$$;
+
+REVOKE ALL ON FUNCTION private.message_list_preview(text, text, jsonb, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.message_list_preview(text, text, jsonb, timestamptz) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.messages_refresh_last_message()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_last record;
+  v_preview text;
+BEGIN
+  BEGIN
+    -- El ultimo mensaje que existe de verdad (ni fallido ni en vuelo). Incluye
+    -- al que se acaba de guardar.
+    SELECT m.id, m.direction::text AS direction, m.created_at, m.origin::text AS origin, m.sent_by_user_id,
+           m.text, m.transcript, m.attachments,
+           m.deleted_for_everyone_at  -- 00356
+    INTO v_last
+    FROM public.messages m
+    WHERE m.conversation_id = NEW.conversation_id
+      AND m.status IS DISTINCT FROM 'failed'
+      AND m.status IS DISTINCT FROM 'pending'
+    ORDER BY m.created_at DESC, m.id DESC
+    LIMIT 1;
+
+    IF v_last.id IS NULL THEN
+      RETURN NEW;
+    END IF;
+
+    -- 00356: un mensaje borrado "para todos" dice «Mensaje eliminado».
+    v_preview := private.message_list_preview(v_last.text, v_last.transcript, v_last.attachments, v_last.deleted_for_everyone_at);
+
+    -- Fecha, direccion y preview salen SIEMPRE del ultimo mensaje, no del que
+    -- se acaba de guardar. La fecha nunca va para atras.
+    UPDATE public.conversations c
+    SET last_message_at = GREATEST(c.last_message_at, v_last.created_at),
+        last_message_direction = v_last.direction,
+        last_message_preview = v_preview
+    WHERE c.id = NEW.conversation_id
+      AND (
+        c.last_message_at IS NULL
+        OR c.last_message_at < v_last.created_at
+        OR c.last_message_direction IS DISTINCT FROM v_last.direction
+        OR c.last_message_preview IS DISTINCT FROM v_preview
+      );
+
+    -- El no leido: si lo ultimo que se dijo es nuestro, no hay nada sin leer.
+    IF v_last.direction = 'outbound'
+       AND (v_last.sent_by_user_id IS NOT NULL OR v_last.origin IN ('user', 'external')) THEN
+      UPDATE public.conversations c
+      SET unread_count = 0
+      WHERE c.id = NEW.conversation_id
+        AND c.unread_count > 0;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'messages_refresh_last_message: no pude actualizar la conversacion % (%)', NEW.conversation_id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.messages_refresh_last_message() FROM PUBLIC, anon, authenticated;
+
+-- Al marcar un borrado se recalcula la vista previa (si era el ultimo, pasa a
+-- decir «Mensaje eliminado»). Nunca tumba la marca: la funcion atrapa todo.
+DROP TRIGGER IF EXISTS messages_zz_last_message_deleted ON public.messages;
+CREATE TRIGGER messages_zz_last_message_deleted
+  AFTER UPDATE OF deleted_for_everyone_at ON public.messages
+  FOR EACH ROW
+  WHEN (OLD.deleted_for_everyone_at IS NULL AND NEW.deleted_for_everyone_at IS NOT NULL)
+  EXECUTE FUNCTION public.messages_refresh_last_message();

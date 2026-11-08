@@ -2825,6 +2825,12 @@ export interface Database {
           transcript_started_at: string | null;
           /** Por que no salio un envio fallido (00262). El texto queda con lo que se quiso mandar. */
           send_error: string | null;
+          /** Borrado "para todos" en WhatsApp (00356). La fila y el texto se conservan. Lo escribe solo el servidor. */
+          deleted_for_everyone_at: string | null;
+          /** Quien lo borro: contact, business o app. */
+          deleted_for_everyone_source: string | null;
+          /** La persona que lo borro desde la bandeja (source = app). */
+          deleted_for_everyone_by: string | null;
         };
         Insert: {
           id?: string;
@@ -5183,6 +5189,13 @@ export interface Database {
           last_message_preview: string | null;
           unread_count: number;
           left_at: string | null;
+          /** 00344: 'group' | 'announce' (el de Avisos de una comunidad). */
+          kind: string;
+          parent_group_jid: string | null;
+          community_subject: string | null;
+          description: string | null;
+          restrict: boolean;
+          number_is_admin: boolean | null;
           created_at: string;
           updated_at: string;
         };
@@ -5201,6 +5214,12 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           left_at?: string | null;
+          kind?: string;
+          parent_group_jid?: string | null;
+          community_subject?: string | null;
+          description?: string | null;
+          restrict?: boolean;
+          number_is_admin?: boolean | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -5219,6 +5238,12 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           left_at?: string | null;
+          kind?: string;
+          parent_group_jid?: string | null;
+          community_subject?: string | null;
+          description?: string | null;
+          restrict?: boolean;
+          number_is_admin?: boolean | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -6996,6 +7021,11 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
+      /** El grafico diario de un numero de WhatsApp (00348; `broadcast` desde la 00349). Solo service_role. */
+      whatsapp_channel_daily_messages: {
+        Args: { p_workspace_id: string; p_channel_id: string; p_since: string; p_time_zone: string };
+        Returns: Array<{ day: string; received: number; automation: number; broadcast: number; agent: number; approved: number; human: number; external: number }>;
+      };
       /** Diseñador IA (00320): lo único que ve el link público /d/<código>. anon la puede ejecutar. */
       design_public_get: { Args: { p_code: string }; Returns: Json };
       /** Diseñador IA (00320): gemela de estructura del documento (`lib/designer/doc/schema.ts`). */
@@ -7316,6 +7346,18 @@ export interface Database {
         Returns: Json;
       };
       /** Registra un evento CALL de Evolution (00258, solo service_role). */
+      /** Marca un mensaje de WhatsApp como borrado "para todos" (00356, solo service_role). Devuelve cuantas filas marco. */
+      mark_message_deleted_for_everyone: {
+        Args: {
+          p_workspace_id: string;
+          p_channel_id: string;
+          p_platform_message_id: string;
+          p_source: string;
+          p_by?: string | null;
+          p_at?: string;
+        };
+        Returns: number;
+      };
       record_whatsapp_call: {
         Args: {
           p_workspace_id: string;
@@ -7947,6 +7989,16 @@ export interface Database {
       /** Recalcula los contadores desde los destinatarios y cierra el broadcast si no queda nada. Solo service_role. */
       refresh_broadcast_counts: {
         Args: { p_broadcast_id: string };
+        Returns: string;
+      };
+      /** Borra un broadcast que nunca mando nada (00347). Solo service_role. */
+      delete_unsent_broadcast: {
+        Args: { p_workspace_id: string; p_broadcast_id: string };
+        Returns: string;
+      };
+      /** Vuelve a borrador un programado o pausado que nunca mando nada (00355). Solo service_role. */
+      reopen_unsent_broadcast: {
+        Args: { p_workspace_id: string; p_broadcast_id: string };
         Returns: string;
       };
       /**

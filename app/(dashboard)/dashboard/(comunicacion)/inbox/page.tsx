@@ -19,6 +19,8 @@ import {
   HIDE_CUSTOMERS_PARAM,
   LEGACY_VIEW_PARAM,
   LIST_TYPE_PARAM,
+  COMMUNITY_PARAM,
+  parseCommunityParam,
   UNIDENTIFIED_PARAM,
   SILENT_OUTREACH_FIELD,
   parseListType,
@@ -29,7 +31,7 @@ import {
 import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
 import { AWAITING_PARAM, awaitingQueryBounds, parseAwaitingFilter } from "@/lib/inbox/awaiting";
 import { InboxView } from "./inbox-view";
-import { groupsCanMatch, groupsForPage } from "@/lib/inbox/unified-list";
+import { communityOptions, groupsCanMatch, groupsForPage } from "@/lib/inbox/unified-list";
 import { loadInboxGroups, loadSelectedGroup } from "@/lib/whatsapp-groups/inbox-data";
 import type { InboxAsset } from "@/components/inbox/message-thread";
 import { toBankAsset } from "@/lib/response-assets/list";
@@ -75,7 +77,7 @@ export default async function InboxPage({
 
   // Lo que necesitan los filtros para poder validar lo que viene de la URL:
   // un tag o un miembro inventado tiene que ignorarse, no llegar a la consulta.
-  const [tagsRes, channelsRes, members, agentsRes, aiProviders, groupsCount] = await Promise.all([
+  const [tagsRes, channelsRes, members, agentsRes, aiProviders, groupsCount, communityRows] = await Promise.all([
     supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
     supabase.from("channels").select("id, platform, provider, username, display_name").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
@@ -85,7 +87,17 @@ export default async function InboxPage({
     listConnectedAiProviders(workspace.id),
     // ¿Hay grupos de WhatsApp para ver? (00280) Solo para ofrecer el filtro de chats o grupos; la RLS cuenta los que ve.
     supabase.from("whatsapp_groups").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("in_inbox", true).is("left_at", null),
+    // Las comunidades de WhatsApp de esos grupos (00344), para el filtro por comunidad.
+    supabase
+      .from("whatsapp_groups")
+      .select("parent_group_jid, community_subject")
+      .eq("workspace_id", workspace.id)
+      .eq("in_inbox", true)
+      .is("left_at", null)
+      .not("parent_group_jid", "is", null)
+      .limit(500),
   ]);
+  const communities = communityOptions(communityRows.data ?? []);
 
   // Por canal, si el agente lo atiende: decide si el toggle se puede operar.
   const agents = (agentsRes.data ?? []) as PublicAgent[];
@@ -149,8 +161,11 @@ export default async function InboxPage({
   const onlyUnidentified = firstParam(params[UNIDENTIFIED_PARAM]) === "1";
   // Chats, grupos o los dos. `?vista=grupos` es el link viejo de cuando los grupos eran otra pantalla.
   const listType = parseListType(firstParam(params[LIST_TYPE_PARAM]), firstParam(params[LEGACY_VIEW_PARAM]));
+  // Solo los grupos de una comunidad (00344): una comunidad no tiene chats, asi que es como "solo grupos".
+  const communityJid = parseCommunityParam(firstParam(params[COMMUNITY_PARAM]));
+  const onlyGroups = listType === "grupos" || !!communityJid;
   // Los grupos no se paginan: solos, entran todos en la primera.
-  const page = listType === "grupos" ? 1 : pickPage(params.page);
+  const page = onlyGroups ? 1 : pickPage(params.page);
   const selectedId = firstParam(params.c);
   const selectedGroupId = firstParam(params.g);
 
@@ -257,7 +272,9 @@ export default async function InboxPage({
   const filters: InboxFilters = {
     search,
     status,
-    listType,
+    // Con una comunidad la lista es de grupos: el Realtime de chats no tiene que meter ninguno.
+    listType: communityJid ? "grupos" : listType,
+    communityJid,
     platforms,
     channelIds,
     tagIds,
@@ -276,7 +293,7 @@ export default async function InboxPage({
   const [conversationsRes, assetsRes, permissionCtx, draftCounts, hiddenRes, allGroups, openGroup] = await Promise.all([
     // Solo grupos: no se le pregunta nada a la base. Una fila de mas que la pagina: la primera de la siguiente dice
     // hasta donde llegan los grupos de esta (lib/inbox/unified-list.ts).
-    listType === "grupos"
+    onlyGroups
       ? Promise.resolve({ data: [], count: 0, error: null })
       : query
           .order("last_message_at", { ascending: false, nullsFirst: false })
@@ -324,6 +341,9 @@ export default async function InboxPage({
   const canViewAgentRuns = permissionCtx.can("agents.view");
   // El responsable de cada conversación (00255): con `contacts.assign` se cambia; sin la clave, solo "Tomar".
   const canAssignConversations = permissionCtx.can("contacts.assign");
+  // Configurar un grupo de WhatsApp desde la bandeja (00344) es cosa de quien administra los canales.
+  const canManageGroups = permissionCtx.can("channels.manage");
+  if (openGroup && !canManageGroups) openGroup.group.manage = null;
 
   const fetchedRows = toRows(conversationsRes.data);
   let conversations = fetchedRows.slice(0, PAGE_SIZE);
@@ -411,8 +431,8 @@ export default async function InboxPage({
       selectedGroup={openGroup?.group ?? null}
       groupThread={openGroup?.thread ?? []}
       canCreateGroupAutomation={permissionCtx.can("flows.edit")}
-      canManageGroups={permissionCtx.can("channels.manage")}
-      filterCatalog={{ platforms: platformItems, accounts, multiPlatforms: multiAccountPlatforms(accounts), tags, members: memberItems }}
+      canManageGroups={canManageGroups}
+      filterCatalog={{ platforms: platformItems, accounts, multiPlatforms: multiAccountPlatforms(accounts), tags, members: memberItems, communities }}
         />
       </div>
     </div>

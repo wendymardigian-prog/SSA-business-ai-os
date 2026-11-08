@@ -14,9 +14,11 @@
  *   1. Regenera supabase/migrations/ALL_MIGRATIONS.sql (el que pegan los clientes).
  *   2. Exporta una copia limpia a una carpeta temporal (scripts/export-template.mjs,
  *      con su control de nombres y dominios identificables: si falla, se corta aca).
- *   3. La espeja encima de la copia local de la plantilla (agrega, cambia Y BORRA lo
+ *   3. Controla que la copia traiga SOLO archivos que git sigue en este repo (nada sin
+ *      seguimiento ni ignorado, como `Claude outputs/`): si aparece otro, se corta aca.
+ *   4. La espeja encima de la copia local de la plantilla (agrega, cambia Y BORRA lo
  *      que ya no existe), sin tocar su `.git`.
- *   4. Muestra el resumen de cambios. NO hace commit ni push: eso lo decide una
+ *   5. Muestra el resumen de cambios. NO hace commit ni push: eso lo decide una
  *      persona despues de mirar. (Publicar es una accion hacia afuera.)
  *
  * Antes de correrlo: este repo tiene que estar en `main`, al dia y sin cambios sin
@@ -24,7 +26,7 @@
  * y sin cambios sin guardar.
  */
 
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +52,18 @@ if (!templateArg) {
   fail("Falta --template=<carpeta>: la copia local de la plantilla (por ejemplo ../BAIOS-b2b).");
 }
 const TEMPLATE = resolve(process.cwd(), templateArg);
+
+/** Los archivos de la copia exportada (rutas con "/"), sin su `.git`. */
+function exportedFiles(root, rel = "") {
+  const files = [];
+  for (const entry of readdirSync(join(root, rel), { withFileTypes: true })) {
+    const path = rel ? `${rel}/${entry.name}` : entry.name;
+    if (path === ".git") continue;
+    if (entry.isDirectory()) files.push(...exportedFiles(root, path));
+    else files.push(path);
+  }
+  return files;
+}
 
 // --- Chequeos antes de tocar nada --------------------------------------------
 
@@ -106,7 +120,27 @@ try {
     fail("El export no paso su control. Arreglalo en este repo y volve a correr. La plantilla NO se toco.");
   }
 
-  // --- 3. Espejar encima de la plantilla, sin tocar su .git -------------------
+  // --- 3. Solo lo que git sigue -------------------------------------------------
+  //
+  // El export ya copia desde `git ls-files`; esto es la segunda llave, porque rsync
+  // espeja el DISCO de la copia. El 8/11/2026 viajo "Claude outputs/" (respaldos con
+  // datos del negocio) por copiar el disco.
+  const tracked = new Set(
+    execFileSync("git", ["ls-files", "-z", "--cached"], { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 })
+      .split("\0")
+      .filter(Boolean),
+  );
+  const untracked = exportedFiles(exported).filter((rel) => !tracked.has(rel));
+  if (untracked.length > 0) {
+    rmSync(tmp, { recursive: true, force: true });
+    fail(
+      `La copia exportada trae ${untracked.length} archivo(s) que git no sigue en este repo:\n` +
+        untracked.slice(0, 20).map((rel) => `  ${rel}`).join("\n") +
+        "\nLa plantilla NO se toco.",
+    );
+  }
+
+  // --- 4. Espejar encima de la plantilla, sin tocar su .git -------------------
 
   execFileSync("rsync", ["-a", "--delete", "--exclude=/.git", `${exported}/`, `${TEMPLATE}/`], {
     stdio: "inherit",
@@ -115,7 +149,7 @@ try {
   rmSync(tmp, { recursive: true, force: true });
 }
 
-// --- 4. Resumen --------------------------------------------------------------
+// --- 5. Resumen --------------------------------------------------------------
 
 const changes = git(TEMPLATE, "status", "--porcelain");
 if (!changes) {

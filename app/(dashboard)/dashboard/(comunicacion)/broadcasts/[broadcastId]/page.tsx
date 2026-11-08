@@ -10,7 +10,7 @@ import { listBroadcastChannels } from "@/lib/broadcasts/channels";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { loadContactFilterOptions } from "@/lib/contacts/filter-options-load";
 import { sanitizeAudienceParams } from "@/lib/broadcasts/audience-load";
-import { cleanVariants } from "@/lib/broadcasts/render";
+import { broadcastVariableList, cleanVariants } from "@/lib/broadcasts/render";
 import { recipientReason } from "@/lib/broadcasts/status";
 import { combinePolicies, parseBroadcastPace } from "@/lib/send-queue/pace";
 import { firstParam, pickPage } from "@/lib/url-params";
@@ -138,6 +138,8 @@ export default async function BroadcastPage({
   }));
 
   const variants = cleanVariants(b.message_variants);
+  // Para «Editar mensaje»: las variables de los campos personalizados (las mismas que ofrece el borrador).
+  const { data: fieldRows } = await supabase.from("custom_field_definitions").select("slug").eq("workspace_id", workspace.id).is("deleted_at", null);
   const lane = laneRes.data as { paused_at: string | null; paused_reason: string | null } | null;
 
   return (
@@ -153,7 +155,12 @@ export default async function BroadcastPage({
             startedAt: b.started_at,
             completedAt: b.completed_at,
             previewText: [b.email_subject, ...variants].filter(Boolean).join("\n\n— — —\n\n"),
+            variants,
+            emailSubject: b.email_subject ?? "",
+            emailPreheader: b.email_preheader ?? "",
+            channelKind: channel?.kind ?? null,
           }}
+          variableList={broadcastVariableList(fieldRows ?? [])}
           channel={channel ? { id: channel.id, label: channel.label } : null}
           policy={channel ? combinePolicies(channel.policy, parseBroadcastPace(b.pace)) : null}
           lane={lane ? { paused: lane.paused_at !== null, pausedReason: lane.paused_reason } : null}

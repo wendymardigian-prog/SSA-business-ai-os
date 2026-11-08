@@ -1,4 +1,5 @@
 import type { SequenceStep } from "@/lib/types/database";
+import { firstNameOf } from "@/lib/flow-engine/variable-catalog";
 
 /**
  * Las cuentas del procesador de secuencias, sin base de datos.
@@ -72,7 +73,7 @@ export function stepVariables(contact: {
   return {
     contact: {
       display_name: displayName,
-      first_name: displayName.split(/\s+/)[0] ?? "",
+      first_name: firstNameOf(displayName),
       email: contact.email ?? "",
       phone: contact.phone ?? "",
       instagram_username: contact.instagram_username ?? "",

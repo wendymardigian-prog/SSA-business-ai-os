@@ -757,7 +757,10 @@ Tres disparadores de evento, de contacto, en `registry/whatsapp-group-triggers.t
 `lib/whatsapp-groups/automation/trigger-config.ts` (puro). Declaran `conversationFor` (hook nuevo del registro): el
 flujo responde por el chat privado en el número del grupo, creándolo si no existe, recién después de reclamar el
 disparo. Su `eventMatches` saltea un contacto «no contactar». Nodo nuevo: `send_poll` («Enviar encuesta», sin
-contacto, `requires: whatsapp_channel`). Detalle en [whatsapp-grupos.md](whatsapp-grupos.md).
+contacto, `requires: whatsapp_channel`). Desde la 00344, dos más: `send_to_group` («Enviar al grupo», texto y/o un
+recurso de la banca, sin contacto) e `invite_to_group` («Invitar a un grupo», con contacto: lo suma o le manda el
+link). Los tres eligen el grupo con `GroupSelect` (agrupado por comunidad) y saltean con `skipGroupStep`. Detalle en
+[whatsapp-grupos.md](whatsapp-grupos.md).
 
 ## Historial de ejecuciones (00292, noviembre 2026)
 

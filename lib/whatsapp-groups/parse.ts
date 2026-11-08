@@ -123,3 +123,51 @@ export function parsePollCreation(message: unknown): ParsedPoll | null {
 export function selectedOptionsText(options: readonly string[]): string {
   return options.join(", ");
 }
+
+// ── Cambios de un grupo (GROUPS_UPSERT / GROUP_UPDATE, 00344) ────────────────
+
+/**
+ * Lo que cambio de un grupo segun un aviso de Evolution. Solo trae lo que vino en el aviso: un campo ausente no se
+ * toca (WhatsApp manda cambios parciales, por ejemplo solo el nombre).
+ */
+export interface GroupUpdate {
+  jid: string;
+  /** Es la comunidad madre: su nombre se copia a sus grupos, no se guarda como grupo. */
+  isCommunity: boolean;
+  patch: {
+    subject?: string;
+    description?: string | null;
+    announce?: boolean;
+    restrict?: boolean;
+    parent_group_jid?: string | null;
+    kind?: "group" | "announce";
+  };
+}
+
+/** `groups.upsert` y `groups.update` traen una lista de grupos (o uno solo). Lo ilegible se descarta. */
+export function parseGroupsUpdateEvent(data: unknown): GroupUpdate[] {
+  const list = Array.isArray(data) ? data : data && typeof data === "object" ? [data] : [];
+  const out: GroupUpdate[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const jid = normalizeGroupJid(typeof r.id === "string" ? r.id : null);
+    if (!jid) continue;
+    const patch: GroupUpdate["patch"] = {};
+    if (typeof r.subject === "string" && r.subject.trim()) patch.subject = r.subject.trim().slice(0, 200);
+    if ("desc" in r) patch.description = typeof r.desc === "string" && r.desc.trim() ? r.desc.trim().slice(0, 4000) : null;
+    if (typeof r.announce === "boolean") patch.announce = r.announce;
+    if (typeof r.restrict === "boolean") patch.restrict = r.restrict;
+    if ("linkedParent" in r) {
+      const parent = normalizeGroupJid(typeof r.linkedParent === "string" ? r.linkedParent : null);
+      patch.parent_group_jid = parent;
+      // Un grupo que sale de una comunidad deja de ser el de Avisos.
+      if (!parent) patch.kind = "group";
+    }
+    // El de Avisos siempre tiene su comunidad (CHECK de la 00344): sin el vinculo en el mismo aviso, no se marca.
+    if (r.isCommunityAnnounce === false) patch.kind = "group";
+    if (r.isCommunityAnnounce === true && patch.parent_group_jid) patch.kind = "announce";
+    out.push({ jid, isCommunity: r.isCommunity === true, patch });
+  }
+  return out;
+}

@@ -265,6 +265,31 @@ varios minutos. Es normal.
 No trae los mensajes que el remitente borró (`isDeleted`), por la misma regla de
 Meta que se honra en la retención.
 
+## Cuándo se reabre una conversación (00354, 8/11/2026)
+
+Una conversación cerrada se reabre en dos casos:
+
+- **Escribe el contacto**: lo hace el receptor (`lib/inbound.ts`), como siempre.
+- **Sale un mensaje nuestro**, venga de donde venga (bandeja, broadcast,
+  automatización, secuencia, agente o el teléfono): lo hace la base, con el
+  trigger `messages_zzz_reopen_conversation` (función
+  `messages_reopen_conversation`). Una sola regla para todo lo que sale.
+
+El trigger reabre solo si el mensaje **salió** (ni `failed` ni `pending`; un
+reintento que sale también cuenta), es **reciente** (creado hace menos de 10
+minutos: lo importado del historial trae su fecha vieja y no reabre nada) y la
+conversación se cerró **antes** de ese mensaje (responder y cerrar la deja
+cerrada). Una conversación pospuesta (`snoozed`) no se toca, y `closed_at` se
+conserva. Nunca tumba el insert de un mensaje.
+
+Por qué: un broadcast de WhatsApp a chats importados del historial (que nacen
+cerrados) quedaba guardado como último mensaje, pero la conversación seguía
+cerrada y la bandeja, que muestra «Abiertas», no la mostraba. Al aplicarla se
+reabrieron las conversaciones de broadcasts que ya habían salido (27, el
+8/11/2026 UTC, versión `20261108190520`).
+
+`node scripts/verify-chat-awaiting.mjs --despues-de-00354` prueba los casos.
+
 ## Quién escribió cada mensaje
 
 `messages` distingue cuatro autores, todos nullables:
@@ -390,6 +415,19 @@ Una reacción NO es un mensaje: vive en `message_reactions` (una por actor y men
 Se guarda por el id con el que el PROVEEDOR conoce el mensaje, porque el hilo de Instagram se lee en vivo de Zernio y
 muchos mensajes no tienen fila propia. Los dos webhooks la atajan antes del camino de los mensajes. Enviar: Evolution
 (`sendReaction`, v1 y v2) y Zernio (`addMessageReaction` / `removeMessageReaction`, probando el id nativo y el propio).
+
+## Mensajes borrados para todos (00356, 8/11/2026)
+
+Cuando alguien borra un mensaje de WhatsApp «para todos» (el contacto, el teléfono del negocio, la API de Evolution o el botón de la bandeja), la fila **no se borra**: se marca con `deleted_for_everyone_at`, `deleted_for_everyone_source` (`contact`, `business` o `app`) y, desde la bandeja, `deleted_for_everyone_by`.
+
+- **Un borrado no es un mensaje.** Evolution 2.3.7 lo avisa por `MESSAGES_DELETE` y por `MESSAGES_EDITED` (ahí manda cualquier `protocolMessage`, también el de borrar); el receptor los ataja antes del camino de los mensajes, como las reacciones (`lib/messages/revoke.ts`, puro, con lo que se verificó en el código de Evolution). Un `protocolMessage` que llegara por `messages.upsert` también se ataja y nunca entra como un mensaje vacío. Una edición se ignora por ahora.
+- **Por la API, `data.id` es el id de la base de Evolution, no el de WhatsApp**: el bueno es `data.key.id`.
+- **La única puerta es `mark_message_deleted_for_everyone`** (solo `service_role`): busca por el id de WhatsApp dentro del canal y no pisa un borrado anterior (el aviso llega dos veces), salvo que el botón de la app le gana al eco de Evolution. Con la sesión de una persona no se puede escribir nada de esto (trigger `messages_guard_deleted_for_everyone`).
+- **La bandeja** muestra «Mensaje eliminado» en gris, quién lo borró y «Ver lo que decía» para el equipo. La lista dice «Mensaje eliminado» si era el último (`messages_refresh_last_message`, con un trigger al marcar).
+- **El agente y el resumen al cierre no lo leen** (`withoutDeletedMessages`).
+- **«Eliminar para todos»** aparece en un mensaje nuestro de WhatsApp que salió hace menos de 2 días (`canDeleteForEveryone`), para quien puede responder por esa cuenta, con confirmación. Llama a `DELETE /chat/deleteMessageForEveryone/{instancia}`.
+- **Un número conectado antes de este cambio no recibe los avisos de borrado** hasta que se vuelva a registrar su webhook (reconectarlo o guardar «Llamadas» una vez): los eventos se suscriben en `setWebhook`.
+- Pendiente: los grupos (sus mensajes viven en `whatsapp_group_messages`) y las ediciones.
 
 ## Una cuenta nueva en Zernio (22/10/2026)
 

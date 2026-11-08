@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Users } from "lucide-react";
+import { ChevronLeft, Settings2, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { markGroupRead } from "@/lib/actions/whatsapp-group-inbox";
 import type { SelectedGroup, ThreadMessage } from "@/lib/whatsapp-groups/thread";
+import { groupDisplayName } from "@/lib/whatsapp-groups/settings";
 import { GroupMessageBubble } from "./group-message-bubble";
 import { GroupComposer } from "./group-composer";
+import { GroupManagePanel } from "./group-manage-panel";
 
 /**
  * El hilo de un grupo de WhatsApp en la bandeja (00280): quién escribió, reacciones y encuestas. Lo que llega se ve
@@ -28,9 +30,11 @@ export function GroupThreadPanel({
 }) {
   const router = useRouter();
   const [membersOpen, setMembersOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const groupId = group.id;
+  const display = groupDisplayName(group);
 
   // Tiempo real: un mensaje, una reaccion o un voto nuevo vuelven a pedir la pagina (sin parpadeo, con un respiro).
   useEffect(() => {
@@ -65,17 +69,36 @@ export function GroupThreadPanel({
           <ChevronLeft className="h-4 w-4" aria-hidden />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{group.subject}</p>
-          <p className="truncate text-[11px] text-muted-foreground">{group.channelLabel}</p>
+          <p className="truncate text-sm font-semibold">{display.name}</p>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {display.community ? `Comunidad ${display.community} · ${group.channelLabel}` : group.channelLabel}
+          </p>
         </div>
+        {group.manage && (
+          <button
+            type="button"
+            onClick={() => {
+              setManageOpen((v) => !v);
+              setMembersOpen(false);
+            }}
+            aria-expanded={manageOpen}
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted"
+          >
+            <Settings2 className="h-3.5 w-3.5" aria-hidden />
+            Configurar
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => setMembersOpen((v) => !v)}
+          onClick={() => {
+            setMembersOpen((v) => !v);
+            setManageOpen(false);
+          }}
           aria-expanded={membersOpen}
           className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted"
         >
           <Users className="h-3.5 w-3.5" aria-hidden />
-          {group.members.length} miembros
+          {group.size ?? group.members.length} miembros
         </button>
       </div>
       <div className="flex min-h-0 flex-1">
@@ -88,12 +111,15 @@ export function GroupThreadPanel({
             )}
             <div ref={bottomRef} />
           </div>
-          {group.canWrite ? (
+          {group.canWrite && group.writeBlockedReason ? (
+            <p className="border-t border-border p-3 text-center text-xs text-muted-foreground">{group.writeBlockedReason}</p>
+          ) : group.canWrite ? (
             <GroupComposer groupId={group.id} onSent={() => router.refresh()} />
           ) : (
             <p className="border-t border-border p-3 text-center text-xs text-muted-foreground">Tu rol puede leer este grupo pero no escribir.</p>
           )}
         </div>
+        {manageOpen && group.manage && <GroupManagePanel group={group} onClose={() => setManageOpen(false)} />}
         {membersOpen && (
           <aside className="fixed inset-0 z-40 flex flex-col bg-background md:static md:z-auto md:w-72 md:border-l md:border-border" aria-label="Miembros del grupo">
             <div className="flex h-12 items-center justify-between border-b border-border px-3">

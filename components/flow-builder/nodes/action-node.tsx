@@ -3,6 +3,8 @@
 import { NodeMetricsBadge } from "../metrics-context";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { BarChart3,
+  UsersRound,
+  UserPlus,
   Tag,
   FileText,
   Globe,
@@ -171,6 +173,8 @@ const actionConfig: Record<
     color: "bg-gray-500",
   },
   send_poll: { icon: BarChart3, label: "Enviar encuesta", color: "bg-gray-500" },
+  send_to_group: { icon: UsersRound, label: "Enviar al grupo", color: "bg-gray-500" },
+  invite_to_group: { icon: UserPlus, label: "Invitar a un grupo", color: "bg-gray-500" },
   send_meta_event: { icon: Target, label: "Enviar evento a Meta", color: "bg-gray-500" },
   qualify_lead: { icon: Gauge, label: "Calificar lead", color: "bg-gray-500" },
   enrollSequence: { icon: ListOrdered, label: "Inscribir en secuencia", color: "bg-gray-500" },
@@ -256,6 +260,10 @@ function getSummary(nodeData: ActionNodeProps): string | null {
     }
     case "send_poll" as NodeType:
       return (nodeData as { question?: string }).question?.trim() || null;
+    case "send_to_group" as NodeType:
+      return (nodeData as { text?: string }).text?.trim() || ((nodeData as { assetId?: string }).assetId ? "Un recurso de la banca" : null);
+    case "invite_to_group" as NodeType:
+      return (nodeData as { linkOnly?: boolean }).linkOnly ? "Le manda el link" : "Lo suma (o le manda el link)";
     case "send_meta_event" as NodeType:
       return (nodeData as { eventName?: string }).eventName?.trim() || null;
     case "qualify_lead" as NodeType:

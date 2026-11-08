@@ -7,7 +7,10 @@
  *      lib/cron/guard-decide.cases.json.
  *   2. Cada cron de lib/cron/guards.json llama a private.call_app_cron_if_work
  *      con su intervalo de seguridad; la purga de scheduled_jobs esta agendada y
- *      el historial de pg_cron se purga a 1 dia.
+ *      el historial de pg_cron se purga a 1 dia. Con --despues-de-00350: los
+ *      cron de la misma frecuencia son UN trabajo (lib/cron/ticks.json), los
+ *      viejos ya no estan, y una parte que falla no frena a las otras (se
+ *      prueba forzando el error dentro de una transaccion que se deshace).
  *   3. La tabla de estado es UNLOGGED y nadie con sesion puede llamar a la guarda.
  *   4. La publicacion de Realtime tiene exactamente lib/realtime/tables.ts.
  *   5. Cada guarda dice "no hay trabajo" sin datos y "si hay" con el dato justo,
@@ -20,7 +23,7 @@
  * otros verify-*. Mientras corre puede tener tomada unos segundos la fila del
  * carril de envios de un canal (el caso de send-queue).
  *
- *   node scripts/verify-cron-guards.mjs
+ *   node scripts/verify-cron-guards.mjs [--despues-de-00350]
  */
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -42,6 +45,10 @@ function sql(query) {
 const lit = (v) => (v === null || v === undefined ? "NULL" : `'${String(v).replace(/'/g, "''")}'`);
 
 const guards = JSON.parse(readFileSync(repoFile("lib/cron/guards.json"), "utf8"));
+const ticks = JSON.parse(readFileSync(repoFile("lib/cron/ticks.json"), "utf8"));
+const after00350 = process.argv.includes("--despues-de-00350");
+// Las partes que corren en la base (gemela de TICK_DB_PARTS en lib/cron/ticks.ts).
+const TICK_DB_PARTS = { "agent-drafts-sweep": "private.sweep_agent_drafts", "draft-window-alerts": "private.alert_draft_windows" };
 const decideCases = JSON.parse(readFileSync(repoFile("lib/cron/guard-decide.cases.json"), "utf8"));
 const realtimeTables = [
   ...readFileSync(repoFile("lib/realtime/tables.ts"), "utf8").match(/REALTIME_TABLES = \[([\s\S]*?)\]/)[1].matchAll(/"([a-z_]+)"/g),
@@ -65,14 +72,66 @@ try {
   // -------------------------------------------------------------------------
   console.log("\n2. Los cron pasan por la guarda");
   {
-    const jobs = sql(`SELECT jobname, command FROM cron.job`);
-    const byName = new Map(jobs.map((j) => [j.jobname, j.command]));
+    const jobs = sql(`SELECT jobname, schedule, command, active FROM cron.job`);
+    const byName = new Map(jobs.map((j) => [j.jobname, j]));
+    const inTick = new Set(ticks.flatMap((t) => t.parts));
+    const guardCall = (g) => `private.call_app_cron_if_work('${g.path}', interval '${intervalText(g.safetyMinutes)}')`;
     for (const g of guards) {
-      const expected = `SELECT private.call_app_cron_if_work('${g.path}', interval '${intervalText(g.safetyMinutes)}')`;
-      check(byName.get(g.path) === expected, `${g.path}: ${expected}`, `en la base: ${byName.get(g.path)}`);
+      if (after00350 && inTick.has(g.path)) {
+        check(!byName.has(g.path), `${g.path}: ya no tiene su propio cron (va en su trabajo agrupado)`, `en la base: ${byName.get(g.path)?.command}`);
+        continue;
+      }
+      const expected = `SELECT ${guardCall(g)}`;
+      check(byName.get(g.path)?.command === expected, `${g.path}: ${expected}`, `en la base: ${byName.get(g.path)?.command}`);
     }
-    check(byName.get("purge-scheduled-jobs") === "SELECT private.purge_scheduled_jobs(30, 90)", "la purga de scheduled_jobs esta agendada");
-    check(byName.get("purge-cron-runs") === "SELECT private.purge_cron_run_details(1)", "el historial de pg_cron se purga a 1 dia");
+    check(byName.get("purge-scheduled-jobs")?.command === "SELECT private.purge_scheduled_jobs(30, 90)", "la purga de scheduled_jobs esta agendada");
+    check(byName.get("purge-cron-runs")?.command === "SELECT private.purge_cron_run_details(1)", "el historial de pg_cron se purga a 1 dia");
+
+    if (after00350) {
+      console.log("\n2b. Los cron agrupados (00350)");
+      for (const t of ticks) {
+        const j = byName.get(t.job);
+        check(
+          j?.schedule === t.schedule && j?.command === `SELECT ${t.sqlFunction}()` && j?.active === true,
+          `${t.job}: '${t.schedule}', SELECT ${t.sqlFunction}()`,
+          `en la base: ${j ? `${j.schedule} | ${j.command} | activo=${j.active}` : "no esta"}`,
+        );
+        for (const part of t.parts) {
+          if (part in TICK_DB_PARTS) check(!byName.has(part), `${part}: ya no tiene su propio cron`, `en la base: ${byName.get(part)?.command}`);
+        }
+        const [def] = sql(`SELECT pg_get_functiondef(${lit(t.sqlFunction + "()")}::regprocedure) AS d`);
+        for (const part of t.parts) {
+          const g = guards.find((x) => x.path === part);
+          const call = g ? guardCall(g) : `${TICK_DB_PARTS[part]}()`;
+          check(def.d.includes(`PERFORM ${call};`) && def.d.includes(`cron_tick_note_error('${part}', SQLERRM)`), `${t.sqlFunction} corre ${part} en su bloque`);
+        }
+      }
+
+      // Una parte que falla no frena a las otras. Se fuerza el error de la primera parte del trabajo de 5 minutos
+      // (se reemplaza su funcion DENTRO de la transaccion, que se deshace: nadie mas la ve) y se mira que las
+      // demas hayan corrido: las guardas anotan cada pasada en cron_guard_state (llamada o salteada).
+      const t5 = ticks.find((t) => t.parts[0] === "agent-drafts-sweep");
+      const later = t5.parts.filter((p) => !(p in TICK_DB_PARTS));
+      const counts = `(SELECT coalesce(sum(called_count + skipped_count), 0) FROM private.cron_guard_state WHERE path IN (${later.map(lit).join(", ")}))`;
+      const [r] = sql(
+        [
+          "BEGIN",
+          "SET LOCAL lock_timeout = '5s'",
+          `CREATE TEMP TABLE zz_tick AS SELECT ${counts} AS before`,
+          `CREATE OR REPLACE FUNCTION private.sweep_agent_drafts() RETURNS jsonb LANGUAGE plpgsql SET search_path TO '' AS $zz$ BEGIN RAISE EXCEPTION 'zz-test-cron-tick: falla forzada'; END $zz$`,
+          `SELECT ${t5.sqlFunction}()`,
+          `SELECT (SELECT before FROM zz_tick) AS before, ${counts} AS after,
+                  (SELECT last_error FROM private.cron_tick_errors WHERE part = 'agent-drafts-sweep') AS noted`,
+          "ROLLBACK",
+        ].join(";\n") + ";",
+      );
+      check(String(r?.noted ?? "").includes("zz-test-cron-tick"), "el error de una parte queda en cron_tick_errors", `anotado: ${r?.noted}`);
+      check(
+        Number(r?.after) - Number(r?.before) === later.length,
+        `las otras partes corrieron igual (${later.join(", ")})`,
+        `pasadas por la guarda: antes ${r?.before}, despues ${r?.after}`,
+      );
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -84,6 +143,17 @@ try {
              has_function_privilege('authenticated', 'private.call_app_cron_if_work(text,interval)', 'execute') AS auth_exec,
              has_function_privilege('authenticated', 'private.cron_has_work(text,timestamptz)', 'execute') AS auth_has_work,
              has_table_privilege('authenticated', 'private.cron_guard_state', 'select') AS auth_state`);
+    if (after00350) {
+      const [t] = sql(`
+        SELECT (SELECT relpersistence::text FROM pg_class WHERE oid = 'private.cron_tick_errors'::regclass) AS persistence,
+               bool_or(has_function_privilege(r, f, 'execute')) AS someone_exec,
+               has_table_privilege('authenticated', 'private.cron_tick_errors', 'select') AS auth_errors
+        FROM unnest(ARRAY['anon', 'authenticated']) AS r,
+             unnest(ARRAY[${ticks.map((x) => lit(x.sqlFunction + "()")).join(", ")}, 'private.cron_tick_note_error(text,text)']) AS f`);
+      check(t.persistence === "u", "private.cron_tick_errors es UNLOGGED (no escribe WAL)", `relpersistence = ${t.persistence}`);
+      check(t.someone_exec === false, "ni anon ni authenticated pueden correr los trabajos agrupados");
+      check(t.auth_errors === false, "authenticated no lee los errores de los cron");
+    }
     check(r.persistence === "u", "private.cron_guard_state es UNLOGGED (no escribe WAL)", `relpersistence = ${r.persistence}`);
     check(r.anon_exec === false && r.auth_exec === false && r.auth_has_work === false, "ni anon ni authenticated pueden llamar a la guarda");
     check(r.auth_state === false, "authenticated no lee el estado de la guarda");

@@ -45,6 +45,9 @@ const NODOS_DE_ACCION = [
   "send_meta_event",
   // Calificación del lead (00329).
   "qualify_lead",
+  // Grupos y comunidades de WhatsApp (00344).
+  "send_to_group",
+  "invite_to_group",
 ] as const;
 
 describe("registro de nodos", () => {
@@ -63,8 +66,9 @@ describe("registro de nodos", () => {
     // + `designGenerate` ("Generar desde plantilla", Diseñador IA, F57).
     // + `send_meta_event` ("Enviar evento a Meta", API de Conversiones, 00328).
     // + `qualify_lead` ("Calificar lead", 00329).
-    expect(listNodes()).toHaveLength(36); // @plantilla-quitar(ventas,webhooks,tareas)
-    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(30);
+    // + `send_to_group` y `invite_to_group` ("Enviar al grupo", "Invitar a un grupo", 00344).
+    expect(listNodes()).toHaveLength(38); // @plantilla-quitar(ventas,webhooks,tareas)
+    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(32);
   });
 
   it.each(NODOS_DE_ACCION)(

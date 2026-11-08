@@ -11,6 +11,7 @@ import {
   DEFAULT_INBOX_STATUS,
   LEGACY_VIEW_PARAM,
   LIST_TYPE_PARAM,
+  COMMUNITY_PARAM,
   ASSIGNMENT_UNASSIGNED,
   ASSIGNMENT_AI,
   ASSIGNMENT_MINE,
@@ -51,6 +52,7 @@ export function InboxFiltersMenu({
   tags,
   members,
   hasGroups,
+  communities = [],
 }: {
   filters: InboxFilters;
   /** Las cuentas conectadas que esta persona ve: una opcion por cuenta, se marcan varias. */
@@ -59,6 +61,8 @@ export function InboxFiltersMenu({
   members: { userId: string; label: string }[];
   /** Hay grupos de WhatsApp activados: recien ahi tiene sentido elegir entre chats y grupos. */
   hasGroups: boolean;
+  /** Las comunidades de WhatsApp con grupos en la bandeja (00344). */
+  communities?: { jid: string; subject: string }[];
 }) {
   const { pending, setParam, setParams, toggle, clearAll } = useInboxUrl();
   const menuCount = countMenuFilters(filters);
@@ -141,22 +145,41 @@ export function InboxFiltersMenu({
         </FilterGroup>
 
         {/* Sin grupos activados no hay nada que elegir; con el filtro puesto (un link) se puede sacar. */}
-        {(hasGroups || filters.listType) && (
+        {(hasGroups || filters.listType || filters.communityJid) && (
           <FilterGroup label="Chats y grupos">
             <div className="flex flex-wrap gap-1.5">
-              <Chip active={!filters.listType} onClick={() => setParams({ [LIST_TYPE_PARAM]: "", [LEGACY_VIEW_PARAM]: "" })}>
+              <Chip active={!filters.listType} onClick={() => setParams({ [LIST_TYPE_PARAM]: "", [LEGACY_VIEW_PARAM]: "", [COMMUNITY_PARAM]: "" })}>
                 Ambos
               </Chip>
               {INBOX_LIST_TYPES.map((value) => (
                 <Chip
                   key={value}
                   active={filters.listType === value}
-                  onClick={() => setParams({ [LIST_TYPE_PARAM]: value, [LEGACY_VIEW_PARAM]: "" })}
+                  onClick={() => setParams({ [LIST_TYPE_PARAM]: value, [LEGACY_VIEW_PARAM]: "", ...(value === "chats" ? { [COMMUNITY_PARAM]: "" } : {}) })}
                 >
                   {INBOX_LIST_TYPE_LABELS[value]}
                 </Chip>
               ))}
             </div>
+            {/* Una comunidad (00344): solo sus grupos. Elegir otra vez la misma la saca. */}
+            {(communities.length > 0 || filters.communityJid) && (
+              <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Comunidad">
+                {communities.map((community) => (
+                  <Chip
+                    key={community.jid}
+                    active={filters.communityJid === community.jid}
+                    onClick={() => setParam(COMMUNITY_PARAM, filters.communityJid === community.jid ? "" : community.jid)}
+                  >
+                    {`Comunidad ${community.subject}`}
+                  </Chip>
+                ))}
+                {filters.communityJid && !communities.some((c) => c.jid === filters.communityJid) && (
+                  <Chip active onClick={() => setParam(COMMUNITY_PARAM, "")}>
+                    Una comunidad
+                  </Chip>
+                )}
+              </div>
+            )}
           </FilterGroup>
         )}
 
