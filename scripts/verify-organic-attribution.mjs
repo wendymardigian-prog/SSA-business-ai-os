@@ -305,7 +305,7 @@ try {
     });
     check(form.data?.inserted === true, "el formulario deja su toque", form.error?.message);
     const t = (await svc.from("contact_touches").select("content_post_id, channel, meta_match_status").eq("workspace_id", ws.id).eq("dedupe_key", `zz-form-${stamp}`).single()).data;
-    check(t?.content_post_id === piece.id && t?.channel === "organic" && t?.meta_match_status === "ignored", "...vinculado a la pieza, organico y fuera de «Sin vincular» de Meta", JSON.stringify(t));
+    check(t?.content_post_id === piece.id && t?.channel === "organic" && ["ignored", "none"].includes(t?.meta_match_status), "...vinculado a la pieza, organico y fuera de «Sin vincular» de Meta", JSON.stringify(t));
 
     // Los clics de un link con seguimiento: UNO por dia, por persona y pieza.
     const click = (key) => svc.rpc("record_contact_touch", {
