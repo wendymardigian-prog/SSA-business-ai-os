@@ -63,6 +63,7 @@ import {
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
 import { discardPendingDrafts, supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
 import { AUTO_DISCARD } from "@/lib/agent/drafts/types";
+import { UNKNOWN_WHATSAPP_NAME } from "@/lib/contacts/anonymous";
 
 interface EvolutionPayload {
   event?: string;
@@ -622,6 +623,4 @@ async function processMessage(
   }
 }
 
-/** El nombre de un contacto de WhatsApp del que no sabemos ni el nombre ni el numero. */
-const UNKNOWN_WHATSAPP_NAME = "Contacto de WhatsApp";
 
