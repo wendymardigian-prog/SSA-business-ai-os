@@ -231,6 +231,28 @@ async function runTemplateExport(db: Db, payload: DesignRenderPayload, deps: Req
   }
 }
 
+/** El documento de la última publicación de un diseño propio, o null si no hay (o no se pudo leer: vale el vigente). */
+async function latestPublishedDoc(db: Db, designId: string): Promise<unknown | null> {
+  try {
+    const { data, error } = await db
+      .from("design_versions")
+      .select("doc")
+      .eq("design_id", designId)
+      .eq("reason", "publish")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error("[design_render] no pude leer la última publicación:", error.message);
+      return null;
+    }
+    return (data as { doc?: unknown } | null)?.doc ?? null;
+  } catch (error) {
+    console.error("[design_render] no pude leer la última publicación:", error instanceof Error ? error.message : "error");
+    return null;
+  }
+}
+
 /** Corre un render. Recibe todo por parámetro: se prueba con un cliente y un servicio simulados. */
 export async function runDesignRender(db: Db, payload: DesignRenderPayload, depsIn: RenderDeps = {}): Promise<RenderOutcome> {
   const deps: Required<RenderDeps> = { render: depsIn.render ?? ((r) => renderDesign(r)), now: depsIn.now ?? (() => new Date()), schedule: depsIn.schedule ?? scheduleJob };
@@ -251,7 +273,10 @@ export async function runDesignRender(db: Db, payload: DesignRenderPayload, deps
   if (!data) return { status: "skipped", reason: "not_found" };
   const row = data as unknown as DesignRow;
 
-  const parsed = parseDesignDoc(row.doc);
+  // Publicar de un diseño propio arma los archivos de lo PUBLICADO (la última versión `publish`), no del borrador:
+  // lo que se edita después recién llega al link con «Publicar cambios» (auditoría de la Ola 2, igual que la 00325).
+  const sourceDoc = payload.purpose === "publish" && !row.template_id ? ((await latestPublishedDoc(db, row.id)) ?? row.doc) : row.doc;
+  const parsed = parseDesignDoc(sourceDoc);
   if (!parsed.ok) return noteFailure(db, row, payload, new RenderFailed("El documento del diseño no es válido.", { retryable: false }), deps);
   const doc = parsed.doc;
   const format = FORMATS[doc.format];

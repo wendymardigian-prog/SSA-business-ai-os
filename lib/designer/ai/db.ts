@@ -53,14 +53,19 @@ function customVarsOf(value: unknown): CustomVar[] {
   });
 }
 
-/** Lee un diseño o plantilla del negocio. `null` si no existe, es de otro negocio o su documento no es válido. */
+/**
+ * Lee un diseño o plantilla del negocio. `null` si no existe, es de otro negocio, su documento no es válido o es una
+ * GENERACIÓN: una pieza emitida (fila con `template_id`) es una copia congelada y la IA nunca la cambia (se vuelve a
+ * generar desde la plantilla). Todo pedido, propuesta o cambio de estilo pasa por acá.
+ */
 export async function loadTarget(db: Db, workspaceId: string, kind: DesignKind, id: string): Promise<TargetRow | null> {
-  const { data, error } = await db
+  let query = db
     .from(table(kind))
     .select(kind === "design" ? DESIGN_COLUMNS : TEMPLATE_COLUMNS)
     .eq("id", id)
-    .eq("workspace_id", workspaceId)
-    .maybeSingle();
+    .eq("workspace_id", workspaceId);
+  if (kind === "design") query = query.is("template_id", null);
+  const { data, error } = await query.maybeSingle();
   if (error) {
     console.error("[designer-ai] no pude leer el diseño:", error.message);
     return null;
@@ -112,14 +117,15 @@ export async function saveDocWithRev(db: Db, input: SaveInput): Promise<number |
   const patch: Record<string, unknown> = { doc: input.doc as unknown as Json, rev: input.rev + 1 };
   if (input.style !== undefined) patch.style = input.style;
   if (input.kind === "design" && input.lastQa !== undefined) patch.last_qa = input.lastQa as unknown as Json;
-  const { data, error } = await db
+  let query = db
     .from(table(input.kind))
     .update(patch as never)
     .eq("id", input.id)
     .eq("workspace_id", input.workspaceId)
-    .eq("rev", input.rev)
-    .select("rev")
-    .maybeSingle();
+    .eq("rev", input.rev);
+  // Red de seguridad: nunca sobre una generación (ver `loadTarget`).
+  if (input.kind === "design") query = query.is("template_id", null);
+  const { data, error } = await query.select("rev").maybeSingle();
   if (error) {
     console.error("[designer-ai] no pude guardar el diseño:", error.message);
     throw new Error("No se pudo guardar el diseño");

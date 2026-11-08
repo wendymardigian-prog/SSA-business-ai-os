@@ -95,3 +95,8 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - **Qué quedó:** la limpieza conserva `<img src="https://…">` de otros sitios. En el link público de una web se cargan desde ese sitio; en una exportación salen vacías, porque el servicio de render solo sale a los hosts de `RENDER_ALLOWED_HOSTS`.
 - **Por qué:** quitarlas rompería muchas landings hechas con imágenes de un CDN; bajarlas al importar es otro trabajo (y otro riesgo: pedidos a sitios ajenos desde el servidor).
 - **Qué se decidió:** se dejan. Si molesta, al cargar se bajan con `safeFetch` (con tope) y pasan a `asset:`.
+
+### La IA cambia los TEXTOS de un HTML cargado, no su CSS
+- **Qué quedó:** F42 pide que la IA pueda editar «textos y estilos» de una página cargada. Se construyó la parte de textos (`updateText`, nodo por nodo, siempre como texto plano y limpio); los estilos (el CSS del archivo) no.
+- **Por qué:** dejar que la IA reescriba CSS de un archivo ajeno abre otra puerta (CSS que oculta o tapa contenido, `url()` hacia afuera) y pide su propia limpieza y pruebas; los textos son el 90 % de los pedidos.
+- **Qué se decidió:** solo textos. Para cambiar colores o tipografías de una página cargada: pedírselo a la IA en el archivo original y volver a cargarlo, o rearmarla con la IA desde cero. Si se construye, va con la misma limpieza de `css.ts` y un test de ataques.

@@ -468,7 +468,8 @@ export function DesignEditor(props: DesignEditorProps) {
             pageCount={doc.pages.length}
             rev={save.rev}
             styleKey={doc.style ?? record.style ?? null}
-            canEdit={can.edit}
+            // Una pieza emitida (o sin `designer.edit`) es de solo lectura: tampoco se le piden cambios a la IA.
+            canEdit={!readOnly}
             onApplied={() => reloadFromServer()}
           />
         );

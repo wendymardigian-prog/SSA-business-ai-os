@@ -7,10 +7,14 @@ const WS = "11111111-2222-3333-4444-555555555555";
 const DESIGN = "aaaaaaaa-2222-3333-4444-555555555555";
 
 /** Un cliente de Supabase en memoria con lo justo que usa el job. */
-function fakeDb(row: Record<string, unknown>, opts: { signFails?: boolean; template?: Record<string, unknown> } = {}) {
+function fakeDb(row: Record<string, unknown>, opts: { signFails?: boolean; template?: Record<string, unknown>; publishedDoc?: unknown } = {}) {
   const state = { row: { ...row }, uploads: [] as string[], updates: [] as Record<string, unknown>[] };
   const db = {
     from(table: string) {
+      if (table === "design_versions") {
+        const chain = { eq: () => chain, order: () => chain, limit: () => chain, maybeSingle: async () => ({ data: opts.publishedDoc ? { doc: opts.publishedDoc } : null, error: null }) };
+        return { select: () => chain };
+      }
       return {
         select: () => ({
           eq: () => ({
@@ -169,5 +173,38 @@ describe("design_render (F6)", () => {
     // Deja el motivo en la carpeta de la exportación: quien la pidió deja de mostrar "Preparando".
     expect(state.uploads).toContain(`${WS}/${DESIGN}/exports/s/error.json`);
     expect(state.updates).toEqual([]);
+  });
+});
+
+describe("publicar arma los archivos de lo PUBLICADO (auditoría de la Ola 2)", () => {
+  it("con una versión publicada, el render sale de esa versión y no del borrador", async () => {
+    const published = emptyDoc("v45", "#ffffff");
+    const draft = emptyDoc("v45", "#000000");
+    const { db } = fakeDb(baseRow({ doc: draft }), { publishedDoc: published });
+    const seen: string[] = [];
+    const out = await runDesignRender(db, { designId: DESIGN, purpose: "publish" }, {
+      render: async (req: RenderRequest) => {
+        seen.push(JSON.stringify(req.pages ?? [req.html]));
+        return { files: (req.pages ?? [{ html: "" }]).map((_p, page) => ({ page, contentType: req.format === "pdf" ? "application/pdf" : "image/png", bytes: new Uint8Array([1]) })) as never, version: "t" };
+      },
+      schedule: vi.fn() as never,
+    });
+    expect(out.status).toBe("rendered");
+    expect(seen.join("").toLowerCase()).toContain("#ffffff");
+    expect(seen.join("").toLowerCase()).not.toContain("#000000");
+  });
+
+  it("sin ninguna publicación (o una generación) usa el documento vigente", async () => {
+    const draft = emptyDoc("v45", "#000000");
+    const { db } = fakeDb(baseRow({ doc: draft }));
+    const seen: string[] = [];
+    await runDesignRender(db, { designId: DESIGN, purpose: "publish" }, {
+      render: async (req: RenderRequest) => {
+        seen.push(JSON.stringify(req.pages ?? [req.html]));
+        return { files: (req.pages ?? [{ html: "" }]).map((_p, page) => ({ page, contentType: req.format === "pdf" ? "application/pdf" : "image/png", bytes: new Uint8Array([1]) })) as never, version: "t" };
+      },
+      schedule: vi.fn() as never,
+    });
+    expect(seen.join("").toLowerCase()).toContain("#000000");
   });
 });

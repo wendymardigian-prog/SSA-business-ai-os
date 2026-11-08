@@ -286,6 +286,29 @@ export default async function ds5(ctx: BlockContext): Promise<void> {
     const webPub2 = (await anon.rpc("design_public_get", { p_code: webDesign!.code })).data as { doc?: { pages: Array<{ background: { color?: string } }> } } | null;
     check(webPub2?.doc?.pages[0].background.color === "#123456", "…y recién ahí el público ve el cambio", JSON.stringify(webPub2?.doc?.pages?.[0]?.background));
 
+    // ─── Lo mismo para una pieza con archivos: publicar arma los PNG/PDF de lo PUBLICADO ─────
+    console.log("\n— Pieza con archivos: el render de publicar sale de lo publicado —");
+    const pngDoc = minimalDoc("v45") as { pages: Array<{ background: { type: string; color?: string } }> };
+    pngDoc.pages[0].background = { type: "color", color: "#abcdef" };
+    const { data: pngDesign } = await raw.from("designs").insert({ workspace_id: t.id, name: "zz-test publicado", format: "v45", doc: pngDoc, origin: "blank" }).select("id").single();
+    check((await publishDesignCore(svc, actor, { designId: pngDesign!.id as string }, { enqueue: enqueue as never })).ok, "publicar la pieza");
+    const pngDraft = structuredClone(pngDoc);
+    pngDraft.pages[0].background = { type: "color", color: "#fedcba" };
+    await raw.from("designs").update({ doc: pngDraft }).eq("id", pngDesign!.id);
+    const seenHtml: string[] = [];
+    const captured = await runDesignRender(svc, { designId: pngDesign!.id as string, purpose: "publish" }, {
+      render: async (req) => {
+        seenHtml.push(...(req.pages ?? []).map((p) => p.html), req.html ?? "");
+        const n = req.pages?.length ?? 1;
+        return { files: Array.from({ length: req.format === "pdf" ? 1 : n }, (_v, page) => ({ page, contentType: req.format === "pdf" ? ("application/pdf" as const) : ("image/png" as const), bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]) })), version: "verify" };
+      },
+    });
+    check(captured.status === "rendered", "el render de publicar corre", JSON.stringify(captured));
+    const html = seenHtml.join("").toLowerCase();
+    check(html.includes("#abcdef") && !html.includes("#fedcba"), "los archivos salen de lo PUBLICADO, no de lo que se está editando");
+    const pngSet = (captured as { set?: RenderSet }).set;
+    for (const path of [...(pngSet?.pages ?? []), ...(pngSet?.pdf_path ? [pngSet.pdf_path] : [])]) ctx.storagePaths.push({ bucket: BUCKET, path });
+
     // ─── Un diseño de otro negocio no se toca ───────────────────────────
     console.log("\n— Aislamiento entre negocios —");
     const stranger = await makeWorkspace("ds5-ajeno");

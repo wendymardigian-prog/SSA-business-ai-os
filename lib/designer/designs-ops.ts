@@ -76,6 +76,9 @@ export async function saveDocCore(env: CoreEnv, input: SaveInput): Promise<SaveD
 
   if (input.kind === "template" && clean.format !== (row as unknown as { format: string }).format) return { ok: false, error: "El formato de una plantilla se cambia desde Configuración." };
   const update: Record<string, unknown> = { doc: asJson(clean), format: clean.format, rev: input.rev + 1 };
+  // La revisión automática habla del documento que miró la IA: un cambio a mano la deja vieja (y sus índices de página
+  // pueden quedar corridos), así que el punto ámbar se apaga (F36).
+  if (input.kind === "design") update.last_qa = null;
   if (input.customVars !== undefined) {
     if (input.kind !== "template") return { ok: false, error: "Solo una plantilla tiene variables propias." };
     const vars = validateCustomVars(input.customVars);

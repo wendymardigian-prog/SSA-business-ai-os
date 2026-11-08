@@ -243,6 +243,12 @@ describe("guardar un diseño publicado NO vuelve a renderizar (F48b: se renderiz
     expect(db.touched.has("scheduled_jobs")).toBe(false);
   });
 
+  it("guardar a mano apaga el punto ámbar de la revisión automática (F36)", async () => {
+    const { db, env } = setup({ designs: [designRow({ last_qa: { pages: [{ index: 0, issues: ["contrast"] }] } })] });
+    expect(await saveDocCore(env, { kind: "design", id: "d1", doc: docWithText("arreglado"), rev: 3 })).toEqual({ ok: true, rev: 4 });
+    expect(db.tables.designs[0].last_qa).toBeNull();
+  });
+
   it("restaurar una versión de un diseño publicado tampoco encola nada", async () => {
     const { env } = setup({ designs: [designRow({ published: true })], design_versions: [{ id: "v1", workspace_id: WS, design_id: "d1", template_id: null, reason: "manual", author_kind: "user", author_id: USER, created_at: now.toISOString(), doc: docWithText("vieja") }] });
     expect(await restoreVersionCore(env, { kind: "design", id: "d1" }, "v1")).toMatchObject({ ok: true });

@@ -292,3 +292,18 @@ describe("ai/requests: «Hacerlo / No»", () => {
     expect((await answerProposalRequest(s.db, { ...args, messageId: "nope", accept: true })).ok).toBe(false);
   });
 });
+
+describe("ai/requests: una pieza emitida (generación) es de solo lectura también para la IA", () => {
+  it("un pedido, un cambio de estilo o guardar sobre una generación no hacen nada", async () => {
+    const s = setup();
+    (s.tables.designs[0] as Record<string, unknown>).template_id = "tpl-1";
+    const r = await submitRequest(s.db, { ...base, mode: "change", text: "Cambiá el nombre", page: null }, s.deps);
+    expect(r.ok).toBe(false);
+    expect(s.schedule).not.toHaveBeenCalled();
+    const st = await submitStyleChange(s.db, { ...base, styleKey: "social" } as never, s.deps);
+    expect(st.ok).toBe(false);
+    const { saveDocWithRev } = await import("./db");
+    expect(await saveDocWithRev(s.db, { workspaceId: WS, kind: "design", id: "t1", rev: 3, doc: carousel() })).toBeNull();
+    expect((s.tables.designs[0] as Record<string, unknown>).rev).toBe(3);
+  });
+});

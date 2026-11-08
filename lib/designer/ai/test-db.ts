@@ -28,12 +28,13 @@ export function memoryDb(initial: Record<string, Row[]>, options: MemoryDbOption
   let counter = 0;
 
   function query(name: string, mode: "select" | "update", patch?: Row) {
-    const filters: { col: string; val: unknown }[] = [];
+    const filters: { col: string; val: unknown; isNull?: boolean }[] = [];
     let wantsRows = mode === "select";
     const run = () => {
       const rows = (tables[name] ??= []);
       if (mode === "update") options.beforeUpdate?.(name, rows);
-      const matched = rows.filter((r) => filters.every((f) => r[f.col] === f.val));
+      // `is(col, null)` como en Postgres: una columna que la fila no trae vale NULL.
+      const matched = rows.filter((r) => filters.every((f) => (f.isNull ? r[f.col] == null : r[f.col] === f.val)));
       if (mode === "update") {
         for (const row of matched) Object.assign(row, patch);
         updates.push({ table: name, patch: patch ?? {} });
@@ -46,7 +47,7 @@ export function memoryDb(initial: Record<string, Row[]>, options: MemoryDbOption
         return q;
       },
       is(col: string, val: unknown) {
-        filters.push({ col, val });
+        filters.push(val === null ? { col, val, isNull: true } : { col, val });
         return q;
       },
       order() {
