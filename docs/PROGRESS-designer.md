@@ -764,24 +764,33 @@ Auditor Opus de solo lectura, tres pasadas (8/11/2026 UTC). **Veredicto final: t
 
 #### DS6 · Plantillas y generaciones (subagente)
 > Integrado (`172616a`). `verify-designer --bloque ds6` 53/53. `Actor.userId` admite null (una automatización publica una generación, `07ca021`).
-- [~] F49 — Catálogo de variables (+ `design.doc_type`) · prueba: `variables/catalog.test.ts` (claves de Contacto iguales a `variable-catalog.ts`; `design.doc_type` → `docTypeNoun`; `design.issued_on` en la zona del negocio; un origen registrado con `registerDesignVariables`), `variables/resolve.test.ts` (orden: lo pasado, el sujeto, el valor por defecto), `custom.test.ts` · auditado: —
-- [~] F50 — Generar para uno ("Emitir <tipo>") · prueba: `generate-ops.test.ts`, `screens/generate-one.test.ts` (pide los obligatorios antes de confirmar; vista previa con `renderPageHTML`), `lib/actions/designer/generate.test.ts`; verify ds6 · auditado: —
-  - [~] F50 / V3–V4 — textos y avisos por tipo; `{{design.link}}` del email con `publicBaseUrl` · prueba: `generation-email.test.ts`, `email-text.test.ts`, `screens/generate-one.test.ts` · auditado: —
-- [~] F51 — Generar para varios · prueba: `bulk-core.test.ts`, `jobs/generate-many.test.ts` (tandas de 10, máx. 500), `screens/generate-many.test.ts`; verify ds6 (3 contactos, uno con pieza válida y «saltear» → genera 2) · auditado: —
-- [~] F52 — La generación (copia congelada) · prueba: `generate-core.test.ts` (38); verify ds6 (cambiar el texto de la plantilla no cambia una generación vieja) · auditado: —
-- [~] F53 — Pestaña Generaciones · prueba: `screens/generations.test.ts` (`generationRow` para los 4 orígenes y el estado con su motivo; filtros y contadores; páginas de 50), `generations-query.test.ts`; verify ds6 (quién ve las generaciones) · auditado: —
-- [~] F54 — Reintentar · prueba: `generate-ops.test.ts`; verify ds6 (una falla de datos sin completarlos SIGUE pidiendo el dato) · auditado: —
-- [~] F55 — Si falta un dato · prueba: `variables/missing.cases.json` (23 casos con las 3 políticas, en `resolve.test.ts`), aviso en la campana en `generate-core.test.ts`; verify ds6 · auditado: —
-- [~] F56 — Código y fecha de emisión · prueba: `generate-core.test.ts` (el código es el de la fila; fecha en la zona del negocio); verify ds6 · auditado: —
+- [x] F49 — Catálogo de variables (+ `design.doc_type`) · prueba: `variables/catalog.test.ts` (claves de Contacto iguales a `variable-catalog.ts`; `design.doc_type` → `docTypeNoun`; `design.issued_on` en la zona del negocio; un origen registrado con `registerDesignVariables`), `variables/resolve.test.ts` (orden: lo pasado, el sujeto, el valor por defecto), `custom.test.ts` · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F50 — Generar para uno ("Emitir <tipo>") · prueba: `generate-ops.test.ts`, `screens/generate-one.test.ts` (pide los obligatorios antes de confirmar; vista previa con `renderPageHTML`), `lib/actions/designer/generate.test.ts`; verify ds6 · auditado: cumple (auditor Ola 3, 2ª pasada)
+  - [x] F50 / V3–V4 — textos y avisos por tipo; `{{design.link}}` del email con `publicBaseUrl` · prueba: `generation-email.test.ts`, `email-text.test.ts`, `screens/generate-one.test.ts` · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F51 — Generar para varios · prueba: `bulk-core.test.ts`, `jobs/generate-many.test.ts` (tandas de 10, máx. 500), `screens/generate-many.test.ts`; verify ds6 (3 contactos, uno con pieza válida y «saltear» → genera 2) · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F52 — La generación (copia congelada) · prueba: `generate-core.test.ts` (38); verify ds6 (cambiar el texto de la plantilla no cambia una generación vieja) · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F53 — Pestaña Generaciones · prueba: `screens/generations.test.ts` (`generationRow` para los 4 orígenes y el estado con su motivo; filtros y contadores; páginas de 50), `generations-query.test.ts`; verify ds6 (quién ve las generaciones) · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F54 — Reintentar · prueba: `generate-ops.test.ts`; verify ds6 (una falla de datos sin completarlos SIGUE pidiendo el dato) · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F55 — Si falta un dato · prueba: `variables/missing.cases.json` (23 casos con las 3 políticas, en `resolve.test.ts`), aviso en la campana en `generate-core.test.ts`; verify ds6 · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F56 — Código y fecha de emisión · prueba: `generate-core.test.ts` (el código es el de la fila; fecha en la zona del negocio); verify ds6 · auditado: cumple (auditor Ola 3, 2ª pasada)
 
 #### DS8 · Contenido (subagente)
 > Integrado (`5f69420`) y enganchado (`311f3a0`: guardar, restaurar y la IA encolan la sincronización de un diseño vinculado; «Volver a la pieza»). `verify-designer --bloque ds8` 43/43 y `verify-content --despues-de-00253` «Todo verde». Caracterización del drawer y de `media-uploader` antes de tocarlos (commit `d09cc9e`, intacta).
-- [~] F61 — Formatos Contenido ↔ Diseñador · prueba: `lib/designer/content-map.test.ts` (56: las combinaciones y PNG por página o un PDF) · auditado: —
-- [~] F62 — Diseñar desde la pieza · prueba: `content-request.test.ts` (guion de 5 partes + Instagram Carrusel → `v45`, las 5 partes en el pedido), `content-link.test.ts`, `lib/actions/designer/content.test.ts`, `piece-drawer.designer.test.ts`, `screens/toolbar.test.ts` («Volver a la pieza») · auditado: —
-- [~] F63 — "Usar en contenido" · prueba: `screens/use-in-content.test.ts`, `components/designer/content/use-in-content.test.ts`; verify ds8 (pieza nueva en Borrador con los archivos en su biblioteca y elegidos EN ORDEN) · auditado: —
-- [~] F64 — Sincronizar archivos (`syncDecision`, ids estables) · prueba: `content-sync.test.ts` (los 5 estados, ids estables), `jobs/content-sync.test.ts` (37), `designs-ops.test.ts` (guardar uno vinculado encola con 30 s); verify ds8 (ids iguales al re-sincronizar, publicada intacta, programada solo avisa) · auditado: —
-- [~] F65 — Lo que se ve en Contenido · prueba: `lib/content/piece-designs.test.ts` (`designGroups` por `design_id`), `kanban.designer.test.ts` (destello), `load-piece-designer.test.ts`, `load-designed.test.ts`; los tests de Contenido existentes en verde · auditado: —
-- [~] F66 — Lo que no cambia en Contenido · prueba: `lib/designer/content-unchanged.test.ts` (14), caracterización intacta, `verify-content` verde; verify ds8 (desvincular y archivar no borran archivos) · auditado: —
+- [x] F61 — Formatos Contenido ↔ Diseñador · prueba: `lib/designer/content-map.test.ts` (56: las combinaciones y PNG por página o un PDF) · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F62 — Diseñar desde la pieza · prueba: `content-request.test.ts` (guion de 5 partes + Instagram Carrusel → `v45`, las 5 partes en el pedido), `content-link.test.ts`, `lib/actions/designer/content.test.ts`, `piece-drawer.designer.test.ts`, `screens/toolbar.test.ts` («Volver a la pieza») · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F63 — "Usar en contenido" · prueba: `screens/use-in-content.test.ts`, `components/designer/content/use-in-content.test.ts`; verify ds8 (pieza nueva en Borrador con los archivos en su biblioteca y elegidos EN ORDEN) · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F64 — Sincronizar archivos (`syncDecision`, ids estables) · prueba: `content-sync.test.ts` (los 5 estados, ids estables), `jobs/content-sync.test.ts` (37), `designs-ops.test.ts` (guardar uno vinculado encola con 30 s); verify ds8 (ids iguales al re-sincronizar, publicada intacta, programada solo avisa) · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F65 — Lo que se ve en Contenido · prueba: `lib/content/piece-designs.test.ts` (`designGroups` por `design_id`), `kanban.designer.test.ts` (destello), `load-piece-designer.test.ts`, `load-designed.test.ts`; los tests de Contenido existentes en verde · auditado: cumple (auditor Ola 3, 2ª pasada)
+- [x] F66 — Lo que no cambia en Contenido · prueba: `lib/designer/content-unchanged.test.ts` (14), caracterización intacta, `verify-content` verde; verify ds8 (desvincular y archivar no borran archivos) · auditado: cumple (auditor Ola 3, 2ª pasada)
+
+### Auditoría de la Ola 3 (F49–F56, F47 de DS6, F61–F66) — resultado final
+
+Auditor Opus de solo lectura, dos pasadas (8/11/2026 UTC). **Veredicto final: todo «cumple».**
+- **1ª pasada:** 16 criterios implementados y probados; 3 «falta» chicos de la regla «lo que el permiso no da se oculta» y del texto del plano: «Usar en contenido» sin mirar `content.create`, el aviso «El diseño cambió» con botones para quien no puede actuar, y el selector «Contacto / <origen>». Una observación de seguridad: emitir para una persona no respetaba el alcance de leads. Todo arreglado en `d814f76` (el selector queda en PENDIENTE como tarea de Servicios).
+- **2ª pasada:** los 4 puntos «cumple».
+- **Pruebas contra la base:** `verify-designer ds6` 53/53, `ds8` 43/43, `verify-content` «Todo verde».
+- **Para confirmar con Wendy (en PENDIENTE):** carta vertical y presentación disponibles solo como «Carrusel PDF» de LinkedIn.
+- **Revisión visual:** la de Generaciones, los modales de emitir y el drawer de la pieza con «Del diseño» requiere crear datos en la base real; queda con la del editor (PENDIENTE, «Revisión visual de la Ola 2»).
 
 ### Ola 4
 
@@ -813,6 +822,6 @@ Auditor Opus de solo lectura, tres pasadas (8/11/2026 UTC). **Veredicto final: t
 | DS3 | `feat/disenador-ia-ds3` | terminado (`a3406c2`) | F31–F38, F11, V2; 17.257 tests en su rama | sí (`063d970`, `8940152`; `sanitizeAiDoc` enganchado a `sanitizeDocHtml`) | sí (Ola 2) |
 | DS4 | `feat/disenador-ia-ds4` | terminado (`978d3a8`) | F39–F42, 54 ataques | sí (`2365ee6`; tope de 51 MB y `@import` primero) | sí (Ola 2) |
 | DS5 | `feat/disenador-ia-ds5` | terminado (`d65b6b2`) | F43–F47, F48b; verify-ds5 75/75 tras la 00324 | sí (`002ec98`; acciones propias en el historial) | sí (Ola 2) |
-| DS6 | `feat/disenador-ia-ds6` | terminado (`28ffb5d`) | F49–F56; verify-ds6 53/53 | sí (`172616a`, `07ca021`) | no |
-| DS8 | `feat/disenador-ia-ds8` | terminado (`f9ab062`) | F61–F66; verify-ds8 43/43, verify-content verde | sí (`5f69420`, `311f3a0`) | no |
+| DS6 | `feat/disenador-ia-ds6` | terminado (`28ffb5d`) | F49–F56; verify-ds6 53/53 | sí (`172616a`, `07ca021`) | sí (Ola 3) |
+| DS8 | `feat/disenador-ia-ds8` | terminado (`f9ab062`) | F61–F66; verify-ds8 43/43, verify-content verde | sí (`5f69420`, `311f3a0`) | sí (Ola 3) |
 | Auditor ola 1–5 | — (solo lectura) | sin arrancar | — | — | — |
