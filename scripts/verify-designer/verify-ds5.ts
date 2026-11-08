@@ -273,6 +273,19 @@ export default async function ds5(ctx: BlockContext): Promise<void> {
     check((await publishDesignCore(svc, actor, { designId }, { enqueue: enqueue as never })).ok, "se puede volver a publicar");
     check((await anon.rpc("design_public_get", { p_code: code })).data !== null, "y el mismo link vuelve a funcionar");
 
+    // ─── 00325: el link de una web muestra lo PUBLICADO, no lo que se está editando ─────
+    console.log("\n— Web publicada: lo que se ve es lo publicado —");
+    const webPublished = await publishDesignCore(svc, actor, { designId: webDesign!.id as string }, { enqueue: enqueue as never });
+    check(webPublished.ok, "publicar la página web", JSON.stringify(webPublished));
+    const edited = structuredClone(webDoc) as { pages: Array<{ background: { type: string; color?: string } }> };
+    edited.pages[0].background = { type: "color", color: "#123456" };
+    await raw.from("designs").update({ doc: edited }).eq("id", webDesign!.id);
+    const webPub = (await anon.rpc("design_public_get", { p_code: webDesign!.code })).data as { doc?: { pages: Array<{ background: { color?: string } }> } } | null;
+    check(!!webPub?.doc && webPub.doc.pages[0].background.color !== "#123456", "guardar un cambio después de publicar NO cambia lo que ve el público", JSON.stringify(webPub?.doc?.pages?.[0]?.background));
+    check((await publishDesignCore(svc, actor, { designId: webDesign!.id as string }, { enqueue: enqueue as never })).ok, "«Publicar cambios»");
+    const webPub2 = (await anon.rpc("design_public_get", { p_code: webDesign!.code })).data as { doc?: { pages: Array<{ background: { color?: string } }> } } | null;
+    check(webPub2?.doc?.pages[0].background.color === "#123456", "…y recién ahí el público ve el cambio", JSON.stringify(webPub2?.doc?.pages?.[0]?.background));
+
     // ─── Un diseño de otro negocio no se toca ───────────────────────────
     console.log("\n— Aislamiento entre negocios —");
     const stranger = await makeWorkspace("ds5-ajeno");
