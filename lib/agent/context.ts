@@ -1,4 +1,5 @@
 import { loadQualificationSettings } from "@/lib/contacts/qualification-settings-load";
+import { withoutDeletedMessages, type DeletableMessage } from "@/lib/messages/revoke";
 import { qualificationLabel, qualificationRubricText } from "@/lib/contacts/qualification";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
@@ -82,7 +83,7 @@ export async function loadRecentMessages(
     // es lo que evita el error el dia que esta consulta se copie a otra tabla.
     // La lista va en UNA sola linea a proposito: PostgREST tipa la fila desde el
     // literal, y una concatenacion con + lo vuelve `string` y se pierde el tipo.
-    .select("id, direction, text, created_at, sent_by_user_id, sent_by_flow_id, sent_by_agent_id, agent_run_id, transcript, transcript_status, media_description, attachments, interpretability")
+    .select("id, direction, text, created_at, sent_by_user_id, sent_by_flow_id, sent_by_agent_id, agent_run_id, transcript, transcript_status, media_description, attachments, interpretability, deleted_for_everyone_at")
     .eq("conversation_id", conversationId)
     // Un envio que no salio no es una respuesta (00262): si contara, cerraria
     // la rafaga del lead (el agente creeria que ya se le contesto) y entraria
@@ -94,7 +95,9 @@ export async function loadRecentMessages(
     console.error("[agent-context] no pude leer los mensajes:", error.message);
     return [];
   }
-  return ((data ?? []) as StoredMessage[]).reverse();
+  // Un mensaje borrado "para todos" en WhatsApp (00353) no es contexto: el contacto lo retiro, o lo retiramos
+  // nosotros y nunca le llego. Se saca aca y no en la consulta: asi los mocks de la cadena siguen sirviendo.
+  return withoutDeletedMessages((data ?? []) as (StoredMessage & DeletableMessage)[]).reverse();
 }
 
 /**

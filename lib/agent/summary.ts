@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { withoutDeletedMessages } from "@/lib/messages/revoke";
 import { z } from "zod";
 import type { Database, LeadTemperature } from "@/lib/types/database";
 import { getExactWorkspaceModel } from "@/lib/ai/provider";
@@ -233,13 +234,15 @@ export async function summarizeConversationOnClose(
     .from("messages")
     // Con la media (F9): un resumen que ignora las notas de voz cuenta una
     // conversacion distinta de la que pasó.
-    .select("direction, text, created_at, transcript, transcript_status, media_description, attachments")
+    .select("direction, text, created_at, transcript, transcript_status, media_description, attachments, deleted_for_everyone_at")
     .eq("conversation_id", conversation.id)
     .order("created_at", { ascending: true })
     .limit(SUMMARY_MAX_MESSAGES);
   if (conversation.summarized_at) query = query.gt("created_at", conversation.summarized_at);
-  const { data: rows } = await query;
-  const messages = (rows ?? [])
+  // Lo borrado "para todos" (00353) no entra al resumen: ya no es parte de la conversacion.
+  const { data: allRows } = await query;
+  const rows = withoutDeletedMessages(allRows ?? []);
+  const messages = rows
     .map((m) => ({ ...m, text: effectiveMessageText(m) }))
     .filter((m) => m.text);
   if (messages.length === 0) return { kind: "skipped", reason: "no_new_messages" };

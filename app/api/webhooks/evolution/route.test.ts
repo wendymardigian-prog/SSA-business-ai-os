@@ -74,6 +74,10 @@ const discardPendingDrafts = vi.fn();
 const supersedePendingDrafts = vi.fn();
 vi.mock("@/lib/agent/drafts/lifecycle", () => ({ discardPendingDrafts, supersedePendingDrafts }));
 
+// Marcar un borrado "para todos" (00353) es una RPC: aca se prueba que la ruta la llame con lo correcto.
+const markMessageDeletedForEveryone = vi.fn();
+vi.mock("@/lib/messages/revoke-inbound", () => ({ markMessageDeletedForEveryone }));
+
 const TOKEN = "token-de-prueba";
 const WS = "ws-1";
 const CHANNEL_ID = "ch-1";
@@ -147,6 +151,7 @@ beforeEach(() => {
   getEvolutionConfig.mockResolvedValue({ baseUrl: "https://evo.test", apiKey: "k", instancePrefix: "ssa" });
   applyOptOut.mockResolvedValue({ matched: false });
   runInboundAutomation.mockResolvedValue({ claimedBy: null });
+  markMessageDeletedForEveryone.mockResolvedValue(1);
 });
 
 afterEach(() => {
@@ -838,5 +843,106 @@ describe("webhook de Evolution: grupos de WhatsApp (00280)", () => {
     const res = await callRoute(post({ event: "group-participants.update", instance: INSTANCE, data: { action: "add" } }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, skipped: "aviso de grupo ilegible" });
+  });
+});
+
+describe("webhook de Evolution: mensajes borrados para todos (00353)", () => {
+  function expectNoMessagePath() {
+    expect(claimWebhookEvent).not.toHaveBeenCalled();
+    expect(insertMessage).not.toHaveBeenCalled();
+    expect(upsertConversation).not.toHaveBeenCalled();
+    expect(upsertContactForSender).not.toHaveBeenCalled();
+    expect(applyOptOut).not.toHaveBeenCalled();
+    expect(runInboundAutomation).not.toHaveBeenCalled();
+    expect(pauseSequencesOnReply).not.toHaveBeenCalled();
+    expect(maybeScheduleAgentTurn).not.toHaveBeenCalled();
+    expect(recordInboundTouch).not.toHaveBeenCalled();
+  }
+
+  it("el contacto borra un mensaje (messages.edited con el protocolMessage): marca la fila y no es un mensaje", async () => {
+    db();
+    const res = await callRoute(
+      post({
+        event: "messages.edited",
+        instance: INSTANCE,
+        data: { key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: false, id: "msg-borrado" }, type: "REVOKE" },
+      }),
+    );
+    await runAfter();
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, handled: "revoke", marked: 1 });
+    expect(markMessageDeletedForEveryone).toHaveBeenCalledWith(expect.anything(), {
+      workspaceId: WS,
+      channelId: CHANNEL_ID,
+      platformMessageId: "msg-borrado",
+      source: "contact",
+    });
+    expectNoMessagePath();
+  });
+
+  it("un borrado por la API (messages.delete con la fila de Evolution) usa el id de WhatsApp, no el de Evolution", async () => {
+    db();
+    await callRoute(
+      post({
+        event: "MESSAGES_DELETE",
+        instance: INSTANCE,
+        data: { id: "cuid-de-evolution", key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: true, id: "3EB0AAAAAAAAAAAAAAAA01" }, status: "DELETED" },
+      }),
+    );
+    expect(markMessageDeletedForEveryone).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ platformMessageId: "3EB0AAAAAAAAAAAAAAAA01", source: "business" }));
+    expectNoMessagePath();
+  });
+
+  it("un protocolMessage que llega por messages.upsert no entra como mensaje vacio", async () => {
+    db();
+    const res = await callRoute(
+      post(
+        message({
+          key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: true, id: "evt-revoke" },
+          message: { protocolMessage: { key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: true, id: "msg-viejo" }, type: 0 } },
+          messageType: "protocolMessage",
+        }),
+      ),
+    );
+    await runAfter();
+    expect(await res.json()).toMatchObject({ handled: "revoke" });
+    expect(markMessageDeletedForEveryone).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ platformMessageId: "msg-viejo", source: "business" }));
+    expectNoMessagePath();
+  });
+
+  it("una edicion (messages.edited con editedMessage) no marca nada ni es un mensaje", async () => {
+    db();
+    const res = await callRoute(
+      post({
+        event: "messages.edited",
+        instance: INSTANCE,
+        data: { key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: false, id: "msg-1" }, type: 14, editedMessage: { conversation: "otro texto" } },
+      }),
+    );
+    expect(await res.json()).toEqual({ ok: true, skipped: "edicion" });
+    expect(markMessageDeletedForEveryone).not.toHaveBeenCalled();
+    expectNoMessagePath();
+  });
+
+  it("otro aviso del protocolo por messages.upsert (mensajes temporales) se descarta sin guardarse", async () => {
+    db();
+    const res = await callRoute(
+      post(message({ message: { protocolMessage: { type: 3, ephemeralExpiration: 86400 } }, messageType: "protocolMessage" })),
+    );
+    await runAfter();
+    expect(await res.json()).toEqual({ ok: true, skipped: "mensaje del protocolo" });
+    expect(markMessageDeletedForEveryone).not.toHaveBeenCalled();
+    expectNoMessagePath();
+  });
+
+  it("si marcar falla, el webhook igual responde 200", async () => {
+    db();
+    markMessageDeletedForEveryone.mockResolvedValue(0);
+    const res = await callRoute(
+      post({ event: "messages.delete", instance: INSTANCE, data: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: false, id: "x", status: "DELETED" } }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, handled: "revoke", marked: 0 });
   });
 });

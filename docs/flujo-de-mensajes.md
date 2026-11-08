@@ -391,6 +391,19 @@ Se guarda por el id con el que el PROVEEDOR conoce el mensaje, porque el hilo de
 muchos mensajes no tienen fila propia. Los dos webhooks la atajan antes del camino de los mensajes. Enviar: Evolution
 (`sendReaction`, v1 y v2) y Zernio (`addMessageReaction` / `removeMessageReaction`, probando el id nativo y el propio).
 
+## Mensajes borrados para todos (00353, 8/11/2026)
+
+Cuando alguien borra un mensaje de WhatsApp «para todos» (el contacto, el teléfono del negocio, la API de Evolution o el botón de la bandeja), la fila **no se borra**: se marca con `deleted_for_everyone_at`, `deleted_for_everyone_source` (`contact`, `business` o `app`) y, desde la bandeja, `deleted_for_everyone_by`.
+
+- **Un borrado no es un mensaje.** Evolution 2.3.7 lo avisa por `MESSAGES_DELETE` y por `MESSAGES_EDITED` (ahí manda cualquier `protocolMessage`, también el de borrar); el receptor los ataja antes del camino de los mensajes, como las reacciones (`lib/messages/revoke.ts`, puro, con lo que se verificó en el código de Evolution). Un `protocolMessage` que llegara por `messages.upsert` también se ataja y nunca entra como un mensaje vacío. Una edición se ignora por ahora.
+- **Por la API, `data.id` es el id de la base de Evolution, no el de WhatsApp**: el bueno es `data.key.id`.
+- **La única puerta es `mark_message_deleted_for_everyone`** (solo `service_role`): busca por el id de WhatsApp dentro del canal y no pisa un borrado anterior (el aviso llega dos veces), salvo que el botón de la app le gana al eco de Evolution. Con la sesión de una persona no se puede escribir nada de esto (trigger `messages_guard_deleted_for_everyone`).
+- **La bandeja** muestra «Mensaje eliminado» en gris, quién lo borró y «Ver lo que decía» para el equipo. La lista dice «Mensaje eliminado» si era el último (`messages_refresh_last_message`, con un trigger al marcar).
+- **El agente y el resumen al cierre no lo leen** (`withoutDeletedMessages`).
+- **«Eliminar para todos»** aparece en un mensaje nuestro de WhatsApp que salió hace menos de 2 días (`canDeleteForEveryone`), para quien puede responder por esa cuenta, con confirmación. Llama a `DELETE /chat/deleteMessageForEveryone/{instancia}`.
+- **Un número conectado antes de este cambio no recibe los avisos de borrado** hasta que se vuelva a registrar su webhook (reconectarlo o guardar «Llamadas» una vez): los eventos se suscriben en `setWebhook`.
+- Pendiente: los grupos (sus mensajes viven en `whatsapp_group_messages`) y las ediciones.
+
 ## Una cuenta nueva en Zernio (22/10/2026)
 
 Un DM entra a la bandeja solo si su cuenta tiene **canal** (`channels.late_account_id`): si no, el receptor responde 404 y el mensaje se pierde. Antes los canales se creaban solo al guardar la clave de Zernio o con «Sincronizar canales», así que una segunda Instagram conectada en Zernio después no recibía nada hasta apretar el botón.
