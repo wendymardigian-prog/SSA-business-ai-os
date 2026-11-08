@@ -23,9 +23,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ALLOWED_MEDIA, removalPlan, type MediaEntry } from "@/lib/content/media";
 import { ensureMediaIds, idOf, removeFileFromNetworks } from "@/lib/content/media-library";
-import { connectedPlatforms } from "@/lib/content/connection";
 import { checkFormatFiles, getFormat } from "@/lib/content/network-format";
-import { networkStateOf, type NetworkPublication } from "@/lib/content/network-state";
 import { parseNewMediaEntry } from "@/lib/content/networks-schema";
 import type { NetworkEntry } from "@/lib/content/redistribution";
 import { resolveNetworkContent } from "@/lib/content/redistribution";
@@ -45,6 +43,7 @@ import {
   type ContentSyncPayload,
   type SyncAction,
 } from "../content-sync";
+import { loadNetworkStates, StateReadError } from "../content-state";
 import { parseDesignDoc, type DesignDoc } from "../doc/schema";
 import { renderPageHTML } from "../render/page-html";
 import { renderDesign, RenderFailed, renderErrorMessage, RenderNotConfigured, type RenderRequest, type RenderResult } from "../render-client";
@@ -121,26 +120,14 @@ async function readPost(db: Db, postId: string, workspaceId: string): Promise<Po
   return (data as unknown as PostRow | null) ?? null;
 }
 
-/** El estado de cada red de la pieza, con lo que hay en la cola de publicación (el mismo cálculo del drawer). */
-async function networkStates(db: Db, post: PostRow, workspaceId: string): Promise<Map<string, ReturnType<typeof networkStateOf>>> {
-  const [pubs, accounts] = await Promise.all([
-    db.from("social_posts").select("platform, status, scheduled_at, published_at, origin").eq("content_post_id", post.id).is("deleted_at", null),
-    db.from("social_accounts").select("platform, default_publisher").eq("workspace_id", workspaceId).eq("is_active", true),
-  ]);
-  if (pubs.error) throw new RenderFailed(`No se pudieron leer las publicaciones (${pubs.error.message}).`, { retryable: true });
-  if (accounts.error) throw new RenderFailed(`No se pudieron leer las cuentas (${accounts.error.message}).`, { retryable: true });
-  const connected = connectedPlatforms(((accounts.data ?? []) as Array<{ platform: string; default_publisher: string | null }>).map((a) => ({ platform: a.platform, is_active: true, default_publisher: a.default_publisher })));
-  const publications = new Map<string, NetworkPublication>();
-  for (const row of (pubs.data ?? []) as Array<{ platform: string; status: NetworkPublication["status"]; scheduled_at: string | null; published_at: string | null; origin: string | null }>) {
-    // Una fila cancelada no es la publicación de verdad (igual que en el tablero).
-    if (row.status === "cancelled") continue;
-    publications.set(row.platform, { platform: row.platform, status: row.status, scheduledAt: row.scheduled_at, publishedAt: row.published_at, origin: row.origin });
+/** El estado de cada red de la pieza (el mismo cálculo del drawer). Una lectura que falla se reintenta: no se decide a ciegas. */
+async function networkStates(db: Db, post: PostRow, workspaceId: string) {
+  try {
+    return await loadNetworkStates(db, { postId: post.id, workspaceId, networks: asNetworks(post.networks) });
+  } catch (error) {
+    if (error instanceof StateReadError) throw new RenderFailed(error.message, { retryable: true });
+    throw error;
   }
-  const out = new Map<string, ReturnType<typeof networkStateOf>>();
-  for (const network of asNetworks(post.networks)) {
-    out.set(network.platform, networkStateOf({ plannedAt: network.planned_at ?? null, publication: publications.get(network.platform), connected: connected.includes(network.platform) }));
-  }
-  return out;
 }
 
 /** Arma el HTML de cada página con los archivos firmados (igual que `design_render`). */
