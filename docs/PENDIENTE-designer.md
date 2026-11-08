@@ -100,3 +100,20 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - **Qué quedó:** F42 pide que la IA pueda editar «textos y estilos» de una página cargada. Se construyó la parte de textos (`updateText`, nodo por nodo, siempre como texto plano y limpio); los estilos (el CSS del archivo) no.
 - **Por qué:** dejar que la IA reescriba CSS de un archivo ajeno abre otra puerta (CSS que oculta o tapa contenido, `url()` hacia afuera) y pide su propia limpieza y pruebas; los textos son el 90 % de los pedidos.
 - **Qué se decidió:** solo textos. Para cambiar colores o tipografías de una página cargada: pedírselo a la IA en el archivo original y volver a cargarlo, o rearmarla con la IA desde cero. Si se construye, va con la misma limpieza de `css.ts` y un test de ataques.
+
+## Ola 3 · DS8 (8/11/2026 UTC)
+
+### Dos redes del mismo diseño comparten los PNG
+- **Qué quedó:** los archivos de un diseño tienen id estable (`design-<id>-<n>`) y una sola copia en la biblioteca de la pieza. Si una red está publicada y otra se actualiza, el archivo de la biblioteca cambia aunque la red publicada no se toque.
+- **Por qué:** es lo que pide F64 (ids que no cambian entre sincronizaciones).
+- **Qué se decidió:** se deja. Lo programado o publicado en Zernio tiene su propia copia; lo que se ve publicado no cambia.
+
+### Un diseño que no se puede renderizar muestra «Actualizando…» en la pieza
+- **Qué quedó:** si el render falla del todo (por ejemplo, sin el servicio de render), el drawer de la pieza no muestra un estado de fallo; el job reintenta a 1, 5 y 15 minutos y se puede forzar con «Actualizar los archivos».
+- **Por qué:** no hay un lugar en la pieza para el error de un diseño sin tocar más de Contenido.
+- **Qué se decidió:** queda así en esta corrida.
+
+### Historia con varias páginas, y carta/presentación solo como PDF de LinkedIn
+- **Qué quedó:** una Historia con varias páginas arma todas, y Contenido avisa «Sobran archivos» (admite uno por historia) en vez de recortar en silencio. Los formatos carta y presentación solo ofrecen el «Carrusel PDF» de LinkedIn.
+- **Por qué:** recortar sin avisar pierde trabajo; un PDF es un documento.
+- **Qué se decidió:** se deja así.

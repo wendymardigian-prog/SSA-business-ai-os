@@ -774,12 +774,13 @@ Auditor Opus de solo lectura, tres pasadas (8/11/2026 UTC). **Veredicto final: t
 - [ ] F56 — Código y fecha de emisión · prueba: — · auditado: —
 
 #### DS8 · Contenido (subagente)
-- [ ] F61 — Formatos Contenido ↔ Diseñador · prueba: — · auditado: —
-- [ ] F62 — Diseñar desde la pieza · prueba: — · auditado: —
-- [ ] F63 — "Usar en contenido" · prueba: — · auditado: —
-- [ ] F64 — Sincronizar archivos (`syncDecision`, ids estables) · prueba: — · auditado: —
-- [ ] F65 — Lo que se ve en Contenido · prueba: — · auditado: —
-- [ ] F66 — Lo que no cambia en Contenido · prueba: — · auditado: —
+> Integrado (`5f69420`) y enganchado (`311f3a0`: guardar, restaurar y la IA encolan la sincronización de un diseño vinculado; «Volver a la pieza»). `verify-designer --bloque ds8` 43/43 y `verify-content --despues-de-00253` «Todo verde». Caracterización del drawer y de `media-uploader` antes de tocarlos (commit `d09cc9e`, intacta).
+- [~] F61 — Formatos Contenido ↔ Diseñador · prueba: `lib/designer/content-map.test.ts` (56: las combinaciones y PNG por página o un PDF) · auditado: —
+- [~] F62 — Diseñar desde la pieza · prueba: `content-request.test.ts` (guion de 5 partes + Instagram Carrusel → `v45`, las 5 partes en el pedido), `content-link.test.ts`, `lib/actions/designer/content.test.ts`, `piece-drawer.designer.test.ts`, `screens/toolbar.test.ts` («Volver a la pieza») · auditado: —
+- [~] F63 — "Usar en contenido" · prueba: `screens/use-in-content.test.ts`, `components/designer/content/use-in-content.test.ts`; verify ds8 (pieza nueva en Borrador con los archivos en su biblioteca y elegidos EN ORDEN) · auditado: —
+- [~] F64 — Sincronizar archivos (`syncDecision`, ids estables) · prueba: `content-sync.test.ts` (los 5 estados, ids estables), `jobs/content-sync.test.ts` (37), `designs-ops.test.ts` (guardar uno vinculado encola con 30 s); verify ds8 (ids iguales al re-sincronizar, publicada intacta, programada solo avisa) · auditado: —
+- [~] F65 — Lo que se ve en Contenido · prueba: `lib/content/piece-designs.test.ts` (`designGroups` por `design_id`), `kanban.designer.test.ts` (destello), `load-piece-designer.test.ts`, `load-designed.test.ts`; los tests de Contenido existentes en verde · auditado: —
+- [~] F66 — Lo que no cambia en Contenido · prueba: `lib/designer/content-unchanged.test.ts` (14), caracterización intacta, `verify-content` verde; verify ds8 (desvincular y archivar no borran archivos) · auditado: —
 
 ### Ola 4
 
@@ -812,5 +813,5 @@ Auditor Opus de solo lectura, tres pasadas (8/11/2026 UTC). **Veredicto final: t
 | DS4 | `feat/disenador-ia-ds4` | terminado (`978d3a8`) | F39–F42, 54 ataques | sí (`2365ee6`; tope de 51 MB y `@import` primero) | sí (Ola 2) |
 | DS5 | `feat/disenador-ia-ds5` | terminado (`d65b6b2`) | F43–F47, F48b; verify-ds5 75/75 tras la 00324 | sí (`002ec98`; acciones propias en el historial) | sí (Ola 2) |
 | DS6 | `feat/disenador-ia-ds6` | trabajando (desde `9dfa5f5`) | — | no | no |
-| DS8 | `feat/disenador-ia-ds8` | trabajando (desde `9dfa5f5`) | — | no | no |
+| DS8 | `feat/disenador-ia-ds8` | terminado (`f9ab062`) | F61–F66; verify-ds8 43/43, verify-content verde | sí (`5f69420`, `311f3a0`) | no |
 | Auditor ola 1–5 | — (solo lectura) | sin arrancar | — | — | — |
