@@ -457,7 +457,25 @@ Todos los dashboards usan `PeriodPopover`: atajos y un calendario de dos meses e
 
 ## El funnel y los tooltips de Meta Ads (6/11/2026)
 
-El funnel aparece en los detalles de una campaña, un AdSet y un anuncio. **Impresiones, Clics y Leads Meta son de Meta; Leads CRM, Agendas y Ventas son de tu CRM**, y cada paso lo explica al pasar por encima (`funnelSteps`, `lib/dashboards/ads-view.ts`). Un paso del CRM en cero no se dibuja: la línea de abajo avisa cuál falta (`funnelNote`). Leads CRM no lleva porcentaje contra Leads Meta porque son dos formas de contar lo mismo. Clics son los salientes si Meta los informa, por eso pueden ser menos que los de la tabla. Las ocho cifras de arriba también explican qué son (`buildKpiItems`).
+El funnel aparece en los detalles de una campaña, un AdSet y un anuncio, y cada paso lo explica al pasar por encima. Las ocho cifras de arriba también explican qué son (`buildKpiItems`).
+
+### Un funnel según el objetivo (8/11/2026)
+
+Los pasos de Meta cambian según para qué optimiza el AdSet (`meta_adsets.optimization_goal`), y si no alcanza, según el objetivo de la campaña (`lib/dashboards/ads-funnel.ts`, `funnelKindFor`):
+
+| Funnel | Pasos de Meta, después de Impresiones |
+|---|---|
+| Visitas al perfil | Visitas al perfil → Conversaciones (si hubo) |
+| Tráfico a la web | Clics en el enlace → Visitas a la página (si hubo) |
+| Mensajes | Clics → Conversaciones |
+| Clientes potenciales y General | Clics (los salientes si Meta los da) |
+| Ventas | Clics en el enlace → Visitas a la página |
+| Reproducciones, Interacción, Reconocimiento | Reproducciones, Interacciones o Alcance |
+
+- **Después, en todos, lo mismo**: Leads Meta (si Meta contó alguno, o siempre en un funnel de leads o ventas) y Leads CRM, **los dos contra el último paso de Meta**: son dos formas de contar lo mismo, uno no se calcula contra el otro. Agendas y Ventas, si hubo, **contra el CRM** (las agendas contra los leads del CRM, las ventas contra las agendas). Compras Meta, si hubo, contra los Leads Meta. Cada paso guarda contra qué se compara (`base`), y la caída solo se dibuja entre dos pasos que se comparan entre sí.
+- **Una campaña cuyos AdSets activos optimizan cosas distintas** muestra el funnel general y lo avisa: sumar visitas al perfil con leads daría un número sin sentido. Un anuncio o un AdSet tienen siempre uno solo.
+- **Las visitas al perfil no vienen en las acciones de Meta**, solo en su campo `results` (indicador `profile_visit_view`). El sincronizado lo pide en campaña, AdSet y anuncio (a nivel cuenta Meta no lo da, porque mezcla objetivos) y lo guarda dentro de `actions` con el prefijo `result:` (`resultsMap`, `lib/meta/insights.ts`). Lo sincronizado antes del 8/11/2026 no lo tiene: el paso queda en «—» con una nota, hasta releer esos días: vaciar `first_sync_completed_at` de la cuenta, como en «Valor de compras y ROAS Meta», y el próximo sync relee 90 días.
+- El funnel aparece siempre que hay impresiones, también sin leads. Un porcentaje menor a 0,1 se escribe «<0.1%», no como un cero ni como una caída del 100 %.
 
 ## La pantalla Anuncios (menú → Adquisición)
 
