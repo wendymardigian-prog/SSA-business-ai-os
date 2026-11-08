@@ -5,10 +5,16 @@
  *
  * Muestra, para las ultimas 24 horas (o --horas=N):
  *   1. Corridas de cada cron de pg_cron y el tiempo total que tardaron
- *      (cron.job_run_details).
- *   2. Llamadas a la app: por cada cron que usa private.call_app_cron, cuantas
- *      llamo y cuantas salteo la guarda (private.cron_guard_state, desde la
- *      00327; antes de la 00327 cada corrida era una llamada).
+ *      (cron.job_run_details). Cada corrida abre una conexion a la base
+ *      (cron.use_background_workers = off) y escribe tres veces en ese
+ *      historial: por eso desde la 00349 los de la misma frecuencia son un
+ *      solo trabajo (lib/cron/ticks.json).
+ *   2. Llamadas a la app: por cada ruta, cuantas llamo y cuantas salteo la
+ *      guarda (private.cron_guard_state, desde la 00327; antes de la 00327 cada
+ *      corrida era una llamada), y en que trabajo de pg_cron corre.
+ *   2b. Los errores de las partes de un trabajo agrupado
+ *      (private.cron_tick_errors, desde la 00349): la corrida dice "succeeded"
+ *      aunque una parte haya fallado.
  *   3. Pedidos HTTP que salieron de verdad (net._http_response, se guarda 1 dia).
  *   4. Si se puede leer pg_stat_statements: lo que lleva Realtime leyendo cambios.
  *
@@ -51,28 +57,52 @@ const runs = sql(`
 table(runs, [["jobname", "cron"], ["corridas", "corridas"], ["segundos", "segundos"], ["ms_promedio", "ms prom."], ["fallidas", "fallidas"]]);
 const totalRuns = runs.reduce((a, r) => a + Number(r.corridas), 0);
 const totalSecs = runs.reduce((a, r) => a + Number(r.segundos), 0);
+const bgWorkers = sql(`SELECT current_setting('cron.use_background_workers', true) AS v`)[0]?.v;
 console.log(`  TOTAL: ${totalRuns} corridas, ${totalSecs.toFixed(1)} s`);
+console.log(
+  bgWorkers === "on"
+    ? `  (cron.use_background_workers = on: las corridas no abren conexion; escriben ${totalRuns * 3} veces en cron.job_run_details)`
+    : `  (cron.use_background_workers = ${bgWorkers ?? "?"}: ${totalRuns} conexiones a la base y ${totalRuns * 3} escrituras en cron.job_run_details)`,
+);
 
 console.log("\nLlamadas a la app (private.call_app_cron)");
 const hasGuard = sql(`SELECT to_regclass('private.cron_guard_state') IS NOT NULL AS ok`)[0]?.ok === true;
-const appCrons = runs.filter((r) => /call_app_cron/.test(r.command));
+// En que trabajo corre cada ruta: el suyo (comando con la ruta) o uno agrupado (la ruta esta en el cuerpo de su funcion).
+const jobOf = new Map();
+for (const j of sql(`
+  SELECT j.jobname, j.command, CASE WHEN f.oid IS NOT NULL THEN pg_get_functiondef(f.oid) END AS body
+  FROM cron.job j
+  LEFT JOIN pg_proc f ON f.oid = to_regprocedure(substring(j.command FROM 'SELECT (private\\.cron_tick_[a-z0-9_]+)\\(\\)') || '()')`)) {
+  const text = `${j.command}\n${j.body ?? ""}`;
+  for (const m of text.matchAll(/call_app_cron(_if_work)?\('([^']+)'/g)) jobOf.set(m[2], { job: j.jobname, viaGuard: Boolean(m[1]) });
+}
+const runsByJob = new Map(runs.map((r) => [r.jobname, r.corridas]));
 const guarded = hasGuard
   ? new Map(sql(`SELECT path, called_count, skipped_count, counted_since FROM private.cron_guard_state`).map((r) => [r.path, r]))
   : new Map();
-const rows = appCrons.map((r) => {
-  const path = /call_app_cron(?:_if_work)?\('([^']+)'/.exec(r.command)?.[1] ?? r.jobname;
+const rows = [...jobOf.entries()].map(([path, { job, viaGuard }]) => {
   const g = guarded.get(path);
-  const viaGuard = /call_app_cron_if_work/.test(r.command);
   return {
     path,
-    corridas: r.corridas,
-    llamadas: viaGuard ? (g ? `${g.called_count} desde ${String(g.counted_since).slice(0, 16)}` : "sin datos todavia") : r.corridas,
+    job: job === path ? "(el suyo)" : job,
+    corridas: runsByJob.get(job) ?? 0,
+    llamadas: viaGuard ? (g ? `${g.called_count} desde ${String(g.counted_since).slice(0, 16)}` : "sin datos todavia") : runsByJob.get(job) ?? 0,
     salteadas: viaGuard ? (g ? g.skipped_count : "-") : "sin guarda",
   };
 });
-table(rows, [["path", "ruta"], ["corridas", "corridas"], ["llamadas", "llamadas a la app"], ["salteadas", "salteadas por la guarda"]]);
+rows.sort((a, b) => Number(b.corridas) - Number(a.corridas) || a.path.localeCompare(b.path));
+table(rows, [["path", "ruta"], ["job", "trabajo de pg_cron"], ["corridas", "corridas"], ["llamadas", "llamadas a la app"], ["salteadas", "salteadas por la guarda"]]);
 if (!hasGuard) console.log("  (la 00327 no esta aplicada: cada corrida es una llamada)");
 else console.log("  (los contadores de la guarda son desde 'counted_since', no de la ventana; se vacian si la base se reinicia)");
+
+console.log("\nErrores de las partes de los trabajos agrupados (private.cron_tick_errors)");
+if (sql(`SELECT to_regclass('private.cron_tick_errors') IS NOT NULL AS ok`)[0]?.ok !== true) {
+  console.log("  (la 00349 no esta aplicada)");
+} else {
+  const errors = sql(`SELECT part, error_count, last_error_at::text AS ultimo, left(last_error, 80) AS error FROM private.cron_tick_errors ORDER BY last_error_at DESC`);
+  if (errors.length === 0) console.log("  ninguno");
+  else table(errors, [["part", "parte"], ["error_count", "veces"], ["ultimo", "ultimo"], ["error", "error"]]);
+}
 
 console.log("\nPedidos HTTP que salieron (net._http_response, se guarda 1 dia)");
 const http = sql(`SELECT count(*) AS pedidos, min(created)::text AS desde FROM net._http_response WHERE created > ${window}`)[0];

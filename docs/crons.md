@@ -1,6 +1,6 @@
 # Los cron y su guarda
 
-pg_cron corre ~32 trabajos. La mayoría llama a una ruta de la app (`/api/cron/<ruta>`) con `private.call_app_cron`, que descifra la URL y el secreto de Vault y manda un pedido HTTP. La app, al recibirlo, le hace varias consultas a la base para ver si hay algo que hacer.
+pg_cron corre ~29 trabajos (35 antes de la 00349). La mayoría llama a una ruta de la app (`/api/cron/<ruta>`) con `private.call_app_cron`, que descifra la URL y el secreto de Vault y manda un pedido HTTP. La app, al recibirlo, le hace varias consultas a la base para ver si hay algo que hacer.
 
 Hasta la 00327 eso pasaba ~16.500 veces por día aunque no hubiera nada: `agent-bursts` y `send-queue` cada 15 segundos (~5.600 veces cada uno), `jobs`, `sequences` y `automation-events` cada minuto. El 8/11/2026 la base quedó "Unhealthy" con el plan chico. La medición de ese día está en «Antes y después».
 
@@ -20,9 +20,27 @@ pg_cron (cada 15 s / 1 min)
 - **La llamada de seguridad.** Aunque la guarda diga que no hay nada, cada cron llama una vez cada tanto: si la guarda se equivoca, se pierde ese rato, nunca el trabajo. 10 minutos para los que corren cada 15 s, cada minuto o cada 2; 1 hora `whatsapp-health` y `drafts-refresh`; 2 horas `inactivity`; 1 día `bg-collect`.
 - **El estado es UNLOGGED** (`private.cron_guard_state`): la última llamada y dos contadores (llamadas y salteadas) por ruta. No escribe WAL; si la base se reinicia de golpe se vacía, y el primer tic de cada cron llama.
 
+## Un trabajo por frecuencia (00349)
+
+Aunque la guarda no llame a la app, cada corrida de pg_cron le cuesta a la base: abre una conexión nueva (`cron.use_background_workers = off` en Supabase, ~400 ms por corrida el 8/11/2026) y escribe tres veces en `cron.job_run_details`, que tiene WAL (`cron.log_run` no se puede apagar en Supabase). Por eso los cron de la misma frecuencia son **un solo trabajo**:
+
+| Trabajo | Horario | Función | Partes, en este orden |
+|---|---|---|---|
+| `every-15-seconds` | `15 seconds` | `private.cron_tick_15_seconds()` | `agent-bursts`, `send-queue` |
+| `every-minute` | `* * * * *` | `private.cron_tick_minute()` | `automation-events`, `jobs`, `sequences` |
+| `every-5-minutes` | `3-59/5 * * * *` | `private.cron_tick_5_minutes()` | `agent-drafts-sweep` (`sweep_agent_drafts`), `draft-window-alerts` (`alert_draft_windows`), `drafts-refresh`, `whatsapp-health` |
+
+- **Cada parte va en su propio bloque `BEGIN … EXCEPTION`**: una que falla se deshace sola y las demás siguen. Su error queda en `private.cron_tick_errors` (UNLOGGED: cuántas veces y el último) y en el log de Postgres; la corrida dice "succeeded" igual, así que **los errores se miran ahí**, no en `cron.job_run_details` (lo muestra `measure-cron-load`).
+- **Las rutas de la app siguen pasando por su guarda** con la misma llamada de seguridad: el trabajo llama a `private.call_app_cron_if_work`, no a la app directo. Las llamadas salen con pg_net cuando la corrida termina (`net.http_get` solo encola), así que juntarlas no pone una detrás de otra.
+- **Una corrida es una transacción.** Si se cortara con un error que no se ataja (cancelarla a mano), se deshace entera, con el estado de las guardas: el tic siguiente vuelve a llamar. No se pierde trabajo.
+- **`lock_timeout` de 10 s por corrida**: una parte que espera un candado (un `UPDATE` de `sweep_agent_drafts`) falla esa vez en lugar de frenar a las otras.
+- **El de 5 minutos corre en los minutos 3, 8, 13…**: no arranca junto con los de cada 10 y 15 minutos ni con los de cada hora (7, 10, 15, 17 y 30). El barrido de borradores vencidos va primero, así los avisos de ventana y la guarda de `drafts-refresh` no ven un borrador que se acaba de vencer.
+- **Siguen con su propio cron**: `content-upload` (cada 2 min), `inactivity`, `bg-collect`, `bg-dispatch` y `eod-reminders-enqueue` (cada 15), `fathom-sync` (cada 10) y los diarios y por hora.
+- **Un cron nuevo de una frecuencia que ya tiene trabajo** se suma como una parte más (en una migración nueva que redefine la función, y en `lib/cron/ticks.json`), no como un trabajo aparte. `lib/cron/guards.test.ts` exige que cada parte esté sola en su bloque, en el orden de `ticks.json`, y que cada trabajo esté agendado con su horario.
+
 ## Qué mira cada guarda
 
-| Cron | Cada | Llama si… | Lo cubre la llamada de seguridad |
+| Ruta | Cada | Llama si… | Lo cubre la llamada de seguridad |
 |---|---|---|---|
 | `agent-bursts` | 15 s | hay un turno del agente vencido; uno trabado en `processing` hace más de 6 min; o una corrida de IA (de cualquier origen) abierta hace más de 10 min | — |
 | `send-queue` | 15 s | un destinatario en `sending` hace más de 5 min; un broadcast programado cuya hora llegó; o un broadcast enviándose cuyo carril no está en pausa y ya puede mandar (o todavía no tiene carril) | — |
@@ -73,11 +91,14 @@ Estimación con lo que hubo ese día (tics con trabajo + llamadas de seguridad):
 
 La 00327 se aplicó el 8/11/2026 a las 05:08 UTC. En los primeros 10 minutos todas las corridas salieron bien. Llamadas a la app sobre corridas: `agent-bursts` 2 de 41, `send-queue` 2 de 41, `jobs` 2 de 10, `automation-events` y `sequences` 1 de 10, `content-upload` 1 de 5. Las corridas de pg_cron siguen siendo las mismas (cambia lo que hace cada una: una consulta de milisegundos en vez de un pedido HTTP).
 
+Con la 00349 (cuentas sobre un día completo): los nueve cron agrupados hacían 2 × 5.760 + 3 × 1.440 + 4 × 288 = **16.992** corridas por día y pasan a 5.760 + 1.440 + 288 = **7.488**. Son **9.504 corridas y 9.504 conexiones menos por día** (−56 %) y 28.512 escrituras menos en `cron.job_run_details`. El total de pg_cron baja de ~18.000 a ~8.500 corridas por día. Ensayada en producción el 8/11/2026 en una transacción que se deshizo: los tres trabajos juntos tardaron 39 ms (35 trabajos pasaron a 29); con `sweep_agent_drafts` forzado a fallar, las otras partes corrieron y el error quedó anotado.
+
 ## Verificación
 
 ```
 node scripts/verify-cron-guards.mjs     # la decision SQL = TS, los comandos de cada cron, permisos, Realtime, y cada guarda con y sin el dato justo
+node scripts/verify-cron-guards.mjs --despues-de-00349   # ademas: los tres trabajos agrupados y que una parte que falla no frena a las otras
 node scripts/measure-cron-load.mjs      # antes y despues (solo lee)
 ```
 
-`verify-cron-guards` arma sus datos de prueba en una transacción que se deshace (con fecha del año 2000, para que los datos reales no se vean): no deja nada y no necesita el candado de los otros `verify-*`.
+`verify-cron-guards` arma sus datos de prueba (y, con `--despues-de-00349`, la falla forzada) en una transacción que se deshace (con fecha del año 2000, para que los datos reales no se vean): no deja nada y no necesita el candado de los otros `verify-*`.
