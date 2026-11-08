@@ -811,6 +811,6 @@ Auditor Opus de solo lectura, tres pasadas (8/11/2026 UTC). **Veredicto final: t
 | DS3 | `feat/disenador-ia-ds3` | terminado (`a3406c2`) | F31–F38, F11, V2; 17.257 tests en su rama | sí (`063d970`, `8940152`; `sanitizeAiDoc` enganchado a `sanitizeDocHtml`) | sí (Ola 2) |
 | DS4 | `feat/disenador-ia-ds4` | terminado (`978d3a8`) | F39–F42, 54 ataques | sí (`2365ee6`; tope de 51 MB y `@import` primero) | sí (Ola 2) |
 | DS5 | `feat/disenador-ia-ds5` | terminado (`d65b6b2`) | F43–F47, F48b; verify-ds5 75/75 tras la 00324 | sí (`002ec98`; acciones propias en el historial) | sí (Ola 2) |
-| DS6 | `feat/disenador-ia-ds6` | sin arrancar | — | no | no |
-| DS8 | `feat/disenador-ia-ds8` | sin arrancar | — | no | no |
+| DS6 | `feat/disenador-ia-ds6` | trabajando (desde `9dfa5f5`) | — | no | no |
+| DS8 | `feat/disenador-ia-ds8` | trabajando (desde `9dfa5f5`) | — | no | no |
 | Auditor ola 1–5 | — (solo lectura) | sin arrancar | — | — | — |
