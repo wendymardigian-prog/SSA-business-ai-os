@@ -435,6 +435,10 @@ function daysSince(dateStr: string | null | undefined): number | null {
  *
  * No hay logica proactiva de ventana: no se bloquea el envio ni se calcula
  * nada. Se avisa, y si igual se manda y la API rechaza, el error se explica.
+ *
+ * Solo en Instagram: la ventana de 24 horas es de Instagram. WhatsApp por
+ * Evolution (Baileys, por QR) no tiene esa ventana y el email tampoco, asi que
+ * ahi el aviso confundia.
  */
 function StaleConversationNotice({ days }: { days: number }) {
   return (
@@ -1652,7 +1656,7 @@ export function MessageThread({
         </div>
       </div>
 
-      {staleDays !== null && staleDays >= 7 && (
+      {conversation?.platform === "instagram" && staleDays !== null && staleDays >= 7 && (
         <StaleConversationNotice days={staleDays} />
       )}
 

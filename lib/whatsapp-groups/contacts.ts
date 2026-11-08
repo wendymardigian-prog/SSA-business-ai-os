@@ -18,11 +18,12 @@ import { upsertContactForSender } from "@/lib/inbox-sync";
 import { recordTouch } from "@/lib/contacts/touch";
 import { touchAccountOf } from "@/lib/inbox/accounts";
 import { withKnownLid } from "@/lib/whatsapp-known-lid";
+import { UNKNOWN_WHATSAPP_NAME } from "@/lib/contacts/anonymous";
 
 type Db = SupabaseClient<Database>;
 
 /** El nombre de un contacto de WhatsApp del que no sabemos ni el nombre ni el numero. */
-const UNKNOWN_WHATSAPP_NAME = "Contacto de WhatsApp";
+
 
 export type GroupContactEvent = "join" | "import" | "activity";
 

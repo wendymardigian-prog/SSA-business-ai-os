@@ -17,12 +17,16 @@
  *     vencida / no necesita respuesta);
  *   - chat_dashboard_response_time cuenta solo las respuestas humanas, desde el
  *     primer mensaje sin responder;
- *   - el barrido de borradores pasa a 'expired' un borrador con la ventana cerrada.
+ *   - el barrido de borradores pasa a 'expired' un borrador con la ventana cerrada;
+ *   - (00354) un mensaje nuestro que sale reabre una conversacion cerrada; uno
+ *     importado (fecha vieja), uno fallido, uno de una conversacion cerrada
+ *     despues o pospuesta, no. Corre con --despues-de-00354.
  *
  * Crea y borra todo lo suyo (prefijo zz-test-). No se corre a la vez que otro
  * verify-*: comparten prefijo. Tomar el candado /private/tmp/ssa-verify.lock.
  *
  *   node scripts/verify-chat-awaiting.mjs
+ *   node scripts/verify-chat-awaiting.mjs --despues-de-00354
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -213,6 +217,44 @@ try {
   check(Boolean(denied.error), "un usuario con sesion no puede llamar a set_conversation_no_reply (solo el servidor)");
   const visible = await user.rpc("chat_waiting_now_v2", { p_workspace_id: ws.id, p_channel: null });
   check(!visible.error && Number(visible.data?.[0]?.can_reply) === 2, "el Owner lee el contador con su sesion", visible.error?.message);
+
+  // -------------------------------------------------------------------------
+  if (process.argv.includes("--despues-de-00354")) {
+    console.log("\n8. (00354) un mensaje nuestro reabre la conversacion cerrada");
+    const closed = async (closedAgoMs, status = "closed") => {
+      const c = await conversation(wa, "whatsapp");
+      await svc.from("conversations").update({ status, closed_at: new Date(Date.now() - closedAgoMs).toISOString() }).eq("id", c.id);
+      return c.id;
+    };
+    const statusOf = async (id) => (await svc.from("conversations").select("status").eq("id", id).single()).data?.status;
+    const now = () => new Date().toISOString();
+
+    const c1 = await closed(60_000);
+    await message(c1, "outbound", "zz-test broadcast", now(), { origin: "broadcast" });
+    check((await statusOf(c1)) === "open", "un broadcast que sale reabre la conversacion cerrada");
+
+    const c2 = await closed(60_000);
+    await message(c2, "outbound", "zz-test importado", new Date(Date.now() - 30 * 86400_000).toISOString(), { origin: "external" });
+    check((await statusOf(c2)) === "closed", "un mensaje importado (fecha vieja) no la reabre");
+
+    const c3 = await closed(60_000);
+    const failedId = await message(c3, "outbound", "zz-test fallido", now(), { status: "failed", origin: "flow" });
+    check((await statusOf(c3)) === "closed", "un envio fallido no la reabre");
+    await svc.from("messages").update({ status: "sent" }).eq("id", failedId);
+    check((await statusOf(c3)) === "open", "el mismo envio, cuando sale en un reintento, la reabre");
+
+    const c4 = await closed(-60_000);
+    await message(c4, "outbound", "zz-test respondo y cierro", new Date(Date.now() - 5_000).toISOString());
+    check((await statusOf(c4)) === "closed", "respondo y cierro: si se cerro despues del mensaje, sigue cerrada");
+
+    const c5 = await closed(60_000, "snoozed");
+    await message(c5, "outbound", "zz-test pospuesta", now(), { origin: "sequence" });
+    check((await statusOf(c5)) === "snoozed", "una conversacion pospuesta no se toca");
+
+    const c6 = await closed(60_000);
+    await message(c6, "inbound", "zz-test entrante", now());
+    check((await statusOf(c6)) === "closed", "un entrante no la reabre por este trigger (lo hace el receptor)");
+  }
 } catch (err) {
   fail("la verificacion se corto", err instanceof Error ? err.message : String(err));
 } finally {

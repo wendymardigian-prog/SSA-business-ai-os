@@ -12,7 +12,7 @@
 import type { EvolutionStoredChat, EvolutionStoredMessage } from "@/lib/evolution-client";
 import { fromBaileysMessage, toAttachmentsColumn, unwrapBaileysMessage } from "@/lib/messages/attachments";
 import { extractText } from "@/lib/evolution-message";
-import { isPlaceholderName } from "@/lib/contacts/anonymous";
+import { isPlaceholderName, UNKNOWN_WHATSAPP_NAME } from "@/lib/contacts/anonymous";
 import { parseBaileysReaction } from "@/lib/messages/reactions-inbound";
 import { parseBaileysPollVote } from "@/lib/messages/poll-votes";
 import { previewForMessage } from "@/lib/message-preview";
@@ -23,7 +23,7 @@ import { whatsappTimestampToIso } from "./review";
 export const IMPORT_OPEN_WINDOW_MS = 7 * 24 * 60 * 60_000;
 
 /** El nombre de un contacto del que no sabemos ni el nombre ni el numero (igual que el receptor). */
-const UNKNOWN_NAME = "Contacto de WhatsApp";
+const UNKNOWN_NAME = UNKNOWN_WHATSAPP_NAME;
 
 export interface ImportedMessage {
   platformMessageId: string;

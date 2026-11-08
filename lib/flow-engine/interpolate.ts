@@ -7,7 +7,7 @@
  * hay que tocar la de simulator.ts — lo cubre un test que compara las dos.
  */
 
-import { fallbackText, needsFallback } from "@/lib/templates/fallback";
+import { EMPTY_NAME_MARK, fallbackText, isEmptyName, needsFallback, tidyEmptyNames } from "@/lib/templates/fallback";
 
 /**
  * Sigue un dot-path adentro de un objeto de variables.
@@ -43,12 +43,15 @@ export function interpolateVariables(
   text: string,
   variables: Record<string, unknown>
 ): string {
-  return text.replace(/\{\{([\w-]+(?:\.[\w-]+)*)(?:\s*\|([^{}]*))?\}\}/g, (token, path: string, fallback?: string) => {
+  const out = text.replace(/\{\{([\w-]+(?:\.[\w-]+)*)(?:\s*\|([^{}]*))?\}\}/g, (token, path: string, fallback?: string) => {
     const value = resolveVariablePath(variables, path);
     if (fallback !== undefined && needsFallback(path, value)) return fallbackText(fallback);
     if (value === null || value === undefined) return token;
+    // Un nombre vacío o de relleno sin respaldo no se pega: el saludo queda sin nombre («¡Hola!», no «¡Hola Contacto!»).
+    if (isEmptyName(path, value)) return EMPTY_NAME_MARK;
     return typeof value === "object" ? JSON.stringify(value) : String(value);
   });
+  return tidyEmptyNames(out);
 }
 
 /**

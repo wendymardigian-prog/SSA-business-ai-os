@@ -14,6 +14,8 @@
  * ejemplo de su disparador.
  */
 
+import { isGreetingPlaceholder } from "@/lib/contacts/anonymous";
+
 /** Los disparadores de mensaje: el texto del mensaje y su origen. */
 const MESSAGE_VARIABLES = ["message", "message_origin.ad_id", "message_origin.ad_title", "message_origin.is_story_mention"];
 
@@ -99,6 +101,8 @@ const GREETABLE_NAME = /^\p{L}[\p{L}\p{M}'’-]*$/u;
  * saludar a nadie («F», «Prof.», un email, un id o un @usuario). Mejor «Hola.» que «Hola, F.».
  */
 export function firstNameOf(displayName: string | null | undefined): string {
+  // «Contacto de WhatsApp», «Instagram User», un id o un @usuario: no son nombres (antes salía «Hola Contacto»).
+  if (isGreetingPlaceholder(displayName)) return "";
   const first = (displayName ?? "").trim().split(/\s+/)[0] ?? "";
   return first.length >= 2 && GREETABLE_NAME.test(first) ? first : "";
 }
