@@ -265,6 +265,30 @@ varios minutos. Es normal.
 No trae los mensajes que el remitente borró (`isDeleted`), por la misma regla de
 Meta que se honra en la retención.
 
+## Cuándo se reabre una conversación (00354, 8/11/2026)
+
+Una conversación cerrada se reabre en dos casos:
+
+- **Escribe el contacto**: lo hace el receptor (`lib/inbound.ts`), como siempre.
+- **Sale un mensaje nuestro**, venga de donde venga (bandeja, broadcast,
+  automatización, secuencia, agente o el teléfono): lo hace la base, con el
+  trigger `messages_zzz_reopen_conversation` (función
+  `messages_reopen_conversation`). Una sola regla para todo lo que sale.
+
+El trigger reabre solo si el mensaje **salió** (ni `failed` ni `pending`; un
+reintento que sale también cuenta), es **reciente** (creado hace menos de 10
+minutos: lo importado del historial trae su fecha vieja y no reabre nada) y la
+conversación se cerró **antes** de ese mensaje (responder y cerrar la deja
+cerrada). Una conversación pospuesta (`snoozed`) no se toca, y `closed_at` se
+conserva. Nunca tumba el insert de un mensaje.
+
+Por qué: un broadcast de WhatsApp a chats importados del historial (que nacen
+cerrados) quedaba guardado como último mensaje, pero la conversación seguía
+cerrada y la bandeja, que muestra «Abiertas», no la mostraba. Al aplicarla se
+reabrieron las conversaciones de broadcasts que ya habían salido.
+
+`node scripts/verify-chat-awaiting.mjs --despues-de-00354` prueba los casos.
+
 ## Quién escribió cada mensaje
 
 `messages` distingue cuatro autores, todos nullables:
