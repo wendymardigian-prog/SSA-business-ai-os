@@ -12,6 +12,8 @@ import { validatePoll, type PollDraft } from "@/lib/whatsapp-groups/poll";
 import { sendToGroup, type GroupSendTarget } from "@/lib/whatsapp-groups/send";
 import { groupMediaFolder } from "@/lib/whatsapp-groups/rules";
 import { automationFromMessage } from "@/lib/whatsapp-groups/automation/from-message";
+import { buildPollAnswerFlows, pollAnswerActionsProblem } from "@/lib/whatsapp-groups/automation/poll-answer-actions";
+import { publishFlow } from "@/lib/flow-engine/publish";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -161,3 +163,113 @@ export async function createAutomationFromGroupMessage(input: {
   revalidatePath("/dashboard/flows");
   return { ok: true, flowId: flow.id };
 }
+
+/**
+ * Los campos de TEXTO del negocio, para «Etiquetar según la respuesta» (guardar lo que respondió). Solo texto: una
+ * respuesta no es un número, una fecha ni un email.
+ */
+export async function loadPollAnswerFieldOptions(): Promise<Result<{ fields: Array<{ slug: string; name: string }> }>> {
+  const ctx = await getPermissionAction("flows.edit");
+  if (!ctx) return { ok: false, error: "No tenés permiso para crear automatizaciones." };
+  const { data, error } = await ctx.supabase
+    .from("custom_field_definitions")
+    .select("slug, name, type")
+    .eq("workspace_id", ctx.workspace.id)
+    .is("deleted_at", null)
+    .order("name", { ascending: true });
+  if (error) return { ok: false, error: "No pude leer los campos. Probá de nuevo." };
+  const fields = ((data ?? []) as Array<{ slug: string; name: string; type: string }>).filter((f) => f.type === "text").map(({ slug, name }) => ({ slug, name }));
+  return { ok: true, fields };
+}
+
+/**
+ * «Etiquetar según la respuesta»: arma y publica, sin pasar por el lienzo, una automatización por respuesta con
+ * etiqueta (y una para el campo, si se eligió). Las reglas viven en `poll-answer-actions.ts`.
+ *
+ *   - Las respuestas salen de la encuesta GUARDADA, no del navegador: una etiqueta de una respuesta que no existe se
+ *     ignora.
+ *   - Crear pide `flows.edit`; publicar, ademas, `flows.publish`. Sin ese permiso (o si publicar falla) quedan en
+ *     borrador y se avisa cuantas.
+ */
+export async function createPollAnswerAutomations(input: {
+  messageId: string;
+  tags: Record<string, string>;
+  fieldSlug: string | null;
+}): Promise<Result<{ created: number; published: number; draftReason: string | null }>> {
+  const ctx = await getPermissionAction("flows.edit");
+  if (!ctx) return { ok: false, error: "No tenés permiso para crear automatizaciones." };
+  if (!UUID.test(input?.messageId ?? "") || !input.tags || typeof input.tags !== "object") return { ok: false, error: "Pedido inválido." };
+
+  // El mensaje se lee con la sesion: si no ve el grupo, no hay mensaje.
+  const supabase = await createClient();
+  const { data: message } = await supabase
+    .from("whatsapp_group_messages")
+    .select("id, group_id, workspace_id, poll")
+    .eq("id", input.messageId)
+    .maybeSingle();
+  if (!message || message.workspace_id !== ctx.workspace.id) return { ok: false, error: "No encontré esa encuesta." };
+  const poll = message.poll && typeof message.poll === "object" ? (message.poll as { name?: unknown; options?: unknown }) : null;
+  if (!poll) return { ok: false, error: "Ese mensaje no es una encuesta." };
+  const options = Array.isArray(poll.options) ? poll.options.filter((o): o is string => typeof o === "string" && o.trim() !== "") : [];
+  if (options.length === 0) return { ok: false, error: "La encuesta no tiene respuestas." };
+
+  let field: { slug: string; name: string } | null = null;
+  if (input.fieldSlug) {
+    const { data: def } = await ctx.supabase
+      .from("custom_field_definitions")
+      .select("slug, name, type")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("slug", input.fieldSlug)
+      .is("deleted_at", null)
+      .maybeSingle();
+    const row = def as { slug: string; name: string; type: string } | null;
+    if (!row || row.type !== "text") return { ok: false, error: "Ese campo ya no existe o no es de texto." };
+    field = { slug: row.slug, name: row.name };
+  }
+
+  const tags: Record<string, string> = {};
+  for (const option of options) if (typeof input.tags[option] === "string") tags[option] = input.tags[option];
+  const draft = { groupId: message.group_id, messageId: message.id, pollName: String(poll.name ?? ""), options, tags, field };
+  const problem = pollAnswerActionsProblem(draft);
+  if (problem) return { ok: false, error: problem };
+
+  const flows = buildPollAnswerFlows(draft);
+  const canPublish = ctx.can("flows.publish");
+  let created = 0;
+  let published = 0;
+  let publishError: string | null = null;
+  for (const built of flows) {
+    const { data: flow, error } = await ctx.supabase
+      .from("flows")
+      .insert({
+        workspace_id: ctx.workspace.id,
+        name: built.name.slice(0, MAX_FLOW_NAME_LENGTH),
+        nodes: built.nodes as unknown as Json,
+        edges: built.edges as unknown as Json,
+        categories: built.categories,
+      })
+      .select("id")
+      .single();
+    if (error || !flow) {
+      console.error("[grupos] no pude crear la automatizacion de la encuesta:", error?.message);
+      continue;
+    }
+    created++;
+    if (!canPublish) continue;
+    const result = await publishFlow({
+      db: ctx.supabase,
+      userId: ctx.user.id,
+      workspaceId: ctx.workspace.id,
+      flowId: flow.id,
+      getServiceClient: () => createServiceClient(),
+    });
+    if (result.ok) published++;
+    else publishError ??= result.error;
+  }
+
+  revalidatePath("/dashboard/flows");
+  if (created === 0) return { ok: false, error: "No pude crear las automatizaciones. Probá de nuevo." };
+  const draftReason = published === created ? null : !canPublish ? "Tu rol no puede publicar automatizaciones: pedile a un Admin que las publique." : publishError;
+  return { ok: true, created, published, draftReason };
+}
+

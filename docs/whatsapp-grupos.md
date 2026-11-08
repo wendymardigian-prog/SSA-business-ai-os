@@ -97,7 +97,16 @@ número. El tope de 200 mensajes automáticos por hora del canal sigue valiendo.
   opciones distintas; «se puede elegir más de una» o una sola.
 - **Los votos solo se leen si la encuesta salió de tu número** (por el sistema o desde el teléfono): Evolution
   necesita la encuesta guardada para descifrar el voto. Uno que llega cifrado se ignora.
-- En la bandeja la encuesta muestra los votos por opción y quién votó.
+- En la bandeja la encuesta muestra los votos por opción y, con «Ver quién votó», los nombres de cada opción (con link
+  a la ficha si es contacto). Antes solo salían pasando el mouse.
+- **«Etiquetar según la respuesta»** (debajo de la encuesta, con `flows.edit`): para cada respuesta se escribe la
+  etiqueta (arranca con el mismo texto; vacía = no etiqueta) y, opcional, un campo de TEXTO donde guardar la respuesta.
+  Crea una automatización por respuesta (`Votó en una encuesta` filtrado a esa respuesta → «Agregar etiqueta») y una
+  para el campo (filtrada a todas → «Definir campo» con `{{poll.selected}}`), en la categoría «Encuesta: …», y las
+  publica si la persona tiene `flows.publish` (si no, quedan en borrador y se avisa). Reglas puras en
+  `lib/whatsapp-groups/automation/poll-answer-actions.ts`. Si alguien cambia su voto recibe la etiqueta nueva y conserva
+  la anterior; volver a una respuesta que ya había elegido no vuelve a disparar (la clave del disparo es por persona,
+  encuesta y respuesta), así que el campo puede quedar con la respuesta del medio.
 - En un chat **privado** un voto ya no entra como mensaje vacío (antes sumaba un no leído y despertaba al agente);
   se ignora: los disparadores de encuestas son de grupos.
 
