@@ -20,6 +20,7 @@ import { authorshipLine } from "@/lib/content/classification";
 import { countUsage, tagFor } from "@/lib/content/taxonomy";
 import { loadPaidPieceIds } from "@/lib/meta/content-ads-load";
 import { loadContentTaxonomy } from "@/lib/content/load-taxonomy";
+import { loadDesignedPieceIds } from "@/lib/content/load-designed";
 import type { ContentPostStatus } from "@/lib/types/database";
 
 /**
@@ -83,13 +84,14 @@ export default async function ContentPage({
   const canPublish = can("content.publish");
   const canUseAi = can("content.ai");
   const canSeePaid = can("dashboards.ads.view");
+  const canSeeDesigns = can("designer.view");
 
   // La zona de QUIEN MIRA: en esta se ve y se escribe la hora de una pieza
   // (lib/dates.ts). Tiene que ser la misma que usan loadPiece y movePieceToDay.
   // El tope diario NO: ese es una regla y cuenta en la del negocio.
   const timeZone = await resolveViewerTimezone(workspace.timezone);
 
-  const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy, attributed, paidPieceIds] = await Promise.all([
+  const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy, attributed, paidPieceIds, designedPieceIds] = await Promise.all([
     supabase
       .from("content_ideas")
       .select("id, title, content, format, reference, platforms, pillar_id, offer_id, funnel_stage, status, created_by, position, created_at, updated_at")
@@ -115,6 +117,8 @@ export default async function ContentPage({
     firstTouchCounts(supabase, workspace.id),
     // Las piezas con algun anuncio vinculado (A2): se leen con la sesion, asi que quien no puede ver anuncios no ve el indicador.
     canSeePaid ? loadPaidPieceIds(supabase, workspace.id) : Promise.resolve(new Set<string>()),
+    // Las piezas con un diseño del Diseñador IA vinculado (DS8): el destello de la tarjeta, solo para quien puede ver diseños.
+    canSeeDesigns ? loadDesignedPieceIds(supabase, workspace.id) : Promise.resolve(new Set<string>()),
   ]);
 
   const publicationsByPost = new Map<string, Array<{ platform: string; status: string | null; at: string | null }>>();
@@ -226,6 +230,8 @@ export default async function ContentPage({
       assignee: assigneeOf(post.assigned_to, authorNames),
       // El id tal cual esta guardado: el filtro de Responsable (F43) compara contra el, aunque la persona ya no este.
       assignedTo: post.assigned_to,
+      // Solo si hay diseño: sin el campo la tarjeta se ve exactamente como antes.
+      ...(designedPieceIds.has(post.id) ? { hasDesign: true } : {}),
     };
   });
 

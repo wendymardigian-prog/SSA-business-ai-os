@@ -34,6 +34,8 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { canReassign, isAuthorOrAssignee } from "./assignee";
 import type { NetworkEntry } from "./redistribution";
 import type { StoredVersion } from "./versions";
+import { loadPieceDesigns } from "@/lib/designer/content-link";
+import type { PieceDesigner } from "@/lib/designer/content-link-types";
 
 /** Una cuenta social conectada, para el editor de redes (varias por red, 00236). */
 export interface PieceAccount {
@@ -119,6 +121,11 @@ export interface PieceData {
   ads: LinkedAd[];
   /** Quien mira puede vincular la pieza con un anuncio: `content.create` Y `dashboards.ads.view`. */
   canLinkAds: boolean;
+  /**
+   * Lo del Diseñador IA en esta pieza (DS8): si quien mira puede diseñar o abrir diseños y cuáles estan vinculados o dieron
+   * archivos. Sin esto (o sin permisos) el drawer se ve exactamente como siempre.
+   */
+  designer?: PieceDesigner;
 }
 
 export async function loadPiece(ctx: PermissionContext, postId: string): Promise<PieceData | null> {
@@ -151,6 +158,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
     ideaRes,
     measurement,
     linkedAds,
+    designRows,
   ] =
     await Promise.all([
       supabase
@@ -204,6 +212,10 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       loadPieceMeasurement(supabase, { workspaceId: workspace.id, pieceId: postId }),
       // Los anuncios vinculados (A2): solo para quien puede ver anuncios.
       can("dashboards.ads.view") ? loadLinkedAds(supabase, workspace.id, postId) : Promise.resolve([] as LinkedAd[]),
+      // Los diseños de la pieza (DS8): solo para quien puede ver diseños (la RLS de `designs` lo pide).
+      can("designer.view")
+        ? loadPieceDesigns(supabase, { workspaceId: workspace.id, postId, media: (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[] })
+        : Promise.resolve([]),
     ]);
 
   // Las plataformas de `channels` y las de `social_accounts` no son el mismo
@@ -263,6 +275,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
   );
 
   const labels = memberLabels(members);
+  const canEditPiece = canWritePost({ role, isAuthor: isAuthorOrAssignee(user.id, post) });
   const idea = ideaRes.data as { id: string; title: string; content: string | null } | null;
 
   return {
@@ -294,7 +307,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       reviewNote: post.review_note,
       updatedAt: post.updated_at,
     },
-    canEdit: canWritePost({ role, isAuthor: isAuthorOrAssignee(user.id, post) }),
+    canEdit: canEditPiece,
     canAssign: canReassign({ role, userId: user.id, piece: post }),
     team: members.map((m) => ({ id: m.userId, name: m.name })),
     perms: {
@@ -346,5 +359,19 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
     measurement,
     ads: linkedAds,
     canLinkAds: can("content.create") && can("dashboards.ads.view"),
+    designer: {
+      // Diseñar toca la pieza (agrega una red, vincula): hace falta poder escribirla, además de los dos permisos.
+      canDesign: can("designer.edit") && can("content.create") && canEditPiece,
+      canView: can("designer.view"),
+      designs: designRows.map((d) => ({
+        id: d.id,
+        name: d.name,
+        network: d.content_post_id === postId ? d.content_network : null,
+        rev: d.rev,
+        linked: d.content_post_id === postId,
+        archived: d.archived,
+        canOpen: true,
+      })),
+    },
   };
 }

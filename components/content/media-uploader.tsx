@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Trash2, Upload } from "lucide-react";
 import { attachMedia, removeMedia, requestMediaUpload } from "@/lib/actions/content-media";
@@ -40,12 +41,23 @@ const PLATFORM_NAMES: Record<string, string> = {
   threads: "Threads",
 };
 
+/** Los archivos que armó un diseño del Diseñador IA, agrupados en la biblioteca (DS8, F65). */
+export interface UploaderDesignGroup {
+  designId: string;
+  /** «Del diseño X · 5 archivos · vinculado». */
+  heading: string;
+  /** A dónde lleva «Abrir el diseño»; null = no se ofrece. */
+  openHref: string | null;
+  entries: MediaEntry[];
+}
+
 export function MediaUploader({
   postId,
   media,
   usage,
   canEdit,
   onRemoved,
+  groups = [],
 }: {
   postId: string;
   media: MediaEntry[];
@@ -54,6 +66,8 @@ export function MediaUploader({
   canEdit: boolean;
   /** Se llama al quitar uno, con las redes de las que se saco tambien. */
   onRemoved?: (fileId: string, removedFrom: string[]) => void;
+  /** Los archivos de un diseño van agrupados bajo su encabezado; los demás, como siempre. Sin grupos, nada cambia. */
+  groups?: UploaderDesignGroup[];
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +77,8 @@ export function MediaUploader({
   const [notice, setNotice] = useState<string | null>(null);
 
   const files = liveMedia(media);
+  const grouped = new Set(groups.flatMap((g) => g.entries.map(idOf)));
+  const loose = grouped.size === 0 ? files : files.filter((f) => !grouped.has(idOf(f)));
 
   async function upload(file: File) {
     setError(null);
@@ -148,55 +164,81 @@ export function MediaUploader({
     router.refresh();
   }
 
+  const renderCard = (item: MediaEntry, index: number, page?: number | null) => {
+    const info = describeFile(item, index);
+    const usedBy = usage[idOf(item)] ?? [];
+    return (
+      <li key={idOf(item)} className="rounded-lg border border-border p-3">
+        <p className="truncate text-sm font-medium" title={info.name}>
+          {typeof page === "number" && (
+            <span className="mr-1.5 inline-grid h-4 min-w-4 place-items-center rounded bg-muted px-1 text-[10px] font-semibold text-muted-foreground" aria-label={`Página ${page}`}>
+              {page}
+            </span>
+          )}
+          {info.name}
+        </p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          {[info.kindLabel, info.size, info.ratio].filter(Boolean).join(" · ")}
+        </p>
+
+        <p
+          className={cn(
+            "mt-1.5 inline-block rounded px-1.5 py-0.5 text-[11px]",
+            usedBy.length === 0
+              ? "bg-amber-500/10 font-medium text-amber-700 dark:text-amber-300"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          {usedBy.length === 0
+            ? "Sin usar"
+            : `Se usa en ${usedBy.map((p) => PLATFORM_NAMES[p] ?? p).join(", ")}`}
+        </p>
+
+        {canEdit && (
+          <div className="mt-1.5">
+            <button
+              type="button"
+              onClick={() => void remove(item, info.name)}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-accent"
+            >
+              <Trash2 className="h-3 w-3" aria-hidden />
+              Quitar
+            </button>
+          </div>
+        )}
+      </li>
+    );
+  };
+
   return (
     <div>
-      {files.length === 0 ? (
+      {files.length === 0 && groups.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
           Todavía no hay archivos. Subilos una vez y después elegís cuáles publica cada red.
         </p>
       ) : (
-        <ul className="grid gap-2 sm:grid-cols-2" aria-label="Archivos de la pieza">
-          {files.map((item, index) => {
-            const info = describeFile(item, index);
-            const usedBy = usage[idOf(item)] ?? [];
-            return (
-              <li key={idOf(item)} className="rounded-lg border border-border p-3">
-                <p className="truncate text-sm font-medium" title={info.name}>
-                  {info.name}
-                </p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {[info.kindLabel, info.size, info.ratio].filter(Boolean).join(" · ")}
-                </p>
-
-                <p
-                  className={cn(
-                    "mt-1.5 inline-block rounded px-1.5 py-0.5 text-[11px]",
-                    usedBy.length === 0
-                      ? "bg-amber-500/10 font-medium text-amber-700 dark:text-amber-300"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {usedBy.length === 0
-                    ? "Sin usar"
-                    : `Se usa en ${usedBy.map((p) => PLATFORM_NAMES[p] ?? p).join(", ")}`}
-                </p>
-
-                {canEdit && (
-                  <div className="mt-1.5">
-                    <button
-                      type="button"
-                      onClick={() => void remove(item, info.name)}
-                      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-accent"
-                    >
-                      <Trash2 className="h-3 w-3" aria-hidden />
-                      Quitar
-                    </button>
-                  </div>
+        <>
+          {groups.map((group) => (
+            <section key={group.designId} aria-label={group.heading} className="mb-3 rounded-lg bg-muted/40 p-2.5">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <p className="text-xs text-muted-foreground">{group.heading}</p>
+                {group.openHref && (
+                  <Link href={group.openHref} className="inline-flex h-7 items-center rounded-md border border-border bg-background px-2 text-xs font-medium hover:bg-accent">
+                    Abrir el diseño
+                  </Link>
                 )}
-              </li>
-            );
-          })}
-        </ul>
+              </div>
+              <ul className="grid gap-2 sm:grid-cols-2" aria-label={`Archivos del diseño ${group.designId}`}>
+                {group.entries.map((item, index) => renderCard(item, index, item.design_page))}
+              </ul>
+            </section>
+          ))}
+          {loose.length > 0 && (
+            <ul className="grid gap-2 sm:grid-cols-2" aria-label="Archivos de la pieza">
+              {loose.map((item, index) => renderCard(item, index))}
+            </ul>
+          )}
+        </>
       )}
 
       {canEdit && (
