@@ -389,7 +389,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 - **El menu y las pestanas salen de funciones puras** (`visibleNavItems`, `visibleSettingsTabs`, `tabsForViewer`, `pageActions`, `integrationSections`, `generalSectionsFor`, `visibleChannels`, `canExport`): los componentes solo las componen. `adminOnly` ya no existe, es `permissions`.
 - **Exportar CSV es `canExport`** (`lib/auth/export.ts`) en los cuatro lugares: el endpoint, la accion y el boton. Un Member no exporta (cambio aprobado M2).
 - **La bandeja va por CUENTA conectada (00249)**: cada rol guarda en `permissions.channels` «todas las cuentas» (incluye las futuras) o una lista por cuenta, cada una con su alcance (solo asignadas / + sin asignar / todas) y «responde». Lo aplica la base (`can_see_conversation` decide por la cuenta; ver un chat deja ver la ficha del contacto) y la pantalla usa las mismas reglas (`lib/auth/channel-permissions.ts`, gemelas SQL con `channel-permissions.cases.json`): el menú de cuentas, el composer y los 403 de envío, borradores, reacciones, adjuntos y recursos. Las seis claves `inbox.<red>.*` y el alcance `conversations` se retiraron. Resumen en `docs/roles.md`, «La bandeja por cuenta».
-- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones", M10 edita el contenido de su pieza (o la asignada) en cualquier estado, sin poder mover el estado fuera de Borrador / En producción / En revisión (00253). Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
+- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones", M10 edita el contenido de su pieza (o la asignada) en cualquier estado, sin poder mover el estado fuera de Borrador / En producción / En revisión (00253), M12 ve y edita diseños del Diseñador IA (`designer.view` y `designer.edit`, 00319; no publica, no emite ni anula). Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
 
 ## Migraciones (00208 a 00214, todas aplicadas y registradas)
 
@@ -2031,6 +2031,39 @@ Auditoria completa en cuatro lotes (PRs #171 dependencias, #168 Altas, #172 Medi
 - El agente, el copywriter, Grabaciones y el clasificador todavia no pasan el modelo al chequeo de "modelo sin precio con tope".
 - DNS rebinding en `safeFetch` (fijar la IP validada con undici).
 - No hay CSP de scripts (solo `frame-ancestors`).
+
+# Diseñador IA (construido, 8/11/2026)
+
+Diseñar piezas visuales con IA o a mano (carruseles, historias, presentaciones, PDF, certificados, páginas web), publicarlas con un link `/d/<código>` o exportarlas, y generar piezas desde **plantillas** (a mano, para varios o desde una automatización), conectado con Contenido. En el código es `designer` / `design_*` y `/dashboard/disenos`; en lo visible, **Diseñador IA**. Resumen en [docs/designer.md](docs/designer.md); avance, pruebas y auditorías en `docs/PROGRESS-designer.md`; decisiones en `docs/PENDIENTE-designer.md`; contratos en `docs/designer/contratos.md`; el servicio de render en Railway, en `docs/designer/puesta-en-marcha.md`.
+
+## Lo que no se puede romper
+
+- **Un solo render: `renderPageHTML`** (`lib/designer/render/page-html.ts`) para el lienzo, la vista previa, el link, la exportación y las generaciones. Nunca produce `<script>` ni `on*`. El HTML de una página cargada se muestra siempre en un iframe `srcdoc` con `sandbox` sin `allow-scripts`. Todo documento que se guarda pasa por `sanitizeDocHtml` (`lib/designer/import/edit.ts`), lo escriba una persona, la IA o un archivo.
+- **Publicar es la única puerta al link público.** Guardar (a mano, la IA, restaurar) no cambia lo que ve el público: `design_public_get` devuelve la última versión `publish` (00325) y el render de publicar se arma con esa versión (`latestPublishedDoc`; si no se puede leer, reagenda, nunca usa el borrador). El editor avisa «Hay cambios sin publicar». Un Member (`designer.edit` sin `designer.publish`) no puede cambiar el link.
+- **Una generación (fila de `designs` con `template_id`) es una copia congelada**: no se edita ni por la IA (`saveDocCore`, `restoreVersionCore`, `loadTarget`, `saveDocWithRev`). Se vuelve a generar desde la plantilla.
+- **El link público sale SOLO de `design_public_get`** (anon la ejecuta a propósito; nunca devuelve el negocio, emails, teléfonos ni ids de la persona). **Sin pie «Hecho con…»** (white label). Una generación se muestra solo `ready` o `void`; tope de 120/min por IP; `noindex` salvo una web con «Permitir buscadores».
+- **Todo link que ve alguien de afuera** con `publicBaseUrl` / `loadDesignLinks` (`lib/designer/public-links.ts`): nunca `appUrl()` ni el dominio del navegador.
+- **Verificación solo en plantillas de formato impreso**, apagada por defecto, con tipo de documento; textos y botones de `lib/designer/verification.ts`. Gemelas con los CHECK de la base (`verification.cases.json`).
+- **Archivos validados por bytes** (PNG/JPG/WebP; un SVG se rechaza; fuentes por firma; zips sin `..`, sin enlaces simbólicos, hasta 300 archivos y 50 MB). El tope de las Server Actions es 51 MB (`next.config.ts`) y cada acción vuelve a validar.
+- **Un solo juego de archivos por diseño propio** (F48b) y **sin miniaturas renderizadas** (la lista dibuja en vivo; guardar no encola renders). La limpieza diaria (`design_cleanup`, cron por SQL directo) nunca borra la versión actual ni la última publicada, ni archivos de una generación.
+- **Los jobs** (`design_render`, `design_generate_many`, `design_content_sync`, `design_ai_generate`, `design_cleanup`) nunca lanzan por un proveedor: reagendan a 1, 5 y 15 minutos. Sin `RENDER_SERVICE_URL`/`RENDER_SERVICE_SECRET`: «Falta conectar el servicio de render». En tests y verify, siempre `DESIGNER_FAKE_RENDER=1`.
+- **La IA**: el pedido viaja como dato; tope de gasto antes de llamar (`source: "designer"` en `openAiRun`); máximo 2 pasadas de corrección; en un HTML cargado cambia solo textos (`updateText`), no el CSS.
+- **Conversaciones en `ai_threads` / `ai_messages`** (genéricas de BAIOS), RLS por canal: `designer` → `designer.view`; `assistant` → `user_id = auth.uid()` y miembro; `portal` → ninguna todavía. La fusión de contactos reapunta `designs.subject_contact_id` y `ai_threads.contact_id` por trigger (`contacts_designs_on_merge`); `merge_contacts` no se tocó.
+- **Automatizaciones**: el paso «Generar desde plantilla» (`designGenerate`) usa `createGeneration` (`lib/designer/generate-core.ts`) y nunca lanza (corta el camino con `handle:design_stopped` y el motivo). Deja `design.id`, `design.link`, `design.pdf_url`, `design.code`, `design.status` y `design.doc_type`. Sin plantilla, o con un disparador de formulario sin formulario elegido, no se publica. «Enviar email» adjunta el PDF de la generación de ESA corrida. Detalle en `docs/flow-registry.md`.
+- **Contenido**: los archivos de un diseño vinculado llegan con id estable (`design-<id>-<n>`); una red publicada nunca se toca, una programada (o fallida) solo avisa. Publicar, programar, el borrado a 30 días y los permisos de Contenido no cambiaron. Detalle en `docs/contenido.md`.
+
+## Migraciones
+
+`00319` (ajustes, permisos del Member M12, buckets privados), `00320` (tablas, RLS, códigos, `design_public_get`, fusión, limpieza diaria), `00321` (CHECK de `agent_runs.source` + `designer`), `00322` (corrige el trigger del documento), `00324` (el bucket `design-renders` acepta `error.json`) y `00325` (`design_public_get` devuelve lo publicado), todas **aplicadas y registradas** el 7 y 8/11/2026 UTC. La `00318` y la `00323` son de otras sesiones. **La próxima libre es la `00326`** (confirmar con `list_migrations` y las ramas locales). En un clon nuevo van ANTES de desplegar el código.
+
+## Verificación
+
+```
+node scripts/verify-designer.mjs                 # bloques ds0, ds2, ds5, ds6, ds7, ds8 (render simulado)
+node scripts/verify-designer.mjs --bloque ds5    # uno solo
+```
+
+Mismas reglas que los demás: crean y limpian sus datos (`zz-test-`), de a uno y con el candado `/private/tmp/ssa-verify.lock`.
 
 # Seguridad
 
