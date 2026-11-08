@@ -16,7 +16,7 @@ function setup(settings: Record<string, unknown> = {}, options: Parameters<typeo
     {
       workspaces: [{ id: WS, name: "Academia Ejemplo", brand_name: "Academia Ejemplo", design_settings: settings, timezone: "UTC", updated_at: "2026-11-07T10:00:00.000000+00:00" }],
       audit_log: [],
-      designs: [{ id: "d1", workspace_id: WS, name: "Pieza uno", doc: carousel(), format: "v45" }],
+      designs: [{ id: "d1", workspace_id: WS, name: "Pieza uno", doc: carousel(), format: "v45", template_id: null }],
     },
     options,
   );
@@ -178,6 +178,15 @@ describe("settings: extraer un estilo de mis piezas (F37, proveedor simulado)", 
     const measure = () => async () => ({ status: "ok" as const, measure: [], images: [PNG_BYTES] });
     const r = await extractStyleRequest(s.db, { workspaceId: "99999999-2222-3333-4444-555555555555", userId: USER, files: files(2), designIds: ["d1"] }, deps({ measure }));
     expect(r.ok).toBe(false);
+  });
+
+  it("una generación de plantilla no se puede elegir como pieza de referencia (solo diseños propios)", async () => {
+    const s = setup();
+    (s.tables.designs[0] as { template_id: string | null }).template_id = "t-plantilla";
+    const measure = vi.fn(() => async () => ({ status: "ok" as const, measure: [], images: [PNG_BYTES] }));
+    const r = await extractStyleRequest(s.db, { ...who, files: files(2), designIds: ["d1"] }, deps({ measure }));
+    expect(r).toEqual({ ok: false, error: "Uno de los diseños elegidos ya no existe." });
+    expect(measure).not.toHaveBeenCalled();
   });
 
   it("un fallo del proveedor no lanza: avisa", async () => {

@@ -108,3 +108,23 @@ export function collectAssetPathsOf(doc: DesignDoc, pageIndex: number): string[]
 export function firstPageDoc(doc: DesignDoc): DesignDoc {
   return { ...doc, pages: doc.pages.slice(0, 1) };
 }
+
+/** El punto ámbar de la revisión automática (F36): qué decir y cuántos problemas quedaron en esa página. */
+export interface QaBadge {
+  label: string;
+  issues: number;
+}
+
+export const QA_BADGE_LABEL = "Revisión automática: hay algo para mirar";
+
+/**
+ * Si la página `pageIndex` (0 = la primera) tiene algo que la revisión automática no pudo resolver. Lee `designs.last_qa`
+ * tal como viene de la base (`{ at, issues: [{ kind, page }], unchecked }`) sin lanzar: algo raro o vacío es «sin punto».
+ */
+export function qaBadge(lastQa: unknown, pageIndex: number): QaBadge | null {
+  if (!lastQa || typeof lastQa !== "object" || Array.isArray(lastQa)) return null;
+  const issues = (lastQa as { issues?: unknown }).issues;
+  if (!Array.isArray(issues)) return null;
+  const count = issues.filter((i) => !!i && typeof i === "object" && (i as { page?: unknown }).page === pageIndex).length;
+  return count > 0 ? { label: QA_BADGE_LABEL, issues: count } : null;
+}

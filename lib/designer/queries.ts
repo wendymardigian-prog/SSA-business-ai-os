@@ -31,6 +31,8 @@ export interface ListItem {
   /** La primera página del documento (null si el documento guardado no se pudo leer: la tarjeta no dibuja miniatura). */
   thumbDoc: DesignDoc | null;
   customVars: CustomVar[];
+  /** `designs.last_qa` (solo diseños): lo que dejó la revisión automática; alimenta el punto ámbar de la miniatura. */
+  lastQa?: unknown;
 }
 
 export interface ListData {
@@ -115,7 +117,7 @@ export async function loadList(db: Db, workspaceId: string, filters: ListFilters
   if (filters.tab === "disenos") {
     let query = db
       .from("designs")
-      .select("id, name, format, origin, published, archived_at, updated_at, doc", { count: "exact" })
+      .select("id, name, format, origin, published, archived_at, updated_at, doc, last_qa", { count: "exact" })
       .eq("workspace_id", workspaceId)
       // Las generaciones se ven dentro de su plantilla: nunca acá.
       .is("template_id", null);
@@ -133,6 +135,7 @@ export async function loadList(db: Db, workspaceId: string, filters: ListFilters
           card: { id: row.id, kind: "design" as const, name: row.name, format: row.format as FormatKey, origin: row.origin, pages: pageCountOf(row.doc), updatedAt: row.updated_at, archived: !!row.archived_at, published: row.published },
           thumbDoc: parseFirstPage(row.doc),
           customVars: [],
+          lastQa: row.last_qa,
         },
       ];
     });

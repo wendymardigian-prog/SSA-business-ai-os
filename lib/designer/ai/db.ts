@@ -35,12 +35,10 @@ export interface TargetRow {
   template?: { verify: boolean; docType: DocType | null; docTypeLabel: string | null; customVars: CustomVar[]; dateFormat: DateFormat };
   /** Solo diseños. */
   contentPostId?: string | null;
-  /** Solo diseños: si tiene link público (un cambio de la IA hay que volver a renderlo). */
-  published?: boolean;
   archived: boolean;
 }
 
-const DESIGN_COLUMNS = "id, workspace_id, name, format, doc, rev, style, origin, content_post_id, published, archived_at";
+const DESIGN_COLUMNS = "id, workspace_id, name, format, doc, rev, style, origin, content_post_id, archived_at";
 const TEMPLATE_COLUMNS = "id, workspace_id, name, format, doc, rev, style, origin, verify, doc_type, doc_type_label, custom_vars, date_format, archived_at";
 
 const table = (kind: DesignKind) => (kind === "design" ? "designs" : "design_templates");
@@ -83,7 +81,7 @@ export async function loadTarget(db: Db, workspaceId: string, kind: DesignKind, 
     origin: String(row.origin ?? ""),
     archived: row.archived_at != null,
   };
-  if (kind === "design") return { ...base, contentPostId: typeof row.content_post_id === "string" ? row.content_post_id : null, published: row.published === true };
+  if (kind === "design") return { ...base, contentPostId: typeof row.content_post_id === "string" ? row.content_post_id : null };
   return {
     ...base,
     template: {

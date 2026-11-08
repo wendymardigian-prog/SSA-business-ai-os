@@ -209,6 +209,13 @@ export async function runDesignerEngine(input: EngineInput, ports: EnginePorts):
       candidate = { ok: false, problems: out.problems };
       continue;
     }
+    // Un cambio de estilo o una propuesta sobre una imagen no cambian los textos de un bloque HTML cargado.
+    if ((input.mode === "style" || input.mode === "propose_texts") && out.value.patch.pages.some((p) => p.ops.some((o) => o.op === "updateText"))) {
+      const problem = "En este pedido no se pueden cambiar textos de bloques HTML (updateText).";
+      retryProblems = [problem];
+      candidate = { ok: false, problems: [problem] };
+      continue;
+    }
     const scope: PatchScope = input.mode === "propose_texts" ? { page: 0 } : input.scope;
     const applied = applyScoped(input.doc, out.value.patch, scope);
     if (!applied.ok) {
