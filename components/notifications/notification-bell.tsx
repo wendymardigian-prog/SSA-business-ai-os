@@ -13,6 +13,7 @@ import {
   type NotificationItem,
 } from "@/lib/actions/notifications";
 import { linkFor, relativeTime, toneFor } from "@/lib/notifications/types";
+import { bellAriaLabel, bellBadgeText } from "@/lib/notifications/bell-count";
 
 /**
  * Campana de notificaciones (F18).
@@ -174,11 +175,7 @@ export function NotificationBell({ workspaceId, initialUnread, variant = "icon",
         type="button"
         onClick={toggle}
         title={isRow ? "Notificaciones" : undefined}
-        aria-label={
-          unread > 0
-            ? `Notificaciones, ${unread} sin leer`
-            : "Notificaciones, ninguna sin leer"
-        }
+        aria-label={bellAriaLabel(unread)}
         aria-expanded={open}
         aria-haspopup="true"
         className={cn(
@@ -199,7 +196,7 @@ export function NotificationBell({ workspaceId, initialUnread, variant = "icon",
                 : "absolute -right-0.5 -top-0.5",
             )}
           >
-            {unread > 9 ? "9+" : unread}
+            {bellBadgeText(unread)}
           </span>
         )}
       </button>
