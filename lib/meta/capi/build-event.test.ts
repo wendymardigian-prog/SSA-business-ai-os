@@ -13,7 +13,7 @@ function input(over: Partial<CapiEventInput> = {}): CapiEventInput {
     now: NOW,
     fromWebsite: true,
     sourceUrl: "https://negocio.com/clase?utm_source=fb",
-    user: { emails: ["ana@mail.com"], clientIp: "190.12.34.56", userAgent: "Mozilla/5.0", externalId: "c1" },
+    user: { emails: ["ana@mail.com"], clientIp: "190.12.34.56", userAgent: "Mozilla/5.0", externalIds: ["c1"] },
     ...over,
   };
 }
@@ -102,7 +102,7 @@ describe("el evento", () => {
   });
 
   it("sin nada con qué reconocer a la persona, no se manda", () => {
-    expect(buildCapiEvent(input({ user: { externalId: "c1", displayName: "Ana" } }))).toEqual({ ok: false, reason: "no_match_data" });
+    expect(buildCapiEvent(input({ user: { externalIds: ["c1"], displayName: "Ana" } }))).toEqual({ ok: false, reason: "no_match_data" });
   });
 
   it("sin cookie `_fbc` pero con el fbclid del link, arma el fbc con la hora del evento", () => {

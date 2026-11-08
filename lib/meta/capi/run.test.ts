@@ -28,8 +28,8 @@ function world(seed: Record<string, Array<Record<string, unknown>>> = {}) {
           workspace_id: WS,
           status: "received",
           contact_id: "c1",
-          attribution: { entry_url: "https://negocio.com/clase", fbp: "fb.1.1596403881668.1116446470" },
-          meta: { user_agent: "Mozilla/5.0 (viejo)" },
+          attribution: { entry_url: "https://negocio.com/?utm_source=fb", page_url: "https://negocio.com/clase", fbp: "fb.1.1596403881668.1116446470" },
+          meta: { user_agent: "Mozilla/5.0 (viejo)", meta_external_id: "3f1c2b9e-7a4d-4e1f-9c8b-2a6d5e4f3b21" },
         },
       ],
       bookings: [{ id: "b1", workspace_id: WS, contact_id: "c1", origin: "public_page", utm: { landing_page: "https://negocio.com/agenda", fbc: "fb.1.1554763741205.AbCdEf123" } }],
@@ -115,7 +115,8 @@ describe("mandar", () => {
       client_ip_address: "190.12.34.56",
       client_user_agent: "Mozilla/5.0",
       fbp: "fb.1.1596403881668.1116446470",
-      external_id: [sha256("c1")],
+      // Primero el id del navegador que recibió el Pixel, después el del contacto.
+      external_id: [sha256("3f1c2b9e-7a4d-4e1f-9c8b-2a6d5e4f3b21"), sha256("c1")],
     });
     expect(body.test_event_code).toBeUndefined();
     expect(db.rows("meta_capi_events")[0]).toMatchObject({ status: "sent", fbtrace_id: "trace", action_source: "website", test: false });

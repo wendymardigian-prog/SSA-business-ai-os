@@ -11,7 +11,9 @@
  *   ph       solo dígitos, CON el código de país y sin el «+» ni ceros adelante.
  *   fn / ln  minúsculas, sin puntuación (las letras con tilde van en UTF-8).
  *   country  dos letras ISO 3166-1, en minúsculas.
- *   external_id  el hash es recomendado: va con hash.
+ *   external_id  el hash es recomendado: va con hash, y puede ir más de uno (Meta acepta una lista). Va primero el id
+ *                anónimo del navegador que la web le pasa al Pixel (`fbq('init', …, { external_id })`), así coinciden, y
+ *                después el id del contacto en SSA. Solo con trim: el Pixel lo hashea tal cual llega.
  *
  * Puro (salvo el hash de `node:crypto`): sin base y sin red. Solo servidor.
  */
@@ -38,26 +40,28 @@ export function normalizePhoneForMeta(raw: string | null | undefined): string | 
   return phone ? phone.slice(1) : null;
 }
 
-/** Minúsculas, sin puntuación ni espacios: «María José» → «maríajosé». */
+/** Minúsculas y solo letras: «Jean-Pierre» → «jeanpierre». */
 export function normalizeNamePart(raw: string | null | undefined): string | null {
-  const value = (raw ?? "")
-    .normalize("NFC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{M}]/gu, "");
+  const value = (raw ?? "").toLowerCase().replace(/[^\p{L}]/gu, "");
   return value || null;
 }
 
 /**
- * Nombre y apellido desde el nombre del contacto: la primera palabra es el nombre y la última el apellido. Un id o un
- * «@usuario» puesto como nombre (un relleno) no es un nombre: no se manda.
+ * Nombre y apellido desde el nombre del contacto, con la MISMA regla que la web usa para el Pixel (así el Pixel y el
+ * servidor mandan el mismo hash): minúsculas, se saca todo lo que no es letra ni espacio del texto ENTERO, la primera
+ * palabra es el nombre y la última el apellido; con una sola palabra, solo el nombre. Un id o un «@usuario» puesto
+ * como nombre (un relleno) no es un nombre: no se manda.
  */
 export function splitName(displayName: string | null | undefined): { fn: string | null; ln: string | null } {
   const value = (displayName ?? "").trim();
   if (!value || isPlaceholderName(value) || value.includes("@")) return { fn: null, ln: null };
-  const words = value.split(/\s+/).filter(Boolean);
-  const fn = normalizeNamePart(words[0]);
-  const ln = words.length > 1 ? normalizeNamePart(words[words.length - 1]) : null;
-  return { fn, ln };
+  const words = value
+    .toLowerCase()
+    .replace(/[^\p{L}\s]/gu, "")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return { fn: null, ln: null };
+  return { fn: words[0], ln: words.length > 1 ? words[words.length - 1] : null };
 }
 
 export function normalizeCountry(raw: string | null | undefined): string | null {
@@ -106,8 +110,8 @@ export interface UserDataInput {
   phones?: Array<string | null | undefined>;
   displayName?: string | null;
   country?: string | null;
-  /** El id del contacto en SSA. */
-  externalId?: string | null;
+  /** El id anónimo del navegador (el mismo que recibe el Pixel) y el id del contacto en SSA, en ese orden. */
+  externalIds?: Array<string | null | undefined>;
   clientIp?: string | null;
   userAgent?: string | null;
   fbc?: string | null;
@@ -135,14 +139,13 @@ function hashedList(values: Array<string | null>): string[] | undefined {
 
 export function buildUserData(input: UserDataInput): MetaUserData {
   const { fn, ln } = splitName(input.displayName);
-  const externalId = (input.externalId ?? "").trim().toLowerCase();
   const data: MetaUserData = {
     em: hashedList((input.emails ?? []).map(normalizeEmail)),
     ph: hashedList((input.phones ?? []).map(normalizePhoneForMeta)),
     fn: hashedList([fn]),
     ln: hashedList([ln]),
     country: hashedList([normalizeCountry(input.country)]),
-    external_id: hashedList([externalId || null]),
+    external_id: hashedList((input.externalIds ?? []).map((id) => (id ?? "").trim() || null)),
   };
   const ip = normalizeIp(input.clientIp);
   const ua = normalizeUserAgent(input.userAgent);

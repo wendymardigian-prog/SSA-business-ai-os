@@ -53,7 +53,7 @@ const res = await fetch("https://<este-sistema>/api/public/forms/<slug>/submit",
       entry_url, landing_page, referrer_url, page_url,
       utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_id,
       campaign_id, adset_id, ad_id, placement,
-      fbclid, fbp, fbc, meta_event_id,
+      fbclid, fbp, fbc, meta_event_id, external_id,
     },
   }),
 });
@@ -71,6 +71,7 @@ const data = await res.json();
   ```
 
   Con la API de Conversiones configurada (Ajustes → Integraciones → «Meta: API de Conversiones») y el paso «Enviar evento a Meta» en las automatizaciones del formulario, el sistema le manda a Meta el mismo evento desde el servidor con ese código, y Meta lo cuenta una sola vez. El nombre del evento del Pixel (`Lead`) tiene que ser el mismo que el elegido en el paso.
+- `external_id` es el id anónimo del navegador: un `crypto.randomUUID()` que la web guarda (por ejemplo en `localStorage`) y le pasa al Pixel al iniciarlo, `fbq("init", "<pixel>", { external_id })`. Se manda el mismo valor en `attribution`, sin cambiarlo: el sistema lo guarda con la respuesta y la API de Conversiones lo manda igual, así Meta reconoce a la misma persona en los dos envíos.
 - Una agenda embebida avisa `agenda:bookingSuccessful` con `metaEventId`: si la web tiene el Pixel, `fbq("track", "Schedule", {}, { eventID: payload.metaEventId })`.
 
 Respuestas:

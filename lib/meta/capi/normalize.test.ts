@@ -33,15 +33,22 @@ describe("normalizar como pide Meta", () => {
     expect(normalizePhoneForMeta("1234")).toBeNull();
   });
 
-  it("nombre: minúsculas, sin puntuación ni espacios, con las tildes", () => {
+  it("nombre: minúsculas, solo letras, con las tildes", () => {
     expect(normalizeNamePart("María-José")).toBe("maríajosé");
     expect(normalizeNamePart("O'Neil")).toBe("oneil");
     expect(normalizeNamePart("...")).toBeNull();
   });
 
+  it("nombre y apellido con la MISMA regla que la web para el Pixel (así coinciden los hashes)", () => {
+    expect(splitName("Ana")).toEqual({ fn: "ana", ln: null });
+    expect(splitName("María José García")).toEqual({ fn: "maría", ln: "garcía" });
+    expect(splitName("Jean-Pierre O'Brien")).toEqual({ fn: "jeanpierre", ln: "obrien" });
+    // Se limpia el texto ENTERO antes de partirlo: un guion suelto al final no deja el apellido vacío.
+    expect(splitName("Ana López -")).toEqual({ fn: "ana", ln: "lópez" });
+  });
+
   it("nombre y apellido: la primera y la última palabra; un relleno (id o @usuario) no es un nombre", () => {
     expect(splitName("Ana María Pérez")).toEqual({ fn: "ana", ln: "pérez" });
-    expect(splitName("Ana")).toEqual({ fn: "ana", ln: null });
     expect(splitName("17841400000000000")).toEqual({ fn: null, ln: null });
     expect(splitName("@usuario_x")).toEqual({ fn: null, ln: null });
     expect(splitName("ana@mail.com")).toEqual({ fn: null, ln: null });
@@ -81,7 +88,7 @@ describe("user_data", () => {
       phones: ["+5491122334455", "+5491122334455"],
       displayName: "Ana Pérez",
       country: "AR",
-      externalId: "CONTACT-1",
+      externalIds: ["3f1c2b9e-7a4d-4e1f-9c8b-2a6d5e4f3b21", " c1 "],
       clientIp: "190.12.34.56",
       userAgent: "Mozilla/5.0",
       fbc: "fb.1.1554763741205.AbCdEf123",
@@ -92,7 +99,8 @@ describe("user_data", () => {
     expect(data.fn).toEqual([sha256("ana")]);
     expect(data.ln).toEqual([sha256("pérez")]);
     expect(data.country).toEqual([sha256("ar")]);
-    expect(data.external_id).toEqual([sha256("contact-1")]);
+    // Primero el id del navegador (el del Pixel), después el del contacto; solo con trim.
+    expect(data.external_id).toEqual([sha256("3f1c2b9e-7a4d-4e1f-9c8b-2a6d5e4f3b21"), sha256("c1")]);
     expect(data.client_ip_address).toBe("190.12.34.56");
     expect(data.client_user_agent).toBe("Mozilla/5.0");
     expect(data.fbc).toBe("fb.1.1554763741205.AbCdEf123");
@@ -104,7 +112,7 @@ describe("user_data", () => {
   });
 
   it("con qué puede reconocer Meta a la persona: el id externo, el nombre o el país solos no alcanzan", () => {
-    expect(hasMatchData(buildUserData({ externalId: "c1", displayName: "Ana", country: "AR" }))).toBe(false);
+    expect(hasMatchData(buildUserData({ externalIds: ["c1"], displayName: "Ana", country: "AR" }))).toBe(false);
     expect(hasMatchData(buildUserData({ emails: ["a@x.com"] }))).toBe(true);
     expect(hasMatchData(buildUserData({ phones: ["+5491122334455"] }))).toBe(true);
     expect(hasMatchData(buildUserData({ fbp: "fb.1.1596403881668.1116446470" }))).toBe(true);

@@ -183,13 +183,14 @@ async function requestContext(db: Db, sourceType: "form" | "booking", sourceId: 
   return { ip: data?.client_ip ?? null, userAgent: data?.user_agent ?? null };
 }
 
-function contactUser(contact: ContactFacts, contactId: string) {
+/** Los datos del contacto. `browserId` es el id anónimo del navegador que la web le pasó al Pixel: va primero. */
+function contactUser(contact: ContactFacts, contactId: string, browserId: string | null = null) {
   return {
     emails: [contact.email, contact.secondary_email],
     phones: [contact.phone, contact.whatsapp_phone],
     displayName: contact.display_name,
     country: contact.country,
-    externalId: contactId,
+    externalIds: [browserId, contactId],
   };
 }
 
@@ -232,9 +233,10 @@ export async function loadFacts(db: Db, row: EventRow): Promise<Facts> {
         input: {
           ...base,
           fromWebsite: true,
-          sourceUrl: str(attribution.entry_url) ?? str(attribution.landing_page) ?? str(attribution.page_url),
+          // La página donde está el formulario; si la web no la mandó, por la que entró la persona.
+          sourceUrl: str(attribution.page_url) ?? str(attribution.entry_url) ?? str(attribution.landing_page),
           user: {
-            ...contactUser(contact, sub.contact_id),
+            ...contactUser(contact, sub.contact_id, str(meta.meta_external_id)),
             clientIp: ctx.ip,
             userAgent: ctx.userAgent ?? str(meta.user_agent),
             fbc: str(attribution.fbc),
