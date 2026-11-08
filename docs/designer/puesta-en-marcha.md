@@ -50,4 +50,4 @@ Con Serverless, se paga solo el tiempo que está despierto: para el uso de una a
 
 ## Las migraciones
 
-D1 a D3 (`00319`, `00320`, `00321`) van **antes** de desplegar el código. En una instalación nueva, `/setup` las aplica con las demás.
+Las migraciones del Diseñador IA (`00319`, `00320`, `00321`, `00322`, `00324` y `00325`) van **antes** de desplegar el código. En una instalación nueva, `/setup` las aplica con las demás.

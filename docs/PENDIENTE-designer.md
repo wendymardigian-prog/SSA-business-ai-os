@@ -29,7 +29,7 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 ### La 00318 la tomó otra sesión: el Diseñador IA usa 00319 a 00322
 - **Qué quedó:** D1 = 00319, D2 = 00320, D3 = 00321 (el plan decía 00318–00320), más la 00322 que corrige la 00320.
 - **Por qué:** a las 21:54 UTC otra sesión (vincular anuncios sin id) registró la `00318_meta_match_rules_similar`. La 00322: el trigger del documento leía `NEW.format` en `design_versions` (no tiene esa columna) y ninguna versión se podía guardar; lo detectó `verify-permissions-matrix` antes de que el código nuevo se usara en producción.
-- **Qué se decidió:** se corrió la numeración y se corrigió con una migración nueva (la 00320 ya estaba aplicada). **La próxima libre es la 00323.**
+- **Qué se decidió:** se corrió la numeración y se corrigió con una migración nueva (la 00320 ya estaba aplicada). Al cierre, la próxima libre es la **00326** (la 00323 la usó otra sesión; el Diseñador IA sumó la 00324 y la 00325).
 
 ### La imagen Docker del servicio de render no se probó
 - **Qué quedó:** `render/Dockerfile` (Playwright 1.65.0, `mcr.microsoft.com/playwright:v1.65.0-noble`) sin construir.
@@ -149,3 +149,13 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
   2. marcar con `@plantilla-quitar(formularios)` lo que depende de Formularios: «Automatizar» (modal, acción, botón) arma un flujo «Formulario enviado», que la plantilla no tiene;
   3. reescribir esos comentarios y textos;
   4. hacer que `public/model.test.ts` lea la definición desde la base de la plantilla, o marcarlo.
+
+### Cierre (Ola 5): revisión visual
+- **Qué quedó:** la revisión a 1440 y 390 px, en claro y en oscuro, se hizo en la lista vacía, el modal «Nuevo» (sus 3 pasos y el paso «Archivo» de cargar HTML), Ajustes y el 404 del link público; se arregló el título truncado. NO se revisaron en pantalla: el editor con un diseño (lienzo, capas, barra del elemento, drawer de Configuración), el panel de la IA, el menú Publicar y Exportar, el link público de una pieza publicada y de una generación válida y anulada, la pestaña Generaciones y los modales «Emitir» y «Generar para varios», el modal «Usar en contenido», el grupo «Del diseño» y el aviso en el drawer de la pieza, y el panel del paso «Generar desde plantilla» en el lienzo.
+- **Por qué:** el servidor de desarrollo usa la base REAL del negocio: verlos exige crear un diseño, una plantilla, generaciones o una automatización ahí (el lienzo, además, guarda un borrador solo).
+- **Qué se decidió:** no crear nada en el negocio sin tu OK. La lógica de cada pantalla está en funciones puras con tests y las pantallas se renderizan en tests de servidor; lo que falta es mirarlas. Con tu OK, se crea todo con nombre «zz-test revisión» y se borra al terminar (o se revisa en un clon de prueba).
+
+### «Dónde se usa» de una plantilla no lista Contenido
+- **Qué quedó:** la configuración de una plantilla lista las automatizaciones que la usan; no lista piezas de Contenido.
+- **Por qué:** una plantilla no se vincula a Contenido (lo que se vincula es un diseño o una generación).
+- **Qué se decidió:** se deja así.

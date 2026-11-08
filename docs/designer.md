@@ -41,7 +41,22 @@ En el código el módulo se llama `designer` / `design_*` y vive en `/dashboard/
 - **Los jobs nunca lanzan por un proveedor** (render, IA): reagendan a 1, 5 y 15 minutos y dejan el error en la fila. Sin el servicio de render: «Falta conectar el servicio de render».
 - **La IA**: lo que pide una persona viaja como DATO en el mensaje, nunca en las instrucciones fijas; con el tope de gasto alcanzado no se llama al proveedor; nunca más de 2 pasadas de corrección; sobre una página cargada cambia solo textos, nodo por nodo (no el CSS).
 - **Las conversaciones** viven en `ai_threads` / `ai_messages` (genéricas de BAIOS, también para el tutor y el asistente), con RLS por canal: `designer` → `designer.view`; `assistant` → `user_id = auth.uid()` y miembro del negocio; `portal` → ninguna todavía.
+- **Las variables usan las claves del catálogo de Automatizaciones** (`contact.first_name`, `contact.display_name`, `contact.email`, `contact.phone`, `workspace.name`): no se inventan otras `contact.*` ni `workspace.*`. `catalog.test.ts` falla si se separan de `lib/flow-engine/variable-catalog.ts`.
+- **La IA nunca escribe directo en la base**: devuelve un documento o un parche que se valida con Zod (`ai/schema.ts`), se aplica sobre la versión en la que se pidió (`mergeAiPatch`), se limpia (`sanitizeAiDoc` + `sanitizeDocHtml`) y recién ahí se guarda con control de versión (`rev`).
 - **La fusión de contactos** reapunta `designs.subject_contact_id` y `ai_threads.contact_id` por trigger (`contacts_designs_on_merge`); `merge_contacts` no se tocó.
+
+## Variables
+
+Tres orígenes (`lib/designer/variables/catalog.ts`):
+1. **Del sistema**, con las claves de Automatizaciones (Contacto y Negocio) más las del Diseñador IA: `design.code` («Código de verificación»), `design.doc_type` («Tipo de documento», solo en plantillas que verifican), `design.issued_on` («Fecha de emisión», en la zona del negocio y con el formato de fecha de la plantilla) y `design.today`.
+2. **Registradas por otros módulos** con `registerDesignVariables({group, label, source, vars, resolve})` (`lib/designer/extensions.ts`): el punto de extensión que va a usar Servicios (`service.*`). En esta corrida queda vacío (solo un test registra uno de prueba). `onDesignGenerated` avisa cuando una generación queda lista; hoy lo usa el propio módulo para mandar el email de la pieza.
+3. **Propias de la plantilla** (`design_templates.custom_vars`): clave, nombre, valor de ejemplo y valor por defecto opcional. Se completan al generar, a mano o desde la automatización.
+
+`resolveValues` aplica primero lo que se pasa, después el sujeto y después el valor por defecto; si falta un dato decide la política: «No generar y avisarme», «Usar el valor de la plantilla» o «Dejarlo vacío» (`variables/missing.cases.json`).
+
+## Las reglas de la IA
+
+Fijas en `lib/designer/ai/rules.ts` y en el prompt (con su test): una idea por página y un título por página; tamaño mínimo de letra y palabras por página según el formato (`FORMATS[fmt].minFontSize`, `wordsPerPage`); todo dentro de las zonas seguras; contraste 4,5:1 para texto y 3:1 para texto grande y elementos (`lib/designer/color.ts`); en carruseles, portada con gancho y cierre con llamado a la acción; sobre una foto, una capa de color que asegure la lectura (`overlayForContrast`). La revisión automática (`qa.ts`) mide el render y corrige con una pasada (nunca más de 2 en total).
 
 ## Datos
 

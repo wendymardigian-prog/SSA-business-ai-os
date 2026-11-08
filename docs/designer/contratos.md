@@ -1,5 +1,7 @@
 # Diseñador IA · Contratos entre bloques
 
+> **Foto del cierre de la Ola 1 (7/11/2026).** Las firmas siguen vigentes, pero la columna «Estado» describe cómo quedó cada pieza ANTES de que la construyeran DS2–DS8: hoy no queda ningún stub («Todavía no está construido»), todos los jobs están construidos y `releasePreviousRenders` borra el juego anterior (F48b). Contratos que se sumaron después: `createGeneration` (núcleo de una generación, DS6/DS7), `PublishMenuProps.stale`, `EditorCan.content` y las acciones extra de DS2 (`signDesignAssetUrls`, `listUploadedImages`, `updateTemplateSettings`), DS6 (`listGenerations`, `generationDetail`, `loadGenerateContext`, `loadGenerateManyContext`, `searchGenerateContacts`) y DS7 (`templatesForAutomation`, `templateVariablesForAutomation`). El estado final de cada pieza está en [../designer.md](../designer.md).
+
 Lo que cada bloque le pide a otro, fijado al cerrar la Ola 1. Los tipos viven en `lib/designer/contracts.ts`; las firmas de las Server Actions, en `lib/actions/designer/*`; los puntos de montaje, en `components/designer/*`.
 
 **Regla:** un subagente construye SU lado del contrato y no cambia el contrato. Si necesita otra cosa (un campo, una acción nueva, un tipo), la pide en su informe y la suma la sesión principal al integrar.
