@@ -285,7 +285,8 @@ conserva. Nunca tumba el insert de un mensaje.
 Por qué: un broadcast de WhatsApp a chats importados del historial (que nacen
 cerrados) quedaba guardado como último mensaje, pero la conversación seguía
 cerrada y la bandeja, que muestra «Abiertas», no la mostraba. Al aplicarla se
-reabrieron las conversaciones de broadcasts que ya habían salido.
+reabrieron las conversaciones de broadcasts que ya habían salido (27, el
+8/11/2026 UTC, versión `20261108190520`).
 
 `node scripts/verify-chat-awaiting.mjs --despues-de-00354` prueba los casos.
 
