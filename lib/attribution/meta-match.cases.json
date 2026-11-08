@@ -1,5 +1,5 @@
 {
-  "_comment": "Casos compartidos entre public.resolve_meta_match (SQL) y resolveMetaMatch (TS). Cada caso corre contra las dos: scripts/verify-ads-attribution.mjs y lib/attribution/meta-match.test.ts. El catalogo es el mismo para todos. Regla: siempre por id; por nombre solo un anuncio unico dentro del conjunto o la campaña conocidos por id.",
+  "_comment": "Casos compartidos entre public.resolve_meta_match (SQL) y resolveMetaMatch (TS). Cada caso corre contra las dos: scripts/verify-ads-attribution.mjs y lib/attribution/meta-match.test.ts. El catalogo (con sus reglas) es el mismo para todos. Orden (00318): ids -> regla -> nombre exacto -> campaña por nombre unico o parecido -> anuncio por parecido -> unico anuncio del conjunto.",
   "catalog": {
     "campaigns": [
       {
@@ -21,6 +21,14 @@
       {
         "campaignId": "1005",
         "name": "Duplicados"
+      },
+      {
+        "campaignId": "1006",
+        "name": "Promo 5 Mayo · Frío"
+      },
+      {
+        "campaignId": "1007",
+        "name": "Promo 5 Mayo · Caliente"
       }
     ],
     "adsets": [
@@ -43,6 +51,16 @@
         "adsetId": "2004",
         "campaignId": "1005",
         "name": "Conjunto B"
+      },
+      {
+        "adsetId": "2005",
+        "campaignId": "1006",
+        "name": "F1 · El costo"
+      },
+      {
+        "adsetId": "2006",
+        "campaignId": "1007",
+        "name": "Caliente C1-C3"
       }
     ],
     "ads": [
@@ -81,6 +99,50 @@
         "adsetId": "2004",
         "campaignId": "1005",
         "name": "Banner"
+      },
+      {
+        "adId": "3007",
+        "adsetId": "2005",
+        "campaignId": "1006",
+        "name": "F1 · El costo"
+      },
+      {
+        "adId": "3008",
+        "adsetId": "2006",
+        "campaignId": "1007",
+        "name": "C1 · Directo corto (15 s)"
+      },
+      {
+        "adId": "3009",
+        "adsetId": "2006",
+        "campaignId": "1007",
+        "name": "C2 · Directo + método"
+      },
+      {
+        "adId": "3010",
+        "adsetId": "2006",
+        "campaignId": "1007",
+        "name": "C3 · Directo corto (30 s)"
+      }
+    ],
+    "rules": [
+      {
+        "utmCampaign": "promo-5-mayo",
+        "utmContent": "ad-x9-otro",
+        "utmTerm": null,
+        "action": "link",
+        "adId": "3008",
+        "adsetId": "2006",
+        "campaignId": "1007"
+      },
+      {
+        "utmCampaign": "seguidor-nuevo",
+        "utmContent": null,
+        "utmTerm": null,
+        "action": "ignore",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null
       }
     ]
   },
@@ -286,7 +348,7 @@
       }
     },
     {
-      "name": "una campaña por nombre no sirve para buscar el anuncio: no se vincula",
+      "name": "campaña por nombre unico y anuncio por nombre exacto dentro de ella",
       "input": {
         "adId": null,
         "adsetId": null,
@@ -297,12 +359,12 @@
         "fbclid": null
       },
       "expected": {
-        "status": "unmatched",
-        "adId": null,
-        "adsetId": null,
-        "campaignId": null,
-        "method": null,
-        "reason": "name_without_id"
+        "status": "matched",
+        "adId": "3002",
+        "adsetId": "2002",
+        "campaignId": "1002",
+        "method": "utm_content_name",
+        "reason": null
       }
     },
     {
@@ -466,7 +528,7 @@
       }
     },
     {
-      "name": "un nombre de campaña: nunca se busca",
+      "name": "un nombre de campaña que no existe: no se vincula",
       "input": {
         "adId": null,
         "adsetId": null,
@@ -482,7 +544,7 @@
         "adsetId": null,
         "campaignId": null,
         "method": null,
-        "reason": "name_without_id"
+        "reason": "name_not_found"
       }
     },
     {
@@ -506,7 +568,7 @@
       }
     },
     {
-      "name": "un nombre de campaña repetido (dos campañas)",
+      "name": "un nombre de campaña repetido (dos campañas): no se elige ninguna",
       "input": {
         "adId": null,
         "adsetId": null,
@@ -522,7 +584,7 @@
         "adsetId": null,
         "campaignId": null,
         "method": null,
-        "reason": "name_without_id"
+        "reason": "ambiguous_campaign_name"
       }
     },
     {
@@ -586,7 +648,7 @@
       }
     },
     {
-      "name": "un nombre de campaña unico tampoco alcanza: no se vincula",
+      "name": "un nombre de campaña unico alcanza para la campaña",
       "input": {
         "adId": null,
         "adsetId": null,
@@ -597,16 +659,16 @@
         "fbclid": null
       },
       "expected": {
-        "status": "unmatched",
+        "status": "matched",
         "adId": null,
         "adsetId": null,
-        "campaignId": null,
-        "method": null,
-        "reason": "name_without_id"
+        "campaignId": "1001",
+        "method": "utm_campaign_name",
+        "reason": null
       }
     },
     {
-      "name": "campaña por nombre y un ad_id que no esta: no se vincula",
+      "name": "campaña por nombre unico y un ad_id que no esta: la campaña, con aviso",
       "input": {
         "adId": "999",
         "adsetId": null,
@@ -617,11 +679,11 @@
         "fbclid": null
       },
       "expected": {
-        "status": "unmatched",
+        "status": "matched",
         "adId": null,
         "adsetId": null,
-        "campaignId": null,
-        "method": null,
+        "campaignId": "1001",
+        "method": "utm_campaign_name",
         "reason": "id_not_in_catalog"
       }
     },
@@ -822,6 +884,286 @@
         "adsetId": "2002",
         "campaignId": "1002",
         "method": "utm_content_name_adset",
+        "reason": null
+      }
+    },
+    {
+      "name": "parecido: la campaña por sus palabras (dos) y el anuncio por su codigo, unico entre las dos",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "promo-5-mayo",
+        "utmContent": "ad-f1-costo",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3007",
+        "adsetId": "2005",
+        "campaignId": "1006",
+        "method": "utm_content_similar_campaign",
+        "reason": null
+      }
+    },
+    {
+      "name": "parecido: adentro del conjunto que vino por id",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "ad-c1-directo-corto",
+        "utmTerm": "2006",
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3008",
+        "adsetId": "2006",
+        "campaignId": "1007",
+        "method": "utm_content_similar_adset",
+        "reason": null
+      }
+    },
+    {
+      "name": "parecido con dos candidatos en el conjunto: el conjunto, el anuncio no, con aviso",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "ad-directo-corto",
+        "utmTerm": "2006",
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": "2006",
+        "campaignId": "1007",
+        "method": "utm_term_id",
+        "reason": "ambiguous_ad_name"
+      }
+    },
+    {
+      "name": "parecido con dos candidatos y dos campañas posibles: no se vincula",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "promo-5-mayo",
+        "utmContent": "ad-directo-corto",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "ambiguous_ad_name"
+      }
+    },
+    {
+      "name": "parecido: una sola campaña contiene las palabras",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "mayo-frio",
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1006",
+        "method": "utm_campaign_similar",
+        "reason": null
+      }
+    },
+    {
+      "name": "una sola palabra sin codigo no alcanza para buscar el anuncio",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "promo-5-mayo",
+        "utmContent": "ad-costo",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "ambiguous_campaign_name"
+      }
+    },
+    {
+      "name": "parecido sin campaña ni conjunto: nunca contra todo el catalogo",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "ad-f1-costo",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "name_without_id"
+      }
+    },
+    {
+      "name": "parecido dentro de la campaña que vino por id",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1007",
+        "utmCampaign": null,
+        "utmContent": "c2-metodo",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3009",
+        "adsetId": "2006",
+        "campaignId": "1007",
+        "method": "utm_content_similar_campaign",
+        "reason": null
+      }
+    },
+    {
+      "name": "nombre exacto de campaña y de anuncio, sin ids",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "Campaña Octubre",
+        "utmContent": "oferta unica",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3003",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "utm_content_name",
+        "reason": null
+      }
+    },
+    {
+      "name": "regla: estos UTMs = este anuncio (sin importar mayusculas)",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "Promo-5-Mayo",
+        "utmContent": "AD-X9-OTRO",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3008",
+        "adsetId": "2006",
+        "campaignId": "1007",
+        "method": "rule",
+        "reason": null
+      }
+    },
+    {
+      "name": "regla de ignorar: no es un anuncio",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "seguidor-nuevo",
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "ignored",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": "rule",
+        "reason": null
+      }
+    },
+    {
+      "name": "una regla nunca contradice una campaña que vino por id",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1006",
+        "utmCampaign": "promo-5-mayo",
+        "utmContent": "ad-x9-otro",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1006",
+        "method": "campaign_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "una regla es por la combinacion exacta: con otro utm_term no aplica",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "promo-5-mayo",
+        "utmContent": "ad-x9-otro",
+        "utmTerm": "2006",
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": "2006",
+        "campaignId": "1007",
+        "method": "utm_term_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "una regla de ignorar no gana a un id",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1001",
+        "utmCampaign": "seguidor-nuevo",
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1001",
+        "method": "campaign_id",
         "reason": null
       }
     }

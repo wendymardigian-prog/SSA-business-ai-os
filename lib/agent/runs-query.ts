@@ -218,6 +218,7 @@ export const AGENT_RUN_SOURCES = [
   "message_classification_eval",
   "content_copy",
   "ads_analysis",
+  "ads_matching",
   "audio_transcription",
   "media_description",
   "designer",

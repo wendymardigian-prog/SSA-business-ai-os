@@ -16,8 +16,17 @@ export function pickedIds(option: CatalogOption): { adId?: string; adsetId?: str
  * escribir; lo que se muestra se deriva del ultimo resultado (no se hace `setState` dentro del efecto de
  * entrada): con menos de 2 letras no hay nada que buscar y se muestra la ayuda.
  */
-export function MetaLinkPicker({ subtitle, onPick }: { subtitle?: string; onPick: (option: CatalogOption) => void }) {
-  const [text, setText] = useState("");
+export function MetaLinkPicker({
+  subtitle,
+  initialQuery,
+  onPick,
+}: {
+  subtitle?: string;
+  /** Con que arranca la busqueda (por ejemplo, el codigo del UTM: «n4»). */
+  initialQuery?: string;
+  onPick: (option: CatalogOption) => void;
+}) {
+  const [text, setText] = useState(initialQuery ?? "");
   const [result, setResult] = useState<{ query: string; options: CatalogOption[]; failed: boolean } | null>(null);
 
   const query = text.trim();

@@ -180,6 +180,181 @@ export async function unlinkTouchMeta(touchId: string): Promise<MetaMatchActionR
   return run(touchId, "unlink");
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Por grupo (00318): una regla para todos los toques con los mismos UTMs
+// ════════════════════════════════════════════════════════════════════════════
+
+const RULE_ERRORS: Record<string, string> = {
+  not_in_catalog: ERRORS.not_in_catalog,
+  nothing_to_link: ERRORS.nothing_to_link,
+  no_keys: "Ese grupo no trae UTMs: se vincula toque por toque.",
+  invalid_action: ERRORS.invalid_action,
+  invalid_origin: ERRORS.invalid_action,
+  rule_not_found: "No encontré esa regla. Puede que ya la hayan borrado.",
+};
+
+export interface MetaRuleInput {
+  utmCampaign: string | null;
+  utmContent: string | null;
+  utmTerm: string | null;
+  action: "link" | "ignore";
+  adId?: string | null;
+  adsetId?: string | null;
+  campaignId?: string | null;
+  /** Quien eligio: una persona a mano, la confirmacion de una sugerencia, o una propuesta de la IA confirmada. */
+  origin: "manual" | "confirmed" | "ai";
+}
+
+export type MetaRuleResult = { ok: true; applied: number } | { ok: false; error: string };
+
+const clean = (value: string | null | undefined) => {
+  const v = (value ?? "").trim().slice(0, 500);
+  return v === "" ? null : v;
+};
+
+/**
+ * Crea (o reemplaza) la regla «estos UTMs = este anuncio» (o «no es un anuncio») y la aplica a todos los toques que
+ * los traen, de cualquier fecha, y a los que lleguen. Permiso `settings.general`; el workspace sale de la sesion.
+ * Es configuracion del negocio (como el catalogo): alcanza a toques de contactos que quien la crea quizas no ve,
+ * igual que el vinculo automatico.
+ */
+export async function applyMetaRule(input: MetaRuleInput): Promise<MetaRuleResult> {
+  const ctx = await getPermissionAction("settings.general");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  if (input.action !== "link" && input.action !== "ignore") return { ok: false, error: ERRORS.invalid_action };
+  if (!["manual", "confirmed", "ai"].includes(input.origin)) return { ok: false, error: ERRORS.invalid_action };
+
+  const rule = { utmCampaign: clean(input.utmCampaign), utmContent: clean(input.utmContent), utmTerm: clean(input.utmTerm) };
+  if (!rule.utmCampaign && !rule.utmContent && !rule.utmTerm) return { ok: false, error: RULE_ERRORS.no_keys };
+
+  const service = await createServiceClient();
+  const { data, error } = await service.rpc("create_meta_match_rule", {
+    p_workspace_id: ctx.workspace.id,
+    p_user_id: ctx.user.id,
+    p_utm_campaign: rule.utmCampaign,
+    p_utm_content: rule.utmContent,
+    p_utm_term: rule.utmTerm,
+    p_action: input.action,
+    p_ad_id: input.action === "link" ? (clean(input.adId) ?? undefined) : undefined,
+    p_adset_id: input.action === "link" ? (clean(input.adsetId) ?? undefined) : undefined,
+    p_campaign_id: input.action === "link" ? (clean(input.campaignId) ?? undefined) : undefined,
+    p_origin: input.origin,
+  });
+  if (error) {
+    console.error("[meta-match] no pude crear la regla:", error.message);
+    return { ok: false, error: "No pude guardar la regla. Probá de nuevo en un rato." };
+  }
+  const result = data as { ok?: boolean; error?: string; rule_id?: string; applied?: number; ad_id?: string | null; adset_id?: string | null; campaign_id?: string | null } | null;
+  if (!result?.ok) return { ok: false, error: RULE_ERRORS[result?.error ?? ""] ?? ERRORS.invalid_action };
+
+  await logAudit({
+    supabase: service,
+    workspaceId: ctx.workspace.id,
+    entityType: "workspace",
+    entityId: ctx.workspace.id,
+    action: "attribution.meta_rule_saved",
+    changes: {
+      meta_rule: {
+        old: null,
+        new: {
+          utm_campaign: rule.utmCampaign,
+          utm_content: rule.utmContent,
+          utm_term: rule.utmTerm,
+          action: input.action,
+          ad_id: result.ad_id ?? null,
+          adset_id: result.adset_id ?? null,
+          campaign_id: result.campaign_id ?? null,
+          origin: input.origin,
+        },
+      },
+    },
+    metadata: { rule_id: result.rule_id ?? null, applied: result.applied ?? 0 },
+    performedBy: ctx.user.id,
+  });
+
+  revalidatePath("/dashboard/dashboards/ads/sin-vincular");
+  return { ok: true, applied: result.applied ?? 0 };
+}
+
+/** Confirma varias propuestas a la vez («Confirmar todas»): una regla por grupo, en orden. Devuelve cuantas salieron. */
+export async function applyMetaRules(inputs: MetaRuleInput[]): Promise<{ ok: true; saved: number; failed: number; applied: number } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("settings.general");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  let saved = 0;
+  let failed = 0;
+  let applied = 0;
+  for (const input of (inputs ?? []).slice(0, 100)) {
+    const result = await applyMetaRule(input);
+    if (result.ok) {
+      saved += 1;
+      applied += result.applied;
+    } else {
+      failed += 1;
+    }
+  }
+  return { ok: true, saved, failed, applied };
+}
+
+/** Borra una regla: sus toques se vuelven a resolver solos (pueden volver a «Sin vincular»). */
+export async function deleteMetaMatchRule(ruleId: string): Promise<MetaRuleResult> {
+  const ctx = await getPermissionAction("settings.general");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  if (!ruleId) return { ok: false, error: RULE_ERRORS.rule_not_found };
+
+  const service = await createServiceClient();
+  const { data, error } = await service.rpc("delete_meta_match_rule", { p_workspace_id: ctx.workspace.id, p_rule_id: ruleId });
+  if (error) {
+    console.error("[meta-match] no pude borrar la regla:", error.message);
+    return { ok: false, error: "No pude borrar la regla. Probá de nuevo en un rato." };
+  }
+  const result = data as { ok?: boolean; error?: string; reverted?: number; rule?: Json } | null;
+  if (!result?.ok) return { ok: false, error: RULE_ERRORS[result?.error ?? ""] ?? ERRORS.invalid_action };
+
+  await logAudit({
+    supabase: service,
+    workspaceId: ctx.workspace.id,
+    entityType: "workspace",
+    entityId: ctx.workspace.id,
+    action: "attribution.meta_rule_deleted",
+    changes: { meta_rule: { old: result.rule ?? null, new: null } },
+    metadata: { rule_id: ruleId, reverted: result.reverted ?? 0 },
+    performedBy: ctx.user.id,
+  });
+
+  revalidatePath("/dashboard/dashboards/ads/sin-vincular");
+  return { ok: true, applied: result.reverted ?? 0 };
+}
+
+/** Hasta cuantos toques se cambian de una vez en un grupo sin UTMs (toque por toque). */
+const MAX_BULK_TOUCHES = 300;
+
+async function bulk(touchIds: string[], each: (touchId: string) => Promise<MetaMatchActionResult>): Promise<MetaRuleResult> {
+  const ids = [...new Set((touchIds ?? []).filter(Boolean))].slice(0, MAX_BULK_TOUCHES);
+  if (ids.length === 0) return { ok: false, error: NOT_FOUND };
+  let done = 0;
+  let lastError: string | null = null;
+  for (const id of ids) {
+    const result = await each(id);
+    if (result.ok) done += 1;
+    else lastError = result.error;
+  }
+  if (done === 0) return { ok: false, error: lastError ?? ERRORS.invalid_action };
+  return { ok: true, applied: done };
+}
+
+/** Un grupo sin UTMs (solo ids que no estan en el catalogo): se vincula toque por toque, a mano. */
+export async function linkTouchesToMeta(input: { touchIds: string[]; adId?: string | null; adsetId?: string | null; campaignId?: string | null }): Promise<MetaRuleResult> {
+  return bulk(input.touchIds, (touchId) => run(touchId, "link", { adId: input.adId, adsetId: input.adsetId, campaignId: input.campaignId }));
+}
+
+export async function ignoreTouchesMeta(touchIds: string[]): Promise<MetaRuleResult> {
+  return bulk(touchIds, (touchId) => run(touchId, "ignore"));
+}
+
+export async function unlinkTouchesMeta(touchIds: string[]): Promise<MetaRuleResult> {
+  return bulk(touchIds, (touchId) => run(touchId, "unlink"));
+}
+
 export interface CatalogOption {
   level: "ad" | "adset" | "campaign";
   id: string;

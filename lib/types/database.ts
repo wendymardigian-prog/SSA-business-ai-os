@@ -705,6 +705,8 @@ export type AuditAction =
   | "attribution.meta_linked"
   | "attribution.meta_ignored"
   | "attribution.meta_unlinked"
+  | "attribution.meta_rule_saved"
+  | "attribution.meta_rule_deleted"
   /** Entity meta_ad: una persona vinculo un anuncio con una pieza de Contenido, o lo desvinculo (Tiron 2, A2). */
   | "content_link.linked"
   | "content_link.unlinked"
@@ -860,6 +862,8 @@ export type AgentRunSource =
   /** Etapa 2 (00085): generar guion y caption, y analizar anuncios con IA. */
   | "content_copy"
   | "ads_analysis"
+  /** «Vincular anuncios» (00318): propone a qué anuncio corresponde un grupo sin vincular. */
+  | "ads_matching"
   // Mejoras de Chat (00103). Los dos van SIN agent_id: no los pide un agente,
   // los pide el sistema al recibir un mensaje.
   | "audio_transcription"
@@ -4307,7 +4311,7 @@ export interface Database {
         Row: {
           id: string;
           workspace_id: string;
-          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis" | "call_classification" | "call_analysis" | "call_summary";
+          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis" | "ads_matching" | "call_classification" | "call_analysis" | "call_summary";
           version: number;
           instructions: string;
           note: string | null;
@@ -4318,7 +4322,7 @@ export interface Database {
         Insert: {
           id?: string;
           workspace_id: string;
-          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis" | "call_classification" | "call_analysis" | "call_summary";
+          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis" | "ads_matching" | "call_classification" | "call_analysis" | "call_summary";
           version: number;
           instructions: string;
           note?: string | null;
@@ -5878,6 +5882,31 @@ export interface Database {
         Relationships: [];
       };
 
+      /** Reglas de vinculo con Meta (00318): «estos UTMs = este anuncio» o «no es un anuncio». Escribe solo el servidor. */
+      meta_match_rules: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          campaign_key: string;
+          content_key: string;
+          term_key: string;
+          utm_campaign: string | null;
+          utm_content: string | null;
+          utm_term: string | null;
+          action: "link" | "ignore";
+          ad_id: string | null;
+          adset_id: string | null;
+          campaign_id: string | null;
+          origin: "manual" | "confirmed" | "ai";
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
       meta_campaigns: {
         Row: {
           id: string;
@@ -6985,6 +7014,27 @@ export interface Database {
         Returns: number;
       };
       /** Vincula, ignora o quita el vinculo de un toque con Meta, y recalcula la atribucion del contacto (00192, 00194). Solo service_role. */
+      /** Crea (o reemplaza) una regla de vinculo y la aplica a los toques con esos UTMs (00318). Solo service_role. */
+      create_meta_match_rule: {
+        Args: {
+          p_workspace_id: string;
+          p_user_id: string;
+          p_utm_campaign: string | null;
+          p_utm_content: string | null;
+          p_utm_term: string | null;
+          p_action: string;
+          p_ad_id?: string;
+          p_adset_id?: string;
+          p_campaign_id?: string;
+          p_origin?: string;
+        };
+        Returns: Json;
+      };
+      /** Borra una regla y vuelve a resolver sus toques (00318). Solo service_role. */
+      delete_meta_match_rule: {
+        Args: { p_workspace_id: string; p_rule_id: string };
+        Returns: Json;
+      };
       set_touch_meta_match: {
         Args: {
           p_workspace_id: string;

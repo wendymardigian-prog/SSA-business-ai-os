@@ -297,6 +297,8 @@ export const FORM_ACTION_LABELS: Record<
   "attribution.meta_linked": "vinculó un toque con un anuncio de Meta",
   "attribution.meta_ignored": "ignoró un toque para el vínculo con Meta",
   "attribution.meta_unlinked": "quitó el vínculo manual de un toque con Meta",
+  "attribution.meta_rule_saved": "guardó una regla de vínculo con Meta",
+  "attribution.meta_rule_deleted": "borró una regla de vínculo con Meta",
   // Extra I (F31): la configuración de Ajustes > General > Atribución (entidad workspace).
   "attribution.settings_updated": "cambió la configuración de atribución",
   // Extra I (F43): el responsable de una publicación sin pieza.
