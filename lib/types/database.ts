@@ -7000,10 +7000,10 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
-      /** El grafico diario de un numero de WhatsApp (00348). Solo service_role. */
+      /** El grafico diario de un numero de WhatsApp (00348; `broadcast` desde la 00349). Solo service_role. */
       whatsapp_channel_daily_messages: {
         Args: { p_workspace_id: string; p_channel_id: string; p_since: string; p_time_zone: string };
-        Returns: Array<{ day: string; received: number; automation: number; agent: number; approved: number; human: number; external: number }>;
+        Returns: Array<{ day: string; received: number; automation: number; broadcast: number; agent: number; approved: number; human: number; external: number }>;
       };
       /** Diseñador IA (00320): lo único que ve el link público /d/<código>. anon la puede ejecutar. */
       design_public_get: { Args: { p_code: string }; Returns: Json };

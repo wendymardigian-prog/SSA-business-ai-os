@@ -6,16 +6,18 @@
  */
 
 import { civilDate, startOfDay } from "@/lib/dates";
+import type { Projection, ProjectedDay } from "./projection";
 
 export const DAILY_DAYS = 30;
 
 /** De quien es un mensaje que salio, en el orden en que se apila y con su color fijo (no cambia con los datos). */
 export const SENT_KINDS = [
-  { key: "automation", label: "Automatización", hint: "Flujos, secuencias y broadcasts", color: "var(--wa-series-1)" },
-  { key: "agent", label: "Agente IA directo", hint: "El agente respondió solo", color: "var(--wa-series-2)" },
-  { key: "approved", label: "Agente aprobado", hint: "Borrador del agente aprobado por una persona", color: "var(--wa-series-3)" },
-  { key: "human", label: "Escrito por una persona", hint: "Desde la bandeja del sistema", color: "var(--wa-series-4)" },
-  { key: "external", label: "Fuera del sistema", hint: "El celular, ManyChat u otra herramienta", color: "var(--wa-series-5)" },
+  { key: "automation", label: "Automatización", hint: "Flujos y secuencias", color: "var(--wa-series-1)" },
+  { key: "broadcast", label: "Broadcast", hint: "Envíos masivos de Broadcasts", color: "var(--wa-series-2)" },
+  { key: "agent", label: "Agente IA directo", hint: "El agente respondió solo", color: "var(--wa-series-3)" },
+  { key: "approved", label: "Agente aprobado", hint: "Borrador del agente aprobado por una persona", color: "var(--wa-series-4)" },
+  { key: "human", label: "Escrito por una persona", hint: "Desde la bandeja del sistema", color: "var(--wa-series-5)" },
+  { key: "external", label: "Fuera del sistema", hint: "El celular, ManyChat u otra herramienta", color: "var(--wa-series-6)" },
 ] as const;
 
 export type SentKind = (typeof SENT_KINDS)[number]["key"];
@@ -24,6 +26,7 @@ export interface DailyRow {
   day: string;
   received: number;
   automation: number;
+  broadcast: number;
   agent: number;
   approved: number;
   human: number;
@@ -34,6 +37,10 @@ export interface DailyPoint extends DailyRow {
   /** "8/11", para el eje. */
   label: string;
   sent: number;
+  /** Un dia que todavia no llego: solo tiene lo proyectado. */
+  future: boolean;
+  /** Lo que se espera que salga ese dia (hoy: lo que falta). null si no hay proyeccion. */
+  projected: ProjectedDay | null;
 }
 
 function ymd(year: number, month: number, day: number): string {
@@ -62,14 +69,50 @@ export function dailySeries(rows: readonly Partial<DailyRow>[], now: Date, timeZ
       label: `${d.getUTCDate()}/${d.getUTCMonth() + 1}`,
       received: n(row.received),
       automation: n(row.automation),
+      broadcast: n(row.broadcast),
       agent: n(row.agent),
       approved: n(row.approved),
       human: n(row.human),
       external: n(row.external),
       sent: 0,
+      future: false,
+      projected: null,
     };
     point.sent = SENT_KINDS.reduce((sum, kind) => sum + point[kind.key], 0);
     out.push(point);
+  }
+  return out;
+}
+
+export function projectedTotal(day: ProjectedDay | null): number {
+  return day ? day.broadcast + day.sequence + day.scheduled : 0;
+}
+
+/**
+ * Suma la proyeccion: hoy la lleva encima de lo que ya salio, y los dias siguientes se agregan al final (solo con lo
+ * proyectado). `projection` trae hoy y los dias que vienen, en la misma zona que la serie.
+ */
+export function withProjection(series: readonly DailyPoint[], projection: Projection | null): DailyPoint[] {
+  if (!projection) return [...series];
+  const out = series.map((p) => (projection[p.day] && projectedTotal(projection[p.day]) > 0 ? { ...p, projected: projection[p.day] } : p));
+  const lastDay = series[series.length - 1]?.day ?? "";
+  for (const key of Object.keys(projection).sort()) {
+    if (key <= lastDay) continue;
+    const [, m, d] = key.split("-").map(Number);
+    out.push({
+      day: key,
+      label: `${d}/${m}`,
+      received: 0,
+      automation: 0,
+      broadcast: 0,
+      agent: 0,
+      approved: 0,
+      human: 0,
+      external: 0,
+      sent: 0,
+      future: true,
+      projected: projectedTotal(projection[key]) > 0 ? projection[key] : null,
+    });
   }
   return out;
 }
@@ -82,6 +125,8 @@ export interface DailyTotals {
   maxSentDay: DailyPoint | null;
   /** Promedio de enviados por dia en el periodo. */
   avgSent: number;
+  /** Lo que se espera que salga desde hoy hasta el ultimo dia proyectado. */
+  projected: number;
 }
 
 export function dailyTotals(series: readonly DailyPoint[]): DailyTotals {
@@ -89,13 +134,18 @@ export function dailyTotals(series: readonly DailyPoint[]): DailyTotals {
   let sent = 0;
   let received = 0;
   let maxSentDay: DailyPoint | null = null;
+  let projected = 0;
+  let pastDays = 0;
   for (const point of series) {
+    projected += projectedTotal(point.projected);
+    if (point.future) continue;
+    pastDays++;
     sent += point.sent;
     received += point.received;
     for (const kind of SENT_KINDS) byKind[kind.key] += point[kind.key];
     if (point.sent > 0 && (!maxSentDay || point.sent > maxSentDay.sent)) maxSentDay = point;
   }
-  return { sent, received, byKind, maxSentDay, avgSent: series.length > 0 ? sent / series.length : 0 };
+  return { sent, received, byKind, maxSentDay, avgSent: pastDays > 0 ? sent / pastDays : 0, projected };
 }
 
 /** Un techo "redondo" para el eje: 1, 2, 5, 10, 20, 50... por encima del maximo. */

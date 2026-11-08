@@ -3,10 +3,12 @@
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
-import { dailySeries, dailySince, type DailyPoint, type DailyRow } from "@/lib/whatsapp-stats/daily";
+import { dailySeries, dailySince, withProjection, type DailyPoint, type DailyRow } from "@/lib/whatsapp-stats/daily";
+import { loadProjection } from "@/lib/whatsapp-stats/projection-load";
 
 /**
- * El grafico diario de un numero de WhatsApp (00348), en su tarjeta de canal. Pide `channels.manage`, como el resto de
+ * El grafico diario de un numero de WhatsApp (00348/00349), en su tarjeta de canal, con la proyeccion de los proximos
+ * 7 dias (`lib/whatsapp-stats/projection-load.ts`). Pide `channels.manage`, como el resto de
  * la tarjeta. Cuenta en la base (`whatsapp_channel_daily_messages`, solo `service_role`) con el workspace de la sesion
  * y solo devuelve cuentas por dia: ningun mensaje ni dato de contacto.
  */
@@ -40,5 +42,15 @@ export async function loadWhatsappDailyMessages(channelId: string): Promise<Resu
     console.error("[whatsapp] no pude contar los mensajes por dia:", error.message);
     return { ok: false, error: "No pude leer los mensajes de este número. Probá de nuevo." };
   }
-  return { ok: true, series: dailySeries((data ?? []) as DailyRow[], now, timeZone), timeZone };
+  const past = dailySeries((data ?? []) as DailyRow[], now, timeZone);
+  // Lo que viene: broadcasts en cola, pasos de secuencias y automatizaciones programadas a grupos. Nunca frena.
+  const projection = await loadProjection(service, {
+    workspaceId: ctx.workspace.id,
+    channelId,
+    now,
+    viewerTimeZone: timeZone,
+    laneTimeZone: ctx.workspace.timezone || "UTC",
+    broadcastsSentToday: past[past.length - 1]?.broadcast ?? 0,
+  });
+  return { ok: true, series: withProjection(past, projection), timeZone };
 }
