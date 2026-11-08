@@ -172,7 +172,7 @@ export interface GenerationListView {
   pages: number;
   /** Algo se está armando: la pestaña vuelve a leer sola cada 5 s. */
   polling: boolean;
-  template: { id: string; name: string; verify: boolean; issueLabel: string };
+  template: { id: string; name: string; verify: boolean; docType: string | null; issueLabel: string };
 }
 
 export interface ListDeps {
@@ -303,7 +303,7 @@ export async function listGenerationsCore(
     page: filters.page,
     pages: pageCount(total),
     polling: needsPolling(records),
-    template: { id: template.id, name: template.name, verify: template.verify, issueLabel: issueButtonLabel({ verify: template.verify, doc_type: template.doc_type, doc_type_label: template.doc_type_label }) },
+    template: { id: template.id, name: template.name, verify: template.verify, docType: template.doc_type, issueLabel: issueButtonLabel({ verify: template.verify, doc_type: template.doc_type, doc_type_label: template.doc_type_label }) },
   };
 }
 
@@ -323,6 +323,8 @@ export interface GenerationDetail {
   values: { key: string; label: string; value: string }[];
   emailText: string;
   canSendEmail: boolean;
+  /** «certificado», «constancia»… o null: para proponer el email al mandarlo ahora. */
+  noun: string | null;
   /** El link público (null si no funciona: sin publicar y sin verificación). */
   link: string | null;
 }
@@ -337,8 +339,8 @@ export async function generationDetailCore(
   if (error) throw new Error(`No pude leer la pieza: ${error.message}`);
   const row = data as unknown as (DesignRow & { template_id: string | null }) | null;
   if (!row || !row.template_id) return null;
-  const { data: tpl } = await user.from("design_templates").select("doc, custom_vars, verify").eq("id", row.template_id).eq("workspace_id", input.workspaceId).maybeSingle();
-  const template = tpl as unknown as { doc: Json; custom_vars: Json; verify: boolean } | null;
+  const { data: tpl } = await user.from("design_templates").select("doc, custom_vars, verify, doc_type, doc_type_label").eq("id", row.template_id).eq("workspace_id", input.workspaceId).maybeSingle();
+  const template = tpl as unknown as { doc: Json; custom_vars: Json; verify: boolean; doc_type: string | null; doc_type_label: string | null } | null;
   const parsed = template ? parseDesignDoc(template.doc) : null;
   const customVars = template ? parseCustomVarsList(template.custom_vars) : [];
   const keys = [...new Set([...(parsed?.ok ? docVariables(parsed.doc) : []), ...customVars.map((v) => v.key)])];
@@ -368,6 +370,7 @@ export async function generationDetailCore(
     values: detailValues(flat, labels),
     emailText: emailStatusText(record),
     canSendEmail: canSendEmailNow(record, { can: input.can }),
+    noun: template?.verify && isDocType(template.doc_type) ? docTypeNoun(template.doc_type, template.doc_type_label).toLowerCase() : null,
     link: view.actions.includes("view") || view.actions.includes("copy_link") ? input.linkFor(row.code) : null,
   };
 }

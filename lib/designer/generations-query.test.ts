@@ -35,7 +35,7 @@ describe("listGenerationsCore (F53)", () => {
     expect(view.total).toBe(4);
     expect(view.pages).toBe(1);
     expect(view.polling).toBe(true);
-    expect(view.template).toEqual({ id: TEMPLATE, name: "Certificado del programa", verify: true, issueLabel: "Emitir certificado" });
+    expect(view.template).toEqual({ id: TEMPLATE, name: "Certificado del programa", verify: true, docType: "certificado", issueLabel: "Emitir certificado" });
     expect(view.rows.map((r) => r.para.name)).toEqual(["Lucía Ferreyra", "Diego Salas", "Tomás Ruiz", "Registro de Ana"]);
     const [lucia, diego, tomas, anulada] = view.rows;
     expect(lucia).toMatchObject({ when: "hoy 09:12", origin: { text: "A mano · Ana Ruiz" }, state: { label: "Generado" }, actions: ["view", "copy_link", "void", "regenerate", "detail"], para: { detail: "lucia@ejemplo.com" } });
@@ -107,7 +107,7 @@ describe("generationDetailCore (F54)", () => {
     });
     const db = generationDb({ designs: [failed] });
     const out = await generationDetailCore(db.client, { workspaceId: WS, designId: failed.id as string, can: { generate: true }, timeZone: "UTC", now: NOW, linkFor }, { loadPeople: people });
-    expect(out).toMatchObject({ attempts: 3, error: "Falta: Nombre como lo quiere en el certificado", state: { label: "Falló" }, emailText: "Se manda cuando la pieza esté lista", canSendEmail: false, link: null });
+    expect(out).toMatchObject({ attempts: 3, error: "Falta: Nombre como lo quiere en el certificado", state: { label: "Falló" }, emailText: "Se manda cuando la pieza esté lista", canSendEmail: false, link: null, noun: "certificado" });
     expect(out?.values.find((v) => v.key === "nombre_en_el_certificado")).toEqual({ key: "nombre_en_el_certificado", label: "Nombre como lo quiere en el certificado", value: "—" });
     expect(out?.origin.text).toBe("A mano · Ana Ruiz");
   });

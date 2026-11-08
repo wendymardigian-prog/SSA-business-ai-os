@@ -322,3 +322,12 @@ export function emailStatusText(g: Pick<GenerationRecord, "emailStatus" | "email
 export function canSendEmailNow(g: Pick<GenerationRecord, "status" | "emailStatus" | "canEmail">, ctx: Pick<RowContext, "can">): boolean {
   return ctx.can.generate && g.status === "ready" && g.canEmail && g.emailStatus !== "sent";
 }
+
+/** Qué se dice al confirmar «Volver a generar» (con el género del tipo de documento: una constancia nueva, un certificado nuevo). */
+export function regenerateMessage(template: { verify: boolean; docType: string | null }, who: string): string {
+  if (!template.verify) return `Se genera una pieza nueva para ${who} con los datos de hoy.`;
+  const type = template.docType;
+  const what = type === "constancia" ? "una constancia nueva" : type === "certificado" ? "un certificado nuevo" : type === "diploma" ? "un diploma nuevo" : "una pieza nueva";
+  const previous = type === "constancia" || type === "otro" || !type ? "la anterior" : "el anterior";
+  return `Se genera ${what} para ${who} con los datos de hoy y se anula ${previous} («Reemplazado por» el código nuevo).`;
+}

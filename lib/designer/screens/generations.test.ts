@@ -15,6 +15,7 @@ import {
   GENERATIONS_PAGE_SIZE,
   linkWorks,
   needsPolling,
+  regenerateMessage,
   originOf,
   pageCount,
   parseGenerationFilters,
@@ -245,5 +246,18 @@ describe("el detalle (F54)", () => {
     expect(canSendEmailNow({ ...base, status: "failed" }, ctx())).toBe(false);
     expect(canSendEmailNow({ ...base, canEmail: false }, ctx())).toBe(false);
     expect(canSendEmailNow(base, ctx({ can: { generate: false } }))).toBe(false);
+  });
+});
+
+describe("«Volver a generar» (F47)", () => {
+  it("el texto de confirmación usa el género del tipo de documento", () => {
+    expect(regenerateMessage({ verify: true, docType: "certificado" }, "Lucía")).toBe("Se genera un certificado nuevo para Lucía con los datos de hoy y se anula el anterior («Reemplazado por» el código nuevo).");
+    expect(regenerateMessage({ verify: true, docType: "constancia" }, "Lucía")).toBe("Se genera una constancia nueva para Lucía con los datos de hoy y se anula la anterior («Reemplazado por» el código nuevo).");
+    expect(regenerateMessage({ verify: true, docType: "diploma" }, "Lucía")).toContain("un diploma nuevo");
+    expect(regenerateMessage({ verify: true, docType: "otro" }, "Lucía")).toContain("una pieza nueva");
+  });
+
+  it("sin verificación no se anula nada", () => {
+    expect(regenerateMessage({ verify: false, docType: null }, "Lucía")).toBe("Se genera una pieza nueva para Lucía con los datos de hoy.");
   });
 });
