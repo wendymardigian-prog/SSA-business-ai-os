@@ -30,6 +30,15 @@ export function useUrlFilters() {
     else next.delete(key);
     apply(next);
   }
+  /** Varios parámetros en una sola navegación (null o "" los saca). */
+  function setParams(updates: Record<string, string | null>) {
+    const next = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    apply(next);
+  }
   function setPage(page: number) {
     const next = new URLSearchParams(searchParams.toString());
     next.set("page", String(page));
@@ -46,6 +55,7 @@ export function useUrlFilters() {
   return {
     pending,
     setParam,
+    setParams,
     setPage,
     clearAll,
     get: (key: string) => searchParams.get(key) ?? "",

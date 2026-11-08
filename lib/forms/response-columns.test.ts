@@ -93,6 +93,17 @@ describe("preferencias de columnas", () => {
     expect(keys).not.toContain("answer:email");
   });
 
+  it("«País» va justo después de la pregunta de teléfono y sale de su prefijo", () => {
+    const withPhone = responseColumnDefs([...answers, { key: "whatsapp", label: "WhatsApp", type: "phone", removed: false }]);
+    const keys = withPhone.map((d) => d.key);
+    expect(keys.indexOf("country:whatsapp")).toBe(keys.indexOf("answer:whatsapp") + 1);
+    const country = withPhone.find((d) => d.key === "country:whatsapp")!;
+    const phoneRow = (value: string) => ({ ...source({}), answers: { whatsapp: { label: "WhatsApp", type: "phone", value } } });
+    expect(country.value(phoneRow("+51930000000"))).toBe("🇵🇪 Perú");
+    expect(country.value(phoneRow("123"))).toBe("");
+    expect(defs.some((d) => d.key.startsWith("country:"))).toBe(false);
+  });
+
   it("«Mostrar todo» deja todas visibles", () => {
     expect(visibleColumns(defs, showAllColumns(defs))).toHaveLength(defs.length);
   });

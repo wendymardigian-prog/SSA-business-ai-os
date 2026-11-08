@@ -6,9 +6,14 @@ import { Download, Inbox, Loader2 } from "lucide-react";
 import { ColumnCell } from "@/components/attribution/column-cell";
 import { ColumnsMenu, useColumnPrefs } from "@/components/attribution/columns-menu";
 import { Notice } from "@/components/agents/fields";
-import { FilterBar, FilterSelect, Pagination, useUrlFilters } from "@/components/agents/filters";
+import { Pagination, useUrlFilters } from "@/components/agents/filters";
 import { exportResponsesCsv } from "@/lib/actions/forms/responses";
 import type { MetaRowNames } from "@/lib/forms/meta-names";
+import { countMenuFilters, selectGroup } from "@/lib/forms/response-filters-view";
+import { DIMENSION_LABELS, type GroupCount, type ResponseDimension } from "@/lib/forms/response-index";
+import type { MultiFilterOption } from "@/lib/ui/multi-filter";
+import { ResponseGroups } from "./response-groups";
+import { ResponsesFilterChips, ResponsesToolbarFilters, type ToolbarFilters } from "./responses-toolbar";
 import { RESPONSE_COLUMN_GROUPS, originSummary, responseColumnDefs, responseColumnsStorageKey } from "@/lib/forms/response-columns";
 import { cellFor, statusLabel, type ResponseColumn, type StoredAnswer, type SubmissionStatus } from "@/lib/forms/responses";
 import { formatInZone } from "@/lib/forms/responses-query";
@@ -41,9 +46,14 @@ export function ResponsesTable({
   rows,
   columns,
   total,
+  baseTotal,
+  truncated,
   page,
   pageSize,
   filters,
+  dimensions,
+  facets,
+  groups,
   loadError,
   canManage,
   canExport = false,
@@ -55,10 +65,19 @@ export function ResponsesTable({
   formType: "custom" | "survey" | "contract";
   rows: ResponseTableRow[];
   columns: ResponseColumn[];
+  /** Las respuestas que pasan TODOS los filtros. */
   total: number;
+  /** Las del período, estado y contacto, antes de buscar, país y UTM. */
+  baseTotal: number;
+  /** Había más que el tope (`FORM_LIMITS.exportMaxRows`): se ven las más nuevas. */
+  truncated: boolean;
   page: number;
   pageSize: number;
-  filters: { from: string; to: string; status: string; contact: string };
+  filters: ToolbarFilters;
+  dimensions: ResponseDimension[];
+  facets: Record<ResponseDimension, MultiFilterOption[]>;
+  /** Con «Agrupar por»: cuántas hay de cada valor, en vez de la lista. */
+  groups: GroupCount[] | null;
   loadError: boolean;
   canManage: boolean;
   /** `data.export`: sin esto no se ofrece «Exportar CSV» (Equipo y roles, F24). */
@@ -70,7 +89,9 @@ export function ResponsesTable({
   const [message, setMessage] = useState<{ tone: "success" | "error" | "warning"; text: string } | null>(null);
   void canManage;
 
-  const active = [filters.from, filters.to, filters.status !== "all" ? filters.status : "", filters.contact !== "all" ? filters.contact : ""].filter(Boolean).length;
+  const active =
+    countMenuFilters(filters, dimensions) + (filters.q ? 1 : 0) + (filters.legacyRange ? 1 : 0) +
+    (filters.period.period !== "historico" || filters.period.from ? 1 : 0);
   const showScore = formType === "survey";
   const columnDefs = useMemo(() => responseColumnDefs(columns), [columns]);
   const { visible: visibleDefs, toggle, showAll, reset } = useColumnPrefs(responseColumnsStorageKey(formId), columnDefs);
@@ -102,18 +123,37 @@ export function ResponsesTable({
     <div className="flex h-full min-h-0 flex-col">
       {header}
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
-        <div className="mb-3 flex items-center justify-end gap-2">
-          <div className="hidden md:block">
-            <ColumnsMenu defs={columnDefs} groups={RESPONSE_COLUMN_GROUPS} visible={visibleDefs} onToggle={toggle} onShowAll={showAll} onReset={reset} />
+        {/* Todo en una fila: buscar, fecha, filtros y agrupar a la izquierda; columnas y exportar a la derecha. */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <ResponsesToolbarFilters
+            filters={filters}
+            dimensions={dimensions}
+            facets={facets}
+            search={url.search}
+            pending={url.pending}
+            onParams={url.setParams}
+          />
+          {url.pending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Cargando" />}
+          <span className="text-xs text-muted-foreground" aria-live="polite">
+            {total === baseTotal ? `${total} ${total === 1 ? "respuesta" : "respuestas"}` : `${total} de ${baseTotal} respuestas`}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            {!groups && (
+              <div className="hidden md:block">
+                <ColumnsMenu defs={columnDefs} groups={RESPONSE_COLUMN_GROUPS} visible={visibleDefs} onToggle={toggle} onShowAll={showAll} onReset={reset} />
+              </div>
+            )}
+            {/* Exportar es `canExport` (equipo y roles, M2): quien no puede, no ve el boton. */}
+            {canExport && (
+              <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-input px-2.5 text-[13px] font-medium hover:bg-accent disabled:opacity-50">
+                {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Download className="h-3.5 w-3.5" aria-hidden />}
+                Exportar CSV
+              </button>
+            )}
           </div>
-          {/* Exportar es `canExport` (equipo y roles, M2): quien no puede, no ve el boton. */}
-          {canExport && (
-            <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
-              Exportar CSV
-            </button>
-          )}
         </div>
+
+        <ResponsesFilterChips filters={filters} dimensions={dimensions} onParams={url.setParams} />
 
         {message && (
           <div className="mb-3" role="status">
@@ -121,52 +161,24 @@ export function ResponsesTable({
           </div>
         )}
         {loadError && <div className="mb-3"><Notice tone="error">No pudimos cargar las respuestas. Probá de nuevo.</Notice></div>}
-
-        <div className="mb-4">
-          <FilterBar activeCount={active} onClear={() => url.clearAll([])} pending={url.pending}>
-            <input type="date" aria-label="Desde" value={filters.from} onChange={(e) => url.setParam("desde", e.target.value)} className="rounded-lg border border-input bg-background px-2 py-2 text-sm" />
-            <span className="text-xs text-muted-foreground">a</span>
-            <input type="date" aria-label="Hasta" value={filters.to} onChange={(e) => url.setParam("hasta", e.target.value)} className="rounded-lg border border-input bg-background px-2 py-2 text-sm" />
-            <FilterSelect
-              label="Estado"
-              value={filters.status === "all" ? "" : filters.status}
-              onChange={(v) => url.setParam("estado", v)}
-              options={[
-                { value: "received", label: "Recibida" },
-                { value: "no_contact", label: "Sin contacto" },
-                { value: "spam", label: "Spam" },
-              ]}
-            />
-            <FilterSelect
-              label="Contacto"
-              value={filters.contact === "with" ? "con" : filters.contact === "without" ? "sin" : ""}
-              onChange={(v) => url.setParam("contacto", v)}
-              options={[
-                { value: "con", label: "Con contacto" },
-                { value: "sin", label: "Sin contacto" },
-              ]}
-            />
-          </FilterBar>
-        </div>
-
-        {rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-            <Inbox className="h-10 w-10 text-muted-foreground/40" aria-hidden />
-            <p className="mt-3 text-sm font-medium">{active > 0 ? "Nada coincide con estos filtros" : "Todavía no hay respuestas"}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {active > 0 ? (
-                "Probá con otro período o quitá algún filtro."
-              ) : (
-                <>
-                  Compartí el link desde{" "}
-                  <Link href={`/dashboard/formularios/${formId}?tab=publicar`} className="underline">
-                    Publicar
-                  </Link>
-                  .
-                </>
-              )}
-            </p>
+        {truncated && (
+          <div className="mb-3">
+            <Notice tone="warning">Hay más de 10.000 respuestas en este período: se cuentan y se muestran las más nuevas. Acortá la fecha para ver el resto.</Notice>
           </div>
+        )}
+
+        {groups && filters.groupBy ? (
+          groups.length === 0 ? (
+            <EmptyState active={active} formId={formId} />
+          ) : (
+            <ResponseGroups
+              groups={groups}
+              dimensionLabel={DIMENSION_LABELS[filters.groupBy]}
+              onSelect={(g) => url.setParams(selectGroup(filters.groupBy!, g.value))}
+            />
+          )
+        ) : rows.length === 0 ? (
+          <EmptyState active={active} formId={formId} />
         ) : (
           <>
             {/* Tabla (pantallas anchas) */}
@@ -243,10 +255,34 @@ export function ResponsesTable({
           </>
         )}
 
-        <div className="mt-4">
-          <Pagination page={page} total={total} pageSize={pageSize} onPage={url.setPage} />
-        </div>
+        {!groups && (
+          <div className="mt-4">
+            <Pagination page={page} total={total} pageSize={pageSize} onPage={url.setPage} />
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function EmptyState({ active, formId }: { active: number; formId: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
+      <Inbox className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+      <p className="mt-3 text-sm font-medium">{active > 0 ? "Nada coincide con estos filtros" : "Todavía no hay respuestas"}</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {active > 0 ? (
+          "Probá con otro período o quitá algún filtro."
+        ) : (
+          <>
+            Compartí el link desde{" "}
+            <Link href={`/dashboard/formularios/${formId}?tab=publicar`} className="underline">
+              Publicar
+            </Link>
+            .
+          </>
+        )}
+      </p>
     </div>
   );
 }
