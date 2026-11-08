@@ -386,6 +386,48 @@ END $do$;`);
     const { data: cfg } = await svc.from("integration_configs").select("config").eq("workspace_id", ws).eq("provider", "resend").single();
     const c = (cfg as { config: Record<string, string> }).config;
     check(c.warmup_level === "1" && (warmed.data as { cap?: number }).cap === 200, "el calentamiento sube a 200 y la base lo guarda", JSON.stringify({ level: c.warmup_level, cap: (warmed.data as { cap?: number }).cap }));
+
+    // La zona del negocio: un nombre IANA vale; una abreviatura, minusculas o una zona inventada caen a UTC.
+    // Da lo mismo antes y despues de la 00337 (la regla no cambio, solo dejo de leer el catalogo entero).
+    const { data: wsRow } = await svc.from("workspaces").select("timezone").eq("id", ws).single();
+    const zoneCases: Array<[string, string]> = [
+      ["America/Bogota", "America/Bogota"],
+      ["America/Argentina/Buenos_Aires", "America/Argentina/Buenos_Aires"],
+      ["UTC", "UTC"],
+      ["ART", "UTC"],
+      ["america/bogota", "UTC"],
+      ["Mars/Olympus", "UTC"],
+    ];
+    const zoneBad: string[] = [];
+    for (const [tz, expected] of zoneCases) {
+      await svc.from("workspaces").update({ timezone: tz }).eq("id", ws);
+      const got = sql(`select private.email_guard_state(${lit(ws)}::uuid, now(), 'marketing')->>'time_zone' as tz;`)[0]?.tz;
+      if (got !== expected) zoneBad.push(`${tz}: ${String(got)} (esperado ${expected})`);
+    }
+    await svc.from("workspaces").update({ timezone: (wsRow as { timezone: string } | null)?.timezone ?? "UTC" }).eq("id", ws);
+    check(zoneBad.length === 0, "la zona del negocio: un nombre IANA vale y lo demás cae a UTC", zoneBad.join("; "));
+
+    if (process.argv.includes("--despues-de-00337")) {
+      // La regla nueva contra la vieja (estar en pg_timezone_names): cada nombre del catalogo que va por el camino
+      // rapido se queda igual, y en los casos raros da lo mismo que antes.
+      const odd = ["ART", "utc", "america/bogota", "+03:00", "UTC+3", "EST5EDT", "EST", "GMT", "posixrules", "Factory", "right/America/New_York", " America/Bogota", "", "Mars/Olympus", "America//Bogota", "EST5EDT,M3.2.0/2,M11.1.0", "<-03>3"];
+      const rows2 = sql(`
+        with names as materialized (select name from pg_catalog.pg_timezone_names),
+        fast as (select name from names where name ~ '^[A-Z][A-Za-z0-9_+-]*(/[A-Z][A-Za-z0-9_+-]*)+$'),
+        odd(v) as (values ${odd.map((v) => `(${lit(v)})`).join(", ")})
+        select
+          (select count(*) from fast) as fast_names,
+          (select count(*) from fast where private.email_guard_time_zone(name) <> name) as fast_mismatch,
+          (select string_agg(coalesce(v, 'NULL'), ', ') from odd
+            where private.email_guard_time_zone(v) is distinct from (case when exists (select 1 from names n where n.name = v) then v else 'UTC' end)) as odd_mismatch;`);
+      const r = rows2[0] ?? {};
+      check(Number(r.fast_names) > 300 && Number(r.fast_mismatch) === 0, `00337: los ${String(r.fast_names)} nombres IANA del catálogo valen igual que antes`, JSON.stringify(r));
+      check(!r.odd_mismatch, "00337: abreviaturas, POSIX, minúsculas y zonas inventadas dan lo mismo que antes", String(r.odd_mismatch));
+
+      const plan = sql(`explain (analyze, summary on) select private.email_guard_state(${lit(ws)}::uuid, now(), 'marketing');`);
+      const ms = Number(String(plan.map((p) => Object.values(p)[0]).find((l) => String(l).startsWith("Execution Time")) ?? "").replace(/[^0-9.]/g, ""));
+      check(ms > 0 && ms < 100, `00337: la guardia ya no lee el catálogo de zonas (${ms} ms, antes ~350)`);
+    }
   }
 
   console.log("\n— 9. Ninguna otra funcion escribe esas columnas —");

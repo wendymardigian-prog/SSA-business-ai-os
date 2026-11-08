@@ -834,3 +834,28 @@ El nivel de calificación del lead (1 a 5) se cambia desde una automatización c
 - **El disparador** es una opción de «Evento del CRM»: «Cambió la calificación», con `config.value` = `""` (cualquiera), `up`,
   `down`, `eq:N`, `gte:N` (al cruzar hacia N o más) o `lt:N` (al bajar de N). La regla es `qualificationEventMatches`, y las
   variables `event_level` y `event_previous_level` viajan al flujo.
+
+## «En una fecha y hora» (`scheduled_time`, 00339)
+
+Una automatización que arranca sola el día y la hora que se eligen: **una vez**, **todos los días**, **ciertos días de la
+semana** o **un día del mes** (el 31 en un mes de 30 cae el último día). Es el primer disparador de **sistema**
+(`subject: "system"`, `source_type = 'system'`): corre sin contacto ni persona, así que el lienzo solo ofrece los pasos
+que sirven sin contacto («Enviar encuesta» a un grupo, «Avisar en la campana», «Enviar email» a una dirección fija,
+«Enviar WhatsApp a un número», Esperar, Condiciones, Llamada HTTP...). Publicar con un paso que necesita contacto se
+rechaza, como en los demás flujos sin contacto.
+
+- **La hora es la del negocio** (`workspaces.timezone`), nunca la del navegador: «lunes a las 9» sigue siendo a las 9
+  cuando cambia el horario de verano. Reglas puras y con test en `lib/scheduled-flows/schedule.ts` (`nextOccurrence`,
+  `isOccurrenceOf`, `describeSchedule`).
+- **No suma ningún cron**: al publicar, `publishFlow` anula la vez pendiente y agenda la próxima en la cola
+  (`scheduled_jobs.type = 'flow_scheduled_run'`, `lib/scheduled-flows/jobs.ts`). El trabajo
+  (`lib/jobs/handlers/flow-scheduled-run.ts`) corre el flujo y agenda la siguiente **antes** de correrlo, así un flujo
+  que revienta no corta la repetición. Si la versión anterior era programada y la nueva no, su vez pendiente se anula.
+- **Nunca corre algo viejo ni dos veces**: el trabajo lleva la versión publicada (otra versión = no corre), vuelve a mirar
+  que esa vez siga siendo de la config, y reclama el disparo en `trigger_fires` (`schedule:<vez>`).
+- **Más de dos horas tarde** (la app estuvo caída) esa vez se saltea y se agenda la siguiente (`MAX_LATE_MINUTES`).
+- **Una sola vez que ya pasó no se publica** (no correría nunca). Cambiar la fecha pide volver a publicar.
+- Variables: `{{schedule.date}}` («9 de noviembre de 2026»), `{{schedule.weekday}}` («lunes») y `{{schedule.time}}`
+  («09:00»), en la hora del negocio. También se comparan en Condiciones (`schedule.*`).
+- Despublicar no anula la vez pendiente: el trabajo la descarta al ver que la automatización no está publicada.
+

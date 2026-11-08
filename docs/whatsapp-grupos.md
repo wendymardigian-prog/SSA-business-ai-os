@@ -77,6 +77,14 @@ Variables: `{{group.name}}`, `{{reaction.emoji}}`, `{{message.text}}`, `{{poll.q
 **Paso «Enviar encuesta»**: manda una encuesta a un grupo activado (no necesita contacto). Sus votos se pueden usar
 con «Votó en una encuesta de un grupo» → «Las que manda un paso».
 
+**Programar una encuesta a un grupo**: disparador **«En una fecha y hora»** (una vez, todos los días,
+ciertos días de la semana o un día del mes, en la hora del negocio) + el paso «Enviar encuesta». Mandar **texto** a un grupo desde una automatización todavía no existe (solo
+encuestas; el texto se manda desde la bandeja). Ver
+[flow-registry.md](flow-registry.md) («En una fecha y hora»).
+
+**Fijar un mensaje en el grupo: no se puede.** Ni la bandeja ni las automatizaciones lo ofrecen, y el cliente de
+Evolution del sistema no tiene cómo pedirlo (falta confirmar si Evolution 2.3.7 lo permite).
+
 **Desde la bandeja**: en un mensaje del negocio o una encuesta, «⋯» → Crear automatización. Crea la automatización en
 borrador con el disparador ya armado (ese grupo, ese mensaje, los emojis u opciones elegidos) y la abre.
 
@@ -89,7 +97,16 @@ número. El tope de 200 mensajes automáticos por hora del canal sigue valiendo.
   opciones distintas; «se puede elegir más de una» o una sola.
 - **Los votos solo se leen si la encuesta salió de tu número** (por el sistema o desde el teléfono): Evolution
   necesita la encuesta guardada para descifrar el voto. Uno que llega cifrado se ignora.
-- En la bandeja la encuesta muestra los votos por opción y quién votó.
+- En la bandeja la encuesta muestra los votos por opción y, con «Ver quién votó», los nombres de cada opción (con link
+  a la ficha si es contacto). Antes solo salían pasando el mouse.
+- **«Etiquetar según la respuesta»** (debajo de la encuesta, con `flows.edit`): para cada respuesta se escribe la
+  etiqueta (arranca con el mismo texto; vacía = no etiqueta) y, opcional, un campo de TEXTO donde guardar la respuesta.
+  Crea una automatización por respuesta (`Votó en una encuesta` filtrado a esa respuesta → «Agregar etiqueta») y una
+  para el campo (filtrada a todas → «Definir campo» con `{{poll.selected}}`), en la categoría «Encuesta: …», y las
+  publica si la persona tiene `flows.publish` (si no, quedan en borrador y se avisa). Reglas puras en
+  `lib/whatsapp-groups/automation/poll-answer-actions.ts`. Si alguien cambia su voto recibe la etiqueta nueva y conserva
+  la anterior; volver a una respuesta que ya había elegido no vuelve a disparar (la clave del disparo es por persona,
+  encuesta y respuesta), así que el campo puede quedar con la respuesta del medio.
 - En un chat **privado** un voto ya no entra como mensaje vacío (antes sumaba un no leído y despertaba al agente);
   se ignora: los disparadores de encuestas son de grupos.
 

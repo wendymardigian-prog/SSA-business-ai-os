@@ -5,6 +5,7 @@ import { MousePointerClick, Zap } from "lucide-react";
 import { scopeSummary } from "@/lib/flows/comment-scope";
 import { cn } from "@/lib/utils";
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
+import { describeSchedule, SCHEDULED_TRIGGER_TYPE } from "@/lib/scheduled-flows/schedule";
 import { TRIGGER_GROUP_ICONS } from "../trigger-picker";
 
 export interface TriggerNodeProps {
@@ -78,6 +79,7 @@ export function TriggerNode({ data, selected }: NodeProps) {
             })}
           </p>
         )}
+        {type === SCHEDULED_TRIGGER_TYPE && <p className="mt-1 text-xs text-muted-foreground">{describeSchedule(nodeData)}</p>}
         {typeof nodeData.label === "string" && nodeData.label.trim() && <p className="mt-0.5 text-xs text-muted-foreground">{triggerDisplayLabel(nodeData)}</p>}
       </div>
       <Handle type="source" position={Position.Bottom} className="!h-3 !w-3 !border-2 !border-emerald-500 !bg-white" />

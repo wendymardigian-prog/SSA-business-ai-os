@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
-import { loadBusinessTimeZone } from "@/lib/actions/flow-capabilities";
-import { datetimeInputToIso, isoToDatetimeInput, timeZoneLabel } from "@/lib/dates";
+import { BusinessTimeNote, useBusinessTimeZone } from "@/components/ui/business-time-note";
+import { datetimeInputToIso, timeZoneLabel } from "@/lib/dates";
 import { formatLocalDateTime, waitUntilInputValue } from "@/lib/flow-engine/wait-until";
-import { isValidTimeZone } from "@/lib/timezone";
 
 type DelayUnit = "seconds" | "minutes" | "hours" | "days";
 type DelayMode = "duration" | "until";
@@ -76,22 +75,7 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
   const duration = data.duration || 0;
   const unit = data.unit || "minutes";
   const [mode, setMode] = useState<DelayMode>(data.waitUntil || data.waitUntilLocal ? "until" : "duration");
-  const [businessZone, setBusinessZone] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (mode !== "until") return;
-    let cancelled = false;
-    loadBusinessTimeZone()
-      .then((zone) => {
-        if (!cancelled) setBusinessZone(zone && isValidTimeZone(zone) ? zone : null);
-      })
-      .catch(() => {
-        // Sin la zona el texto dice "hora del negocio" a secas: no cambia lo que se guarda.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [mode]);
+  const businessZone = useBusinessTimeZone();
 
   const handleModeChange = (newMode: DelayMode) => {
     setMode(newMode);
@@ -109,7 +93,6 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
   // El mismo momento en la zona de quien mira: un nodo viejo ya es un instante; el otro hace falta saber la del negocio.
   const instant = data.waitUntilLocal ? (businessZone ? datetimeInputToIso(data.waitUntilLocal, businessZone) : null) : (data.waitUntil ?? null);
   const viewerText = instant ? formatInstant(instant, viewerZone) : null;
-  const viewerDiffers = Boolean(instant && localValue && isoToDatetimeInput(instant, viewerZone) !== localValue);
   const [one, many] = UNIT_WORDS[unit];
 
   return (
@@ -195,8 +178,9 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
             onChange={(e) => onChange({ ...data, waitUntilLocal: e.target.value, waitUntil: undefined })}
             className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
           />
+          <BusinessTimeNote className="mt-1.5" instant={instant ? new Date(instant) : null} />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            En la hora del negocio{businessZone ? ` (${businessZone}, ${timeZoneLabel(businessZone)})` : ""}. Si la fecha ya pasó cuando un contacto llega a este paso, se saltea el paso siguiente y el flujo sigue con el que viene después.
+            Si la fecha ya pasó cuando un contacto llega a este paso, se saltea el paso siguiente y el flujo sigue con el que viene después.
           </p>
         </div>
       )}
@@ -214,7 +198,6 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
                 ? `Espera hasta el ${viewerText}`
                 : "Elegí una fecha"}
         </p>
-        {mode === "until" && viewerDiffers && viewerText && <p className="mt-1 text-xs text-muted-foreground">Para vos: {viewerText}</p>}
       </div>
     </div>
   );

@@ -211,6 +211,8 @@ describe("los tres tipos nuevos estan registrados", () => {
       "inactivity",
       "payment_after_due", // @plantilla-quitar(ventas)
       "payment_before_due", // @plantilla-quitar(ventas)
+      // «En una fecha y hora»: lo agenda la cola al publicar (sin contacto).
+      "scheduled_time",
     ]);
   });
 

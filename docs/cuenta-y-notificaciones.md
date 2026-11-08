@@ -56,6 +56,8 @@ El catálogo es `lib/notifications/preferences.ts` y es la única lista: la usan
 - No muestra los tipos que la persona silenció. Silenciar es de pantalla: el aviso existe y vuelve a aparecer si se prende de nuevo.
 - "Marcar todas como leídas" marca solo lo que esa persona ve.
 - La RLS (`can_see_notification`) no cambió.
+- **El numerito cuenta hasta 10** (`lib/notifications/bell-count.ts`): nunca muestra más que «9+», así que `countUnreadNotifications` pide como mucho 10 filas ordenadas por fecha, sin `count: "exact"`. Contarlas todas evaluaba la RLS en cada aviso sin leer, en cada carga de página (8/11/2026: ~116 ms con 956 avisos). El lector de pantalla dice «más de 9 sin leer».
+- **Un aviso de más de 60 días se borra, leído o no** (00338): `purge_read_notifications` y `purge_stale_unread_notifications`, en el cron diario `purge-notifications`. Antes los sin leer no se borraban nunca y casi nadie los marca. Una tarea vencida hace más de 60 días y todavía abierta vuelve a avisar una vez (`tasks-due-sweep` mira los avisos que existen).
 
 ### Email y WhatsApp
 
