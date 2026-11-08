@@ -37,6 +37,7 @@ import {
   designGroupViews,
   designerActions,
   hasPendingSync,
+  mergeSyncedFiles,
   preparingDesigns,
   showsDesignerSection,
 } from "@/lib/content/piece-designs";
@@ -328,9 +329,14 @@ export function PieceDrawer({
   // Es estado derivado de una prop (se ajusta en el render cuando cambia la
   // fecha de la pieza), no un efecto que lo corrija un render despues.
   const [seenUpdatedAt, setSeenUpdatedAt] = useState(post.updatedAt);
+  // Los archivos que la sincronizacion de un diseno le puso a una red (DS8) entran al borrador aunque haya cambios sin guardar
+  // en otro campo: si no, al guardar se mandarian los de antes y la red quedaria sin ellos.
+  const [seenNetworks, setSeenNetworks] = useState(post.networks);
   if (post.updatedAt !== seenUpdatedAt) {
     setSeenUpdatedAt(post.updatedAt);
+    setSeenNetworks(post.networks);
     if (!dirty) setDraft(draftFromPost(post));
+    else setDraft((d) => ({ ...d, networks: mergeSyncedFiles(d.networks, seenNetworks, post.networks) }));
   }
   useEffect(() => {
     if (!dirtyRef.current) {

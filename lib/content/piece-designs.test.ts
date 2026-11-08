@@ -9,6 +9,7 @@ import {
   designGroupViews,
   designerActions,
   hasPendingSync,
+  mergeSyncedFiles,
   openDesignHref,
   preparingDesigns,
   showsDesignerSection,
@@ -186,5 +187,51 @@ describe("los botones del Diseñador IA en Archivos (F62)", () => {
     expect(showsDesignerSection(designerActions({ designer: designer(), networks: [] }), [], [])).toBe(true);
     expect(showsDesignerSection(empty, designGroupViews({ media: [page("d1", 1)], designs: [], networkStates: {}, canView: false }), [])).toBe(true);
     expect(showsDesignerSection(empty, [], [design()])).toBe(true);
+  });
+});
+
+describe("mergeSyncedFiles: la sincronización llega mientras la persona escribe", () => {
+  const withFiles = (platform: string, files: string[], extra: Partial<NetworkEntry> = {}): NetworkEntry => ({ platform, planned_at: null, format: "carousel", files, ...extra });
+
+  it("CRITERIO: si la persona no tocó los archivos, el borrador toma los que puso la sincronización y conserva lo que escribió", () => {
+    const draft = [withFiles("instagram", [], { caption: "Lo que estoy escribiendo" })];
+    const out = mergeSyncedFiles(draft, [withFiles("instagram", [])], [withFiles("instagram", ["design-d1-1", "design-d1-2"])]);
+
+    expect(out[0]).toMatchObject({ caption: "Lo que estoy escribiendo", files: ["design-d1-1", "design-d1-2"] });
+  });
+
+  it("si la persona SÍ cambió los archivos de esa red, gana lo suyo", () => {
+    const draft = [withFiles("instagram", ["foto"])];
+    const out = mergeSyncedFiles(draft, [withFiles("instagram", [])], [withFiles("instagram", ["design-d1-1"])]);
+
+    expect(out[0].files).toEqual(["foto"]);
+  });
+
+  it("si la sincronización no cambió los archivos, no se toca nada (el mismo borrador)", () => {
+    const draft = [withFiles("instagram", ["a", "b"])];
+
+    expect(mergeSyncedFiles(draft, [withFiles("instagram", ["a", "b"])], [withFiles("instagram", ["a", "b"], { caption: "otra" })])).toEqual(draft);
+  });
+
+  it("solo cambia las redes que la sincronización tocó; las demás quedan igual", () => {
+    const draft = [withFiles("instagram", []), withFiles("linkedin", ["x"], { format: "pdf" })];
+    const out = mergeSyncedFiles(draft, [withFiles("instagram", []), withFiles("linkedin", ["x"])], [withFiles("instagram", ["design-d1-1"]), withFiles("linkedin", ["x"])]);
+
+    expect(out.map((n) => n.files)).toEqual([["design-d1-1"], ["x"]]);
+  });
+
+  it("una red que la persona agregó o que el servidor no tiene se deja como está", () => {
+    const draft = [withFiles("tiktok", [])];
+
+    expect(mergeSyncedFiles(draft, [], [withFiles("tiktok", ["design-d1-1"])])).toEqual(draft);
+    expect(mergeSyncedFiles(draft, [withFiles("tiktok", [])], [])).toEqual(draft);
+  });
+
+  it("no muta lo que recibe", () => {
+    const draft = [withFiles("instagram", [])];
+    const copy = JSON.parse(JSON.stringify(draft));
+    mergeSyncedFiles(draft, [withFiles("instagram", [])], [withFiles("instagram", ["design-d1-1"])]);
+
+    expect(draft).toEqual(copy);
   });
 });

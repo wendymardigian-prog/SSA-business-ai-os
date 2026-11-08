@@ -95,6 +95,26 @@ export function designChangedNotices(views: DesignGroupView[]): DesignChangedNot
     }));
 }
 
+const sameFiles = (a: string[] | undefined, b: string[] | undefined) => (a ?? []).length === (b ?? []).length && (a ?? []).every((id, i) => id === (b ?? [])[i]);
+
+/**
+ * Cuando la sincronización cambió los archivos de una red MIENTRAS la persona tiene cambios sin guardar en el drawer
+ * (un caption a medio escribir), el borrador toma los archivos nuevos solo en las redes cuyos archivos la persona NO
+ * tocó: si no, al guardar mandaría los archivos de antes y le desarmaría la red a la sincronización sin que nadie lo
+ * note. Una red cuyos archivos la persona sí cambió se deja como está (gana lo suyo, como siempre). Devuelve las mismas
+ * redes del borrador, con los `files` actualizados donde corresponde.
+ */
+export function mergeSyncedFiles(draft: NetworkEntry[], previousServer: NetworkEntry[], nextServer: NetworkEntry[]): NetworkEntry[] {
+  return draft.map((network) => {
+    const before = previousServer.find((n) => n.platform === network.platform);
+    const after = nextServer.find((n) => n.platform === network.platform);
+    if (!before || !after) return network;
+    const syncedChanged = !sameFiles(before.files, after.files);
+    const untouched = sameFiles(network.files, before.files);
+    return syncedChanged && untouched ? { ...network, files: after.files } : network;
+  });
+}
+
 /** Si hay algo que el servidor todavía va a actualizar solo (el drawer vuelve a preguntar un rato). */
 export function hasPendingSync(views: DesignGroupView[], preparing: PieceDesign[]): boolean {
   return preparing.length > 0 || views.some((v) => v.status === "pending");
