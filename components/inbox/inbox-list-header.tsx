@@ -55,7 +55,7 @@ export function InboxListHeader({
           <span className="sr-only">Bandeja: </span>
           {countLabel}
         </h2>
-        <InboxFiltersMenu filters={filters} accounts={accounts} tags={tags} members={members} hasGroups={hasGroups} />
+        <InboxFiltersMenu filters={filters} accounts={accounts} tags={tags} members={members} hasGroups={hasGroups} communities={catalog.communities} />
         <button
           type="button"
           onClick={() => setSearchOpen((open) => !open)}

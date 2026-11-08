@@ -802,12 +802,14 @@ describe("webhook de Evolution: grupos de WhatsApp (00280)", () => {
     expect(maybeScheduleAgentTurn).not.toHaveBeenCalled();
   });
 
-  it("un grupo NO activado se sigue ignorando", async () => {
+  it("un grupo que no estaba guardado entra solo a la bandeja con su mensaje (8/11/2026)", async () => {
     const memory = withGroup([]);
     const res = await callRoute(post(groupMessage()));
-    expect(await res.json()).toEqual({ ok: true, skipped: "grupo no activado" });
-    expect(claimWebhookEvent).not.toHaveBeenCalled();
-    expect(memory.rows("whatsapp_group_messages")).toHaveLength(0);
+    await runAfter();
+    expect(await res.json()).toEqual({ ok: true, queued: "group-message" });
+    expect(memory.rows("whatsapp_groups")[0]).toMatchObject({ group_jid: GROUP_JID, in_inbox: true });
+    expect(memory.rows("whatsapp_group_messages")).toHaveLength(1);
+    expect(maybeScheduleAgentTurn).not.toHaveBeenCalled();
   });
 
   it("el aviso de quien entra se encola y anota al miembro", async () => {

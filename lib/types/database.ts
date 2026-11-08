@@ -5180,6 +5180,13 @@ export interface Database {
           last_message_preview: string | null;
           unread_count: number;
           left_at: string | null;
+          /** 00344: 'group' | 'announce' (el de Avisos de una comunidad). */
+          kind: string;
+          parent_group_jid: string | null;
+          community_subject: string | null;
+          description: string | null;
+          restrict: boolean;
+          number_is_admin: boolean | null;
           created_at: string;
           updated_at: string;
         };
@@ -5198,6 +5205,12 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           left_at?: string | null;
+          kind?: string;
+          parent_group_jid?: string | null;
+          community_subject?: string | null;
+          description?: string | null;
+          restrict?: boolean;
+          number_is_admin?: boolean | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -5216,6 +5229,12 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           left_at?: string | null;
+          kind?: string;
+          parent_group_jid?: string | null;
+          community_subject?: string | null;
+          description?: string | null;
+          restrict?: boolean;
+          number_is_admin?: boolean | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -6981,6 +7000,11 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
+      /** El grafico diario de un numero de WhatsApp (00348; `broadcast` desde la 00349). Solo service_role. */
+      whatsapp_channel_daily_messages: {
+        Args: { p_workspace_id: string; p_channel_id: string; p_since: string; p_time_zone: string };
+        Returns: Array<{ day: string; received: number; automation: number; broadcast: number; agent: number; approved: number; human: number; external: number }>;
+      };
       /** Diseñador IA (00320): lo único que ve el link público /d/<código>. anon la puede ejecutar. */
       design_public_get: { Args: { p_code: string }; Returns: Json };
       /** Diseñador IA (00320): gemela de estructura del documento (`lib/designer/doc/schema.ts`). */

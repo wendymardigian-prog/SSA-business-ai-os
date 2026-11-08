@@ -1783,6 +1783,40 @@ Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (en la misma
 node scripts/verify-whatsapp-groups.mjs   # permisos SQL<->TS, RLS, unicos, toque organico, disparadores, cascada
 ```
 
+# Comunidades de WhatsApp y configurar grupos (00344, 8/11/2026)
+
+Una comunidad es una comunidad madre (sin mensajes), un grupo de Avisos (mismo nombre que la comunidad) y sus grupos. La lista de Grupos, la bandeja y los pasos los agrupan por comunidad; los grupos se configuran y se crean desde el sistema; y hay dos pasos nuevos: «Enviar al grupo» e «Invitar a un grupo». Detalle en [docs/whatsapp-grupos.md](docs/whatsapp-grupos.md) («Comunidades», «Configurar y crear grupos»).
+
+## Lo que no se puede romper
+
+- **La comunidad madre nunca se guarda** (`kind IN ('group','announce')`): no tiene mensajes. Cada grupo lleva `parent_group_jid` y una copia del nombre (`community_subject`). `fetchAllGroups` devuelve las madres marcadas (`isCommunity`) y `mergeGroupLists` las saca de la lista.
+- **Evolution no tiene rutas de comunidades** (ni la 2.3.7 ni la última): crear una comunidad o vincular un grupo se hace desde el celular. Tampoco ve grupos donde el número no está.
+- **`number_is_admin` null = no se sabe**, y nunca pisa uno conocido (`liveGroupColumns`). Solo se frena escribir cuando se SABE que no es admin y solo escriben admins (`cannotWriteReason`).
+- **Todos los grupos del número van solos a la bandeja** (decisión del 8/11/2026): `syncChannelGroups` al abrir la lista de Grupos, `ensureInboxGroup` cuando llega un mensaje, un aviso de miembros o `GROUPS_UPSERT` de un grupo que no estaba. La comunidad madre nunca. Lo único que se elige por grupo es «Guardar como contacto a quien se une», en Ajustes o desde el chat (Configurar → Contactos).
+- **Configurar y crear piden `channels.manage`** (`lib/actions/whatsapp-group-manage.ts`), escriben con el cliente de servicio filtrando por el workspace de la sesión y quedan en `audit_log` (`section: whatsapp_group_manage`). El link por privado a quien no se pudo agregar respeta «no contactar».
+- **Un número nuevo se crea con `groupsIgnore: false`**; abrir la lista de Grupos se lo pide de nuevo a uno viejo.
+- **`?comunidad=<jid>` es «solo grupos»**: la página pone `listType: "grupos"` para que el Realtime de chats no meta ninguno.
+- **Los pasos de grupos saltean con `skipGroupStep`** y usan `flow_send_claims` y el tope de WhatsApp como «Enviar encuesta».
+
+## Migración
+
+`00344_whatsapp_communities` (aditiva: seis columnas en `whatsapp_groups`, sus CHECK y un índice) va **ANTES** de desplegar el código: la bandeja y la lista de Grupos leen sus columnas. Ensayada en una transacción que se deshizo sola y **aplicada y registrada** el 8/11/2026 UTC (versión `20261108170116`), con `verify-whatsapp-groups --despues-de-00344` en verde. La `00340`, `00341` y `00343` son de otras sesiones y la `00342` parece reservada. **La próxima libre es la `00349`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-whatsapp-groups.mjs --despues-de-00344
+```
+
+# Gráfico diario de un número de WhatsApp (00348, 8/11/2026)
+
+En la sección Historial de la tarjeta del número: los últimos 30 días (en la zona de quien mira), con los **enviados** apilados por origen (automatización, broadcast, agente IA directo, borrador del agente aprobado, escrito por una persona, fuera del sistema), lo **programado** para los próximos 7 días como barra punteada sin relleno, y los **recibidos** en un gráfico aparte. Pasar el mouse por un día abre un recuadro con todos sus números. Lo que más importa vigilar es lo que sale: es lo que mira WhatsApp para bloquear un número.
+
+- **Cuenta la base**: `whatsapp_channel_daily_messages` (solo `service_role`), llamada por `loadWhatsappDailyMessages` (`lib/actions/whatsapp-stats.ts`) después de `channels.manage` y con el workspace de la sesión. Devuelve solo cuentas por día.
+- **Quién mandó cada mensaje** sigue el criterio de `chat_reply_is_human` (00261): `agent` con `sent_by_user_id` es un borrador aprobado; sin persona, envío directo; `flow`/`sequence`/`broadcast` es automatización; `external` o sin origen, fuera del sistema. Un envío fallido o pendiente no cuenta.
+- **Lo que sale a un grupo cuenta como enviado**; los recibidos son solo de chats privados (un grupo grande taparía el resto).
+- **Lo programado es una estimación** (`lib/whatsapp-stats/projection.ts`, puro; lo lee `projection-load.ts`): los broadcasts `scheduled`/`sending` con destinatarios `pending` se reparten simulando el carril con el ritmo del número (el mismo cálculo que `estimateFinish`, en la zona del negocio), uno detrás de otro; los pasos de secuencias activas por su `next_step_at` (uno vencido cuenta hoy); y las automatizaciones «En una fecha y hora» publicadas, un mensaje por paso a un grupo de este número y por vez. Un broadcast pausado no se proyecta. Nunca lanza.
+- **Dos gráficos, dos escalas** (nunca dos medidas en un eje). Los colores son fijos por origen (paleta validada para daltonismo, claro y oscuro) y hay una tabla oculta para lectores de pantalla. La serie y los totales son puros (`lib/whatsapp-stats/daily.ts`).
+- `00348` (aditiva, una función de lectura): **aplicada y registrada** el 8/11/2026 UTC (versión `20261108180129`). `00349` la recrea con la columna `broadcast` (separada de `automation`, que queda para flujos y secuencias); va **ANTES** del deploy: **aplicada y registrada** el 8/11/2026 UTC (versión `20261108181945`), después de ensayarla en una transacción que se deshizo sola. La `00345` a la `00347` son de otras sesiones. **La próxima libre es la `00351`** (la `00350` es de los cron; confirmar con `list_migrations` y las ramas locales).
+
 # Importacion de conversaciones de Zernio (28/10/2026)
 
 Traer TODAS las conversaciones de cada cuenta de Instagram, y las que empieza el negocio. Diagnostico y plan en `docs/instagram-importacion/PLAN.md`; como entra cada conversacion, en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md).

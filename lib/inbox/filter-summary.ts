@@ -27,6 +27,8 @@ export interface FilterSummaryCatalog {
   multiPlatforms?: string[];
   tags: { id: string; name: string }[];
   members: { userId: string; label: string }[];
+  /** Las comunidades de WhatsApp con grupos en la bandeja (00344). */
+  communities?: { jid: string; subject: string }[];
 }
 
 /**
@@ -81,6 +83,11 @@ export function describeInboxFilters(filters: InboxFilters, catalog: FilterSumma
   const parts: string[] = [INBOX_STATUS_LABELS[filters.status]];
 
   if (filters.listType) parts.push(INBOX_LIST_TYPE_LABELS[filters.listType]);
+
+  if (filters.communityJid) {
+    const community = catalog.communities?.find((c) => c.jid === filters.communityJid);
+    parts.push(community ? `Comunidad ${community.subject}` : "Una comunidad");
+  }
 
   if (filters.search) parts.push(`"${filters.search}"`);
 

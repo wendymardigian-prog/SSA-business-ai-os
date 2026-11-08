@@ -3,6 +3,7 @@ import {
   groupJidOfMessage,
   groupMessageSender,
   parseGroupParticipantsEvent,
+  parseGroupsUpdateEvent,
   parsePollCreation,
   participantIdentity,
 } from "./parse";
@@ -106,5 +107,37 @@ describe("parsePollCreation", () => {
   it("un mensaje comun no es una encuesta", () => {
     expect(parsePollCreation({ conversation: "hola" })).toBeNull();
     expect(parsePollCreation({ pollCreationMessage: { options: [] } })).toBeNull();
+  });
+});
+
+describe("parseGroupsUpdateEvent", () => {
+  it("trae solo lo que vino en el aviso", () => {
+    expect(parseGroupsUpdateEvent([{ id: "120363001122334455@g.us", subject: " Nuevo nombre " }])).toEqual([
+      { jid: "120363001122334455@g.us", isCommunity: false, patch: { subject: "Nuevo nombre" } },
+    ]);
+  });
+
+  it("permisos, descripcion y el vinculo con la comunidad", () => {
+    const [update] = parseGroupsUpdateEvent({
+      id: "120363001122334455@g.us",
+      announce: true,
+      restrict: false,
+      desc: "",
+      linkedParent: "120363009999999999@g.us",
+      isCommunityAnnounce: true,
+    });
+    expect(update.patch).toEqual({ announce: true, restrict: false, description: null, parent_group_jid: "120363009999999999@g.us", kind: "announce" });
+  });
+
+  it("salir de la comunidad deja el grupo suelto; Avisos sin su comunidad no se marca", () => {
+    expect(parseGroupsUpdateEvent([{ id: "120363001122334455@g.us", linkedParent: null }])[0].patch).toEqual({ parent_group_jid: null, kind: "group" });
+    expect(parseGroupsUpdateEvent([{ id: "120363001122334455@g.us", isCommunityAnnounce: true }])[0].patch).toEqual({});
+  });
+
+  it("la comunidad madre viene marcada; lo ilegible se descarta", () => {
+    expect(parseGroupsUpdateEvent([{ id: "120363009999999999@g.us", subject: "Comu", isCommunity: true }, { id: "nada" }, null])).toEqual([
+      { jid: "120363009999999999@g.us", isCommunity: true, patch: { subject: "Comu" } },
+    ]);
+    expect(parseGroupsUpdateEvent("basura")).toEqual([]);
   });
 });

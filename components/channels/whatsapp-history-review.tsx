@@ -4,6 +4,7 @@ import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useEffect, useState, useTransition } from "react";
 import { Download, History, Loader2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { WhatsappDailyChart } from "@/components/channels/whatsapp-daily-chart";
 import {
   getWhatsappImportState,
   reviewWhatsappHistory,
@@ -98,7 +99,8 @@ export function WhatsappHistoryReview({ channelId }: { channelId: string }) {
       </button>
       {open && (
         <div className="space-y-2 border-t border-border px-2.5 py-2 text-[11px]">
-          <p className="text-muted-foreground">
+          <WhatsappDailyChart channelId={channelId} />
+          <p className="border-t border-border pt-2 text-muted-foreground">
             Revisa qué conversaciones tiene guardadas WhatsApp en tu servidor y cuántas faltan en la bandeja. Revisar no
             importa nada ni toca el número.
           </p>
