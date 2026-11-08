@@ -30,6 +30,7 @@ import {
   type ListFilters,
 } from "@/lib/designer/screens/list";
 import { cn } from "@/lib/utils";
+import { qaBadge } from "@/lib/designer/screens/thumbs";
 import { LiveThumb } from "./live-thumb";
 
 const BADGE_TONE: Record<BadgeTone, string> = {
@@ -269,7 +270,7 @@ function DesignCard({ item, view, data }: { item: ListItem; view: ReturnType<typ
     >
       <div className="relative grid h-[170px] place-items-center border-b border-border bg-muted p-3.5">
         {item.thumbDoc ? (
-          <LiveThumb doc={item.thumbDoc} box={{ width: 190, height: 140 }} assetUrls={data.assetUrls} customVars={item.customVars} uploadedFonts={data.uploadedFonts} label={`Primera página de ${view.name}`} />
+          <LiveThumb doc={item.thumbDoc} box={{ width: 190, height: 140 }} assetUrls={data.assetUrls} customVars={item.customVars} uploadedFonts={data.uploadedFonts} label={`Primera página de ${view.name}`} qa={qaBadge(item.lastQa, 0)} />
         ) : (
           <span className="text-xs text-muted-foreground">Sin vista previa</span>
         )}

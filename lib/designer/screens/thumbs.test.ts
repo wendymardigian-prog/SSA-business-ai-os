@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyDoc, type DesignDoc } from "../doc/schema";
-import { firstPageDoc, pageDesignHeight, thumbHtml, thumbSize } from "./thumbs";
+import { firstPageDoc, pageDesignHeight, thumbHtml, thumbSize, qaBadge, QA_BADGE_LABEL } from "./thumbs";
 
 const withText = (format: DesignDoc["format"] = "v45"): DesignDoc => {
   const doc = emptyDoc(format);
@@ -63,5 +63,30 @@ describe("miniaturas en vivo (F48)", () => {
     const doc = withText();
     doc.pages.push({ ...doc.pages[0], id: "pg_bbbbbb" });
     expect(firstPageDoc(doc).pages).toHaveLength(1);
+  });
+});
+
+describe("screens/thumbs: el punto ámbar de la revisión automática (F36)", () => {
+  const lastQa = {
+    at: "2026-11-07T12:00:00.000Z",
+    issues: [
+      { kind: "contrast", page: 3, elementId: "el_a", detail: "1,2:1" },
+      { kind: "words", page: 3, detail: "30 de máximo 25" },
+      { kind: "overflow", page: 0, elementId: "el_b", detail: "x" },
+    ],
+    unchecked: [],
+  };
+
+  it("la página que tiene problemas muestra el punto, con su texto y cuántos son", () => {
+    expect(qaBadge(lastQa, 3)).toEqual({ label: "Revisión automática: hay algo para mirar", issues: 2 });
+    expect(qaBadge(lastQa, 0)).toEqual({ label: QA_BADGE_LABEL, issues: 1 });
+  });
+
+  it("una página sin problemas no lo muestra", () => {
+    expect(qaBadge(lastQa, 1)).toBeNull();
+  });
+
+  it("sin revisión, vacía o con una forma rara: nunca lanza y no muestra nada", () => {
+    for (const raw of [null, undefined, {}, [], "x", 3, { issues: "no" }, { issues: [null, 5, "x"] }, { issues: [] }]) expect(qaBadge(raw, 0)).toBeNull();
   });
 });

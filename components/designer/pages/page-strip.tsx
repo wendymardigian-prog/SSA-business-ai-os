@@ -7,14 +7,15 @@ import { Popover } from "@/components/ui/popover";
 import type { DesignDoc, DesignPage } from "@/lib/designer/doc/schema";
 import type { UploadedFont } from "@/lib/designer/fonts";
 import { canAddPage, pageLabel, pageMenuActions, type PageMenuAction } from "@/lib/designer/screens/pages";
+import { qaBadge, type QaBadge } from "@/lib/designer/screens/thumbs";
 import type { CustomVar } from "@/lib/designer/variables/catalog";
 import { cn } from "@/lib/utils";
 
 /** La miniatura de UNA página, en vivo; se vuelve a dibujar solo cuando esa página cambia (con una pequeña demora al arrastrar). */
-const StripThumb = memo(function StripThumb({ page, format, assetUrls, uploadedFonts, customVars, label }: { page: DesignPage; format: DesignDoc["format"]; assetUrls: Readonly<Record<string, string>>; uploadedFonts: readonly UploadedFont[]; customVars: readonly CustomVar[]; label: string }) {
+const StripThumb = memo(function StripThumb({ page, format, assetUrls, uploadedFonts, customVars, label, qa }: { page: DesignPage; format: DesignDoc["format"]; assetUrls: Readonly<Record<string, string>>; uploadedFonts: readonly UploadedFont[]; customVars: readonly CustomVar[]; label: string; qa: QaBadge | null }) {
   const deferred = useDeferredValue(page);
   const single = useMemo<DesignDoc>(() => ({ v: 1, format, pages: [deferred] }), [deferred, format]);
-  return <LiveThumb doc={single} box={{ width: 90, height: 64 }} assetUrls={assetUrls} uploadedFonts={uploadedFonts} customVars={customVars} label={label} />;
+  return <LiveThumb doc={single} box={{ width: 90, height: 64 }} assetUrls={assetUrls} uploadedFonts={uploadedFonts} customVars={customVars} label={label} qa={qa} />;
 });
 
 /**
@@ -28,6 +29,7 @@ export function PageStrip({
   assetUrls,
   uploadedFonts,
   customVars,
+  lastQa,
   readOnly,
   onSelect,
   onAdd,
@@ -39,6 +41,8 @@ export function PageStrip({
   assetUrls: Readonly<Record<string, string>>;
   uploadedFonts: readonly UploadedFont[];
   customVars: readonly CustomVar[];
+  /** `designs.last_qa` (lo que dejó la revisión automática de la IA): la página con algo para mirar lleva un punto ámbar. */
+  lastQa?: unknown;
   readOnly: boolean;
   onSelect: (index: number) => void;
   onAdd: () => void;
@@ -78,7 +82,7 @@ export function PageStrip({
         >
           <button type="button" onClick={() => onSelect(index)} aria-current={index === current} aria-label={pageLabel(doc, index)} className="block">
             <span className="absolute left-1 top-0.5 z-10 rounded bg-black/55 px-1 text-[10px] font-bold text-white">{index + 1}</span>
-            <StripThumb page={page} format={doc.format} assetUrls={assetUrls} uploadedFonts={uploadedFonts} customVars={customVars} label={pageLabel(doc, index)} />
+            <StripThumb page={page} format={doc.format} assetUrls={assetUrls} uploadedFonts={uploadedFonts} customVars={customVars} label={pageLabel(doc, index)} qa={qaBadge(lastQa, index)} />
           </button>
           {!readOnly && (
             <div className="absolute right-0.5 top-0.5 z-10 opacity-0 focus-within:opacity-100 group-hover:opacity-100 max-sm:opacity-100">
