@@ -410,7 +410,7 @@ async function run(db: Db, input: CreateGenerationInput, deps: Required<Generati
   // 6. Publicar con link: por el único camino. La falla de publicar no deshace la pieza.
   if (input.publish) {
     await safely("publish", async () => {
-      const out = await deps.publish(db, { workspaceId, userId: input.actorUserId as string }, { designId });
+      const out = await deps.publish(db, { workspaceId, userId: input.actorUserId }, { designId });
       if (!out.ok) console.error("[designer] no pude publicar la generación:", out.error);
     });
   }

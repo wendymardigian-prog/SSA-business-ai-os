@@ -30,7 +30,8 @@ type Db = SupabaseClient<Database>;
 
 export interface Actor {
   workspaceId: string;
-  userId: string;
+  /** Quien lo pidió; null cuando lo hace el sistema (una automatización que publica una generación). */
+  userId: string | null;
 }
 
 export interface PublishingDeps {
