@@ -14,6 +14,8 @@ import { serviceCertificates } from "@/lib/services/certificate-core";
 import { certificateState } from "@/lib/services/certificate";
 import { loadDesignLinks } from "@/lib/designer/public-links";
 import { createServiceClient } from "@/lib/supabase/server";
+import { ServiceAssistantCard } from "@/components/services/clients/service-assistant-card";
+import { svcRpc } from "@/lib/services/db";
 import { accessViewRows, pendingSections } from "@/lib/portal-admin/accesses-view";
 import { programSections, readVariantPortal } from "@/lib/services/screens/variant-portal-form";
 
@@ -117,6 +119,30 @@ export default async function ServicePage({ params, searchParams }: { params: Pr
       );
     }
   }
+  // El Asistente IA (F86): solo si el programa tiene tutor. El detalle sale de la base (después de que la sesión vio el
+  // servicio); las conversaciones del canal portal, con la sesión (las lee quien ve el contacto).
+  let assistant: React.ReactNode = null;
+  if (tab === "datos") {
+    const service = await createServiceClient();
+    const { data: prod } = await service.from("products").select("tutor_agent_id, portal_settings" as never).eq("id", s.product_id).eq("workspace_id", workspace.id).maybeSingle();
+    const pr = prod as { tutor_agent_id?: string | null; portal_settings?: { assistant?: { credits_name?: string } } | null } | null;
+    if (pr?.tutor_agent_id) {
+      const [detail, { data: threads }] = await Promise.all([
+        svcRpc<{ limitUsd: number; credits: number; reached: boolean; spentUsd: number }>(service, "assistant_credits_detail", { p_contact_id: s.contact_id, p_product_id: s.product_id }),
+        supabase.from("ai_threads" as never).select("id, title, last_message_at").eq("channel", "portal").eq("contact_id", s.contact_id).eq("subject_id", s.product_id).order("last_message_at", { ascending: false }).limit(10),
+      ]);
+      const fmt = new Intl.DateTimeFormat("es", { timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      assistant = (
+        <ServiceAssistantCard
+          detail={detail.ok ? detail.data : null}
+          money={ctx.can("ai_costs.view")}
+          creditsName={pr.portal_settings?.assistant?.credits_name ?? "créditos"}
+          threads={((threads ?? []) as Array<{ id: string; title: string | null; last_message_at: string | null }>).map((t) => ({ id: t.id, title: t.title, lastMessageAt: t.last_message_at }))}
+          formatDate={(iso) => fmt.format(new Date(iso))}
+        />
+      );
+    }
+  }
   return (
     <ServiceDetailView
       data={data}
@@ -128,6 +154,7 @@ export default async function ServicePage({ params, searchParams }: { params: Pr
       permissions={ctx.permissions.keys}
       accesses={accesses}
       certificate={certificate}
+      assistant={assistant}
     />
   );
 }

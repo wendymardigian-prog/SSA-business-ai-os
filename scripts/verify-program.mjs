@@ -497,6 +497,104 @@ try {
     check(sql(`SELECT has_schema_privilege('authenticated', 'app_servicio_portal', 'USAGE') u`)[0]?.u === false, "el esquema del portal sigue cerrado para la sesión");
   }
 
+  if (run("ia") && sql(`SELECT count(*)::int n FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'tutor_agent_id'`)[0]?.n === 1) {
+    console.log("\nia · Casos compartidos (límites y créditos)");
+    const ac = json("lib/program/assistant.cases.json").cases;
+    const gotAc = sql(`SELECT jsonb_build_array(${ac.map((c) => `app_servicio.assistant_credits_plan(${jlit(c.input)})`).join(", ")}) AS r`)[0]?.r ?? [];
+    const badAc = ac.filter((c, i) => !eq(gotAc[i], c.expected)).map((c, i) => `${c.name}: ${JSON.stringify(gotAc[ac.indexOf(c)])}`);
+    check(badAc.length === 0, `assistant_credits_plan: los ${ac.length} casos dan lo mismo que en TypeScript`, badAc.slice(0, 2).join(" | "));
+
+    console.log("\nia · El tutor del programa (F83, F84)");
+    const { data: prodT } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test Programa tutor", product_type: "programa" }).select("id").single();
+    const t1 = await rpcAs(owner, "program_ensure_tutor", { p_product_id: prodT.id });
+    const t2 = await rpcAs(owner, "program_ensure_tutor", { p_product_id: prodT.id });
+    const agentRow = sql(`SELECT type, monthly_cost_limit_action, config ->> 'program_id' AS program, knowledge_tags FROM public.agents WHERE id = ${lit(t1.data)}`)[0];
+    check(!t1.error && t1.data === t2.data, "prender dos veces crea un solo tutor", t1.error ?? t2.error);
+    check(agentRow?.type === "student_tutor" && agentRow?.monthly_cost_limit_action === "notify" && agentRow?.program === prodT.id, "nace como tutor del programa con el tope mensual en «avisar»", JSON.stringify(agentRow));
+    const memberEnsure = asUser(member.id, `SELECT app_servicio.program_ensure_tutor(${lit(prodT.id)}) r`);
+    check(!memberEnsure.ok && /SV004|permiso/.test(memberEnsure.error), "un Member no crea tutores", memberEnsure.error);
+    const tamper = asUser(owner.id, `WITH u AS (UPDATE public.products SET tutor_agent_id = NULL WHERE id = ${lit(prodT.id)} RETURNING id) SELECT count(*) n FROM u`);
+    check(!tamper.ok && /SV003/.test(tamper.error), "con la sesión no se cambia el tutor de un programa (SV003)", tamper.error);
+    const moveProgram = asUser(owner.id, `WITH u AS (UPDATE public.agents SET config = jsonb_set(config, '{program_id}', '"otro"') WHERE id = ${lit(t1.data)} RETURNING id) SELECT count(*) n FROM u`);
+    check(!moveProgram.ok && /SV003/.test(moveProgram.error), "el programa de un tutor no se cambia (SV003)", moveProgram.error);
+    const { data: prodT2 } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test Otro programa", product_type: "programa" }).select("id").single();
+    const twice = sqlErr(`UPDATE public.products SET tutor_agent_id = ${lit(t1.data)} WHERE id = ${lit(prodT2.id)}`);
+    check(/uq_products_tutor_agent|duplicate/.test(twice ?? ""), "el mismo agente en dos programas se rechaza (índice único)");
+    await rpcAs(owner, "program_ensure_tutor", { p_product_id: prodT2.id });
+    const noReplace = await rpcAs(owner, "program_duplicate_tutor", { p_agent_id: t1.data, p_dest_product_id: prodT2.id, p_replace: false });
+    check(/IA001/.test(noReplace.error ?? ""), "duplicar a un programa con tutor pide reemplazarlo (IA001)", noReplace.error);
+    const oldTutor = sql(`SELECT tutor_agent_id FROM public.products WHERE id = ${lit(prodT2.id)}`)[0]?.tutor_agent_id;
+    const dup = await rpcAs(owner, "program_duplicate_tutor", { p_agent_id: t1.data, p_dest_product_id: prodT2.id, p_replace: true });
+    const after = sql(`SELECT (SELECT tutor_agent_id FROM public.products WHERE id = ${lit(prodT2.id)}) AS now, (SELECT deleted_at IS NOT NULL FROM public.agents WHERE id = ${lit(oldTutor)}) AS archived`)[0];
+    check(!dup.error && after?.now === dup.data && after?.archived === true, "duplicar con reemplazo archiva el anterior y apunta al nuevo", dup.error ?? JSON.stringify(after));
+    await rpcAs(owner, "program_tutor_set_enabled", { p_product_id: prodT.id, p_enabled: false });
+    check(sql(`SELECT is_enabled FROM public.agents WHERE id = ${lit(t1.data)}`)[0]?.is_enabled === false, "apagar el Asistente IA deja el tutor inactivo");
+    await rpcAs(owner, "program_tutor_set_enabled", { p_product_id: prodT.id, p_enabled: true });
+
+    console.log("\nia · Lo que puede usar el tutor (F83, F110)");
+    sql(`UPDATE public.products SET portal_settings = '{"sections":{"program":true}}'::jsonb WHERE id = ${lit(prodT.id)}`);
+    const vT = (await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prodT.id, name: "zz-test Tutor", price: 1000, duration_type: "months", duration_value: 3 }).select("id").single()).data;
+    sql(`UPDATE public.product_variants SET portal_settings = ${jlit({ v: 1, enabled: true, sections: [{ section: "program", included: true, content: { modules: "all" } }, { section: "assistant", included: true }] })} WHERE id = ${lit(vT.id)}`);
+    const itemT = (kind, title, parent = null, extra = {}) =>
+      sql(`INSERT INTO app_servicio.program_items (workspace_id, product_id, parent_id, kind, lesson_type, title, status, unlock_rule)
+           VALUES (${lit(ws.id)}, ${lit(prodT.id)}, ${parent ? lit(parent) : "NULL"}, ${lit(kind)}, ${kind === "lesson" ? lit(extra.lesson_type ?? "video") : "NULL"}, ${lit(title)}, 'active', ${jlit(extra.rule ?? { type: "open" })}) RETURNING id`)[0]?.id;
+    const mA = itemT("module", "zz-test Módulo abierto");
+    const lA = itemT("lesson", "zz-test Clase abierta", mA);
+    const mL = itemT("module", "zz-test Módulo 5", null, { rule: { type: "fixed_date", date: "2099-01-01" } });
+    const lL = itemT("lesson", "zz-test Clase 5", mL, { rule: { type: "fixed_date", date: "2099-01-01" } });
+    const lQ = itemT("lesson", "zz-test Evaluación", mA, { lesson_type: "quiz" });
+    itemT("lesson", "zz-test Video sin transcripción", mA);
+    const kb = (title, extra = {}) => sql(`INSERT INTO public.knowledge_base (workspace_id, title, tags, status, internal_only, program_item_id)
+      VALUES (${lit(ws.id)}, ${lit(title)}, ${extra.tags === false ? "'{}'" : `ARRAY['programa:${prodT.id}']`}::text[], 'ready', ${extra.internal ? "true" : "false"}, ${extra.item ? lit(extra.item) : "NULL"}) RETURNING id`)[0]?.id;
+    const kA = kb("zz-test transcripción abierta", { item: lA });
+    const kL = kb("zz-test transcripción clase 5", { item: lL });
+    const kQ = kb("zz-test evaluación", { item: lQ });
+    const kDoc = kb("zz-test documento del programa");
+    const kInternal = kb("zz-test documento interno", { internal: true });
+    const kOther = kb("zz-test documento suelto", { tags: false });
+    const cT = await newContact("estudiante tutor");
+    const sT = mkService(cT.id, vT.id);
+    sql(`SELECT app_servicio.svc_open_access(${lit(sT)}, 'program', NULL, 'automation')`);
+    const ids = (c) => (sql(`SELECT coalesce(jsonb_agg(knowledge_id), '[]'::jsonb) k FROM app_servicio.tutor_knowledge_ids(${c ? lit(c) : "NULL"}, ${lit(prodT.id)})`)[0]?.k ?? []);
+    const forStudent = ids(cT.id);
+    check(forStudent.includes(kA) && forStudent.includes(kDoc), "el estudiante tiene la clase abierta y los documentos del programa", JSON.stringify(forStudent));
+    check(!forStudent.includes(kL), "con la clase 5 bloqueada, su transcripción no está para ese estudiante");
+    check(!forStudent.includes(kQ) && !ids(null).includes(kQ), "una evaluación nunca");
+    check(!ids(null).includes(kInternal) && !ids(null).includes(kOther), "nunca un documento interno ni uno de otro lado");
+    const listT = (await rpcAs(owner, "tutor_knowledge_list", { p_product_id: prodT.id })).data;
+    const listIds = [...(listT?.lessons ?? []).map((l) => l.knowledge_id).filter(Boolean), ...(listT?.documents ?? []).map((d) => d.knowledge_id)].sort();
+    check(eq(listIds, [...ids(null)].sort()), "la lista del equipo coincide con lo que puede devolver la búsqueda del tutor", JSON.stringify({ listIds, search: ids(null) }));
+    check(!(listT?.lessons ?? []).some((l) => l.item_id === lQ), "la evaluación no aparece en la lista");
+    const missing = (listT?.lessons ?? []).filter((l) => l.lesson_type === "video" && !l.knowledge_id).length;
+    const missingSql = sql(`SELECT count(*)::int n FROM app_servicio.program_items i WHERE i.product_id = ${lit(prodT.id)} AND i.kind = 'lesson' AND i.lesson_type = 'video' AND i.status <> 'archived'
+                            AND NOT EXISTS (SELECT 1 FROM public.knowledge_base k WHERE k.program_item_id = i.id AND k.deleted_at IS NULL)`)[0]?.n;
+    check(missing === 1 && missing === missingSql, "«Falta transcripción» cuenta los videos sin fila en Conocimiento", `${missing} / ${missingSql}`);
+    const excl = await rpcAs(owner, "tutor_set_excluded", { p_product_id: prodT.id, p_knowledge_id: kDoc, p_excluded: true });
+    check(!excl.error && !ids(cT.id).includes(kDoc) && !ids(null).includes(kDoc), "un material excluido no lo usa el tutor (y no se borra)", excl.error);
+    check(sql(`SELECT count(*)::int n FROM public.knowledge_base WHERE id = ${lit(kDoc)} AND deleted_at IS NULL`)[0]?.n === 1, "…sigue en Conocimiento");
+    const addInternal = await rpcAs(owner, "tutor_add_document", { p_product_id: prodT2.id, p_knowledge_id: kInternal });
+    check(/IA001/.test(addInternal.error ?? ""), "«Agregar desde Conocimiento» rechaza un documento interno");
+
+    console.log("\nia · Gasto y créditos (F85)");
+    const tutorId = t1.data;
+    sql(`INSERT INTO public.agent_runs (workspace_id, source, agent_id, contact_id, trigger, status, cost_usd, created_at) VALUES
+         (${lit(ws.id)}, 'portal_tutor', ${lit(tutorId)}, ${lit(cT.id)}, 'manual', 'completed', 3, now()),
+         (${lit(ws.id)}, 'portal_tutor', ${lit(tutorId)}, ${lit(cT.id)}, 'manual', 'completed', 50, now() - interval '40 days')`);
+    check(Number(sql(`SELECT app_servicio.assistant_month_spend(${lit(cT.id)}, ${lit(tutorId)}) s`)[0]?.s) === 3, "el gasto es el del mes (lo del mes pasado no cuenta)");
+    sql(`UPDATE public.products SET portal_settings = jsonb_set(portal_settings, '{assistant}', '{"monthly_limit_usd_per_student":5,"credits_per_usd":100}'::jsonb) WHERE id = ${lit(prodT.id)}`);
+    check(Number(sql(`SELECT app_servicio.assistant_credits(${lit(cT.id)}, ${lit(prodT.id)}) c`)[0]?.c) === 200, "créditos = (límite − gasto) × créditos por dólar");
+    const usageOwner = (await rpcAs(owner, "assistant_usage", { p_product_id: prodT.id })).data;
+    const usageMember = (await rpcAs(member, "assistant_usage", { p_product_id: prodT.id })).data;
+    check(usageOwner?.students?.[0]?.spent_usd === 3 && usageMember?.money === false && usageMember?.students?.[0]?.spent_usd === null, "el uso lo ve quien ve servicios; los montos, solo con ai_costs.view", JSON.stringify({ o: usageOwner?.students?.[0], m: usageMember?.students?.[0] }));
+
+    console.log("\nia · Conversaciones del canal portal (F87)");
+    sql(`INSERT INTO public.ai_threads (workspace_id, channel, agent_id, contact_id, subject_type, subject_id, title) VALUES (${lit(ws.id)}, 'portal', ${lit(tutorId)}, ${lit(cT.id)}, 'product', ${lit(prodT.id)}, 'zz-test hilo')`);
+    const seesOwner = asUser(owner.id, `SELECT count(*)::int n FROM public.ai_threads WHERE contact_id = ${lit(cT.id)} AND channel = 'portal'`).row?.n;
+    // El Member de sistema ve solo sus contactos (setter, vendedor o asignado): este no es suyo.
+    const seesNone = asUser(member.id, `SELECT count(*)::int n FROM public.ai_threads WHERE contact_id = ${lit(cT.id)} AND channel = 'portal'`).row?.n;
+    check(seesOwner === 1 && seesNone === 0, "una conversación del portal la lee quien ve el contacto", `${seesOwner} / ${seesNone}`);
+  }
+
   console.log("\nHuellas de las funciones protegidas");
   checkProtectedFunctions(sql, check);
 } catch (e) {

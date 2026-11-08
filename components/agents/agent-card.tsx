@@ -6,7 +6,7 @@ import type { AgentConfig } from "@/lib/agent/config";
 import { availabilityBadge, type AgentAvailability } from "@/lib/agent/availability";
 
 /** La card de un agente en Agentes IA: nombre, estado, tipo, modelo y canales, con un ícono de robot. */
-export function AgentCard({ agent, availability }: { agent: AgentConfig; availability?: AgentAvailability }) {
+export function AgentCard({ agent, availability, detail }: { agent: AgentConfig; availability?: AgentAvailability; /** Una línea más (el tutor de un programa: «Programa: X»). */ detail?: string | null }) {
   const typeDef = getAgentType(agent.type);
   // Sin la disponibilidad (quien la use sin saber las IAs conectadas) se ve el estado de siempre.
   const badge = availability ? availabilityBadge(availability) : { label: agent.isEnabled ? "Encendido" : "Apagado", tone: agent.isEnabled ? ("ok" as const) : ("off" as const) };
@@ -30,6 +30,7 @@ export function AgentCard({ agent, availability }: { agent: AgentConfig; availab
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
           {typeDef?.label ?? agent.type}
+          {detail ? ` · ${detail}` : null}
           {" · "}
           {agent.model ? `${getProvider(agent.provider ?? "")?.label ?? agent.provider} / ${agent.model}` : "Usa el modelo del negocio"}
           {/* Los canales solo dicen algo de un agente que conversa: el copywriter no atiende a nadie (E1). */}

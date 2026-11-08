@@ -38,6 +38,7 @@ export const RUN_SOURCE_LABELS: Record<string, string> = {
   call_summary: "Resumen de llamada",
   call_prompt_test: "Prueba de instrucciones de llamadas",
   // @plantilla-hasta(llamadas)
+  portal_tutor: "Tutor del programa", // @plantilla-quitar(servicios)
 };
 
 const DETAIL_LABELS: Record<string, string> = {

@@ -303,6 +303,15 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     // Cambio aprobado M9 (Extra I): el Member de sistema tambien gana «Finanzas», por `commissions.view`.
     // Cambio aprobado M12 (Diseñador IA): el Member de sistema gana «Diseñador IA», por `designer.view`.
     const ADDED_TO_MENU_MEMBER = ["Finanzas", "Diseñador IA"];
+    // Servicios A1 (F83): un tipo de agente NUEVO, el tutor del programa, suma sus pestañas. Se declara acá, a
+    // propósito; las pestañas de los tipos que ya existían se siguen comparando exactas.
+    const ADDED_AGENT_TYPES = ["student_tutor"]; // @plantilla-quitar(servicios)
+    // @plantilla-sin(servicios): const ADDED_AGENT_TYPES: string[] = [];
+    const withoutAdded = <T extends { agentTabs?: unknown }>(r: T): T => {
+      const tabs = { ...((r.agentTabs ?? {}) as Record<string, unknown>) };
+      for (const t of ADDED_AGENT_TYPES) delete tabs[t];
+      return { ...r, agentTabs: tabs };
+    };
     const sorted = (names: string[]) => [...names].sort();
 
     it("Owner y Admin ven lo mismo que antes (el menu, salvo el rediseño aprobado de formularios-ui)", () => {
@@ -310,7 +319,7 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
         const now_ = now.rendered[r] as { nav: string[] };
         const base_ = base.rendered[r] as { nav: string[] };
         expect(sorted(now_.nav), r).toEqual(sorted([...base_.nav.filter((n) => !REMOVED_FROM_MENU.includes(n)), ...ADDED_TO_MENU]));
-        expect({ ...now_, nav: [] }).toEqual({ ...base_, nav: [] });
+        expect(withoutAdded({ ...now_, nav: [] })).toEqual({ ...base_, nav: [] });
       }
     });
 
@@ -323,7 +332,7 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     });
 
     it("las pestanas del agente del Member son las de hoy", () => {
-      expect((now.rendered.member as { agentTabs: unknown }).agentTabs).toEqual((base.rendered.member as { agentTabs: unknown }).agentTabs);
+      expect(withoutAdded(now.rendered.member as { agentTabs: unknown }).agentTabs).toEqual((base.rendered.member as { agentTabs: unknown }).agentTabs);
     });
 
     it("los botones de cabecera del Member son los de hoy, salvo los aprobados", () => {

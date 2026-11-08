@@ -277,6 +277,7 @@ export const MODULES = {
       "lib/actions/live-sessions.ts",
       "lib/actions/service-certificates.ts",
       "lib/actions/community.ts",
+      "lib/actions/tutor.ts",
       "lib/jobs/handlers/svc-certificate.ts",
       "lib/flow-engine/nodes/service-actions.ts",
       "lib/flow-engine/registry/service-triggers.ts",

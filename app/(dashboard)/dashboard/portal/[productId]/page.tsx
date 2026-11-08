@@ -17,6 +17,7 @@ import { lessonCommentsOn, programSpaces, LESSON_SPACE } from "@/lib/program/com
 import { svcRpc } from "@/lib/services/db";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { resolveBrand } from "@/lib/brand";
+import { ProgramAssistant, type AssistantUsage, type TutorKnowledge } from "@/components/services/portal/program-assistant";
 import { svcSchema } from "@/lib/services/db";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { PortalFormInitial } from "@/components/services/portal/portal-form-editor";
@@ -33,7 +34,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string; filtro?: string; espacio?: string; clase?: string }> }) {
   const [{ productId }, sp] = await Promise.all([params, searchParams]);
   if (!UUID.test(productId)) notFound();
-  const ctx = await requireAnyPermission(["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "program.manage", "program.activate", "live_sessions.manage", "attendance.manage", "community.view", "community.spaces"]);
+  const ctx = await requireAnyPermission(["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "program.manage", "program.activate", "live_sessions.manage", "attendance.manage", "community.view", "community.spaces", "tutor.manage", "tutor.knowledge"]);
   const { workspace, supabase } = ctx;
   if (!moduleShows("route.portal", { servicesEnabled: isModuleEnabled(workspace as { services_enabled?: boolean | null }) })) notFound();
   const [{ data: product }, { data: variants }] = await Promise.all([
@@ -42,7 +43,7 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   ]);
   const p = product as unknown as { id: string; name: string; portal_enabled: boolean; portal_settings: Record<string, unknown> | null; portal_settings_rev: number; links: { items?: Array<{ key: string; name: string; active: boolean }> } | null } | null;
   if (!p || !p.portal_enabled) notFound();
-  const tab = sp.tab === "afiliados" ? "afiliados" : sp.tab === "ajustes" ? "ajustes" : sp.tab === "calendario" ? "calendario" : sp.tab === "comunidad" ? "comunidad" : "contenido";
+  const tab = sp.tab === "afiliados" ? "afiliados" : sp.tab === "ajustes" ? "ajustes" : sp.tab === "calendario" ? "calendario" : sp.tab === "comunidad" ? "comunidad" : sp.tab === "asistente" ? "asistente" : "contenido";
   const ps = (p.portal_settings ?? {}) as { sections?: Record<string, boolean>; affiliates?: { visible_link_keys?: string[] } };
   const vs = ((variants ?? []) as unknown as Array<{ id: string; name: string; portal_settings: unknown }>).map((v) => ({ id: v.id, name: v.name, portal: readVariantPortal(v.portal_settings) }));
   const canEdit = ctx.can("portal.sections");
@@ -134,6 +135,35 @@ export default async function PortalProgramPage({ params, searchParams }: { para
     );
   }
 
+  // Asistente IA (F84-F86, F110): el tutor, sus límites, el uso del mes y la base de conocimiento. El tutor y los otros
+  // programas se leen con el cliente de servicio, del negocio de la sesión, después del permiso de la página.
+  async function assistantTab() {
+    const service = await createServiceClient();
+    const [{ data: tutorRow }, { data: others }, usage, knowledge] = await Promise.all([
+      service.from("products").select("tutor_agent_id" as never).eq("id", productId).eq("workspace_id", workspace.id).maybeSingle(),
+      service.from("products").select("id, name, tutor_agent_id" as never).eq("workspace_id", workspace.id).eq("portal_enabled" as never, true as never).is("archived_at", null).neq("id", productId),
+      svcRpc<AssistantUsage>(supabase, "assistant_usage", { p_product_id: productId }),
+      ctx.can("tutor.knowledge") || ctx.can("tutor.manage") ? svcRpc<TutorKnowledge>(supabase, "tutor_knowledge_list", { p_product_id: productId }) : Promise.resolve({ ok: false as const, error: { code: null, message: "", detail: null } }),
+    ]);
+    const tutorId = (tutorRow as { tutor_agent_id?: string | null } | null)?.tutor_agent_id ?? null;
+    const { data: agent } = tutorId ? await service.from("agents").select("id, name, is_enabled").eq("id", tutorId).eq("workspace_id", workspace.id).is("deleted_at", null).maybeSingle() : { data: null };
+    const a = agent as { id: string; name: string; is_enabled: boolean } | null;
+    const settings = ((p!.portal_settings ?? {}) as { assistant?: Record<string, unknown> }).assistant ?? {};
+    return (
+      <ProgramAssistant
+        productId={productId}
+        tutor={a ? { id: a.id, name: a.name, enabled: a.is_enabled } : null}
+        sections={(ps.sections ?? {}) as Record<string, boolean>}
+        settings={settings as never}
+        rev={p!.portal_settings_rev ?? 0}
+        usage={usage.ok ? usage.data : null}
+        knowledge={knowledge.ok ? knowledge.data : null}
+        otherPrograms={((others ?? []) as unknown as Array<{ id: string; name: string; tutor_agent_id: string | null }>).map((o) => ({ id: o.id, name: o.name, hasTutor: !!o.tutor_agent_id }))}
+        can={{ manage: ctx.can("tutor.manage"), sections: ctx.can("portal.sections"), knowledge: ctx.can("tutor.knowledge") }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -152,6 +182,7 @@ export default async function PortalProgramPage({ params, searchParams }: { para
               { key: "contenido", label: "Contenido" },
               { key: "calendario", label: "Calendario" },
               { key: "comunidad", label: "Comunidad" },
+              { key: "asistente", label: "Asistente IA" },
               { key: "ajustes", label: "Ajustes del programa" },
               { key: "afiliados", label: "Afiliados" },
             ].map((t) => (
@@ -171,6 +202,8 @@ export default async function PortalProgramPage({ params, searchParams }: { para
             await calendarTab()
           ) : tab === "comunidad" ? (
             await communityTab()
+          ) : tab === "asistente" ? (
+            await assistantTab()
           ) : tab === "ajustes" ? (
             <div className="space-y-6">
               <section aria-labelledby="secciones" className="space-y-2">

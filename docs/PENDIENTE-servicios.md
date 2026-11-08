@@ -143,6 +143,17 @@ Formato: **qué quedó · por qué · qué se decidió**. Lo que encontró la ex
 - **`saveProgramSettings` deja pasar también `community.spaces` y `tutor.manage`**: la base pide la clave de cada parte del parche, así que nadie guarda lo que no le toca.
 - **Borrar oculta y la purga a los 30 días va en el cron de la S16** (bloque X).
 
+## Decisiones de IA (8/11)
+
+- **El tutor nace sin modelo** (usa el del negocio, como cualquier agente sin modelo propio) y con los dos topes en «avisar». `ensure_default_agents` no lo toca: no crea tutores.
+- **Prender «Asistente IA» en el programa crea el tutor** (también desde «Prenderla»); apagarlo lo deja inactivo, nunca lo borra. Duplicar con reemplazo archiva el anterior.
+- **«+ Documento» del tutor** usa la misma validación por bytes que Conocimiento (PDF, Word y texto) y la etiqueta del programa; no pide `knowledge.edit`, pide `tutor.knowledge`.
+- **«Agregar desde Conocimiento» suma la etiqueta del programa** al documento (sigue siendo uno solo en Conocimiento); un documento interno se rechaza (IA001).
+- **«Lo usa el tutor» se guarda en `assistant.excluded_kb_ids`** con su propia función (`tutor.knowledge`), no con el parche del programa (que pide `tutor.manage`).
+- **«Subir» en una clase sin transcripción lleva a Contenido**, donde está el drawer de la clase con su transcripción.
+- **Editar el límite propio de un estudiante desde la ficha va en la S16** (bloque X), junto con el resto de lo que cierra el módulo.
+- **`lib/auth/access-matrix.characterization.test.ts` declara el tipo de agente nuevo** (`ADDED_AGENT_TYPES`, como `ADDED_TO_MENU`): las pestañas de los tipos que ya existían se siguen comparando exactas.
+
 ## Revisión visual (8/11)
 
 - **No se pudo hacer en esta corrida.** · La app local (`localhost:3097`) pide iniciar sesión y en el navegador de la sesión no hay una abierta; la regla es no escribir credenciales. Además, las pantallas nuevas solo se ven con el módulo prendido, y solo se puede prender en un negocio de prueba. · Queda para Wendy, a 1440 y 390 px y en claro y oscuro, comparando con `claude/v12/prototipo-v12-panel.html`: Ajustes › Productos (tarjetas, producto, variante con sus cuatro pestañas, el drawer del paso, la regla de una sección del portal y la línea de workflows), Clientes (Servicios en tabla y tablero, Clientes, ficha del cliente, ficha del servicio, Importar servicios), la sección Servicios del contacto y de la venta, la columna Servicio en Ventas y los cinco pasos de Servicios en Automatizaciones. Con el módulo apagado, comprobar que Productos, Ventas, la ficha del contacto y de la venta y el editor de automatizaciones se ven iguales que antes.

@@ -264,7 +264,14 @@ export async function saveProgramSettings(productId: string, patch: Record<strin
   // tiene alguna de ellas.
   const ctx = await getAnyPermissionAction(["portal.sections", "portal.settings", "community.spaces", "tutor.manage"]);
   if (!ctx) return NOT_ALLOWED;
-  return svcRpc<SaveResult>(ctx.supabase, "portal_admin_save_program_settings", { p_product_id: productId, p_patch: patch, p_rev: rev });
+  const res = await svcRpc<SaveResult>(ctx.supabase, "portal_admin_save_program_settings", { p_product_id: productId, p_patch: patch, p_rev: rev });
+  // F84: prender el Asistente IA del programa crea (o vuelve a prender) su tutor; apagarlo lo deja inactivo.
+  const sections = patch.sections as Record<string, unknown> | undefined;
+  if (res.ok && (res.data as { status?: string } | null)?.status === "ok" && sections && typeof sections.assistant === "boolean") {
+    const t = await svcRpc<string | null>(ctx.supabase, "program_tutor_set_enabled", { p_product_id: productId, p_enabled: sections.assistant });
+    if (!t.ok) console.error("[servicios] no pude prender o apagar el tutor:", t.error.message);
+  }
+  return res;
 }
 
 export async function copyVariantSetup(fromVariantId: string, toVariantId: string, parts: Array<"journey" | "service" | "portal">): Promise<SvcResult<{ status: string; needs_attention: number }>> {

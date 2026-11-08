@@ -81,8 +81,11 @@ export function ServiceDetailView({
   permissions,
   accesses,
   certificate,
+  assistant,
 }: {
   data: ServiceDetailData;
+  /** El Asistente IA del programa (bloque IA): gasto del mes, límite y conversaciones. */
+  assistant?: React.ReactNode;
   /** El certificado (bloque CE), arriba de los datos: se arma en el servidor. */
   certificate?: React.ReactNode;
   /** La pestaña Accesos (bloque AC): se arma en el servidor con lo que la persona puede ver. */
@@ -289,6 +292,7 @@ export function ServiceDetailView({
             )}
             {tab === "accesos" && accesses}
             {tab === "datos" && certificate}
+            {tab === "datos" && assistant}
             {tab === "datos" && (
               <dl className="grid gap-3 text-sm sm:grid-cols-2">
                 <Datum label="Origen" value={`${data.origin}${data.originReason ? ` · ${data.originReason}` : ""}`} />

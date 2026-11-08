@@ -227,6 +227,7 @@ export const AGENT_RUN_SOURCES = [
   "call_correction", // @plantilla-quitar(llamadas)
   "call_summary", // @plantilla-quitar(llamadas)
   "call_prompt_test", // @plantilla-quitar(llamadas)
+  "portal_tutor", // @plantilla-quitar(servicios)
 ] as const satisfies readonly AgentRunSource[];
 const _EVERY_SOURCE_LISTED: [Exclude<AgentRunSource, (typeof AGENT_RUN_SOURCES)[number]>] extends [never] ? true : never = true;
 void _EVERY_SOURCE_LISTED;

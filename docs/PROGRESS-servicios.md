@@ -59,7 +59,10 @@
   - `00351` aplicada y registrada (8/11, versión `20261108182448`), después de ensayarla (la 00347 a la 00350 las ocuparon otras sesiones). Posts y comentarios (un nivel, CO001) en el esquema cerrado del portal, reacciones y reportes, bucket `community-media`, la gemela de «quién puede publicar», «sin contestar» y lo que hace el equipo (publicar, responder, visto, fijar, ocultar, borrar, silenciar, resolver reportes), cada cosa con su clave.
   - Pantallas: la pestaña Comunidad del programa (Todo, Sin contestar · 30 días, Reportados, un filtro por espacio y Clases; Publicar como el negocio o con su nombre; la tuerca de los espacios con «Permitir comentarios en las clases»), el aviso «N comentarios nuevos» en el árbol de Contenido, «Ver los comentarios» en cada clase y la parte Comentarios de Portal › Por revisar. Claves `community.view`, `community.reply`, `community.moderate` y `community.spaces`.
   - Gemela `community` (14 casos) contra la base; `verify-program --bloque co` en 0 (30 comprobaciones: CHECK de autor, CO001, quién publica, silenciado, clase cerrada o inactiva o con comentarios apagados, los cuatro posts de «sin contestar», visto, responder, permisos y el esquema cerrado).
-- [ ] **IA** Tutor: F83, F84, F85, F86, F87, F110 (S15)
+- [x] **IA** Tutor: F83, F84, F85, F86, F87, F110 (S15) — **listo el 8/11** (revisión visual pendiente; editar el límite propio de un estudiante va con la S16)
+  - `00352` aplicada y registrada (8/11, versión `20261108184035`), después de ensayarla y de releer de la base los dos CHECK de `agent_runs` (suman `portal_tutor`). Un tutor por programa (`products.tutor_agent_id`, único, con guardia SV003 para la sesión; el programa de un tutor no se cambia), prender/apagar/duplicar, límites y créditos (gemela con 10 casos), qué puede usar el tutor (para un estudiante, solo las clases que tiene abiertas; nunca evaluaciones, internos ni excluidos), la lista del equipo, excluir/incluir y «Agregar desde Conocimiento», el uso del mes (montos solo con `ai_costs.view`) y la política del canal `portal` en `ai_threads`.
+  - Pantallas: la pestaña Asistente IA del programa (el tutor con «Prenderla», «Abrir en Agentes IA» y «Duplicar a otro programa», Límites y créditos, Este mes, Base de conocimiento con sus filtros, «Lo usa el tutor», «+ Documento» y «Agregar desde Conocimiento»), la tarjeta Asistente IA en la ficha del servicio y «Programa: X» en Agentes IA. Prender o apagar «Asistente IA» en las secciones del programa crea o apaga el tutor. Tipo de agente `student_tutor`, origen `portal_tutor` y claves `tutor.manage` y `tutor.knowledge`.
+  - `verify-program --bloque ia` en 0 (32 comprobaciones: prender dos veces = uno, nace en «avisar», SV003, índice único, duplicar con y sin reemplazo, apagar, la clase 5 bloqueada fuera, evaluaciones nunca, la lista igual a la búsqueda, «Falta transcripción», excluir sin borrar, gasto del mes, créditos, montos por permiso y el canal `portal`).
 - [ ] **X** Cierre: F88, F89, F90, F91, F92, F108 (S16)
 
 ## Migraciones (S0x → número real)
@@ -86,7 +89,7 @@
 | S12 | 00346 | `00346_app_servicio_calendar.sql` | CA | **aplicada y registrada** (8/11, versión `20261108173804`), después de ensayarla; corregida el mismo día (permiso por columnas del link y «Clase» al prender el módulo) y el SQL registrado es el corregido; `--s S12`, `verify-program --bloque ca` y `verify-scheduling` en 0 |
 | S13 | 00343 | `00343_affiliates.sql` | AF | **aplicada y registrada** (8/11, versión `20261108161154`), después de ensayarla en una transacción que se deshizo sola; `--s S13` en 0 |
 | S14 | 00351 | `00351_app_servicio_community.sql` | CO | **aplicada y registrada** (8/11, versión `20261108182448`), después de ensayarla; `verify-program --bloque co` en 0 |
-| S15 | 00352 | `00352_app_servicio_tutor.sql` | IA | pendiente (confirmar el número antes) |
+| S15 | 00352 | `00352_app_servicio_tutor.sql` | IA | **aplicada y registrada** (8/11, versión `20261108184035`), después de ensayarla; `verify-program --bloque ia` en 0 |
 | S16 | 00353 | `00353_app_servicio_merge_and_cron.sql` | X | pendiente (confirmar el número antes) |
 
 ## Punto de partida (8/11/2026)
