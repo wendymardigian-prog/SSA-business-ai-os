@@ -10,8 +10,9 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 export const dynamic = "force-dynamic";
 
 /**
- * «Sin vincular» (Extra L, AT3, F29): los toques que traen datos de un anuncio y no se pudieron asociar a su
- * campaña, conjunto o anuncio, con el motivo en palabras. Se puede vincular a mano o ignorar.
+ * «Sin vincular» (Extra L, AT3, F29; agrupada desde la 00318): los toques que traen datos de un anuncio y no se
+ * pudieron asociar a su campaña, conjunto o anuncio, agrupados por sus UTMs, con el motivo en palabras. Vincular un
+ * grupo crea una regla; lo vinculado por parecido queda en «Para revisar»; la IA propone y una persona confirma.
  *
  * Ver: `dashboards.ads.view`. Vincular, ignorar o quitar: `settings.general`. La lista se lee con la sesion de
  * quien mira, asi que respeta el alcance de leads (RLS de `contact_touches`).

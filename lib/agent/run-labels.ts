@@ -27,8 +27,10 @@ export const RUN_SOURCE_LABELS: Record<string, string> = {
   message_classification_eval: "Clasificador (evaluacion)",
   content_copy: "Copywriter",
   ads_analysis: "Analisis de anuncios",
+  ads_matching: "Vincular anuncios",
   audio_transcription: "Transcripcion",
   media_description: "Descripcion de imagen",
+  designer: "Diseñador IA",
   // @plantilla-desde(llamadas)
   call_classification: "Clasificacion de llamada",
   call_analysis: "Analisis de llamada",

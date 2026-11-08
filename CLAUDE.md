@@ -389,7 +389,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 - **El menu y las pestanas salen de funciones puras** (`visibleNavItems`, `visibleSettingsTabs`, `tabsForViewer`, `pageActions`, `integrationSections`, `generalSectionsFor`, `visibleChannels`, `canExport`): los componentes solo las componen. `adminOnly` ya no existe, es `permissions`.
 - **Exportar CSV es `canExport`** (`lib/auth/export.ts`) en los cuatro lugares: el endpoint, la accion y el boton. Un Member no exporta (cambio aprobado M2).
 - **La bandeja va por CUENTA conectada (00249)**: cada rol guarda en `permissions.channels` «todas las cuentas» (incluye las futuras) o una lista por cuenta, cada una con su alcance (solo asignadas / + sin asignar / todas) y «responde». Lo aplica la base (`can_see_conversation` decide por la cuenta; ver un chat deja ver la ficha del contacto) y la pantalla usa las mismas reglas (`lib/auth/channel-permissions.ts`, gemelas SQL con `channel-permissions.cases.json`): el menú de cuentas, el composer y los 403 de envío, borradores, reacciones, adjuntos y recursos. Las seis claves `inbox.<red>.*` y el alcance `conversations` se retiraron. Resumen en `docs/roles.md`, «La bandeja por cuenta».
-- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones", M10 edita el contenido de su pieza (o la asignada) en cualquier estado, sin poder mover el estado fuera de Borrador / En producción / En revisión (00253). Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
+- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones", M10 edita el contenido de su pieza (o la asignada) en cualquier estado, sin poder mover el estado fuera de Borrador / En producción / En revisión (00253), M12 ve y edita diseños del Diseñador IA (`designer.view` y `designer.edit`, 00319; no publica, no emite ni anula). Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
 
 ## Migraciones (00208 a 00214, todas aplicadas y registradas)
 
@@ -1328,7 +1328,7 @@ Reuniones y respuestas muestran su atribución y su vínculo con campaña, conju
 
 ## Lo que no se puede romper
 
-- **Nunca se vincula por un nombre suelto.** Dos campañas o anuncios pueden llamarse igual. Campaña y conjunto, solo por id. Un anuncio por nombre, solo si es único dentro del conjunto (o, sin conjunto, de la campaña) ya conocidos por id. Si el conjunto tiene un solo anuncio, ese (`adset_single_ad`), salvo que haya llegado un id de anuncio que no está en el catálogo. Gemelas `resolve_meta_match` y `resolveMetaMatch`, con `meta-match.cases.json`.
+- **Un nombre solo vincula si es único** (desde la 00318, ver «Conciliación de anuncios»). Dos campañas o anuncios pueden llamarse igual. Un anuncio por nombre, solo si es único dentro del conjunto o la campaña ya hallados. Si el conjunto tiene un solo anuncio, ese (`adset_single_ad`), salvo que haya llegado un id de anuncio que no está en el catálogo. Gemelas `resolve_meta_match` y `resolveMetaMatch`, con `meta-match.cases.json`.
 - **Un toque sin ids cuya fuente no es de Meta y con UTMs de texto queda `none`**: no ensucia «Sin vincular». `utm_id` numérico cuenta como id de campaña (`raw.utm_id` en un formulario, `raw.utm.utm_id` en una reunión).
 - **El toque es la ÚNICA fuente del vínculo.** Ni `form_submissions` ni `bookings` tienen columnas de Meta; se unen por `dedupe_key` (`form:<id>`, `booking:<id>`, `lib/attribution/source-touches.ts`), con el cliente de servicio y solo para filas que la persona ya leyó con su sesión: quien atiende una reunión puede no ver el contacto.
 - **Una reunión sin vínculo propio muestra el último toque con vínculo del contacto anterior a ella**, aclarándolo, igual que `ads_crm_items`. Vincularla no cambia ese toque viejo: le crea el suyo (`linkBookingToMeta`).
@@ -1353,6 +1353,23 @@ En la tabla Meta vs CRM, una venta sin anuncio en su toque cuenta para el últim
 ## Migración
 
 `00302_ads_crm_sales_fallback` (misma firma, ninguna tabla; la definición vieja en su cabecera) puede ir antes o después del deploy: **aplicada y registrada** el 6/11/2026 (versión `20261107011534`), con `verify-ads-attribution` en verde. La `00300` y la `00301` son de Grabaciones. **La próxima libre es la `00303`** (la `00291` sigue reservada para `automation_runs`; confirmar con `list_migrations` y las ramas locales).
+
+# Conciliación de anuncios (00318, 7/11/2026)
+
+«Sin vincular» se vacía sola: lo que no es un anuncio sale, lo que se parece se vincula y queda para revisar, y lo que decide una persona queda como regla. Detalle en [docs/atribucion.md](docs/atribucion.md) («Conciliación: reglas, nombre exacto y parecido»).
+
+## Lo que no se puede romper
+
+- **Orden de `resolve_meta_match`**: ids → regla → nombre exacto (en lo hallado por id) → campaña por nombre único o parecido → anuncio por nombre exacto o parecido → único anuncio del conjunto. Gemelas con `meta-match.cases.json`; la huella cambió a propósito (`scripts/protected-functions.mjs`).
+- **El parecido nunca corre contra el catálogo entero** y con dos candidatos no elige. Lo que sale por parecido (`REVIEW_METHODS`) cuenta igual en Anuncios, agendas y ventas, y va a «Para revisar».
+- **El fbclid solo no es un anuncio**, un `utm_medium` orgánico gana, e `ig`/`instagram` necesitan un medium pago. `private.meta_touch_utm_counts` / `utmCounts` son gemelas.
+- **Una regla (`meta_match_rules`) es por la combinación EXACTA de UTMs normalizados** (`private.meta_rule_key` / `metaRuleKey`), nunca contradice un id ni pisa un `manual`/`ignored` de una persona. Escribe solo el servidor; no hay columna en el toque: el toque dice `method = 'rule'` y la regla se encuentra por sus claves.
+- **La IA (`ads_matching`) solo propone**: lee los grupos en el servidor, descarta ids que no están en el catálogo (`parseAiMatchResponse`) y no ve datos de contacto. Confirmar es `applyMetaRule`.
+- **El canal de un formulario o una reunión usa el `utm_medium` que llegó** (`private.touch_effective_medium`); `touch_channel` no cambió.
+
+## Migración
+
+`00318_meta_match_rules_similar` (aditiva: la tabla, las funciones, los CHECK de la tarea de IA y, al final, el re-vínculo y el canal de lo existente) va **ANTES** de desplegar el código: **aplicada y registrada** el 7/11/2026 (versión `20261107215432`), después de ensayarla en una transacción que se deshizo sola. Resultado: «Sin vincular» quedó en 0, 87 toques de anuncios en «Para revisar» y 37 orgánicos fuera de la lista. **La próxima libre es la `00319`** (confirmar con `list_migrations` y las ramas locales).
 
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 
@@ -2033,6 +2050,41 @@ Auditoria completa en cuatro lotes (PRs #171 dependencias, #168 Altas, #172 Medi
 - El agente, el copywriter, Grabaciones y el clasificador todavia no pasan el modelo al chequeo de "modelo sin precio con tope".
 - DNS rebinding en `safeFetch` (fijar la IP validada con undici).
 - No hay CSP de scripts (solo `frame-ancestors`).
+
+# Diseñador IA (construido, 8/11/2026)
+
+Diseñar piezas visuales con IA o a mano (carruseles, historias, presentaciones, PDF, certificados, páginas web), publicarlas con un link `/d/<código>` o exportarlas, y generar piezas desde **plantillas** (a mano, para varios o desde una automatización), conectado con Contenido. En el código es `designer` / `design_*` y `/dashboard/disenos`; en lo visible, **Diseñador IA**. Resumen en [docs/designer.md](docs/designer.md); avance, pruebas y auditorías en `docs/PROGRESS-designer.md`; decisiones en `docs/PENDIENTE-designer.md`; contratos en `docs/designer/contratos.md`; el servicio de render en Railway, en `docs/designer/puesta-en-marcha.md`.
+
+## Lo que no se puede romper
+
+- **Un solo render: `renderPageHTML`** (`lib/designer/render/page-html.ts`) para el lienzo, la vista previa, el link, la exportación y las generaciones. Nunca produce `<script>` ni `on*`. El HTML de una página cargada se muestra siempre en un iframe `srcdoc` con `sandbox` sin `allow-scripts`. Todo documento que se guarda pasa por `sanitizeDocHtml` (`lib/designer/import/edit.ts`), lo escriba una persona, la IA o un archivo.
+- **Publicar es la única puerta al link público.** Guardar (a mano, la IA, restaurar) no cambia lo que ve el público: `design_public_get` devuelve la última versión `publish` (00325) y el render de publicar se arma con esa versión (`latestPublishedDoc`; si no se puede leer, reagenda, nunca usa el borrador). El editor avisa «Hay cambios sin publicar». Un Member (`designer.edit` sin `designer.publish`) no puede cambiar el link.
+- **Una generación (fila de `designs` con `template_id`) es una copia congelada**: no se edita ni por la IA (`saveDocCore`, `restoreVersionCore`, `loadTarget`, `saveDocWithRev`). Se vuelve a generar desde la plantilla.
+- **El link público sale SOLO de `design_public_get`** (anon la ejecuta a propósito; nunca devuelve el negocio, emails, teléfonos ni ids de la persona). **Sin pie «Hecho con…»** (white label). Una generación se muestra solo `ready` o `void`; tope de 120/min por IP; `noindex` salvo una web con «Permitir buscadores».
+- **Todo link que ve alguien de afuera** con `publicBaseUrl` / `loadDesignLinks` (`lib/designer/public-links.ts`): nunca `appUrl()` ni el dominio del navegador.
+- **Verificación solo en plantillas de formato impreso**, apagada por defecto, con tipo de documento; textos y botones de `lib/designer/verification.ts`. Gemelas con los CHECK de la base (`verification.cases.json`).
+- **Archivos validados por bytes** (PNG/JPG/WebP; un SVG se rechaza; fuentes por firma; zips sin `..`, sin enlaces simbólicos, hasta 300 archivos y 50 MB). El tope de las Server Actions es 51 MB (`next.config.ts`) y cada acción vuelve a validar.
+- **Un solo juego de archivos por diseño propio** (F48b) y **sin miniaturas renderizadas** (la lista dibuja en vivo; guardar no encola renders). La limpieza diaria (`design_cleanup`, cron por SQL directo) nunca borra la versión actual ni la última publicada, ni archivos de una generación.
+- **Los jobs** (`design_render`, `design_generate_many`, `design_content_sync`, `design_ai_generate`, `design_cleanup`) nunca lanzan por un proveedor: reagendan a 1, 5 y 15 minutos. Sin `RENDER_SERVICE_URL`/`RENDER_SERVICE_SECRET`: «Falta conectar el servicio de render». En tests y verify, siempre `DESIGNER_FAKE_RENDER=1`.
+- **La IA**: el pedido viaja como dato; tope de gasto antes de llamar (`source: "designer"` en `openAiRun`); máximo 2 pasadas de corrección; en un HTML cargado cambia solo textos (`updateText`), no el CSS.
+- **Las variables usan las claves del catálogo de Automatizaciones** (`contact.*`, `workspace.name`): no se inventan otras; `lib/designer/variables/catalog.test.ts` falla si se separan. Otro módulo suma las suyas con `registerDesignVariables` (`lib/designer/extensions.ts`, el punto de extensión de Servicios; hoy vacío).
+- **La IA nunca escribe directo en la base**: devuelve un documento o un parche que se valida (Zod), se aplica sobre la versión en la que se pidió, se limpia y recién ahí se guarda con `rev`.
+- **Conversaciones en `ai_threads` / `ai_messages`** (genéricas de BAIOS), RLS por canal: `designer` → `designer.view`; `assistant` → `user_id = auth.uid()` y miembro; `portal` → ninguna todavía. La fusión de contactos reapunta `designs.subject_contact_id` y `ai_threads.contact_id` por trigger (`contacts_designs_on_merge`); `merge_contacts` no se tocó.
+- **Automatizaciones**: el paso «Generar desde plantilla» (`designGenerate`) usa `createGeneration` (`lib/designer/generate-core.ts`) y nunca lanza (corta el camino con `handle:design_stopped` y el motivo). Deja `design.id`, `design.link`, `design.pdf_url`, `design.code`, `design.status` y `design.doc_type`. Sin plantilla, o con un disparador de formulario sin formulario elegido, no se publica. «Enviar email» adjunta el PDF de la generación de ESA corrida. Detalle en `docs/flow-registry.md`.
+- **Contenido**: los archivos de un diseño vinculado llegan con id estable (`design-<id>-<n>`); una red publicada nunca se toca, una programada (o fallida) solo avisa. Publicar, programar, el borrado a 30 días y los permisos de Contenido no cambiaron. Detalle en `docs/contenido.md`.
+
+## Migraciones
+
+`00319` (ajustes, permisos del Member M12, buckets privados), `00320` (tablas, RLS, códigos, `design_public_get`, fusión, limpieza diaria), `00321` (CHECK de `agent_runs.source` + `designer`), `00322` (corrige el trigger del documento), `00324` (el bucket `design-renders` acepta `error.json`), `00325` (`design_public_get` devuelve lo publicado) y `00326` (el CHECK de `agent_runs.source` con `ads_matching` Y `designer`: la 00321 había pisado el `ads_matching` de la 00318), todas **aplicadas y registradas** el 7 y 8/11/2026 UTC. La `00318` y la `00323` son de otras sesiones. **Una migración que redefine un CHECK parte del que está EN LA BASE (`pg_get_constraintdef`), no de un archivo viejo**: si no, borra lo que sumó otra sesión en el medio. **La próxima libre es la `00327`** (confirmar con `list_migrations` y las ramas locales). En un clon nuevo van ANTES de desplegar el código.
+
+## Verificación
+
+```
+node scripts/verify-designer.mjs                 # bloques ds0, ds2, ds5, ds6, ds7, ds8 (render simulado)
+node scripts/verify-designer.mjs --bloque ds5    # uno solo
+```
+
+Mismas reglas que los demás: crean y limpian sus datos (`zz-test-`), de a uno y con el candado `/private/tmp/ssa-verify.lock`.
 
 # Seguridad
 

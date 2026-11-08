@@ -35,8 +35,16 @@ export const CONTACT_MERGE_TABLES = [
   "trigger_fires",
 ] as const;
 
-/** Relaciones con `contacts` que a proposito NO se mueven, y por que. Hoy ninguna. */
-export const CONTACT_MERGE_EXCLUSIONS: Readonly<Record<string, string>> = {};
+/**
+ * Relaciones con `contacts` que `merge_contacts` NO mueve, y por que. No quedan colgadas: las mueve un
+ * trigger al borrar el duplicado (mismo patron que la marca de Conocido, 00256), sin reescribir la funcion.
+ */
+export const CONTACT_MERGE_EXCLUSIONS: Readonly<Record<string, string>> = {
+  designs:
+    "Diseñador IA (00320): `subject_contact_id` de una generación lo reapunta el trigger `contacts_designs_on_merge` al borrar el duplicado con `metadata.merged_into`.",
+  ai_threads:
+    "Conversaciones con IA (00320): `contact_id` lo reapunta el mismo trigger `contacts_designs_on_merge` al borrar el duplicado.",
+};
 
 export interface MergeMoved {
   [key: string]: number;

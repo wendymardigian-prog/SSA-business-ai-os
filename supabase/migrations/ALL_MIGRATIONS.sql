@@ -57139,3 +57139,2256 @@ BEGIN
     RAISE NOTICE '00317: la regla % del flujo % paso al disparador del lienzo', r.trigger_id, r.flow_id;
   END LOOP;
 END $$;
+
+-- ============================================================
+-- MIGRATION 318: META MATCH RULES SIMILAR
+-- ============================================================
+-- ============================================================================
+-- 00318 — Conciliacion de anuncios: reglas, nombre exacto, parecido y el canal de los formularios
+-- ============================================================================
+-- Lo que mostraba «Sin vincular» (produccion, 7/11/2026): links de la bio y de ManyChat que no son anuncios (la fuente
+-- «ig» contaba como Meta y el fbclid que Instagram agrega a cualquier link tambien), y anuncios cuyos UTMs son
+-- etiquetas escritas a mano («clase-9-nov» / «ad-n4-techo») que no coinciden con los nombres de Meta («N4 · El techo»).
+--
+-- La regla (la misma en TypeScript: lib/attribution/meta-match.ts, con meta-match.cases.json):
+--   1. Por id, como siempre (00299).
+--   2. Una REGLA de `meta_match_rules`: «estos UTMs (campaign, content, term) = este anuncio» o «no es un anuncio».
+--      La crea una persona desde «Sin vincular» y vale para lo que ya llego y lo que llegue. Nunca contradice un
+--      conjunto o una campaña que vinieron por id.
+--   3. El anuncio por nombre exacto adentro de lo conocido por id (00299).
+--   4. Sin ids: la campaña por su nombre exacto si es UNICO (`utm_campaign_name`); si no, por parecido: la unica
+--      campaña cuyas palabras contienen todas las del utm_campaign (`utm_campaign_similar`).
+--   5. El anuncio por nombre exacto dentro de esa campaña (`utm_content_name`).
+--   6. El anuncio por PARECIDO: el unico del alcance (conjunto o campaña(s) ya halladas) cuyas palabras contienen todas
+--      las del utm_content, con dos palabras o un codigo (n4, s3) (`utm_content_similar_adset|_campaign`).
+--      Nunca contra el catalogo entero. Lo que se vincula por parecido queda en «Para revisar».
+--   7. El unico anuncio del conjunto (00299).
+--
+-- Lo que cuenta como dato de Meta cambia:
+--   - El fbclid solo ya no cuenta (Instagram y Facebook se lo agregan a cualquier link).
+--   - Un utm_medium organico (social, bio, email...) gana: esos UTMs no son de un anuncio.
+--   - «ig/instagram/fb» solo cuentan con un medium pago; «meta/facebook» cuentan salvo medium organico.
+--
+-- El canal: un formulario guarda medium = 'form' y el utm_medium real en raw.utm; `touch_channel` lo ignoraba (los
+-- anuncios quedaban «directo»). El trigger ahora le pasa el medium efectivo (`private.touch_effective_medium`).
+--
+-- Cambia a proposito la huella de `resolve_meta_match` (scripts/protected-functions.mjs). Misma firma en todas.
+-- `touch_channel` NO cambia. NO cambian: `record_contact_touch`, `create_booking`, `submit_form_response`,
+-- `find_or_link_contact`.
+-- Aditiva: una tabla nueva (`meta_match_rules`) y funciones. Va ANTES de desplegar el codigo (la pantalla lee la tabla).
+-- Al final re-vincula lo existente (rematch de cada workspace con catalogo) y corrige el canal.
+--
+-- Como volver atras: aplicar las definiciones de abajo; DROP FUNCTION public.create_meta_match_rule(uuid, uuid, text,
+-- text, text, text, text, text, text, text), public.delete_meta_match_rule(uuid, uuid),
+-- private.meta_rematch_by_keys(uuid, text, text, text), private.meta_name_tokens(text), private.meta_tokens_qualify(text[]),
+-- private.meta_rule_key(text), private.meta_touch_medium(public.contact_touches), private.meta_medium_is_paid(text),
+-- private.meta_medium_is_organic(text), private.touch_effective_medium(text, jsonb); DROP TABLE public.meta_match_rules;
+-- y `select public.rematch_meta_touches(<workspace>, '-infinity')` (no deshace un vinculo hecho: no empeora un matched).
+-- Riesgo: medio (el trigger corre en cada toque nuevo; sigue envuelto en EXCEPTION y nunca hace fallar un insert).
+--
+-- La tarea de IA `ads_matching` («Vincular anuncios») suma su valor a los CHECK de `agent_runs.source` y
+-- `ai_task_prompt_versions.task`. Los vigentes antes (leidos de la base el 7/11/2026):
+--   agent_runs_source_check: CHECK ((source = ANY (ARRAY['agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing',
+--     'conversation_summary', 'message_classification', 'message_classification_eval', 'content_copy', 'ads_analysis',
+--     'audio_transcription', 'media_description', 'call_classification', 'call_analysis', 'call_correction', 'call_summary',
+--     'call_prompt_test'])))
+--   ai_task_prompt_versions_task_check: CHECK ((task = ANY (ARRAY['message_classification', 'conversation_summary',
+--     'close_classification', 'media_description', 'ads_analysis', 'call_classification', 'call_analysis', 'call_summary'])))
+--
+-- Definiciones VIGENTES antes de esta migracion:
+--
+-- meta_touch_utm_counts, meta_touch_has_data y resolve_meta_match_for_touch (00299):
+--   CREATE OR REPLACE FUNCTION private.meta_touch_utm_counts(t public.contact_touches)
+--   RETURNS boolean
+--   LANGUAGE sql
+--   IMMUTABLE
+--   SET search_path = ''
+--   AS $$
+--     SELECT nullif(btrim(t.ad_id), '') IS NOT NULL
+--         OR nullif(btrim(t.adset_id), '') IS NOT NULL
+--         OR nullif(btrim(t.campaign_id), '') IS NOT NULL
+--         OR (
+--           t.origin IN ('booking', 'form', 'webhook', 'import', 'manual')
+--           AND (
+--             private.meta_source_counts(t.source)
+--             OR private.meta_is_numeric(t.campaign)
+--             OR private.meta_is_numeric(t.content_label)
+--             OR private.meta_is_numeric(t.term)
+--           )
+--         )
+--   $$;
+--
+--   CREATE OR REPLACE FUNCTION private.meta_touch_has_data(t public.contact_touches)
+--   RETURNS boolean
+--   LANGUAGE sql
+--   IMMUTABLE
+--   SET search_path = ''
+--   AS $$
+--     SELECT nullif(btrim(t.ad_id), '') IS NOT NULL
+--         OR nullif(btrim(t.adset_id), '') IS NOT NULL
+--         OR nullif(btrim(t.campaign_id), '') IS NOT NULL
+--         OR nullif(btrim(t.fbclid), '') IS NOT NULL
+--         OR (
+--           private.meta_touch_utm_counts(t)
+--           AND (nullif(btrim(t.campaign), '') IS NOT NULL
+--                OR nullif(btrim(t.content_label), '') IS NOT NULL
+--                OR nullif(btrim(t.term), '') IS NOT NULL
+--                OR (private.meta_source_counts(t.source) AND private.meta_is_numeric(private.meta_touch_utm_id(t))))
+--         )
+--   $$;
+--
+--   CREATE OR REPLACE FUNCTION public.resolve_meta_match_for_touch(t public.contact_touches)
+--   RETURNS jsonb
+--   LANGUAGE sql
+--   STABLE
+--   SECURITY DEFINER
+--   SET search_path = ''
+--   AS $$
+--     SELECT public.resolve_meta_match(
+--       t.workspace_id, t.ad_id, t.adset_id,
+--       coalesce(
+--         nullif(btrim(t.campaign_id), ''),
+--         CASE WHEN private.meta_touch_utm_counts(t) AND private.meta_source_counts(t.source)
+--                   AND private.meta_is_numeric(private.meta_touch_utm_id(t))
+--              THEN private.meta_touch_utm_id(t) END
+--       ),
+--       CASE WHEN private.meta_touch_utm_counts(t) THEN t.campaign END,
+--       CASE WHEN private.meta_touch_utm_counts(t) THEN t.content_label END,
+--       CASE WHEN private.meta_touch_utm_counts(t) THEN t.term END,
+--       t.fbclid
+--     )
+--   $$;
+--
+-- resolve_meta_match (00299):
+--   CREATE OR REPLACE FUNCTION public.resolve_meta_match(
+--     p_workspace_id uuid,
+--     p_ad_id text,
+--     p_adset_id text,
+--     p_campaign_id text,
+--     p_utm_campaign text,
+--     p_utm_content text,
+--     p_utm_term text,
+--     p_fbclid text
+--   )
+--   RETURNS jsonb
+--   LANGUAGE plpgsql
+--   STABLE
+--   SECURITY DEFINER
+--   SET search_path = ''
+--   AS $$
+--   DECLARE
+--     v_ad_id        text := nullif(btrim(p_ad_id), '');
+--     v_adset_id     text := nullif(btrim(p_adset_id), '');
+--     v_campaign_id  text := nullif(btrim(p_campaign_id), '');
+--     v_utm_campaign text := nullif(btrim(private.meta_url_decode(p_utm_campaign)), '');
+--     v_utm_content  text := nullif(btrim(private.meta_url_decode(p_utm_content)), '');
+--     v_utm_term     text := nullif(btrim(private.meta_url_decode(p_utm_term)), '');
+--     v_fbclid       text := nullif(btrim(p_fbclid), '');
+--
+--     -- Lo resuelto
+--     r_ad           text;
+--     r_ad_adset     text;
+--     r_ad_campaign  text;
+--     r_adset        text;
+--     r_adset_camp   text;
+--     r_campaign     text;
+--     m_ad           text;
+--     m_adset        text;
+--     m_campaign     text;
+--
+--     h_direct       text;
+--     v_name_key     text;
+--     v_n            int;
+--
+--     ambiguous_ad   boolean := false;
+--     v_notes        text[] := ARRAY[]::text[];
+--     v_status       text;
+--     v_method       text;
+--     v_reason       text;
+--   BEGIN
+--     -- Sin ningun dato de Meta (ni ids, ni UTMs con valor, ni fbclid): no hay nada que resolver.
+--     IF v_ad_id IS NULL AND v_adset_id IS NULL AND v_campaign_id IS NULL
+--        AND v_utm_campaign IS NULL AND v_utm_content IS NULL AND v_utm_term IS NULL AND v_fbclid IS NULL THEN
+--       RETURN jsonb_build_object('status', 'none', 'ad_id', NULL, 'adset_id', NULL, 'campaign_id', NULL, 'method', NULL, 'reason', NULL);
+--     END IF;
+--
+--     -- ---- La campaña por id ----
+--     IF v_campaign_id IS NOT NULL THEN
+--       SELECT c.campaign_id INTO h_direct FROM public.meta_campaigns c
+--        WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_campaign_id LIMIT 1;
+--     END IF;
+--     IF h_direct IS NULL AND v_utm_campaign IS NOT NULL THEN
+--       SELECT c.campaign_id INTO h_direct FROM public.meta_campaigns c
+--        WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_utm_campaign LIMIT 1;
+--     END IF;
+--
+--     -- ---- Anuncio por id ----
+--     IF v_ad_id IS NOT NULL THEN
+--       SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+--        WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_ad_id LIMIT 1;
+--       IF r_ad IS NOT NULL THEN m_ad := 'ad_id'; END IF;
+--     END IF;
+--     IF r_ad IS NULL AND v_utm_content IS NOT NULL THEN
+--       SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+--        WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_utm_content LIMIT 1;
+--       IF r_ad IS NOT NULL THEN m_ad := 'utm_content_id'; END IF;
+--     END IF;
+--
+--     -- ---- Conjunto por id ----
+--     IF v_adset_id IS NOT NULL THEN
+--       SELECT s.adset_id, s.campaign_id INTO r_adset, r_adset_camp FROM public.meta_adsets s
+--        WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_adset_id LIMIT 1;
+--       IF r_adset IS NOT NULL THEN m_adset := 'adset_id'; END IF;
+--     END IF;
+--     IF r_adset IS NULL AND v_utm_term IS NOT NULL THEN
+--       SELECT s.adset_id, s.campaign_id INTO r_adset, r_adset_camp FROM public.meta_adsets s
+--        WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_utm_term LIMIT 1;
+--       IF r_adset IS NOT NULL THEN m_adset := 'utm_term_id'; END IF;
+--     END IF;
+--
+--     -- ---- Anuncio por nombre: solo adentro de lo que ya se conoce por id ----
+--     IF r_ad IS NULL AND v_utm_content IS NOT NULL AND (r_adset IS NOT NULL OR h_direct IS NOT NULL) THEN
+--       v_name_key := public.meta_name_key(v_utm_content);
+--       IF v_name_key <> '' THEN
+--         SELECT count(*) INTO v_n FROM public.meta_ads a
+--          WHERE a.workspace_id = p_workspace_id AND a.name_key = v_name_key
+--            AND (CASE WHEN r_adset IS NOT NULL THEN a.adset_id = r_adset ELSE a.campaign_id = h_direct END);
+--         IF v_n = 1 THEN
+--           SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+--            WHERE a.workspace_id = p_workspace_id AND a.name_key = v_name_key
+--              AND (CASE WHEN r_adset IS NOT NULL THEN a.adset_id = r_adset ELSE a.campaign_id = h_direct END)
+--            LIMIT 1;
+--           m_ad := CASE WHEN r_adset IS NOT NULL THEN 'utm_content_name_adset' ELSE 'utm_content_name_campaign' END;
+--         ELSIF v_n > 1 THEN
+--           ambiguous_ad := true;
+--         END IF;
+--       END IF;
+--     END IF;
+--
+--     -- ---- El unico anuncio del conjunto. No si llego un id de anuncio que no esta en el catalogo: seria otro anuncio. ----
+--     IF r_ad IS NULL AND r_adset IS NOT NULL AND NOT ambiguous_ad AND v_ad_id IS NULL
+--        AND NOT private.meta_is_numeric(v_utm_content) THEN
+--       SELECT count(*) INTO v_n FROM public.meta_ads a
+--        WHERE a.workspace_id = p_workspace_id AND a.adset_id = r_adset;
+--       IF v_n = 1 THEN
+--         SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+--          WHERE a.workspace_id = p_workspace_id AND a.adset_id = r_adset LIMIT 1;
+--         m_ad := 'adset_single_ad';
+--       END IF;
+--     END IF;
+--
+--     -- ---- El conjunto del anuncio ----
+--     IF r_adset IS NULL AND r_ad IS NOT NULL AND r_ad_adset IS NOT NULL THEN
+--       r_adset := r_ad_adset;
+--       m_adset := m_ad;
+--       SELECT s.campaign_id INTO r_adset_camp FROM public.meta_adsets s
+--        WHERE s.workspace_id = p_workspace_id AND s.adset_id = r_adset LIMIT 1;
+--     END IF;
+--
+--     -- ---- Campaña ----
+--     IF h_direct IS NOT NULL THEN
+--       r_campaign := h_direct;
+--       m_campaign := CASE WHEN v_campaign_id IS NOT NULL AND h_direct = v_campaign_id THEN 'campaign_id' ELSE 'utm_campaign_id' END;
+--       -- Coherencia: si el anuncio es de OTRA campaña, gana el anuncio (es mas especifico).
+--       IF r_ad IS NOT NULL AND r_ad_campaign IS NOT NULL AND r_ad_campaign <> r_campaign THEN
+--         r_campaign := r_ad_campaign;
+--         m_campaign := m_ad;
+--         v_notes := array_append(v_notes, 'inconsistent_campaign');
+--       END IF;
+--     ELSIF r_ad_campaign IS NOT NULL OR r_adset_camp IS NOT NULL THEN
+--       r_campaign := coalesce(r_ad_campaign, r_adset_camp);
+--       m_campaign := CASE WHEN r_ad_campaign IS NOT NULL THEN m_ad ELSE m_adset END;
+--     END IF;
+--
+--     -- ---- Resultado ----
+--     IF r_ad IS NOT NULL OR r_adset IS NOT NULL OR r_campaign IS NOT NULL THEN
+--       v_status := 'matched';
+--       v_method := coalesce(m_ad, m_adset, m_campaign);
+--       IF ambiguous_ad THEN v_notes := array_append(v_notes, 'ambiguous_ad_name'); END IF;
+--       -- Un id que vino y no esta en el catalogo, aunque otra pista haya resuelto algo.
+--       IF (v_ad_id IS NOT NULL AND r_ad IS NULL) OR (v_adset_id IS NOT NULL AND m_adset IS DISTINCT FROM 'adset_id')
+--          OR (v_campaign_id IS NOT NULL AND h_direct IS DISTINCT FROM v_campaign_id AND r_campaign IS DISTINCT FROM v_campaign_id) THEN
+--         v_notes := array_append(v_notes, 'id_not_in_catalog');
+--       END IF;
+--       v_reason := nullif(array_to_string(v_notes, ','), '');
+--     ELSE
+--       v_status := 'unmatched';
+--       IF v_ad_id IS NOT NULL OR v_adset_id IS NOT NULL OR v_campaign_id IS NOT NULL THEN
+--         v_reason := 'id_not_in_catalog';
+--       ELSIF v_utm_campaign IS NOT NULL OR v_utm_content IS NOT NULL OR v_utm_term IS NOT NULL THEN
+--         v_reason := 'name_without_id';
+--       ELSE
+--         v_reason := 'fbclid_only';
+--       END IF;
+--     END IF;
+--
+--     RETURN jsonb_build_object(
+--       'status', v_status,
+--       'ad_id', r_ad,
+--       'adset_id', r_adset,
+--       'campaign_id', r_campaign,
+--       'method', v_method,
+--       'reason', v_reason
+--     );
+--   END;
+--   $$;
+--
+-- contact_touches_zz_channel_trg (00230):
+--   CREATE OR REPLACE FUNCTION public.contact_touches_zz_channel_trg()
+--   RETURNS trigger
+--   LANGUAGE plpgsql
+--   SECURITY DEFINER
+--   SET search_path = ''
+--   AS $$
+--   DECLARE
+--     v_channel text := NEW.channel;
+--     v_status text := NEW.meta_match_status;
+--     v_reason text := NEW.meta_match_reason;
+--   BEGIN
+--     BEGIN
+--       IF TG_OP = 'INSERT' THEN
+--         IF v_channel IS NULL THEN
+--           v_channel := public.touch_channel(NEW.origin, NEW.medium, NEW.source, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.meta_ad_id, NEW.meta_campaign_id,
+--                                             NEW.gclid, NEW.ttclid, NEW.li_fat_id, NEW.ctwa_clid, NEW.fbclid, NEW.social_post_id, NEW.content_post_id);
+--         END IF;
+--       ELSIF NEW.channel IS NOT DISTINCT FROM OLD.channel THEN
+--         -- Se actualizo algo que cambia el canal y nadie lo puso a mano: se recalcula.
+--         v_channel := public.touch_channel(NEW.origin, NEW.medium, NEW.source, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.meta_ad_id, NEW.meta_campaign_id,
+--                                           NEW.gclid, NEW.ttclid, NEW.li_fat_id, NEW.ctwa_clid, NEW.fbclid, NEW.social_post_id, NEW.content_post_id);
+--       END IF;
+--
+--       -- Un link organico con UTMs no es un anuncio sin vincular.
+--       IF v_channel = 'organic'
+--          AND (NEW.content_post_id IS NOT NULL OR NEW.social_post_id IS NOT NULL)
+--          AND nullif(btrim(NEW.ad_id), '') IS NULL AND nullif(btrim(NEW.adset_id), '') IS NULL AND nullif(btrim(NEW.campaign_id), '') IS NULL
+--          AND nullif(btrim(NEW.fbclid), '') IS NULL
+--          AND nullif(btrim(NEW.meta_ad_id), '') IS NULL AND nullif(btrim(NEW.meta_adset_id), '') IS NULL AND nullif(btrim(NEW.meta_campaign_id), '') IS NULL
+--          AND v_status = 'unmatched' THEN
+--         v_status := 'ignored';
+--         v_reason := 'organic_content';
+--       END IF;
+--
+--       NEW.channel := v_channel;
+--       NEW.meta_match_status := v_status;
+--       NEW.meta_match_reason := v_reason;
+--     EXCEPTION WHEN OTHERS THEN
+--       NEW.channel := 'direct';
+--       RAISE WARNING 'contact_touches_zz_channel: no pude calcular el canal del toque (%): %', NEW.id, SQLERRM;
+--     END;
+--
+--     RETURN NEW;
+--   END;
+--   $$;
+--
+-- ============================================================================
+
+SET search_path = '';
+
+-- ------------------------------------------------------------
+-- 1. Las palabras de un nombre y la clave de una regla
+-- ------------------------------------------------------------
+-- Las palabras de un nombre: meta_name_key, partido por todo lo que no es letra ni numero, sin relleno ni repetidos.
+-- Gemela: metaNameTokens (lib/attribution/meta-match.ts). La lista de relleno es la misma en las dos.
+CREATE OR REPLACE FUNCTION private.meta_name_tokens(p_raw text)
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT coalesce(array_agg(DISTINCT w ORDER BY w), ARRAY[]::text[])
+    FROM unnest(regexp_split_to_array(coalesce(public.meta_name_key(p_raw), ''), '[^a-z0-9]+')) AS w
+   WHERE w <> ''
+     AND w <> ALL (ARRAY['ad', 'ads', 'anuncio', 'anuncios', 'campana', 'campanas', 'campaign', 'conjunto', 'adset',
+                         'copia', 'copy', 'el', 'la', 'los', 'las', 'de', 'del', 'y', 'e', 'en', 'un', 'una', 'a', 'al',
+                         'con', 'por', 'para', 'the', 'of', 'and'])
+$$;
+
+-- ¿Alcanzan estas palabras para buscar un anuncio por parecido? Dos o mas, o un codigo con letras y numeros (n4, s3).
+CREATE OR REPLACE FUNCTION private.meta_tokens_qualify(p_tokens text[])
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT coalesce(cardinality(p_tokens), 0) >= 2
+      OR EXISTS (SELECT 1 FROM unnest(coalesce(p_tokens, ARRAY[]::text[])) w WHERE w ~ '[a-z]' AND w ~ '[0-9]')
+$$;
+
+-- La clave de un valor de UTM para una regla: decodificado, recortado y con meta_name_key. Vacio = no vino.
+CREATE OR REPLACE FUNCTION private.meta_rule_key(p_raw text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT coalesce(public.meta_name_key(nullif(btrim(private.meta_url_decode(p_raw)), '')), '')
+$$;
+
+REVOKE ALL ON FUNCTION private.meta_name_tokens(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.meta_tokens_qualify(text[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.meta_rule_key(text) FROM PUBLIC, anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 2. Las reglas: «estos UTMs = este anuncio» (o «no es un anuncio»)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.meta_match_rules (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id  uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  campaign_key  text NOT NULL DEFAULT '',
+  content_key   text NOT NULL DEFAULT '',
+  term_key      text NOT NULL DEFAULT '',
+  utm_campaign  text,
+  utm_content   text,
+  utm_term      text,
+  action        text NOT NULL,
+  ad_id         text,
+  adset_id      text,
+  campaign_id   text,
+  origin        text NOT NULL DEFAULT 'manual',
+  created_by    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'meta_match_rules_action_check') THEN
+    ALTER TABLE public.meta_match_rules ADD CONSTRAINT meta_match_rules_action_check CHECK (action IN ('link', 'ignore'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'meta_match_rules_origin_check') THEN
+    ALTER TABLE public.meta_match_rules ADD CONSTRAINT meta_match_rules_origin_check CHECK (origin IN ('manual', 'confirmed', 'ai'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'meta_match_rules_keys_check') THEN
+    ALTER TABLE public.meta_match_rules ADD CONSTRAINT meta_match_rules_keys_check CHECK (campaign_key <> '' OR content_key <> '' OR term_key <> '');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'meta_match_rules_target_check') THEN
+    ALTER TABLE public.meta_match_rules ADD CONSTRAINT meta_match_rules_target_check
+      CHECK ((action = 'ignore' AND ad_id IS NULL AND adset_id IS NULL AND campaign_id IS NULL)
+          OR (action = 'link' AND coalesce(ad_id, adset_id, campaign_id) IS NOT NULL));
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_match_rules_keys ON public.meta_match_rules (workspace_id, campaign_key, content_key, term_key);
+
+ALTER TABLE public.meta_match_rules ENABLE ROW LEVEL SECURITY;
+
+-- Las ve quien ve los anuncios. Escribe solo el servidor (create_meta_match_rule / delete_meta_match_rule).
+DROP POLICY IF EXISTS meta_match_rules_select ON public.meta_match_rules;
+CREATE POLICY meta_match_rules_select ON public.meta_match_rules FOR SELECT TO authenticated
+  USING (public.is_workspace_member(workspace_id) AND public.has_permission(workspace_id, 'dashboards.ads.view'));
+
+REVOKE ALL ON public.meta_match_rules FROM anon, authenticated;
+GRANT SELECT ON public.meta_match_rules TO authenticated;
+GRANT ALL ON public.meta_match_rules TO service_role;
+
+-- ------------------------------------------------------------
+-- 3. Lo que cuenta como dato de Meta
+-- ------------------------------------------------------------
+-- El utm_medium que mando la persona: un formulario y una reunion lo guardan en raw.utm; si no, la columna medium.
+CREATE OR REPLACE FUNCTION private.meta_touch_medium(t public.contact_touches)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT coalesce(
+    nullif(lower(btrim(coalesce(t.raw->'utm'->>'utm_medium', t.raw->>'utm_medium'))), ''),
+    nullif(lower(btrim(t.medium)), '')
+  )
+$$;
+
+CREATE OR REPLACE FUNCTION private.meta_medium_is_paid(p_medium text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT coalesce(lower(btrim(p_medium)) IN ('paid', 'paid_social', 'paidsocial', 'paid-social', 'cpc', 'ppc', 'cpm', 'display', 'paid_search', 'ads', 'ad'), false)
+$$;
+
+CREATE OR REPLACE FUNCTION private.meta_medium_is_organic(p_medium text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT coalesce(lower(btrim(p_medium)) IN ('social', 'organic', 'organic_social', 'bio', 'link_in_bio', 'referral', 'email',
+                                             'newsletter', 'dm', 'dm_link', 'story', 'story_reply', 'story_mention', 'comment',
+                                             'whatsapp', 'whatsapp_group', 'sms'), false)
+$$;
+
+REVOKE ALL ON FUNCTION private.meta_touch_medium(public.contact_touches) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.meta_medium_is_paid(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.meta_medium_is_organic(text) FROM PUBLIC, anon, authenticated;
+
+-- Los UTMs de texto cuentan si el toque ya trae un id, o si puede traer UTMs (agenda, formulario, webhook, importado,
+-- manual), el medium no es organico y ademas: algun UTM es numerico, la fuente es «meta»/«facebook», o el medium
+-- es pago y la fuente puede ser de Meta. «ig»/«instagram» sin un medium pago no alcanza: es el link de la bio o ManyChat.
+CREATE OR REPLACE FUNCTION private.meta_touch_utm_counts(t public.contact_touches)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT nullif(btrim(t.ad_id), '') IS NOT NULL
+      OR nullif(btrim(t.adset_id), '') IS NOT NULL
+      OR nullif(btrim(t.campaign_id), '') IS NOT NULL
+      OR (
+        t.origin IN ('booking', 'form', 'webhook', 'import', 'manual')
+        AND NOT private.meta_medium_is_organic(private.meta_touch_medium(t))
+        AND (
+          private.meta_is_numeric(t.campaign)
+          OR private.meta_is_numeric(t.content_label)
+          OR private.meta_is_numeric(t.term)
+          OR coalesce(lower(btrim(t.source)), '') IN ('meta', 'facebook', 'meta_ads', 'facebook_ads', 'fb_ads')
+          OR (private.meta_medium_is_paid(private.meta_touch_medium(t)) AND private.meta_source_counts(t.source))
+        )
+      )
+$$;
+
+-- El fbclid solo ya no cuenta: Instagram y Facebook se lo agregan a cualquier link, tambien al de la bio.
+CREATE OR REPLACE FUNCTION private.meta_touch_has_data(t public.contact_touches)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT nullif(btrim(t.ad_id), '') IS NOT NULL
+      OR nullif(btrim(t.adset_id), '') IS NOT NULL
+      OR nullif(btrim(t.campaign_id), '') IS NOT NULL
+      OR (
+        private.meta_touch_utm_counts(t)
+        AND (nullif(btrim(t.campaign), '') IS NOT NULL
+             OR nullif(btrim(t.content_label), '') IS NOT NULL
+             OR nullif(btrim(t.term), '') IS NOT NULL
+             OR (private.meta_source_counts(t.source) AND private.meta_is_numeric(private.meta_touch_utm_id(t))))
+      )
+$$;
+
+-- Igual que la 00299, salvo el fbclid: ya no se pasa (solo no dice nada).
+CREATE OR REPLACE FUNCTION public.resolve_meta_match_for_touch(t public.contact_touches)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT public.resolve_meta_match(
+    t.workspace_id, t.ad_id, t.adset_id,
+    coalesce(
+      nullif(btrim(t.campaign_id), ''),
+      CASE WHEN private.meta_touch_utm_counts(t) AND private.meta_source_counts(t.source)
+                AND private.meta_is_numeric(private.meta_touch_utm_id(t))
+           THEN private.meta_touch_utm_id(t) END
+    ),
+    CASE WHEN private.meta_touch_utm_counts(t) THEN t.campaign END,
+    CASE WHEN private.meta_touch_utm_counts(t) THEN t.content_label END,
+    CASE WHEN private.meta_touch_utm_counts(t) THEN t.term END,
+    NULL
+  )
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_meta_match_for_touch(public.contact_touches) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_meta_match_for_touch(public.contact_touches) TO service_role;
+
+-- ------------------------------------------------------------
+-- 4. resolve_meta_match: ids -> regla -> nombre exacto -> parecido
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.resolve_meta_match(
+  p_workspace_id uuid,
+  p_ad_id text,
+  p_adset_id text,
+  p_campaign_id text,
+  p_utm_campaign text,
+  p_utm_content text,
+  p_utm_term text,
+  p_fbclid text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ad_id        text := nullif(btrim(p_ad_id), '');
+  v_adset_id     text := nullif(btrim(p_adset_id), '');
+  v_campaign_id  text := nullif(btrim(p_campaign_id), '');
+  v_utm_campaign text := nullif(btrim(private.meta_url_decode(p_utm_campaign)), '');
+  v_utm_content  text := nullif(btrim(private.meta_url_decode(p_utm_content)), '');
+  v_utm_term     text := nullif(btrim(private.meta_url_decode(p_utm_term)), '');
+  v_fbclid       text := nullif(btrim(p_fbclid), '');
+
+  r_ad           text;
+  r_ad_adset     text;
+  r_ad_campaign  text;
+  r_adset        text;
+  r_adset_camp   text;
+  r_campaign     text;
+  m_ad           text;
+  m_adset        text;
+  m_campaign     text;
+
+  h_direct       text;
+  h_named        text;
+  m_named        text;
+  v_scope        text[];
+  v_name_key     text;
+  v_tokens       text[];
+  v_n            int;
+  v_rule         public.meta_match_rules%ROWTYPE;
+
+  ambiguous_ad       boolean := false;
+  ambiguous_campaign boolean := false;
+  v_notes        text[] := ARRAY[]::text[];
+  v_status       text;
+  v_method       text;
+  v_reason       text;
+BEGIN
+  IF v_ad_id IS NULL AND v_adset_id IS NULL AND v_campaign_id IS NULL
+     AND v_utm_campaign IS NULL AND v_utm_content IS NULL AND v_utm_term IS NULL AND v_fbclid IS NULL THEN
+    RETURN jsonb_build_object('status', 'none', 'ad_id', NULL, 'adset_id', NULL, 'campaign_id', NULL, 'method', NULL, 'reason', NULL);
+  END IF;
+
+  -- ---- 1. Por id ----
+  IF v_campaign_id IS NOT NULL THEN
+    SELECT c.campaign_id INTO h_direct FROM public.meta_campaigns c
+     WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_campaign_id LIMIT 1;
+  END IF;
+  IF h_direct IS NULL AND v_utm_campaign IS NOT NULL THEN
+    SELECT c.campaign_id INTO h_direct FROM public.meta_campaigns c
+     WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_utm_campaign LIMIT 1;
+  END IF;
+
+  IF v_ad_id IS NOT NULL THEN
+    SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+     WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_ad_id LIMIT 1;
+    IF r_ad IS NOT NULL THEN m_ad := 'ad_id'; END IF;
+  END IF;
+  IF r_ad IS NULL AND v_utm_content IS NOT NULL THEN
+    SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+     WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_utm_content LIMIT 1;
+    IF r_ad IS NOT NULL THEN m_ad := 'utm_content_id'; END IF;
+  END IF;
+
+  IF v_adset_id IS NOT NULL THEN
+    SELECT s.adset_id, s.campaign_id INTO r_adset, r_adset_camp FROM public.meta_adsets s
+     WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_adset_id LIMIT 1;
+    IF r_adset IS NOT NULL THEN m_adset := 'adset_id'; END IF;
+  END IF;
+  IF r_adset IS NULL AND v_utm_term IS NOT NULL THEN
+    SELECT s.adset_id, s.campaign_id INTO r_adset, r_adset_camp FROM public.meta_adsets s
+     WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_utm_term LIMIT 1;
+    IF r_adset IS NOT NULL THEN m_adset := 'utm_term_id'; END IF;
+  END IF;
+
+  -- ---- 2. Una regla (lo que decidio una persona para estos mismos UTMs) ----
+  IF r_ad IS NULL AND (v_utm_campaign IS NOT NULL OR v_utm_content IS NOT NULL OR v_utm_term IS NOT NULL) THEN
+    SELECT * INTO v_rule FROM public.meta_match_rules mr
+     WHERE mr.workspace_id = p_workspace_id
+       AND mr.campaign_key = coalesce(public.meta_name_key(v_utm_campaign), '')
+       AND mr.content_key = coalesce(public.meta_name_key(v_utm_content), '')
+       AND mr.term_key = coalesce(public.meta_name_key(v_utm_term), '')
+     LIMIT 1;
+    IF FOUND THEN
+      IF v_rule.action = 'ignore' THEN
+        -- «No es un anuncio» solo vale si ningun id dijo lo contrario.
+        IF r_adset IS NULL AND h_direct IS NULL THEN
+          RETURN jsonb_build_object('status', 'ignored', 'ad_id', NULL, 'adset_id', NULL, 'campaign_id', NULL, 'method', 'rule', 'reason', NULL);
+        END IF;
+      -- Una regla nunca contradice un conjunto o una campaña que vinieron por id.
+      ELSIF (r_adset IS NULL OR v_rule.adset_id IS NULL OR v_rule.adset_id = r_adset)
+        AND (h_direct IS NULL OR v_rule.campaign_id IS NULL OR v_rule.campaign_id = h_direct) THEN
+        IF v_rule.ad_id IS NOT NULL THEN
+          r_ad := v_rule.ad_id;
+          r_ad_adset := v_rule.adset_id;
+          r_ad_campaign := v_rule.campaign_id;
+          m_ad := 'rule';
+        ELSIF v_rule.adset_id IS NOT NULL AND r_adset IS NULL THEN
+          r_adset := v_rule.adset_id;
+          r_adset_camp := v_rule.campaign_id;
+          m_adset := 'rule';
+        ELSIF v_rule.campaign_id IS NOT NULL AND h_direct IS NULL THEN
+          h_named := v_rule.campaign_id;
+          m_named := 'rule';
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+
+  -- ---- 3. Anuncio por nombre exacto, adentro de lo que se conoce por id ----
+  IF r_ad IS NULL AND v_utm_content IS NOT NULL AND (r_adset IS NOT NULL OR h_direct IS NOT NULL) THEN
+    v_name_key := public.meta_name_key(v_utm_content);
+    IF v_name_key <> '' THEN
+      SELECT count(*) INTO v_n FROM public.meta_ads a
+       WHERE a.workspace_id = p_workspace_id AND a.name_key = v_name_key
+         AND (CASE WHEN r_adset IS NOT NULL THEN a.adset_id = r_adset ELSE a.campaign_id = h_direct END);
+      IF v_n = 1 THEN
+        SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+         WHERE a.workspace_id = p_workspace_id AND a.name_key = v_name_key
+           AND (CASE WHEN r_adset IS NOT NULL THEN a.adset_id = r_adset ELSE a.campaign_id = h_direct END)
+         LIMIT 1;
+        m_ad := CASE WHEN r_adset IS NOT NULL THEN 'utm_content_name_adset' ELSE 'utm_content_name_campaign' END;
+      ELSIF v_n > 1 THEN
+        ambiguous_ad := true;
+      END IF;
+    END IF;
+  END IF;
+
+  -- ---- 4. Sin ningun id: la campaña por su nombre (unico) o, si no, por parecido ----
+  IF r_ad IS NULL AND r_adset IS NULL AND h_direct IS NULL AND h_named IS NULL
+     AND v_utm_campaign IS NOT NULL AND NOT private.meta_is_numeric(v_utm_campaign) THEN
+    v_name_key := public.meta_name_key(v_utm_campaign);
+    IF v_name_key <> '' THEN
+      SELECT count(*), min(c.campaign_id) INTO v_n, h_named FROM public.meta_campaigns c
+       WHERE c.workspace_id = p_workspace_id AND c.name_key = v_name_key;
+      IF v_n = 1 THEN
+        m_named := 'utm_campaign_name';
+      ELSE
+        h_named := NULL;
+        IF v_n > 1 THEN ambiguous_campaign := true; END IF;
+      END IF;
+    END IF;
+    IF h_named IS NULL THEN
+      v_tokens := private.meta_name_tokens(v_utm_campaign);
+      IF cardinality(v_tokens) > 0 THEN
+        SELECT coalesce(array_agg(c.campaign_id ORDER BY c.campaign_id), ARRAY[]::text[]) INTO v_scope
+          FROM public.meta_campaigns c
+         WHERE c.workspace_id = p_workspace_id AND private.meta_name_tokens(c.name_key) @> v_tokens;
+        IF cardinality(v_scope) = 1 THEN
+          h_named := v_scope[1];
+          m_named := 'utm_campaign_similar';
+        ELSIF cardinality(v_scope) > 1 THEN
+          ambiguous_campaign := true;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+
+  -- ---- 5. Anuncio por nombre exacto dentro de la campaña hallada por su nombre ----
+  IF r_ad IS NULL AND v_ad_id IS NULL AND m_named = 'utm_campaign_name' AND v_utm_content IS NOT NULL THEN
+    v_name_key := public.meta_name_key(v_utm_content);
+    IF v_name_key <> '' THEN
+      SELECT count(*) INTO v_n FROM public.meta_ads a
+       WHERE a.workspace_id = p_workspace_id AND a.campaign_id = h_named AND a.name_key = v_name_key;
+      IF v_n = 1 THEN
+        SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+         WHERE a.workspace_id = p_workspace_id AND a.campaign_id = h_named AND a.name_key = v_name_key LIMIT 1;
+        m_ad := 'utm_content_name';
+      ELSIF v_n > 1 THEN
+        ambiguous_ad := true;
+      END IF;
+    END IF;
+  END IF;
+
+  -- ---- 6. Anuncio por parecido: el UNICO del alcance cuyas palabras contienen todas las del utm_content ----
+  IF r_ad IS NULL AND v_ad_id IS NULL AND NOT ambiguous_ad AND v_utm_content IS NOT NULL
+     AND NOT private.meta_is_numeric(v_utm_content) THEN
+    v_tokens := private.meta_name_tokens(v_utm_content);
+    v_n := 0;
+    IF private.meta_tokens_qualify(v_tokens) THEN
+      IF r_adset IS NOT NULL THEN
+        SELECT count(*) INTO v_n FROM public.meta_ads a
+         WHERE a.workspace_id = p_workspace_id AND a.adset_id = r_adset AND private.meta_name_tokens(a.name_key) @> v_tokens;
+        IF v_n = 1 THEN
+          SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+           WHERE a.workspace_id = p_workspace_id AND a.adset_id = r_adset AND private.meta_name_tokens(a.name_key) @> v_tokens LIMIT 1;
+          m_ad := 'utm_content_similar_adset';
+        END IF;
+      ELSIF coalesce(h_direct, h_named) IS NOT NULL OR cardinality(v_scope) > 1 THEN
+        IF coalesce(h_direct, h_named) IS NOT NULL THEN v_scope := ARRAY[coalesce(h_direct, h_named)]; END IF;
+        SELECT count(*) INTO v_n FROM public.meta_ads a
+         WHERE a.workspace_id = p_workspace_id AND a.campaign_id = ANY (v_scope) AND private.meta_name_tokens(a.name_key) @> v_tokens;
+        IF v_n = 1 THEN
+          SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+           WHERE a.workspace_id = p_workspace_id AND a.campaign_id = ANY (v_scope) AND private.meta_name_tokens(a.name_key) @> v_tokens LIMIT 1;
+          m_ad := 'utm_content_similar_campaign';
+        END IF;
+      END IF;
+      IF v_n > 1 THEN ambiguous_ad := true; END IF;
+    END IF;
+  END IF;
+
+  -- ---- 7. El unico anuncio del conjunto (no si llego un id de anuncio desconocido: seria otro anuncio) ----
+  IF r_ad IS NULL AND r_adset IS NOT NULL AND NOT ambiguous_ad AND v_ad_id IS NULL
+     AND NOT private.meta_is_numeric(v_utm_content) THEN
+    SELECT count(*) INTO v_n FROM public.meta_ads a
+     WHERE a.workspace_id = p_workspace_id AND a.adset_id = r_adset;
+    IF v_n = 1 THEN
+      SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+       WHERE a.workspace_id = p_workspace_id AND a.adset_id = r_adset LIMIT 1;
+      m_ad := 'adset_single_ad';
+    END IF;
+  END IF;
+
+  -- ---- El conjunto del anuncio ----
+  IF r_adset IS NULL AND r_ad IS NOT NULL AND r_ad_adset IS NOT NULL THEN
+    r_adset := r_ad_adset;
+    m_adset := m_ad;
+    SELECT s.campaign_id INTO r_adset_camp FROM public.meta_adsets s
+     WHERE s.workspace_id = p_workspace_id AND s.adset_id = r_adset LIMIT 1;
+  END IF;
+
+  -- ---- Campaña ----
+  IF h_direct IS NOT NULL THEN
+    r_campaign := h_direct;
+    m_campaign := CASE WHEN v_campaign_id IS NOT NULL AND h_direct = v_campaign_id THEN 'campaign_id' ELSE 'utm_campaign_id' END;
+    IF r_ad IS NOT NULL AND r_ad_campaign IS NOT NULL AND r_ad_campaign <> r_campaign THEN
+      r_campaign := r_ad_campaign;
+      m_campaign := m_ad;
+      v_notes := array_append(v_notes, 'inconsistent_campaign');
+    END IF;
+  ELSIF r_ad_campaign IS NOT NULL OR r_adset_camp IS NOT NULL THEN
+    r_campaign := coalesce(r_ad_campaign, r_adset_camp);
+    m_campaign := CASE WHEN r_ad_campaign IS NOT NULL THEN m_ad ELSE m_adset END;
+  ELSIF h_named IS NOT NULL THEN
+    r_campaign := h_named;
+    m_campaign := m_named;
+  END IF;
+
+  -- ---- Resultado ----
+  IF r_ad IS NOT NULL OR r_adset IS NOT NULL OR r_campaign IS NOT NULL THEN
+    v_status := 'matched';
+    v_method := coalesce(m_ad, m_adset, m_campaign);
+    IF ambiguous_ad THEN v_notes := array_append(v_notes, 'ambiguous_ad_name'); END IF;
+    IF (v_ad_id IS NOT NULL AND r_ad IS NULL) OR (v_adset_id IS NOT NULL AND m_adset IS DISTINCT FROM 'adset_id')
+       OR (v_campaign_id IS NOT NULL AND h_direct IS DISTINCT FROM v_campaign_id AND r_campaign IS DISTINCT FROM v_campaign_id) THEN
+      v_notes := array_append(v_notes, 'id_not_in_catalog');
+    END IF;
+    v_reason := nullif(array_to_string(v_notes, ','), '');
+  ELSE
+    v_status := 'unmatched';
+    IF v_ad_id IS NOT NULL OR v_adset_id IS NOT NULL OR v_campaign_id IS NOT NULL THEN
+      v_reason := 'id_not_in_catalog';
+    ELSIF ambiguous_ad THEN
+      v_reason := 'ambiguous_ad_name';
+    ELSIF ambiguous_campaign THEN
+      v_reason := 'ambiguous_campaign_name';
+    ELSIF v_utm_campaign IS NOT NULL AND NOT private.meta_is_numeric(v_utm_campaign) THEN
+      v_reason := 'name_not_found';
+    ELSIF v_utm_campaign IS NOT NULL OR v_utm_content IS NOT NULL OR v_utm_term IS NOT NULL THEN
+      v_reason := 'name_without_id';
+    ELSE
+      v_reason := 'fbclid_only';
+    END IF;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'status', v_status,
+    'ad_id', r_ad,
+    'adset_id', r_adset,
+    'campaign_id', r_campaign,
+    'method', v_method,
+    'reason', v_reason
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_meta_match(uuid, text, text, text, text, text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_meta_match(uuid, text, text, text, text, text, text, text) TO service_role;
+
+-- ------------------------------------------------------------
+-- 5. Crear, aplicar y borrar una regla
+-- ------------------------------------------------------------
+-- Vuelve a resolver los toques con esta clave. Nunca toca lo que eligio una persona (manual, o ignorado por alguien).
+CREATE OR REPLACE FUNCTION private.meta_rematch_by_keys(p_workspace_id uuid, p_campaign_key text, p_content_key text, p_term_key text)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  t          public.contact_touches%ROWTYPE;
+  r          jsonb;
+  v_changed  int := 0;
+  v_contacts uuid[] := ARRAY[]::uuid[];
+BEGIN
+  FOR t IN
+    SELECT ct.* FROM public.contact_touches ct
+     WHERE ct.workspace_id = p_workspace_id
+       AND ct.meta_match_status IN ('none', 'unmatched', 'matched', 'ignored')
+       AND NOT (ct.meta_match_status = 'ignored' AND ct.meta_match_by IS NOT NULL)
+       AND private.meta_touch_utm_counts(ct)
+       AND private.meta_rule_key(ct.campaign) = p_campaign_key
+       AND private.meta_rule_key(ct.content_label) = p_content_key
+       AND private.meta_rule_key(ct.term) = p_term_key
+     FOR UPDATE
+  LOOP
+    r := public.resolve_meta_match_for_touch(t);
+    IF (r->>'status') IS DISTINCT FROM t.meta_match_status
+       OR (r->>'ad_id') IS DISTINCT FROM t.meta_ad_id
+       OR (r->>'adset_id') IS DISTINCT FROM t.meta_adset_id
+       OR (r->>'campaign_id') IS DISTINCT FROM t.meta_campaign_id
+       OR (r->>'method') IS DISTINCT FROM t.meta_match_method
+       OR (r->>'reason') IS DISTINCT FROM t.meta_match_reason THEN
+      UPDATE public.contact_touches
+         SET meta_campaign_id = r->>'campaign_id',
+             meta_adset_id = r->>'adset_id',
+             meta_ad_id = r->>'ad_id',
+             meta_match_status = coalesce(r->>'status', 'none'),
+             meta_match_method = r->>'method',
+             meta_match_reason = r->>'reason',
+             meta_matched_at = CASE WHEN r->>'status' IN ('matched', 'ignored') THEN now() END
+       WHERE id = t.id;
+      v_changed := v_changed + 1;
+      v_contacts := array_append(v_contacts, t.contact_id);
+    END IF;
+  END LOOP;
+
+  PERFORM private.refresh_contact_attribution(c) FROM (SELECT DISTINCT unnest(v_contacts) AS c) x;
+  RETURN v_changed;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.meta_rematch_by_keys(uuid, text, text, text) FROM PUBLIC, anon, authenticated;
+
+-- Crea (o reemplaza) la regla para estos UTMs y la aplica a todos los toques que los traen.
+-- El destino tiene que estar en el catalogo: un anuncio completa su conjunto y su campaña; un conjunto, su campaña.
+CREATE OR REPLACE FUNCTION public.create_meta_match_rule(
+  p_workspace_id uuid,
+  p_user_id uuid,
+  p_utm_campaign text,
+  p_utm_content text,
+  p_utm_term text,
+  p_action text,
+  p_ad_id text DEFAULT NULL,
+  p_adset_id text DEFAULT NULL,
+  p_campaign_id text DEFAULT NULL,
+  p_origin text DEFAULT 'manual'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ckey     text := private.meta_rule_key(p_utm_campaign);
+  v_kkey     text := private.meta_rule_key(p_utm_content);
+  v_tkey     text := private.meta_rule_key(p_utm_term);
+  v_ad       text := nullif(btrim(p_ad_id), '');
+  v_adset    text := nullif(btrim(p_adset_id), '');
+  v_campaign text := nullif(btrim(p_campaign_id), '');
+  a_adset    text;
+  a_campaign text;
+  s_campaign text;
+  v_id       uuid;
+  v_applied  int;
+BEGIN
+  IF p_action NOT IN ('link', 'ignore') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'invalid_action');
+  END IF;
+  IF coalesce(p_origin, '') NOT IN ('manual', 'confirmed', 'ai') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'invalid_origin');
+  END IF;
+  IF v_ckey = '' AND v_kkey = '' AND v_tkey = '' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'no_keys');
+  END IF;
+
+  IF p_action = 'link' THEN
+    IF v_ad IS NOT NULL THEN
+      SELECT a.adset_id, a.campaign_id INTO a_adset, a_campaign FROM public.meta_ads a
+       WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_ad LIMIT 1;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+      v_adset := a_adset;
+      v_campaign := coalesce(a_campaign, v_campaign);
+    END IF;
+    IF v_adset IS NOT NULL THEN
+      SELECT s.campaign_id INTO s_campaign FROM public.meta_adsets s
+       WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_adset LIMIT 1;
+      IF NOT FOUND AND v_ad IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+      v_campaign := coalesce(v_campaign, s_campaign);
+    END IF;
+    IF v_campaign IS NOT NULL AND v_ad IS NULL AND v_adset IS NULL THEN
+      PERFORM 1 FROM public.meta_campaigns c WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_campaign;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+    END IF;
+    IF v_ad IS NULL AND v_adset IS NULL AND v_campaign IS NULL THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'nothing_to_link');
+    END IF;
+  ELSE
+    v_ad := NULL; v_adset := NULL; v_campaign := NULL;
+  END IF;
+
+  INSERT INTO public.meta_match_rules AS mr
+    (workspace_id, campaign_key, content_key, term_key, utm_campaign, utm_content, utm_term,
+     action, ad_id, adset_id, campaign_id, origin, created_by)
+  VALUES
+    (p_workspace_id, v_ckey, v_kkey, v_tkey,
+     nullif(btrim(private.meta_url_decode(p_utm_campaign)), ''),
+     nullif(btrim(private.meta_url_decode(p_utm_content)), ''),
+     nullif(btrim(private.meta_url_decode(p_utm_term)), ''),
+     p_action, v_ad, v_adset, v_campaign, p_origin, p_user_id)
+  ON CONFLICT (workspace_id, campaign_key, content_key, term_key) DO UPDATE
+    SET action = EXCLUDED.action, ad_id = EXCLUDED.ad_id, adset_id = EXCLUDED.adset_id, campaign_id = EXCLUDED.campaign_id,
+        origin = EXCLUDED.origin, created_by = EXCLUDED.created_by, updated_at = now()
+  RETURNING mr.id INTO v_id;
+
+  v_applied := private.meta_rematch_by_keys(p_workspace_id, v_ckey, v_kkey, v_tkey);
+
+  RETURN jsonb_build_object('ok', true, 'rule_id', v_id, 'applied', v_applied,
+                            'ad_id', v_ad, 'adset_id', v_adset, 'campaign_id', v_campaign);
+END;
+$$;
+
+-- Borra la regla y vuelve a resolver sus toques (pueden quedar sin vincular: es lo que se pidio).
+CREATE OR REPLACE FUNCTION public.delete_meta_match_rule(p_workspace_id uuid, p_rule_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_rule    public.meta_match_rules%ROWTYPE;
+  v_changed int;
+BEGIN
+  DELETE FROM public.meta_match_rules WHERE id = p_rule_id AND workspace_id = p_workspace_id RETURNING * INTO v_rule;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'rule_not_found');
+  END IF;
+  v_changed := private.meta_rematch_by_keys(p_workspace_id, v_rule.campaign_key, v_rule.content_key, v_rule.term_key);
+  RETURN jsonb_build_object('ok', true, 'reverted', v_changed, 'rule', to_jsonb(v_rule));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.create_meta_match_rule(uuid, uuid, text, text, text, text, text, text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_meta_match_rule(uuid, uuid, text, text, text, text, text, text, text, text) TO service_role;
+REVOKE ALL ON FUNCTION public.delete_meta_match_rule(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_meta_match_rule(uuid, uuid) TO service_role;
+
+-- ------------------------------------------------------------
+-- 6. El canal: un formulario o una reunion usan el utm_medium que llego (la columna medium dice «form»)
+-- ------------------------------------------------------------
+-- Gemela: effectiveTouchMedium (lib/attribution/channel.ts).
+CREATE OR REPLACE FUNCTION private.touch_effective_medium(p_medium text, p_raw jsonb)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN coalesce(nullif(lower(btrim(p_medium)), ''), 'form') IN ('form', 'booking', 'webhook', 'import', 'manual')
+      THEN coalesce(nullif(lower(btrim(coalesce(p_raw->'utm'->>'utm_medium', p_raw->>'utm_medium'))), ''), p_medium)
+    ELSE p_medium
+  END
+$$;
+
+REVOKE ALL ON FUNCTION private.touch_effective_medium(text, jsonb) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.contact_touches_zz_channel_trg()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_channel text := NEW.channel;
+  v_status text := NEW.meta_match_status;
+  v_reason text := NEW.meta_match_reason;
+  v_medium text;
+BEGIN
+  BEGIN
+    v_medium := private.touch_effective_medium(NEW.medium, NEW.raw);
+    IF TG_OP = 'INSERT' THEN
+      IF v_channel IS NULL THEN
+        v_channel := public.touch_channel(NEW.origin, v_medium, NEW.source, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.meta_ad_id, NEW.meta_campaign_id,
+                                          NEW.gclid, NEW.ttclid, NEW.li_fat_id, NEW.ctwa_clid, NEW.fbclid, NEW.social_post_id, NEW.content_post_id);
+      END IF;
+    ELSIF NEW.channel IS NOT DISTINCT FROM OLD.channel THEN
+      v_channel := public.touch_channel(NEW.origin, v_medium, NEW.source, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.meta_ad_id, NEW.meta_campaign_id,
+                                        NEW.gclid, NEW.ttclid, NEW.li_fat_id, NEW.ctwa_clid, NEW.fbclid, NEW.social_post_id, NEW.content_post_id);
+    END IF;
+
+    -- Un link organico con UTMs no es un anuncio sin vincular.
+    IF v_channel = 'organic'
+       AND (NEW.content_post_id IS NOT NULL OR NEW.social_post_id IS NOT NULL)
+       AND nullif(btrim(NEW.ad_id), '') IS NULL AND nullif(btrim(NEW.adset_id), '') IS NULL AND nullif(btrim(NEW.campaign_id), '') IS NULL
+       AND nullif(btrim(NEW.fbclid), '') IS NULL
+       AND nullif(btrim(NEW.meta_ad_id), '') IS NULL AND nullif(btrim(NEW.meta_adset_id), '') IS NULL AND nullif(btrim(NEW.meta_campaign_id), '') IS NULL
+       AND v_status = 'unmatched' THEN
+      v_status := 'ignored';
+      v_reason := 'organic_content';
+    END IF;
+
+    NEW.channel := v_channel;
+    NEW.meta_match_status := v_status;
+    NEW.meta_match_reason := v_reason;
+  EXCEPTION WHEN OTHERS THEN
+    NEW.channel := 'direct';
+    RAISE WARNING 'contact_touches_zz_channel: no pude calcular el canal del toque (%): %', NEW.id, SQLERRM;
+  END;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.contact_touches_zz_channel_trg() FROM PUBLIC, anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 7. La tarea de IA «Vincular anuncios» (`ads_matching`): propone, nunca vincula sola
+-- ------------------------------------------------------------
+DO $$
+BEGIN
+  ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_check;
+  ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check
+    CHECK (source = ANY (ARRAY[
+      'agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing', 'conversation_summary', 'message_classification',
+      'message_classification_eval', 'content_copy', 'ads_analysis', 'audio_transcription', 'media_description',
+      'call_classification', 'call_analysis', 'call_correction', 'call_summary', 'call_prompt_test', 'ads_matching'
+    ]::text[]));
+
+  ALTER TABLE public.ai_task_prompt_versions DROP CONSTRAINT IF EXISTS ai_task_prompt_versions_task_check;
+  ALTER TABLE public.ai_task_prompt_versions ADD CONSTRAINT ai_task_prompt_versions_task_check
+    CHECK (task = ANY (ARRAY[
+      'message_classification', 'conversation_summary', 'close_classification', 'media_description', 'ads_analysis',
+      'call_classification', 'call_analysis', 'call_summary', 'ads_matching'
+    ]::text[]));
+END $$;
+
+-- ------------------------------------------------------------
+-- 8. Lo que ya existe
+-- ------------------------------------------------------------
+DO $$
+DECLARE
+  v_contacts uuid[];
+  v_n int;
+  v_ws uuid;
+  v_total int := 0;
+BEGIN
+  -- a) Los `unmatched` que dejan de tener datos de Meta (link de la bio, ManyChat, fbclid suelto) vuelven a `none`.
+  WITH fixed AS (
+    UPDATE public.contact_touches ct
+       SET meta_match_status = 'none', meta_match_method = NULL, meta_match_reason = NULL, meta_matched_at = NULL
+     WHERE ct.meta_match_status = 'unmatched'
+       AND NOT private.meta_touch_has_data(ct)
+    RETURNING ct.contact_id
+  )
+  SELECT array_agg(DISTINCT contact_id), count(*) INTO v_contacts, v_n FROM fixed;
+  IF v_contacts IS NOT NULL THEN
+    PERFORM private.refresh_contact_attribution(c) FROM unnest(v_contacts) AS c;
+  END IF;
+  RAISE NOTICE '00318: % toque(s) sin datos de Meta vuelven a none', coalesce(v_n, 0);
+
+  -- b) El vinculo nuevo (nombre exacto y parecido) para todo lo que tiene datos de Meta.
+  FOR v_ws IN SELECT DISTINCT workspace_id FROM public.meta_campaigns LOOP
+    v_total := v_total + public.rematch_meta_touches(v_ws, '-infinity');
+  END LOOP;
+  RAISE NOTICE '00318: % toque(s) re-vinculados', v_total;
+
+  -- c) El canal de los formularios y las reuniones que tenian un utm_medium guardado.
+  WITH fixed AS (
+    UPDATE public.contact_touches ct
+       SET channel = public.touch_channel(ct.origin, private.touch_effective_medium(ct.medium, ct.raw), ct.source, ct.ad_id, ct.adset_id,
+                                          ct.campaign_id, ct.meta_ad_id, ct.meta_campaign_id, ct.gclid, ct.ttclid, ct.li_fat_id,
+                                          ct.ctwa_clid, ct.fbclid, ct.social_post_id, ct.content_post_id)
+     WHERE ct.origin IN ('form', 'booking', 'webhook', 'import', 'manual')
+       AND coalesce(ct.raw->'utm'->>'utm_medium', ct.raw->>'utm_medium') IS NOT NULL
+       AND ct.channel IS DISTINCT FROM public.touch_channel(ct.origin, private.touch_effective_medium(ct.medium, ct.raw), ct.source, ct.ad_id,
+                                          ct.adset_id, ct.campaign_id, ct.meta_ad_id, ct.meta_campaign_id, ct.gclid, ct.ttclid, ct.li_fat_id,
+                                          ct.ctwa_clid, ct.fbclid, ct.social_post_id, ct.content_post_id)
+    RETURNING 1
+  )
+  SELECT count(*) INTO v_n FROM fixed;
+  RAISE NOTICE '00318: canal corregido en % toque(s)', coalesce(v_n, 0);
+END $$;
+
+-- ============================================================
+-- MIGRATION 319: DESIGNER SETTINGS PERMISSIONS
+-- ============================================================
+-- ============================================================================
+-- 00319_designer_settings_permissions  (Diseñador IA, D1)
+-- ============================================================================
+-- 1. `workspaces.design_settings` (estilos propios, fuentes agregadas y subidas, paleta extra) con su
+--    validador de estructura `public.validate_design_settings(jsonb)` por trigger. La validación fina es
+--    `lib/designer/settings-schema.ts` (Zod); los casos de `lib/designer/settings.cases.json` corren contra
+--    las dos (vitest y `verify-designer --bloque ds0`).
+-- 2. Permisos: el Member de sistema suma `designer.view` y `designer.edit` (cambio aprobado M12). Se
+--    redefine `private.member_permission_keys()` COPIANDO la vigente (00250) letra por letra y sumando las
+--    dos claves al final; `lib/auth/member-sql-parity.test.ts` la compara con `MEMBER_PERMISSION_KEYS`.
+--    `designer.publish`, `designer.generate` y `designer.manage` quedan para Owner, Admin y los roles
+--    personalizados que las tengan (no hace falta SQL: `has_permission` lee el catálogo de cada rol).
+-- 3. Buckets PRIVADOS `design-assets` (imágenes subidas, fuentes y recursos de HTML cargados; 20 MB por
+--    archivo) y `design-renders` (PNG y PDF generados). El primer segmento de la ruta es el workspace.
+--    Lectura: miembros con `designer.view`. Escritura: solo el servidor (service_role), sin políticas.
+--    Lectura pública NUNCA: el link público sirve archivos por una ruta del servidor (F44).
+--
+-- Aditiva + modifica la lista de permisos del Member. Va ANTES de desplegar el código.
+--
+-- Cómo volver atrás:
+--   DROP TRIGGER IF EXISTS workspaces_design_settings_check ON public.workspaces;
+--   DROP FUNCTION IF EXISTS public.workspaces_design_settings_check();
+--   DROP FUNCTION IF EXISTS public.validate_design_settings(jsonb);
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS design_settings;
+--   DROP POLICY IF EXISTS design_assets_select ON storage.objects;
+--   DROP POLICY IF EXISTS design_renders_select ON storage.objects;
+--   -- (vaciar los buckets antes) DELETE FROM storage.buckets WHERE id IN ('design-assets','design-renders');
+--   -- y `private.member_permission_keys()` vuelve a la definición de 00250 (la misma de abajo SIN las dos
+--   -- últimas claves `designer.view` y `designer.edit`).
+-- Riesgo: medio (cambia lo que ve el Member de sistema: el menú suma «Diseñador IA»).
+-- ============================================================================
+
+-- ─── 1. Ajustes del Diseñador IA ────────────────────────────────────────────
+
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS design_settings jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+-- Gemela mínima de `designSettingsSchema` (estructura y tipos). Devuelve true o false, nunca NULL.
+CREATE OR REPLACE FUNCTION public.validate_design_settings(p jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_item jsonb;
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN
+    RETURN false;
+  END IF;
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN
+    RETURN false;
+  END IF;
+  IF p ? 'palette' THEN
+    IF jsonb_typeof(p -> 'palette') <> 'array' OR jsonb_array_length(p -> 'palette') > 24 THEN
+      RETURN false;
+    END IF;
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p -> 'palette') LOOP
+      IF jsonb_typeof(v_item) <> 'string' OR (v_item #>> '{}') !~ '^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$' THEN
+        RETURN false;
+      END IF;
+    END LOOP;
+  END IF;
+  IF p ? 'fonts' THEN
+    IF jsonb_typeof(p -> 'fonts') <> 'object' THEN
+      RETURN false;
+    END IF;
+    IF (p -> 'fonts') ? 'google' THEN
+      IF jsonb_typeof(p -> 'fonts' -> 'google') <> 'array' THEN
+        RETURN false;
+      END IF;
+      FOR v_item IN SELECT * FROM jsonb_array_elements(p -> 'fonts' -> 'google') LOOP
+        IF jsonb_typeof(v_item) <> 'string' THEN
+          RETURN false;
+        END IF;
+      END LOOP;
+    END IF;
+    IF (p -> 'fonts') ? 'uploaded' THEN
+      IF jsonb_typeof(p -> 'fonts' -> 'uploaded') <> 'array' THEN
+        RETURN false;
+      END IF;
+      FOR v_item IN SELECT * FROM jsonb_array_elements(p -> 'fonts' -> 'uploaded') LOOP
+        IF jsonb_typeof(v_item) <> 'object'
+           OR jsonb_typeof(v_item -> 'family') IS DISTINCT FROM 'string'
+           OR jsonb_typeof(v_item -> 'path') IS DISTINCT FROM 'string' THEN
+          RETURN false;
+        END IF;
+      END LOOP;
+    END IF;
+  END IF;
+  IF p ? 'styles' THEN
+    IF jsonb_typeof(p -> 'styles') <> 'array' THEN
+      RETURN false;
+    END IF;
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p -> 'styles') LOOP
+      IF jsonb_typeof(v_item) <> 'object'
+         OR jsonb_typeof(v_item -> 'key') IS DISTINCT FROM 'string'
+         OR jsonb_typeof(v_item -> 'name') IS DISTINCT FROM 'string' THEN
+        RETURN false;
+      END IF;
+    END LOOP;
+  END IF;
+  RETURN true;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.validate_design_settings(jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.validate_design_settings(jsonb) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.workspaces_design_settings_check()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT public.validate_design_settings(NEW.design_settings) THEN
+    RAISE EXCEPTION 'Los ajustes del Diseñador IA no tienen la forma esperada' USING ERRCODE = '22023';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.workspaces_design_settings_check() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS workspaces_design_settings_check ON public.workspaces;
+CREATE TRIGGER workspaces_design_settings_check
+  BEFORE INSERT OR UPDATE OF design_settings ON public.workspaces
+  FOR EACH ROW EXECUTE FUNCTION public.workspaces_design_settings_check();
+
+-- ─── 2. Permisos del Member (cambio aprobado M12) ──────────────────────────
+-- Copia de 00250 + `designer.view` y `designer.edit` al final.
+
+CREATE OR REPLACE FUNCTION private.member_permission_keys()
+ RETURNS text[]
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT ARRAY[
+    'dashboards.chat.view',
+    'contacts.view',
+    'contacts.edit',
+    'contacts.assign',
+    'flows.view',
+    'flows.edit',
+    'flows.publish',
+    'sequences.view',
+    'agents.view',
+    'content.view',
+    'content.create',
+    'scheduling.use',
+    'bookings.view',
+    'bookings.manage',
+    'calls.view',
+    'forms.view',
+    'sales.view',
+    'sales.manage',
+    'payments.manage',
+    'tasks.view',
+    'tasks.edit',
+    'commissions.view',
+    'designer.view',
+    'designer.edit'
+  ]::text[]
+$function$;
+REVOKE ALL ON FUNCTION private.member_permission_keys() FROM PUBLIC, anon, authenticated;
+
+-- ─── 3. Buckets privados ────────────────────────────────────────────────────
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('design-assets', 'design-assets', false, 20971520, NULL)
+ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = EXCLUDED.file_size_limit, allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('design-renders', 'design-renders', false, 52428800, ARRAY['image/png', 'application/pdf', 'application/zip'])
+ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = EXCLUDED.file_size_limit, allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- Lectura: miembro con `designer.view` del workspace del primer segmento. Sin políticas de escritura
+-- (sube y borra el servidor con el cliente de servicio, después de validar los bytes y el permiso).
+DROP POLICY IF EXISTS design_assets_select ON storage.objects;
+CREATE POLICY design_assets_select ON storage.objects FOR SELECT TO authenticated USING (
+  bucket_id = 'design-assets'
+  AND (storage.foldername(name))[1] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  AND (SELECT public.has_permission(((storage.foldername(name))[1])::uuid, 'designer.view'))
+);
+
+DROP POLICY IF EXISTS design_renders_select ON storage.objects;
+CREATE POLICY design_renders_select ON storage.objects FOR SELECT TO authenticated USING (
+  bucket_id = 'design-renders'
+  AND (storage.foldername(name))[1] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  AND (SELECT public.has_permission(((storage.foldername(name))[1])::uuid, 'designer.view'))
+);
+
+-- ============================================================
+-- MIGRATION 320: DESIGNER TABLES
+-- ============================================================
+-- ============================================================================
+-- 00320_designer_tables  (Diseñador IA, D2)
+-- ============================================================================
+-- Cinco tablas nuevas, todas con RLS de lectura y SIN políticas de escritura (escriben Server Actions y
+-- jobs con el cliente de servicio, después de validar el permiso y el negocio):
+--   - design_templates   plantillas (con variables, verificación solo en formatos impresos).
+--   - designs            diseños propios (template_id NULL) y GENERACIONES (template_id con valor).
+--   - design_versions    historial del documento (solo el `doc`, sin imágenes).
+--   - ai_threads         conversaciones con una IA fuera de la bandeja (GENÉRICA de BAIOS: Diseñador IA,
+--                        después el tutor del portal y el asistente).
+--   - ai_messages        sus mensajes.
+-- Además:
+--   - `public.validate_design_doc(jsonb)`: gemela de estructura de `lib/designer/doc/schema.ts` (casos
+--     compartidos en `lib/designer/doc/doc.cases.json`), por trigger en plantillas, diseños y versiones.
+--   - `private.design_new_code()`: 12 caracteres Crockford base32 en tres grupos (K8F2-WQ4M-7TQA), único
+--     global. Lo pone un trigger (un DEFAULT no puede llamar a `private`: corre con los permisos de quien
+--     inserta).
+--   - `public.design_public_get(code)`: lo único que ve el link público (`anon` puede ejecutarla a
+--     propósito). Nunca devuelve el workspace, emails, teléfonos ni ids del sujeto.
+--   - Fusión de contactos: `contacts_designs_on_merge` reapunta `designs.subject_contact_id` y
+--     `ai_threads.contact_id` cuando `merge_contacts` borra el duplicado con `metadata.merged_into` (mismo
+--     patrón que 00256, sin reescribir `merge_contacts`). Por eso las dos tablas van a
+--     `CONTACT_MERGE_EXCLUSIONS` con ese motivo.
+--   - Limpieza diaria: `private.enqueue_design_cleanup()` encola un `design_cleanup` por negocio y por día
+--     SOLO si tiene algo para limpiar; `cron.schedule` diario por SQL directo (no toca `call_app_cron`).
+--     Con las tablas vacías no encola nada: es segura antes del deploy.
+--
+-- Aditiva. Va ANTES de desplegar el código (lo lee).
+--
+-- Cómo volver atrás (con respaldo previo en docs/designer/respaldo-<tabla>.json si hay datos reales):
+--   SELECT cron.unschedule('design-cleanup') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'design-cleanup');
+--   DROP FUNCTION IF EXISTS private.enqueue_design_cleanup(timestamptz);
+--   DROP TRIGGER IF EXISTS contacts_designs_on_merge ON public.contacts;
+--   DROP FUNCTION IF EXISTS public.contacts_designs_on_merge();
+--   DROP FUNCTION IF EXISTS public.design_public_get(text);
+--   DROP TABLE IF EXISTS public.ai_messages, public.ai_threads, public.design_versions, public.designs, public.design_templates;
+--   DROP FUNCTION IF EXISTS public.designs_set_code(), public.design_doc_check(), public.validate_design_doc(jsonb), private.design_new_code();
+-- Riesgo: bajo.
+-- ============================================================================
+
+-- ─── Validador de estructura del documento ──────────────────────────────────
+-- Estructura, conteos y tipos (la validación fina es la de Zod en el servidor). True o false, nunca NULL.
+
+CREATE OR REPLACE FUNCTION public.validate_design_doc(p jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_pages jsonb;
+  v_page jsonb;
+  v_el jsonb;
+  v_n int;
+  v_num numeric;
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN false; END IF;
+  IF p -> 'v' IS DISTINCT FROM '1'::jsonb THEN RETURN false; END IF;
+  IF (p ->> 'format') IS NULL OR (p ->> 'format') NOT IN ('carta_v','carta_h','a4_v','a4_h','sq','v45','story','wide','web') THEN RETURN false; END IF;
+  v_pages := p -> 'pages';
+  IF v_pages IS NULL OR jsonb_typeof(v_pages) <> 'array' THEN RETURN false; END IF;
+  v_n := jsonb_array_length(v_pages);
+  IF v_n < 1 OR v_n > 20 THEN RETURN false; END IF;
+  IF (p ->> 'format') = 'web' AND v_n <> 1 THEN RETURN false; END IF;
+
+  FOR v_page IN SELECT * FROM jsonb_array_elements(v_pages) LOOP
+    IF jsonb_typeof(v_page) <> 'object' OR jsonb_typeof(v_page -> 'id') IS DISTINCT FROM 'string' THEN RETURN false; END IF;
+    IF jsonb_typeof(v_page -> 'background') IS DISTINCT FROM 'object' THEN RETURN false; END IF;
+    IF (v_page -> 'background' ->> 'type') IS NULL OR (v_page -> 'background' ->> 'type') NOT IN ('color','gradient','image') THEN RETURN false; END IF;
+    IF jsonb_typeof(v_page -> 'elements') IS DISTINCT FROM 'array' OR jsonb_array_length(v_page -> 'elements') > 200 THEN RETURN false; END IF;
+    FOR v_el IN SELECT * FROM jsonb_array_elements(v_page -> 'elements') LOOP
+      IF jsonb_typeof(v_el) <> 'object' OR jsonb_typeof(v_el -> 'id') IS DISTINCT FROM 'string' THEN RETURN false; END IF;
+      IF (v_el ->> 'type') IS NULL OR (v_el ->> 'type') NOT IN ('text','image','shape','html') THEN RETURN false; END IF;
+      IF jsonb_typeof(v_el -> 'x') IS DISTINCT FROM 'number' OR jsonb_typeof(v_el -> 'y') IS DISTINCT FROM 'number' OR jsonb_typeof(v_el -> 'w') IS DISTINCT FROM 'number' THEN RETURN false; END IF;
+      v_num := (v_el ->> 'x')::numeric; IF v_num < 0 OR v_num > 100 THEN RETURN false; END IF;
+      v_num := (v_el ->> 'y')::numeric; IF v_num < 0 OR v_num > 100 THEN RETURN false; END IF;
+      v_num := (v_el ->> 'w')::numeric; IF v_num <= 0 OR v_num > 100 THEN RETURN false; END IF;
+    END LOOP;
+  END LOOP;
+  RETURN true;
+EXCEPTION WHEN OTHERS THEN
+  RETURN false;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.validate_design_doc(jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.validate_design_doc(jsonb) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.design_doc_check()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT public.validate_design_doc(NEW.doc) THEN
+    RAISE EXCEPTION 'El documento del diseño no tiene la forma esperada' USING ERRCODE = '22023';
+  END IF;
+  IF TG_TABLE_NAME IN ('design_templates', 'designs') AND (NEW.doc ->> 'format') IS DISTINCT FROM NEW.format THEN
+    RAISE EXCEPTION 'El formato del documento no coincide con el de la fila' USING ERRCODE = '22023';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.design_doc_check() FROM PUBLIC, anon, authenticated;
+
+-- ─── Códigos ────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION private.design_new_code()
+RETURNS text
+LANGUAGE plpgsql
+VOLATILE
+SET search_path = ''
+AS $$
+DECLARE
+  v_alphabet constant text := '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  v_bytes bytea;
+  v_raw text;
+  v_code text;
+  v_try int := 0;
+BEGIN
+  LOOP
+    v_bytes := extensions.gen_random_bytes(12);
+    v_raw := '';
+    FOR i IN 0..11 LOOP
+      v_raw := v_raw || substr(v_alphabet, (get_byte(v_bytes, i) % 32) + 1, 1);
+    END LOOP;
+    v_code := substr(v_raw, 1, 4) || '-' || substr(v_raw, 5, 4) || '-' || substr(v_raw, 9, 4);
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.designs d WHERE d.code = v_code);
+    v_try := v_try + 1;
+    IF v_try > 20 THEN
+      RAISE EXCEPTION 'No se pudo generar un código único';
+    END IF;
+  END LOOP;
+  RETURN v_code;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.design_new_code() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.design_new_code() TO service_role;
+
+-- ─── design_templates ───────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.design_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 120),
+  format text NOT NULL CHECK (format IN ('carta_v','carta_h','a4_v','a4_h','sq','v45','story','wide')),
+  doc jsonb NOT NULL,
+  rev integer NOT NULL DEFAULT 0,
+  custom_vars jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(custom_vars) = 'array'),
+  date_format text NOT NULL DEFAULT 'long' CHECK (date_format IN ('long','short','en')),
+  verify boolean NOT NULL DEFAULT false,
+  doc_type text NULL CHECK (doc_type IS NULL OR doc_type IN ('certificado','constancia','diploma','otro')),
+  doc_type_label text NULL,
+  allow_download boolean NOT NULL DEFAULT true,
+  origin text NOT NULL CHECK (origin IN ('ai','image','html','blank')),
+  style text NULL,
+  archived_at timestamptz NULL,
+  created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  -- V1/V2 (plano 1.2): la verificación solo en formatos impresos, con tipo de documento; el nombre solo con «otro».
+  CONSTRAINT design_templates_verify_print CHECK (NOT verify OR format IN ('carta_v','carta_h','a4_v','a4_h')),
+  CONSTRAINT design_templates_verify_type CHECK (NOT verify OR doc_type IS NOT NULL),
+  CONSTRAINT design_templates_verify_other_label CHECK (NOT verify OR doc_type IS DISTINCT FROM 'otro' OR doc_type_label IS NOT NULL),
+  CONSTRAINT design_templates_label_only_other CHECK (doc_type_label IS NULL OR (doc_type = 'otro' AND char_length(btrim(doc_type_label)) BETWEEN 1 AND 40))
+);
+
+CREATE INDEX IF NOT EXISTS idx_design_templates_workspace ON public.design_templates (workspace_id, updated_at DESC) WHERE archived_at IS NULL;
+
+-- ─── designs (diseños propios y generaciones) ───────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.designs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 200),
+  format text NOT NULL CHECK (format IN ('carta_v','carta_h','a4_v','a4_h','sq','v45','story','wide','web')),
+  doc jsonb NOT NULL,
+  rev integer NOT NULL DEFAULT 0,
+  origin text NOT NULL CHECK (origin IN ('ai','image','html','blank','template')),
+  style text NULL,
+  code text NOT NULL,
+  published boolean NOT NULL DEFAULT false,
+  allow_download boolean NOT NULL DEFAULT true,
+  allow_indexing boolean NOT NULL DEFAULT false,
+  published_at timestamptz NULL,
+  -- NO ACTION a propósito: borrar un workspace entero no choca en el medio de la cascada.
+  template_id uuid NULL REFERENCES public.design_templates(id),
+  subject_contact_id uuid NULL REFERENCES public.contacts(id) ON DELETE SET NULL,
+  subject_ref jsonb NULL,
+  "values" jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof("values") = 'object'),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','queued','rendering','ready','failed','void')),
+  error text NULL,
+  attempts integer NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NULL,
+  source text NULL CHECK (source IS NULL OR source IN ('manual','bulk','automation','module')),
+  source_ref jsonb NULL,
+  email_status text NULL CHECK (email_status IS NULL OR email_status IN ('sent','failed','skipped')),
+  void_reason text NULL,
+  voided_at timestamptz NULL,
+  voided_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  renders jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(renders) = 'object'),
+  content_post_id uuid NULL REFERENCES public.content_posts(id) ON DELETE SET NULL,
+  content_network text NULL,
+  last_qa jsonb NULL,
+  archived_at timestamptz NULL,
+  created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT designs_code_format CHECK (code ~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$'),
+  CONSTRAINT designs_void_reason CHECK (status <> 'void' OR (void_reason IS NOT NULL AND char_length(btrim(void_reason)) > 0)),
+  CONSTRAINT designs_indexing_web CHECK (NOT allow_indexing OR format = 'web'),
+  CONSTRAINT designs_generation_source CHECK (template_id IS NULL OR source IS NOT NULL)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_designs_code ON public.designs (code);
+CREATE INDEX IF NOT EXISTS idx_designs_template ON public.designs (workspace_id, template_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_designs_template_subject ON public.designs (template_id, subject_contact_id) WHERE status <> 'void';
+CREATE INDEX IF NOT EXISTS idx_designs_content_post ON public.designs (content_post_id) WHERE content_post_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_designs_own ON public.designs (workspace_id, updated_at DESC) WHERE template_id IS NULL AND archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_designs_subject ON public.designs (subject_contact_id) WHERE subject_contact_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.designs_set_code()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.code IS NULL OR NEW.code = '' THEN
+    NEW.code := private.design_new_code();
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.designs_set_code() FROM PUBLIC, anon, authenticated;
+
+-- El código se pone antes de los CHECK: `code` es NOT NULL pero el trigger BEFORE corre primero.
+ALTER TABLE public.designs ALTER COLUMN code SET DEFAULT '';
+
+DROP TRIGGER IF EXISTS designs_set_code ON public.designs;
+CREATE TRIGGER designs_set_code BEFORE INSERT ON public.designs FOR EACH ROW EXECUTE FUNCTION public.designs_set_code();
+
+-- ─── design_versions ────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.design_versions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  template_id uuid NULL REFERENCES public.design_templates(id) ON DELETE CASCADE,
+  design_id uuid NULL REFERENCES public.designs(id) ON DELETE CASCADE,
+  doc jsonb NOT NULL,
+  reason text NOT NULL CHECK (reason IN ('ai','manual','publish','restore','generate','import')),
+  author_kind text NOT NULL CHECK (author_kind IN ('user','ai')),
+  author_id uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT design_versions_one_subject CHECK (num_nonnulls(template_id, design_id) = 1)
+);
+
+CREATE INDEX IF NOT EXISTS idx_design_versions_design ON public.design_versions (design_id, created_at DESC) WHERE design_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_design_versions_template ON public.design_versions (template_id, created_at DESC) WHERE template_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_design_versions_age ON public.design_versions (workspace_id, created_at);
+
+-- ─── ai_threads / ai_messages (genéricas de BAIOS) ─────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.ai_threads (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  channel text NOT NULL CHECK (channel IN ('designer','portal','assistant')),
+  agent_id uuid NULL REFERENCES public.agents(id) ON DELETE SET NULL,
+  user_id uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  contact_id uuid NULL REFERENCES public.contacts(id) ON DELETE SET NULL,
+  subject_type text NULL CHECK (subject_type IS NULL OR subject_type IN ('design','design_template','product')),
+  subject_id uuid NULL,
+  title text NULL,
+  last_message_at timestamptz NULL,
+  archived_at timestamptz NULL,
+  created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT ai_threads_designer_subject CHECK (channel <> 'designer' OR (subject_type IN ('design','design_template') AND subject_id IS NOT NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_threads_channel ON public.ai_threads (workspace_id, channel, last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_threads_contact ON public.ai_threads (contact_id) WHERE contact_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ai_threads_user ON public.ai_threads (user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_threads_designer_subject ON public.ai_threads (subject_type, subject_id) WHERE channel = 'designer';
+
+CREATE TABLE IF NOT EXISTS public.ai_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  thread_id uuid NOT NULL REFERENCES public.ai_threads(id) ON DELETE CASCADE,
+  role text NOT NULL CHECK (role IN ('user','assistant')),
+  content text NOT NULL CHECK (char_length(content) <= 20000),
+  attachments jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(attachments) = 'array'),
+  context jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(context) = 'object'),
+  result jsonb NULL,
+  citations jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(citations) = 'array'),
+  agent_run_id uuid NULL REFERENCES public.agent_runs(id) ON DELETE SET NULL,
+  feedback text NULL CHECK (feedback IS NULL OR feedback IN ('up','down')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_thread ON public.ai_messages (thread_id, created_at);
+
+-- ─── Triggers comunes ───────────────────────────────────────────────────────
+
+DROP TRIGGER IF EXISTS design_templates_doc_check ON public.design_templates;
+CREATE TRIGGER design_templates_doc_check BEFORE INSERT OR UPDATE OF doc, format ON public.design_templates FOR EACH ROW EXECUTE FUNCTION public.design_doc_check();
+DROP TRIGGER IF EXISTS designs_doc_check ON public.designs;
+CREATE TRIGGER designs_doc_check BEFORE INSERT OR UPDATE OF doc, format ON public.designs FOR EACH ROW EXECUTE FUNCTION public.design_doc_check();
+DROP TRIGGER IF EXISTS design_versions_doc_check ON public.design_versions;
+CREATE TRIGGER design_versions_doc_check BEFORE INSERT ON public.design_versions FOR EACH ROW EXECUTE FUNCTION public.design_doc_check();
+
+DROP TRIGGER IF EXISTS update_design_templates_updated_at ON public.design_templates;
+CREATE TRIGGER update_design_templates_updated_at BEFORE UPDATE ON public.design_templates FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+DROP TRIGGER IF EXISTS update_designs_updated_at ON public.designs;
+CREATE TRIGGER update_designs_updated_at BEFORE UPDATE ON public.designs FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+DROP TRIGGER IF EXISTS update_ai_threads_updated_at ON public.ai_threads;
+CREATE TRIGGER update_ai_threads_updated_at BEFORE UPDATE ON public.ai_threads FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ─── RLS: solo lectura ─────────────────────────────────────────────────────
+
+ALTER TABLE public.design_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.designs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.design_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_threads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_messages ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS design_templates_select ON public.design_templates;
+CREATE POLICY design_templates_select ON public.design_templates FOR SELECT TO authenticated
+  USING ((SELECT public.is_workspace_member(workspace_id)) AND (SELECT public.has_permission(workspace_id, 'designer.view')));
+
+DROP POLICY IF EXISTS designs_select ON public.designs;
+CREATE POLICY designs_select ON public.designs FOR SELECT TO authenticated
+  USING ((SELECT public.is_workspace_member(workspace_id)) AND (SELECT public.has_permission(workspace_id, 'designer.view')));
+
+DROP POLICY IF EXISTS design_versions_select ON public.design_versions;
+CREATE POLICY design_versions_select ON public.design_versions FOR SELECT TO authenticated
+  USING ((SELECT public.is_workspace_member(workspace_id)) AND (SELECT public.has_permission(workspace_id, 'designer.view')));
+
+-- Por canal: el Diseñador con `designer.view`; el asistente, solo la persona dueña del hilo y solo si es
+-- miembro de ese negocio; el portal todavía sin política (la suma Servicios).
+DROP POLICY IF EXISTS ai_threads_select ON public.ai_threads;
+CREATE POLICY ai_threads_select ON public.ai_threads FOR SELECT TO authenticated
+  USING (
+    (channel = 'designer' AND (SELECT public.is_workspace_member(workspace_id)) AND (SELECT public.has_permission(workspace_id, 'designer.view')))
+    OR (channel = 'assistant' AND user_id = (SELECT auth.uid()) AND (SELECT public.is_workspace_member(workspace_id)))
+  );
+
+DROP POLICY IF EXISTS ai_messages_select ON public.ai_messages;
+CREATE POLICY ai_messages_select ON public.ai_messages FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.ai_threads t WHERE t.id = ai_messages.thread_id));
+
+REVOKE ALL ON public.design_templates FROM anon, authenticated;
+REVOKE ALL ON public.designs FROM anon, authenticated;
+REVOKE ALL ON public.design_versions FROM anon, authenticated;
+REVOKE ALL ON public.ai_threads FROM anon, authenticated;
+REVOKE ALL ON public.ai_messages FROM anon, authenticated;
+GRANT SELECT ON public.design_templates TO authenticated;
+GRANT SELECT ON public.designs TO authenticated;
+GRANT SELECT ON public.design_versions TO authenticated;
+GRANT SELECT ON public.ai_threads TO authenticated;
+GRANT SELECT ON public.ai_messages TO authenticated;
+GRANT ALL ON public.design_templates TO service_role;
+GRANT ALL ON public.designs TO service_role;
+GRANT ALL ON public.design_versions TO service_role;
+GRANT ALL ON public.ai_threads TO service_role;
+GRANT ALL ON public.ai_messages TO service_role;
+
+-- ─── Lectura pública del link /d/<código> ───────────────────────────────────
+-- Devuelve SOLO lo que muestra el link: un diseño PUBLICADO o una generación de una plantilla con
+-- verificación (para mostrar "válido" o "anulado"). Nunca el workspace, emails, teléfonos ni ids del
+-- sujeto; el documento solo para una página web propia (no tiene datos de nadie). `anon` la puede
+-- ejecutar a propósito (el link es público).
+
+CREATE OR REPLACE FUNCTION public.design_public_get(p_code text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_code text := upper(btrim(coalesce(p_code, '')));
+  v_d public.designs%ROWTYPE;
+  v_t public.design_templates%ROWTYPE;
+  v_ws public.workspaces%ROWTYPE;
+  v_is_generation boolean;
+  v_verify boolean := false;
+BEGIN
+  IF v_code !~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$' THEN
+    RETURN NULL;
+  END IF;
+  SELECT * INTO v_d FROM public.designs WHERE code = v_code;
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+  v_is_generation := v_d.template_id IS NOT NULL;
+  IF v_is_generation THEN
+    SELECT * INTO v_t FROM public.design_templates WHERE id = v_d.template_id;
+    v_verify := coalesce(v_t.verify, false);
+  END IF;
+  IF NOT (v_d.published OR (v_is_generation AND v_verify)) THEN
+    RETURN NULL;
+  END IF;
+  IF v_d.archived_at IS NOT NULL AND NOT v_is_generation THEN
+    RETURN NULL;
+  END IF;
+  SELECT * INTO v_ws FROM public.workspaces WHERE id = v_d.workspace_id;
+
+  RETURN jsonb_build_object(
+    'code', v_d.code,
+    'name', v_d.name,
+    'format', v_d.format,
+    'kind', CASE WHEN v_is_generation THEN 'generation' ELSE 'design' END,
+    'status', v_d.status,
+    'published', v_d.published,
+    'allow_download', CASE WHEN v_is_generation THEN coalesce(v_t.allow_download, true) AND v_d.allow_download ELSE v_d.allow_download END,
+    'allow_indexing', v_d.allow_indexing AND v_d.format = 'web',
+    'published_at', v_d.published_at,
+    'issued_at', v_d.created_at,
+    'verify', v_verify,
+    'doc_type', CASE WHEN v_verify THEN v_t.doc_type END,
+    'doc_type_label', CASE WHEN v_verify THEN v_t.doc_type_label END,
+    'void_reason', CASE WHEN v_d.status = 'void' THEN v_d.void_reason END,
+    'voided_at', v_d.voided_at,
+    'page_count', jsonb_array_length(v_d.doc -> 'pages'),
+    'rendered', (v_d.renders ? 'pages' OR v_d.renders ? 'pdf_path'),
+    'rendered_version', v_d.renders -> 'version',
+    'business_name', coalesce(nullif(btrim(v_ws.brand_name), ''), v_ws.name),
+    'business_timezone', coalesce(v_ws.timezone, 'UTC'),
+    'doc', CASE WHEN v_d.format = 'web' AND NOT v_is_generation THEN v_d.doc END
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.design_public_get(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.design_public_get(text) TO anon, authenticated, service_role;
+COMMENT ON FUNCTION public.design_public_get(text) IS
+  'Lo único que ve el link público /d/<código> del Diseñador IA. anon puede ejecutarla a propósito: nunca devuelve workspace, emails, teléfonos ni ids del sujeto.';
+
+-- ─── Fusión de contactos ────────────────────────────────────────────────────
+-- `merge_contacts` (00247) borra el duplicado con `metadata.merged_into`. Al ver eso, lo que apuntaba al
+-- duplicado pasa al principal. Nunca tumba la fusión: un error queda en un WARNING.
+
+CREATE OR REPLACE FUNCTION public.contacts_designs_on_merge()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_main uuid;
+BEGIN
+  IF OLD.deleted_at IS NOT NULL OR NEW.deleted_at IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF NOT (coalesce(NEW.metadata, '{}'::jsonb) ? 'merged_into') THEN
+    RETURN NULL;
+  END IF;
+  BEGIN
+    v_main := (NEW.metadata ->> 'merged_into')::uuid;
+  EXCEPTION WHEN others THEN
+    RETURN NULL;
+  END;
+  BEGIN
+    UPDATE public.designs SET subject_contact_id = v_main WHERE subject_contact_id = OLD.id AND workspace_id = NEW.workspace_id;
+    UPDATE public.ai_threads SET contact_id = v_main WHERE contact_id = OLD.id AND workspace_id = NEW.workspace_id;
+  EXCEPTION WHEN others THEN
+    RAISE WARNING 'contacts_designs_on_merge: no pude mover los diseños del contacto %: %', OLD.id, SQLERRM;
+  END;
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.contacts_designs_on_merge() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contacts_designs_on_merge ON public.contacts;
+CREATE TRIGGER contacts_designs_on_merge
+  AFTER UPDATE OF deleted_at ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_designs_on_merge();
+
+-- ─── Limpieza diaria (F48b) ─────────────────────────────────────────────────
+-- Encola UN `design_cleanup` por negocio y por día, solo si tiene versiones de más de 30 días o
+-- exportaciones sueltas de más de 7. Qué se borra lo decide `cleanupPlan` (lib/designer/cleanup.ts).
+
+CREATE OR REPLACE FUNCTION private.enqueue_design_cleanup(p_now timestamptz DEFAULT now())
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws uuid;
+  v_key text;
+  v_enqueued integer := 0;
+BEGIN
+  FOR v_ws IN
+    SELECT DISTINCT v.workspace_id FROM public.design_versions v WHERE v.created_at < p_now - interval '30 days'
+    UNION
+    SELECT DISTINCT ((storage.foldername(o.name))[1])::uuid
+    FROM storage.objects o
+    WHERE o.bucket_id = 'design-renders'
+      AND o.name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/exports/'
+      AND o.created_at < p_now - interval '7 days'
+  LOOP
+    BEGIN
+      v_key := 'design_cleanup:' || v_ws::text || ':' || (p_now AT TIME ZONE 'UTC')::date::text;
+      CONTINUE WHEN EXISTS (SELECT 1 FROM public.scheduled_jobs j WHERE j.dedupe_key = v_key);
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES ('design_cleanup', jsonb_build_object('workspace_id', v_ws), p_now, v_key)
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+      IF FOUND THEN
+        v_enqueued := v_enqueued + 1;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'enqueue_design_cleanup: no pude encolar el workspace %: %', v_ws, SQLERRM;
+    END;
+  END LOOP;
+  RETURN v_enqueued;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_design_cleanup(timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.enqueue_design_cleanup(timestamptz) TO service_role;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'design-cleanup') THEN
+    PERFORM cron.unschedule('design-cleanup');
+  END IF;
+END $$;
+
+SELECT cron.schedule('design-cleanup', '23 4 * * *', $$SELECT private.enqueue_design_cleanup()$$);
+
+-- ============================================================
+-- MIGRATION 321: AGENT RUNS SOURCE DESIGNER
+-- ============================================================
+-- ============================================================================
+-- 00321_agent_runs_source_designer  (Diseñador IA, D3)
+-- ============================================================================
+-- El CHECK de `agent_runs.source` suma 'designer': los costos de IA del Diseñador IA se registran como
+-- cualquier corrida (`openAiRun`), aparecen en Costos como «Diseñador IA» y respetan los topes del negocio.
+-- Todos los valores que ya existen siguen valiendo. `lib/agent/run-labels.test.ts` compara la lista con
+-- `RUN_SOURCE_LABELS`, y `AGENT_RUN_SOURCES` no compila si le falta uno de `AgentRunSource`.
+--
+-- CHECK vigente en la base antes de esta migración (leído con pg_get_constraintdef el 7/11/2026):
+--   CHECK ((source = ANY (ARRAY['agent'::text, 'flow_ai_node'::text, 'sequence_ai_step'::text,
+--     'kb_indexing'::text, 'conversation_summary'::text, 'message_classification'::text,
+--     'message_classification_eval'::text, 'content_copy'::text, 'ads_analysis'::text,
+--     'audio_transcription'::text, 'media_description'::text, 'call_classification'::text,
+--     'call_analysis'::text, 'call_correction'::text, 'call_summary'::text, 'call_prompt_test'::text])))
+--
+-- Cómo volver atrás (primero, que no quede ninguna corrida `designer`:
+--   UPDATE public.agent_runs SET source = 'flow_ai_node' WHERE source = 'designer';  -- o borrarlas):
+--   ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_check;
+--   ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check
+--     CHECK (source = ANY (ARRAY['agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing',
+--       'conversation_summary', 'message_classification', 'message_classification_eval', 'content_copy',
+--       'ads_analysis', 'audio_transcription', 'media_description', 'call_classification', 'call_analysis',
+--       'call_correction', 'call_summary', 'call_prompt_test']));
+--
+-- Riesgo: alto (cambia un CHECK existente), pero el nuevo es un superconjunto del viejo. Va ANTES del deploy.
+-- Idempotente: si el CHECK ya tiene 'designer', no hace nada.
+-- ============================================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'agent_runs_source_check'
+      AND conrelid = 'public.agent_runs'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%''designer''%'
+  ) THEN
+    ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_check;
+    ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check
+      CHECK (source = ANY (ARRAY[
+        'agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing', 'conversation_summary',
+        'message_classification', 'message_classification_eval', 'content_copy', 'ads_analysis',
+        'audio_transcription', 'media_description',
+        'call_classification', 'call_analysis', 'call_correction', 'call_summary', 'call_prompt_test',
+        'designer'
+      ]));
+  END IF;
+END $$;
+
+-- ============================================================
+-- MIGRATION 322: DESIGNER DOC CHECK FIX
+-- ============================================================
+-- ============================================================================
+-- 00322_designer_doc_check_fix  (Diseñador IA, corrige la 00320)
+-- ============================================================================
+-- 1. `public.design_doc_check()` (trigger de `design_templates`, `designs` y `design_versions`) comparaba
+--    `NEW.format` en la misma condición que `TG_TABLE_NAME`. plpgsql no corta un AND antes de resolver los
+--    campos, y `design_versions` no tiene `format`: insertar una versión fallaba con
+--    `record "new" has no field "format"`. Lo detectó `verify-permissions-matrix` antes de que el código
+--    nuevo se usara (nadie escribía todavía en estas tablas). Ahora la comparación va en un IF aparte.
+-- 2. `private.enqueue_design_cleanup()` contaba como candidata cualquier versión de más de 30 días, aunque
+--    fuera la ACTUAL de su pieza (que nunca se borra): un negocio con un diseño viejo sin tocar recibía un
+--    job por día que no borraba nada. Ahora solo cuenta una versión vieja que tenga otra más nueva en su
+--    pieza (la regla fina sigue siendo `cleanupPlan`, que además respeta la última publicada).
+--
+-- Misma firma, ninguna tabla. Puede ir antes o después del deploy.
+--
+-- Definiciones de la 00320, para volver atrás:
+--   CREATE OR REPLACE FUNCTION public.design_doc_check() RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
+--   BEGIN
+--     IF NOT public.validate_design_doc(NEW.doc) THEN
+--       RAISE EXCEPTION 'El documento del diseño no tiene la forma esperada' USING ERRCODE = '22023';
+--     END IF;
+--     IF TG_TABLE_NAME IN ('design_templates', 'designs') AND (NEW.doc ->> 'format') IS DISTINCT FROM NEW.format THEN
+--       RAISE EXCEPTION 'El formato del documento no coincide con el de la fila' USING ERRCODE = '22023';
+--     END IF;
+--     RETURN NEW;
+--   END; $$;
+--   (y `private.enqueue_design_cleanup` con `SELECT DISTINCT v.workspace_id FROM public.design_versions v
+--    WHERE v.created_at < p_now - interval '30 days'` en la primera rama del UNION; el resto igual a la de abajo).
+-- Riesgo: bajo.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.design_doc_check()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT public.validate_design_doc(NEW.doc) THEN
+    RAISE EXCEPTION 'El documento del diseño no tiene la forma esperada' USING ERRCODE = '22023';
+  END IF;
+  -- Solo plantillas y diseños tienen `format` (las versiones no): la comparación va aparte.
+  IF TG_TABLE_NAME IN ('design_templates', 'designs') THEN
+    IF (NEW.doc ->> 'format') IS DISTINCT FROM to_jsonb(NEW) ->> 'format' THEN
+      RAISE EXCEPTION 'El formato del documento no coincide con el de la fila' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.design_doc_check() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION private.enqueue_design_cleanup(p_now timestamptz DEFAULT now())
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws uuid;
+  v_key text;
+  v_enqueued integer := 0;
+BEGIN
+  FOR v_ws IN
+    -- Una versión vieja que NO es la actual de su pieza (hay otra más nueva).
+    SELECT DISTINCT v.workspace_id
+    FROM public.design_versions v
+    WHERE v.created_at < p_now - interval '30 days'
+      AND EXISTS (
+        SELECT 1 FROM public.design_versions n
+        WHERE n.workspace_id = v.workspace_id
+          AND n.created_at > v.created_at
+          AND ((v.design_id IS NOT NULL AND n.design_id = v.design_id) OR (v.template_id IS NOT NULL AND n.template_id = v.template_id))
+      )
+    UNION
+    SELECT DISTINCT ((storage.foldername(o.name))[1])::uuid
+    FROM storage.objects o
+    WHERE o.bucket_id = 'design-renders'
+      AND o.name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/exports/'
+      AND o.created_at < p_now - interval '7 days'
+  LOOP
+    BEGIN
+      v_key := 'design_cleanup:' || v_ws::text || ':' || (p_now AT TIME ZONE 'UTC')::date::text;
+      CONTINUE WHEN EXISTS (SELECT 1 FROM public.scheduled_jobs j WHERE j.dedupe_key = v_key);
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES ('design_cleanup', jsonb_build_object('workspace_id', v_ws), p_now, v_key)
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+      IF FOUND THEN
+        v_enqueued := v_enqueued + 1;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'enqueue_design_cleanup: no pude encolar el workspace %: %', v_ws, SQLERRM;
+    END;
+  END LOOP;
+  RETURN v_enqueued;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_design_cleanup(timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.enqueue_design_cleanup(timestamptz) TO service_role;
+
+-- ============================================================
+-- MIGRATION 324: DESIGNER RENDERS ERROR MARKER
+-- ============================================================
+-- 00324_designer_renders_error_marker
+--
+-- Diseñador IA: una exportación que falla del todo deja `design-renders/<ws>/<pieza>/exports/<marca>/error.json` con
+-- el motivo, para que la pantalla deje de mostrar «Preparando tu archivo…» y diga por qué (`EXPORT_ERROR_FILE`,
+-- lib/designer/jobs/render.ts). El bucket (00319) solo aceptaba PNG, PDF y ZIP, así que ese archivo nunca se subía:
+-- lo encontró `verify-designer --bloque ds5`. Se suma `application/json` a los tipos admitidos.
+--
+-- Aditiva e idempotente: no cambia ningún archivo ni política. Puede ir antes o después del deploy.
+--
+-- Cómo volver atrás:
+--   update storage.buckets
+--      set allowed_mime_types = array['image/png','application/pdf','application/zip']
+--    where id = 'design-renders';
+
+UPDATE storage.buckets
+   SET allowed_mime_types = allowed_mime_types || array['application/json']
+ WHERE id = 'design-renders'
+   -- Sin lista (NULL = cualquier tipo) no hay nada que sumar: no se restringe de más.
+   AND allowed_mime_types IS NOT NULL
+   AND NOT ('application/json' = ANY (allowed_mime_types));
+
+-- ============================================================
+-- MIGRATION 325: DESIGNER PUBLIC PUBLISHED DOC
+-- ============================================================
+-- 00325_designer_public_published_doc
+--
+-- Diseñador IA (auditoría de la Ola 2): el link público de una página WEB mostraba el documento que se está editando.
+-- Con eso, guardar un cambio (`designer.edit`, que tiene un Member) cambiaba lo que ve el público sin pasar por
+-- «Publicar» (`designer.publish`, que el Member no tiene). Ahora `design_public_get` devuelve el documento de la última
+-- versión `publish` (la guarda `publishDesign`; la limpieza diaria nunca la borra, F48b) y, si no hubiera ninguna, el
+-- vigente. Lo mismo para `page_count`. Las piezas que no son web ya mostraban los archivos del último render de
+-- publicar. Misma firma, mismos permisos (`anon` la puede ejecutar a propósito: el link es público).
+--
+-- Huella antes de esta migración: md5(pg_get_functiondef) = 946a7bca14473cfd8592737eb3c59570.
+--
+-- Cómo volver atrás: volver a correr el bloque `CREATE OR REPLACE FUNCTION public.design_public_get` de la 00320
+-- (definición completa abajo, comentada).
+--
+-- Definición anterior (00320):
+-- CREATE OR REPLACE FUNCTION public.design_public_get(p_code text)
+-- RETURNS jsonb
+-- LANGUAGE plpgsql
+-- STABLE
+-- SECURITY DEFINER
+-- SET search_path = ''
+-- AS $$
+-- DECLARE
+--   v_code text := upper(btrim(coalesce(p_code, '')));
+--   v_d public.designs%ROWTYPE;
+--   v_t public.design_templates%ROWTYPE;
+--   v_ws public.workspaces%ROWTYPE;
+--   v_is_generation boolean;
+--   v_verify boolean := false;
+-- BEGIN
+--   IF v_code !~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$' THEN
+--     RETURN NULL;
+--   END IF;
+--   SELECT * INTO v_d FROM public.designs WHERE code = v_code;
+--   IF NOT FOUND THEN
+--     RETURN NULL;
+--   END IF;
+--   v_is_generation := v_d.template_id IS NOT NULL;
+--   IF v_is_generation THEN
+--     SELECT * INTO v_t FROM public.design_templates WHERE id = v_d.template_id;
+--     v_verify := coalesce(v_t.verify, false);
+--   END IF;
+--   IF NOT (v_d.published OR (v_is_generation AND v_verify)) THEN
+--     RETURN NULL;
+--   END IF;
+--   IF v_d.archived_at IS NOT NULL AND NOT v_is_generation THEN
+--     RETURN NULL;
+--   END IF;
+--   SELECT * INTO v_ws FROM public.workspaces WHERE id = v_d.workspace_id;
+--
+--   RETURN jsonb_build_object(
+--     'code', v_d.code,
+--     'name', v_d.name,
+--     'format', v_d.format,
+--     'kind', CASE WHEN v_is_generation THEN 'generation' ELSE 'design' END,
+--     'status', v_d.status,
+--     'published', v_d.published,
+--     'allow_download', CASE WHEN v_is_generation THEN coalesce(v_t.allow_download, true) AND v_d.allow_download ELSE v_d.allow_download END,
+--     'allow_indexing', v_d.allow_indexing AND v_d.format = 'web',
+--     'published_at', v_d.published_at,
+--     'issued_at', v_d.created_at,
+--     'verify', v_verify,
+--     'doc_type', CASE WHEN v_verify THEN v_t.doc_type END,
+--     'doc_type_label', CASE WHEN v_verify THEN v_t.doc_type_label END,
+--     'void_reason', CASE WHEN v_d.status = 'void' THEN v_d.void_reason END,
+--     'voided_at', v_d.voided_at,
+--     'page_count', jsonb_array_length(v_d.doc -> 'pages'),
+--     'rendered', (v_d.renders ? 'pages' OR v_d.renders ? 'pdf_path'),
+--     'rendered_version', v_d.renders -> 'version',
+--     'business_name', coalesce(nullif(btrim(v_ws.brand_name), ''), v_ws.name),
+--     'business_timezone', coalesce(v_ws.timezone, 'UTC'),
+--     'doc', CASE WHEN v_d.format = 'web' AND NOT v_is_generation THEN v_d.doc END
+--   );
+-- END;
+-- $$;
+
+CREATE OR REPLACE FUNCTION public.design_public_get(p_code text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_code text := upper(btrim(coalesce(p_code, '')));
+  v_d public.designs%ROWTYPE;
+  v_t public.design_templates%ROWTYPE;
+  v_ws public.workspaces%ROWTYPE;
+  v_is_generation boolean;
+  v_verify boolean := false;
+  -- 00325: el documento PUBLICADO (la última versión `publish`), no el que se está editando.
+  v_pub_doc jsonb;
+BEGIN
+  IF v_code !~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$' THEN
+    RETURN NULL;
+  END IF;
+  SELECT * INTO v_d FROM public.designs WHERE code = v_code;
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+  v_is_generation := v_d.template_id IS NOT NULL;
+  IF v_is_generation THEN
+    SELECT * INTO v_t FROM public.design_templates WHERE id = v_d.template_id;
+    v_verify := coalesce(v_t.verify, false);
+  END IF;
+  IF NOT (v_d.published OR (v_is_generation AND v_verify)) THEN
+    RETURN NULL;
+  END IF;
+  IF v_d.archived_at IS NOT NULL AND NOT v_is_generation THEN
+    RETURN NULL;
+  END IF;
+  SELECT * INTO v_ws FROM public.workspaces WHERE id = v_d.workspace_id;
+  -- Un diseño propio publicado muestra lo que se publicó: un cambio guardado después (con `designer.edit`) recién se ve
+  -- al «Publicar cambios» (con `designer.publish`). Una generación es una copia congelada: su documento es el suyo.
+  IF NOT v_is_generation THEN
+    SELECT v.doc INTO v_pub_doc
+      FROM public.design_versions v
+     WHERE v.design_id = v_d.id AND v.reason = 'publish'
+     ORDER BY v.created_at DESC
+     LIMIT 1;
+  END IF;
+  v_pub_doc := coalesce(v_pub_doc, v_d.doc);
+
+  RETURN jsonb_build_object(
+    'code', v_d.code,
+    'name', v_d.name,
+    'format', v_d.format,
+    'kind', CASE WHEN v_is_generation THEN 'generation' ELSE 'design' END,
+    'status', v_d.status,
+    'published', v_d.published,
+    'allow_download', CASE WHEN v_is_generation THEN coalesce(v_t.allow_download, true) AND v_d.allow_download ELSE v_d.allow_download END,
+    'allow_indexing', v_d.allow_indexing AND v_d.format = 'web',
+    'published_at', v_d.published_at,
+    'issued_at', v_d.created_at,
+    'verify', v_verify,
+    'doc_type', CASE WHEN v_verify THEN v_t.doc_type END,
+    'doc_type_label', CASE WHEN v_verify THEN v_t.doc_type_label END,
+    'void_reason', CASE WHEN v_d.status = 'void' THEN v_d.void_reason END,
+    'voided_at', v_d.voided_at,
+    'page_count', jsonb_array_length(v_pub_doc -> 'pages'),
+    'rendered', (v_d.renders ? 'pages' OR v_d.renders ? 'pdf_path'),
+    'rendered_version', v_d.renders -> 'version',
+    'business_name', coalesce(nullif(btrim(v_ws.brand_name), ''), v_ws.name),
+    'business_timezone', coalesce(v_ws.timezone, 'UTC'),
+    'doc', CASE WHEN v_d.format = 'web' AND NOT v_is_generation THEN v_pub_doc END
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.design_public_get(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.design_public_get(text) TO anon, authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 326: AGENT RUNS SOURCE ADS MATCHING AND DESIGNER
+-- ============================================================
+-- 00326_agent_runs_source_ads_matching_and_designer
+--
+-- Arregla una regresión: la 00318 (conciliación de anuncios) sumó 'ads_matching' al CHECK de `agent_runs.source`, y la
+-- 00321 (Diseñador IA), aplicada 17 minutos después, redefinió el mismo CHECK copiando la versión de la 00148 más
+-- 'designer', sin 'ads_matching'. Desde entonces una corrida de IA de la conciliación no se puede guardar. Esta
+-- migración deja el CHECK con TODOS los valores: los de la 00148, 'ads_matching' (00318) y 'designer' (00321).
+--
+-- Aditiva: solo agranda la lista. Puede ir antes o después del deploy. Idempotente.
+--
+-- CHECK vigente antes de esta migración (leído de la base el 8/11/2026):
+--   CHECK ((source = ANY (ARRAY['agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing', 'conversation_summary',
+--     'message_classification', 'message_classification_eval', 'content_copy', 'ads_analysis', 'audio_transcription',
+--     'media_description', 'call_classification', 'call_analysis', 'call_correction', 'call_summary', 'call_prompt_test',
+--     'designer'])))
+--
+-- Cómo volver atrás: volver a crear el CHECK de arriba (sin 'ads_matching'); no conviene: rompe la conciliación.
+
+DO $$
+BEGIN
+  ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_check;
+  ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check
+    CHECK (source = ANY (ARRAY[
+      'agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing', 'conversation_summary', 'message_classification',
+      'message_classification_eval', 'content_copy', 'ads_analysis', 'audio_transcription', 'media_description',
+      'call_classification', 'call_analysis', 'call_correction', 'call_summary', 'call_prompt_test',
+      'ads_matching', 'designer'
+    ]));
+END $$;

@@ -84,6 +84,21 @@ Reglas:
 - Cada recomendacion tiene que decir sobre QUE objeto (campaña, conjunto o anuncio) y POR QUE, con el numero que lo justifica.
 - Si algo no se puede concluir con estos datos, decilo en vez de suponer.`;
 
+/**
+ * «Vincular anuncios» (lib/attribution/ai-match.ts): la parte editable. Lo técnico (cómo llegan los datos, que solo
+ * puede elegir ids del catálogo, el formato JSON) es fijo y vive en el código.
+ */
+export const ADS_MATCHING_DEFAULT_INSTRUCTIONS = `Te paso grupos de visitas que llegaron con UTMs y que el sistema no pudo vincular solo a un anuncio de Meta, y el catálogo de campañas, conjuntos y anuncios del negocio.
+
+Para cada grupo, decí a qué anuncio (o conjunto, o campaña) corresponde, o si no es un anuncio.
+
+Criterios:
+- Buscá el patrón de nombres: las etiquetas del UTM suelen ser una versión corta del nombre del anuncio (por ejemplo, un código como «N4» y una o dos palabras).
+- Mirá los ejemplos de grupos que ya están vinculados: dicen cómo nombra este negocio sus UTMs.
+- Si un grupo viene de la bio, de una automatización o de un link orgánico, no es un anuncio.
+- Ante la duda, elegí el nivel más alto que estés seguro (la campaña antes que un anuncio dudoso) y bajá la confianza.
+- Explicá cada propuesta en una frase corta, en {{estilo}}.`;
+
 // ---------------------------------------------------------------------------
 // Clasificación al cierre (lib/agent/summary.ts, buildSummarySystemPrompt)
 // ---------------------------------------------------------------------------

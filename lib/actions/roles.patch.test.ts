@@ -268,8 +268,9 @@ describe("createRole (F14) y listRoles (F15)", () => {
     const r = await listRoles();
     if (!r.ok) throw new Error("listRoles fallo");
     const member = r.data.roles.find((x) => x.systemRole === "member")!;
-    // 27 + commissions.view (cambio aprobado M9, Extra I) - las 6 de la bandeja (00249: va por cuenta).
-    expect(member.permissions.keys).toHaveLength(22);
+    // 27 + commissions.view (cambio aprobado M9, Extra I) - las 6 de la bandeja (00249: va por cuenta)
+    // + designer.view y designer.edit (cambio aprobado M12, Diseñador IA).
+    expect(member.permissions.keys).toHaveLength(24);
     expect(member.permissions.channels).toEqual({ mode: "all", all: { scope: "own", reply: true } });
   });
 });

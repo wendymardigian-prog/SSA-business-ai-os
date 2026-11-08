@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { touchSourceLink, ambiguousKeys, buildUnlinkedRows, parseDays, parsePage, parseView, sinceFor, type UnlinkedTouch } from "./unlinked-view";
+import {
+  touchSourceLink,
+  ambiguousKeys,
+  buildRuleRows,
+  buildUnlinkedRows,
+  firstAndLastTouch,
+  groupUnlinked,
+  parseDays,
+  parsePage,
+  parseView,
+  pickerSeed,
+  ruleKeyOf,
+  sinceFor,
+  type ContactFacts,
+  type MetaRuleRecord,
+  type UnlinkedTouch,
+} from "./unlinked-view";
 
 const touch = (over: Partial<UnlinkedTouch> = {}): UnlinkedTouch => ({
   id: "t-1", contact_id: "c-1", occurred_at: "2026-09-12T15:00:00Z", source: "facebook", medium: "paid_social", origin: "booking",
@@ -19,6 +35,8 @@ describe("parametros", () => {
   it("vista y pagina", () => {
     expect(parseView("manuales")).toBe("manuales");
     expect(parseView("sin-anuncio")).toBe("sin-anuncio");
+    expect(parseView("revisar")).toBe("revisar");
+    expect(parseView("reglas")).toBe("reglas");
     expect(parseView("x")).toBe("sin-vincular");
     expect(parsePage("3")).toBe(3);
     expect(parsePage("0")).toBe(1);
@@ -97,5 +115,94 @@ describe("ambiguousKeys", () => {
       touch({ content_label: "Otro", meta_match_reason: "name_not_found" }),
     ]);
     expect(keys).toEqual({ ads: ["video testimonio"], campaigns: ["retargeting"] });
+  });
+});
+
+describe("groupUnlinked (00318)", () => {
+  const ad = (over: Partial<UnlinkedTouch>) =>
+    touch({ origin: "form", source: "meta", medium: "form", raw: { utm: { utm_medium: "paid" } }, campaign: "promo-5-mayo", content_label: "ad-f1-costo", meta_match_reason: "name_not_found", ...over });
+  const none: ContactFacts = { hasBooking: false, hasSale: false, firstTouchId: null, lastTouchId: null };
+
+  it("junta los toques con los mismos UTMs (sin importar mayusculas ni codificacion) y cuenta personas, no toques", () => {
+    const touches = [
+      ad({ id: "a", contact_id: "c1" }),
+      ad({ id: "b", contact_id: "c1", content_label: "AD-F1-COSTO" }),
+      ad({ id: "c", contact_id: "c2", campaign: "promo%2D5%2Dmayo" }),
+      ad({ id: "d", contact_id: "c3", content_label: "ad-c2-metodo" }),
+    ];
+    const groups = groupUnlinked({ touches, rows: buildUnlinkedRows({ touches, contactNames: {} }), facts: {} });
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toMatchObject({ peopleCount: 2, touchIds: ["a", "b", "c"], rule: { utmCampaign: "promo-5-mayo", utmContent: "ad-f1-costo", utmTerm: null }, search: "f1" });
+    expect(groups[1]).toMatchObject({ peopleCount: 1, search: "c2" });
+  });
+
+  it("ordena por impacto: ventas, agendas, personas", () => {
+    const touches = [ad({ id: "a", contact_id: "c1" }), ad({ id: "b", contact_id: "c2" }), ad({ id: "c", contact_id: "c3", content_label: "ad-c2-metodo" })];
+    const facts = { c3: { ...none, hasSale: true } };
+    const groups = groupUnlinked({ touches, rows: buildUnlinkedRows({ touches, contactNames: {} }), facts });
+    expect(groups[0]).toMatchObject({ withSale: 1, peopleCount: 1 });
+    expect(groups[1]).toMatchObject({ withSale: 0, peopleCount: 2 });
+  });
+
+  it("dice cuantas personas lo tienen como primer y ultimo toque", () => {
+    const touches = [ad({ id: "a", contact_id: "c1" }), ad({ id: "b", contact_id: "c2" })];
+    const facts = { c1: { ...none, firstTouchId: "a", lastTouchId: "z", hasBooking: true }, c2: { ...none, firstTouchId: "y", lastTouchId: "b" } };
+    const [group] = groupUnlinked({ touches, rows: buildUnlinkedRows({ touches, contactNames: {} }), facts });
+    expect(group).toMatchObject({ firstCount: 1, lastCount: 1, withBooking: 1 });
+    expect(group.people.find((p) => p.touchId === "a")).toMatchObject({ isFirstTouch: true, isLastTouch: false, hasBooking: true });
+  });
+
+  it("un grupo sin UTMs (solo un id que no esta) no tiene regla: se vincula toque por toque", () => {
+    const touches = [touch({ id: "a", ad_id: "999" }), touch({ id: "b", ad_id: "999", contact_id: "c2" }), touch({ id: "c", ad_id: "888" })];
+    const groups = groupUnlinked({ touches, rows: buildUnlinkedRows({ touches, contactNames: {} }), facts: {} });
+    expect(groups).toHaveLength(2);
+    expect(groups.every((g) => g.rule === null)).toBe(true);
+  });
+
+  it("lo vinculado por parecido trae a que quedo vinculado, para confirmarlo", () => {
+    const touches = [ad({ id: "a", meta_match_status: "matched", meta_match_method: "utm_content_similar_campaign", meta_match_reason: null, meta_ad_id: "3007", meta_adset_id: "2005", meta_campaign_id: "1006" })];
+    const [group] = groupUnlinked({ touches, rows: buildUnlinkedRows({ touches, contactNames: {} }), facts: {} });
+    expect(group.linkedIds).toEqual({ adId: "3007", adsetId: "2005", campaignId: "1006" });
+    expect(group.method).toContain("parecido");
+  });
+});
+
+describe("pickerSeed", () => {
+  it("un codigo con letras y numeros, si no la palabra mas larga", () => {
+    expect(pickerSeed("ad-n4-techo")).toBe("n4");
+    expect(pickerSeed("clase-9-nov")).toBe("clase");
+    expect(pickerSeed("Video%20Testimonio")).toBe("testimonio");
+    expect(pickerSeed(null)).toBe("");
+  });
+});
+
+describe("firstAndLastTouch", () => {
+  it("ordena por fecha, despues por alta y por id (como refresh_contact_attribution)", () => {
+    const got = firstAndLastTouch([
+      { id: "b", contact_id: "c", occurred_at: "2026-10-01T00:00:00Z", created_at: "2026-10-01T00:00:01Z" },
+      { id: "a", contact_id: "c", occurred_at: "2026-10-01T00:00:00Z", created_at: "2026-10-01T00:00:01Z" },
+      { id: "z", contact_id: "c", occurred_at: "2026-11-01T00:00:00Z", created_at: "2026-11-01T00:00:00Z" },
+    ]);
+    expect(got).toEqual({ c: { firstTouchId: "a", lastTouchId: "z" } });
+  });
+});
+
+describe("buildRuleRows", () => {
+  const rule = (over: Partial<MetaRuleRecord> = {}): MetaRuleRecord => ({
+    id: "r1", campaign_key: "promo-5-mayo", content_key: "ad-f1-costo", term_key: "", utm_campaign: "promo-5-mayo", utm_content: "ad-f1-costo", utm_term: null,
+    action: "link", ad_id: "3007", adset_id: "2005", campaign_id: "1006", origin: "confirmed", created_at: "2026-11-07T12:00:00Z", ...over,
+  });
+  it("muestra los UTMs, el destino con nombres y cuantos toques la usan", () => {
+    const [row] = buildRuleRows({
+      rules: [rule()],
+      names: { campaigns: { "1006": "Promo Frío" }, adsets: { "2005": "F1" }, ads: { "3007": "F1 · El costo" } },
+      usage: { [ruleKeyOf("Promo-5-Mayo", "ad-f1-costo", null)]: 4 },
+    });
+    expect(row).toMatchObject({ target: "Promo Frío › F1 › F1 · El costo", touches: 4, origin: "Confirmado de una sugerencia", when: "7 nov" });
+    expect(row.values).toEqual([{ label: "utm_campaign", value: "promo-5-mayo" }, { label: "utm_content", value: "ad-f1-costo" }]);
+  });
+  it("una regla de ignorar dice que no es un anuncio", () => {
+    const [row] = buildRuleRows({ rules: [rule({ action: "ignore", ad_id: null, adset_id: null, campaign_id: null })], usage: {} });
+    expect(row).toMatchObject({ target: "No es un anuncio", touches: 0 });
   });
 });

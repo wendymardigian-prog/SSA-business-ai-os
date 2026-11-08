@@ -669,14 +669,14 @@ ALTER TABLE public.agent_runs DROP CONSTRAINT agent_runs_source_check;
 ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check
   CHECK (source = ANY (ARRAY[
     'agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing', 'conversation_summary', 'message_classification',
-    'message_classification_eval', 'content_copy', 'ads_analysis', 'audio_transcription', 'media_description'
+    'message_classification_eval', 'content_copy', 'ads_analysis', 'audio_transcription', 'media_description', 'ads_matching'
   ]::text[]));
 
 -- Tareas de IA con instrucciones versionadas: sin las de Llamadas.
 ALTER TABLE public.ai_task_prompt_versions DROP CONSTRAINT ai_task_prompt_versions_task_check;
 ALTER TABLE public.ai_task_prompt_versions ADD CONSTRAINT ai_task_prompt_versions_task_check
   CHECK (task = ANY (ARRAY[
-    'message_classification', 'conversation_summary', 'close_classification', 'media_description', 'ads_analysis'
+    'message_classification', 'conversation_summary', 'close_classification', 'media_description', 'ads_analysis', 'ads_matching'
   ]::text[]));
 
 -- De donde sale una idea de contenido: sin 'call' (la llamada de la que salia).

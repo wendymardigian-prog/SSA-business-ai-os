@@ -207,6 +207,8 @@ const FLOW_VARIABLE_PREFIXES = [
   "metrics.", // @plantilla-quitar(formularios)
   "channel.", // @plantilla-quitar(formularios)
   "report.", // @plantilla-quitar(formularios)
+  // Diseñador IA (F58): lo que deja «Generar desde plantilla» (`design.status`, `design.code`...).
+  "design.",
 ];
 for (const prefix of FLOW_VARIABLE_PREFIXES) {
   registerTypedField({

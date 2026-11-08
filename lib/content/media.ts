@@ -267,6 +267,14 @@ export interface MediaEntry {
   is_cover?: boolean;
   alt_text?: string | null;
   deleted_at?: string | null;
+  /**
+   * Si el archivo lo armo el Diseñador IA (DS8): el diseño del que sale, la `rev` del diseño cuando se renderizo y la
+   * pagina (1 = la primera; null en el PDF). Los archivos subidos a mano no tienen nada de esto y se ven igual que
+   * siempre; con esto la biblioteca agrupa "Del diseño ..." (`designGroups`).
+   */
+  design_id?: string | null;
+  design_version?: number | null;
+  design_page?: number | null;
 }
 
 /** La media viva de una pieza (la borrada queda marcada, no desaparece). */

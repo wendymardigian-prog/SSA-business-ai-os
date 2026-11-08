@@ -346,6 +346,21 @@ const categories: PaletteCategory[] = [
       // @plantilla-hasta(ventas)
     ],
   },
+  // Diseñador IA (F57): una pieza desde una plantilla (un certificado, una constancia...) para el contacto.
+  {
+    name: "Diseñador IA",
+    items: [
+      {
+        type: "action",
+        nodeType: "designGenerate",
+        label: "Generar desde plantilla",
+        icon: Sparkles,
+        description: "Un certificado, una constancia o cualquier pieza con los datos del contacto",
+        synonyms: ["certificado", "constancia", "diploma", "diseño", "pdf", "plantilla"],
+        actionType: "designGenerate",
+      },
+    ],
+  },
 ];
 
 function onDragStart(event: DragEvent, item: PaletteItem) {
