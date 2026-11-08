@@ -1783,6 +1783,28 @@ Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (en la misma
 node scripts/verify-whatsapp-groups.mjs   # permisos SQL<->TS, RLS, unicos, toque organico, disparadores, cascada
 ```
 
+# Comunidades de WhatsApp y configurar grupos (00344, 8/11/2026)
+
+Una comunidad es una comunidad madre (sin mensajes), un grupo de Avisos (mismo nombre que la comunidad) y sus grupos. La lista de Grupos, la bandeja y los pasos los agrupan por comunidad; los grupos se configuran y se crean desde el sistema; y hay dos pasos nuevos: «Enviar al grupo» e «Invitar a un grupo». Detalle en [docs/whatsapp-grupos.md](docs/whatsapp-grupos.md) («Comunidades», «Configurar y crear grupos»).
+
+## Lo que no se puede romper
+
+- **La comunidad madre nunca se guarda** (`kind IN ('group','announce')`): no tiene mensajes. Cada grupo lleva `parent_group_jid` y una copia del nombre (`community_subject`). `fetchAllGroups` devuelve las madres marcadas (`isCommunity`) y `mergeGroupLists` las saca de la lista.
+- **Evolution no tiene rutas de comunidades** (ni la 2.3.7 ni la última): crear una comunidad o vincular un grupo se hace desde el celular. Tampoco ve grupos donde el número no está.
+- **`number_is_admin` null = no se sabe**, y nunca pisa uno conocido (`liveGroupColumns`). Solo se frena escribir cuando se SABE que no es admin y solo escriben admins (`cannotWriteReason`).
+- **Los avisos `GROUPS_UPSERT` / `GROUP_UPDATE` solo actualizan grupos ya guardados** (`handleGroupsUpdate`); nunca activan uno. Un número viejo los recibe recién al guardar «Grupos» una vez.
+- **Configurar y crear piden `channels.manage`** (`lib/actions/whatsapp-group-manage.ts`), escriben con el cliente de servicio filtrando por el workspace de la sesión y quedan en `audit_log` (`section: whatsapp_group_manage`). El link por privado a quien no se pudo agregar respeta «no contactar».
+- **`?comunidad=<jid>` es «solo grupos»**: la página pone `listType: "grupos"` para que el Realtime de chats no meta ninguno.
+- **Los pasos de grupos saltean con `skipGroupStep`** y usan `flow_send_claims` y el tope de WhatsApp como «Enviar encuesta».
+
+## Migración
+
+`00344_whatsapp_communities` (aditiva: seis columnas en `whatsapp_groups`, sus CHECK y un índice) va **ANTES** de desplegar el código: la bandeja y la lista de Grupos leen sus columnas. Ensayada el 8/11/2026 en una transacción que se deshizo sola; **sin aplicar todavía**. La `00340`, `00341` y `00343` son de otras sesiones y la `00342` parece reservada. **La próxima libre es la `00345`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-whatsapp-groups.mjs --despues-de-00344
+```
+
 # Importacion de conversaciones de Zernio (28/10/2026)
 
 Traer TODAS las conversaciones de cada cuenta de Instagram, y las que empieza el negocio. Diagnostico y plan en `docs/instagram-importacion/PLAN.md`; como entra cada conversacion, en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md).
