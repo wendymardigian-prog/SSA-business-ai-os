@@ -23,6 +23,7 @@ export type TriggerGroupKey =
   | "llamadas" // @plantilla-quitar(llamadas)
   | "webhooks" // @plantilla-quitar(webhooks)
   | "grupos_whatsapp"
+  | "fecha_hora"
   | "servicios" // @plantilla-quitar(servicios)
   | "equipo"; // @plantilla-quitar(formularios)
 
@@ -37,6 +38,7 @@ export const TRIGGER_GROUPS: ReadonlyArray<{ key: TriggerGroupKey; label: string
   { key: "llamadas", label: "Llamadas" }, // @plantilla-quitar(llamadas)
   { key: "webhooks", label: "Webhooks" }, // @plantilla-quitar(webhooks)
   { key: "grupos_whatsapp", label: "Grupos de WhatsApp" },
+  { key: "fecha_hora", label: "Fecha y hora" },
   { key: "servicios", label: "Servicios y portal" }, // @plantilla-quitar(servicios)
   { key: "equipo", label: "Equipo" }, // @plantilla-quitar(formularios)
 ];
@@ -90,6 +92,7 @@ export const TRIGGER_CATALOG: readonly TriggerCatalogEntry[] = [
   { type: "whatsapp_group_joined", label: "Se unió a un grupo de WhatsApp", description: "Cuando alguien entra a un grupo activado (por link o porque lo sumaron). Corre sobre el contacto", group: "grupos_whatsapp", synonyms: ["grupo", "comunidad", "whatsapp", "miembro", "entro"] },
   { type: "whatsapp_group_reaction", label: "Reaccionó a un mensaje de un grupo", description: "Cuando alguien reacciona con un emoji a un mensaje de un grupo activado", group: "grupos_whatsapp", synonyms: ["grupo", "reaccion", "emoji", "whatsapp"] },
   { type: "whatsapp_group_poll_vote", label: "Votó en una encuesta de un grupo", description: "Cuando alguien elige una opción (o cualquiera) en una encuesta de un grupo activado", group: "grupos_whatsapp", synonyms: ["grupo", "encuesta", "voto", "opcion", "whatsapp"] },
+  { type: "scheduled_time", label: "En una fecha y hora", description: "Arranca solo el día y la hora que elijas, una vez o repetido. Sin contacto: para mandar una encuesta a un grupo, avisar al equipo...", group: "fecha_hora", synonyms: ["programar", "programado", "agendar", "fecha", "hora", "dia", "semana", "mes", "repetir", "recurrente", "cron", "encuesta", "grupo"] },
   { type: "service_created", label: "Se creó un servicio", description: "Cuando nace un servicio, solo al cobrar o a mano", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
   { type: "service_started", label: "Empezó un servicio", description: "El día de la fecha de inicio del servicio", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)
   { type: "service_ending_soon", label: "Un servicio está por terminar", description: "N días antes de la fecha de fin", group: "servicios", synonyms: ["servicio", "cliente", "estudiante"] }, // @plantilla-quitar(servicios)

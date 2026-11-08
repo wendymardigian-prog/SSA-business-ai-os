@@ -1,8 +1,9 @@
 /**
  * Lo que pasa en un grupo de WhatsApp activado, guardado. Solo servidor (cliente de servicio).
  *
- * Lo llama el receptor de Evolution DESPUES de responder 200 (en `after()`), y solo para grupos que el negocio
- * activo en Ajustes (una fila en `whatsapp_groups`): de un grupo no activado no se guarda nada, igual que antes.
+ * Lo llama el receptor de Evolution DESPUES de responder 200 (en `after()`). Desde el 8/11/2026 todos los grupos del
+ * numero van a la bandeja: uno que no estaba guardado se suma solo (`ensureInboxGroup`). Guardar contactos sigue
+ * siendo una eleccion del negocio, por grupo (`save_contacts`).
  *
  *   - Alguien entra: se anota el miembro y, si el grupo guarda contactos, se crea o vincula el contacto con su
  *     toque. Con contacto, se emite `whatsapp_group_joined`.
@@ -23,6 +24,8 @@ import { hasDownloadableMedia, toAttachmentsColumn } from "@/lib/messages/attach
 import { previewForMessage } from "@/lib/message-preview";
 import { downloadAttachments, chatMediaEnabled } from "@/lib/inbound-media";
 import { getEvolutionConfig } from "@/lib/evolution-config";
+import { fetchGroupInfo } from "@/lib/evolution-client";
+import { liveGroupColumns } from "./settings";
 import { parseBaileysReaction } from "@/lib/messages/reactions-inbound";
 import { parseBaileysPollVote } from "@/lib/messages/poll-votes";
 import {
@@ -30,6 +33,7 @@ import {
   parsePollCreation,
   type GroupMessageKey,
   type GroupParticipantsEvent,
+  type GroupUpdate,
 } from "./parse";
 import { resolveGroupContact, type GroupChannel } from "./contacts";
 import { emitGroupEvent } from "./automation/emit";
@@ -64,6 +68,49 @@ export async function loadActiveGroup(db: Db, channelId: string, groupJid: strin
   }
 }
 
+/**
+ * El grupo del numero para la bandeja, y si no estaba guardado lo suma (todos los grupos van a la bandeja,
+ * 8/11/2026). Lee de WhatsApp el nombre, la comunidad y los permisos; si WhatsApp no contesta, lo guarda igual con
+ * su JID como nombre (la lista de Grupos lo completa despues) para no perder el mensaje. null solo si no se pudo
+ * guardar. Nunca lanza.
+ */
+export async function ensureInboxGroup(db: Db, channel: InboundGroupChannel, groupJid: string): Promise<GroupRow | null> {
+  const existing = await loadActiveGroup(db, channel.id, groupJid);
+  if (existing) return existing;
+  try {
+    let columns: Record<string, unknown> = { subject: groupJid };
+    const config = channel.evolution_instance ? await getEvolutionConfig(db, channel.workspace_id) : null;
+    if (config && channel.evolution_instance) {
+      try {
+        const info = await fetchGroupInfo(config, channel.evolution_instance, groupJid);
+        if (info && info.isCommunity) return null;
+        if (info) {
+          const parent = info.parentJid ? await fetchGroupInfo(config, channel.evolution_instance, info.parentJid).catch(() => null) : null;
+          columns = liveGroupColumns(info, parent?.subject ?? null);
+        }
+      } catch (err) {
+        console.error("[grupos] no pude leer el grupo nuevo de WhatsApp:", err instanceof Error ? err.message : err);
+      }
+    }
+    const { data, error } = await db
+      .from("whatsapp_groups")
+      .upsert(
+        { workspace_id: channel.workspace_id, channel_id: channel.id, group_jid: groupJid, in_inbox: true, left_at: null, ...columns } as never,
+        { onConflict: "channel_id,group_jid", defaultToNull: false },
+      )
+      .select("*")
+      .maybeSingle();
+    if (error) {
+      console.error("[grupos] no pude sumar el grupo nuevo:", error.message);
+      return null;
+    }
+    return data as GroupRow | null;
+  } catch (err) {
+    console.error("[grupos] no pude sumar el grupo nuevo:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 // ── Entradas y salidas ────────────────────────────────────────────────────────
 
 export async function handleGroupParticipants(
@@ -73,7 +120,7 @@ export async function handleGroupParticipants(
   now: Date = new Date(),
 ): Promise<{ joined: number; emitted: number }> {
   const result = { joined: 0, emitted: 0 };
-  const group = await loadActiveGroup(db, channel.id, event.groupJid);
+  const group = await ensureInboxGroup(db, channel, event.groupJid);
   if (!group) return result;
   const at = now.toISOString();
 
@@ -127,6 +174,44 @@ export async function handleGroupParticipants(
     }
   }
   return result;
+}
+
+// ── Cambios de un grupo (00344) ───────────────────────────────────────────────
+
+/**
+ * Aplica un aviso GROUPS_UPSERT / GROUP_UPDATE: nombre, descripcion, permisos y comunidad. Un grupo que el numero no
+ * tenia guardado se suma a la bandeja (todos los grupos van a la bandeja). El nombre de una comunidad madre se copia
+ * a sus grupos (la madre no se guarda). Nunca lanza.
+ */
+export async function handleGroupsUpdate(db: Db, channel: InboundGroupChannel, updates: readonly GroupUpdate[]): Promise<number> {
+  const channelId = channel.id;
+  let changed = 0;
+  for (const update of updates) {
+    try {
+      if (update.isCommunity) {
+        if (!update.patch.subject) continue;
+        const { error } = await db
+          .from("whatsapp_groups")
+          .update({ community_subject: update.patch.subject })
+          .eq("channel_id", channelId)
+          .eq("parent_group_jid", update.jid);
+        if (error) console.error("[grupos] no pude actualizar el nombre de la comunidad:", error.message);
+        else changed++;
+        continue;
+      }
+      // Un grupo nuevo para el numero (lo crearon o lo sumaron): entra a la bandeja con lo que diga WhatsApp.
+      await ensureInboxGroup(db, channel, update.jid);
+      if (Object.keys(update.patch).length === 0) continue;
+      // El nombre de la comunidad nueva no viene en el aviso: lo completa la proxima vez que se abre la lista.
+      const patch = { ...update.patch, ...(update.patch.parent_group_jid === null ? { community_subject: null } : {}) };
+      const { error } = await db.from("whatsapp_groups").update(patch).eq("channel_id", channelId).eq("group_jid", update.jid);
+      if (error) console.error("[grupos] no pude actualizar el grupo:", error.message);
+      else changed++;
+    } catch (err) {
+      console.error("[grupos] no pude procesar un cambio de grupo:", err instanceof Error ? err.message : err);
+    }
+  }
+  return changed;
 }
 
 // ── Mensajes, reacciones y votos ──────────────────────────────────────────────

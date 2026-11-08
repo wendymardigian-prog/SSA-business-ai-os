@@ -15,13 +15,16 @@ import { broadcastVariables, cleanVariants, pickVariant, renderChatMessage, rend
 import {
   cancelBroadcast,
   createBroadcastDraft,
-  deleteBroadcastDraft,
+  deleteBroadcast,
   pauseBroadcast,
   queueBroadcast,
+  reopenBroadcast,
   resumeBroadcast,
   resumeLane,
   saveBroadcastDraft,
+  saveBroadcastMessage,
   type DraftPatch,
+  type MessagePatch,
 } from "@/lib/broadcasts/core";
 import type { Json } from "@/lib/types/database";
 
@@ -218,11 +221,36 @@ export async function cancelBroadcastAction(id: string): Promise<Result> {
   return res;
 }
 
-export async function deleteBroadcastDraftAction(id: string): Promise<Result> {
+/** Elimina un broadcast que nunca mandó nada, con sus destinatarios en la cola. */
+export async function deleteBroadcastAction(id: string): Promise<Result> {
   const ctx = await getPermissionAction("broadcasts.manage");
   if (!ctx) return NO_PERMISSION;
-  const res = await deleteBroadcastDraft(await createServiceClient(), ctx.workspace.id, id);
+  if (!UUID.test(id)) return { ok: false, error: "No encontré ese broadcast." };
+  const res = await deleteBroadcast(await createServiceClient(), ctx.workspace.id, id);
   if (res.ok) done();
+  return res;
+}
+
+/** Vuelve a borrador un programado o pausado que nunca mandó nada, para editarlo entero. */
+export async function reopenBroadcastAction(id: string): Promise<Result> {
+  const ctx = await getPermissionAction("broadcasts.manage");
+  if (!ctx) return NO_PERMISSION;
+  if (!UUID.test(id)) return { ok: false, error: "No encontré ese broadcast." };
+  const res = await reopenBroadcast(await createServiceClient(), ctx.workspace.id, id);
+  if (res.ok) {
+    done();
+    done(`/dashboard/broadcasts/${id}`);
+  }
+  return res;
+}
+
+/** Cambia solo el mensaje de un programado o pausado (los que faltan reciben el nuevo). */
+export async function saveBroadcastMessageAction(id: string, patch: MessagePatch): Promise<Result> {
+  const ctx = await getPermissionAction("broadcasts.manage");
+  if (!ctx) return NO_PERMISSION;
+  if (!UUID.test(id)) return { ok: false, error: "No encontré ese broadcast." };
+  const res = await saveBroadcastMessage(await createServiceClient(), ctx.workspace.id, id, patch ?? { variants: [] });
+  if (res.ok) done(`/dashboard/broadcasts/${id}`);
   return res;
 }
 

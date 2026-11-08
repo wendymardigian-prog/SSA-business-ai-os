@@ -56,6 +56,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "fathom_sync", // @plantilla-quitar(llamadas)
       // Finanzas (Extra I, G1): el trabajo diario. // @plantilla-quitar(finanzas)
       "finance_daily", // @plantilla-quitar(finanzas)
+      // «En una fecha y hora»: cada vez programada de una automatización.
+      "flow_scheduled_run",
       // Auditoria de automatizaciones: el vencimiento de un "Esperar respuesta".
       "flow_wait_timeout",
       // La importacion de conversaciones de Zernio, por partes y sin tope (00267).

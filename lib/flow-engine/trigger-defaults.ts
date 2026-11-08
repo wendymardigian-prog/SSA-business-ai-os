@@ -17,6 +17,8 @@ export function triggerConfigDefaults(type: string): Record<string, unknown> {
     case "booking_after_end":
     case "booking_after_created":
       return { ...RELATIVE_DEFAULT };
+    case "scheduled_time":
+      return { repeat: "once", time: "09:00" };
     default:
       return {};
   }

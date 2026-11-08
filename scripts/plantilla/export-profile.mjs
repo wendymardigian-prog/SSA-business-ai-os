@@ -12,6 +12,7 @@
 //      plantilla (`profile.SUPABASE_DIR`).
 //   5. Copia encima los archivos propios de la plantilla (`profile.TEMPLATE_FILES`: CLAUDE.md,
 //      README.md, .env.example, .claude/...), si la carpeta existe.
+//   Lo que se trae del repo en los pasos 1, 4 y 5 es SOLO lo que git sigue (`copyTrackedPath`).
 //   6. Limpia los comentarios: les saca la historia del proyecto (clean-comments.mjs). Solo
 //      comentarios; si el codigo de un archivo cambiara en un solo token, frena.
 //   7. Saca del package.json los paquetes que son solo de un modulo excluido.
@@ -20,10 +21,10 @@
 // `runGates` corre los controles sobre la copia (con node_modules enlazado del repo):
 // tsc, eslint, vitest, next build y el de historia (`findHistoryInCopy`). Devuelve un
 // resultado por control; el que llama decide.
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { hasMarkers, stripMarkers } from "./markers.mjs";
 import { cleanSource, historyRefs } from "./clean-comments.mjs";
 import { codeTokens, commentLanguage, findComments } from "./comments.mjs";
@@ -51,6 +52,39 @@ export function walkFiles(root, dir = "", acc = []) {
   return acc;
 }
 
+/**
+ * Copia de `repo` SOLO lo que git sigue debajo de `srcRel` (un archivo o una carpeta) a `destAbs`,
+ * con la misma forma. Lo que el perfil trae del repo (el sitio por defecto, la base de la
+ * plantilla, sus archivos propios) sale de `git ls-files`, nunca de recorrer el disco: un archivo
+ * sin seguimiento o ignorado que quedo en esas carpetas no viaja (como paso con "Claude outputs/"
+ * en la plantilla de clientes). Devuelve las rutas copiadas, relativas a `srcRel`. Si git no
+ * responde, lanza: nunca cae a copiar el disco.
+ */
+export function copyTrackedPath(repo, srcRel, destAbs) {
+  let listing;
+  try {
+    listing = execFileSync("git", ["ls-files", "-z", "--cached", "--", srcRel], { cwd: repo, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+  } catch (error) {
+    throw new Error(`No se pudo leer la lista de archivos de git de "${srcRel}": ${error.message}`);
+  }
+  const copied = [];
+  for (const path of listing.split("\0").filter(Boolean)) {
+    const sub = path === srcRel ? "" : path.slice(srcRel.replace(/\/$/, "").length + 1);
+    let st;
+    try {
+      st = lstatSync(join(repo, path));
+    } catch {
+      continue; // seguido por git pero borrado del disco
+    }
+    if (!st.isFile()) continue; // enlace simbolico o submodulo
+    const target = sub ? join(destAbs, sub) : destAbs;
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(repo, path), target);
+    copied.push(sub);
+  }
+  return copied.sort();
+}
+
 /** Aplica el perfil sobre la copia `out`. Devuelve un resumen. */
 export function applyProfile({ repo, out, profile }) {
   const { MODULES, EXCLUDED, excludeTests = [], isToolingPath, PACKAGES = {}, SUPABASE_DIR, TEMPLATE_FILES } = profile;
@@ -67,7 +101,7 @@ export function applyProfile({ repo, out, profile }) {
   for (const id of EXCLUDED) {
     for (const rel of MODULES[id].paths) rm(rel);
     for (const [dest, src] of Object.entries(MODULES[id].replacements ?? {})) {
-      cpSync(join(repo, src), join(out, dest), { recursive: true });
+      copyTrackedPath(repo, src, join(out, dest));
     }
   }
   for (const t of excludeTests) if (t.modules.some((m) => EXCLUDED.includes(m))) rm(t.path);
@@ -100,22 +134,15 @@ export function applyProfile({ repo, out, profile }) {
 
   // 4. La base de la plantilla.
   if (SUPABASE_DIR) {
-    const from = join(repo, SUPABASE_DIR);
     for (const name of ["migrations", "seeds", "config.toml"]) {
       rmSync(join(out, "supabase", name), { recursive: true, force: true });
-      if (existsSync(join(from, name))) cpSync(join(from, name), join(out, "supabase", name), { recursive: true });
+      copyTrackedPath(repo, `${SUPABASE_DIR}/${name}`, join(out, "supabase", name));
     }
   }
 
   // 5. Los archivos propios de la plantilla, encima de los del proyecto.
   const overlaid = [];
-  if (TEMPLATE_FILES && existsSync(join(repo, TEMPLATE_FILES))) {
-    for (const rel of walkFiles(join(repo, TEMPLATE_FILES))) {
-      mkdirSync(dirname(join(out, rel)), { recursive: true });
-      cpSync(join(repo, TEMPLATE_FILES, rel), join(out, rel));
-      overlaid.push(rel);
-    }
-  }
+  if (TEMPLATE_FILES) overlaid.push(...copyTrackedPath(repo, TEMPLATE_FILES, out));
 
   // 6. La historia en los comentarios. Las migraciones de la plantilla ya vienen limpias y
   // public/ es generado (embed.js sale de lib/embed, que si se limpia).

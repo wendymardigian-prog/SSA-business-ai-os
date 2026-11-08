@@ -32,7 +32,7 @@ export async function listGroupsForFlowEditor(): Promise<EditorResult<{ groups: 
   const g = await guard();
   if (!g) return { ok: false, error: NO_PERMISSION };
   const [{ data: groups }, { data: channels }] = await Promise.all([
-    g.db.from("whatsapp_groups").select("id, channel_id, subject, in_inbox, save_contacts, left_at").eq("workspace_id", g.ctx.workspace.id).is("left_at", null),
+    g.db.from("whatsapp_groups").select("id, channel_id, subject, in_inbox, save_contacts, left_at, kind, parent_group_jid, community_subject").eq("workspace_id", g.ctx.workspace.id).is("left_at", null),
     g.db.from("channels").select("id, platform, username, display_name").eq("workspace_id", g.ctx.workspace.id),
   ]);
   const byId = new Map((channels ?? []).map((c) => [c.id, c]));
@@ -42,7 +42,15 @@ export async function listGroupsForFlowEditor(): Promise<EditorResult<{ groups: 
       .filter((row) => row.in_inbox || row.save_contacts)
       .map((row) => {
         const channel = byId.get(row.channel_id);
-        return { id: row.id, subject: row.subject, channelLabel: channel ? accountLabel(channel) : "WhatsApp", inInbox: row.in_inbox, saveContacts: row.save_contacts };
+        return {
+          id: row.id,
+          subject: row.subject,
+          channelLabel: channel ? accountLabel(channel) : "WhatsApp",
+          inInbox: row.in_inbox,
+          saveContacts: row.save_contacts,
+          kind: row.kind,
+          communitySubject: row.parent_group_jid ? (row.community_subject ?? "Comunidad") : null,
+        };
       })
       .sort((a, b) => a.subject.localeCompare(b.subject, "es", { sensitivity: "base" })),
   };

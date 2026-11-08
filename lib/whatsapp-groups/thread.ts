@@ -16,6 +16,10 @@ export interface GroupListRow {
   lastMessageAt: string | null;
   preview: string | null;
   unread: number;
+  /** 00344: 'group' o 'announce' (el de Avisos de una comunidad). */
+  kind: string;
+  /** El nombre de la comunidad, si el grupo es de una. */
+  communitySubject: string | null;
 }
 
 /** El grupo abierto: lo que necesita su panel, ademas del hilo. */
@@ -24,13 +28,36 @@ export interface SelectedGroup {
   subject: string;
   channelLabel: string;
   canWrite: boolean;
+  /** 00344: 'group' o 'announce'. */
+  kind: string;
+  communitySubject: string | null;
+  description: string | null;
+  /** Cuantos miembros tiene segun WhatsApp (los guardados pueden ser menos). null si no se sabe. */
+  size: number | null;
+  /** Si el numero no puede escribir (solo admins envian y no es admin), el motivo. */
+  writeBlockedReason: string | null;
+  /** Lo que se puede cambiar del grupo desde la bandeja (`channels.manage`). */
+  manage: {
+    announce: boolean;
+    restrict: boolean;
+    numberIsAdmin: boolean | null;
+    /** Si guarda como contacto a quien se une. */
+    saveContacts: boolean;
+  } | null;
   members: Array<{ key: string; label: string; contactId: string | null }>;
+}
+
+/** Quien voto una opcion: su nombre y, si la persona que mira lo puede ver, su contacto (para el link a la ficha). */
+export interface ThreadPollVoter {
+  name: string;
+  contactId: string | null;
 }
 
 export interface ThreadPollOption {
   name: string;
   count: number;
-  voters: string[];
+  /** En orden alfabetico; «Vos» (el negocio) va primero. */
+  voters: ThreadPollVoter[];
 }
 
 export interface ThreadMessage {
@@ -118,7 +145,10 @@ export function buildThread(input: ThreadInput): ThreadMessage[] {
             totalVoters: votes.length,
             // Las opciones de la encuesta, en su orden; un voto a una opcion que no figura (renombrada) se suma al final.
             options: Array.from(new Set([...poll.options, ...votes.flatMap((v) => v.selected_options)])).map((name) => {
-              const voters = votes.filter((v) => v.selected_options.includes(name)).map((v) => participantLabel(input, v.participant_id) ?? "Alguien");
+              const voters = votes
+                .filter((v) => v.selected_options.includes(name))
+                .map((v) => ({ name: participantLabel(input, v.participant_id) ?? "Alguien", contactId: input.contacts[v.participant_id]?.id ?? null }))
+                .sort((a, b) => (a.name === "Vos" ? -1 : b.name === "Vos" ? 1 : a.name.localeCompare(b.name, "es")));
               return { name, count: voters.length, voters };
             }),
           }

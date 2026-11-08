@@ -10,6 +10,7 @@ import { parseCsv } from "@/lib/csv/parse";
 import {
   ATTRIBUTION_TARGETS,
   ATTRIBUTION_TARGET_LABELS,
+  QUALIFICATION_TARGET,
   customTarget,
   mapRow,
   suggestMapping,
@@ -65,6 +66,8 @@ const CONTACT_OPTIONS: { value: ImportColumnTarget; label: string }[] = [
     label: f.label,
   })),
   { value: "tags", label: "Tags" },
+  // Calificación del lead (00329): un número del 1 al 5.
+  { value: QUALIFICATION_TARGET, label: "Calificación (1 a 5)" },
 ];
 
 /** La atribución es opcional: sin estas columnas, el contacto nuevo queda como "Importación". */

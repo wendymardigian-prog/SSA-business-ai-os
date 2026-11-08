@@ -60334,6 +60334,445 @@ SELECT cron.schedule(
 );
 
 -- ============================================================
+-- MIGRATION 329: CONTACT QUALIFICATION
+-- ============================================================
+-- ============================================================
+-- 00329_contact_qualification
+-- ============================================================
+-- El NIVEL DE CALIFICACION del lead: de 1 a 5 (NULL = «Sin calificar»). Convive
+-- con la temperatura (`lead_temperature`), que no se toca.
+--
+-- Lo que suma:
+--
+--  1. `workspaces.qualification_settings` (jsonb): el nombre y la descripcion
+--     (la rubrica) de cada uno de los 5 niveles, `{ levels: [{ level, name,
+--     description }] }`. Los niveles son fijos; lo que se edita es el texto.
+--     El DEFAULT es un LITERAL igual a `DEFAULT_QUALIFICATION_SETTINGS`
+--     (lib/contacts/qualification.ts; `qualification.test.ts` los compara): un
+--     DEFAULT que llama a una funcion de `private` rompe el alta de un workspace
+--     (ver 00248).
+--  2. Columnas en `contacts`: `qualification_level` (1-5), `qualification_at` y
+--     `qualification_by_agent` (true si el nivel ACTUAL lo puso el agente de IA).
+--  3. `contact_qualification_changes`: el historial. Lo lee quien ve el contacto
+--     (`can_see_contact`); escribe solo el servidor.
+--  4. `set_contact_qualification(...)`: la UNICA forma de cambiar el nivel.
+--     Fija, suma o resta (recortando entre 1 y 5) o lo quita, anota el cambio y
+--     emite `qualification_changed`. La regla de recorte es gemela de
+--     `applyQualificationChange` (lib/contacts/qualification.ts), con los casos
+--     de `lib/contacts/qualification.cases.json`.
+--  5. `contacts_qualification_guard`: rechaza un cambio DIRECTO a esas columnas
+--     (QL001). Pasa solo con la marca `app.contact_qualification_internal`.
+--  6. `contacts_qualification_on_merge`: al fusionar (`merge_contacts` borra el
+--     duplicado con `metadata.merged_into`), mueve el historial al principal y se
+--     queda con el nivel MAS ALTO. Mismo patron que 00256 y 00320: no se
+--     reescribe `merge_contacts`; la tabla va en `CONTACT_MERGE_EXCLUSIONS`.
+--  7. La siembra: los contactos con temperatura y sin nivel arrancan con
+--     frio = 2, tibio = 3, caliente = 4 (sin tocar la temperatura ni el
+--     `updated_at`, y sin emitir eventos). Corre una sola vez.
+--  8. Los agentes que tienen `cambiar_temperatura` suman `calificar_lead` (con
+--     la misma configuracion de «puede bajar»).
+--
+-- Aditiva. Va ANTES de desplegar el codigo (la ficha y la lista leen las columnas).
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS contacts_qualification_on_merge ON public.contacts;
+--   DROP FUNCTION IF EXISTS public.contacts_qualification_on_merge();
+--   DROP TRIGGER IF EXISTS contacts_qualification_guard ON public.contacts;
+--   DROP FUNCTION IF EXISTS private.contacts_qualification_guard();
+--   DROP FUNCTION IF EXISTS public.set_contact_qualification(uuid, uuid, text, integer, uuid, uuid, text, uuid, text, boolean, boolean);
+--   DROP FUNCTION IF EXISTS private.qualification_next_level(smallint, text, integer);
+--   DROP TABLE IF EXISTS public.contact_qualification_changes;
+--   ALTER TABLE public.contacts DROP COLUMN IF EXISTS qualification_level,
+--     DROP COLUMN IF EXISTS qualification_at, DROP COLUMN IF EXISTS qualification_by_agent;
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS qualification_settings;
+--   UPDATE public.agents SET allowed_tools = array_remove(allowed_tools, 'calificar_lead'),
+--     tools_config = tools_config - 'calificar_lead';
+--
+-- Idempotente: IF NOT EXISTS, CREATE OR REPLACE, DROP ... IF EXISTS.
+-- ============================================================
+
+CREATE SCHEMA IF NOT EXISTS private;
+
+-- ------------------------------------------------------------
+-- 1. Los nombres y la rubrica de cada nivel
+-- ------------------------------------------------------------
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS qualification_settings jsonb NOT NULL DEFAULT '{
+    "levels": [
+      {"level": 1, "name": "No califica", "description": "No encaja con lo que ofrecemos o no tiene un interés real."},
+      {"level": 2, "name": "Bajo", "description": "Muestra algo de interés, pero le faltan varias condiciones: necesidad, presupuesto o momento."},
+      {"level": 3, "name": "Medio", "description": "Tiene la necesidad y el interés, pero falta confirmar el presupuesto o quién decide."},
+      {"level": 4, "name": "Bueno", "description": "Cumple casi todo: necesidad clara, presupuesto y decide; falta dar el siguiente paso."},
+      {"level": 5, "name": "Ideal", "description": "Cliente ideal: cumple todo y está listo para avanzar."}
+    ]
+  }'::jsonb;
+
+-- ------------------------------------------------------------
+-- 2. Las columnas del contacto
+-- ------------------------------------------------------------
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS qualification_level smallint;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS qualification_at timestamptz;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS qualification_by_agent boolean NOT NULL DEFAULT false;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contacts_qualification_level_check') THEN
+    ALTER TABLE public.contacts
+      ADD CONSTRAINT contacts_qualification_level_check
+      CHECK (qualification_level IS NULL OR qualification_level BETWEEN 1 AND 5);
+  END IF;
+  -- Un nivel sin fecha (o una fecha sin nivel) no tiene sentido.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contacts_qualification_dates_check') THEN
+    ALTER TABLE public.contacts
+      ADD CONSTRAINT contacts_qualification_dates_check
+      CHECK ((qualification_level IS NULL) = (qualification_at IS NULL));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_contacts_qualification_level
+  ON public.contacts (workspace_id, qualification_level) WHERE deleted_at IS NULL AND qualification_level IS NOT NULL;
+
+-- ------------------------------------------------------------
+-- 3. El historial
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.contact_qualification_changes (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id        uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  contact_id          uuid NOT NULL REFERENCES public.contacts(id) ON DELETE CASCADE,
+  old_level           smallint CHECK (old_level IS NULL OR old_level BETWEEN 1 AND 5),
+  new_level           smallint CHECK (new_level IS NULL OR new_level BETWEEN 1 AND 5),
+  -- De donde vino: una persona, el agente de IA, una automatizacion, una
+  -- importacion, una fusion de contactos o la siembra desde la temperatura.
+  source              text NOT NULL CHECK (source IN ('person', 'agent', 'automation', 'import', 'merge', 'seed')),
+  changed_by          uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  changed_by_agent_id uuid REFERENCES public.agents(id) ON DELETE SET NULL,
+  flow_id             uuid REFERENCES public.flows(id) ON DELETE SET NULL,
+  -- El motivo (lo que dijo el agente, la regla que se cumplio). Nunca un mensaje del lead.
+  reason              text CHECK (reason IS NULL OR char_length(reason) <= 300),
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  CHECK (old_level IS DISTINCT FROM new_level)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contact_qualification_changes_contact
+  ON public.contact_qualification_changes (contact_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_contact_qualification_changes_workspace
+  ON public.contact_qualification_changes (workspace_id, created_at DESC);
+
+ALTER TABLE public.contact_qualification_changes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS contact_qualification_changes_select ON public.contact_qualification_changes;
+CREATE POLICY contact_qualification_changes_select ON public.contact_qualification_changes
+  FOR SELECT TO authenticated
+  USING (
+    (SELECT public.is_workspace_member(workspace_id))
+    AND EXISTS (
+      SELECT 1 FROM public.contacts c
+       WHERE c.id = contact_qualification_changes.contact_id
+         AND c.workspace_id = contact_qualification_changes.workspace_id
+         AND public.can_see_contact(c)
+    )
+  );
+-- Sin politicas de INSERT/UPDATE/DELETE: escribe solo `set_contact_qualification`.
+
+REVOKE ALL ON TABLE public.contact_qualification_changes FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.contact_qualification_changes TO authenticated;
+GRANT ALL ON TABLE public.contact_qualification_changes TO service_role;
+
+-- ------------------------------------------------------------
+-- 4. La regla de recorte (gemela de `applyQualificationChange`)
+-- ------------------------------------------------------------
+-- 'set'   : p_value entre 1 y 5 (otro valor devuelve -1: invalido).
+-- 'add'   : suma p_value (negativo resta) y recorta entre 1 y 5. Desde «Sin
+--           calificar» se cuenta desde 0: +1 da 1, +3 da 3, y restar no hace nada.
+-- 'clear' : quita el nivel.
+-- Devuelve el nivel nuevo (NULL = sin calificar) o -1 si el pedido es invalido.
+CREATE OR REPLACE FUNCTION private.qualification_next_level(p_old smallint, p_mode text, p_value integer)
+RETURNS integer
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v integer;
+BEGIN
+  IF p_mode = 'clear' THEN
+    RETURN NULL;
+  ELSIF p_mode = 'set' THEN
+    IF p_value IS NULL OR p_value < 1 OR p_value > 5 THEN RETURN -1; END IF;
+    RETURN p_value;
+  ELSIF p_mode = 'add' THEN
+    IF p_value IS NULL THEN RETURN -1; END IF;
+    v := coalesce(p_old, 0) + p_value;
+    IF p_old IS NULL AND v < 1 THEN RETURN NULL; END IF;
+    RETURN greatest(1, least(5, v));
+  END IF;
+  RETURN -1;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.qualification_next_level(smallint, text, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.qualification_next_level(smallint, text, integer) TO service_role;
+
+-- ------------------------------------------------------------
+-- 5. El guardia: ningun nivel sin pasar por la funcion
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.contacts_qualification_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF coalesce(current_setting('app.contact_qualification_internal', true), '') = 'on' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.qualification_level IS NOT NULL OR NEW.qualification_at IS NOT NULL OR NEW.qualification_by_agent THEN
+      RAISE EXCEPTION 'El nivel de calificacion se cambia con set_contact_qualification' USING ERRCODE = 'QL001';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.qualification_level IS DISTINCT FROM OLD.qualification_level
+     OR NEW.qualification_at IS DISTINCT FROM OLD.qualification_at
+     OR NEW.qualification_by_agent IS DISTINCT FROM OLD.qualification_by_agent THEN
+    RAISE EXCEPTION 'El nivel de calificacion se cambia con set_contact_qualification' USING ERRCODE = 'QL001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.contacts_qualification_guard() FROM PUBLIC, anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 6. La siembra desde la temperatura (una sola vez, antes del guardia)
+-- ------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.contact_qualification_changes WHERE source = 'seed') THEN
+    PERFORM set_config('app.contact_qualification_internal', 'on', true);
+    ALTER TABLE public.contacts DISABLE TRIGGER set_updated_at;
+
+    WITH seeded AS (
+      UPDATE public.contacts
+         SET qualification_level = CASE lead_temperature WHEN 'cold' THEN 2 WHEN 'warm' THEN 3 WHEN 'hot' THEN 4 END,
+             qualification_at = now(),
+             qualification_by_agent = false
+       WHERE qualification_level IS NULL
+         AND lead_temperature IN ('cold', 'warm', 'hot')
+         AND deleted_at IS NULL
+      RETURNING id, workspace_id, qualification_level
+    )
+    INSERT INTO public.contact_qualification_changes (workspace_id, contact_id, old_level, new_level, source, reason)
+    SELECT workspace_id, id, NULL, qualification_level, 'seed', 'Conversión desde la temperatura'
+      FROM seeded;
+
+    ALTER TABLE public.contacts ENABLE TRIGGER set_updated_at;
+    PERFORM set_config('app.contact_qualification_internal', 'off', true);
+  END IF;
+END $$;
+
+DROP TRIGGER IF EXISTS contacts_qualification_guard ON public.contacts;
+CREATE TRIGGER contacts_qualification_guard
+  BEFORE INSERT OR UPDATE ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION private.contacts_qualification_guard();
+
+-- ------------------------------------------------------------
+-- 7. La funcion
+-- ------------------------------------------------------------
+-- Devuelve jsonb:
+--   { result: 'changed' | 'unchanged' | 'not_found' | 'invalid' | 'protected' | 'not_raised',
+--     old_level, new_level, change_id }
+--
+-- p_source: 'person' | 'agent' | 'automation' | 'import' (la fusion y la siembra
+--   no pasan por aca).
+-- p_respect_human: para el agente. Si el nivel actual lo puso una PERSONA (o una
+--   automatizacion, una importacion), no se pisa ('protected').
+-- p_only_raise: para el agente sin «puede bajar»: un nivel mas bajo que el actual
+--   (o quitarlo) no se aplica ('not_raised'). Se decide aca, bajo el bloqueo.
+CREATE OR REPLACE FUNCTION public.set_contact_qualification(
+  p_workspace_id  uuid,
+  p_contact_id    uuid,
+  p_mode          text,
+  p_value         integer DEFAULT NULL,
+  p_actor_user    uuid DEFAULT NULL,
+  p_actor_agent   uuid DEFAULT NULL,
+  p_source        text DEFAULT 'person',
+  p_flow_id       uuid DEFAULT NULL,
+  p_reason        text DEFAULT NULL,
+  p_respect_human boolean DEFAULT false,
+  p_only_raise    boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_contact public.contacts%ROWTYPE;
+  v_old     smallint;
+  v_next    integer;
+  v_new     smallint;
+  v_now     timestamptz := now();
+  v_change  uuid;
+  v_dir     text;
+BEGIN
+  IF p_mode IS NULL OR p_mode NOT IN ('set', 'add', 'clear') THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+  IF p_source IS NULL OR p_source NOT IN ('person', 'agent', 'automation', 'import') THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+
+  SELECT * INTO v_contact
+    FROM public.contacts
+   WHERE id = p_contact_id
+     AND workspace_id = p_workspace_id
+     AND deleted_at IS NULL
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('result', 'not_found');
+  END IF;
+
+  v_old := v_contact.qualification_level;
+  v_next := private.qualification_next_level(v_old, p_mode, p_value);
+  IF v_next = -1 THEN
+    RETURN jsonb_build_object('result', 'invalid', 'old_level', v_old);
+  END IF;
+  v_new := v_next::smallint;
+
+  IF v_old IS NOT DISTINCT FROM v_new THEN
+    RETURN jsonb_build_object('result', 'unchanged', 'old_level', v_old, 'new_level', v_new);
+  END IF;
+
+  IF p_respect_human AND v_old IS NOT NULL AND NOT v_contact.qualification_by_agent THEN
+    RETURN jsonb_build_object('result', 'protected', 'old_level', v_old, 'new_level', v_new);
+  END IF;
+
+  IF p_only_raise AND v_old IS NOT NULL AND (v_new IS NULL OR v_new < v_old) THEN
+    RETURN jsonb_build_object('result', 'not_raised', 'old_level', v_old, 'new_level', v_new);
+  END IF;
+
+  PERFORM set_config('app.contact_qualification_internal', 'on', true);
+  UPDATE public.contacts
+     SET qualification_level = v_new,
+         qualification_at = CASE WHEN v_new IS NULL THEN NULL ELSE v_now END,
+         qualification_by_agent = v_new IS NOT NULL AND p_actor_agent IS NOT NULL,
+         updated_at = v_now
+   WHERE id = p_contact_id;
+  PERFORM set_config('app.contact_qualification_internal', 'off', true);
+
+  INSERT INTO public.contact_qualification_changes
+    (workspace_id, contact_id, old_level, new_level, source, changed_by, changed_by_agent_id, flow_id, reason, created_at)
+  VALUES
+    (p_workspace_id, p_contact_id, v_old, v_new, p_source, p_actor_user, p_actor_agent, p_flow_id,
+     left(nullif(btrim(coalesce(p_reason, '')), ''), 300), v_now)
+  RETURNING id INTO v_change;
+
+  v_dir := CASE
+    WHEN v_new IS NULL THEN 'cleared'
+    WHEN v_old IS NULL OR v_new > v_old THEN 'up'
+    ELSE 'down'
+  END;
+
+  -- El evento de automatizacion nunca tumba el cambio.
+  BEGIN
+    PERFORM public.emit_automation_event(
+      p_workspace_id, 'qualification_changed', p_contact_id,
+      jsonb_build_object('level', v_new, 'previous_level', v_old, 'direction', v_dir,
+                         'source', p_source, 'change_id', v_change)
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'set_contact_qualification: no pude emitir el evento: %', SQLERRM;
+  END;
+
+  RETURN jsonb_build_object('result', 'changed', 'old_level', v_old, 'new_level', v_new, 'change_id', v_change);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_contact_qualification(uuid, uuid, text, integer, uuid, uuid, text, uuid, text, boolean, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_contact_qualification(uuid, uuid, text, integer, uuid, uuid, text, uuid, text, boolean, boolean) TO service_role;
+
+-- ------------------------------------------------------------
+-- 8. La fusion de contactos
+-- ------------------------------------------------------------
+-- `merge_contacts` (00247) borra el duplicado con `metadata.merged_into` antes de
+-- mudar nada. Al ver eso: el historial del duplicado pasa al principal y, si el
+-- duplicado tenia un nivel mas alto, el principal se queda con ese (y lo anota).
+-- Nunca tumba la fusion.
+CREATE OR REPLACE FUNCTION public.contacts_qualification_on_merge()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_main      uuid;
+  v_main_lvl  smallint;
+BEGIN
+  IF OLD.deleted_at IS NOT NULL OR NEW.deleted_at IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF NOT (coalesce(NEW.metadata, '{}'::jsonb) ? 'merged_into') THEN
+    RETURN NULL;
+  END IF;
+  BEGIN
+    v_main := (NEW.metadata ->> 'merged_into')::uuid;
+  EXCEPTION WHEN others THEN
+    RETURN NULL;
+  END;
+
+  BEGIN
+    UPDATE public.contact_qualification_changes
+       SET contact_id = v_main
+     WHERE contact_id = OLD.id AND workspace_id = NEW.workspace_id;
+
+    IF OLD.qualification_level IS NOT NULL THEN
+      SELECT qualification_level INTO v_main_lvl
+        FROM public.contacts
+       WHERE id = v_main AND workspace_id = NEW.workspace_id;
+      IF FOUND AND (v_main_lvl IS NULL OR OLD.qualification_level > v_main_lvl) THEN
+        PERFORM set_config('app.contact_qualification_internal', 'on', true);
+        UPDATE public.contacts
+           SET qualification_level = OLD.qualification_level,
+               qualification_at = coalesce(OLD.qualification_at, now()),
+               qualification_by_agent = OLD.qualification_by_agent
+         WHERE id = v_main AND workspace_id = NEW.workspace_id;
+        PERFORM set_config('app.contact_qualification_internal', 'off', true);
+        INSERT INTO public.contact_qualification_changes
+          (workspace_id, contact_id, old_level, new_level, source, reason)
+        VALUES
+          (NEW.workspace_id, v_main, v_main_lvl, OLD.qualification_level, 'merge', 'Fusión de contactos');
+      END IF;
+    END IF;
+  EXCEPTION WHEN others THEN
+    PERFORM set_config('app.contact_qualification_internal', 'off', true);
+    RAISE WARNING 'contacts_qualification_on_merge: no pude mover la calificacion del contacto %: %', OLD.id, SQLERRM;
+  END;
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.contacts_qualification_on_merge() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contacts_qualification_on_merge ON public.contacts;
+CREATE TRIGGER contacts_qualification_on_merge
+  AFTER UPDATE OF deleted_at ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_qualification_on_merge();
+
+-- ------------------------------------------------------------
+-- 9. El agente: donde ya calificaba con la temperatura, suma el nivel
+-- ------------------------------------------------------------
+UPDATE public.agents
+   SET allowed_tools = array_append(allowed_tools, 'calificar_lead'),
+       tools_config = CASE
+         WHEN tools_config ? 'cambiar_temperatura' AND NOT (tools_config ? 'calificar_lead')
+           THEN tools_config || jsonb_build_object('calificar_lead',
+                  jsonb_build_object('canLower', coalesce((tools_config -> 'cambiar_temperatura' -> 'canLower'), 'false'::jsonb)))
+         ELSE tools_config
+       END
+ WHERE 'cambiar_temperatura' = ANY (allowed_tools)
+   AND NOT ('calificar_lead' = ANY (allowed_tools));
+
+-- ============================================================
 -- MIGRATION 330: APP SERVICIO CORE
 -- ============================================================
 -- @plantilla-quitar(servicios)
@@ -64227,6 +64666,501 @@ ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK ((type = AN
   'certificate_issued'::text, 'portal_access_expiring'::text, 'portal_access_expired'::text])));
 
 -- ============================================================
+-- MIGRATION 337: EMAIL GUARD FAST TIME ZONE
+-- ============================================================
+-- ============================================================================
+-- 00337 — La guardia de entrega de email deja de leer el catalogo de zonas
+-- ============================================================================
+--
+-- Por que: `private.email_guard_state` (00287) validaba la zona del negocio con
+--   EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names n WHERE n.name = v_tz)
+-- y esa vista no es una tabla: cada vez que se la mira, Postgres abre y lee los
+-- ~600 archivos de zonas del disco. En produccion (8/11/2026) eso costaba
+-- ~337 ms por llamada, y la guardia corre en CADA email de marketing
+-- (`reserve_email_send`, adentro del candado del negocio: diez envios a la vez
+-- esperan uno detras del otro) y cada vez que la cola de broadcasts pregunta el
+-- cupo (`email_send_capacity`). `reserve_email_send` promediaba 803 ms.
+--
+-- Que cambia: la regla de que zona vale sale a una funcion chica,
+-- `private.email_guard_time_zone(text)`, que da EL MISMO resultado sin leer el
+-- catalogo en los casos de todos los dias:
+--   - NULL -> 'UTC' (igual que antes).
+--   - 'UTC' -> 'UTC' (el valor por defecto de workspaces.timezone, 00122).
+--   - Un nombre con forma IANA (Zona/Ciudad, cada parte empieza con mayuscula:
+--     'America/Costa_Rica', 'America/Argentina/Buenos_Aires', 'Etc/GMT+3') se
+--     prueba directo con AT TIME ZONE; si Postgres no lo conoce, 'UTC'.
+--   - Cualquier otra cosa (sin barra como 'GMT' o 'EST', abreviaturas como
+--     'ART', minusculas, POSIX como 'UTC+3' o '+03:00', espacios) sigue
+--     mirando el catalogo, como antes. Asi una abreviatura o un POSIX, que
+--     AT TIME ZONE acepta pero el catalogo no, sigue cayendo a 'UTC'. Son raros:
+--     el selector de Ajustes solo guarda nombres IANA y 'UTC'.
+--
+-- Las unicas diferencias con la regla vieja, las dos con forma IANA:
+--   - un nombre escrito con otras mayusculas en el medio ('America/New_york'):
+--     AT TIME ZONE no distingue mayusculas, asi que ahora vale como
+--     'America/New_York'; antes caia a 'UTC'.
+--   - un nombre viejo que Postgres conoce pero no lista ('SystemV/AST4'):
+--     ahora vale; antes caia a 'UTC'.
+-- Ninguno de los dos lo puede guardar la app (el selector usa la lista IANA).
+-- Comparado en produccion el 8/11/2026, en una transaccion que se deshizo:
+-- los 553 nombres IANA del catalogo dan igual, la guardia devuelve lo mismo
+-- para los dos negocios, y de 30 casos raros solo 'SystemV/AST4' cambia.
+-- Tiempo de la guardia para los dos negocios: 718 ms -> 1 ms.
+-- `scripts/verify-email-subscription.mjs` (bloque 11) compara la regla nueva
+-- con la vieja en todas las zonas del catalogo y en una lista de casos raros.
+--
+-- Nada mas cambia en `email_guard_state`: el cuerpo es el de la base
+-- (pg_get_functiondef, igual al de la 00287) con las cuatro lineas de la zona
+-- reemplazadas por una llamada a la funcion nueva. `email_guard_decide` y su
+-- gemela de TypeScript (`decideEmailSend`) no se tocan.
+--
+-- Aditiva y reversible: puede ir antes o despues de un deploy (el codigo no
+-- cambia). Para volver atras, correr la definicion vieja de abajo y
+--   DROP FUNCTION IF EXISTS private.email_guard_time_zone(text);
+--
+-- ----------------------------------------------------------------------------
+-- La definicion vieja, leida de la base el 8/11/2026
+-- (md5 de pg_get_functiondef: 955f7b7bed9ba0dae4ca15c03cc64c70):
+-- ----------------------------------------------------------------------------
+-- CREATE OR REPLACE FUNCTION private.email_guard_state(p_workspace_id uuid, p_now timestamp with time zone, p_category text)
+--  RETURNS jsonb
+--  LANGUAGE plpgsql
+--  STABLE SECURITY DEFINER
+--  SET search_path TO ''
+-- AS $function$
+-- DECLARE
+--   v_cfg jsonb;
+--   v_tz text;
+--   v_today date;
+--   v_day_start timestamptz;
+--   v_next_day timestamptz;
+--   v_level_date date;
+--   v_level_start timestamptz;
+--   v_quota integer;
+--   v_input jsonb;
+--   v_out jsonb;
+--   v_retry timestamptz;
+--   v_int_re text := '^\s*[0-9]+\s*$';
+-- BEGIN
+--   SELECT ic.config INTO v_cfg
+--     FROM public.integration_configs ic
+--    WHERE ic.workspace_id = p_workspace_id AND ic.type = 'email_provider' AND ic.provider = 'resend'
+--    LIMIT 1;
+--   v_cfg := coalesce(v_cfg, '{}'::jsonb);
+--
+--   SELECT w.timezone INTO v_tz FROM public.workspaces w WHERE w.id = p_workspace_id;
+--   IF v_tz IS NULL OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names n WHERE n.name = v_tz) THEN
+--     v_tz := 'UTC';
+--   END IF;
+--
+--   v_today := (p_now AT TIME ZONE v_tz)::date;
+--   v_day_start := v_today::timestamp AT TIME ZONE v_tz;
+--   v_next_day := (v_today + 1)::timestamp AT TIME ZONE v_tz;
+--
+--   v_level_date := CASE WHEN coalesce(v_cfg->>'warmup_level_date', '') ~ '^\d{4}-\d{2}-\d{2}$' THEN (v_cfg->>'warmup_level_date')::date END;
+--   v_level_start := CASE WHEN v_level_date IS NOT NULL THEN v_level_date::timestamp AT TIME ZONE v_tz END;
+--   v_quota := CASE WHEN coalesce(v_cfg->>'daily_quota', '') ~ v_int_re THEN (v_cfg->>'daily_quota')::integer END;
+--
+--   v_input := jsonb_build_object(
+--     'category', p_category,
+--     'today', v_today,
+--     'manual_cap', CASE WHEN coalesce(v_cfg->>'marketing_daily_cap', '') ~ v_int_re THEN (v_cfg->>'marketing_daily_cap')::integer END,
+--     'warmup_enabled', CASE v_cfg->>'warmup_enabled' WHEN 'true' THEN to_jsonb(true) WHEN 'false' THEN to_jsonb(false) ELSE 'null'::jsonb END,
+--     'warmup_level', CASE WHEN coalesce(v_cfg->>'warmup_level', '') ~ v_int_re THEN (v_cfg->>'warmup_level')::integer END,
+--     'warmup_level_date', v_level_date,
+--     'paused', nullif(v_cfg->>'marketing_paused_at', '') IS NOT NULL,
+--     'quota', v_quota,
+--     'marketing_today', (
+--       SELECT count(*) FROM public.email_log l
+--        WHERE l.workspace_id = p_workspace_id AND l.category = 'marketing'
+--          AND l.status IN ('sent', 'reserved') AND l.created_at >= v_day_start
+--     ),
+--     'all_today', CASE WHEN v_quota IS NULL THEN 0 ELSE (
+--       SELECT count(*) FROM public.email_log l
+--        WHERE l.workspace_id = p_workspace_id AND l.status IN ('sent', 'reserved') AND l.created_at >= v_day_start
+--     ) END,
+--     'lifetime_marketing_sent', CASE WHEN v_cfg ? 'warmup_enabled' THEN 0 ELSE (
+--       SELECT count(*) FROM public.email_log l
+--        WHERE l.workspace_id = p_workspace_id AND l.status = 'sent'
+--          AND (l.category = 'marketing' OR (l.category IS NULL AND l.kind IN ('broadcast', 'flow', 'flow_message', 'sequence')))
+--     ) END,
+--     'sent_since_level', CASE WHEN v_level_start IS NULL THEN false ELSE EXISTS (
+--       SELECT 1 FROM public.email_log l
+--        WHERE l.workspace_id = p_workspace_id AND l.category = 'marketing' AND l.status = 'sent'
+--          AND l.created_at >= v_level_start AND l.created_at < v_day_start
+--     ) END,
+--     'brake_since_level', CASE
+--       WHEN v_level_start IS NULL OR coalesce(v_cfg->>'marketing_last_brake_at', '') = '' THEN false
+--       ELSE (v_cfg->>'marketing_last_brake_at')::timestamptz >= v_level_start
+--     END
+--   );
+--
+--   v_out := private.email_guard_decide(v_input);
+--   v_retry := CASE v_out->>'status'
+--     WHEN 'deferred_cap' THEN v_next_day
+--     WHEN 'deferred_quota' THEN v_next_day
+--     WHEN 'paused' THEN p_now + interval '1 hour'
+--   END;
+--
+--   RETURN v_out || jsonb_build_object(
+--     'retry_at', v_retry,
+--     'used_today', (v_input->>'marketing_today')::integer,
+--     'all_today', (v_input->>'all_today')::integer,
+--     'quota', v_quota,
+--     'manual_cap', coalesce((v_input->>'manual_cap')::integer, 100),
+--     'day_start', v_day_start,
+--     'next_day_start', v_next_day,
+--     'time_zone', v_tz,
+--     'paused_at', nullif(v_cfg->>'marketing_paused_at', ''),
+--     'paused_reason', nullif(v_cfg->>'marketing_paused_reason', '')
+--   );
+-- END;
+-- $function$
+-- ============================================================================
+
+-- La zona del negocio que usa la guardia. Misma regla que antes (la del
+-- catalogo pg_timezone_names), sin leer el catalogo para un nombre IANA.
+CREATE OR REPLACE FUNCTION private.email_guard_time_zone(p_tz text)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_probe timestamp;
+BEGIN
+  IF p_tz IS NULL THEN
+    RETURN 'UTC';
+  END IF;
+  IF p_tz = 'UTC' THEN
+    RETURN 'UTC';
+  END IF;
+
+  -- Forma de nombre IANA: se prueba directo. AT TIME ZONE con un nombre carga
+  -- solo ESE archivo (y queda en memoria); el catalogo los lee todos.
+  IF p_tz ~ '^[A-Z][A-Za-z0-9_+-]*(/[A-Z][A-Za-z0-9_+-]*)+$' THEN
+    BEGIN
+      v_probe := now() AT TIME ZONE p_tz;
+      RETURN p_tz;
+    EXCEPTION WHEN OTHERS THEN
+      RETURN 'UTC';
+    END;
+  END IF;
+
+  -- Lo demas, como siempre: solo vale si esta en el catalogo.
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names n WHERE n.name = p_tz) THEN
+    RETURN p_tz;
+  END IF;
+  RETURN 'UTC';
+END;
+$$;
+
+COMMENT ON FUNCTION private.email_guard_time_zone(text) IS
+  'La zona del negocio para la guardia de entrega (00337): la misma regla que pg_timezone_names, sin leer el catalogo para un nombre IANA. Nunca lanza; lo que no vale es UTC.';
+
+REVOKE ALL ON FUNCTION private.email_guard_time_zone(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.email_guard_time_zone(text) TO service_role;
+
+-- El estado del negocio: lee la config de Resend y cuenta en el dia del NEGOCIO (workspaces.timezone).
+CREATE OR REPLACE FUNCTION private.email_guard_state(p_workspace_id uuid, p_now timestamp with time zone, p_category text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $$
+DECLARE
+  v_cfg jsonb;
+  v_tz text;
+  v_today date;
+  v_day_start timestamptz;
+  v_next_day timestamptz;
+  v_level_date date;
+  v_level_start timestamptz;
+  v_quota integer;
+  v_input jsonb;
+  v_out jsonb;
+  v_retry timestamptz;
+  v_int_re text := '^\s*[0-9]+\s*$';
+BEGIN
+  SELECT ic.config INTO v_cfg
+    FROM public.integration_configs ic
+   WHERE ic.workspace_id = p_workspace_id AND ic.type = 'email_provider' AND ic.provider = 'resend'
+   LIMIT 1;
+  v_cfg := coalesce(v_cfg, '{}'::jsonb);
+
+  SELECT w.timezone INTO v_tz FROM public.workspaces w WHERE w.id = p_workspace_id;
+  -- 00337: la regla de la zona, sin leer el catalogo de zonas en cada email.
+  v_tz := private.email_guard_time_zone(v_tz);
+
+  v_today := (p_now AT TIME ZONE v_tz)::date;
+  v_day_start := v_today::timestamp AT TIME ZONE v_tz;
+  v_next_day := (v_today + 1)::timestamp AT TIME ZONE v_tz;
+
+  v_level_date := CASE WHEN coalesce(v_cfg->>'warmup_level_date', '') ~ '^\d{4}-\d{2}-\d{2}$' THEN (v_cfg->>'warmup_level_date')::date END;
+  v_level_start := CASE WHEN v_level_date IS NOT NULL THEN v_level_date::timestamp AT TIME ZONE v_tz END;
+  v_quota := CASE WHEN coalesce(v_cfg->>'daily_quota', '') ~ v_int_re THEN (v_cfg->>'daily_quota')::integer END;
+
+  v_input := jsonb_build_object(
+    'category', p_category,
+    'today', v_today,
+    'manual_cap', CASE WHEN coalesce(v_cfg->>'marketing_daily_cap', '') ~ v_int_re THEN (v_cfg->>'marketing_daily_cap')::integer END,
+    'warmup_enabled', CASE v_cfg->>'warmup_enabled' WHEN 'true' THEN to_jsonb(true) WHEN 'false' THEN to_jsonb(false) ELSE 'null'::jsonb END,
+    'warmup_level', CASE WHEN coalesce(v_cfg->>'warmup_level', '') ~ v_int_re THEN (v_cfg->>'warmup_level')::integer END,
+    'warmup_level_date', v_level_date,
+    'paused', nullif(v_cfg->>'marketing_paused_at', '') IS NOT NULL,
+    'quota', v_quota,
+    'marketing_today', (
+      SELECT count(*) FROM public.email_log l
+       WHERE l.workspace_id = p_workspace_id AND l.category = 'marketing'
+         AND l.status IN ('sent', 'reserved') AND l.created_at >= v_day_start
+    ),
+    'all_today', CASE WHEN v_quota IS NULL THEN 0 ELSE (
+      SELECT count(*) FROM public.email_log l
+       WHERE l.workspace_id = p_workspace_id AND l.status IN ('sent', 'reserved') AND l.created_at >= v_day_start
+    ) END,
+    'lifetime_marketing_sent', CASE WHEN v_cfg ? 'warmup_enabled' THEN 0 ELSE (
+      SELECT count(*) FROM public.email_log l
+       WHERE l.workspace_id = p_workspace_id AND l.status = 'sent'
+         AND (l.category = 'marketing' OR (l.category IS NULL AND l.kind IN ('broadcast', 'flow', 'flow_message', 'sequence')))
+    ) END,
+    'sent_since_level', CASE WHEN v_level_start IS NULL THEN false ELSE EXISTS (
+      SELECT 1 FROM public.email_log l
+       WHERE l.workspace_id = p_workspace_id AND l.category = 'marketing' AND l.status = 'sent'
+         AND l.created_at >= v_level_start AND l.created_at < v_day_start
+    ) END,
+    'brake_since_level', CASE
+      WHEN v_level_start IS NULL OR coalesce(v_cfg->>'marketing_last_brake_at', '') = '' THEN false
+      ELSE (v_cfg->>'marketing_last_brake_at')::timestamptz >= v_level_start
+    END
+  );
+
+  v_out := private.email_guard_decide(v_input);
+  v_retry := CASE v_out->>'status'
+    WHEN 'deferred_cap' THEN v_next_day
+    WHEN 'deferred_quota' THEN v_next_day
+    WHEN 'paused' THEN p_now + interval '1 hour'
+  END;
+
+  RETURN v_out || jsonb_build_object(
+    'retry_at', v_retry,
+    'used_today', (v_input->>'marketing_today')::integer,
+    'all_today', (v_input->>'all_today')::integer,
+    'quota', v_quota,
+    'manual_cap', coalesce((v_input->>'manual_cap')::integer, 100),
+    'day_start', v_day_start,
+    'next_day_start', v_next_day,
+    'time_zone', v_tz,
+    'paused_at', nullif(v_cfg->>'marketing_paused_at', ''),
+    'paused_reason', nullif(v_cfg->>'marketing_paused_reason', '')
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.email_guard_state(uuid, timestamptz, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.email_guard_state(uuid, timestamptz, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 338: PURGE STALE UNREAD NOTIFICATIONS
+-- ============================================================
+-- ============================================================================
+-- 00338 — Los avisos sin leer tambien se purgan, a los 60 dias
+-- ============================================================================
+--
+-- Por que: la 00051 decidio que un aviso NO leido no se borra nunca ("si nadie
+-- lo vio, sigue pendiente"), y `purge_read_notifications` solo borra los
+-- leidos. En la practica casi nadie marca los avisos: en produccion, el
+-- 8/11/2026, los 961 avisos del negocio estaban todos sin leer, y crecen unos
+-- 100 por dia (sobre todo "respuesta de formulario" y "borrador por vencer").
+-- Sin purga la tabla crece para siempre, y todo lo que la recorre (la campana,
+-- "Marcar todas", la RLS) se vuelve cada vez mas lento.
+--
+-- Por que 60 dias (la misma vara que los leidos):
+--   - Un aviso de hace dos meses ya no lo ve nadie: la campana muestra los 20
+--     mas nuevos (con ~100 por dia, un aviso sale de la vista en horas).
+--   - Una sola regla, facil de explicar: "un aviso de mas de 60 dias se borra,
+--     leido o no".
+--   - No rompe ningun "una vez" que se apoya en los avisos: el aviso previo del
+--     tope de gasto de IA ("una vez por periodo", lib/ai/spend-alerts.ts) mira
+--     periodos de hasta un mes, y "una vez cada 10 minutos" / el recordatorio
+--     del EOD miran minutos u horas.
+--   - Lo unico que puede volver a avisar es una tarea vencida hace mas de 60
+--     dias y todavia abierta (`tasks-due-sweep` avisa una vez por tarea y fecha
+--     de vencimiento mirando los avisos): vuelve a aparecer en la campana una
+--     vez cada 60 dias. Es lo mismo que ya pasa hoy con un aviso leido, y un
+--     recordatorio de algo que sigue vencido no hace mal.
+--   - Hoy no borra nada: el aviso sin leer mas viejo es del 29/9/2026.
+--
+-- Que hace: una funcion nueva, `purge_stale_unread_notifications(dias)`, solo
+-- `service_role`, y el cron diario `purge-notifications` (00052) pasa a llamar a
+-- las dos en la misma sentencia. `purge_read_notifications` no cambia.
+--
+-- Idempotente. Para volver atras:
+--   SELECT cron.schedule('purge-notifications', '50 4 * * *',
+--     $$SELECT public.purge_read_notifications(60)$$);
+--   DROP FUNCTION IF EXISTS public.purge_stale_unread_notifications(integer);
+-- (el comando de antes, el de la 00052).
+--
+-- Se aplica en produccion SOLO con el OK de quien administra la instalacion.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.purge_stale_unread_notifications(p_retention_days integer DEFAULT 60)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_deleted integer := 0;
+BEGIN
+  -- Nunca menos de 30 dias: un aviso de la semana pasada sin leer todavia sirve.
+  DELETE FROM public.notifications
+  WHERE read_at IS NULL
+    AND created_at < now() - make_interval(days => GREATEST(p_retention_days, 30));
+
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$$;
+
+COMMENT ON FUNCTION public.purge_stale_unread_notifications(integer) IS
+  'Borra las notificaciones SIN LEER de mas de N dias (minimo 30). Las leidas las borra purge_read_notifications. La llama el cron diario purge-notifications (00338).';
+
+REVOKE ALL ON FUNCTION public.purge_stale_unread_notifications(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_stale_unread_notifications(integer) TO service_role;
+
+-- El comentario de la 00051 decia que las no leidas no se tocaban nunca.
+COMMENT ON FUNCTION public.purge_read_notifications(integer) IS
+  'Borra las notificaciones LEIDAS de mas de N dias. Las no leidas de mas de 60 dias las borra purge_stale_unread_notifications (00338). La llama el cron diario.';
+
+-- El mismo cron, a la misma hora: ahora purga las dos. Por SQL directo (00052).
+DO $$
+BEGIN
+  PERFORM cron.unschedule('purge-notifications');
+EXCEPTION
+  WHEN OTHERS THEN NULL;  -- todavia no existia
+END $$;
+
+SELECT cron.schedule(
+  'purge-notifications',
+  '50 4 * * *',
+  $$SELECT public.purge_read_notifications(60), public.purge_stale_unread_notifications(60)$$
+);
+
+-- ============================================================
+-- MIGRATION 339: SCHEDULED TIME TRIGGER
+-- ============================================================
+-- ============================================================================
+-- 00339 — «En una fecha y hora»: un disparador nuevo (`scheduled_time`)
+-- ============================================================================
+-- `triggers_type_check` acepta un tipo mas: `scheduled_time`, una automatizacion que arranca sola el dia y la hora que
+-- se eligen (una vez, todos los dias, ciertos dias de la semana o un dia del mes). Es de SISTEMA: corre sin contacto ni
+-- persona (`flow_sessions.source_type = 'system'`, que la 00218 ya admite), asi que no hace falta tocar ningun otro
+-- CHECK. La corre un trabajo de la cola (`scheduled_jobs.type = 'flow_scheduled_run'`), agendado al publicar: no suma
+-- ningun cron.
+--
+-- Aditiva: solo acepta MAS valores. Va ANTES de desplegar el codigo (publicar una automatizacion programada inserta
+-- una fila de este tipo).
+--
+-- Un CHECK se redefine partiendo del que esta EN LA BASE. La lista fija de abajo es la del codigo de `main` al escribir
+-- esta migracion (la de la 00282 + `scheduled_time`). Pero la base puede aceptar MAS tipos que el codigo: en
+-- produccion, la 00336 de Servicios se aplico antes de que su codigo llegara a `main`. En ese caso el CHECK se arma con
+-- TODO lo que la base ya acepta + `scheduled_time`, sin sacar nada. Asi sirve en cualquier orden de aplicacion. Quien
+-- sume tipos despues (Servicios, al mergear) redefine el CHECK en una migracion posterior con la lista completa.
+--
+-- Como volver atras (antes, borrar los triggers de ese tipo y anular sus trabajos): volver a poner el CHECK que habia,
+-- sin `scheduled_time` (en produccion, el de la 00336; en una instalacion sin Servicios, el de la 00282):
+--   DELETE FROM public.triggers WHERE type = 'scheduled_time';
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type = 'flow_scheduled_run' AND status = 'pending';
+--   ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+--   ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check
+--     CHECK ((type = ANY (ARRAY['keyword'::text, 'postback'::text, 'quick_reply'::text, 'welcome'::text, 'default'::text, 'comment_keyword'::text, 'new_contact'::text, 'crm_event'::text, 'inactivity'::text, 'email_received'::text, 'booking_created'::text, 'booking_rescheduled'::text, 'booking_cancelled'::text, 'booking_updated'::text, 'booking_ended'::text, 'booking_status_changed'::text, 'booking_before_start'::text, 'booking_after_end'::text, 'booking_after_created'::text, 'call_analyzed'::text, 'call_linked'::text, 'form_submitted'::text, 'survey_answered'::text, 'contract_signed'::text, 'sale_created'::text, 'sale_status_changed'::text, 'payment_created'::text, 'payment_status_changed'::text, 'payment_before_due'::text, 'payment_after_due'::text, 'eod_submitted'::text, 'webhook_received'::text, 'task_completed'::text, 'task_overdue'::text, 'whatsapp_group_joined'::text, 'whatsapp_group_reaction'::text, 'whatsapp_group_poll_vote'::text])));
+--   (+ los tipos de Servicios de la 00336, si estaban).
+-- ============================================================================
+
+SET search_path = '';
+
+DO $$
+DECLARE
+  v_fixed text[] := ARRAY[
+    'keyword', 'postback', 'quick_reply', 'welcome', 'default', 'comment_keyword', 'new_contact', 'crm_event',
+    'inactivity', 'email_received', 'booking_created', 'booking_rescheduled', 'booking_cancelled', 'booking_updated',
+    'booking_ended', 'booking_status_changed', 'booking_before_start', 'booking_after_end', 'booking_after_created',
+    'call_analyzed', 'call_linked', 'form_submitted', 'survey_answered', 'contract_signed', 'sale_created',
+    'sale_status_changed', 'payment_created', 'payment_status_changed', 'payment_before_due', 'payment_after_due',
+    'eod_submitted', 'webhook_received', 'task_completed', 'task_overdue', 'whatsapp_group_joined',
+    'whatsapp_group_reaction', 'whatsapp_group_poll_vote', 'scheduled_time'
+  ];
+  v_live  text;
+  v_extra text[];
+BEGIN
+  SELECT pg_get_constraintdef(c.oid) INTO v_live
+    FROM pg_constraint c
+   WHERE c.conname = 'triggers_type_check' AND c.conrelid = 'public.triggers'::regclass;
+
+  -- Los tipos que la base ya acepta y la lista fija no tiene (por ejemplo, los de Servicios).
+  SELECT array_agg(DISTINCT m[1] ORDER BY m[1]) INTO v_extra
+    FROM regexp_matches(COALESCE(v_live, ''), '''([a-z_]+)''', 'g') AS m
+   WHERE m[1] <> ALL (v_fixed);
+
+  ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+
+  IF v_extra IS NULL THEN
+    -- Lo normal en una instalacion nueva: la lista fija.
+    ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check
+      CHECK (type = ANY (ARRAY[
+        'keyword'::text,
+        'postback'::text,
+        'quick_reply'::text,
+        'welcome'::text,
+        'default'::text,
+        'comment_keyword'::text,
+        'new_contact'::text,
+        'crm_event'::text,
+        'inactivity'::text,
+        'email_received'::text,
+        'booking_created'::text,
+        'booking_rescheduled'::text,
+        'booking_cancelled'::text,
+        'booking_updated'::text,
+        'booking_ended'::text,
+        'booking_status_changed'::text,
+        'booking_before_start'::text,
+        'booking_after_end'::text,
+        'booking_after_created'::text,
+        'call_analyzed'::text,
+        'call_linked'::text,
+        'form_submitted'::text,
+        'survey_answered'::text,
+        'contract_signed'::text,
+        'sale_created'::text,
+        'sale_status_changed'::text,
+        'payment_created'::text,
+        'payment_status_changed'::text,
+        'payment_before_due'::text,
+        'payment_after_due'::text,
+        'eod_submitted'::text,
+        'webhook_received'::text,
+        'task_completed'::text,
+        'task_overdue'::text,
+        'whatsapp_group_joined'::text,
+        'whatsapp_group_reaction'::text,
+        'whatsapp_group_poll_vote'::text,
+        'scheduled_time'::text
+      ]));
+  ELSE
+    -- La base acepta mas tipos que el codigo: se conservan todos y se suma `scheduled_time`.
+    RAISE NOTICE 'triggers_type_check conserva % tipos que la lista fija no tiene: %', array_length(v_extra, 1), array_to_string(v_extra, ', ');
+    -- Escrito como `ARRAY['x'::text, ...]`, igual que los demas: un literal `'{x,y}'::text[]` lo guardaria sin comillas
+    -- por tipo, y ninguna migracion posterior lo podria leer como se lee este.
+    EXECUTE format(
+      'ALTER TABLE public.triggers ADD CONSTRAINT %I CHECK (type = ANY (ARRAY[%s]))',
+      'triggers_type_check',
+      (SELECT string_agg(quote_literal(t) || '::text', ', ' ORDER BY ord) FROM unnest(v_fixed || v_extra) WITH ORDINALITY AS u(t, ord))
+    );
+  END IF;
+END $$;
+
+-- ============================================================
 -- MIGRATION 340: APP SERVICIO PORTAL ACCOUNTS
 -- ============================================================
 -- @plantilla-quitar(servicios)
@@ -67171,7 +68105,7 @@ $function$;
 -- ─── 10. CHECK de triggers.type: los vigentes (leidos de la base) + los 3 de afiliados ───────────────────────────
 -- Anterior (leido de la base el 8/11/2026): CHECK ((type = ANY (ARRAY['keyword'::text, 'postback'::text, 'quick_reply'::text, 'welcome'::text, 'default'::text, 'comment_keyword'::text, 'new_contact'::text, 'crm_event'::text, 'inactivity'::text, 'email_received'::text, 'booking_created'::text, 'booking_rescheduled'::text, 'booking_cancelled'::text, 'booking_updated'::text, 'booking_ended'::text, 'booking_status_changed'::text, 'booking_before_start'::text, 'booking_after_end'::text, 'booking_after_created'::text, 'call_analyzed'::text, 'call_linked'::text, 'form_submitted'::text, 'survey_answered'::text, 'contract_signed'::text, 'sale_created'::text, 'sale_status_changed'::text, 'payment_created'::text, 'payment_status_changed'::text, 'payment_before_due'::text, 'payment_after_due'::text, 'eod_submitted'::text, 'webhook_received'::text, 'task_completed'::text, 'task_overdue'::text, 'whatsapp_group_joined'::text, 'whatsapp_group_reaction'::text, 'whatsapp_group_poll_vote'::text, 'service_created'::text, 'service_started'::text, 'service_ending_soon'::text, 'service_status_changed'::text, 'service_extended'::text, 'service_paused'::text, 'service_resumed'::text, 'service_phase_started'::text, 'service_phase_completed'::text, 'service_item_completed'::text, 'service_item_overdue'::text, 'service_light_changed'::text, 'program_lesson_completed'::text, 'program_module_completed'::text, 'quiz_passed'::text, 'quiz_failed'::text, 'task_submission_received'::text, 'task_submission_reviewed'::text, 'live_session_missed'::text, 'challenge_started'::text, 'challenge_occurrence_due_soon'::text, 'challenge_occurrence_overdue'::text, 'challenge_completed'::text, 'certificate_issued'::text, 'portal_access_expiring'::text, 'portal_access_expired'::text])))
 ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
-ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (type = ANY (ARRAY['keyword'::text, 'postback'::text, 'quick_reply'::text, 'welcome'::text, 'default'::text, 'comment_keyword'::text, 'new_contact'::text, 'crm_event'::text, 'inactivity'::text, 'email_received'::text, 'booking_created'::text, 'booking_rescheduled'::text, 'booking_cancelled'::text, 'booking_updated'::text, 'booking_ended'::text, 'booking_status_changed'::text, 'booking_before_start'::text, 'booking_after_end'::text, 'booking_after_created'::text, 'call_analyzed'::text, 'call_linked'::text, 'form_submitted'::text, 'survey_answered'::text, 'contract_signed'::text, 'sale_created'::text, 'sale_status_changed'::text, 'payment_created'::text, 'payment_status_changed'::text, 'payment_before_due'::text, 'payment_after_due'::text, 'eod_submitted'::text, 'webhook_received'::text, 'task_completed'::text, 'task_overdue'::text, 'whatsapp_group_joined'::text, 'whatsapp_group_reaction'::text, 'whatsapp_group_poll_vote'::text, 'service_created'::text, 'service_started'::text, 'service_ending_soon'::text, 'service_status_changed'::text, 'service_extended'::text, 'service_paused'::text, 'service_resumed'::text, 'service_phase_started'::text, 'service_phase_completed'::text, 'service_item_completed'::text, 'service_item_overdue'::text, 'service_light_changed'::text, 'program_lesson_completed'::text, 'program_module_completed'::text, 'quiz_passed'::text, 'quiz_failed'::text, 'task_submission_received'::text, 'task_submission_reviewed'::text, 'live_session_missed'::text, 'challenge_started'::text, 'challenge_occurrence_due_soon'::text, 'challenge_occurrence_overdue'::text, 'challenge_completed'::text, 'certificate_issued'::text, 'portal_access_expiring'::text, 'portal_access_expired'::text, 'affiliate_lead_created'::text, 'affiliate_sale_created'::text, 'affiliate_assignment_expired'::text]));
+ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (type = ANY (ARRAY['keyword'::text, 'postback'::text, 'quick_reply'::text, 'welcome'::text, 'default'::text, 'comment_keyword'::text, 'new_contact'::text, 'crm_event'::text, 'inactivity'::text, 'email_received'::text, 'booking_created'::text, 'booking_rescheduled'::text, 'booking_cancelled'::text, 'booking_updated'::text, 'booking_ended'::text, 'booking_status_changed'::text, 'booking_before_start'::text, 'booking_after_end'::text, 'booking_after_created'::text, 'call_analyzed'::text, 'call_linked'::text, 'form_submitted'::text, 'survey_answered'::text, 'contract_signed'::text, 'sale_created'::text, 'sale_status_changed'::text, 'payment_created'::text, 'payment_status_changed'::text, 'payment_before_due'::text, 'payment_after_due'::text, 'eod_submitted'::text, 'webhook_received'::text, 'task_completed'::text, 'task_overdue'::text, 'whatsapp_group_joined'::text, 'whatsapp_group_reaction'::text, 'whatsapp_group_poll_vote'::text, 'service_created'::text, 'service_started'::text, 'service_ending_soon'::text, 'service_status_changed'::text, 'service_extended'::text, 'service_paused'::text, 'service_resumed'::text, 'service_phase_started'::text, 'service_phase_completed'::text, 'service_item_completed'::text, 'service_item_overdue'::text, 'service_light_changed'::text, 'program_lesson_completed'::text, 'program_module_completed'::text, 'quiz_passed'::text, 'quiz_failed'::text, 'task_submission_received'::text, 'task_submission_reviewed'::text, 'live_session_missed'::text, 'challenge_started'::text, 'challenge_occurrence_due_soon'::text, 'challenge_occurrence_overdue'::text, 'challenge_completed'::text, 'certificate_issued'::text, 'portal_access_expiring'::text, 'portal_access_expired'::text, 'affiliate_lead_created'::text, 'affiliate_sale_created'::text, 'affiliate_assignment_expired'::text, 'scheduled_time'::text]));
 
 -- ─── 11. La lista del Member suma affiliates.use (cambio aprobado M11; lo copia la gemela TS) ───────────────────
 CREATE OR REPLACE FUNCTION private.member_permission_keys()
@@ -67275,6 +68209,93 @@ GRANT EXECUTE ON FUNCTION public.product_links_save(uuid, jsonb, integer), publi
   public.affiliate_ensure_code(uuid, text, uuid), public.affiliate_set_contact(uuid, jsonb, text, timestamptz, text),
   public.affiliate_set_sale(uuid, jsonb, text, text), public.affiliate_internal() TO authenticated;
 REVOKE EXECUTE ON FUNCTION public.affiliate_assign(uuid, text, timestamptz, uuid), public.commission_edit(uuid, jsonb, text, uuid), private.affiliates_daily() FROM authenticated;
+
+-- ============================================================
+-- MIGRATION 344: WHATSAPP COMMUNITIES
+-- ============================================================
+-- ============================================================
+-- 00344_whatsapp_communities
+-- ============================================================
+-- Comunidades de WhatsApp (noviembre 2026).
+--
+-- Una comunidad de WhatsApp es una "comunidad madre" (no tiene mensajes: solo
+-- agrupa), un grupo de Avisos (con el MISMO nombre que la comunidad y todos
+-- sus miembros; solo escriben los admins) y los demas grupos de la comunidad.
+-- Hasta aca la lista de grupos de un numero era plana: el grupo de Avisos se
+-- veia como si fuera la comunidad y los demas grupos quedaban mezclados, sin
+-- decir de que comunidad eran.
+--
+-- La comunidad madre NO se guarda: no tiene mensajes y no se puede activar.
+-- Cada grupo guardado lleva el JID de su comunidad y el nombre de la comunidad
+-- (una copia, para mostrar "Comunidad > grupo" sin preguntarle a WhatsApp).
+-- Lo refrescan la lista de Grupos de la tarjeta del numero y los avisos
+-- GROUPS_UPSERT / GROUP_UPDATE de Evolution.
+--
+--   kind              'group' (un grupo) | 'announce' (el de Avisos de una comunidad)
+--   parent_group_jid  el JID de la comunidad, o null si es un grupo suelto
+--   community_subject el nombre de la comunidad (copia)
+--   description       la descripcion del grupo
+--   restrict          true = solo los admins editan el nombre, la foto y la descripcion
+--   number_is_admin   si el numero es admin del grupo; null = no se sabe
+--
+-- Solo suma columnas: los permisos (RLS y GRANT de la 00280) no cambian, y
+-- escribe solo el servidor, como siempre.
+--
+-- Aditiva: se aplica ANTES de desplegar el codigo que la usa (la bandeja y la
+-- lista de grupos leen estas columnas).
+--
+-- Como volver atras:
+--   DROP INDEX IF EXISTS public.idx_whatsapp_groups_parent;
+--   ALTER TABLE public.whatsapp_groups
+--     DROP COLUMN IF EXISTS kind, DROP COLUMN IF EXISTS parent_group_jid,
+--     DROP COLUMN IF EXISTS community_subject, DROP COLUMN IF EXISTS description,
+--     DROP COLUMN IF EXISTS restrict, DROP COLUMN IF EXISTS number_is_admin;
+--
+-- Idempotente.
+-- ============================================================
+
+ALTER TABLE public.whatsapp_groups
+  ADD COLUMN IF NOT EXISTS kind              text NOT NULL DEFAULT 'group',
+  ADD COLUMN IF NOT EXISTS parent_group_jid  text,
+  ADD COLUMN IF NOT EXISTS community_subject text,
+  ADD COLUMN IF NOT EXISTS description       text,
+  ADD COLUMN IF NOT EXISTS restrict          boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS number_is_admin   boolean;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_groups_kind_check') THEN
+    ALTER TABLE public.whatsapp_groups ADD CONSTRAINT whatsapp_groups_kind_check
+      CHECK (kind IN ('group', 'announce'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_groups_parent_jid_check') THEN
+    ALTER TABLE public.whatsapp_groups ADD CONSTRAINT whatsapp_groups_parent_jid_check
+      CHECK (parent_group_jid IS NULL OR parent_group_jid ~ '^[0-9]{6,}(-[0-9]+)?@g\.us$');
+  END IF;
+  -- El de Avisos siempre es de una comunidad.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_groups_announce_parent_check') THEN
+    ALTER TABLE public.whatsapp_groups ADD CONSTRAINT whatsapp_groups_announce_parent_check
+      CHECK (kind <> 'announce' OR parent_group_jid IS NOT NULL);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_groups_description_check') THEN
+    ALTER TABLE public.whatsapp_groups ADD CONSTRAINT whatsapp_groups_description_check
+      CHECK (description IS NULL OR char_length(description) <= 4000);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.whatsapp_groups.kind IS
+  'group = un grupo; announce = el grupo de Avisos de una comunidad (00344).';
+COMMENT ON COLUMN public.whatsapp_groups.parent_group_jid IS
+  'El JID de la comunidad de WhatsApp a la que pertenece el grupo, o null si es un grupo suelto (00344).';
+COMMENT ON COLUMN public.whatsapp_groups.community_subject IS
+  'Copia del nombre de la comunidad, para mostrar "Comunidad > grupo" (00344).';
+COMMENT ON COLUMN public.whatsapp_groups.number_is_admin IS
+  'Si el numero es admin del grupo; null = no se sabe (00344).';
+
+-- El filtro de la bandeja por comunidad.
+CREATE INDEX IF NOT EXISTS idx_whatsapp_groups_parent
+  ON public.whatsapp_groups (workspace_id, parent_group_jid)
+  WHERE parent_group_jid IS NOT NULL;
 
 -- ============================================================
 -- MIGRATION 345: APP SERVICIO PORTAL FORMS
@@ -68192,6 +69213,586 @@ GRANT EXECUTE ON FUNCTION
   app_servicio.live_date_save(uuid, date, jsonb), app_servicio.attendance_mark(uuid, date, uuid, text), app_servicio.attendance_remove(uuid, text),
   app_servicio.live_session_attendance(uuid, date), app_servicio.live_session_archive(uuid, boolean), app_servicio.live_attendance_overview(uuid, date, date)
 TO authenticated;
+
+-- ============================================================
+-- MIGRATION 347: DELETE UNSENT BROADCAST
+-- ============================================================
+-- ============================================================
+-- 00347_delete_unsent_broadcast.sql
+-- ============================================================
+-- Eliminar un broadcast que nunca mando nada (docs/broadcasts.md).
+--
+-- Hasta hoy solo se borraba un borrador. Uno que se puso en cola y despues se
+-- pauso o se cancelo sin mandar ni un mensaje quedaba para siempre en la lista,
+-- con todos sus destinatarios `cancelled` en la cola.
+--
+-- La regla: se borra si ningun destinatario esta `sending`, `sent` ni `failed`
+-- y el broadcast no se esta enviando (si se esta enviando, primero se pausa).
+-- Lo que mando algo queda como historia. Los destinatarios se van con el
+-- broadcast (la FK es `on delete cascade` desde la 00001).
+--
+-- Por que en la base y no con dos consultas desde la app: entre "contar" y
+-- "borrar" la cola podria reclamar un destinatario y mandarlo, y su registro se
+-- perderia. La funcion bloquea el broadcast (asi la cola no lo puede pasar de
+-- programado a enviando en el medio) y las filas abiertas (asi espera a un
+-- reclamo que este a mitad de camino y lo ve como `sending`).
+--
+-- Aditiva: una funcion nueva, solo `service_role`. Puede ir antes o despues del
+-- codigo (sin ella, eliminar responde un error claro).
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.delete_unsent_broadcast(p_workspace_id uuid, p_broadcast_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_status text;
+BEGIN
+  SELECT b.status INTO v_status
+  FROM public.broadcasts b
+  WHERE b.id = p_broadcast_id AND b.workspace_id = p_workspace_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN 'not_found';
+  END IF;
+
+  IF v_status = 'sending' THEN
+    RETURN 'sending';
+  END IF;
+
+  -- Espera a un reclamo de la cola en curso: despues de esto, lo que salio se ve.
+  PERFORM 1
+  FROM public.broadcast_recipients r
+  WHERE r.broadcast_id = p_broadcast_id AND r.status IN ('pending', 'sending')
+  FOR UPDATE;
+
+  IF EXISTS (
+    SELECT 1 FROM public.broadcast_recipients r
+    WHERE r.broadcast_id = p_broadcast_id AND r.status IN ('sending', 'sent', 'failed')
+  ) THEN
+    RETURN 'has_sends';
+  END IF;
+
+  DELETE FROM public.broadcasts WHERE id = p_broadcast_id AND workspace_id = p_workspace_id;
+  RETURN 'deleted';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.delete_unsent_broadcast(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_unsent_broadcast(uuid, uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 348: WHATSAPP DAILY MESSAGES
+-- ============================================================
+-- ============================================================
+-- 00348_whatsapp_daily_messages
+-- ============================================================
+-- El grafico diario de un numero de WhatsApp (noviembre 2026): cuantos
+-- mensajes salieron y entraron por dia, y los que salieron separados por
+-- quien los mando. Es lo que hay que mirar para no hacer que WhatsApp bloquee
+-- el numero (WhatsApp mide lo que SALE).
+--
+-- Una sola funcion de lectura que cuenta en la base (traer los mensajes a la
+-- app para contarlos seria traer miles por mes). Por dia, en la zona que se
+-- pide (la de quien mira):
+--
+--   received   mensajes que entraron en chats privados (los de grupos no:
+--              un grupo de 700 personas taparia todo lo demas)
+--   automation salieron por un flujo, una secuencia o un broadcast
+--   agent      el agente de IA en envio directo
+--   approved   un borrador del agente aprobado por una persona
+--   human      escritos por una persona desde el sistema
+--   external   desde fuera del sistema (el celular, ManyChat, otra app)
+--
+-- Lo que salio cuenta igual sea a una persona o a un grupo (para WhatsApp es
+-- lo mismo). Un envio fallido o que todavia no salio no cuenta. Los mismos
+-- criterios que `public.chat_reply_is_human` (00261): `origin = 'agent'` con
+-- `sent_by_user_id` es un borrador aprobado; sin persona, envio directo.
+--
+-- Solo `service_role`: la llama el servidor DESPUES de chequear
+-- `channels.manage`, con el workspace de la sesion. Devuelve solo cuentas.
+--
+-- Aditiva. Como volver atras:
+--   DROP FUNCTION IF EXISTS public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text);
+--
+-- Idempotente.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.whatsapp_channel_daily_messages(
+  p_workspace_id uuid,
+  p_channel_id   uuid,
+  p_since        timestamptz,
+  p_time_zone    text
+)
+RETURNS TABLE (
+  day        date,
+  received   integer,
+  automation integer,
+  agent      integer,
+  approved   integer,
+  human      integer,
+  external   integer
+)
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+  WITH chat AS (
+    SELECT
+      (m.created_at AT TIME ZONE p_time_zone)::date AS day,
+      m.direction,
+      CASE
+        WHEN m.direction <> 'outbound' THEN NULL
+        WHEN m.origin IN ('flow', 'sequence', 'broadcast') THEN 'automation'
+        WHEN m.origin = 'agent' AND m.sent_by_user_id IS NOT NULL THEN 'approved'
+        WHEN m.origin = 'agent' THEN 'agent'
+        WHEN m.origin = 'user' THEN 'human'
+        ELSE 'external'
+      END AS who
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE c.channel_id = p_channel_id
+      AND c.workspace_id = p_workspace_id
+      AND m.created_at >= p_since
+      AND (m.direction = 'inbound' OR coalesce(m.status, 'sent') NOT IN ('failed', 'pending'))
+  ),
+  grp AS (
+    SELECT
+      (gm.created_at AT TIME ZONE p_time_zone)::date AS day,
+      CASE gm.origin WHEN 'flow' THEN 'automation' WHEN 'app' THEN 'human' ELSE 'external' END AS who
+    FROM public.whatsapp_group_messages gm
+    JOIN public.whatsapp_groups g ON g.id = gm.group_id
+    WHERE g.channel_id = p_channel_id
+      AND g.workspace_id = p_workspace_id
+      AND gm.direction = 'outbound'
+      AND gm.status = 'sent'
+      AND gm.created_at >= p_since
+  ),
+  all_rows AS (
+    SELECT day, direction, who FROM chat
+    UNION ALL
+    SELECT day, 'outbound', who FROM grp
+  )
+  SELECT
+    day,
+    count(*) FILTER (WHERE direction = 'inbound')::integer,
+    count(*) FILTER (WHERE who = 'automation')::integer,
+    count(*) FILTER (WHERE who = 'agent')::integer,
+    count(*) FILTER (WHERE who = 'approved')::integer,
+    count(*) FILTER (WHERE who = 'human')::integer,
+    count(*) FILTER (WHERE who = 'external')::integer
+  FROM all_rows
+  GROUP BY day
+  ORDER BY day;
+$$;
+
+COMMENT ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) IS
+  'Mensajes por dia de un numero de WhatsApp: recibidos en chats y enviados por quien los mando (00348). Solo service_role.';
+
+REVOKE ALL ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 349: WHATSAPP DAILY MESSAGES BROADCAST
+-- ============================================================
+-- ============================================================
+-- 00349_whatsapp_daily_messages_broadcast
+-- ============================================================
+-- El grafico diario de un numero de WhatsApp separa los BROADCASTS de las
+-- demas automatizaciones (pedido del 8/11/2026). Misma funcion que la 00348,
+-- con una columna mas: `broadcast` (`messages.origin = 'broadcast'`), y
+-- `automation` queda para flujos y secuencias.
+--
+-- Cambiar las columnas que devuelve una funcion obliga a borrarla y crearla
+-- de nuevo (CREATE OR REPLACE no puede). Mismos permisos: solo service_role.
+--
+-- Aditiva (una funcion de lectura). Va ANTES de desplegar el codigo: el
+-- grafico lee la columna nueva.
+--
+-- Como volver atras: volver a correr la 00348 (despues de
+--   DROP FUNCTION IF EXISTS public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text);).
+--
+-- Idempotente.
+-- ============================================================
+
+DROP FUNCTION IF EXISTS public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text);
+
+CREATE OR REPLACE FUNCTION public.whatsapp_channel_daily_messages(
+  p_workspace_id uuid,
+  p_channel_id   uuid,
+  p_since        timestamptz,
+  p_time_zone    text
+)
+RETURNS TABLE (
+  day        date,
+  received   integer,
+  automation integer,
+  broadcast  integer,
+  agent      integer,
+  approved   integer,
+  human      integer,
+  external   integer
+)
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+  WITH chat AS (
+    SELECT
+      (m.created_at AT TIME ZONE p_time_zone)::date AS day,
+      m.direction,
+      CASE
+        WHEN m.direction <> 'outbound' THEN NULL
+        WHEN m.origin = 'broadcast' THEN 'broadcast'
+        WHEN m.origin IN ('flow', 'sequence') THEN 'automation'
+        WHEN m.origin = 'agent' AND m.sent_by_user_id IS NOT NULL THEN 'approved'
+        WHEN m.origin = 'agent' THEN 'agent'
+        WHEN m.origin = 'user' THEN 'human'
+        ELSE 'external'
+      END AS who
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE c.channel_id = p_channel_id
+      AND c.workspace_id = p_workspace_id
+      AND m.created_at >= p_since
+      AND (m.direction = 'inbound' OR coalesce(m.status, 'sent') NOT IN ('failed', 'pending'))
+  ),
+  grp AS (
+    SELECT
+      (gm.created_at AT TIME ZONE p_time_zone)::date AS day,
+      CASE gm.origin WHEN 'flow' THEN 'automation' WHEN 'app' THEN 'human' ELSE 'external' END AS who
+    FROM public.whatsapp_group_messages gm
+    JOIN public.whatsapp_groups g ON g.id = gm.group_id
+    WHERE g.channel_id = p_channel_id
+      AND g.workspace_id = p_workspace_id
+      AND gm.direction = 'outbound'
+      AND gm.status = 'sent'
+      AND gm.created_at >= p_since
+  ),
+  all_rows AS (
+    SELECT day, direction, who FROM chat
+    UNION ALL
+    SELECT day, 'outbound', who FROM grp
+  )
+  SELECT
+    day,
+    count(*) FILTER (WHERE direction = 'inbound')::integer,
+    count(*) FILTER (WHERE who = 'automation')::integer,
+    count(*) FILTER (WHERE who = 'broadcast')::integer,
+    count(*) FILTER (WHERE who = 'agent')::integer,
+    count(*) FILTER (WHERE who = 'approved')::integer,
+    count(*) FILTER (WHERE who = 'human')::integer,
+    count(*) FILTER (WHERE who = 'external')::integer
+  FROM all_rows
+  GROUP BY day
+  ORDER BY day;
+$$;
+
+COMMENT ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) IS
+  'Mensajes por dia de un numero de WhatsApp: recibidos en chats y enviados por quien los mando (00349). Solo service_role.';
+
+REVOKE ALL ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.whatsapp_channel_daily_messages(uuid, uuid, timestamptz, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 350: CRON TICKS
+-- ============================================================
+-- ============================================================================
+-- 00350: un solo trabajo de pg_cron por frecuencia
+-- ============================================================================
+--
+-- Por que: despues de la 00327 (las guardas) los cron casi no llaman a la app,
+-- pero pg_cron sigue haciendo ~18.000 corridas por dia. Cada corrida le cuesta
+-- a la base lo mismo aunque no haga nada:
+--   - abre una conexion nueva (cron.use_background_workers = off en Supabase):
+--     ~400 ms de promedio por corrida el 8/11/2026, y 316 corridas fallaron con
+--     "job startup timeout" mientras la base estaba saturada;
+--   - escribe tres veces en cron.job_run_details (alta, arranque y fin), que es
+--     una tabla con WAL. cron.log_run no se puede apagar en Supabase.
+--
+-- Que hace (sin cambiar lo que hace el sistema): junta en UN trabajo los cron
+-- que corren con la misma frecuencia. Cada parte va en su propio bloque
+-- BEGIN ... EXCEPTION, asi una que falla no frena a las otras.
+--
+--   every-15-seconds  (15 s)            agent-bursts + send-queue
+--   every-minute      (* * * * *)       automation-events + jobs + sequences
+--   every-5-minutes   (3-59/5 * * * *)  agent-drafts-sweep + draft-window-alerts
+--                                       + drafts-refresh + whatsapp-health
+--
+-- El de 5 minutos corre en los minutos 3, 8, 13... (antes en 0, 5, 10...): asi
+-- no arranca junto con los de cada 10 y 15 minutos (fathom-sync, bg-dispatch,
+-- bg-collect, inactivity, eod-reminders-enqueue) ni con los de cada hora (7, 10,
+-- 15, 17 y 30). Que corra 3 minutos mas tarde no cambia nada: ninguno de los cuatro
+-- depende de la hora exacta.
+--
+-- Cuentas (por dia): 2 x 5.760 + 3 x 1.440 + 4 x 288 = 16.992 corridas pasan a
+-- 5.760 + 1.440 + 288 = 7.488. Son 9.504 corridas, 9.504 conexiones y 28.512
+-- escrituras en cron.job_run_details menos por dia.
+--
+-- Lo que se mantiene igual:
+--   - private.call_app_cron_if_work y las guardas de la 00327: cada parte de la
+--     app sigue pasando por su guarda, con la misma llamada de seguridad.
+--   - private.alert_draft_windows y private.sweep_agent_drafts: se llaman igual
+--     que antes (las definiciones de la base no se tocan).
+--   - Las llamadas a la app salen con pg_net: net.http_get solo encola el
+--     pedido, que sale cuando el trabajo termina. Juntar las partes no las
+--     pone en fila detras de un pedido HTTP.
+--
+-- Lo que cambia y hay que saber:
+--   1. Una corrida es UNA transaccion. Si una parte falla con un error que se
+--      ataja (casi todos), se deshace solo esa parte. Si fallara con uno que no
+--      se ataja (cancelar la consulta a mano), se deshace la corrida entera: el
+--      estado de las guardas tambien, asi que el tic siguiente vuelve a llamar.
+--      No se pierde trabajo, se corre un tic mas tarde.
+--   2. cron.job_run_details ya no muestra el error de una parte (la corrida
+--      dice "succeeded"). El error queda en private.cron_tick_errors (UNLOGGED:
+--      sin WAL) y en el log de Postgres (RAISE WARNING). Lo muestra
+--      scripts/measure-cron-load.mjs.
+--   3. lock_timeout de 10 s por corrida: una parte que espera un candado (un
+--      UPDATE de sweep_agent_drafts sobre un borrador que otra transaccion tiene
+--      tomado) falla esa vez en lugar de frenar a las demas. Se reintenta en el
+--      tic siguiente, que es lo que ya pasaba cuando una corrida fallaba.
+--   4. Dentro de una corrida las partes corren en orden: el barrido de
+--      borradores vencidos (agent-drafts-sweep) va antes que los avisos de
+--      ventana y que la guarda de drafts-refresh, asi no avisan ni refrescan un
+--      borrador que el barrido acaba de vencer.
+--
+-- Parte de la base: lee cron.job y aborta si alguno de los nueve cron ya no
+-- tiene el comando que dejo la 00327 o esta apagado (no se junta algo que
+-- alguien cambio sin mirar). Idempotente: una segunda pasada no encuentra los
+-- nueve viejos y vuelve a dejar los tres nuevos igual.
+--
+-- Aditiva: puede ir antes o despues del deploy (el codigo de la app no cambia).
+--
+-- ---------------------------------------------------------------------------
+-- Leido de la base el 8/11/2026 05:10 UTC (con la 00327 aplicada) y vuelto a
+-- leer el 8/11/2026 ~18:30 UTC, con la base hasta la 00348: los nueve comandos y
+-- las cuatro huellas son las mismas, y ninguna migracion posterior sumo un cron
+-- de 15 s, 1 minuto o 5 minutos.
+--
+-- cron.job (jobname | schedule | command):
+--   agent-bursts         | 15 seconds  | SELECT private.call_app_cron_if_work('agent-bursts', interval '10 minutes')
+--   send-queue           | 15 seconds  | SELECT private.call_app_cron_if_work('send-queue', interval '10 minutes')
+--   automation-events    | * * * * *   | SELECT private.call_app_cron_if_work('automation-events', interval '10 minutes')
+--   jobs                 | * * * * *   | SELECT private.call_app_cron_if_work('jobs', interval '10 minutes')
+--   sequences            | * * * * *   | SELECT private.call_app_cron_if_work('sequences', interval '10 minutes')
+--   agent-drafts-sweep   | */5 * * * * | SELECT private.sweep_agent_drafts()
+--   draft-window-alerts  | */5 * * * * | SELECT private.alert_draft_windows()
+--   drafts-refresh       | */5 * * * * | SELECT private.call_app_cron_if_work('drafts-refresh', interval '1 hour')
+--   whatsapp-health      | */5 * * * * | SELECT private.call_app_cron_if_work('whatsapp-health', interval '1 hour')
+--   (todos activos, usuario postgres, base postgres)
+--
+-- Las funciones que se llaman y NO se tocan (md5 de pg_get_functiondef):
+--   private.call_app_cron_if_work(text,interval)  988b9d1e0622994ace99215bd9a488a8  -> bigint
+--   private.call_app_cron(text)                   fa1c8e4243e54277f5787c5d29ad1a7d  -> bigint
+--   private.sweep_agent_drafts()                  6360067849706877b4291de4ac07d3cf  -> jsonb
+--   private.alert_draft_windows()                 88a589c216dabdbdc0e09f8c9eaa69b3  -> jsonb
+--
+-- cron.use_background_workers = off, cron.log_run = on, pg_cron 1.6.4.
+--
+-- ---------------------------------------------------------------------------
+-- Para volver atras (vuelven los nueve trabajos como estaban):
+--   SELECT cron.schedule('agent-bursts', '15 seconds', $c$SELECT private.call_app_cron_if_work('agent-bursts', interval '10 minutes')$c$);
+--   SELECT cron.schedule('send-queue', '15 seconds', $c$SELECT private.call_app_cron_if_work('send-queue', interval '10 minutes')$c$);
+--   SELECT cron.schedule('automation-events', '* * * * *', $c$SELECT private.call_app_cron_if_work('automation-events', interval '10 minutes')$c$);
+--   SELECT cron.schedule('jobs', '* * * * *', $c$SELECT private.call_app_cron_if_work('jobs', interval '10 minutes')$c$);
+--   SELECT cron.schedule('sequences', '* * * * *', $c$SELECT private.call_app_cron_if_work('sequences', interval '10 minutes')$c$);
+--   SELECT cron.schedule('agent-drafts-sweep', '*/5 * * * *', $c$SELECT private.sweep_agent_drafts()$c$);
+--   SELECT cron.schedule('draft-window-alerts', '*/5 * * * *', $c$SELECT private.alert_draft_windows()$c$);
+--   SELECT cron.schedule('drafts-refresh', '*/5 * * * *', $c$SELECT private.call_app_cron_if_work('drafts-refresh', interval '1 hour')$c$);
+--   SELECT cron.schedule('whatsapp-health', '*/5 * * * *', $c$SELECT private.call_app_cron_if_work('whatsapp-health', interval '1 hour')$c$);
+--   SELECT cron.unschedule(jobname) FROM cron.job WHERE jobname IN ('every-15-seconds', 'every-minute', 'every-5-minutes');
+-- (todo en la misma transaccion; las funciones nuevas pueden quedar, no las llama nadie)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 0. Lo que esta migracion necesita de la base
+-- ----------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF to_regprocedure('private.call_app_cron_if_work(text,interval)') IS NULL THEN
+    RAISE EXCEPTION '00350: falta private.call_app_cron_if_work (la 00327 va antes)';
+  END IF;
+  IF to_regprocedure('private.sweep_agent_drafts()') IS NULL OR to_regprocedure('private.alert_draft_windows()') IS NULL THEN
+    RAISE EXCEPTION '00350: falta private.sweep_agent_drafts o private.alert_draft_windows';
+  END IF;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 1. Donde queda el error de una parte (UNLOGGED: sin WAL; vacia es valida)
+-- ----------------------------------------------------------------------------
+CREATE UNLOGGED TABLE IF NOT EXISTS private.cron_tick_errors (
+  -- La parte: la ruta de la app ('jobs', 'send-queue'...) o el cron de la base ('agent-drafts-sweep').
+  part text PRIMARY KEY,
+  error_count bigint NOT NULL DEFAULT 0,
+  last_error_at timestamptz NOT NULL,
+  -- El mensaje del error (SQLERRM), recortado. Nunca lleva el secreto del cron: call_app_cron no lo pone en sus errores.
+  last_error text NOT NULL,
+  counted_since timestamptz NOT NULL DEFAULT now()
+);
+REVOKE ALL ON TABLE private.cron_tick_errors FROM PUBLIC, anon, authenticated;
+COMMENT ON TABLE private.cron_tick_errors IS
+  'Errores de las partes de los cron agrupados (00350): cuantos y el ultimo. UNLOGGED a proposito: sin WAL, y se vacia si la base se reinicia.';
+
+-- Anota el error de una parte. Nunca lanza: si no puede anotar, avisa en el log
+-- y la corrida sigue con la parte siguiente.
+CREATE OR REPLACE FUNCTION private.cron_tick_note_error(p_part text, p_error text)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path TO ''
+AS $$
+BEGIN
+  RAISE WARNING 'cron %: %', p_part, p_error;
+  BEGIN
+    INSERT INTO private.cron_tick_errors AS e (part, error_count, last_error_at, last_error)
+    VALUES (p_part, 1, now(), left(COALESCE(p_error, '(sin mensaje)'), 500))
+    ON CONFLICT (part) DO UPDATE
+      SET error_count = e.error_count + 1, last_error_at = EXCLUDED.last_error_at, last_error = EXCLUDED.last_error;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'cron_tick_errors(%) no se pudo anotar: %', p_part, SQLERRM;
+  END;
+END;
+$$;
+REVOKE ALL ON FUNCTION private.cron_tick_note_error(text, text) FROM PUBLIC, anon, authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 2. Los tres trabajos. Cada parte en su bloque: una que falla no frena a las
+--    otras. Gemela: CRON_TICKS en lib/cron/ticks.json (lib/cron/guards.test.ts
+--    compara esta lista con la de cada guarda).
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.cron_tick_15_seconds()
+RETURNS void
+LANGUAGE plpgsql
+SET search_path TO ''
+SET lock_timeout TO '10s'
+AS $$
+BEGIN
+  BEGIN
+    PERFORM private.call_app_cron_if_work('agent-bursts', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('agent-bursts', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('send-queue', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('send-queue', SQLERRM);
+  END;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION private.cron_tick_minute()
+RETURNS void
+LANGUAGE plpgsql
+SET search_path TO ''
+SET lock_timeout TO '10s'
+AS $$
+BEGIN
+  BEGIN
+    PERFORM private.call_app_cron_if_work('automation-events', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('automation-events', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('jobs', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('jobs', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('sequences', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('sequences', SQLERRM);
+  END;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION private.cron_tick_5_minutes()
+RETURNS void
+LANGUAGE plpgsql
+SET search_path TO ''
+SET lock_timeout TO '10s'
+AS $$
+BEGIN
+  -- Primero se vencen los borradores cuya ventana ya cerro: los avisos y la
+  -- guarda de drafts-refresh, que van despues, ya no los ven.
+  BEGIN
+    PERFORM private.sweep_agent_drafts();
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('agent-drafts-sweep', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.alert_draft_windows();
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('draft-window-alerts', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('drafts-refresh', interval '1 hour');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('drafts-refresh', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('whatsapp-health', interval '1 hour');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('whatsapp-health', SQLERRM);
+  END;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.cron_tick_15_seconds() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_tick_minute() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_tick_5_minutes() FROM PUBLIC, anon, authenticated;
+
+COMMENT ON FUNCTION private.cron_tick_15_seconds() IS
+  'Cron every-15-seconds (00350): agent-bursts y send-queue, cada uno por su guarda y en su bloque.';
+COMMENT ON FUNCTION private.cron_tick_minute() IS
+  'Cron every-minute (00350): automation-events, jobs y sequences, cada uno por su guarda y en su bloque.';
+COMMENT ON FUNCTION private.cron_tick_5_minutes() IS
+  'Cron every-5-minutes (00350): sweep_agent_drafts, alert_draft_windows, drafts-refresh y whatsapp-health, cada uno en su bloque.';
+
+-- ----------------------------------------------------------------------------
+-- 3. Los nueve cron pasan a ser tres. Se comprueba que cada uno siga como lo
+--    dejo la 00327 antes de sacarlo; los tres nuevos se agendan en la misma
+--    transaccion, asi nunca hay un momento sin cron.
+-- ----------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_old CONSTANT jsonb := jsonb_build_object(
+    'agent-bursts', 'SELECT private.call_app_cron_if_work(''agent-bursts'', interval ''10 minutes'')',
+    'send-queue', 'SELECT private.call_app_cron_if_work(''send-queue'', interval ''10 minutes'')',
+    'automation-events', 'SELECT private.call_app_cron_if_work(''automation-events'', interval ''10 minutes'')',
+    'jobs', 'SELECT private.call_app_cron_if_work(''jobs'', interval ''10 minutes'')',
+    'sequences', 'SELECT private.call_app_cron_if_work(''sequences'', interval ''10 minutes'')',
+    'agent-drafts-sweep', 'SELECT private.sweep_agent_drafts()',
+    'draft-window-alerts', 'SELECT private.alert_draft_windows()',
+    'drafts-refresh', 'SELECT private.call_app_cron_if_work(''drafts-refresh'', interval ''1 hour'')',
+    'whatsapp-health', 'SELECT private.call_app_cron_if_work(''whatsapp-health'', interval ''1 hour'')'
+  );
+  r record;
+BEGIN
+  FOR r IN SELECT j.jobname, j.command, j.active FROM cron.job j WHERE v_old ? j.jobname
+  LOOP
+    IF btrim(r.command, E' ;\n\t') IS DISTINCT FROM v_old ->> r.jobname THEN
+      RAISE EXCEPTION '00350: el cron "%" cambio desde la 00327 (hoy: %). Revisalo antes de juntarlo.', r.jobname, r.command;
+    END IF;
+    IF NOT r.active THEN
+      RAISE EXCEPTION '00350: el cron "%" esta apagado. Juntarlo lo prenderia: revisalo antes.', r.jobname;
+    END IF;
+  END LOOP;
+
+  PERFORM cron.schedule('every-15-seconds', '15 seconds', 'SELECT private.cron_tick_15_seconds()');
+  PERFORM cron.schedule('every-minute', '* * * * *', 'SELECT private.cron_tick_minute()');
+  PERFORM cron.schedule('every-5-minutes', '3-59/5 * * * *', 'SELECT private.cron_tick_5_minutes()');
+
+  PERFORM cron.unschedule(j.jobid) FROM cron.job j WHERE v_old ? j.jobname;
+END $$;
 
 -- ============================================================
 -- MIGRATION 351: APP SERVICIO COMMUNITY
@@ -70061,3 +71662,439 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app_servicio.program_card_metrics(uuid[], integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION app_servicio.program_card_metrics(uuid[], integer) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 354: OUTBOUND REOPENS CONVERSATION
+-- ============================================================
+-- ============================================================
+-- 00354_outbound_reopens_conversation.sql
+-- ============================================================
+-- Un mensaje que mandamos nosotros reabre una conversacion cerrada.
+--
+-- Hasta hoy una conversacion solo se reabria cuando el contacto escribia
+-- (`lib/inbound.ts`). Un broadcast, una automatizacion, una secuencia o el
+-- agente mandaban el mensaje, quedaba guardado como ultimo mensaje, pero la
+-- conversacion seguia `closed` y la bandeja (que muestra "Abiertas" por
+-- defecto) no la mostraba. Paso con los broadcasts de WhatsApp a chats
+-- importados del historial, que nacen cerrados.
+--
+-- La regla, una sola para todo lo que sale (la decide la base, venga de donde
+-- venga el envio):
+--   - un mensaje SALIENTE que salio (ni `failed` ni `pending`),
+--   - recien enviado (creado hace menos de 10 minutos): lo importado del
+--     historial trae su fecha vieja y no reabre nada,
+--   - en una conversacion `closed` que se cerro ANTES de ese mensaje: "respondo
+--     y cierro" sigue dejandola cerrada.
+-- Una conversacion pospuesta (`snoozed`) no se toca. `closed_at` se conserva
+-- al reabrir, igual que cuando reabre un entrante (comentario de la 00067).
+--
+-- Nunca tumba el insert de un mensaje (EXCEPTION WHEN OTHERS).
+--
+-- Al final reabre las conversaciones de broadcasts que ya salieron con la
+-- conversacion cerrada (la misma regla, sin el limite de 10 minutos).
+--
+-- Aditiva: una funcion y dos triggers nuevos. Puede ir antes o despues del
+-- codigo (no hay codigo que la necesite).
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.messages_reopen_conversation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  BEGIN
+    IF NEW.direction::text = 'outbound'
+       AND NEW.created_at >= now() - interval '10 minutes' THEN
+      UPDATE public.conversations c
+      SET status = 'open'
+      WHERE c.id = NEW.conversation_id
+        AND c.status = 'closed'
+        AND c.deleted_at IS NULL
+        AND (c.closed_at IS NULL OR c.closed_at <= NEW.created_at);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'messages_reopen_conversation: no pude reabrir la conversacion % (%)', NEW.conversation_id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.messages_reopen_conversation() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS messages_zzz_reopen_conversation ON public.messages;
+CREATE TRIGGER messages_zzz_reopen_conversation
+  AFTER INSERT ON public.messages
+  FOR EACH ROW
+  WHEN (
+    NEW.direction::text = 'outbound'
+    AND NEW.status IS DISTINCT FROM 'failed'
+    AND NEW.status IS DISTINCT FROM 'pending'
+  )
+  EXECUTE FUNCTION public.messages_reopen_conversation();
+
+-- Un envio que se guardo `pending` y salio despues (o un reintento que salio).
+DROP TRIGGER IF EXISTS messages_zzz_reopen_conversation_update ON public.messages;
+CREATE TRIGGER messages_zzz_reopen_conversation_update
+  AFTER UPDATE OF status ON public.messages
+  FOR EACH ROW
+  WHEN (
+    NEW.direction::text = 'outbound'
+    AND OLD.status IN ('failed', 'pending')
+    AND NEW.status IS DISTINCT FROM 'failed'
+    AND NEW.status IS DISTINCT FROM 'pending'
+  )
+  EXECUTE FUNCTION public.messages_reopen_conversation();
+
+-- ------------------------------------------------------------
+-- Lo que ya salio: las conversaciones de broadcasts que quedaron cerradas.
+-- ------------------------------------------------------------
+UPDATE public.conversations c
+SET status = 'open'
+WHERE c.status = 'closed'
+  AND c.deleted_at IS NULL
+  AND EXISTS (
+    SELECT 1 FROM public.broadcast_recipients r
+    WHERE r.conversation_id = c.id
+      AND r.status = 'sent'
+      AND (c.closed_at IS NULL OR c.closed_at <= r.sent_at)
+  );
+
+-- ============================================================
+-- MIGRATION 355: REOPEN UNSENT BROADCAST
+-- ============================================================
+-- ============================================================
+-- 00355_reopen_unsent_broadcast.sql
+-- ============================================================
+-- «Editar» un broadcast programado o pausado que todavia no mando nada
+-- (docs/broadcasts.md).
+--
+-- Solo un borrador se edita: al ponerlo en cola se congela la audiencia en
+-- `broadcast_recipients`. Para editar TODO (nombre, canal, filtros, mensaje,
+-- fecha) el broadcast vuelve a borrador: se vacia su cola y, al programarlo de
+-- nuevo, la audiencia se arma otra vez con los filtros de ese momento.
+--
+-- La regla es la misma de «Eliminar» (00347): ningun destinatario `sending`,
+-- `sent` ni `failed`. Ademas tiene que estar `scheduled` o `paused` (uno que se
+-- esta enviando primero se pausa; uno terminado o cancelado ya no se edita).
+-- Bloquea el broadcast (la cola no lo puede pasar de programado a enviando en
+-- el medio) y las filas abiertas (espera a un reclamo a mitad de camino y lo ve
+-- como `sending`).
+--
+-- Un broadcast pausado que YA mando algunos no vuelve a borrador: ahi se edita
+-- solo el mensaje (el texto se arma al mandar cada uno), desde la app.
+--
+-- Aditiva: una funcion nueva, solo `service_role`. Puede ir antes o despues del
+-- codigo (sin ella, «Editar» responde un error claro).
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.reopen_unsent_broadcast(p_workspace_id uuid, p_broadcast_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_status text;
+BEGIN
+  SELECT b.status INTO v_status
+  FROM public.broadcasts b
+  WHERE b.id = p_broadcast_id AND b.workspace_id = p_workspace_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN 'not_found';
+  END IF;
+
+  IF v_status = 'draft' THEN
+    RETURN 'already_draft';
+  END IF;
+
+  IF v_status = 'sending' THEN
+    RETURN 'sending';
+  END IF;
+
+  IF v_status NOT IN ('scheduled', 'paused') THEN
+    RETURN 'not_editable';
+  END IF;
+
+  PERFORM 1
+  FROM public.broadcast_recipients r
+  WHERE r.broadcast_id = p_broadcast_id AND r.status IN ('pending', 'sending')
+  FOR UPDATE;
+
+  IF EXISTS (
+    SELECT 1 FROM public.broadcast_recipients r
+    WHERE r.broadcast_id = p_broadcast_id AND r.status IN ('sending', 'sent', 'failed')
+  ) THEN
+    RETURN 'has_sends';
+  END IF;
+
+  DELETE FROM public.broadcast_recipients WHERE broadcast_id = p_broadcast_id;
+
+  UPDATE public.broadcasts
+  SET status = 'draft',
+      total_recipients = 0,
+      sent = 0,
+      delivered = 0,
+      failed = 0,
+      skipped = 0,
+      started_at = NULL,
+      paused_at = NULL,
+      cancelled_at = NULL,
+      completed_at = NULL,
+      updated_at = now()
+  WHERE id = p_broadcast_id AND workspace_id = p_workspace_id;
+
+  RETURN 'reopened';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.reopen_unsent_broadcast(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.reopen_unsent_broadcast(uuid, uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 356: MESSAGES DELETED FOR EVERYONE
+-- ============================================================
+-- ============================================================
+-- 00356_messages_deleted_for_everyone
+--
+-- Un mensaje de WhatsApp borrado "para todos" (desde el celular de cualquiera
+-- de las dos partes, o por la API de Evolution) seguia apareciendo en la
+-- bandeja como si nada: `messages` no tenia un estado de borrado.
+--
+-- 1. Tres columnas: cuando se borro, quien lo borro (`contact`: el contacto;
+--    `business`: el telefono del negocio o la API de Evolution; `app`: el
+--    boton «Eliminar para todos» de la bandeja) y, si fue desde la app, que
+--    persona. La FILA NO SE BORRA: el texto queda guardado para el equipo
+--    («Ver lo que decia»).
+-- 2. `mark_message_deleted_for_everyone`: la unica puerta para marcarlo, solo
+--    `service_role`. Busca el mensaje por su id de WhatsApp dentro del canal
+--    (usa el indice `idx_messages_workspace_platform_message_id`) y no pisa un
+--    borrado anterior: el aviso de Evolution puede llegar dos veces (por
+--    `MESSAGES_DELETE` y por `MESSAGES_EDITED`), y despues del boton de la
+--    app llega el eco.
+-- 3. La guardia: con la sesion de una persona no se puede escribir nada de
+--    esto (ni al insertar ni al editar). Hoy `messages` no tiene politica de
+--    UPDATE, pero si de INSERT.
+-- 4. La vista previa de la lista: si el ultimo mensaje se borro, dice
+--    «Mensaje eliminado» (`messages_refresh_last_message`, copia de la 00265
+--    con el cambio marcado «00356») y se recalcula al marcarlo (trigger nuevo
+--    `messages_zz_last_message_deleted`). El texto de la etiqueta es
+--    `DELETED_MESSAGE_LABEL` (lib/messages/revoke.ts); un test los compara.
+--
+-- La definicion anterior de `messages_refresh_last_message` esta completa en
+-- supabase/migrations/00265_conversation_last_message_fix.sql (sin cambios
+-- desde entonces).
+--
+-- Aditiva e idempotente. Va ANTES de desplegar el codigo: la burbuja y el
+-- receptor leen y escriben estas columnas.
+-- ============================================================
+
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS deleted_for_everyone_at timestamptz,
+  ADD COLUMN IF NOT EXISTS deleted_for_everyone_source text,
+  ADD COLUMN IF NOT EXISTS deleted_for_everyone_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'messages_deleted_for_everyone_source_check') THEN
+    ALTER TABLE public.messages
+      ADD CONSTRAINT messages_deleted_for_everyone_source_check
+      CHECK (
+        (deleted_for_everyone_at IS NULL AND deleted_for_everyone_source IS NULL AND deleted_for_everyone_by IS NULL)
+        OR (deleted_for_everyone_at IS NOT NULL AND deleted_for_everyone_source IN ('contact', 'business', 'app'))
+      );
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.messages.deleted_for_everyone_at IS
+  'Cuando se borro "para todos" en WhatsApp. La fila y el texto se conservan para el equipo. Se escribe solo con mark_message_deleted_for_everyone (00356).';
+COMMENT ON COLUMN public.messages.deleted_for_everyone_source IS
+  'Quien lo borro: contact (el contacto), business (el telefono del negocio o la API de Evolution) o app (el boton de la bandeja).';
+COMMENT ON COLUMN public.messages.deleted_for_everyone_by IS
+  'La persona que lo borro desde la bandeja (solo con source = app).';
+
+-- ------------------------------------------------------------
+-- La guardia: una persona no marca ni desmarca un borrado
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.messages_guard_deleted_for_everyone()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO ''
+AS $$
+BEGIN
+  -- Sin JWT (migraciones, cron) o con service role, como siempre.
+  IF coalesce(auth.role(), '') NOT IN ('authenticated', 'anon') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.deleted_for_everyone_at IS NOT NULL
+       OR NEW.deleted_for_everyone_source IS NOT NULL
+       OR NEW.deleted_for_everyone_by IS NOT NULL THEN
+      RAISE EXCEPTION 'un mensaje nuevo no puede nacer borrado' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.deleted_for_everyone_at IS DISTINCT FROM OLD.deleted_for_everyone_at
+     OR NEW.deleted_for_everyone_source IS DISTINCT FROM OLD.deleted_for_everyone_source
+     OR NEW.deleted_for_everyone_by IS DISTINCT FROM OLD.deleted_for_everyone_by THEN
+    RAISE EXCEPTION 'el borrado de un mensaje solo lo escribe el servidor' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.messages_guard_deleted_for_everyone() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.messages_guard_deleted_for_everyone() TO service_role;
+
+DROP TRIGGER IF EXISTS messages_guard_deleted_for_everyone ON public.messages;
+CREATE TRIGGER messages_guard_deleted_for_everyone
+  BEFORE INSERT OR UPDATE OF deleted_for_everyone_at, deleted_for_everyone_source, deleted_for_everyone_by ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.messages_guard_deleted_for_everyone();
+
+-- ------------------------------------------------------------
+-- La unica puerta para marcar un borrado
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.mark_message_deleted_for_everyone(
+  p_workspace_id uuid,
+  p_channel_id uuid,
+  p_platform_message_id text,
+  p_source text,
+  p_by uuid DEFAULT NULL,
+  p_at timestamptz DEFAULT now()
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_count integer;
+BEGIN
+  IF p_source IS NULL OR p_source NOT IN ('contact', 'business', 'app') THEN
+    RAISE EXCEPTION 'origen de borrado invalido: %', p_source USING ERRCODE = '22023';
+  END IF;
+  IF COALESCE(p_platform_message_id, '') = '' THEN
+    RETURN 0;
+  END IF;
+
+  UPDATE public.messages m
+  SET deleted_for_everyone_at = COALESCE(m.deleted_for_everyone_at, p_at, now()),
+      deleted_for_everyone_source = p_source,
+      deleted_for_everyone_by = CASE WHEN p_source = 'app' THEN p_by ELSE NULL END
+  FROM public.conversations c
+  WHERE m.workspace_id = p_workspace_id
+    AND m.platform_message_id = p_platform_message_id
+    -- No se pisa un borrado anterior. Excepcion: el boton de la app gana sobre el eco de Evolution, que puede
+    -- llegar ANTES de que la accion termine de marcar y diria "desde el telefono del negocio".
+    AND (
+      m.deleted_for_everyone_at IS NULL
+      OR (p_source = 'app' AND m.deleted_for_everyone_source = 'business')
+    )
+    AND c.id = m.conversation_id
+    AND c.channel_id = p_channel_id;
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.mark_message_deleted_for_everyone(uuid, uuid, text, text, uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_message_deleted_for_everyone(uuid, uuid, text, text, uuid, timestamptz) TO service_role;
+
+-- ------------------------------------------------------------
+-- La vista previa de la lista
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.message_list_preview(
+  p_text text,
+  p_transcript text,
+  p_attachments jsonb,
+  p_deleted_at timestamptz
+)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN p_deleted_at IS NOT NULL THEN 'Mensaje eliminado'
+    ELSE private.message_preview_text(p_text, p_transcript, p_attachments)
+  END;
+$$;
+
+REVOKE ALL ON FUNCTION private.message_list_preview(text, text, jsonb, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.message_list_preview(text, text, jsonb, timestamptz) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.messages_refresh_last_message()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_last record;
+  v_preview text;
+BEGIN
+  BEGIN
+    -- El ultimo mensaje que existe de verdad (ni fallido ni en vuelo). Incluye
+    -- al que se acaba de guardar.
+    SELECT m.id, m.direction::text AS direction, m.created_at, m.origin::text AS origin, m.sent_by_user_id,
+           m.text, m.transcript, m.attachments,
+           m.deleted_for_everyone_at  -- 00356
+    INTO v_last
+    FROM public.messages m
+    WHERE m.conversation_id = NEW.conversation_id
+      AND m.status IS DISTINCT FROM 'failed'
+      AND m.status IS DISTINCT FROM 'pending'
+    ORDER BY m.created_at DESC, m.id DESC
+    LIMIT 1;
+
+    IF v_last.id IS NULL THEN
+      RETURN NEW;
+    END IF;
+
+    -- 00356: un mensaje borrado "para todos" dice «Mensaje eliminado».
+    v_preview := private.message_list_preview(v_last.text, v_last.transcript, v_last.attachments, v_last.deleted_for_everyone_at);
+
+    -- Fecha, direccion y preview salen SIEMPRE del ultimo mensaje, no del que
+    -- se acaba de guardar. La fecha nunca va para atras.
+    UPDATE public.conversations c
+    SET last_message_at = GREATEST(c.last_message_at, v_last.created_at),
+        last_message_direction = v_last.direction,
+        last_message_preview = v_preview
+    WHERE c.id = NEW.conversation_id
+      AND (
+        c.last_message_at IS NULL
+        OR c.last_message_at < v_last.created_at
+        OR c.last_message_direction IS DISTINCT FROM v_last.direction
+        OR c.last_message_preview IS DISTINCT FROM v_preview
+      );
+
+    -- El no leido: si lo ultimo que se dijo es nuestro, no hay nada sin leer.
+    IF v_last.direction = 'outbound'
+       AND (v_last.sent_by_user_id IS NOT NULL OR v_last.origin IN ('user', 'external')) THEN
+      UPDATE public.conversations c
+      SET unread_count = 0
+      WHERE c.id = NEW.conversation_id
+        AND c.unread_count > 0;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'messages_refresh_last_message: no pude actualizar la conversacion % (%)', NEW.conversation_id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.messages_refresh_last_message() FROM PUBLIC, anon, authenticated;
+
+-- Al marcar un borrado se recalcula la vista previa (si era el ultimo, pasa a
+-- decir «Mensaje eliminado»). Nunca tumba la marca: la funcion atrapa todo.
+DROP TRIGGER IF EXISTS messages_zz_last_message_deleted ON public.messages;
+CREATE TRIGGER messages_zz_last_message_deleted
+  AFTER UPDATE OF deleted_for_everyone_at ON public.messages
+  FOR EACH ROW
+  WHEN (OLD.deleted_for_everyone_at IS NULL AND NEW.deleted_for_everyone_at IS NOT NULL)
+  EXECUTE FUNCTION public.messages_refresh_last_message();

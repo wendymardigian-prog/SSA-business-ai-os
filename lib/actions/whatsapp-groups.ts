@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { getEvolutionConfig, getEvolutionWebhookToken } from "@/lib/evolution-config";
 import { EvolutionError, ensureGroupsNotIgnored, fetchAllGroups, setWebhook } from "@/lib/evolution-client";
+import { ownerJidOf, refreshSavedGroup, syncChannelGroups } from "@/lib/whatsapp-groups/refresh";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import { normalizeGroupJid } from "@/lib/phone";
 import { scheduleJob } from "@/lib/scheduler";
@@ -51,13 +52,28 @@ export async function listWhatsappGroups(channelId: string): Promise<Result<{ gr
 
   const { data: saved } = await service
     .from("whatsapp_groups")
-    .select("id, group_jid, subject, in_inbox, save_contacts, left_at")
+    .select("id, group_jid, subject, in_inbox, save_contacts, left_at, kind, parent_group_jid, community_subject")
     .eq("channel_id", channelId)
     .eq("workspace_id", ctx.workspace.id);
 
   try {
-    const live = await fetchAllGroups(config, instance);
-    return { ok: true, groups: mergeGroupLists(live, saved ?? []) };
+    // Con el numero, Evolution trae tambien los miembros: asi se sabe en que grupos es admin.
+    const ownerJid = await ownerJidOf(config, instance);
+    const live = await fetchAllGroups(config, instance, { ownerJid });
+    // Todos los grupos del numero van a la bandeja: los nuevos se suman y lo guardado queda al dia. Nunca frena.
+    await syncChannelGroups(service, { workspaceId: ctx.workspace.id, channelId, live });
+    // Y que Evolution no los ignore (un numero conectado antes de los grupos los ignoraba). Si falla, se sigue.
+    try {
+      await ensureGroupsNotIgnored(config, instance);
+    } catch (err) {
+      console.error("[grupos] no pude pedirle a Evolution que no ignore los grupos:", err instanceof Error ? err.message : String(err));
+    }
+    const { data: synced } = await service
+      .from("whatsapp_groups")
+      .select("id, group_jid, subject, in_inbox, save_contacts, left_at, kind, parent_group_jid, community_subject")
+      .eq("channel_id", channelId)
+      .eq("workspace_id", ctx.workspace.id);
+    return { ok: true, groups: mergeGroupLists(live, synced ?? saved ?? []) };
   } catch (err) {
     console.error("[grupos] no pude leer los grupos:", err instanceof EvolutionError ? err.message : String(err));
     return { ok: false, error: "No pude leer los grupos de este número. ¿Está conectado?" };
@@ -65,15 +81,15 @@ export async function listWhatsappGroups(channelId: string): Promise<Result<{ gr
 }
 
 /**
- * Activa o cambia un grupo. Con los dos interruptores apagados queda guardado pero inactivo (su historial no se
- * borra; deja de recibir mensajes y de sumar contactos).
+ * Guarda si un grupo suma como contacto a quien se une. Desde el 8/11/2026 todos los grupos del numero van a la
+ * bandeja: `in_inbox` queda siempre prendido y ya no se elige.
  */
 export async function saveWhatsappGroup(
   channelId: string,
-  input: { jid: string; subject: string; inInbox: boolean; saveContacts: boolean },
+  input: { jid: string; subject: string; saveContacts: boolean },
 ): Promise<Result<{ groupId: string }>> {
   const jid = normalizeGroupJid(input?.jid);
-  if (!UUID.test(channelId ?? "") || !jid || typeof input.inInbox !== "boolean" || typeof input.saveContacts !== "boolean") {
+  if (!UUID.test(channelId ?? "") || !jid || typeof input.saveContacts !== "boolean") {
     return { ok: false, error: "Pedido inválido." };
   }
   const subject = (input.subject ?? "").trim().slice(0, MAX_SUBJECT) || jid;
@@ -96,7 +112,7 @@ export async function saveWhatsappGroup(
         channel_id: channelId,
         group_jid: jid,
         subject,
-        in_inbox: input.inInbox,
+        in_inbox: true,
         save_contacts: input.saveContacts,
         left_at: null,
       },
@@ -110,7 +126,9 @@ export async function saveWhatsappGroup(
   }
 
   // Que Evolution avise lo de los grupos. Si falla, el grupo ya quedo guardado: se avisa en el log y no se frena.
-  if (input.inInbox || input.saveContacts) {
+  {
+    // Comunidad, permisos y si el numero es admin, para la bandeja. Nunca lanza.
+    await refreshSavedGroup(service, { workspaceId: ctx.workspace.id, channelId, groupJid: jid, config, instance });
     try {
       await ensureGroupsNotIgnored(config, instance);
       const token = await getEvolutionWebhookToken(service, ctx.workspace.id);
@@ -127,7 +145,6 @@ export async function saveWhatsappGroup(
     entityId: channelId,
     action: "update",
     changes: {
-      in_inbox: { old: before?.in_inbox ?? null, new: input.inInbox },
       save_contacts: { old: before?.save_contacts ?? null, new: input.saveContacts },
     },
     metadata: { section: "whatsapp_groups", group_id: row.id },

@@ -5,6 +5,7 @@ import {
   Bot,
   CalendarDays,
   ClipboardList,
+  Clock,
   DollarSign,
   MessageCircle,
   MessagesSquare,
@@ -39,6 +40,7 @@ export const TRIGGER_GROUP_ICONS: Record<TriggerGroupKey, LucideIcon> = {
   webhooks: Webhook, // @plantilla-quitar(webhooks)
   grupos_whatsapp: UsersRound,
   servicios: GraduationCap, // @plantilla-quitar(servicios)
+  fecha_hora: Clock,
   equipo: Bot, // @plantilla-quitar(formularios)
 };
 

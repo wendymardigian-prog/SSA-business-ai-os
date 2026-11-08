@@ -1,3 +1,4 @@
+import { QUALIFY_TOOL_NAME } from "./tools/qualification";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { getExactWorkspaceModel } from "@/lib/ai/provider";
@@ -653,6 +654,7 @@ async function continueTurn(
       lastInboundText: burst[burst.length - 1].text ?? null,
       knownButtonExtra: buttonTextsFromRows(buttonRows),
       temperature: contact.leadTemperature,
+      qualification: contact.qualificationLevel,
       tags: contact.tags,
       hasPriorOutbound,
       hasPriorMessages,
@@ -708,7 +710,14 @@ async function continueTurn(
         readOnly: args.readOnlyTools,
       }
     : null;
-  const modelMessages = buildModelMessages({ history: toHistory(messages), contact, nonce, revision });
+  // La rúbrica de calificación del negocio solo viaja si el agente puede calificar (00329).
+  const modelMessages = buildModelMessages({
+    history: toHistory(messages),
+    contact,
+    nonce,
+    revision,
+    includeQualificationRubric: QUALIFY_TOOL_NAME in toolSet.tools,
+  });
 
   const generation = await generateWithFallback({
     candidates: [

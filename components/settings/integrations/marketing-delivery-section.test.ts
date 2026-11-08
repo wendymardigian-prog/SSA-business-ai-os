@@ -21,9 +21,12 @@ vi.mock("@/lib/actions/resend-connection", () => ({
 }));
 vi.mock("@/lib/actions/broadcasts", () => ({
   cancelBroadcastAction: vi.fn(),
+  deleteBroadcastAction: vi.fn(),
   pauseBroadcastAction: vi.fn(),
+  reopenBroadcastAction: vi.fn(),
   resumeBroadcastAction: vi.fn(),
   resumeLaneAction: vi.fn(),
+  saveBroadcastMessageAction: vi.fn(),
 }));
 
 import { MarketingDeliverySection } from "./marketing-delivery-section";
@@ -128,7 +131,20 @@ describe("MarketingDeliverySection", () => {
 
 describe("BroadcastProgress: los resultados del email (A9)", () => {
   const props = {
-    broadcast: { id: "b-1", name: "Webinar", status: "sending" as const, scheduledFor: null, startedAt: null, completedAt: null, previewText: "" },
+    broadcast: {
+      id: "b-1",
+      name: "Webinar",
+      status: "sending" as const,
+      scheduledFor: null,
+      startedAt: null,
+      completedAt: null,
+      previewText: "",
+      variants: ["Hola"],
+      emailSubject: "Webinar",
+      emailPreheader: "",
+      channelKind: "email" as const,
+    },
+    variableList: ["contact.first_name"],
     channel: { id: "ch", label: "Email" },
     policy: null,
     lane: null,

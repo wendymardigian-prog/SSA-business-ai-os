@@ -39,10 +39,10 @@ describe("triggers registrados", () => {
       expect(t.eventTypes).toEqual([type]);
     }
     // + los tres de Formularios, los seis de Ventas, el del reporte de fin de día y el de webhooks (ver abajo),
-    // + los dos de Tareas (task_completed, task_overdue) y los tres de grupos de WhatsApp.
+    // + los dos de Tareas (task_completed, task_overdue), los tres de grupos de WhatsApp y «En una fecha y hora».
     // + los 26 de Servicios (Servicios A1, 00336) y los 3 de afiliados (00343). Este bloque entero no viaja a la
     // plantilla (es de Llamadas).
-    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1 + 2 + 3 + 26 + 3);
+    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1 + 2 + 3 + 1 + 26 + 3);
   });
   // @plantilla-hasta(llamadas)
 
@@ -96,8 +96,8 @@ describe("reporte de fin de día (E16)", () => {
     expect(members).toEqual(["eod_submitted"]);
     const t = listTriggers().find((x) => x.type === "eod_submitted")!;
     expect(t).toMatchObject({ scope: "event", priority: 45, eventTypes: ["eod_submitted"] });
-    // Los demás son sobre un contacto, salvo el de webhooks (sujeto propio, ver abajo).
-    expect(listTriggers().filter((x) => x.type !== "eod_submitted" && x.type !== "webhook_received").every((x) => (x.subject ?? "contact") === "contact")).toBe(true);
+    // Los demás son sobre un contacto, salvo el de webhooks y «En una fecha y hora» (sujetos propios, ver abajo).
+    expect(listTriggers().filter((x) => x.type !== "eod_submitted" && x.type !== "webhook_received" && x.type !== "scheduled_time").every((x) => (x.subject ?? "contact") === "contact")).toBe(true);
   });
 });
 // @plantilla-hasta(formularios)
@@ -114,3 +114,12 @@ describe("webhooks entrantes (Extra L)", () => {
   });
 });
 // @plantilla-hasta(webhooks)
+
+describe("«En una fecha y hora»", () => {
+  it("scheduled_time es el ÚNICO disparador de sistema: agendado, sin cola de eventos", () => {
+    const system = listTriggers().filter((t) => t.subject === "system");
+    expect(system.map((t) => t.type)).toEqual(["scheduled_time"]);
+    expect(system[0]).toMatchObject({ scope: "scheduled", sourceType: "system" });
+    expect(system[0].eventTypes).toBeUndefined();
+  });
+});

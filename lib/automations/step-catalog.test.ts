@@ -7,12 +7,20 @@ import { actionKind, actionKindsFor, actionProblem, describeAction, emailRecipie
 const step = (nodeType: string, data: Record<string, unknown>): ActionStep => ({ kind: "action", id: "x", nodeType, data });
 
 describe("que se ofrece en cada pantalla", () => {
-  it("Formularios: email, mensaje, esperar, tags y el evento a Meta (Condiciones aparte)", () => {
-    expect(actionKindsFor("forms").map((k) => k.key)).toEqual(["email", "message", "delay", "tag_add", "tag_remove", "meta_event"]);
+  it("Formularios: email, mensaje, esperar, tags, el evento a Meta y calificar (Condiciones aparte)", () => {
+    expect(actionKindsFor("forms").map((k) => k.key)).toEqual(["email", "message", "delay", "tag_add", "tag_remove", "meta_event", "qualify_lead"]);
   });
 
   it("Agenda suma el estado de la reunion y cancelarla", () => {
-    expect(actionKindsFor("agenda").map((k) => k.key)).toEqual(["email", "message", "delay", "tag_add", "tag_remove", "booking_status", "cancel_booking", "meta_event"]);
+    expect(actionKindsFor("agenda").map((k) => k.key)).toEqual(["email", "message", "delay", "tag_add", "tag_remove", "booking_status", "cancel_booking", "meta_event", "qualify_lead"]);
+  });
+
+  it("«Calificar lead»: se valida y se describe", () => {
+    const q = (data: Record<string, unknown>) => step("action", { actionType: "qualify_lead", ...data });
+    expect(validateActionData(q({ mode: "add", points: 1 }), "forms")).toBeNull();
+    expect(validateActionData(q({ mode: "set", level: 7 }), "forms")).toBe("Calificar lead: Elegí un nivel del 1 al 5.");
+    expect(validateActionData(q({ mode: "rules", base: "current", rules: [] }), "agenda")).toBe("Calificar lead: Sumá al menos una regla.");
+    expect(describeAction(q({ mode: "add", points: -1 }), "forms")).toBe("Calificar lead: -1 punto");
   });
 
   it("el email: al contacto o a una direccion fija; en la Agenda tambien al anfitrion", () => {

@@ -13,7 +13,9 @@ import { contactCells } from "@/lib/contacts/columns";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import {
   KANBAN_PAGE_SIZE,
-  groupingRole,
+  groupingAxis,
+  axisFilterParam,
+  qualificationColumnDefs,
   kanbanColumnDefs,
   parseContactView,
   parseKanbanGrouping,
@@ -23,6 +25,8 @@ import {
 } from "@/lib/contacts/kanban";
 import type { ContactStatusSettings } from "@/lib/contacts/statuses";
 import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
+import { loadQualificationSettings } from "@/lib/contacts/qualification-settings-load";
+import type { QualificationSettings } from "@/lib/contacts/qualification";
 import { loadInterestCatalog } from "@/lib/contacts/interest-load";
 import { isEmailStatus } from "@/lib/email/subscription";
 
@@ -71,12 +75,13 @@ export default async function ContactsPage({
   // Los campos personalizados (para el filtro y las columnas), las listas de
   // estados y el catalogo de productos: se piden antes porque el filtro por
   // campo necesita saber su tipo.
-  const [customFields, statusSettings, interestCatalog, timeZone] = await Promise.all([
+  const [customFields, statusSettings, interestCatalog, timeZone, qualificationSettings] = await Promise.all([
     loadCustomFieldRefs(supabase, workspace.id),
     loadContactStatusSettings(workspace.id),
     loadInterestCatalog(supabase, workspace.id),
     // "Hoy" y "los últimos 7 días" de los filtros de fecha son los de quien mira.
     resolveViewerTimezone(workspace.timezone),
+    loadQualificationSettings(workspace.id),
   ]);
 
   // Todos los filtros salen de la URL y se validan en UN lugar
@@ -94,7 +99,7 @@ export default async function ContactsPage({
 
   const [listing, tagsRes, channelsRes, members, anonymousRes, moduleOptions] = await Promise.all([
     view === "kanban"
-      ? loadKanban(supabase, workspace.id, plan, statusSettings, grouping, filters, sort)
+      ? loadKanban(supabase, workspace.id, plan, statusSettings, qualificationSettings, grouping, filters, sort)
       : loadTablePage(supabase, workspace.id, plan, sort, page, customFields.length > 0),
     supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
     supabase.from("channels").select("platform").eq("workspace_id", workspace.id).eq("is_active", true),
@@ -119,6 +124,7 @@ export default async function ContactsPage({
       platforms: platforms.map((p) => ({ value: p, label: platformLabel(p) })),
       statusSettings,
       interestCatalog,
+      qualificationSettings,
     }),
     ...moduleOptions,
   };
@@ -141,6 +147,7 @@ export default async function ContactsPage({
       customFilter={filters.custom ? { slug: filters.custom.field.slug, op: filters.custom.op, value: customFilterRawValue(params) } : null}
       customFields={customFields}
       statusSettings={statusSettings}
+      qualificationSettings={qualificationSettings}
       interestCatalog={interestCatalog}
       anonymousCount={anonymousRes.count ?? 0}
       sort={sort}
@@ -164,15 +171,17 @@ async function loadKanban(
   workspaceId: string,
   plan: ContactListPlan,
   statusSettings: ContactStatusSettings,
+  qualificationSettings: QualificationSettings,
   grouping: KanbanGrouping,
   filters: ContactListFilters,
   sort: ContactSort,
 ): Promise<Listing> {
-  const role = groupingRole(grouping);
-  const defs = kanbanColumnDefs(statusSettings[role], filterValues(filters, role === "setter" ? "estado_setter" : "estado_vendedor"));
+  const axis = groupingAxis(grouping);
+  const filtered = filterValues(filters, axisFilterParam(axis));
+  const defs = axis === "qualification" ? qualificationColumnDefs(qualificationSettings, filtered) : kanbanColumnDefs(statusSettings[axis], filtered);
   const loaded = await Promise.all(
     defs.map(async (def) => {
-      const column = await loadKanbanColumn(supabase, workspaceId, plan, role, def.key, sort, 0, KANBAN_PAGE_SIZE);
+      const column = await loadKanbanColumn(supabase, workspaceId, plan, axis, def.key, sort, 0, KANBAN_PAGE_SIZE);
       return { ...def, cards: column.cards, total: column.total };
     }),
   );
@@ -222,6 +231,7 @@ async function loadTablePage(
     phone: (c.phone as string | null) ?? null,
     lastInteractionAt: (c.last_interaction_at as string | null) ?? null,
     temperature: (c.lead_temperature as LeadTemperature | null) ?? null,
+    qualificationLevel: typeof c.qualification_level === "number" ? c.qualification_level : null,
     doNotContact: Boolean(c.do_not_contact),
     isKnown: Boolean(c.is_known),
     isCustomer: Boolean(c.is_customer),

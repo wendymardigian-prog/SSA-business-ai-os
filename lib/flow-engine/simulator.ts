@@ -4,6 +4,7 @@
  * flow builder.
  */
 
+import { describeQualifyStep, type QualifyLeadStepData } from "./qualify-lead";
 import type { Node, Edge } from "@xyflow/react";
 import { pickPath, type BranchNodeData, type FieldValue } from "./condition-eval";
 import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "./branch-paths";
@@ -586,6 +587,27 @@ export function simulateFlow(
         break;
       }
 
+      // Grupos de WhatsApp (00344): un mensaje o un recurso a un grupo, e invitar al contacto. No se manda nada.
+      case "send_to_group": {
+        const text = interpolate((data.text as string) || "", variables);
+        steps.push({
+          nodeId: node.id,
+          nodeType: "send_to_group",
+          nodeLabel: label,
+          result: { type: "action", actionType: "send_to_group", detail: text ? `al grupo: ${text}` : data.assetId ? "un recurso al grupo" : "(sin mensaje)" },
+        });
+        break;
+      }
+      case "invite_to_group": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "invite_to_group",
+          nodeLabel: label,
+          result: { type: "action", actionType: "invite_to_group", detail: data.linkOnly ? "le mandaría el link del grupo" : "lo sumaría al grupo (o le mandaría el link)" },
+        });
+        break;
+      }
+
       // API de Conversiones (00328): en la simulación no se le manda nada a Meta.
       case "send_meta_event": {
         const eventName = typeof data.eventName === "string" && data.eventName.trim() ? data.eventName.trim() : "";
@@ -615,6 +637,17 @@ export function simulateFlow(
         break;
       }
       // @plantilla-hasta(servicios)
+      // Calificación del lead (00329): en la simulación no se cambia nada.
+      case "qualify_lead": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "qualify_lead",
+          nodeLabel: label,
+          result: { type: "action", actionType: "qualify_lead", detail: describeQualifyStep(data as Partial<QualifyLeadStepData>) },
+        });
+        break;
+      }
+
       // Diseñador IA (F57): en la simulación no se genera ningún diseño ni se llama al render.
       case "designGenerate": {
         const name = typeof data.templateName === "string" && data.templateName.trim() ? data.templateName.trim() : "";

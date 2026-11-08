@@ -8,7 +8,9 @@
  *   está vacío. Sin respaldo, un dato vacío deja un hueco y se cuenta en
  *   `missing` (el broadcast puede saltear a ese contacto).
  * - Un nombre que es un relleno (el id de la plataforma o un "@usuario", ver
- *   `isPlaceholderName`) cuenta como vacío: "Hola 1784…" es peor que "Hola amigo".
+ *   `isGreetingPlaceholder`, incluye «Contacto de WhatsApp») cuenta como vacío: "Hola 1784…" es peor que "Hola amigo".
+ * - Un NOMBRE vacío sin respaldo no deja un hueco: «¡Hola {{contact.first_name}}!» queda «¡Hola!» (`tidyEmptyNames`).
+ *   Igual se cuenta en `missing`.
  * - Lo que no es de estas tres raíces (por ejemplo `{{unsubscribe_url}}`) queda
  *   tal cual: lo resuelve después quien envía.
  * - Variantes: cada destinatario tiene la suya (`pickVariant`, estable por id),
@@ -17,7 +19,8 @@
 
 import { resolveVariablePath } from "@/lib/flow-engine/interpolate";
 import { firstNameOf } from "@/lib/flow-engine/variable-catalog";
-import { isPlaceholderName } from "@/lib/contacts/anonymous";
+import { isGreetingPlaceholder } from "@/lib/contacts/anonymous";
+import { EMPTY_NAME_MARK, NAME_PATHS, tidyEmptyNames } from "@/lib/templates/fallback";
 import { displayCustomValue } from "@/lib/custom-fields";
 import { dropDanglingComma, escapeHtml, finalizeEmailHtml, isHtmlTemplate, withPreheader } from "@/lib/email/html";
 import { protectUnsubscribeVariable } from "@/lib/email/unsubscribe";
@@ -62,7 +65,7 @@ export function broadcastVariables(
   customFields: readonly RenderCustomField[] = [],
   customValues: Readonly<Record<string, string | null>> = {},
 ): Record<string, unknown> {
-  const realName = contact.display_name && !isPlaceholderName(contact.display_name) ? contact.display_name.trim() : "";
+  const realName = contact.display_name && !isGreetingPlaceholder(contact.display_name) ? contact.display_name.trim() : "";
   const custom: Record<string, string> = {};
   for (const f of customFields) custom[f.slug] = displayCustomValue(f.type, customValues[f.slug] ?? null);
   return {
@@ -92,10 +95,13 @@ export function renderTemplate(template: string, variables: Record<string, unkno
     const value = resolveVariablePath(variables, path);
     const str = value === null || value === undefined ? "" : typeof value === "object" ? "" : String(value).trim();
     const out = str !== "" ? str : (fallback ?? "").trim();
-    if (out === "" && fallback === undefined) missing.add(path);
+    if (out === "" && fallback === undefined) {
+      missing.add(path);
+      if (NAME_PATHS.has(path)) return EMPTY_NAME_MARK;
+    }
     return escape ? escapeHtml(out) : out;
   });
-  return { text, missing: [...missing] };
+  return { text: tidyEmptyNames(text), missing: [...missing] };
 }
 
 /** Las variables que usa un texto (para avisar cuáles no tienen respaldo). */

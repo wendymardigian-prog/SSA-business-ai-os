@@ -13,6 +13,8 @@ import { DelayPanel } from "./DelayPanel";
 import { ActionPanel } from "./ActionPanel";
 import { AiResponsePanel } from "./AiResponsePanel";
 import { BranchPanel } from "./BranchPanel";
+import { QualifyLeadPanel } from "./QualifyLeadPanel";
+import { QUALIFY_LEAD_TYPE } from "@/lib/flow-engine/qualify-lead";
 import { UpsertContactPanel } from "./UpsertContactPanel"; // @plantilla-quitar(webhooks)
 import { canonicalNodeType } from "@/lib/flow-engine/node-outputs";
 import { DESIGN_OUTPUT_KEYS } from "@/lib/designer/automation/node-config";
@@ -239,6 +241,10 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
       case "aiResponse":
         return <AiResponsePanel data={data} onChange={handleChange} availableVariables={variables} />;
       case "action":
+        // «Calificar lead» (00329) necesita los campos del flujo para sus reglas, como «Condiciones».
+        if ((data as { actionType?: string }).actionType === QUALIFY_LEAD_TYPE) {
+          return <QualifyLeadPanel flowId={flowId} nodeId={node.id} data={data} nodes={nodes} edges={edges} onChange={handleChange} />;
+        }
         return <ActionPanel data={data} onChange={handleChange} availableVariables={variables} variableLabels={schemaLabels} attributionContext={attributionContext} />;
       default:
         return (

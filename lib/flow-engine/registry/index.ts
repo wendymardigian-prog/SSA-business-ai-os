@@ -26,6 +26,7 @@ import "./webhook-triggers"; // @plantilla-quitar(webhooks)
 import "./task-triggers"; // @plantilla-quitar(tareas)
 import "./service-triggers"; // @plantilla-quitar(servicios)
 import "./whatsapp-group-triggers";
+import "./scheduled-triggers";
 import "./guards";
 
 export * from "./registry";

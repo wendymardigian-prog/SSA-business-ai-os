@@ -96,3 +96,18 @@ describe("applyRevert", () => {
     expect(db.rows("audit_log")).toHaveLength(0);
   });
 });
+
+describe("planRevert de la calificación (00329)", () => {
+  it("vuelve al nivel anterior, o la quita si no había", () => {
+    expect(planRevert(base({ action: "qualification", changes: { qualification_level: { old: 2, new: 4 } } }))).toEqual({
+      kind: "qualification",
+      contactId: "c-1",
+      level: 2,
+    });
+    expect(planRevert(base({ action: "qualification", changes: { qualification_level: { old: null, new: 3 } } }))).toEqual({
+      kind: "qualification",
+      contactId: "c-1",
+      level: null,
+    });
+  });
+});

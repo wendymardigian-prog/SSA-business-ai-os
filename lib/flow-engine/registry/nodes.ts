@@ -33,7 +33,10 @@ import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
 import { sendMetaEventNode } from "../nodes/send-meta-event";
 import { serviceActionNodes } from "../nodes/service-actions"; // @plantilla-quitar(servicios)
 import { sendPollNode } from "../nodes/send-poll";
+import { sendToGroupNode } from "../nodes/send-to-group";
+import { inviteToGroupNode } from "../nodes/invite-to-group";
 import { designGenerateNode } from "../nodes/design-generate";
+import { qualifyLeadNode } from "../nodes/qualify-lead";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -88,7 +91,11 @@ registerNode(sendWhatsAppNumberNode);
 registerNode(sendMetaEventNode);
 // Grupos de WhatsApp: una encuesta a un grupo activado (sus votos pueden disparar otro flujo).
 registerNode(sendPollNode);
+registerNode(sendToGroupNode);
+registerNode(inviteToGroupNode);
 // Diseñador IA (DS7, F57): genera un certificado, una constancia o cualquier pieza desde una plantilla.
 registerNode(designGenerateNode);
 // Servicios (F25, SV2): completar un paso, cambiar de fase, empezar el Reto, extender y pausar.
 for (const node of serviceActionNodes) registerNode(node); // @plantilla-quitar(servicios)
+// Calificación del lead (00329): fija, suma, resta o calcula con reglas el nivel 1-5.
+registerNode(qualifyLeadNode);

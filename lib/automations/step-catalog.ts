@@ -7,7 +7,8 @@
  *
  * Agenda: email (al contacto, al anfitrion o a una direccion fija), mensaje,
  * esperar, poner o sacar un tag, Condiciones, cambiar el estado de la reunion,
- * cancelarla y enviar un evento a Meta (API de Conversiones, 00328).
+ * cancelarla, enviar un evento a Meta (API de Conversiones, 00328) y calificar
+ * al lead (00329).
  * Formularios: lo mismo, sin lo de la reunion.  @plantilla-quitar(formularios)
  * Reporte de fin de dia (E15, un flujo SIN contacto): email (a quien envio el reporte,  @plantilla-quitar(formularios)
  * a personas del equipo o a una direccion fija), esperar, avisar en la campana y  @plantilla-quitar(formularios)
@@ -18,11 +19,12 @@ import { z } from "zod";
 import { BOOKING_STATUSES, isBookingStatus } from "@/lib/scheduling/booking-status";
 import { actionTypeOf, newStepId, type ActionStep, type NodeData } from "./step-tree";
 import { checkStepEventName, SEND_META_EVENT_TYPE } from "@/lib/meta/capi/events";
+import { QUALIFY_LEAD_TYPE, blankQualifyStep, checkQualifyStep, describeQualifyStep } from "@/lib/flow-engine/qualify-lead";
 
 export type EditorScreen = "forms" | "agenda" | "eod"; // @plantilla-quitar(formularios)
 // @plantilla-sin(formularios): export type EditorScreen = "agenda";
 
-export type ActionKindKey = "email" | "message" | "delay" | "tag_add" | "tag_remove" | "booking_status" | "cancel_booking" | "notify_team" | "meta_event";
+export type ActionKindKey = "email" | "message" | "delay" | "tag_add" | "tag_remove" | "booking_status" | "cancel_booking" | "notify_team" | "meta_event" | "qualify_lead";
 
 export interface ActionKind {
   key: ActionKindKey;
@@ -121,6 +123,17 @@ export const ACTION_KINDS: ActionKind[] = [
     // @plantilla-sin(formularios): screens: ["agenda"],
     matches: (s) => isAction(s, SEND_META_EVENT_TYPE),
     blank: () => ({ actionType: SEND_META_EVENT_TYPE, eventName: "Lead", value: "", currency: "USD", contentName: "", onlyLeadBookings: true }),
+  },
+  {
+    // Calificación del lead (00329): fija, suma o resta el nivel, o lo calcula con reglas sobre las respuestas.
+    key: "qualify_lead",
+    menuLabel: "Calificar lead",
+    title: "Calificar lead",
+    nodeType: "action",
+    screens: ["forms", "agenda"], // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): screens: ["agenda"],
+    matches: (s) => isAction(s, QUALIFY_LEAD_TYPE),
+    blank: () => ({ ...blankQualifyStep() }),
   },
   {
     key: "notify_team",
@@ -248,6 +261,8 @@ export function describeAction(step: ActionStep, screen: EditorScreen): string {
       return `Aviso en la campana ${NOTIFY_RECIPIENT_LABELS[String(d.to ?? "users")] ?? ""}`.trim();
     case "meta_event":
       return String(d.eventName ?? "").trim() ? `Enviar «${String(d.eventName).trim()}» a Meta` : "Enviar evento a Meta";
+    case "qualify_lead":
+      return describeQualifyStep(d as never);
     default: {
       const label = typeof d.label === "string" && d.label.trim() ? d.label.trim() : undefined;
       return label ?? OTHER_LABELS[actionTypeOf(step)] ?? actionTypeOf(step);
@@ -380,6 +395,14 @@ const metaEventData = z
   })
   .passthrough();
 
+const qualifyData = z
+  .object({ actionType: z.literal(QUALIFY_LEAD_TYPE), label })
+  .passthrough()
+  .superRefine((value, ctx) => {
+    const problem = checkQualifyStep(value as never);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  });
+
 /** Los datos de un paso editable, validados. `null` si estan bien, o el motivo. */
 export function validateActionData(step: ActionStep, screen: EditorScreen): string | null {
   const kind = kindOfStep(step, screen);
@@ -404,6 +427,8 @@ export function validateActionData(step: ActionStep, screen: EditorScreen): stri
         return notifyData;
       case "meta_event":
         return metaEventData;
+      case "qualify_lead":
+        return qualifyData;
     }
   })();
   const parsed = schema.safeParse(step.data);

@@ -1603,6 +1603,29 @@ node scripts/verify-contact-pipeline.mjs   # 00244-00246: valores tipados, estad
 node scripts/verify-contact-merge.mjs      # la fusión, con estados y producto de interés
 ```
 
+# Nivel de calificación del lead (00329, 8/11/2026)
+
+Un número del 1 al 5 por contacto (o «Sin calificar»), con el nombre y la rúbrica de cada nivel configurables en **Ajustes → Estados**. Convive con la temperatura. Se cambia a mano (ficha, bandeja, Kanban), con el paso «Calificar lead» (fijar, sumar/restar o «según reglas»), lo pone el agente (`calificar_lead` y la clasificación al cierre) o entra por CSV. Detalle en [docs/pipeline-contactos.md](docs/pipeline-contactos.md) («Nivel de calificación»), [docs/flow-registry.md](docs/flow-registry.md) y [docs/agente-ia.md](docs/agente-ia.md).
+
+## Lo que no se puede romper
+
+- **Una sola puerta**: `set_contact_qualification` (solo `service_role`) y desde el código solo `lib/contacts/qualification-core.ts`. La guardia `contacts_qualification_guard` (QL001) rechaza cualquier otra escritura de `qualification_level`, `qualification_at` y `qualification_by_agent`, también del service role; `lib/contacts/qualification-single-entry.test.ts` lo exige en el código.
+- **La regla de recorte tiene gemelas**: `private.qualification_next_level` y `nextQualificationLevel`, con `lib/contacts/qualification.cases.json` (vitest y `verify-contact-qualification`). Desde «Sin calificar» se cuenta desde 0; nunca pasa de 5 ni baja de 1.
+- **Los niveles son fijos (1-5); se edita el nombre y la descripción** (`workspaces.qualification_settings`, DEFAULT literal = `DEFAULT_QUALIFICATION_SETTINGS`). Guardar pide `contact_statuses.manage`.
+- **Cada cambio deja su fila en `contact_qualification_changes`** (lo lee quien ve el contacto) y emite `qualification_changed`, que es una opción de «Evento del CRM» (`qualificationEventMatches`: `up`, `down`, `eq:N`, `gte:N`, `lt:N`).
+- **«Según reglas» mira TODAS las reglas** (no la primera, como «Condiciones») con el mismo evaluador, y aplica un solo cambio. El motivo nombra las reglas, nunca los valores.
+- **El agente solo sube y no pisa a una persona** salvo que se le permita, y lo decide la base bajo el bloqueo (`p_only_raise`, `p_respect_human`). Sin la herramienta, el prompt del cierre no cambia ni un carácter.
+- **La fusión no reescribió `merge_contacts`**: el trigger `contacts_qualification_on_merge` mueve el historial y deja el nivel más alto (la tabla está en `CONTACT_MERGE_EXCLUSIONS`).
+- La columna nueva de la lista nace oculta.
+
+## Migración
+
+`00329_contact_qualification` (aditiva: columnas, ajustes, historial, función, guardia, trigger de fusión, la siembra frío = 2 / tibio = 3 / caliente = 4 y `calificar_lead` en los agentes que tenían `cambiar_temperatura`) va **ANTES** de desplegar el código: **aplicada y registrada** el 8/11/2026 UTC (versión `20261108071521`), después de ensayarla en una transacción que se deshizo sola (sembró 71 contactos: 17 en nivel 2 y 54 en nivel 3, sin emitir eventos; 1 agente con `calificar_lead`), con `verify-contact-qualification` y `verify-contact-pipeline` en verde y la guardia de la fusión cubriendo las 28 relaciones con `contacts`. **La próxima libre es la `00330`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-contact-qualification.mjs   # después de aplicar: regla SQL = TS, función, guardia, RLS, 10 a la vez, fusión
+```
+
 # Automatizaciones: auditoría (construido, 23/10/2026)
 
 Auditoría del motor, los disparadores, los pasos y la pantalla, con lista con buscador y categorías, borrador para lo publicado, el disparador primero, buscador de pasos, adjuntos en el email y todo en español. Resumen en [docs/flow-registry.md](docs/flow-registry.md) («Auditoría de automatizaciones»); avance en `docs/PROGRESS-automatizaciones-auditoria.md`, pendientes en `docs/PENDIENTE-automatizaciones-auditoria.md`.
@@ -1651,6 +1674,7 @@ node scripts/verify-chat-awaiting.mjs   # gemelas SQL<->TS, el trigger, la marca
 - **La lista muestra el ÚLTIMO mensaje de la conversación**, sea del contacto o nuestro: `last_message_at`, `last_message_preview` y `last_message_direction` los mantiene el trigger `messages_zz_last_message` (00262) con cualquier entrante y cualquier saliente que salió (ni `failed` ni `pending`; un mensaje más viejo que el último no la mueve). Va en `EXCEPTION WHEN OTHERS`: nunca tumba el insert de un mensaje. Las etiquetas de adjuntos de `private.attachment_preview_label` son las de `LABELS` (`lib/inbox/last-message-sql.test.ts`). El «Vos: » lo pone la pantalla (`conversationListPreview`), no se guarda.
 - **Un envío fallido guarda lo que se quiso mandar en `text` y el motivo en `messages.send_error`** (antes el motivo pisaba el texto). La bandeja muestra el motivo, «Reintentar» y «Copiar texto». Reintentar (`retryOf` en `POST /api/v1/messages`) reclama la MISMA fila con `failed -> pending` antes de mandar: doble clic = un envío. Una fila vieja (sin `send_error`) no se reintenta: su texto es el motivo. En Instagram el hilo se lee de Zernio, así que los fallidos se suman desde la tabla (`withLocalFailedSends`).
 - **Un envío fallido no es una respuesta para el agente** (`loadRecentMessages` los excluye).
+- **Un mensaje nuestro que sale reabre la conversación cerrada** (00354, trigger `messages_zzz_reopen_conversation`), venga de donde venga: solo si salió, es reciente (menos de 10 minutos: lo importado no reabre) y la conversación se cerró antes de ese mensaje (responder y cerrar la deja cerrada). Una pospuesta no se toca. Detalle en docs/flujo-de-mensajes.md («Cuándo se reabre una conversación»). La `00354` es aditiva (una función y dos triggers, más reabrir las conversaciones de broadcasts ya enviados) y puede ir antes o después del deploy: **aplicada y registrada** el 8/11/2026 UTC (versión `20261108190520`), después de ensayarla en una transacción que se deshizo sola; reabrió las 27 conversaciones de broadcasts enviados, con `verify-chat-awaiting --despues-de-00354` en verde. La `00348` a la `00353` son de otras sesiones: **la próxima libre es la `00355`** (confirmar con `list_migrations` y las ramas locales).
 - **La espera tras ManyChat (`external_reply_cooldown_minutes`) se mide contra AHORA** (`externalCooldownEnd`): el turno se reagenda para cuando termina (`external_cooldown_wait`, con `blocked_retry`) y, si nadie respondió, el agente sigue. Antes se abstenía para siempre.
 
 - **El trigger mira cuál es DE VERDAD el último mensaje** (00265), no `last_message_at`: un entrante pasa por `increment_unread` (hora de ahora) ANTES de guardarse con la hora del proveedor, unos segundos más vieja. Dirección y preview salen siempre de ese último mensaje.
@@ -1685,6 +1709,19 @@ Todo lo que filtra la lista vive arriba de ella (`components/inbox/inbox-list-he
 - **Un solo menu de filtros, en este orden**: Canal, Asignacion, Estado, Chats y grupos (solo si hay grupos activados), Respuesta, Tags, Conocidos y clientes, Quien es, Agente de IA, Ultimo mensaje. El contador del boton cuenta todo menos la busqueda (`countMenuFilters`); "Abiertas" es el estado de siempre y no cuenta.
 - **El buscador se despliega desde el icono** y arranca abierto solo si la URL trae `?q=`. La `×` (o Esc) borra lo buscado y lo cierra. `SectionSearch` con `onClose` es ese modo; Broadcasts, Secuencias y Growth lo siguen usando en la barra de arriba.
 - **Limpiar filtros conserva lo abierto** (`?c=` y `?g=`).
+
+# Mensajes borrados para todos (00356, 8/11/2026)
+
+Un mensaje de WhatsApp borrado «para todos» (por el contacto, el teléfono del negocio, la API o el botón de la bandeja) se ve como «Mensaje eliminado» y el equipo puede ver lo que decía. Detalle en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md) («Mensajes borrados para todos»).
+
+- **Un borrado no es un mensaje**: llega por `MESSAGES_DELETE` y `MESSAGES_EDITED` (Evolution 2.3.7) y el receptor lo ataja antes del camino de los mensajes (`lib/messages/revoke.ts`). Ningún `protocolMessage` entra como mensaje. Por la API, el id bueno es `data.key.id`, no `data.id`.
+- **La fila no se borra**: `deleted_for_everyone_at/_source/_by`, escritas SOLO por `mark_message_deleted_for_everyone` (solo `service_role`; la guardia `messages_guard_deleted_for_everyone` las cierra a la sesión de una persona). Idempotente.
+- **La vista previa** sale de `private.message_list_preview` y el trigger recalcula al marcar; la etiqueta es `DELETED_MESSAGE_LABEL` (un test la compara con el SQL).
+- **El agente y el resumen no leen lo borrado** (`withoutDeletedMessages`).
+- **«Eliminar para todos»** solo en WhatsApp, saliente, salido, con id y de menos de 2 días (`canDeleteForEveryone`, la misma regla en el botón y en la acción).
+- **Un número viejo necesita volver a registrar el webhook** para recibir los avisos de borrado.
+
+`00356_messages_deleted_for_everyone` (aditiva) va **ANTES** de desplegar el código. La `00351` a la `00353` son de Servicios, la `00354` de «un saliente reabre la conversación» y la `00355` de reabrir un broadcast sin enviar. **La próxima libre es la `00357`** (confirmar con `list_migrations` y las ramas locales).
 
 # Links clicables y vista previa (6/11/2026)
 
@@ -1759,6 +1796,40 @@ Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (en la misma
 ```
 node scripts/verify-whatsapp-groups.mjs   # permisos SQL<->TS, RLS, unicos, toque organico, disparadores, cascada
 ```
+
+# Comunidades de WhatsApp y configurar grupos (00344, 8/11/2026)
+
+Una comunidad es una comunidad madre (sin mensajes), un grupo de Avisos (mismo nombre que la comunidad) y sus grupos. La lista de Grupos, la bandeja y los pasos los agrupan por comunidad; los grupos se configuran y se crean desde el sistema; y hay dos pasos nuevos: «Enviar al grupo» e «Invitar a un grupo». Detalle en [docs/whatsapp-grupos.md](docs/whatsapp-grupos.md) («Comunidades», «Configurar y crear grupos»).
+
+## Lo que no se puede romper
+
+- **La comunidad madre nunca se guarda** (`kind IN ('group','announce')`): no tiene mensajes. Cada grupo lleva `parent_group_jid` y una copia del nombre (`community_subject`). `fetchAllGroups` devuelve las madres marcadas (`isCommunity`) y `mergeGroupLists` las saca de la lista.
+- **Evolution no tiene rutas de comunidades** (ni la 2.3.7 ni la última): crear una comunidad o vincular un grupo se hace desde el celular. Tampoco ve grupos donde el número no está.
+- **`number_is_admin` null = no se sabe**, y nunca pisa uno conocido (`liveGroupColumns`). Solo se frena escribir cuando se SABE que no es admin y solo escriben admins (`cannotWriteReason`).
+- **Todos los grupos del número van solos a la bandeja** (decisión del 8/11/2026): `syncChannelGroups` al abrir la lista de Grupos, `ensureInboxGroup` cuando llega un mensaje, un aviso de miembros o `GROUPS_UPSERT` de un grupo que no estaba. La comunidad madre nunca. Lo único que se elige por grupo es «Guardar como contacto a quien se une», en Ajustes o desde el chat (Configurar → Contactos).
+- **Configurar y crear piden `channels.manage`** (`lib/actions/whatsapp-group-manage.ts`), escriben con el cliente de servicio filtrando por el workspace de la sesión y quedan en `audit_log` (`section: whatsapp_group_manage`). El link por privado a quien no se pudo agregar respeta «no contactar».
+- **Un número nuevo se crea con `groupsIgnore: false`**; abrir la lista de Grupos se lo pide de nuevo a uno viejo.
+- **`?comunidad=<jid>` es «solo grupos»**: la página pone `listType: "grupos"` para que el Realtime de chats no meta ninguno.
+- **Los pasos de grupos saltean con `skipGroupStep`** y usan `flow_send_claims` y el tope de WhatsApp como «Enviar encuesta».
+
+## Migración
+
+`00344_whatsapp_communities` (aditiva: seis columnas en `whatsapp_groups`, sus CHECK y un índice) va **ANTES** de desplegar el código: la bandeja y la lista de Grupos leen sus columnas. Ensayada en una transacción que se deshizo sola y **aplicada y registrada** el 8/11/2026 UTC (versión `20261108170116`), con `verify-whatsapp-groups --despues-de-00344` en verde. La `00340`, `00341` y `00343` son de otras sesiones y la `00342` parece reservada. **La próxima libre es la `00349`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-whatsapp-groups.mjs --despues-de-00344
+```
+
+# Gráfico diario de un número de WhatsApp (00348, 8/11/2026)
+
+En la sección Historial de la tarjeta del número: los últimos 30 días (en la zona de quien mira), con los **enviados** apilados por origen (automatización, broadcast, agente IA directo, borrador del agente aprobado, escrito por una persona, fuera del sistema), lo **programado** para los próximos 7 días como barra punteada sin relleno, y los **recibidos** en un gráfico aparte. Pasar el mouse por un día abre un recuadro con todos sus números. Lo que más importa vigilar es lo que sale: es lo que mira WhatsApp para bloquear un número.
+
+- **Cuenta la base**: `whatsapp_channel_daily_messages` (solo `service_role`), llamada por `loadWhatsappDailyMessages` (`lib/actions/whatsapp-stats.ts`) después de `channels.manage` y con el workspace de la sesión. Devuelve solo cuentas por día.
+- **Quién mandó cada mensaje** sigue el criterio de `chat_reply_is_human` (00261): `agent` con `sent_by_user_id` es un borrador aprobado; sin persona, envío directo; `flow`/`sequence`/`broadcast` es automatización; `external` o sin origen, fuera del sistema. Un envío fallido o pendiente no cuenta.
+- **Lo que sale a un grupo cuenta como enviado**; los recibidos son solo de chats privados (un grupo grande taparía el resto).
+- **Lo programado es una estimación** (`lib/whatsapp-stats/projection.ts`, puro; lo lee `projection-load.ts`): los broadcasts `scheduled`/`sending` con destinatarios `pending` se reparten simulando el carril con el ritmo del número (el mismo cálculo que `estimateFinish`, en la zona del negocio), uno detrás de otro; los pasos de secuencias activas por su `next_step_at` (uno vencido cuenta hoy); y las automatizaciones «En una fecha y hora» publicadas, un mensaje por paso a un grupo de este número y por vez. Un broadcast pausado no se proyecta. Nunca lanza.
+- **Dos gráficos, dos escalas** (nunca dos medidas en un eje). Los colores son fijos por origen (paleta validada para daltonismo, claro y oscuro) y hay una tabla oculta para lectores de pantalla. La serie y los totales son puros (`lib/whatsapp-stats/daily.ts`).
+- `00348` (aditiva, una función de lectura): **aplicada y registrada** el 8/11/2026 UTC (versión `20261108180129`). `00349` la recrea con la columna `broadcast` (separada de `automation`, que queda para flujos y secuencias); va **ANTES** del deploy: **aplicada y registrada** el 8/11/2026 UTC (versión `20261108181945`), después de ensayarla en una transacción que se deshizo sola. La `00345` a la `00347` son de otras sesiones. **La próxima libre es la `00351`** (la `00350` es de los cron; confirmar con `list_migrations` y las ramas locales).
 
 # Importacion de conversaciones de Zernio (28/10/2026)
 
@@ -1912,11 +1983,13 @@ Un mensaje a muchos contactos por WhatsApp (Evolution) o email (Resend), con los
 - **El despachador** (`lib/send-queue/dispatch.ts`, `/api/cron/send-queue` cada 15 s) toma el carril con `claim_lane_slot` (gana uno solo) y el destinatario con `claim_broadcast_recipient` (SKIP LOCKED), y manda SOLO por `sendChannelMessage` (WhatsApp, con el tope de 200/h) o `sendTransactionalEmail` con `category: "marketing"`. Nunca lanza por un proveedor: reintenta a 1, 5 y 15 min. Un `sending` colgado pasa a `failed` sin reintento. Los contadores salen de los destinatarios (`refresh_broadcast_counts`).
 - **Antes del primer mensaje a un número que nunca escribió, se pregunta si tiene WhatsApp** (`resolveWhatsappTarget`, `lib/send-queue/whatsapp-number.ts`; `dispatch.ts` sigue sin hablar con Evolution). Sin WhatsApp se saltea (`no_whatsapp`), sin vínculo ni conversación y sin contar para la pausa. Con WhatsApp se vincula con la forma que devuelve WhatsApp. Un error o una respuesta rara es un fallo con reintento, nunca un salteado.
 - **Escribe solo el servidor** (00285): `broadcasts` y `broadcast_recipients` se leen con `broadcasts.manage` y no tienen políticas de escritura.
+- **Eliminar = nunca salió nada** (00347, `delete_unsent_broadcast`, solo `service_role`): ningún destinatario `sending`/`sent`/`failed` y no se está enviando. Lo decide la base bloqueando el broadcast y las filas abiertas; se va con su cola (cascada). Lo que mandó algo queda como historia. La lista filtra por `?estado=` en la consulta y ordena siempre por creación (`lib/broadcasts/list.ts`).
+- **Editar** (00355, `reopen_unsent_broadcast`, solo `service_role`): un programado o pausado que nunca mandó nada vuelve a borrador (misma regla y bloqueos que eliminar; la cola se vacía y la audiencia se arma de nuevo al reprogramar). Con envíos, solo «Editar mensaje» (`saveBroadcastMessage`, condicional a programado o pausado): el texto se arma al mandar, así que lo cambiado le llega a los que faltan. Los campos del mensaje son un solo componente (`components/broadcasts/message-fields.tsx`). La `00355` es aditiva: **aplicada y registrada** el 8/11/2026 UTC (versión `20261108194823`), después de ensayarla en una transacción que se deshizo sola; la `00356` es de otra sesión (mensajes de WhatsApp borrados): **la próxima libre es la `00357`** (confirmar con `list_migrations` y las ramas locales).
 - **La cola le hace lugar a lo que sale en el momento** (7/11/2026, sin migración): todo WhatsApp que sale fuera de la cola (avisos, bandeja, grupos, agente, flujos, secuencias) corre `channel_send_lanes.next_send_at` a ahora + la espera mínima del número, nunca para adelante. Un solo lugar, `makeRoomForLiveSend` (`lib/send-queue/live-send.ts`), lo llaman `sendEvolutionDirect` (parámetro `lane` obligatorio; `null` solo para la cola misma, `origin: "broadcast"`) y `sendToGroup`. Nunca tumba un envío. El tope de WhatsApp es UNO: `WHATSAPP_HOURLY_LIMIT`, no se duplica. El envío viejo (`send_broadcast` en `/api/cron/jobs`, siempre por Zernio) y el `SegmentBuilder` ya no existen.
 
 ## Migraciones
 
-`00285_broadcast_send_queue` (aditiva) va **ANTES** de desplegar: **aplicada y registrada** el 3/11/2026 (versión `20261103235025`), después de ensayarla en una transacción que se deshizo sola, con `verify-broadcasts` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. `00286_send_queue_cron` (reescribe `call_app_cron` + el cron cada 15 s) va **DESPUÉS** del deploy: **aplicada y registrada** (versión `20261104044906`). La `00287` y la `00288` son de la guardia de entrega (ver «Automatizaciones de email y envíos programados»): **la próxima libre es la `00289`**.
+`00285_broadcast_send_queue` (aditiva) va **ANTES** de desplegar: **aplicada y registrada** el 3/11/2026 (versión `20261103235025`), después de ensayarla en una transacción que se deshizo sola, con `verify-broadcasts` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. `00286_send_queue_cron` (reescribe `call_app_cron` + el cron cada 15 s) va **DESPUÉS** del deploy: **aplicada y registrada** (versión `20261104044906`). La `00287` y la `00288` son de la guardia de entrega (ver «Automatizaciones de email y envíos programados»): **la próxima libre es la `00289`**. `00347_delete_unsent_broadcast` (aditiva, puede ir antes o después del deploy; la `00340` a la `00346` son de Servicios, afiliados y comunidades): **aplicada y registrada** el 8/11/2026 UTC (versión `20261108180049`), después de ensayarla en una transacción que se deshizo sola, con `verify-broadcasts --despues-de-00347` en verde. La `00348` es de otra sesión: **la próxima libre es la `00349`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-broadcasts.mjs   # RLS, índice único, claim_lane_slot y claim_broadcast_recipient a la vez, contadores
@@ -1936,6 +2009,7 @@ Una **guardia única de entrega** para todo el email de marketing (broadcasts, a
   - **broadcasts**: el destinatario vuelve a `pending` con `next_attempt_at`, y el carril de email consulta el cupo (`email_send_capacity`) ANTES de reclamar;
   - **flujos**: `deferFlowNode` (`lib/flow-engine/defer-node.ts`) agenda un `resume_flow` con `rerunNode: true` y `resumeSession(..., { rerunNode })` vuelve a correr ESE paso, sin repetir a quien ya le mandó. Lo usan «Enviar email», «Enviar mensaje», «Enviar recurso» y «Respuesta con IA» por email;
   - **secuencias**: el paso queda para `retryAt`.
+- **La zona del día del negocio sale de `private.email_guard_time_zone`** (00337): misma regla que estar en `pg_timezone_names`, pero un nombre IANA (`Zona/Ciudad`) se prueba con `AT TIME ZONE` sin leer el catálogo (leerlo costaba ~337 ms por email, dentro del candado). Lo demás (abreviaturas, POSIX, minúsculas) sigue yendo al catálogo y cae a UTC. **Nunca `pg_timezone_names` en algo que corre seguido**: lee ~1.200 archivos del disco cada vez. La `00337` está **aplicada y registrada** (8/11/2026 UTC, versión `20261108145052`); la `00338` (purga de avisos sin leer a 60 días) espera el OK. La `00330` a la `00336` son de Servicios y la `00339` de «En una fecha y hora»: **la próxima libre es la `00340`** (confirmar con `list_migrations` y las ramas locales).
 - **Primero los más activos**: `broadcast_recipients.sort_key` (00288) = `contact_last_activity` al poner en cola (último mensaje o último toque; si no hay, el alta), y `claim_broadcast_recipient` ordena por ahí después de los reintentos.
 - **El freno** (`lib/email/marketing-brake.ts`): con al menos 50 de marketing en 24 h, pasar el límite de rebotes (duros) o de quejas pausa TODO el marketing del negocio (`marketing_paused_at` en la config de Resend), avisa (`email_marketing_paused`) y queda en `audit_log`. Se evalúa al llegar un rebote o una queja de un email de marketing. Se reanuda solo a mano (`resumeMarketingAction`, `integrations.manage`, con confirmación). **Los límites son de cada negocio** (`lib/email/brake-limits.ts`, claves `marketing_brake_bounce_pct` y `marketing_brake_complaint_pct`, se cambian en «Entrega de marketing», quedan en `audit_log`): sin guardar, o con un valor inválido, 2 % y 0,05 %. Rebotes entre 0,5 y 10 %, quejas entre 0,01 y 1 %: un freno que nunca salta deja de cuidar el dominio.
 - **Preheader** (la línea que la bandeja muestra al lado del asunto): `broadcasts.email_preheader` (00294) y `data.preheader` en el paso «Enviar email», con variables. `withPreheader` (`lib/email/html.ts`) lo pone DESPUÉS de limpiar el HTML, porque la lista blanca descarta el `div` oculto y dejaría el texto a la vista. Sin preheader, el email sale byte por byte igual.
@@ -2000,6 +2074,7 @@ Cada persona ve TODAS las fechas y horas en su zona. Detalle en [docs/agendamien
 - **Se guarda en UTC y se muestra en la zona de quien mira.** En cliente, `useViewerTimezone()`; en servidor, `resolveViewerTimezone()`. `formatDateTime`, `formatRelative` y las fechas de la bandeja piden la zona como parametro obligatorio. **`lib/timezone-boundary.test.ts` falla si aparece una fecha sin `timeZone`.** Lo que se pasa explicito por ser otra cosa: fechas civiles (`date`, con `"UTC"`) y reglas del negocio (`workspaces.timezone`: horario del agente, topes de gasto, crons, ritmo de envios, tope diario por red, «Esperar hasta» de los flujos).
 - **Un solo selector de zona** (`components/ui/timezone-select.tsx`): incluye siempre el valor actual y arma el catalogo recien en el navegador. `listTimeZones` une el catalogo con la lista de respaldo: `Intl.supportedValuesOf` no trae UTC ni el nombre que detecta el navegador para Buenos Aires.
 - **Agendar a mano separa dos zonas**: `timezone` (en la que se escribio la hora) e `inviteeTimezone` (va a `p_timezone`, con ella salen sus emails). `create_booking` no se toco; elegir otra zona a proposito la guarda en el contacto despues de crear la reunion.
+- **Todo lo que se programa en la hora del NEGOCIO lleva `BusinessTimeNote`** (`components/ui/business-time-note.tsx`, reglas puras en `lib/business-time.ts`): dice en que zona se programa (con nombre, no el id IANA) y, si quien mira esta en otra, a que hora le cae a el. Hoy: «En una fecha y hora», «Esperar hasta», los recordatorios de pagos, «Crear tarea» en dias, el horario del agente, la hora de las tareas de IA y el horario de envios de WhatsApp. Nunca escribir el nombre de una zona en el codigo (el horario del agente decia «Costa Rica»).
 - **`scheduling_profiles.timezone` es la del horario de atencion**, nunca para ver.
 - **Tareas con hora**: lo guardado sigue en la zona del negocio y se convierte al leer y al escribir (`lib/tasks/due-view.ts`). Una tarea sin hora es una fecha civil y no se convierte. Reglas de fechas, SQL y barrido siguen sobre lo guardado.
 - **Mover una reunion conserva SU duracion**, no la del evento.
@@ -2335,15 +2410,34 @@ El 8/11/2026 la base quedo "Unhealthy": pg_cron llamaba a la app ~16.500 veces p
 - **Realtime publica exactamente `lib/realtime/tables.ts`** (las tablas que escucha la interfaz; lo compara `lib/realtime/tables.test.ts`). Una tabla publicada que nadie escucha le cuesta a la base en cada cambio.
 - **Purgas**: `scheduled_jobs` completados y cancelados a los 30 dias, fallidos a los 90, pendientes nunca (`purge-scheduled-jobs`); `cron.job_run_details` a 1 dia.
 - En la plantilla de estudiantes, la poda deja `private.cron_work_jobs_extra` en `false` (no tiene webhooks propios).
+- **Un trabajo de pg_cron por frecuencia (00350)**: cada corrida abre una conexion y escribe tres veces en `cron.job_run_details`, haga algo o no. `every-15-seconds` (agent-bursts + send-queue), `every-minute` (automation-events + jobs + sequences) y `every-5-minutes` (`3-59/5`: sweep_agent_drafts + alert_draft_windows + drafts-refresh + whatsapp-health) corren `private.cron_tick_*`, con **cada parte en su propio bloque `BEGIN ... EXCEPTION`** (una que falla no frena a las otras) y `lock_timeout` de 10 s. **El error de una parte NO aparece en `cron.job_run_details`** (la corrida dice "succeeded"): queda en `private.cron_tick_errors` (UNLOGGED) y lo muestra `measure-cron-load`. Un cron nuevo de una frecuencia que ya tiene trabajo es una parte mas (`lib/cron/ticks.json` + una migracion que redefine la funcion), no un trabajo aparte; `guards.test.ts` lo controla.
 
 ## Migracion
 
-`00327_cron_guards` (aditiva: el codigo no cambia; puede ir antes o despues de un deploy): **aplicada y registrada** el 8/11/2026 UTC (version `20261108050809`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-cron-guards` en verde. En los primeros 10 minutos todas las corridas salieron bien y, por ejemplo, `agent-bursts` corrio 41 veces y llamo a la app 2. **La proxima libre es la `00328`** (confirmar con `list_migrations` y las ramas locales).
+`00327_cron_guards` (aditiva: el codigo no cambia; puede ir antes o despues de un deploy): **aplicada y registrada** el 8/11/2026 UTC (version `20261108050809`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-cron-guards` en verde. En los primeros 10 minutos todas las corridas salieron bien y, por ejemplo, `agent-bursts` corrio 41 veces y llamo a la app 2.
+
+`00350_cron_ticks` (aditiva, va encima de la 00327; el codigo no cambia): **aplicada y registrada** el 8/11/2026 UTC (version `20261108181854`), con `verify-cron-guards --despues-de-00350` en verde y las primeras 26 corridas sin fallas. Lee `cron.job` y aborta si alguno de los nueve cron no tiene el comando que dejo la 00327 o esta apagado. Ensayada contra produccion en una transaccion que se deshizo (dos pasadas seguidas: idempotente; 35 trabajos pasan a 29; los tres juntos tardan 39 ms; una parte forzada a fallar no frena a las otras). Ahorra 9.504 corridas y conexiones por dia (de ~18.000 a ~8.500). **La proxima libre es la `00351`** (la `00349` es de Comunidades de WhatsApp; confirmar con `list_migrations` y las ramas locales).
 
 ```
-node scripts/verify-cron-guards.mjs   # despues de aplicar: decision SQL = TS, comandos, permisos, Realtime y cada guarda con y sin el dato justo
-node scripts/measure-cron-load.mjs    # antes y despues (solo lee)
+node scripts/verify-cron-guards.mjs                     # decision SQL = TS, comandos, permisos, Realtime y cada guarda con y sin el dato justo
+node scripts/verify-cron-guards.mjs --despues-de-00350  # ademas: los tres trabajos agrupados y la falla forzada de una parte
+node scripts/measure-cron-load.mjs                      # antes y despues (solo lee)
 ```
+
+# «En una fecha y hora» (00339, 8/11/2026)
+
+Disparador de SISTEMA (`scheduled_time`, sin contacto ni persona): una automatizacion que arranca sola una vez, todos los dias, ciertos dias de la semana o un dia del mes, en la hora del NEGOCIO. Sirve, por ejemplo, para mandar una encuesta a un grupo de WhatsApp con «Enviar encuesta». Detalle en [docs/flow-registry.md](docs/flow-registry.md) («En una fecha y hora»).
+
+## Lo que no se puede romper
+
+- **No suma ningun cron**: publicar anula la vez pendiente y agenda la proxima en la cola (`flow_scheduled_run`, `lib/scheduled-flows/jobs.ts`); el trabajo corre el flujo y agenda la siguiente ANTES de correrlo. Las reglas de fechas son puras (`lib/scheduled-flows/schedule.ts`) y la zona es siempre `workspaces.timezone`.
+- **Nunca corre algo viejo ni dos veces**: version publicada en el trabajo, `isOccurrenceOf` contra la config vigente y el reclamo en `trigger_fires` (`schedule:<vez>`). Mas de 2 h tarde, se saltea esa vez.
+- **«Ya paso» se mira en `publishFlow`** (necesita la zona del negocio), no en `triggerProblems`. Si la version anterior era programada, su vez se anula aunque la nueva no lo sea (se mira ANTES de pisar `nodes`).
+- **Es el unico disparador `subject: "system"`** (`SYSTEM_TRIGGER_TYPES`): el lienzo ofrece solo pasos sin contacto y publicar rechaza los que lo necesitan.
+
+## Migracion
+
+`00339_scheduled_time_trigger` (aditiva: el CHECK de `triggers.type` suma `scheduled_time`) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 8/11/2026 UTC (version `20261108163107`), despues de ensayarla en una transaccion que se deshizo sola. En produccion conservo los 29 tipos de Servicios (67 en total). Si la base ya acepta tipos que su lista no conoce (en produccion, la `00336` de Servicios se aplico antes de que su codigo llegara a `main`), arma el CHECK con TODO lo que la base acepta + `scheduled_time`, sin sacar nada (siempre como `ARRAY['x'::text, ...]`). **Cuando Servicios mergee, su lista tiene que ir en una migracion posterior a la 00339 que sume `scheduled_time`**: la ultima definicion escrita es la que lee `registry/consistency.test.ts`. La `00330` a la `00336`, la `00340` y la `00343` son de Servicios (rama `feat/servicios-a1`; la 00343 ya esta aplicada) y la `00337`/`00338` de la guardia de email y los avisos. **La proxima libre es la `00344`** (confirmar con `list_migrations` y las ramas locales).
 
 # Buenas practicas de desarrollo
 

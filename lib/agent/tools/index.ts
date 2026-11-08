@@ -13,6 +13,7 @@ import { searchKnowledgeTool } from "./search-knowledge";
 import { tagContactTool } from "./tag-contact";
 import { leadTemperatureTool } from "./lead-temperature";
 import { setterStatusTool } from "./setter-status";
+import { qualificationTool } from "./qualification";
 import { followupTool } from "./followup";
 import { assignConversationTool } from "./assign-conversation";
 import { crmLookupTool } from "./crm-lookup";
@@ -31,6 +32,8 @@ registerAgentTool(tagContactTool);
 registerAgentTool(leadTemperatureTool);
 // Pipeline (00245): el estado de setter. Nace apagada; el de vendedor no lo toca nunca.
 registerAgentTool(setterStatusTool);
+// Calificación del lead (00329): el nivel 1-5 con la rúbrica del negocio. Solo sube, salvo que se le permita bajar.
+registerAgentTool(qualificationTool);
 registerAgentTool(followupTool);
 registerAgentTool(assignConversationTool);
 registerAgentTool(crmLookupTool);

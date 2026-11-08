@@ -14,6 +14,8 @@
  * ejemplo de su disparador.
  */
 
+import { isGreetingPlaceholder } from "@/lib/contacts/anonymous";
+
 /** Los disparadores de mensaje: el texto del mensaje y su origen. */
 const MESSAGE_VARIABLES = ["message", "message_origin.ad_id", "message_origin.ad_title", "message_origin.is_story_mention"];
 
@@ -39,13 +41,15 @@ export function staticTriggerVariables(triggerType: string | null | undefined): 
     case "new_contact":
       return ["event_type", "event_source"];
     case "crm_event":
-      return ["event_type", "event_tag_name", "event_value", "event_role", "event_reason"];
+      return ["event_type", "event_tag_name", "event_value", "event_role", "event_reason", "event_level", "event_previous_level"];
     case "whatsapp_group_joined":
       return ["group.name"];
     case "whatsapp_group_reaction":
       return ["group.name", "reaction.emoji", "message.text"];
     case "whatsapp_group_poll_vote":
       return ["group.name", "poll.question", "poll.selected"];
+    case "scheduled_time":
+      return ["schedule.date", "schedule.weekday", "schedule.time"];
     default:
       return [];
   }
@@ -55,6 +59,7 @@ export function staticTriggerVariables(triggerType: string | null | undefined): 
 const NO_CONTACT_AT_START = new Set<string>([
   "webhook_received", // @plantilla-quitar(webhooks)
   "eod_submitted", // @plantilla-quitar(formularios)
+  "scheduled_time",
 ]);
 
 export interface PickerVariablesInput {
@@ -96,6 +101,8 @@ const GREETABLE_NAME = /^\p{L}[\p{L}\p{M}'’-]*$/u;
  * saludar a nadie («F», «Prof.», un email, un id o un @usuario). Mejor «Hola.» que «Hola, F.».
  */
 export function firstNameOf(displayName: string | null | undefined): string {
+  // «Contacto de WhatsApp», «Instagram User», un id o un @usuario: no son nombres (antes salía «Hola Contacto»).
+  if (isGreetingPlaceholder(displayName)) return "";
   const first = (displayName ?? "").trim().split(/\s+/)[0] ?? "";
   return first.length >= 2 && GREETABLE_NAME.test(first) ? first : "";
 }

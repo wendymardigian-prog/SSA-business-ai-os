@@ -277,6 +277,8 @@ export async function createInstance(
           // WhatsApp solo manda el historial al escanear el QR: se pide completo
           // desde el arranque, porque despues ya no se puede pedir sin reconectar.
           syncFullHistory: true,
+          // Todos los grupos del numero van a la bandeja (8/11/2026): que Evolution no los ignore.
+          groupsIgnore: false,
         }
       : {
           instanceName,
@@ -310,7 +312,20 @@ export async function setWebhook(
   // CALL (00258): Evolution avisa cada llamada (no puede atenderlas).
   // GROUP_PARTICIPANTS_UPDATE: quien entra o sale de un grupo (Grupos de WhatsApp).
   // Una instancia vieja los recibe recien despues de volver a registrar el webhook.
-  const events = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CALL", "GROUP_PARTICIPANTS_UPDATE"];
+  // GROUPS_UPSERT / GROUP_UPDATE: un grupo nuevo o un cambio de nombre, foto, permisos o comunidad.
+  // MESSAGES_DELETE / MESSAGES_EDITED (00356): un mensaje borrado "para todos". Evolution 2.3.7 manda el borrado por
+  // los dos (lib/messages/revoke.ts); sin ellos la bandeja seguia mostrando lo que en WhatsApp ya no existe.
+  const events = [
+    "MESSAGES_UPSERT",
+    "MESSAGES_DELETE",
+    "MESSAGES_EDITED",
+    "CONNECTION_UPDATE",
+    "QRCODE_UPDATED",
+    "CALL",
+    "GROUP_PARTICIPANTS_UPDATE",
+    "GROUPS_UPSERT",
+    "GROUP_UPDATE",
+  ];
 
   // El token va como header porque el webhook queda expuesto en internet: es lo
   // unico que separa un evento real de cualquiera que descubra la URL.
@@ -611,6 +626,30 @@ export async function sendReaction(
   await request(config, "POST", `/message/sendReaction/${encodeURIComponent(instanceName)}`, body);
 }
 
+/**
+ * Borra "para todos" un mensaje que mandamos nosotros (00356):
+ * `DELETE /chat/deleteMessageForEveryone/{instance}` con la key del mensaje
+ * (verificado en la 2.3.7: Evolution le pasa `remoteJid` tal cual a Baileys,
+ * asi que tiene que ser un jid completo). `to` es la identidad del contacto en
+ * el canal: el telefono o su @lid, que va entero.
+ */
+export async function deleteMessageForEveryone(
+  config: EvolutionConfig,
+  instanceName: string,
+  args: { to: string; messageId: string },
+): Promise<void> {
+  const number = toEvolutionNumber(args.to);
+  if (!number) {
+    throw new EvolutionError(`Numero de WhatsApp invalido: "${args.to}"`);
+  }
+  const remoteJid = number.includes("@") ? number : `${number}@s.whatsapp.net`;
+  await request(config, "DELETE", `/chat/deleteMessageForEveryone/${encodeURIComponent(instanceName)}`, {
+    id: args.messageId,
+    remoteJid,
+    fromMe: true,
+  });
+}
+
 // ── Media ────────────────────────────────────────────────────────────────────
 
 /** Lo que devuelve Evolution cuando se le pide el archivo de un mensaje. */
@@ -867,15 +906,32 @@ export async function ensureFullHistory(config: EvolutionConfig, instanceName: s
 
 // ── Grupos ───────────────────────────────────────────────────────────────────
 
-/** Un grupo del numero, como lo devuelve `GET /group/fetchAllGroups` (v2). Solo lo que se usa. */
+/**
+ * Un grupo del numero, como lo devuelve `GET /group/fetchAllGroups` (v2). Solo lo que se usa.
+ *
+ * Comunidades: WhatsApp las arma con una "comunidad madre" (`isCommunity`, no tiene mensajes: solo agrupa), un
+ * grupo de Avisos (`isCommunityAnnounce`, con el MISMO nombre que la comunidad y todos sus miembros) y los demas
+ * grupos de la comunidad. Los dos ultimos apuntan a la madre con `linkedParent`. Evolution solo devuelve los grupos
+ * en los que esta el numero: un grupo de la comunidad al que no se unio no aparece.
+ */
 export interface EvolutionGroup {
   jid: string;
   subject: string;
   size: number | null;
   pictureUrl: string | null;
+  /** La comunidad madre (no se puede activar: no tiene mensajes). */
   isCommunity: boolean;
+  /** El grupo de Avisos de una comunidad. */
+  isCommunityAnnounce: boolean;
+  /** El JID de la comunidad a la que pertenece, o null si es un grupo suelto. */
+  parentJid: string | null;
+  description: string | null;
   /** true = solo los admins pueden escribir. */
   announce: boolean;
+  /** true = solo los admins pueden cambiar el nombre, la foto y la descripcion. */
+  restrict: boolean;
+  /** Si el numero es admin. null = no se sabe (no se pidieron los miembros, o WhatsApp no dio su telefono). */
+  numberIsAdmin: boolean | null;
 }
 
 /** Un miembro de un grupo (`GET /group/participants`). `id` puede ser un telefono o un @lid. */
@@ -887,30 +943,92 @@ export interface EvolutionGroupParticipant {
   name: string | null;
 }
 
-function groupFrom(raw: Record<string, unknown>): EvolutionGroup | null {
+/** Los digitos de un JID de persona ("5491122334455@s.whatsapp.net" -> "5491122334455"), o null. */
+function jidDigits(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  const digits = value.split("@")[0].split(":")[0].replace(/\D/g, "");
+  return digits.length >= 6 ? digits : null;
+}
+
+/**
+ * Si el numero es admin, mirando la lista de miembros que trae `getParticipants=true`. null si no se encuentra al
+ * numero (WhatsApp a veces da solo el @lid de un miembro, sin su telefono).
+ */
+export function numberIsAdminIn(participants: unknown, ownerJid: string | null | undefined): boolean | null {
+  const own = jidDigits(ownerJid);
+  if (!own || !Array.isArray(participants)) return null;
+  for (const row of participants) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    if (jidDigits(r.phoneNumber) === own || (!isLidLike(r.id) && jidDigits(r.id) === own) || jidDigits(r.jid) === own) {
+      return r.admin === "admin" || r.admin === "superadmin";
+    }
+  }
+  return null;
+}
+
+function isLidLike(value: unknown): boolean {
+  return typeof value === "string" && value.endsWith("@lid");
+}
+
+function groupFrom(raw: Record<string, unknown>, ownerJid?: string | null): EvolutionGroup | null {
   const jid = normalizeGroupJid(typeof raw.id === "string" ? raw.id : null);
   if (!jid) return null;
+  const desc = typeof raw.desc === "string" ? raw.desc.trim() : "";
   return {
     jid,
     subject: typeof raw.subject === "string" && raw.subject.trim() ? raw.subject.trim() : jid,
     size: typeof raw.size === "number" ? raw.size : null,
     pictureUrl: typeof raw.pictureUrl === "string" && raw.pictureUrl ? raw.pictureUrl : null,
     isCommunity: raw.isCommunity === true,
+    isCommunityAnnounce: raw.isCommunityAnnounce === true,
+    parentJid: normalizeGroupJid(typeof raw.linkedParent === "string" ? raw.linkedParent : null),
+    description: desc ? desc : null,
     announce: raw.announce === true,
+    restrict: raw.restrict === true,
+    numberIsAdmin: ownerJid ? numberIsAdminIn(raw.participants, ownerJid) : null,
   };
 }
 
 /**
- * Los grupos en los que esta el numero. Lo pide a WhatsApp (no a la base de
- * Evolution), asi que es una consulta "cara": se llama al abrir la seccion
- * Grupos, no en cada mensaje.
+ * Los grupos y las comunidades en los que esta el numero. Lo pide a WhatsApp (no a la base de Evolution), asi que
+ * es una consulta "cara": se llama al abrir la seccion Grupos, no en cada mensaje.
+ *
+ * Con `ownerJid` (el JID del numero) pide tambien los miembros, para saber en cuales es admin: tarda unos segundos
+ * mas con grupos grandes. Los miembros no se devuelven.
  */
-export async function fetchAllGroups(config: EvolutionConfig, instanceName: string): Promise<EvolutionGroup[]> {
-  const raw = await request<unknown>(config, "GET", `/group/fetchAllGroups/${encodeURIComponent(instanceName)}?getParticipants=false`);
+export async function fetchAllGroups(
+  config: EvolutionConfig,
+  instanceName: string,
+  opts: { ownerJid?: string | null } = {},
+): Promise<EvolutionGroup[]> {
+  const withParticipants = !!opts.ownerJid;
+  const raw = await request<unknown>(
+    config,
+    "GET",
+    `/group/fetchAllGroups/${encodeURIComponent(instanceName)}?getParticipants=${withParticipants ? "true" : "false"}`,
+  );
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((row) => (row && typeof row === "object" ? groupFrom(row as Record<string, unknown>) : null))
-    .filter((group): group is EvolutionGroup => group !== null && !group.isCommunity);
+    .map((row) => (row && typeof row === "object" ? groupFrom(row as Record<string, unknown>, opts.ownerJid) : null))
+    .filter((group): group is EvolutionGroup => group !== null);
+}
+
+/** Un grupo (`GET /group/findGroupInfos`), o null si WhatsApp no lo encuentra. */
+export async function fetchGroupInfo(
+  config: EvolutionConfig,
+  instanceName: string,
+  groupJid: string,
+  opts: { ownerJid?: string | null } = {},
+): Promise<EvolutionGroup | null> {
+  const jid = normalizeGroupJid(groupJid);
+  if (!jid) throw new EvolutionError(`Grupo de WhatsApp invalido: "${groupJid}"`);
+  const raw = await request<unknown>(
+    config,
+    "GET",
+    `/group/findGroupInfos/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(jid)}`,
+  );
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? groupFrom(raw as Record<string, unknown>, opts.ownerJid) : null;
 }
 
 /** Los miembros de un grupo, con su telefono y su @lid cuando WhatsApp los da. */
@@ -941,6 +1059,116 @@ export async function fetchGroupParticipants(
     });
   }
   return out;
+}
+
+// ── Administrar grupos ───────────────────────────────────────────────────────
+// Lo que Evolution 2.3.7 deja hacer con un grupo (rutas /group/*). El grupo va por `?groupJid=` (Evolution lo lee
+// del cuerpo o de la query). Ni la 2.3.7 ni las siguientes tienen rutas de comunidades: crear una comunidad o
+// vincular un grupo a una comunidad se hace desde el celular.
+
+function groupPath(route: string, instanceName: string, groupJid: string): string {
+  const jid = normalizeGroupJid(groupJid);
+  if (!jid) throw new EvolutionError(`Grupo de WhatsApp invalido: "${groupJid}"`);
+  return `/group/${route}/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(jid)}`;
+}
+
+/** Crea un grupo. `participants` son telefonos (se pasan por `toEvolutionNumber`). Devuelve el JID nuevo. */
+export async function createGroup(
+  config: EvolutionConfig,
+  instanceName: string,
+  input: { subject: string; description?: string | null; participants: string[] },
+): Promise<string> {
+  const participants = input.participants.map((p) => toEvolutionNumber(p)).filter((p): p is string => !!p);
+  const raw = await request<Record<string, unknown> | null>(config, "POST", `/group/create/${encodeURIComponent(instanceName)}`, {
+    subject: input.subject,
+    ...(input.description ? { description: input.description } : {}),
+    participants,
+  });
+  const jid = normalizeGroupJid(typeof raw?.id === "string" ? raw.id : null);
+  if (!jid) throw new EvolutionError("Evolution no devolvio el grupo creado", undefined, raw);
+  return jid;
+}
+
+export async function updateGroupSubject(config: EvolutionConfig, instanceName: string, groupJid: string, subject: string): Promise<void> {
+  await request(config, "POST", groupPath("updateGroupSubject", instanceName, groupJid), { subject });
+}
+
+export async function updateGroupDescription(config: EvolutionConfig, instanceName: string, groupJid: string, description: string): Promise<void> {
+  await request(config, "POST", groupPath("updateGroupDescription", instanceName, groupJid), { description });
+}
+
+/** Cambia la foto del grupo. `image` es una URL publica o firmada, o el base64 de la imagen. */
+export async function updateGroupPicture(config: EvolutionConfig, instanceName: string, groupJid: string, image: string): Promise<void> {
+  await request(config, "POST", groupPath("updateGroupPicture", instanceName, groupJid), { image });
+}
+
+/** `announcement` = solo admins envian; `locked` = solo admins editan la info (y sus opuestos). */
+export type GroupSettingAction = "announcement" | "not_announcement" | "locked" | "unlocked";
+
+export async function updateGroupSetting(
+  config: EvolutionConfig,
+  instanceName: string,
+  groupJid: string,
+  action: GroupSettingAction,
+): Promise<void> {
+  await request(config, "POST", groupPath("updateSetting", instanceName, groupJid), { action });
+}
+
+export type GroupParticipantAction = "add" | "remove" | "promote" | "demote";
+
+/**
+ * Lo que paso con cada persona. `needs_invite` = WhatsApp no deja agregarla (su privacidad no lo permite): hay que
+ * mandarle el link. `failed` = otro motivo (no tiene WhatsApp, ya estaba, etc.).
+ */
+export interface GroupParticipantResult {
+  jid: string;
+  status: "ok" | "needs_invite" | "failed";
+}
+
+export async function updateGroupParticipants(
+  config: EvolutionConfig,
+  instanceName: string,
+  groupJid: string,
+  action: GroupParticipantAction,
+  participants: string[],
+): Promise<GroupParticipantResult[]> {
+  const list = participants.map((p) => toEvolutionNumber(p)).filter((p): p is string => !!p);
+  if (list.length === 0) return [];
+  const raw = await request<{ updateParticipants?: unknown } | null>(
+    config,
+    "POST",
+    groupPath("updateParticipant", instanceName, groupJid),
+    { action, participants: list },
+  );
+  const rows = Array.isArray(raw?.updateParticipants) ? raw.updateParticipants : [];
+  return rows
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
+    .map((row) => {
+      const status = String(row.status ?? "");
+      return {
+        jid: typeof row.jid === "string" ? row.jid : "",
+        status: status === "200" ? "ok" : status === "403" ? "needs_invite" : "failed",
+      } satisfies GroupParticipantResult;
+    });
+}
+
+/** El link de invitacion del grupo (solo un admin lo puede pedir). */
+export async function fetchGroupInviteLink(config: EvolutionConfig, instanceName: string, groupJid: string): Promise<string> {
+  const raw = await request<{ inviteUrl?: unknown; inviteCode?: unknown } | null>(config, "GET", groupPath("inviteCode", instanceName, groupJid));
+  if (typeof raw?.inviteUrl === "string" && raw.inviteUrl.startsWith("https://chat.whatsapp.com/")) return raw.inviteUrl;
+  if (typeof raw?.inviteCode === "string" && /^[A-Za-z0-9]+$/.test(raw.inviteCode)) return `https://chat.whatsapp.com/${raw.inviteCode}`;
+  throw new EvolutionError("Evolution no devolvio el link de invitacion", undefined, raw);
+}
+
+/** Anula el link de invitacion (el viejo deja de servir) y devuelve el nuevo. */
+export async function revokeGroupInviteLink(config: EvolutionConfig, instanceName: string, groupJid: string): Promise<string> {
+  await request(config, "POST", groupPath("revokeInviteCode", instanceName, groupJid));
+  return fetchGroupInviteLink(config, instanceName, groupJid);
+}
+
+/** El numero sale del grupo. */
+export async function leaveGroup(config: EvolutionConfig, instanceName: string, groupJid: string): Promise<void> {
+  await request(config, "DELETE", groupPath("leaveGroup", instanceName, groupJid));
 }
 
 /** Lo que pide una encuesta. WhatsApp acepta de 2 a 12 opciones; `selectableCount` 0 = todas las que quiera. */

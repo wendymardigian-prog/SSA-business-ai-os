@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageSquare, Ban, CheckCheck, ChevronLeft, ChevronRight, FileText, UserRoundSearch, Users, UsersRound, X } from "lucide-react";
+import { MessageSquare, Ban, CheckCheck, ChevronLeft, ChevronRight, FileText, Megaphone, UserRoundSearch, Users, UsersRound, X } from "lucide-react";
+import { groupDisplayName } from "@/lib/whatsapp-groups/settings";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { noReplyBadge } from "@/lib/inbox/awaiting";
 import { createClient } from "@/lib/supabase/client";
@@ -15,6 +16,7 @@ import { InboxListHeader } from "@/components/inbox/inbox-list-header";
 import {
   matchesInboxRow,
   needsServerToFilter,
+  showsOnlyGroups,
   countActiveFilters,
   type InboxFilters,
 } from "@/lib/inbox/filters";
@@ -246,7 +248,7 @@ export function ConversationList({
   const items = mergeInboxRows(conversations, groups);
   const shownTotal = total + groupsTotal;
   const countLabel =
-    filters.listType === "grupos"
+    showsOnlyGroups(filters)
       ? shownTotal === 1 ? "1 grupo" : `${shownTotal} grupos`
       : shownTotal === 1 ? "1 chat" : `${shownTotal} chats`;
 
@@ -273,7 +275,7 @@ export function ConversationList({
         </div>
       )}
 
-      {!filters.onlyUnidentified && filters.listType !== "grupos" && <UnidentifiedNotice count={unidentifiedCount} />}
+      {!filters.onlyUnidentified && !showsOnlyGroups(filters) && <UnidentifiedNotice count={unidentifiedCount} />}
 
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
@@ -534,6 +536,7 @@ function GroupRow({
   time: string;
   onSelect: () => void;
 }) {
+  const display = groupDisplayName(group);
   return (
     <button
       type="button"
@@ -557,9 +560,17 @@ function GroupRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <p className="min-w-0 truncate text-sm font-medium">{group.subject}</p>
+          <p className="min-w-0 truncate text-sm font-medium" title={display.community ? `${display.community} › ${display.name}` : display.name}>
+            {display.name}
+          </p>
           <span className="flex-shrink-0 text-[11px] text-muted-foreground">{time}</span>
         </div>
+        {display.community && (
+          <p className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[11px] font-medium text-muted-foreground">
+            {group.kind === "announce" ? <Megaphone className="h-3 w-3 shrink-0" aria-hidden /> : <UsersRound className="h-3 w-3 shrink-0" aria-hidden />}
+            <span className="truncate">Comunidad {display.community}</span>
+          </p>
+        )}
         {account && (
           <p className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground" title={`Cuenta: ${account}`}>
             {account}
@@ -578,14 +589,14 @@ function GroupRow({
   );
 }
 
-/** Se pidio ver solo grupos y no hay ninguno activado: se dice donde se activan. */
+/** Se pidio ver solo grupos y todavia no hay ninguno: aparecen solos; abrir la lista de Grupos los trae ya. */
 function NoGroupsYet({ canManageGroups }: { canManageGroups: boolean }) {
   return (
     <div className="space-y-2 p-6 text-center text-sm text-muted-foreground">
       <UsersRound className="mx-auto h-8 w-8" aria-hidden />
       <p>Todavía no hay grupos para ver acá.</p>
       <p className="text-xs">
-        Se activan por número en{" "}
+        Aparecen solos cuando llega un mensaje. Para traerlos ya, abrí{" "}
         {canManageGroups ? (
           <Link href="/dashboard/settings/integrations/evolution" className="text-primary-ink underline">
             Ajustes → Integraciones → WhatsApp → Grupos

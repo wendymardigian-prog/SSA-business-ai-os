@@ -757,7 +757,10 @@ Tres disparadores de evento, de contacto, en `registry/whatsapp-group-triggers.t
 `lib/whatsapp-groups/automation/trigger-config.ts` (puro). Declaran `conversationFor` (hook nuevo del registro): el
 flujo responde por el chat privado en el número del grupo, creándolo si no existe, recién después de reclamar el
 disparo. Su `eventMatches` saltea un contacto «no contactar». Nodo nuevo: `send_poll` («Enviar encuesta», sin
-contacto, `requires: whatsapp_channel`). Detalle en [whatsapp-grupos.md](whatsapp-grupos.md).
+contacto, `requires: whatsapp_channel`). Desde la 00344, dos más: `send_to_group` («Enviar al grupo», texto y/o un
+recurso de la banca, sin contacto) e `invite_to_group` («Invitar a un grupo», con contacto: lo suma o le manda el
+link). Los tres eligen el grupo con `GroupSelect` (agrupado por comunidad) y saltean con `skipGroupStep`. Detalle en
+[whatsapp-grupos.md](whatsapp-grupos.md).
 
 ## Historial de ejecuciones (00292, noviembre 2026)
 
@@ -812,6 +815,52 @@ de Formularios y de la Agenda (`meta_event` en `ACTION_KINDS`) y en el lienzo. E
   único y se anota como salteado. Un salteo o un fallo queda en el historial de ejecuciones con `noteStep`.
 - **Purchase no se ofrece**: lo manda cada pago cobrado (trigger de `payments`), con el interruptor de la tarjeta.
 - El panel del lienzo y el editor de pasos usan el mismo formulario (`components/automations/meta-event-fields.tsx`).
+
+## «Calificar lead» y «Cambió la calificación» (00329)
+
+El nivel de calificación del lead (1 a 5) se cambia desde una automatización con el nodo `qualify_lead`, se compara con la condición
+`contact.qualification_level` y dispara flujos con el evento `qualification_changed`. Detalle del dato en
+[pipeline-contactos.md](pipeline-contactos.md).
+
+- **El paso** (`lib/flow-engine/nodes/qualify-lead.ts`, reglas puras en `lib/flow-engine/qualify-lead.ts`), `needsContact: true`,
+  nunca lanza. Se arma en el editor de pasos de Formularios y de la Agenda (`qualify_lead` en `ACTION_KINDS`) y en el lienzo
+  (`QualifyLeadPanel`). Cuatro modos:
+  - **Fijar un nivel** (1-5);
+  - **Sumar o restar puntos** (de -4 a +4);
+  - **Según reglas**: cada regla tiene condiciones (el mismo constructor y el mismo evaluador que «Condiciones») y sus puntos. Se
+    miran **todas** y se suman las que se cumplen, desde el nivel actual o desde un nivel fijo. Un solo cambio por paso;
+  - **Quitar la calificación**.
+
+  Pasa por `set_contact_qualification` con origen `automation` y el flujo; el motivo del historial nombra las reglas que se
+  cumplieron (nunca los valores de las respuestas). Sin reglas que se cumplan, o si el nivel queda igual, se anota como salteado.
+- **La condición** «Calificación del lead (1 a 5)» es de tipo número: «Sin calificar» cuenta como vacío.
+- **El disparador** es una opción de «Evento del CRM»: «Cambió la calificación», con `config.value` = `""` (cualquiera), `up`,
+  `down`, `eq:N`, `gte:N` (al cruzar hacia N o más) o `lt:N` (al bajar de N). La regla es `qualificationEventMatches`, y las
+  variables `event_level` y `event_previous_level` viajan al flujo.
+
+## «En una fecha y hora» (`scheduled_time`, 00339)
+
+Una automatización que arranca sola el día y la hora que se eligen: **una vez**, **todos los días**, **ciertos días de la
+semana** o **un día del mes** (el 31 en un mes de 30 cae el último día). Es el primer disparador de **sistema**
+(`subject: "system"`, `source_type = 'system'`): corre sin contacto ni persona, así que el lienzo solo ofrece los pasos
+que sirven sin contacto («Enviar encuesta» a un grupo, «Avisar en la campana», «Enviar email» a una dirección fija,
+«Enviar WhatsApp a un número», Esperar, Condiciones, Llamada HTTP...). Publicar con un paso que necesita contacto se
+rechaza, como en los demás flujos sin contacto.
+
+- **La hora es la del negocio** (`workspaces.timezone`), nunca la del navegador: «lunes a las 9» sigue siendo a las 9
+  cuando cambia el horario de verano. Reglas puras y con test en `lib/scheduled-flows/schedule.ts` (`nextOccurrence`,
+  `isOccurrenceOf`, `describeSchedule`).
+- **No suma ningún cron**: al publicar, `publishFlow` anula la vez pendiente y agenda la próxima en la cola
+  (`scheduled_jobs.type = 'flow_scheduled_run'`, `lib/scheduled-flows/jobs.ts`). El trabajo
+  (`lib/jobs/handlers/flow-scheduled-run.ts`) corre el flujo y agenda la siguiente **antes** de correrlo, así un flujo
+  que revienta no corta la repetición. Si la versión anterior era programada y la nueva no, su vez pendiente se anula.
+- **Nunca corre algo viejo ni dos veces**: el trabajo lleva la versión publicada (otra versión = no corre), vuelve a mirar
+  que esa vez siga siendo de la config, y reclama el disparo en `trigger_fires` (`schedule:<vez>`).
+- **Más de dos horas tarde** (la app estuvo caída) esa vez se saltea y se agenda la siguiente (`MAX_LATE_MINUTES`).
+- **Una sola vez que ya pasó no se publica** (no correría nunca). Cambiar la fecha pide volver a publicar.
+- Variables: `{{schedule.date}}` («9 de noviembre de 2026»), `{{schedule.weekday}}` («lunes») y `{{schedule.time}}`
+  («09:00»), en la hora del negocio. También se comparan en Condiciones (`schedule.*`).
+- Despublicar no anula la vez pendiente: el trabajo la descarta al ver que la automatización no está publicada.
 
 ## Servicios (Corrida A1, noviembre 2026)
 

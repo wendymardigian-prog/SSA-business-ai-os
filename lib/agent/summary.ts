@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { withoutDeletedMessages } from "@/lib/messages/revoke";
 import { z } from "zod";
 import type { Database, LeadTemperature } from "@/lib/types/database";
 import { getExactWorkspaceModel } from "@/lib/ai/provider";
@@ -12,11 +13,15 @@ import {
   allowedSetterStatuses,
   applyTags,
   setFollowup,
+  setQualification,
   setSetterStatus,
   setTemperature,
   type EffectContext,
+  type QualificationEffectConfig,
   type SetterStatusEffectConfig,
 } from "./tools/effects";
+import { QUALIFY_TOOL_NAME } from "./tools/qualification";
+import { parseQualificationSettings, qualificationRubricText } from "@/lib/contacts/qualification";
 import { parseStatusSettings } from "@/lib/contacts/statuses";
 import { getAgentTool } from "./tools/index";
 import { newNonce, wrapUntrusted } from "./untrusted";
@@ -88,8 +93,11 @@ const outputSchema = z.object({
       seguimiento_dias: z.number().int().min(0).max(3650).nullable().default(null),
       // Pipeline (00245): solo se pide si el agente tiene `cambiar_estado_setter`.
       estado_setter: z.string().max(80).nullable().default(null),
+      // Calificación (00329): solo se pide si el agente tiene `calificar_lead`. Un valor raro se ignora
+      // (no tira el resumen entero por un número fuera de rango).
+      calificacion: z.number().int().min(1).max(5).nullable().default(null).catch(null),
     })
-    .default({ agregar_tags: [], quitar_tags: [], temperatura: null, seguimiento_dias: null, estado_setter: null }),
+    .default({ agregar_tags: [], quitar_tags: [], temperatura: null, seguimiento_dias: null, estado_setter: null, calificacion: null }),
 });
 export type SummaryModelOutput = z.infer<typeof outputSchema>;
 
@@ -121,6 +129,11 @@ export interface ClassificationTools {
    * prompt es exactamente el de antes.
    */
   setterStatuses?: string[];
+  /**
+   * Calificación (00329): la rúbrica del negocio (una línea por nivel), si tiene
+   * la herramienta `calificar_lead`. Sin esto, el prompt es exactamente el de antes.
+   */
+  qualificationRubric?: string;
 }
 
 const ALL_CLASSIFICATION_TOOLS: ClassificationTools = { temperature: true, followup: true };
@@ -186,6 +199,11 @@ export function buildSummaryTechnicalPrompt(
         `Ademas, agrega en clasificacion la clave "estado_setter": el estado de setter que corresponde segun la conversacion, tal cual, de estos: ${tools.setterStatuses.join(", ")}. O null si no cambia.`,
       );
     }
+    if (tools.qualificationRubric) {
+      rules.push(
+        `Ademas, agrega en clasificacion la clave "calificacion": el nivel de calificacion del lead (un numero del 1 al 5) segun estos niveles del negocio, o null si la conversacion no alcanza para decidirlo:\n${tools.qualificationRubric}`,
+      );
+    }
   } else {
     rules.push("La clasificacion no esta habilitada: deja las listas vacias, temperatura null y seguimiento_dias null.");
   }
@@ -216,13 +234,15 @@ export async function summarizeConversationOnClose(
     .from("messages")
     // Con la media (F9): un resumen que ignora las notas de voz cuenta una
     // conversacion distinta de la que pasó.
-    .select("direction, text, created_at, transcript, transcript_status, media_description, attachments")
+    .select("direction, text, created_at, transcript, transcript_status, media_description, attachments, deleted_for_everyone_at")
     .eq("conversation_id", conversation.id)
     .order("created_at", { ascending: true })
     .limit(SUMMARY_MAX_MESSAGES);
   if (conversation.summarized_at) query = query.gt("created_at", conversation.summarized_at);
-  const { data: rows } = await query;
-  const messages = (rows ?? [])
+  // Lo borrado "para todos" (00356) no entra al resumen: ya no es parte de la conversacion.
+  const { data: allRows } = await query;
+  const rows = withoutDeletedMessages(allRows ?? []);
+  const messages = rows
     .map((m) => ({ ...m, text: effectiveMessageText(m) }))
     .filter((m) => m.text);
   if (messages.length === 0) return { kind: "skipped", reason: "no_new_messages" };
@@ -269,6 +289,17 @@ export async function summarizeConversationOnClose(
     const { data: wsRow } = await supabase.from("workspaces").select("contact_status_settings").eq("id", conversation.workspace_id).maybeSingle();
     const list = parseStatusSettings((wsRow as { contact_status_settings?: unknown } | null)?.contact_status_settings).setter;
     setterStatusNames = allowedSetterStatuses(list, setterConfig.allowedStatuses).map((st) => st.name);
+  }
+
+  // Calificación (00329): la rúbrica del negocio, si tiene la herramienta.
+  const qualifyTool = getAgentTool(QUALIFY_TOOL_NAME);
+  const qualifyConfig = qualifyTool && agent.allowedTools.includes(QUALIFY_TOOL_NAME)
+    ? (qualifyTool.configSchema.safeParse(agent.toolsConfig[QUALIFY_TOOL_NAME] ?? {}).data as QualificationEffectConfig | undefined) ?? null
+    : null;
+  let qualificationRubric: string | null = null;
+  if (canClassify && qualifyConfig) {
+    const { data: wsRow } = await supabase.from("workspaces").select("qualification_settings").eq("id", conversation.workspace_id).maybeSingle();
+    qualificationRubric = qualificationRubricText(parseQualificationSettings((wsRow as { qualification_settings?: unknown } | null)?.qualification_settings));
   }
 
   // El tope de gasto del negocio, ANTES de llamar (antes el resumen no lo miraba). Sin presupuesto (o con un modelo
@@ -324,6 +355,7 @@ export async function summarizeConversationOnClose(
       temperature: agent.allowedTools.includes("cambiar_temperatura"),
       followup: agent.allowedTools.includes("programar_seguimiento"),
       ...(setterStatusNames.length > 0 ? { setterStatuses: setterStatusNames } : {}),
+      ...(qualificationRubric ? { qualificationRubric } : {}),
     });
     const transcript = messages
       .map((m) => `${m.direction === "inbound" ? "Lead" : "Negocio"} (${m.created_at.slice(0, 16)}): ${m.text}`)
@@ -429,7 +461,16 @@ export async function summarizeConversationOnClose(
     }
 
     if (canClassify) {
-      await applyClassification(run, agent, effectCtx, output.clasificacion, tagConfig, deps.now(), setterStatusNames.length > 0 ? setterConfig : null);
+      await applyClassification(
+        run,
+        agent,
+        effectCtx,
+        output.clasificacion,
+        tagConfig,
+        deps.now(),
+        setterStatusNames.length > 0 ? setterConfig : null,
+        qualificationRubric ? qualifyConfig : null,
+      );
       details.push("classified");
     }
 
@@ -457,6 +498,7 @@ async function applyClassification(
   tagConfig: { allowedTagIds: string[]; canRemove: boolean } | null,
   now: Date,
   setterConfig: SetterStatusEffectConfig | null = null,
+  qualifyConfig: QualificationEffectConfig | null = null,
 ): Promise<void> {
   const record = async (name: string, input: unknown, result: { ok: boolean; message: string; auditLogId?: string | null; detail?: unknown }) => {
     await run.step({ kind: "tool_call", name, input, output: result.detail ?? { ok: result.ok, mensaje: result.message }, auditLogId: result.auditLogId ?? null, error: result.ok ? null : result.message });
@@ -485,5 +527,11 @@ async function applyClassification(
   if (proposal.estado_setter && setterConfig) {
     const result = await setSetterStatus(ctx, setterConfig, { status: proposal.estado_setter, reason: "clasificacion al cierre" });
     await record("cambiar_estado_setter", { estado: proposal.estado_setter }, result);
+  }
+
+  // Calificación (00329): el mismo efecto y los mismos límites que la herramienta.
+  if (proposal.calificacion !== null && qualifyConfig) {
+    const result = await setQualification(ctx, qualifyConfig, { level: proposal.calificacion, reason: "clasificacion al cierre" });
+    await record(QUALIFY_TOOL_NAME, { nivel: proposal.calificacion }, result);
   }
 }

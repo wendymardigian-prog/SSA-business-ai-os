@@ -38,7 +38,11 @@ const broadcast = {
 };
 const recipient = { id: "r-1", broadcast_id: "b-1", contact_id: "c-1", channel_id: "ch-email", status: "sending", attempts: 0, variant_index: 0, target: "ana@x.test" };
 
-function world(capacity: Record<string, unknown>, recipients: unknown[] = [recipient], over: { audience_params?: unknown; tagged?: { data?: unknown; error?: { message: string } } } = {}) {
+function world(
+  capacity: Record<string, unknown>,
+  recipients: unknown[] = [recipient],
+  over: { audience_params?: unknown; tagged?: { data?: unknown; error?: { message: string } }; contact?: { data?: unknown; error?: { message: string } } } = {},
+) {
   const queue = [...recipients];
   return fakeDb(
     {
@@ -46,7 +50,7 @@ function world(capacity: Record<string, unknown>, recipients: unknown[] = [recip
       "contact_tags:select": over.tagged ?? { data: [] },
       "channel_send_lanes:select": { data: { channel_id: "ch-email", workspace_id: WS, next_send_at: "2026-11-01T00:00:00Z", paused_at: null, consecutive_failures: 0 } },
       "workspaces:select": { data: { name: "Negocio", timezone: "America/Costa_Rica" } },
-      "contacts:select": { data: { id: "c-1", deleted_at: null, do_not_contact: false, is_subscribed: true, email: "ana@x.test" } },
+      "contacts:select": over.contact ?? { data: { id: "c-1", deleted_at: null, do_not_contact: false, is_subscribed: true, email: "ana@x.test" } },
       "custom_field_definitions:select": { data: [] },
       "broadcast_recipients:select": { data: null, count: 0 },
     },
@@ -198,5 +202,31 @@ describe("la audiencia filtrada por etiqueta se vuelve a mirar antes de mandar",
     const db = world(open, [recipient], { audience_params: { email: "subscribed" } });
     expect((await runSendQueue(db.client)).sent).toBe(1);
     expect(db.calls.some((c) => c.table === "contact_tags")).toBe(false);
+  });
+});
+
+describe("volver a leer el contacto antes de mandar", () => {
+  const open = { status: "ok", remaining: 1 };
+
+  it("si la lectura falla, no lo da por borrado: es un fallo que se reintenta", async () => {
+    const db = world(open, [recipient], { contact: { data: null, error: { message: "base cargada" } } });
+    const summary = await runSendQueue(db.client);
+    expect(summary.skipped).toBe(0);
+    expect(sendTransactionalEmail).not.toHaveBeenCalled();
+    const update = recipientUpdates(db)[0];
+    expect(update.status).toBe("pending");
+    expect(update.skip_reason ?? null).toBeNull();
+    expect(String(update.error_message)).toContain("base cargada");
+  });
+
+  it("si el contacto de verdad no está (o está borrado): sigue salteado como borrado", async () => {
+    for (const contact of [{ data: null }, { data: { id: "c-1", deleted_at: "2026-11-01T00:00:00Z", do_not_contact: false, is_subscribed: true, email: "ana@x.test" } }]) {
+      vi.clearAllMocks();
+      const db = world(open, [recipient], { contact });
+      const summary = await runSendQueue(db.client);
+      expect(summary.skipped).toBe(1);
+      expect(sendTransactionalEmail).not.toHaveBeenCalled();
+      expect(recipientUpdates(db)[0]).toMatchObject({ status: "skipped", skip_reason: "deleted" });
+    }
   });
 });

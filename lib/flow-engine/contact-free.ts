@@ -9,10 +9,9 @@ export const MEMBER_TRIGGER_TYPES = [
 ] as const;
 
 /**
- * Los disparadores de SISTEMA (Tirón 2, D1): sin contacto ni persona. Todavía no hay ninguno registrado; la lista
- * existe para que el primero que se sume (y `registry/consistency.test.ts`) no dependa de tocar el navegador a ciegas.
+ * Los disparadores de SISTEMA (Tirón 2, D1): sin contacto ni persona. El primero es «En una fecha y hora».
  */
-export const SYSTEM_TRIGGER_TYPES: readonly string[] = [];
+export const SYSTEM_TRIGGER_TYPES: readonly string[] = ["scheduled_time"];
 
 export const CONTACT_FREE_NODE_TYPES = [
   "abSplit",
@@ -25,6 +24,7 @@ export const CONTACT_FREE_NODE_TYPES = [
   "notify_team",
   "send_email",
   "send_poll",
+  "send_to_group",
   "send_whatsapp_number",
   "upsert_contact", // @plantilla-quitar(webhooks)
 ] as const;

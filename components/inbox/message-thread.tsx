@@ -3,7 +3,7 @@
 import { inboundToLabel } from "@/lib/email/inbound-address";
 import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, X, FileText, Copy } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, X, FileText, Copy, Ban, Trash2 } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -56,6 +56,8 @@ import { buildActivity, type MessageActivity } from "@/lib/inbox/message-activit
 import { ActivityTrigger } from "@/components/inbox/message-activity-panel";
 import { ReactButton, ReactionChips } from "@/components/inbox/message-reactions";
 import { loadConversationReactions, reactToMessage } from "@/lib/actions/reactions";
+import { deleteMessageForEveryone } from "@/lib/actions/message-delete";
+import { canDeleteForEveryone, deletedBubbleView, type DeletedBubbleView } from "@/lib/messages/revoke";
 import { canReactToMessage, reactionCapability as capabilityFor, type ReactionCapability } from "@/lib/channels/reactions";
 import { myReaction, reactionsForMessage, type MessageReactionView, type ReactionRow } from "@/lib/messages/reactions";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -132,8 +134,15 @@ function MessageBubble({
   retrying = false,
   onRetry,
   linkCards = false,
+  canDelete = false,
+  deleting = false,
+  onDelete,
 }: {
   message: Message;
+  /** Se ofrece «Eliminar para todos» (00356: WhatsApp, nuestro, dentro de los dos dias). */
+  canDelete?: boolean;
+  deleting?: boolean;
+  onDelete?: () => void;
   /** El canal muestra la tarjeta de los links (lib/channels/link-preview.ts). */
   linkCards?: boolean;
   /** Se esta reintentando este envio fallido (00262). */
@@ -165,8 +174,10 @@ function MessageBubble({
   const isInbound = message.direction === "inbound";
   const isBot = message.sent_by_flow_id !== null || Boolean(message.sent_by_agent_id);
   const failed = !isInbound && message.status === "failed";
-  const stickerOnly = isStickerOnlyMessage(message, failed);
-  const linkCardUrl = messageLinkCardUrl(message, { outbound: !isInbound, failed, channelShowsCards: linkCards });
+  // Borrado "para todos" en WhatsApp (00356): la burbuja dice «Mensaje eliminado» y lo que decia queda plegado.
+  const deleted = deletedBubbleView(message);
+  const stickerOnly = !deleted && isStickerOnlyMessage(message, failed);
+  const linkCardUrl = deleted ? null : messageLinkCardUrl(message, { outbound: !isInbound, failed, channelShowsCards: linkCards });
 
   return (
     <div
@@ -188,6 +199,8 @@ function MessageBubble({
             // Solo un sticker: sin globo, como en WhatsApp (00257).
             stickerOnly
               ? "bg-transparent px-0 py-0 text-foreground"
+              : deleted
+              ? cn("border border-dashed border-border bg-muted/40 text-muted-foreground", isInbound ? "rounded-tl-md" : "rounded-tr-md")
               : isInbound
               ? "rounded-tl-md bg-muted text-foreground"
               : failed
@@ -198,6 +211,10 @@ function MessageBubble({
               : "rounded-tr-md bg-primary text-primary-foreground"
           )}
         >
+          {deleted ? (
+            <DeletedMessageBody view={deleted} message={message} />
+          ) : (
+          <>
           {failed && (
             <div className="mb-1 flex items-center gap-1.5 text-xs font-medium">
               <AlertTriangle className="h-3.5 w-3.5" />
@@ -229,6 +246,8 @@ function MessageBubble({
               onRetry={onRetry && !message.id.startsWith("optimistic-") && canRetrySend(message) ? onRetry : undefined}
             />
           )}
+          </>
+          )}
         </div>
         <ReactionChips reactions={reactions} inbound={isInbound} busy={reacting} onRemoveMine={() => onReact?.("")} />
         <div
@@ -254,8 +273,24 @@ function MessageBubble({
             </span>
           )}
           {!isInbound && message.status === "delivered" && <span>Entregado</span>}
-          {canReact && reactionCap && onReact && (
+          {!deleted && canReact && reactionCap && onReact && (
             <ReactButton capability={reactionCap} mine={myReactionEmoji} busy={reacting} onReact={onReact} />
+          )}
+          {!deleted && canDelete && onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleting}
+              aria-label="Eliminar este mensaje para todos"
+              title="Eliminar para todos"
+              className={cn(
+                "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-60",
+                // Como el boton de reaccionar: con mouse aparece al pasar por el mensaje; en tactil se ve siempre.
+                "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100",
+              )}
+            >
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Trash2 className="h-3.5 w-3.5" aria-hidden />}
+            </button>
           )}
         </div>
         {isInbound && message.origin_chip && <OriginChip chip={message.origin_chip} />}
@@ -281,6 +316,42 @@ function MessageBubble({
             <Bot className="h-3.5 w-3.5 text-primary-ink" />
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Un mensaje borrado "para todos" en WhatsApp (00356). Para el contacto ya no
+ * existe; para el equipo, lo que decia queda guardado y se ve a pedido.
+ */
+function DeletedMessageBody({ view, message }: { view: DeletedBubbleView; message: Message }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <p className="flex items-center gap-1.5 italic">
+        <Ban className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+        {view.label}
+      </p>
+      <p className="mt-0.5 text-[11px]">{view.detail}</p>
+      {view.hasOriginal && (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="mt-1 text-[11px] font-medium text-foreground/80 underline underline-offset-2 hover:text-foreground"
+          >
+            {open ? "Ocultar lo que decía" : "Ver lo que decía"}
+          </button>
+          {open && (
+            <div className="mt-2 border-t border-border pt-2 text-foreground/80">
+              <MessageAttachments message={message} />
+              {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
+              {!message.text && message.transcript && <p className="whitespace-pre-wrap break-words">{message.transcript}</p>}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -364,6 +435,10 @@ function daysSince(dateStr: string | null | undefined): number | null {
  *
  * No hay logica proactiva de ventana: no se bloquea el envio ni se calcula
  * nada. Se avisa, y si igual se manda y la API rechaza, el error se explica.
+ *
+ * Solo en Instagram: la ventana de 24 horas es de Instagram. WhatsApp por
+ * Evolution (Baileys, por QR) no tiene esa ventana y el email tampoco, asi que
+ * ahi el aviso confundia.
  */
 function StaleConversationNotice({ days }: { days: number }) {
   return (
@@ -607,6 +682,35 @@ export function MessageThread({
     });
   }, []);
 
+  // «Eliminar para todos» (00356): se confirma antes, porque en WhatsApp no tiene vuelta.
+  const [confirmDelete, setConfirmDelete] = useState<Message | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function handleDeleteForEveryone(message: Message) {
+    if (deletingId) return;
+    setMediaError(null);
+    setDeletingId(message.id);
+    try {
+      const result = await deleteMessageForEveryone(message.id);
+      if (!result.ok) {
+        setMediaError(result.error);
+        return;
+      }
+      const now = new Date().toISOString();
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === message.id && !m.deleted_for_everyone_at
+            ? { ...m, deleted_for_everyone_at: now, deleted_for_everyone_source: "app" }
+            : m,
+        ),
+      );
+    } catch {
+      setMediaError("No pude eliminar el mensaje. Revisá tu conexión y probá de nuevo.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function handleReact(message: Message, emoji: string) {
     if (!conversation || reactingId) return;
     setMediaError(null);
@@ -824,6 +928,9 @@ export function MessageThread({
     const optimisticMessage: Message = {
       id: optimisticId,
       origin_context: null,
+      deleted_for_everyone_at: null,
+      deleted_for_everyone_source: null,
+      deleted_for_everyone_by: null,
       conversation_id: conversation.id,
       direction: "outbound",
       text,
@@ -1525,6 +1632,20 @@ export function MessageThread({
                 replyTime={replyTimes.get(message.id) ?? null}
                 retrying={retryingId === message.id}
                 onRetry={canReply ? () => void handleRetry(message) : undefined}
+                canDelete={
+                  canReply &&
+                  /^[0-9a-f-]{36}$/i.test(message.id) &&
+                  canDeleteForEveryone({
+                    provider: channelProvider,
+                    direction: message.direction,
+                    status: message.status,
+                    platformMessageId: message.platform_message_id,
+                    createdAt: message.created_at,
+                    deletedAt: message.deleted_for_everyone_at,
+                  }).ok
+                }
+                deleting={deletingId === message.id}
+                onDelete={() => setConfirmDelete(message)}
               />
             </div>
           ))}
@@ -1535,7 +1656,7 @@ export function MessageThread({
         </div>
       </div>
 
-      {staleDays !== null && staleDays >= 7 && (
+      {conversation?.platform === "instagram" && staleDays !== null && staleDays >= 7 && (
         <StaleConversationNotice days={staleDays} />
       )}
 
@@ -1736,6 +1857,20 @@ export function MessageThread({
       </>
       )}
 
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="¿Eliminar este mensaje para todos?"
+        message="Se borra del WhatsApp del contacto y no se puede deshacer. Acá queda como «Mensaje eliminado» y el equipo puede ver lo que decía."
+        confirmLabel="Eliminar para todos"
+        cancelLabel="Cancelar"
+        destructive
+        onConfirm={() => {
+          const target = confirmDelete;
+          setConfirmDelete(null);
+          if (target) void handleDeleteForEveryone(target);
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      />
       <ConfirmDialog
         open={confirmingDoNotContact}
         title="Este contacto pidió no ser contactado"

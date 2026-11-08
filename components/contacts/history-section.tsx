@@ -49,6 +49,9 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "email_marketing.settings": "cambió el tope de emails de marketing",
   setter_status: "cambió el estado de setter",
   "contact_statuses.updated": "cambió las listas de estados",
+  // Calificación (00329): el cambio se ve con su propia entrada (contact_qualification_changes).
+  qualification: "cambió la calificación",
+  "qualification_settings.updated": "cambió los niveles de calificación",
   create: "creó el contacto",
   update: "editó el contacto",
   email_status: "cambió el estado de email",
@@ -191,7 +194,7 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
                   {item.source === "email" && item.delivery.length > 0 && (
                     <p className="mt-1 text-xs text-muted-foreground">{item.delivery.join(" · ")}</p>
                   )}
-                  {item.source === "status" && item.reason && (
+                  {(item.source === "status" || item.source === "qualification") && item.reason && (
                     <p className="mt-1 text-xs text-muted-foreground">Motivo: {item.reason}</p>
                   )}
                 </li>

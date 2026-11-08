@@ -1,6 +1,8 @@
 "use client";
 
 import { BarChart3,
+  UsersRound,
+  UserPlus,
   Zap,
   MessageSquare,
   Split,
@@ -33,6 +35,7 @@ import { BarChart3,
   UserRoundPlus,
   Smartphone,
   Target,
+  Gauge,
 } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Search } from "lucide-react";
@@ -257,6 +260,16 @@ const categories: PaletteCategory[] = [
         synonyms: ["whatsapp", "aviso", "telefono"],
         actionType: "send_whatsapp_number",
       },
+      // Calificación del lead (00329): fija, suma o resta el nivel 1-5, o lo calcula con reglas.
+      {
+        type: "action",
+        nodeType: "qualify_lead",
+        label: "Calificar lead",
+        icon: Gauge,
+        description: "Fija, suma o resta el nivel de calificación (1 a 5), o lo calcula con reglas",
+        synonyms: ["calificacion", "calificar", "puntaje", "score", "nivel", "lead scoring", "puntos"],
+        actionType: "qualify_lead",
+      },
       // API de Conversiones (00328): le avisa a Meta que pasó algo que vale (un lead, una reunión).
       {
         type: "action",
@@ -276,6 +289,26 @@ const categories: PaletteCategory[] = [
         description: "Una encuesta de WhatsApp a un grupo activado",
         synonyms: ["encuesta", "grupo", "votacion", "whatsapp", "poll"],
         actionType: "send_poll",
+      },
+      // Grupos de WhatsApp (00344): un mensaje, un archivo o un recurso a un grupo (sirve sin contacto).
+      {
+        type: "action",
+        nodeType: "send_to_group",
+        label: "Enviar al grupo",
+        icon: UsersRound,
+        description: "Un mensaje, un archivo o un recurso a un grupo de WhatsApp",
+        synonyms: ["grupo", "comunidad", "whatsapp", "mensaje", "archivo", "avisos", "difusion"],
+        actionType: "send_to_group",
+      },
+      // Suma al contacto a un grupo; si WhatsApp no deja, le manda el link.
+      {
+        type: "action",
+        nodeType: "invite_to_group",
+        label: "Invitar a un grupo",
+        icon: UserPlus,
+        description: "Suma al contacto a un grupo de WhatsApp o le manda el link",
+        synonyms: ["grupo", "comunidad", "invitar", "agregar", "sumar", "link", "whatsapp"],
+        actionType: "invite_to_group",
       },
       // E15: un aviso al equipo en la campana (sirve también en flujos sin contacto).
       {

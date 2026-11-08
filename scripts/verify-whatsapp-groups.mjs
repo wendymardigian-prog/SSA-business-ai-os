@@ -173,6 +173,24 @@ try {
   }
 
   // -------------------------------------------------------------------------
+  if (process.argv.includes("--despues-de-00344")) {
+    console.log("\n5b. Comunidades (00344)");
+    const COMMUNITY = "120363000000000099@g.us";
+    const ok = await svc.from("whatsapp_groups").update({ kind: "announce", parent_group_jid: COMMUNITY, community_subject: "zz-test comunidad", number_is_admin: true }).eq("id", group.id);
+    check(!ok.error, "un grupo de Avisos con su comunidad se guarda", ok.error?.message);
+    const noParent = await svc.from("whatsapp_groups").update({ kind: "announce", parent_group_jid: null }).eq("id", group.id);
+    check(Boolean(noParent.error), "Avisos sin comunidad se rechaza");
+    const badKind = await svc.from("whatsapp_groups").update({ kind: "community" }).eq("id", group.id);
+    check(Boolean(badKind.error), "un tipo inventado se rechaza (la comunidad madre no se guarda)");
+    const badParent = await svc.from("whatsapp_groups").update({ parent_group_jid: "no-es-un-grupo" }).eq("id", group.id);
+    check(Boolean(badParent.error), "un JID de comunidad invalido se rechaza");
+    const { data: read } = await owner.client.from("whatsapp_groups").select("kind, parent_group_jid, community_subject").eq("id", group.id).maybeSingle();
+    check(read?.community_subject === "zz-test comunidad", "quien ve el grupo lee su comunidad (RLS de siempre)", JSON.stringify(read));
+    const write = await owner.client.from("whatsapp_groups").update({ community_subject: "hackeado" }).eq("id", group.id).select("id");
+    check((write.data ?? []).length === 0, "nadie la escribe desde el navegador");
+  }
+
+  // -------------------------------------------------------------------------
   console.log("\n6. Borrar el grupo se lleva todo lo suyo");
   {
     await svc.from("whatsapp_groups").delete().eq("id", group.id);

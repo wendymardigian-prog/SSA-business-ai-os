@@ -25,6 +25,8 @@ import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
+import type { QualificationSettings } from "@/lib/contacts/qualification";
+import { QualificationSettingsSection } from "./qualification-settings";
 
 const ROLE_HINTS: Record<StatusRole, string> = {
   setter: "Lo mueve quien hace el primer contacto (y el agente de IA, si le habilitás la herramienta).",
@@ -40,10 +42,16 @@ export function StatusesView({
   settings,
   usage,
   usageFailed,
+  qualification,
+  qualificationUsage,
+  unqualified,
 }: {
   settings: ContactStatusSettings;
   usage: Record<StatusRole, Record<string, number>>;
   usageFailed: boolean;
+  qualification: QualificationSettings;
+  qualificationUsage: Record<number, number>;
+  unqualified: number | null;
 }) {
   return (
     <div className="flex h-full flex-col overflow-auto">
@@ -74,6 +82,7 @@ export function StatusesView({
         {STATUS_ROLES.map((role) => (
           <StatusList key={role} role={role} list={settings[role]} usage={usage[role]} />
         ))}
+        <QualificationSettingsSection settings={qualification} usage={qualificationUsage} unqualified={unqualified} />
       </div>
     </div>
   );

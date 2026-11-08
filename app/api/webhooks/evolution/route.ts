@@ -6,6 +6,7 @@
  * - connection.update: la sesion se abrio, se esta abriendo o se cayo
  * - call: una llamada (00258)
  * - group-participants.update: alguien entro o salio de un grupo (Grupos de WhatsApp, 00280)
+ * - messages.delete / messages.edited: un mensaje se borro "para todos" (00356; ver lib/messages/revoke.ts)
  *
  * Autenticacion: esta URL es publica, asi que se exige el header
  * x-webhook-token, el mismo que se configura al crear la instancia
@@ -41,9 +42,11 @@ import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
 import { resolveWhatsappSender, type WhatsappMessageKey, type WhatsappSender } from "@/lib/whatsapp-sender";
 import { handleWhatsappReaction, parseBaileysReaction } from "@/lib/messages/reactions-inbound";
 import { parseBaileysPollVote } from "@/lib/messages/poll-votes";
+import { parseWhatsappRevoke, protocolMessageOf, revokeSource } from "@/lib/messages/revoke";
+import { markMessageDeletedForEveryone } from "@/lib/messages/revoke-inbound";
 import { withKnownLid } from "@/lib/whatsapp-known-lid";
-import { groupJidOfMessage, parseGroupParticipantsEvent } from "@/lib/whatsapp-groups/parse";
-import { handleGroupMessage, handleGroupParticipants, loadActiveGroup } from "@/lib/whatsapp-groups/inbound";
+import { groupJidOfMessage, parseGroupParticipantsEvent, parseGroupsUpdateEvent } from "@/lib/whatsapp-groups/parse";
+import { ensureInboxGroup, handleGroupMessage, handleGroupParticipants, handleGroupsUpdate } from "@/lib/whatsapp-groups/inbound";
 import {
   describeAttachment,
   extractText,
@@ -63,6 +66,7 @@ import {
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
 import { discardPendingDrafts, supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
 import { AUTO_DISCARD } from "@/lib/agent/drafts/types";
+import { UNKNOWN_WHATSAPP_NAME } from "@/lib/contacts/anonymous";
 
 interface EvolutionPayload {
   event?: string;
@@ -183,21 +187,59 @@ async function handleWebhook(request: NextRequest) {
     return NextResponse.json({ ok: true, queued: "group-participants" });
   }
 
+  // Un grupo nuevo o un cambio de nombre, permisos o comunidad (00344). Solo actualiza los grupos ya guardados.
+  if (event === "groups.upsert" || event === "groups.update" || event === "group.update") {
+    const updates = parseGroupsUpdateEvent(payload.data);
+    if (updates.length === 0) return NextResponse.json({ ok: true, skipped: "aviso de grupo ilegible" });
+    after(async () => {
+      try {
+        await handleGroupsUpdate(supabase, channel, updates);
+      } catch (err) {
+        console.error("[evolution] error procesando el cambio de grupo:", err instanceof Error ? err.message : err);
+      }
+    });
+    return NextResponse.json({ ok: true, queued: "groups-update" });
+  }
+
+  // Un mensaje borrado "para todos" (00356). No es un mensaje: marca la fila borrada y el camino termina aca. En la
+  // 2.3.7 llega por `messages.delete` y por `messages.edited` (el protocolMessage); si llegara por `messages.upsert`
+  // tambien se ataja aca, ANTES de los grupos y del camino de los mensajes: si no, entraria como un mensaje vacio.
+  if (event === "messages.delete" || event === "messages.edited" || event === "messages.upsert") {
+    const revoke = parseWhatsappRevoke(event, payload.data);
+    if (revoke) {
+      const marked = await markMessageDeletedForEveryone(supabase, {
+        workspaceId: channel.workspace_id,
+        channelId: channel.id,
+        platformMessageId: revoke.targetId,
+        source: revokeSource(revoke, payload.data?.key?.fromMe === true),
+      });
+      return NextResponse.json({ ok: true, handled: "revoke", marked });
+    }
+    // Una edicion u otro aviso del protocolo (mensajes temporales, sincronizacion): tampoco es un mensaje.
+    if (event !== "messages.upsert") {
+      return NextResponse.json({ ok: true, skipped: event === "messages.edited" ? "edicion" : "borrado ilegible" });
+    }
+    if (protocolMessageOf(payload.data?.message)) {
+      return NextResponse.json({ ok: true, skipped: "mensaje del protocolo" });
+    }
+  }
+
   if (event !== "messages.upsert") {
     return NextResponse.json({ ok: true, skipped: event || "sin evento" });
   }
 
-  // Un mensaje de un GRUPO: solo se guarda si el negocio activo ese grupo (si no, se ignora como siempre). No es
-  // una conversacion con un lead: no pasa por el agente, ni por los flujos de mensajes, ni suma a la bandeja privada.
+  // Un mensaje de un GRUPO: todos los grupos del numero van a la bandeja (8/11/2026). Uno que no estaba guardado se
+  // suma en el momento (leyendo su nombre y su comunidad de WhatsApp, despues de responder). No es una conversacion
+  // con un lead: no pasa por el agente, ni por los flujos de mensajes, ni suma a la bandeja privada.
   const groupJid = groupJidOfMessage(payload.data?.key);
   if (groupJid) {
-    const group = await loadActiveGroup(supabase, channel.id, groupJid);
-    if (!group) return NextResponse.json({ ok: true, skipped: "grupo no activado" });
     const groupMessageId = payload.data?.key?.id ?? null;
     const claimedGroup = await claimWebhookEvent(supabase, groupMessageId ? `evolution:${channel.id}:${groupJid}:${groupMessageId}` : null);
     if (!claimedGroup) return NextResponse.json({ ok: true, skipped: "evento repetido" });
     after(async () => {
       try {
+        const group = await ensureInboxGroup(supabase, channel, groupJid);
+        if (!group) return;
         await handleGroupMessage(supabase, channel, group, payload.data ?? {});
       } catch (err) {
         console.error("[evolution] error procesando el mensaje del grupo:", err instanceof Error ? err.message : err);
@@ -622,6 +664,4 @@ async function processMessage(
   }
 }
 
-/** El nombre de un contacto de WhatsApp del que no sabemos ni el nombre ni el numero. */
-const UNKNOWN_WHATSAPP_NAME = "Contacto de WhatsApp";
 

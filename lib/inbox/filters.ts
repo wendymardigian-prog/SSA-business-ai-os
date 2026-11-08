@@ -61,11 +61,27 @@ export function parseListType(tipo: string, vistaVieja = ""): InboxListType | ""
   return vistaVieja === "grupos" ? "grupos" : "";
 }
 
+/** `?comunidad=<jid>` (00344): solo los grupos de esa comunidad de WhatsApp. */
+export const COMMUNITY_PARAM = "comunidad";
+
+/** El JID de una comunidad que vino en la URL, o "" si no es uno valido (no llega a la consulta). */
+export function parseCommunityParam(value: string): string {
+  const trimmed = (value ?? "").trim();
+  return /^\d{6,}(-\d+)?@g\.us$/.test(trimmed) ? trimmed : "";
+}
+
+/** La lista muestra solo grupos: se pidio «Solo grupos» o una comunidad (una comunidad no tiene chats). */
+export function showsOnlyGroups(filters: Pick<InboxFilters, "listType" | "communityJid">): boolean {
+  return filters.listType === "grupos" || !!filters.communityJid;
+}
+
 export interface InboxFilters {
   search: string;
   status: InboxStatus;
   /** Chats, grupos o los dos. Opcional: los links viejos no lo traen. */
   listType?: InboxListType | "";
+  /** Solo los grupos de una comunidad de WhatsApp (su JID). Con este filtro no entran chats. */
+  communityJid?: string;
   /** Plataformas de los canales activos, ej ["instagram", "whatsapp"]. */
   platforms: string[];
   /**
@@ -108,6 +124,7 @@ export const EMPTY_INBOX_FILTERS: InboxFilters = {
   search: "",
   status: DEFAULT_INBOX_STATUS,
   listType: "",
+  communityJid: "",
   platforms: [],
   channelIds: [],
   tagIds: [],
@@ -146,6 +163,7 @@ export function countActiveFilters(filters: InboxFilters): number {
   if (filters.search) count++;
   if (filters.status !== DEFAULT_INBOX_STATUS) count++;
   if (filters.listType) count++;
+  if (filters.communityJid) count++;
   if (filters.platforms.length > 0) count++;
   if (filters.channelIds.length > 0) count++;
   if (filters.tagIds.length > 0) count++;

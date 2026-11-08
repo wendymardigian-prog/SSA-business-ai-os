@@ -3,6 +3,8 @@
 import { NodeMetricsBadge } from "../metrics-context";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { BarChart3, Flag, CalendarPlus, CirclePause, Award,
+  UsersRound,
+  UserPlus,
   Tag,
   FileText,
   Globe,
@@ -29,9 +31,11 @@ import { BarChart3, Flag, CalendarPlus, CirclePause, Award,
   Ban,
   Sparkles,
   Target,
+  Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
+import { describeQualifyStep, type QualifyLeadStepData } from "@/lib/flow-engine/qualify-lead";
 import { NodeBlockedNotice } from "../capabilities-context";
 import { serviceActionDetail, type ServiceActionData, type ServiceActionType } from "@/lib/flow-engine/nodes/service-action-detail"; // @plantilla-quitar(servicios)
 
@@ -170,6 +174,8 @@ const actionConfig: Record<
     color: "bg-gray-500",
   },
   send_poll: { icon: BarChart3, label: "Enviar encuesta", color: "bg-gray-500" },
+  send_to_group: { icon: UsersRound, label: "Enviar al grupo", color: "bg-gray-500" },
+  invite_to_group: { icon: UserPlus, label: "Invitar a un grupo", color: "bg-gray-500" },
   send_meta_event: { icon: Target, label: "Enviar evento a Meta", color: "bg-gray-500" },
   // @plantilla-desde(servicios)
   svc_complete_step: { icon: ListChecks, label: "Completar un paso del servicio", color: "bg-gray-500" },
@@ -179,6 +185,7 @@ const actionConfig: Record<
   svc_pause_service: { icon: CirclePause, label: "Pausar servicio", color: "bg-gray-500" },
   svc_issue_certificate: { icon: Award, label: "Emitir certificado", color: "bg-gray-500" },
   // @plantilla-hasta(servicios)
+  qualify_lead: { icon: Gauge, label: "Calificar lead", color: "bg-gray-500" },
   enrollSequence: { icon: ListOrdered, label: "Inscribir en secuencia", color: "bg-gray-500" },
   notify_team: { icon: Bell, label: "Avisar en la campana", color: "bg-gray-500" },
   cancel_booking: { icon: CalendarX, label: "Cancelar la reunión", color: "bg-gray-500" },
@@ -262,6 +269,10 @@ function getSummary(nodeData: ActionNodeProps): string | null {
     }
     case "send_poll" as NodeType:
       return (nodeData as { question?: string }).question?.trim() || null;
+    case "send_to_group" as NodeType:
+      return (nodeData as { text?: string }).text?.trim() || ((nodeData as { assetId?: string }).assetId ? "Un recurso de la banca" : null);
+    case "invite_to_group" as NodeType:
+      return (nodeData as { linkOnly?: boolean }).linkOnly ? "Le manda el link" : "Lo suma (o le manda el link)";
     case "send_meta_event" as NodeType:
       return (nodeData as { eventName?: string }).eventName?.trim() || null;
     // @plantilla-desde(servicios)
@@ -273,6 +284,8 @@ function getSummary(nodeData: ActionNodeProps): string | null {
     case "svc_issue_certificate" as NodeType:
       return serviceActionDetail(type as unknown as ServiceActionType, nodeData as unknown as ServiceActionData);
     // @plantilla-hasta(servicios)
+    case "qualify_lead" as NodeType:
+      return describeQualifyStep(nodeData as Partial<QualifyLeadStepData>);
     case "privateReply":
       return (nodeData as { text?: string }).text?.trim() || null;
     // Diseñador IA (F57): la plantilla elegida.
