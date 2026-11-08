@@ -63,7 +63,12 @@
   - `00352` aplicada y registrada (8/11, versión `20261108184035`), después de ensayarla y de releer de la base los dos CHECK de `agent_runs` (suman `portal_tutor`). Un tutor por programa (`products.tutor_agent_id`, único, con guardia SV003 para la sesión; el programa de un tutor no se cambia), prender/apagar/duplicar, límites y créditos (gemela con 10 casos), qué puede usar el tutor (para un estudiante, solo las clases que tiene abiertas; nunca evaluaciones, internos ni excluidos), la lista del equipo, excluir/incluir y «Agregar desde Conocimiento», el uso del mes (montos solo con `ai_costs.view`) y la política del canal `portal` en `ai_threads`.
   - Pantallas: la pestaña Asistente IA del programa (el tutor con «Prenderla», «Abrir en Agentes IA» y «Duplicar a otro programa», Límites y créditos, Este mes, Base de conocimiento con sus filtros, «Lo usa el tutor», «+ Documento» y «Agregar desde Conocimiento»), la tarjeta Asistente IA en la ficha del servicio y «Programa: X» en Agentes IA. Prender o apagar «Asistente IA» en las secciones del programa crea o apaga el tutor. Tipo de agente `student_tutor`, origen `portal_tutor` y claves `tutor.manage` y `tutor.knowledge`.
   - `verify-program --bloque ia` en 0 (32 comprobaciones: prender dos veces = uno, nace en «avisar», SV003, índice único, duplicar con y sin reemplazo, apagar, la clase 5 bloqueada fuera, evaluaciones nunca, la lista igual a la búsqueda, «Falta transcripción», excluir sin borrar, gasto del mes, créditos, montos por permiso y el canal `portal`).
-- [ ] **X** Cierre: F88, F89, F90, F91, F92, F108 (S16)
+- [x] **X** Cierre: F88, F89, F90, F91, F92, F108 (S16) — **listo el 8/11** (la poda de la plantilla falta probarla en una base de prueba; revisión visual pendiente)
+  - `00353` aplicada y registrada (8/11, versión `20261108191557`), después de ensayarla y de releer de la base la huella de `merge_contacts` (`16f208bc…`, la que se copió). El gancho de fusión del módulo, `merge_contacts` con la llamada condicional al final, el barrido diario (`svc_daily_run`, job `svc_daily`, cron `svc-daily` a los 23 de cada hora por SQL directo), la emisión del certificado al abrirse la fase, el límite propio del asistente y las métricas de las cards de Portal › Programas.
+  - Pantallas: las 8 métricas en cada card de Portal › Programas con «Últimos 7 / 30 días» (lo por revisar lleva a Por revisar filtrado por el programa), «Límite propio» en la tarjeta del asistente de la ficha del servicio.
+  - Plantilla: la sección 7 de `scripts/plantilla/poda.sql` saca Servicios y Afiliados (disparadores por nombre, cron, buckets, políticas, el CHECK de corridas con agente, las columnas, las funciones de afiliados y los esquemas con CASCADE, como pide F90). Los archivos nuevos están en `perfiles/estudiantes.mjs`.
+  - Documentación: `docs/servicios.md`, `docs/portal-admin.md`, `docs/afiliados.md`, las secciones de Servicios en `docs/flow-registry.md` y `docs/roles.md`, y «Servicios, portal y afiliados» en `CLAUDE.md`.
+  - `verify-program --bloque x` en 0 (22 comprobaciones: la fusión mueve todo con sus reglas, el barrido dos veces no duplica, se encola uno por día, la emisión automática del certificado, el límite propio y las métricas con sus permisos).
 
 ## Migraciones (S0x → número real)
 
@@ -90,7 +95,7 @@
 | S13 | 00343 | `00343_affiliates.sql` | AF | **aplicada y registrada** (8/11, versión `20261108161154`), después de ensayarla en una transacción que se deshizo sola; `--s S13` en 0 |
 | S14 | 00351 | `00351_app_servicio_community.sql` | CO | **aplicada y registrada** (8/11, versión `20261108182448`), después de ensayarla; `verify-program --bloque co` en 0 |
 | S15 | 00352 | `00352_app_servicio_tutor.sql` | IA | **aplicada y registrada** (8/11, versión `20261108184035`), después de ensayarla; `verify-program --bloque ia` en 0 |
-| S16 | 00353 | `00353_app_servicio_merge_and_cron.sql` | X | pendiente (confirmar el número antes) |
+| S16 | 00353 | `00353_app_servicio_merge_and_cron.sql` | X | **aplicada y registrada** (8/11, versión `20261108191557`), después de ensayarla; `verify-program --bloque x` en 0 |
 
 ## Punto de partida (8/11/2026)
 

@@ -689,7 +689,8 @@ try {
     console.log("\nac · Mora (F39)");
     const vM = await mkVariant("zz-test Con mora");
     sql(`UPDATE public.product_variants SET portal_settings = ${jlit({ v: 1, enabled: true, sections: [{ section: "program", included: true }] })}, portal_settings_rev = portal_settings_rev + 1 WHERE id = ${lit(vM.id)}`);
-    setSettings(vM.id, { ...createRule("any_payment"), overdue_cut: { enabled: true, days: 30, restore: true } });
+    // El reparto de createRule incluye a member2, que sv1 da de baja: aca va una persona que sigue en el equipo.
+    setSettings(vM.id, { ...createRule("any_payment"), owner: { mode: "fixed", user_id: member.id, fallback_user_id: owner.id }, overdue_cut: { enabled: true, days: 30, restore: true } });
     const cM = await newContact("con mora");
     const late = new Date(Date.now() - 40 * 86_400_000).toISOString().slice(0, 10);
     const saleM = await createSale(cM.id, vM.id, [sched("reservation", 300, ayer), sched("installment", 700, late)]);

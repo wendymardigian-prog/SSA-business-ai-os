@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { loadSalesTriggerOptions } from "@/lib/actions/sales-automation";
-import type { ServiceActionData, ServiceActionType } from "@/lib/flow-engine/nodes/service-actions";
+import type { ServiceActionData, ServiceActionType } from "@/lib/flow-engine/nodes/service-action-detail";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";

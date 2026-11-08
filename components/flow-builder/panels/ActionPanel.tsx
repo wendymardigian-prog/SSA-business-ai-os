@@ -21,7 +21,7 @@ import { SendEmailPanel } from "./SendEmailPanel";
 import { CancelBookingPanel, NotifyTeamPanel, SetBookingStatusPanel } from "./ExtraActionPanels";
 import { VariableChips } from "./variable-chips";
 import { ServiceActionPanel } from "./ServiceActionPanel"; // @plantilla-quitar(servicios)
-import type { ServiceActionType } from "@/lib/flow-engine/nodes/service-actions"; // @plantilla-quitar(servicios)
+import type { ServiceActionType } from "@/lib/flow-engine/nodes/service-action-detail"; // @plantilla-quitar(servicios)
 
 interface ActionPanelData {
   actionType?: NodeType;

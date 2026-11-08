@@ -595,6 +595,73 @@ try {
     check(seesOwner === 1 && seesNone === 0, "una conversación del portal la lee quien ve el contacto", `${seesOwner} / ${seesNone}`);
   }
 
+  if (run("x") && sql(`SELECT to_regprocedure('app_servicio.merge_contacts_hook(uuid,uuid)') IS NOT NULL ok`)[0]?.ok === true) {
+    console.log("\nx · Fusión de contactos con datos del módulo (F89)");
+    const vX = await mkVariant("zz-test Fusión");
+    sql(`UPDATE public.product_variants SET portal_settings = ${jlit({ v: 1, enabled: true, sections: [{ section: "program", included: true, content: { modules: "all" } }] })} WHERE id = ${lit(vX.id)}`);
+    const main = await newContact("principal");
+    const dupC = await newContact("duplicado");
+    const sMain = mkService(main.id, vX.id);
+    const sDup = mkService(dupC.id, vX.id);
+    const accMain = sql(`SELECT app_servicio.svc_ensure_portal_account(${lit(ws.id)}, ${lit(main.id)}) id`)[0]?.id;
+    const accDup = sql(`SELECT app_servicio.svc_ensure_portal_account(${lit(ws.id)}, ${lit(dupC.id)}) id`)[0]?.id;
+    sql(`INSERT INTO app_servicio_portal.portal_sessions (workspace_id, account_id, kind, token_hash, expires_at) VALUES (${lit(ws.id)}, ${lit(accDup)}, 'student', ${lit(createHash("sha256").update(randomUUID()).digest("hex"))}, now() + interval '1 day')`);
+    const mX = item("module", "zz-test Módulo fusión");
+    const lX = item("lesson", "zz-test Clase fusión", mX);
+    sql(`INSERT INTO app_servicio_portal.program_progress (workspace_id, contact_id, program_item_id, viewed_at, completed_at) VALUES
+         (${lit(ws.id)}, ${lit(main.id)}, ${lit(lX)}, now(), now()),
+         (${lit(ws.id)}, ${lit(dupC.id)}, ${lit(lX)}, now() - interval '5 days', now() - interval '5 days')`);
+    const merged = sql(`SELECT public.merge_contacts(${lit(ws.id)}, ${lit(main.id)}, ${lit(dupC.id)}, ${lit(owner.id)}) r`)[0]?.r;
+    check(merged?.ok === true && merged?.moved?.services === 1, "merge_contacts llama al gancho del módulo en la misma transacción", JSON.stringify(merged?.moved ?? merged));
+    check(sql(`SELECT count(*)::int n FROM app_servicio.services WHERE contact_id = ${lit(main.id)} AND id IN (${lit(sMain)}, ${lit(sDup)})`)[0]?.n === 2, "los dos servicios quedan en el principal");
+    check(sql(`SELECT count(*)::int n FROM public.notifications WHERE workspace_id = ${lit(ws.id)} AND type = 'svc_merge_two_services'`)[0]?.n >= 1, "dos servicios activos del mismo producto: se avisa");
+    const accs = sql(`SELECT (SELECT status FROM app_servicio_portal.portal_accounts WHERE id = ${lit(accDup)}) AS dup_status,
+                             (SELECT contact_id FROM app_servicio_portal.portal_accounts WHERE id = ${lit(accMain)}) AS main_contact,
+                             (SELECT bool_and(revoked_at IS NOT NULL) FROM app_servicio_portal.portal_sessions WHERE account_id = ${lit(accDup)}) AS revoked`)[0];
+    check(accs?.dup_status === "suspended" && accs?.main_contact === main.id && accs?.revoked === true, "dos cuentas del portal: queda la del principal y se revocan las sesiones de la otra", JSON.stringify(accs));
+    const prog = sql(`SELECT count(*)::int n, min(completed_at) < now() - interval '4 days' AS oldest FROM app_servicio_portal.program_progress WHERE program_item_id = ${lit(lX)}`)[0];
+    check(prog?.n === 1 && prog?.oldest === true, "avance repetido: una fila, con la fecha más vieja", JSON.stringify(prog));
+
+    console.log("\nx · El barrido diario (F88)");
+    sql(`UPDATE app_servicio.service_items SET due_on = app_servicio.today_in(${lit(ws.id)}) - 2 WHERE id = (SELECT id FROM app_servicio.service_items WHERE service_id = ${lit(sMain)} AND status = 'pending' AND NOT is_recurring_template LIMIT 1)`);
+    const run1 = sql(`SELECT app_servicio.svc_daily_run(${lit(ws.id)}) r`)[0]?.r;
+    const run2 = sql(`SELECT app_servicio.svc_daily_run(${lit(ws.id)}) r`)[0]?.r;
+    check(Array.isArray(run1?.errors) && run1.errors.length === 0, "corre todos los pasos sin errores", JSON.stringify(run1));
+    check(run2?.items_overdue === 0 && run2?.started === 0 && run2?.missed === 0 && (run2?.errors ?? []).length === 0, "dos veces el mismo día no duplica nada", JSON.stringify({ run1, run2 }));
+    const enq1 = sql(`SELECT private.enqueue_svc_daily(now() + interval '1 day') n`)[0]?.n;
+    const enq2 = sql(`SELECT private.enqueue_svc_daily(now() + interval '1 day') n`)[0]?.n;
+    check(enq1 >= 1 && enq2 === 0, "encola uno por día y por negocio con el módulo prendido", `${enq1} / ${enq2}`);
+    sql(`DELETE FROM public.scheduled_jobs WHERE type = 'svc_daily' AND payload ->> 'workspace_id' = ${lit(ws.id)}`);
+
+    console.log("\nx · Emitir el certificado al llegar al paso (F67)");
+    const { data: tplX } = await svc.from("design_templates").insert({ workspace_id: ws.id, name: "zz-test certificado x", format: "carta_h", doc: { v: 1, format: "carta_h", pages: [{ id: "pg_test0001", background: { type: "color", color: "#ffffff" }, elements: [] }] }, origin: "blank", doc_type: "certificado" }).select("id").single();
+    check(!!tplX?.id, "se crea la plantilla de certificado de prueba");
+    const vCert = await mkVariant("zz-test Certificado solo");
+    sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [{ key: "ph_certx1", name: "Cierre", advance: "manual", items: [{ key: "it_certx1", kind: "certificate", name: "Certificado", ref: { template_id: tplX?.id, auto_issue: true } }] }] })},
+         journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vCert.id)}`);
+    const cCert = await newContact("certificado solo");
+    const sCert = mkService(cCert.id, vCert.id);
+    check(sql(`SELECT count(*)::int n FROM public.scheduled_jobs WHERE type = 'svc_certificate_issue' AND payload ->> 'service_id' = ${lit(sCert)}`)[0]?.n === 1, "al abrirse la fase, el paso Certificado con «Emitirlo solo» encola la emisión");
+    sql(`DELETE FROM public.scheduled_jobs WHERE type = 'svc_certificate_issue' AND payload ->> 'service_id' = ${lit(sCert)}`);
+
+    console.log("\nx · Límite propio del asistente (F85) y métricas de las cards (F108)");
+    const vAs = await mkVariant("zz-test Asistente");
+    sql(`UPDATE public.products SET portal_settings = jsonb_set(COALESCE(portal_settings, '{}'::jsonb), '{sections}', COALESCE(portal_settings -> 'sections', '{}'::jsonb) || '{"assistant":true}'::jsonb) WHERE id = ${lit(prod.id)}`);
+    const cAs = await newContact("asistente");
+    const sAs = mkService(cAs.id, vAs.id);
+    sql(`SELECT app_servicio.svc_open_access(${lit(sAs)}, 'assistant', NULL, 'automation')`);
+    const byMemberLimit = asUser(member.id, `SELECT app_servicio.assistant_set_own_limit(${lit(sAs)}, 7) r`);
+    check(!byMemberLimit.ok && /SV004|permiso/.test(byMemberLimit.error), "sin tutor.manage no se cambia el límite propio", byMemberLimit.error);
+    const setLimit = await rpcAs(owner, "assistant_set_own_limit", { p_service_id: sAs, p_limit_usd: 7 });
+    const detail = sql(`SELECT app_servicio.assistant_credits_detail(${lit(cAs.id)}, ${lit(prod.id)}) d`)[0]?.d;
+    check(!setLimit.error && Number(detail?.limitUsd) === 7, "el límite propio le gana al del programa", setLimit.error ?? JSON.stringify(detail));
+    const metrics = (await rpcAs(owner, "program_card_metrics", { p_product_ids: [prod.id], p_days: 7 })).data;
+    const m = metrics?.[prod.id];
+    check(m && m.days === 7 && ["new_students", "lessons_completed", "to_review", "to_grade", "certificates", "community_posts", "attendance_pct", "inactive_14d"].every((k) => k in m), "las cards tienen sus 8 números en una consulta", JSON.stringify(m));
+    const metricsNone = asUser(roleNone.id, `SELECT app_servicio.program_card_metrics(ARRAY[${lit(prod.id)}]::uuid[], 30) r`);
+    check(!metricsNone.ok, "sin services.view ni program.manage no se leen");
+  }
+
   console.log("\nHuellas de las funciones protegidas");
   checkProtectedFunctions(sql, check);
 } catch (e) {

@@ -307,7 +307,7 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     // propósito; las pestañas de los tipos que ya existían se siguen comparando exactas.
     const ADDED_AGENT_TYPES = ["student_tutor"]; // @plantilla-quitar(servicios)
     // @plantilla-sin(servicios): const ADDED_AGENT_TYPES: string[] = [];
-    const withoutAdded = <T extends { agentTabs?: unknown }>(r: T): T => {
+    const withoutAdded = (r: Record<string, unknown>): Record<string, unknown> => {
       const tabs = { ...((r.agentTabs ?? {}) as Record<string, unknown>) };
       for (const t of ADDED_AGENT_TYPES) delete tabs[t];
       return { ...r, agentTabs: tabs };
@@ -332,7 +332,7 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     });
 
     it("las pestanas del agente del Member son las de hoy", () => {
-      expect(withoutAdded(now.rendered.member as { agentTabs: unknown }).agentTabs).toEqual((base.rendered.member as { agentTabs: unknown }).agentTabs);
+      expect(withoutAdded(now.rendered.member as Record<string, unknown>).agentTabs).toEqual((base.rendered.member as { agentTabs: unknown }).agentTabs);
     });
 
     it("los botones de cabecera del Member son los de hoy, salvo los aprobados", () => {

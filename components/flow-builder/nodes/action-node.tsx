@@ -33,7 +33,7 @@ import { BarChart3, Flag, CalendarPlus, CirclePause, Award,
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
 import { NodeBlockedNotice } from "../capabilities-context";
-import { serviceActionDetail, type ServiceActionData, type ServiceActionType } from "@/lib/flow-engine/nodes/service-actions"; // @plantilla-quitar(servicios)
+import { serviceActionDetail, type ServiceActionData, type ServiceActionType } from "@/lib/flow-engine/nodes/service-action-detail"; // @plantilla-quitar(servicios)
 
 export interface ActionNodeProps {
   label?: string;

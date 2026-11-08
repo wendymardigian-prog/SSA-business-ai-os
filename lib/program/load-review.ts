@@ -23,7 +23,14 @@ export interface ReviewItem extends ReviewSubmission {
   grading: { enabled?: boolean; scale?: string; pass_at?: unknown } | null;
 }
 
-export async function loadReviewItems(service: Db, workspaceId: string, opts: { contactId?: string | null } = {}): Promise<ReviewItem[]> {
+export async function loadReviewItems(service: Db, workspaceId: string, opts: { contactId?: string | null; productId?: string | null } = {}): Promise<ReviewItem[]> {
+  let formFilter: string[] | null = null;
+  if (opts.productId) {
+    // «Por revisar» de UN programa (lo abren las cards de Portal › Programas): sus formularios del portal.
+    const { data: pf } = await service.from("forms").select("id").eq("workspace_id", workspaceId).eq("product_id" as never, opts.productId as never);
+    formFilter = ((pf ?? []) as Array<{ id: string }>).map((f) => f.id);
+    if (formFilter.length === 0) return [];
+  }
   let q = service
     .from("form_submissions")
     .select("id, form_id, form_version_id, contact_id, answers, grade, attempt, review_status, review_comment, internal_note, created_at")
@@ -33,6 +40,7 @@ export async function loadReviewItems(service: Db, workspaceId: string, opts: { 
     .order("created_at", { ascending: false })
     .limit(300);
   if (opts.contactId) q = q.eq("contact_id", opts.contactId);
+  if (formFilter) q = q.in("form_id", formFilter);
   const { data, error } = await q;
   if (error) {
     console.error("[portal] no pude leer las entregas:", error.code ?? "?");

@@ -1,16 +1,22 @@
 // @plantilla-quitar(servicios)
+import { OwnLimitButton } from "./own-limit-button";
 
 /**
  * El Asistente IA del programa en la ficha del servicio (F86): gasto del mes, su límite y sus conversaciones. Los
  * montos solo con `ai_costs.view`. Las conversaciones las escribe el portal (Parte 2); acá se listan.
  */
 export function ServiceAssistantCard({
+  serviceId,
+  canManage,
   detail,
   money,
   creditsName,
   threads,
   formatDate,
 }: {
+  serviceId: string;
+  /** tutor.manage: puede poner un límite propio. */
+  canManage: boolean;
   detail: { limitUsd: number; credits: number; reached: boolean; spentUsd: number } | null;
   money: boolean;
   creditsName: string;
@@ -20,7 +26,10 @@ export function ServiceAssistantCard({
   const usd = (n: number) => `USD ${n.toFixed(2)}`;
   return (
     <section aria-labelledby="asistente" className="space-y-2 rounded-xl border border-border p-4">
-      <h3 id="asistente" className="text-sm font-semibold">Asistente IA</h3>
+      <div className="flex items-center gap-2">
+        <h3 id="asistente" className="flex-1 text-sm font-semibold">Asistente IA</h3>
+        {canManage && <OwnLimitButton serviceId={serviceId} />}
+      </div>
       {detail ? (
         <dl className="grid grid-cols-3 gap-3 text-sm">
           <div><dt className="text-xs text-muted-foreground">Este mes</dt><dd>{money ? usd(detail.spentUsd) : "—"}</dd></div>

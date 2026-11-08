@@ -134,6 +134,8 @@ export default async function ServicePage({ params, searchParams }: { params: Pr
       const fmt = new Intl.DateTimeFormat("es", { timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
       assistant = (
         <ServiceAssistantCard
+          serviceId={s.id}
+          canManage={ctx.can("tutor.manage")}
           detail={detail.ok ? detail.data : null}
           money={ctx.can("ai_costs.view")}
           creditsName={pr.portal_settings?.assistant?.credits_name ?? "créditos"}

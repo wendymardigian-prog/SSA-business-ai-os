@@ -151,12 +151,35 @@ Formato: **qué quedó · por qué · qué se decidió**. Lo que encontró la ex
 - **«Agregar desde Conocimiento» suma la etiqueta del programa** al documento (sigue siendo uno solo en Conocimiento); un documento interno se rechaza (IA001).
 - **«Lo usa el tutor» se guarda en `assistant.excluded_kb_ids`** con su propia función (`tutor.knowledge`), no con el parche del programa (que pide `tutor.manage`).
 - **«Subir» en una clase sin transcripción lleva a Contenido**, donde está el drawer de la clase con su transcripción.
-- **Editar el límite propio de un estudiante desde la ficha va en la S16** (bloque X), junto con el resto de lo que cierra el módulo.
+- **El límite propio de un estudiante** se edita desde la tarjeta Asistente IA de la ficha del servicio (`assistant_set_own_limit`, S16, `tutor.manage`).
 - **`lib/auth/access-matrix.characterization.test.ts` declara el tipo de agente nuevo** (`ADDED_AGENT_TYPES`, como `ADDED_TO_MENU`): las pestañas de los tipos que ya existían se siguen comparando exactas.
+
+## Decisiones de X (8/11)
+
+- **El cron `svc-daily` es por hora** (`23 * * * *`) y encola solo para negocios con el módulo prendido, desde las 02:00 de su zona y una vez por día (como `finance-daily`). Va por SQL directo: no pasa por `call_app_cron` ni suma una guarda (lo procesa la cola de jobs, que ya tiene la suya). No se sumó a los «tics» de la 00350 (esos son los de 15 s, 1 y 5 minutos).
+- **«Está por terminar» toma los N días de los disparadores activos del negocio** (`triggers.config.days`); sin ningún disparador no se emite nada.
+- **Un renovado que llega a su fin pasa a `renewed`** (no a `completed`) y sus accesos se pasan al servicio nuevo antes de cortar.
+- **Dos servicios activos del mismo producto al unir contactos se avisan con el tipo `svc_merge_two_services`** (como los otros avisos del módulo, `svc_*`, que no están en el catálogo de preferencias de avisos: van a Owner y Admin siempre). Sumarlos al catálogo (`lib/notifications/preferences.ts`) queda pendiente.
+- **La poda de la plantilla (sección 7) no se corrió contra ninguna base**: solo se puede probar en una base de prueba con todas las migraciones (no en producción). Antes de usarla para la plantilla: correrla en una base de prueba y después `node scripts/plantilla/check-residue.mjs`.
+- **En producción, hasta el deploy de esta rama**, un negocio con el módulo prendido (hoy solo los de prueba de los `verify-*`, que se borran) encolaría `svc_daily` y `svc_certificate_issue`, que el código de `main` no conoce: quedarían como jobs fallidos. No hay negocios reales con el módulo prendido.
+- **El lienzo de Automatizaciones importa `service-action-detail.ts` (puro), no `service-actions.ts`**: la acción «Emitir certificado» trae código de servidor y rompía el build. Un test cuida que el módulo puro no importe nada.
+
+## El módulo prendido en Wendy's Workspace (8/11, decisión de Wendy)
+
+- **Wendy pidió probarlo en su propio negocio** y lo autorizó en el chat: `set_module_enabled` en «Wendy's Workspace» (`280223ad…`). Las variantes **SSA (3 meses)** y **SSA (6 Meses)** de Scaling Systems Academy crean el servicio al cobrar el primer pago que no es la reserva, con inicio en la fecha del pago, Wendy como responsable y de respaldo, sin confirmación y «servicio nuevo enlazado» si vuelve a comprar (las renovaciones están por decidir). Se guardó desde la pantalla, con su sesión.
+- **Como la regla vive en la base, ya corre en producción** aunque la app publicada (`main`) no muestre las pantallas: un pago de esas variantes crea su servicio. Hasta publicar esta rama, el job diario `svc_daily` de ese negocio queda fallido en la cola (la app publicada no lo conoce); no hace nada.
+- **Para apagarlo:** `select app_servicio.set_module_enabled('<workspace>', false)` con `service_role`. Lo creado queda guardado y oculto.
+
+## La ronda final de verificaciones (8/11)
+
+- En 0: `program` (todos los bloques), `affiliates`, `portal-schema`, `api-schemas --con-app-servicio`, `contacts-single-entry`, `roles`, `permissions-matrix`, `workspace-isolation`, `audit-visibility`, `forms`, `scheduling`, `tasks`, `sales`, `commissions`, `designer`, `calls`, `knowledge`.
+- Corregidas y repetidas: `services` (el bloque de mora usaba en el reparto a una persona que `sv1` da de baja: corrido solo pasaba), `contact-merge` (faltaban en las exclusiones `community_posts` y `community_reactions`, que mueve el gancho), `rls` (esperaba que nadie viera un hilo del portal: la 00352 suma a propósito la política «lo ve quien ve el contacto», F87) y `servicios-migracion --todas` (se cortó por la CLI).
+- **`cron-guards` falla por la `00350_cron_ticks` de otra sesión** (rama `chore/crons-agrupados`, aplicada en la base): junta los cron en «tics» y su versión del verificador está en esa rama. No es de Servicios; se resuelve al mergear esa rama.
+- **`auth-settings` sale 1** como desde el principio: el registro público está prendido (paso de panel, abajo).
 
 ## Revisión visual (8/11)
 
-- **No se pudo hacer en esta corrida.** · La app local (`localhost:3097`) pide iniciar sesión y en el navegador de la sesión no hay una abierta; la regla es no escribir credenciales. Además, las pantallas nuevas solo se ven con el módulo prendido, y solo se puede prender en un negocio de prueba. · Queda para Wendy, a 1440 y 390 px y en claro y oscuro, comparando con `claude/v12/prototipo-v12-panel.html`: Ajustes › Productos (tarjetas, producto, variante con sus cuatro pestañas, el drawer del paso, la regla de una sección del portal y la línea de workflows), Clientes (Servicios en tabla y tablero, Clientes, ficha del cliente, ficha del servicio, Importar servicios), la sección Servicios del contacto y de la venta, la columna Servicio en Ventas y los cinco pasos de Servicios en Automatizaciones. Con el módulo apagado, comprobar que Productos, Ventas, la ficha del contacto y de la venta y el editor de automatizaciones se ven iguales que antes.
+- **No se pudo hacer en esta corrida.** · La app local (`localhost:3097`) pide iniciar sesión y en el navegador de la sesión no hay una abierta; la regla es no escribir credenciales. Además, las pantallas nuevas solo se ven con el módulo prendido, y solo se puede prender en un negocio de prueba. · Queda para Wendy, a 1440 y 390 px y en claro y oscuro, comparando con `claude/v12/prototipo-v12-panel.html`: Ajustes › Productos (tarjetas, producto, variante con sus cuatro pestañas, el drawer del paso, la regla de una sección del portal y la línea de workflows), Clientes (Servicios en tabla y tablero, Clientes, ficha del cliente, ficha del servicio, Importar servicios), la sección Servicios del contacto y de la venta, la columna Servicio en Ventas y los seis pasos de Servicios en Automatizaciones; Afiliados, Mis links y la tarjeta Links del producto; Portal (Programas con sus 8 métricas, Por revisar con Comentarios, Ajustes) y cada programa (Contenido con su drawer, Calendario en sus cuatro vistas y la ficha de una fecha, Comunidad con los espacios, Asistente IA, Ajustes y Afiliados); la ficha del servicio (Accesos, el certificado y el asistente), la tarjeta Portal del cliente, el menú «⋯» de Grabaciones con «Agregar al portal» y «Programa: X» en Agentes IA. Con el módulo apagado, comprobar que Productos, Ventas, la ficha del contacto y de la venta y el editor de automatizaciones se ven iguales que antes.
 
 ## Pasos manuales de Wendy
 

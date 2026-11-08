@@ -10,7 +10,7 @@ import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "./branch-paths";
 import { resolveWhatsAppTarget } from "./whatsapp-target";
 import { pickSplitIndex, splitHandle } from "./nodes/ab-split";
 import { fallbackText, needsFallback } from "@/lib/templates/fallback";
-import { SERVICE_ACTION_TYPES, serviceActionDetail, type ServiceActionData, type ServiceActionType } from "./nodes/service-actions"; // @plantilla-quitar(servicios)
+import { SERVICE_ACTION_TYPES, serviceActionDetail, type ServiceActionData, type ServiceActionType } from "./nodes/service-action-detail"; // @plantilla-quitar(servicios)
 
 /** Los mismos alias de salida que el motor (`engine.ts`): las condiciones viejas dibujaban `yes`/`no`. */
 const SIM_HANDLE_ALIASES: Record<string, string> = { yes: "true", no: "false" };

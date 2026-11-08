@@ -26,7 +26,8 @@ export const OLD_CHECK_VALUES = {
 /**
  * Triggers del modulo sobre tablas de BAIOS que NO salen con el modulo apagado, a proposito:
  * la guardia de configuracion y los validadores tienen que valer siempre, y el que mantiene
- * products.portal_enabled no hace nada si la variante no tiene portal.
+ * products.portal_enabled no hace nada si la variante no tiene portal. Las dos guardias del tutor (S15) son como la de
+ * configuracion: frenan a la sesion que cambia el tutor de un programa (SV003), con el modulo prendido o apagado.
  */
 export const MODULE_ON_EXEMPT = [
   "trg_app_servicio_config_guard",
@@ -35,6 +36,8 @@ export const MODULE_ON_EXEMPT = [
   "trg_app_servicio_product_validate",
   "trg_app_servicio_workspace_validate",
   "trg_app_servicio_portal_enabled",
+  "trg_app_servicio_tutor_guard",
+  "trg_app_servicio_tutor_agent_guard",
 ];
 
 export const SPECS = {
@@ -197,14 +200,17 @@ export const SPECS = {
     checks: [{ name: "triggers_type_check", adds: ["affiliate_lead_created", "affiliate_sale_created", "affiliate_assignment_expired"] }],
   },
   S14: {
-    file: "00347_app_servicio_community.sql",
+    file: "00351_app_servicio_community.sql",
     title: "Comunidad",
     tables: ["app_servicio_portal.community_posts", "app_servicio_portal.community_reactions"],
     buckets: ["community-media"],
-    functions: ["app_servicio.community_can_post", "app_servicio.community_unanswered"],
+    functions: [
+      "app_servicio.community_can_post_plan", "app_servicio.community_can_post", "app_servicio.community_unanswered", "app_servicio.community_feed",
+      "app_servicio.community_team_post", "app_servicio.community_moderate", "app_servicio.community_set_muted",
+    ],
   },
   S15: {
-    file: "00348_app_servicio_tutor.sql",
+    file: "00352_app_servicio_tutor.sql",
     title: "Tutor del programa",
     columns: ["products:tutor_agent_id"],
     checks: [
@@ -212,10 +218,16 @@ export const SPECS = {
       { name: "agent_runs_agent_only_for_agent_sources", adds: ["portal_tutor"] },
     ],
     policies: ["ai_threads:ai_threads_select_portal"],
+    functions: [
+      "app_servicio.program_ensure_tutor", "app_servicio.program_duplicate_tutor", "app_servicio.assistant_credits_plan",
+      "app_servicio.assistant_credits", "app_servicio.tutor_knowledge_ids", "app_servicio.tutor_knowledge_list", "app_servicio.assistant_usage",
+    ],
+    triggers: ["products:trg_app_servicio_tutor_guard", "agents:trg_app_servicio_tutor_agent_guard"],
   },
   S16: {
-    file: "00349_app_servicio_merge_and_cron.sql",
+    file: "00353_app_servicio_merge_and_cron.sql",
     title: "Fusion de contactos y cron diario del servicio",
-    functions: ["app_servicio.merge_contacts_hook", "private.enqueue_svc_daily"],
+    functions: ["app_servicio.merge_contacts_hook", "private.enqueue_svc_daily", "app_servicio.svc_daily_run", "app_servicio.assistant_set_own_limit", "app_servicio.program_card_metrics"],
+    triggers: ["service_phases:trg_app_servicio_phase_certificate"],
   },
 };

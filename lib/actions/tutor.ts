@@ -111,3 +111,13 @@ export async function uploadTutorDocument(productId: string, formData: FormData)
   refresh(productId);
   return { ok: true, data: { pending: !connected } };
 }
+
+/** El límite propio de un estudiante en el asistente (F85): null vuelve al de su variante o del programa. */
+export async function setOwnAssistantLimit(serviceId: string, limitUsd: number | null): Promise<SvcResult<number>> {
+  const ctx = await getPermissionAction("tutor.manage");
+  if (!ctx || !UUID.test(serviceId)) return NOT_ALLOWED;
+  if (limitUsd !== null && (!Number.isFinite(limitUsd) || limitUsd < 0 || limitUsd > 10000)) return { ok: false, error: { code: "IA002", message: "El límite va de 0 a 10.000 dólares", detail: null } };
+  const res = await svcRpc<number>(ctx.supabase, "assistant_set_own_limit", { p_service_id: serviceId, p_limit_usd: limitUsd });
+  if (res.ok) revalidatePath(`/dashboard/clientes/s/${serviceId}`);
+  return res;
+}

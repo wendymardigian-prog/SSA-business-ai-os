@@ -32,6 +32,7 @@ import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
 import { registerDesignerHandlers } from "@/lib/jobs/handlers/designer";
 import { loadModuleDesignExtensions } from "@/lib/designer/module-extensions";
 import { registerSvcCertificateHandler } from "@/lib/jobs/handlers/svc-certificate"; // @plantilla-quitar(servicios)
+import { registerSvcDailyHandler } from "@/lib/jobs/handlers/svc-daily"; // @plantilla-quitar(servicios)
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
 import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync"; // @plantilla-quitar(llamadas)
@@ -127,6 +128,7 @@ export function registerPublishing(): void {
   // Lo que los módulos le suman al Diseñador (Servicios: variables y el aviso que completa el paso Certificado).
   loadModuleDesignExtensions();
   registerSvcCertificateHandler(); // @plantilla-quitar(servicios)
+  registerSvcDailyHandler(); // @plantilla-quitar(servicios)
 
   // Mejoras de Chat: pasar a texto las notas de voz, para que el agente sepa
   // que le dijeron (F7).

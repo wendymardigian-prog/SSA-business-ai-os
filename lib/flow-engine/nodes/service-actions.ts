@@ -17,24 +17,10 @@
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { interpolateVariables } from "../interpolate";
 import { svcRpc, svcSchema } from "@/lib/services/db";
+import { SERVICE_ACTION_LABELS as LABELS, SERVICE_ACTION_TYPES, type ServiceActionData, type ServiceActionType } from "./service-action-detail";
+export { SERVICE_ACTION_TYPES, serviceActionDetail, type ServiceActionData, type ServiceActionType } from "./service-action-detail";
 import { issueCertificateCore } from "@/lib/services/certificate-core";
 import { loadModuleDesignExtensions } from "@/lib/designer/module-extensions";
-
-export const SERVICE_ACTION_TYPES = ["svc_complete_step", "svc_change_phase", "svc_start_challenge", "svc_extend_service", "svc_pause_service", "svc_issue_certificate"] as const;
-export type ServiceActionType = (typeof SERVICE_ACTION_TYPES)[number];
-
-export interface ServiceActionData {
-  productId?: string | null;
-  itemKey?: string | null;
-  phaseKey?: string | null;
-  reason?: string | null;
-  n?: number | null;
-  unit?: "days" | "months" | null;
-  from?: "current_end" | "today" | null;
-  cutAccess?: boolean | null;
-  resumeOn?: string | null;
-  label?: string;
-}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -60,24 +46,6 @@ export async function resolveServiceForFlow(
   if (productId && UUID.test(productId)) q = q.eq("product_id", productId);
   const { data } = await q.maybeSingle();
   return (data as { id?: string } | null)?.id ?? null;
-}
-
-/** Lo que dice el paso del lienzo y la simulacion. */
-export function serviceActionDetail(type: ServiceActionType, data: ServiceActionData): string {
-  switch (type) {
-    case "svc_complete_step":
-      return data.itemKey ? `completaría el paso ${data.itemKey}` : "(sin paso elegido)";
-    case "svc_change_phase":
-      return data.phaseKey ? `pasaría a la fase ${data.phaseKey}` : "(sin fase elegida)";
-    case "svc_start_challenge":
-      return "empezaría la fase Reto";
-    case "svc_extend_service":
-      return data.n ? `extendería ${data.n} ${data.unit === "months" ? "meses" : "días"}` : "(sin cuánto)";
-    case "svc_pause_service":
-      return "pausaría el servicio";
-    case "svc_issue_certificate":
-      return "emitiría el certificado del servicio";
-  }
 }
 
 function makeExecute(type: ServiceActionType) {
@@ -145,14 +113,7 @@ function makeExecute(type: ServiceActionType) {
   };
 }
 
-const LABELS: Record<ServiceActionType, string> = {
-  svc_complete_step: "Completar un paso del servicio",
-  svc_change_phase: "Cambiar de fase",
-  svc_start_challenge: "Empezar la fase Reto",
-  svc_extend_service: "Extender servicio",
-  svc_pause_service: "Pausar servicio",
-  svc_issue_certificate: "Emitir certificado",
-};
+
 
 export const serviceActionNodes: Array<NodeDefinition<ServiceActionData>> = SERVICE_ACTION_TYPES.map((type) => ({
   needsContact: true,
@@ -162,4 +123,4 @@ export const serviceActionNodes: Array<NodeDefinition<ServiceActionData>> = SERV
   execute: makeExecute(type),
 }));
 
-export const SERVICE_ACTION_LABELS = LABELS;
+export { SERVICE_ACTION_LABELS } from "./service-action-detail";
