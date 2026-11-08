@@ -71,7 +71,8 @@ ${answers}
       utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_id,
       campaign_id, adset_id, ad_id, placement,
       // meta_event_id: el mismo código que usó el Pixel (fbq("track", "Lead", {}, { eventID })), para que Meta no lo cuente dos veces.
-      fbclid, fbp, fbc, meta_event_id,
+      // external_id: el id anónimo del navegador que le pasaste al Pixel en fbq("init", …, { external_id }).
+      fbclid, fbp, fbc, meta_event_id, external_id,
     },
   }),
 });`;

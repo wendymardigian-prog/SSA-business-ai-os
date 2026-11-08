@@ -45,6 +45,14 @@ La tarjeta muestra los **últimos envíos**: qué se mandó, qué no y por qué.
   lote entero: se saltea con su motivo.
 - **`action_source`**: `website` si hubo una persona en una web y están la URL y el navegador, que Meta exige para eso. Si
   no, `system_generated`. Un pago es siempre `system_generated`.
+- **La URL del evento** de un formulario es la página donde está el formulario (`page_url`); si la web no la mandó, la
+  de entrada (`entry_url`, después `landing_page`).
+- **`external_id`** va como lista: primero el id anónimo del navegador que la web le pasó al Pixel
+  (`fbq("init", …, { external_id })`, guardado en `form_submissions.meta.meta_external_id`), solo con trim; después el id
+  del contacto. Así Meta reconoce a la misma persona en el envío del Pixel y en el del servidor.
+- **Nombre y apellido salen con la misma regla que la web** (`splitName`): minúsculas, se saca todo lo que no es letra
+  ni espacio del texto entero, primera palabra y última palabra. Si se cambia una, se cambia la otra: el hash tiene que
+  coincidir con el del Pixel.
 
 ## Lo que no se puede romper
 
