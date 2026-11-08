@@ -11,6 +11,8 @@
  *   3. `flows`: estado publicado, fecha y version + 1. `flow_versions`: la foto de esta version.
  *   4. `triggers`: se borran las filas del flujo que maneja el editor (sin canal) y se escriben las que salen de sus nodos
  *      disparador; se activan todas. Los recordatorios relativos a un pago ya existente se agendan.
+ *   5. «En una fecha y hora»: se anula la vez pendiente de la version anterior y se agenda la proxima de esta. Una sola
+ *      vez que ya paso no se publica (no correria nunca).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -22,7 +24,9 @@ import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers"; // @pl
 import type { Database, Json } from "@/lib/types/database";
 import { checkMemberFlow } from "./member-flow-db";
 import { connectionProblemsForGraph } from "./connection-problems";
-import { triggerProblems } from "./publish-rules";
+import { chosenTriggerType, triggerNodesOf, triggerProblems } from "./publish-rules";
+import { nextOccurrence, SCHEDULE_PAST_PROBLEM, SCHEDULED_TRIGGER_TYPE, scheduleProblems } from "@/lib/scheduled-flows/schedule";
+import { businessTimeZone, syncScheduledRuns } from "@/lib/scheduled-flows/jobs";
 
 type Db = SupabaseClient<Database>;
 type FlowRow = Database["public"]["Tables"]["flows"]["Row"];
@@ -72,8 +76,12 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     ...configProblems(nodes as never, edges as never),
     ...(await checkMemberFlow(db, workspaceId, nodes, edges, { publishing: true })),
     ...(await connectionProblemsForGraph(args.getServiceClient, workspaceId, nodes, edges)),
+    ...(await schedulePastProblems(db, workspaceId, nodes)),
   ];
   if (problems.length > 0) return { ok: false, status: 400, error: problems[0], problems };
+
+  // Si lo que corria hasta ahora era «En una fecha y hora» (se mira ANTES de reemplazarlo): su vez pendiente se anula.
+  const wasScheduled = hasScheduledTrigger(Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : []);
 
   // Update flow status to published and increment version
   const newVersion = flow.version + 1;
@@ -132,6 +140,17 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
   // Las reglas viejas de la pestaña Growth NO se reactivan: si alguien apago una a mano, publicar no la vuelve
   // a prender. Las que arma el editor ya nacen activas.
 
+  // «En una fecha y hora»: la proxima vez de ESTA version (y se anula la pendiente de la anterior). Tambien si la
+  // version anterior era programada y esta ya no: su vez pendiente no tiene que correr. Nunca frena la publicacion.
+  const scheduled = desiredTriggers.find((t) => t.type === SCHEDULED_TRIGGER_TYPE);
+  if (scheduled || wasScheduled) {
+    try {
+      await syncScheduledRuns(await args.getServiceClient(), { workspaceId, flowId, version: newVersion, config: scheduled ? scheduled.config : null });
+    } catch (scheduleError) {
+      console.error("[publish] no pude agendar la automatizacion programada:", scheduleError instanceof Error ? scheduleError.message : "error");
+    }
+  }
+
   // @plantilla-desde(ventas)
   // Un flujo con un recordatorio relativo al vencimiento de un pago (Ventas, F37): se agendan los de los
   // pagos que ya existen. Sin esto el recordatorio valdria solo para los pagos nuevos.
@@ -145,6 +164,31 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
   // @plantilla-hasta(ventas)
 
   return { ok: true, flow: { ...(flow as FlowRow), nodes: nodes as Json, edges: edges as Json }, version: newVersion };
+}
+
+/** Si el disparador de estos nodos es «En una fecha y hora». */
+function hasScheduledTrigger(nodes: unknown[]): boolean {
+  const triggers = triggerNodesOf(nodes);
+  return triggers.length > 0 && chosenTriggerType(triggers[0]) === SCHEDULED_TRIGGER_TYPE;
+}
+
+/**
+ * Una automatizacion «En una fecha y hora» que no tiene ninguna vez por delante (una sola vez que ya paso) no se publica:
+ * no correria nunca. Se mira en la zona del negocio; si no se puede leer, no se frena (la cola lo vuelve a mirar).
+ */
+async function schedulePastProblems(db: Db, workspaceId: string, nodes: unknown[]): Promise<string[]> {
+  if (!hasScheduledTrigger(nodes)) return [];
+  const data = (triggerNodesOf(nodes)[0].data ?? {}) as Record<string, unknown>;
+  const config = { ...((data.config ?? {}) as Record<string, unknown>), ...data };
+  // Lo que falta (la fecha, la hora) ya lo dice `triggerProblems`.
+  if (scheduleProblems(config).length > 0) return [];
+  try {
+    const timeZone = await businessTimeZone(db, workspaceId);
+    return nextOccurrence(config, new Date(), timeZone) ? [] : [SCHEDULE_PAST_PROBLEM];
+  } catch (err) {
+    console.error("[publish] no pude leer la zona del negocio para la fecha programada:", err instanceof Error ? err.message : "error");
+    return [];
+  }
 }
 
 /**

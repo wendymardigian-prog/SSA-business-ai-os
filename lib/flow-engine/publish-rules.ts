@@ -7,11 +7,12 @@
  *    primero);
  *  - elegido: `triggerType: null` es "todavia no elegi" (asi nace una automatizacion nueva). Un nodo viejo SIN la clave
  *    se sigue leyendo como palabra clave, que es lo que el lienzo de antes ponia por defecto;
- *  - con lo minimo de su tipo (una palabra clave, un payload);
+ *  - con lo minimo de su tipo (una palabra clave, un payload, la fecha y hora);
  *  - con al menos un paso conectado.
  */
 
 import { chosenType } from "./trigger-catalog";
+import { scheduleProblems, SCHEDULED_TRIGGER_TYPE } from "@/lib/scheduled-flows/schedule";
 
 type RawNode = { id?: unknown; type?: unknown; data?: unknown };
 type RawEdge = { source?: unknown };
@@ -68,6 +69,9 @@ export function triggerProblems(nodes: unknown[], edges: unknown[]): string[] {
     const payload = data.payload ?? config.payload;
     if (typeof payload !== "string" || !payload.trim()) problems.push(NO_PAYLOAD_PROBLEM);
   }
+  // «En una fecha y hora»: la fecha (si es una vez), la hora y los días. Si ya pasó lo mira `publishFlow`, que sabe la
+  // zona del negocio.
+  if (type === SCHEDULED_TRIGGER_TYPE) problems.push(...scheduleProblems({ ...config, ...data }));
   const hasFirstStep = (Array.isArray(edges) ? edges : []).some((e) => (e as RawEdge)?.source === node.id);
   if (!hasFirstStep) problems.push(NO_FIRST_STEP_PROBLEM);
   // Sin un comentario detras, el paso no tiene a que responder y no manda nada, sin avisar.

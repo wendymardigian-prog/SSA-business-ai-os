@@ -14,6 +14,7 @@ import { FormTriggerPanel } from "./FormTriggerPanel"; // @plantilla-quitar(form
 import { WebhookTriggerPanel } from "./WebhookTriggerPanel"; // @plantilla-quitar(webhooks)
 import { TaskTriggerPanel } from "./TaskTriggerPanel"; // @plantilla-quitar(tareas)
 import { WhatsappGroupTriggerPanel } from "./WhatsappGroupTriggerPanel";
+import { ScheduledTriggerPanel } from "./ScheduledTriggerPanel";
 import { CommentScopePicker } from "./CommentScopePicker";
 import { SalesTriggerPanel } from "./SalesTriggerPanel"; // @plantilla-quitar(ventas)
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
@@ -613,6 +614,9 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
       {(triggerType === "whatsapp_group_joined" || triggerType === "whatsapp_group_reaction" || triggerType === "whatsapp_group_poll_vote") && (
         <WhatsappGroupTriggerPanel triggerType={triggerType} data={data as Record<string, unknown>} onChange={onChange as (d: Record<string, unknown>) => void} />
       )}
+
+      {/* «En una fecha y hora»: una vez o repetido, en la hora del negocio */}
+      {triggerType === "scheduled_time" && <ScheduledTriggerPanel data={data as Record<string, unknown>} onChange={onChange as (d: Record<string, unknown>) => void} />}
 
       {supportsOncePerContact(triggerType) && (
         <div className="space-y-1">

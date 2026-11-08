@@ -2337,6 +2337,21 @@ node scripts/verify-cron-guards.mjs   # despues de aplicar: decision SQL = TS, c
 node scripts/measure-cron-load.mjs    # antes y despues (solo lee)
 ```
 
+# «En una fecha y hora» (00337, 8/11/2026)
+
+Disparador de SISTEMA (`scheduled_time`, sin contacto ni persona): una automatizacion que arranca sola una vez, todos los dias, ciertos dias de la semana o un dia del mes, en la hora del NEGOCIO. Sirve, por ejemplo, para mandar una encuesta a un grupo de WhatsApp con «Enviar encuesta». Detalle en [docs/flow-registry.md](docs/flow-registry.md) («En una fecha y hora»).
+
+## Lo que no se puede romper
+
+- **No suma ningun cron**: publicar anula la vez pendiente y agenda la proxima en la cola (`flow_scheduled_run`, `lib/scheduled-flows/jobs.ts`); el trabajo corre el flujo y agenda la siguiente ANTES de correrlo. Las reglas de fechas son puras (`lib/scheduled-flows/schedule.ts`) y la zona es siempre `workspaces.timezone`.
+- **Nunca corre algo viejo ni dos veces**: version publicada en el trabajo, `isOccurrenceOf` contra la config vigente y el reclamo en `trigger_fires` (`schedule:<vez>`). Mas de 2 h tarde, se saltea esa vez.
+- **«Ya paso» se mira en `publishFlow`** (necesita la zona del negocio), no en `triggerProblems`. Si la version anterior era programada, su vez se anula aunque la nueva no lo sea (se mira ANTES de pisar `nodes`).
+- **Es el unico disparador `subject: "system"`** (`SYSTEM_TRIGGER_TYPES`): el lienzo ofrece solo pasos sin contacto y publicar rechaza los que lo necesitan.
+
+## Migracion
+
+`00337_scheduled_time_trigger` (aditiva: el CHECK de `triggers.type` suma `scheduled_time`) va **ANTES** de desplegar el codigo. **Sin aplicar todavia.** Tiene un freno: si la base ya acepta tipos que su lista no conoce (la `00336` de Servicios redefine el mismo CHECK), aborta en vez de borrarlos; el que se aplique segundo tiene que llevar los tipos de los dos. La `00330` a la `00336` son de Servicios (rama `feat/servicios-a1`). **La proxima libre es la `00338`** (confirmar con `list_migrations` y las ramas locales).
+
 # Buenas practicas de desarrollo
 
 ## Estructura de codigo

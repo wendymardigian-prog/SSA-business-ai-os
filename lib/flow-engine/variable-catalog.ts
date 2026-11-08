@@ -46,6 +46,8 @@ export function staticTriggerVariables(triggerType: string | null | undefined): 
       return ["group.name", "reaction.emoji", "message.text"];
     case "whatsapp_group_poll_vote":
       return ["group.name", "poll.question", "poll.selected"];
+    case "scheduled_time":
+      return ["schedule.date", "schedule.weekday", "schedule.time"];
     default:
       return [];
   }
@@ -55,6 +57,7 @@ export function staticTriggerVariables(triggerType: string | null | undefined): 
 const NO_CONTACT_AT_START = new Set<string>([
   "webhook_received", // @plantilla-quitar(webhooks)
   "eod_submitted", // @plantilla-quitar(formularios)
+  "scheduled_time",
 ]);
 
 export interface PickerVariablesInput {
