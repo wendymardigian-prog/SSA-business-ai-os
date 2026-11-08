@@ -16,67 +16,20 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logAudit } from "@/lib/audit";
-import { dropDanglingComma, plainTextToHtml } from "@/lib/email/html";
+import { plainTextToHtml } from "@/lib/email/html";
 import { sendTransactionalEmail, type SendEmailResult } from "@/lib/email/send";
 import type { Database, Json } from "@/lib/types/database";
 import type { ActionResult } from "./contracts";
 import { onDesignGenerated, type GeneratedDesign } from "./extensions";
 import { loadDesignLinks } from "./public-links";
+import { defaultGenerationEmail, emailProblems, interpolateGenerationEmail, parseEmailRequest } from "./email-text";
 import { docTypeNoun, isDocType } from "./verification";
 
 type Db = SupabaseClient<Database>;
 
 export const GENERATION_EMAIL_KIND = "design_generated";
-export const MAX_EMAIL_SUBJECT = 200;
-export const MAX_EMAIL_BODY = 5000;
 
-export interface EmailRequest {
-  subject: string;
-  body: string;
-}
-
-const VARIABLE = /\{\{\s*([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)\s*(?:\|([^{}]*))?\}\}/g;
-
-/**
- * Pega los valores en un texto. `{{clave}}` sin valor queda vacío; `{{clave|respaldo}}` usa el respaldo. «Hola,
- * {{contact.first_name|}}.» sin nombre queda «Hola.», no «Hola, .» (la misma regla que los demás emails).
- */
-export function interpolateGenerationEmail(text: string, values: Readonly<Record<string, string>>): string {
-  const rendered = text.replace(VARIABLE, (_m, key: string, fallback: string | undefined) => {
-    const value = values[key];
-    return typeof value === "string" && value.trim() !== "" ? value : (fallback ?? "").trim();
-  });
-  return dropDanglingComma(text, rendered);
-}
-
-/** El email que se propone al emitir: corto y con el link. `noun` es «certificado», «constancia»… o null («pieza»). */
-export function defaultGenerationEmail(noun: string | null): EmailRequest {
-  const what = noun ? noun.toLowerCase() : "pieza";
-  return {
-    subject: `Tu ${what}`,
-    body: `Hola {{contact.first_name|}},\n\nAcá está tu ${what}: {{design.link}}\n\nUn saludo.`,
-  };
-}
-
-/** Lo que pidió la persona al emitir, leído de `source_ref`. Algo que no tiene la forma esperada es «sin email». */
-export function parseEmailRequest(sourceRef: unknown): EmailRequest | null {
-  if (!sourceRef || typeof sourceRef !== "object" || Array.isArray(sourceRef)) return null;
-  const req = (sourceRef as { email_request?: unknown }).email_request;
-  if (!req || typeof req !== "object" || Array.isArray(req)) return null;
-  const { subject, body } = req as { subject?: unknown; body?: unknown };
-  return typeof subject === "string" && typeof body === "string" && subject.trim() && body.trim() ? { subject, body } : null;
-}
-
-/** Los problemas de un asunto y un cuerpo escritos a mano (vacío = se puede mandar). */
-export function emailProblems(email: { subject: string; body: string }): string | null {
-  const subject = email.subject.trim();
-  const body = email.body.trim();
-  if (!subject) return "Escribí el asunto del email.";
-  if (!body) return "Escribí el mensaje del email.";
-  if (subject.length > MAX_EMAIL_SUBJECT) return `El asunto es demasiado largo (hasta ${MAX_EMAIL_SUBJECT} caracteres).`;
-  if (body.length > MAX_EMAIL_BODY) return `El mensaje es demasiado largo (hasta ${MAX_EMAIL_BODY} caracteres).`;
-  return null;
-}
+export { MAX_EMAIL_SUBJECT, MAX_EMAIL_BODY, interpolateGenerationEmail, defaultGenerationEmail, parseEmailRequest, emailProblems, type EmailRequest } from "./email-text";
 
 export interface GenerationEmailDeps {
   send?: typeof sendTransactionalEmail;
