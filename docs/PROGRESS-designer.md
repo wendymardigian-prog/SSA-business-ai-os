@@ -763,15 +763,16 @@ Auditor Opus de solo lectura, tres pasadas (8/11/2026 UTC). **Veredicto final: t
 ### Ola 3
 
 #### DS6 · Plantillas y generaciones (subagente)
-- [ ] F49 — Catálogo de variables (+ `design.doc_type`) · prueba: — · auditado: —
-- [ ] F50 — Generar para uno ("Emitir <tipo>") · prueba: — · auditado: —
-  - [ ] F50 / V3–V4 — textos y avisos por tipo; `{{design.link}}` del email con `publicBaseUrl` · prueba: — · auditado: —
-- [ ] F51 — Generar para varios · prueba: — · auditado: —
-- [ ] F52 — La generación (copia congelada) · prueba: — · auditado: —
-- [ ] F53 — Pestaña Generaciones · prueba: — · auditado: —
-- [ ] F54 — Reintentar · prueba: — · auditado: —
-- [ ] F55 — Si falta un dato · prueba: — · auditado: —
-- [ ] F56 — Código y fecha de emisión · prueba: — · auditado: —
+> Integrado (`172616a`). `verify-designer --bloque ds6` 53/53. `Actor.userId` admite null (una automatización publica una generación, `07ca021`).
+- [~] F49 — Catálogo de variables (+ `design.doc_type`) · prueba: `variables/catalog.test.ts` (claves de Contacto iguales a `variable-catalog.ts`; `design.doc_type` → `docTypeNoun`; `design.issued_on` en la zona del negocio; un origen registrado con `registerDesignVariables`), `variables/resolve.test.ts` (orden: lo pasado, el sujeto, el valor por defecto), `custom.test.ts` · auditado: —
+- [~] F50 — Generar para uno ("Emitir <tipo>") · prueba: `generate-ops.test.ts`, `screens/generate-one.test.ts` (pide los obligatorios antes de confirmar; vista previa con `renderPageHTML`), `lib/actions/designer/generate.test.ts`; verify ds6 · auditado: —
+  - [~] F50 / V3–V4 — textos y avisos por tipo; `{{design.link}}` del email con `publicBaseUrl` · prueba: `generation-email.test.ts`, `email-text.test.ts`, `screens/generate-one.test.ts` · auditado: —
+- [~] F51 — Generar para varios · prueba: `bulk-core.test.ts`, `jobs/generate-many.test.ts` (tandas de 10, máx. 500), `screens/generate-many.test.ts`; verify ds6 (3 contactos, uno con pieza válida y «saltear» → genera 2) · auditado: —
+- [~] F52 — La generación (copia congelada) · prueba: `generate-core.test.ts` (38); verify ds6 (cambiar el texto de la plantilla no cambia una generación vieja) · auditado: —
+- [~] F53 — Pestaña Generaciones · prueba: `screens/generations.test.ts` (`generationRow` para los 4 orígenes y el estado con su motivo; filtros y contadores; páginas de 50), `generations-query.test.ts`; verify ds6 (quién ve las generaciones) · auditado: —
+- [~] F54 — Reintentar · prueba: `generate-ops.test.ts`; verify ds6 (una falla de datos sin completarlos SIGUE pidiendo el dato) · auditado: —
+- [~] F55 — Si falta un dato · prueba: `variables/missing.cases.json` (23 casos con las 3 políticas, en `resolve.test.ts`), aviso en la campana en `generate-core.test.ts`; verify ds6 · auditado: —
+- [~] F56 — Código y fecha de emisión · prueba: `generate-core.test.ts` (el código es el de la fila; fecha en la zona del negocio); verify ds6 · auditado: —
 
 #### DS8 · Contenido (subagente)
 > Integrado (`5f69420`) y enganchado (`311f3a0`: guardar, restaurar y la IA encolan la sincronización de un diseño vinculado; «Volver a la pieza»). `verify-designer --bloque ds8` 43/43 y `verify-content --despues-de-00253` «Todo verde». Caracterización del drawer y de `media-uploader` antes de tocarlos (commit `d09cc9e`, intacta).
@@ -785,7 +786,7 @@ Auditor Opus de solo lectura, tres pasadas (8/11/2026 UTC). **Veredicto final: t
 ### Ola 4
 
 #### DS7 · Automatizaciones (sesión principal)
-> Adelantado durante la Ola 2 (7/11/2026), en archivos que ningún subagente toca. Falta: correr `verify-designer --bloque ds7` (necesita `createGeneration` de DS6), el auditor y la revisión visual del panel.
+> Adelantado durante la Ola 2 (7/11/2026). `verify-designer --bloque ds7` 16/16 (8/11/2026, con el núcleo de DS6): con el dato del formulario la generación lleva ese nombre, origen `automation` con la sesión, lista con el render simulado y las seis salidas; el email adjunta su PDF; con la respuesta vacía y «No generar» el camino termina con «Falta: …» y la generación queda `failed`; el borrador de «Automatizar» pasa la validación salvo el formulario. Falta: el auditor y la revisión visual del panel.
 
 - [~] F57 — Nodo "Generar desde plantilla" · prueba: `lib/flow-engine/nodes/design-generate.test.ts` (9: el valor de la respuesta, el origen `automation` con la sesión, «No generar» corta con «Falta: …», reintento de la MISMA generación a la hora del render, existente, nunca lanza), `lib/designer/automation/node-config.test.ts`, `node-requirements.test.ts` («sin plantilla no se publica»), `registry.test.ts` (34 nodos, alias `action/designGenerate`, persiste variables), `consistency.test.ts` (simulador), `node-icons.test.ts` (Sparkles en paleta y lienzo); panel `components/flow-builder/panels/DesignGeneratePanel.tsx`; `scripts/verify-designer/verify-ds7.ts` escrito · auditado: —
 - [~] F58 — Salidas del nodo (6, con `design.doc_type`) · prueba: `node-outputs.test.ts` (las seis con su rótulo; Condiciones las ofrece DESPUÉS del paso y no antes), `design.` en `FLOW_VARIABLE_PREFIXES` y `CONTACT_FREE_PREFIXES`, `getFlowVariables` · auditado: —
@@ -812,6 +813,6 @@ Auditor Opus de solo lectura, tres pasadas (8/11/2026 UTC). **Veredicto final: t
 | DS3 | `feat/disenador-ia-ds3` | terminado (`a3406c2`) | F31–F38, F11, V2; 17.257 tests en su rama | sí (`063d970`, `8940152`; `sanitizeAiDoc` enganchado a `sanitizeDocHtml`) | sí (Ola 2) |
 | DS4 | `feat/disenador-ia-ds4` | terminado (`978d3a8`) | F39–F42, 54 ataques | sí (`2365ee6`; tope de 51 MB y `@import` primero) | sí (Ola 2) |
 | DS5 | `feat/disenador-ia-ds5` | terminado (`d65b6b2`) | F43–F47, F48b; verify-ds5 75/75 tras la 00324 | sí (`002ec98`; acciones propias en el historial) | sí (Ola 2) |
-| DS6 | `feat/disenador-ia-ds6` | trabajando (desde `9dfa5f5`) | — | no | no |
+| DS6 | `feat/disenador-ia-ds6` | terminado (`28ffb5d`) | F49–F56; verify-ds6 53/53 | sí (`172616a`, `07ca021`) | no |
 | DS8 | `feat/disenador-ia-ds8` | terminado (`f9ab062`) | F61–F66; verify-ds8 43/43, verify-content verde | sí (`5f69420`, `311f3a0`) | no |
 | Auditor ola 1–5 | — (solo lectura) | sin arrancar | — | — | — |

@@ -27,8 +27,8 @@ function certificateDoc() {
         id: "pg_test0001",
         background: { type: "color", color: "#ffffff" },
         elements: [
-          { id: "el_test0001", type: "text", x: 50, y: 40, w: 80, h: 12, rotation: 0, text: "Constancia para {{nombre_en_el_certificado}}" },
-          { id: "el_test0002", type: "text", x: 50, y: 70, w: 60, h: 8, rotation: 0, text: "Código {{design.code}}" },
+          { id: "el_test0001", type: "text", x: 50, y: 40, w: 80, text: "Constancia para {{nombre_en_el_certificado}}", font: { family: "Inter", weight: 700 }, size: 48, align: "center", color: "#111111" },
+          { id: "el_test0002", type: "text", x: 50, y: 70, w: 60, text: "Código {{design.code}}", font: { family: "Inter", weight: 400 }, size: 20, align: "center", color: "#111111" },
         ],
       },
     ],
@@ -60,20 +60,22 @@ export default async function ds7(ctx: BlockContext): Promise<void> {
   check(!tplError && !!tpl, "la plantilla de prueba se crea", tplError?.message);
   if (!tpl || !contact) return;
   const { data: flow } = await raw.from("flows").insert({ workspace_id: t.id, name: "zz-test Generar constancia", status: "draft", nodes: [], edges: [] }).select("id").single();
-  const newSession = async () => {
+  // Otra persona para el caso «respuesta vacía»: la primera ya va a tener una constancia válida (y el paso reutiliza esa).
+  const { data: contact2 } = await raw.from("contacts").insert({ workspace_id: t.id, display_name: "zz-test Beto Gómez", email: `zz-test-ds7-b-${Date.now()}@example.test` }).select("id").single();
+  const newSession = async (contactId: string = contact.id) => {
     const { data, error } = await raw
       .from("flow_sessions")
-      .insert({ flow_id: flow!.id, workspace_id: t.id, contact_id: contact.id, status: "active", variables: {} })
+      .insert({ flow_id: flow!.id, contact_id: contactId, status: "active", variables: {} })
       .select("id")
       .single();
     if (error) throw new Error(`no pude crear la sesión: ${error.message}`);
     return data.id as string;
   };
-  const context = (answer: string): FlowExecutionContext => ({
+  const context = (answer: string, contactId: string = contact.id): FlowExecutionContext => ({
     triggerId: "zz-test",
     flowId: flow!.id,
     channelId: "",
-    contactId: contact.id,
+    contactId,
     memberUserId: null,
     conversationId: "",
     workspaceId: t.id,
@@ -114,8 +116,8 @@ export default async function ds7(ctx: BlockContext): Promise<void> {
 
   // ─── Respuesta vacía y «No generar» (F55, F57) ──────────────────────────
   console.log("\n— Respuesta vacía y «No generar» —");
-  const failSession = await newSession();
-  const failCtx = context("");
+  const failSession = await newSession(contact2!.id);
+  const failCtx = context("", contact2!.id);
   const failNotes: Array<{ status: string; reason?: unknown }> = [];
   failCtx.noteStep = (n) => failNotes.push(n);
   const failOut = await runDesignGenerate({ supabase: svc, node, data, context: failCtx as never, sessionId: failSession, runtime: { executeFlow: async () => {} } } as never);
