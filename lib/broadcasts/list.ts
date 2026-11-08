@@ -32,3 +32,19 @@ export function statusFilterParam(status: BroadcastStatus): string {
 export function canDeleteBroadcast(b: { status: BroadcastStatus; sent: number; failed: number }): boolean {
   return b.status !== "sending" && b.sent === 0 && b.failed === 0;
 }
+
+/**
+ * Si se ofrece «Editar» (todo: vuelve a borrador): programado o pausado y
+ * nunca salió nada. La que decide es la base (`reopen_unsent_broadcast`, 00355).
+ */
+export function canReopenBroadcast(b: { status: BroadcastStatus; sent: number; failed: number }): boolean {
+  return (b.status === "scheduled" || b.status === "paused") && b.sent === 0 && b.failed === 0;
+}
+
+/**
+ * Si se ofrece «Editar mensaje»: programado o pausado, aunque ya haya mandado
+ * algunos (el texto se arma al mandar). Uno que se está enviando primero se pausa.
+ */
+export function canEditBroadcastMessage(status: BroadcastStatus): boolean {
+  return status === "scheduled" || status === "paused";
+}

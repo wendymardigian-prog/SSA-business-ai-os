@@ -3,13 +3,23 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Loader2, Pause, Play, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, Loader2, MessageSquareText, Pause, Pencil, Play, Trash2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BroadcastRecipientStatus, BroadcastStatus } from "@/lib/types/database";
 import { BROADCAST_STATUS, RECIPIENT_STATUS, TONE_CLASS, formatEta } from "@/lib/broadcasts/status";
 import { describePolicy, estimateFinish, type SendPolicy } from "@/lib/send-queue/pace";
-import { cancelBroadcastAction, deleteBroadcastAction, pauseBroadcastAction, resumeBroadcastAction, resumeLaneAction } from "@/lib/actions/broadcasts";
-import { canDeleteBroadcast } from "@/lib/broadcasts/list";
+import {
+  cancelBroadcastAction,
+  deleteBroadcastAction,
+  pauseBroadcastAction,
+  reopenBroadcastAction,
+  resumeBroadcastAction,
+  resumeLaneAction,
+  saveBroadcastMessageAction,
+} from "@/lib/actions/broadcasts";
+import { canDeleteBroadcast, canEditBroadcastMessage, canReopenBroadcast } from "@/lib/broadcasts/list";
+import type { BroadcastChannelKind } from "@/lib/broadcasts/audience";
+import { BroadcastMessageFields } from "./message-fields";
 import { EMAIL_RESULT_FILTERS, emailResultTiles, type EmailResultCounts, type EmailResultFilter } from "@/lib/broadcasts/email-results-view";
 
 /**
@@ -46,8 +56,24 @@ export function BroadcastProgress({
   pageCount,
   timeZone,
   businessTimeZone,
+  variableList,
 }: {
-  broadcast: { id: string; name: string; status: BroadcastStatus; scheduledFor: string | null; startedAt: string | null; completedAt: string | null; previewText: string };
+  broadcast: {
+    id: string;
+    name: string;
+    status: BroadcastStatus;
+    scheduledFor: string | null;
+    startedAt: string | null;
+    completedAt: string | null;
+    previewText: string;
+    /** Para «Editar mensaje»: lo guardado tal cual. */
+    variants: string[];
+    emailSubject: string;
+    emailPreheader: string;
+    channelKind: BroadcastChannelKind | null;
+  };
+  /** Las variables que se pueden insertar (las mismas del borrador). */
+  variableList: string[];
   channel: { id: string; label: string } | null;
   policy: SendPolicy | null;
   lane: { pausedReason: string | null; paused: boolean } | null;
@@ -74,6 +100,52 @@ export function BroadcastProgress({
   const live = broadcast.status === "sending" || broadcast.status === "scheduled";
   // Lo que esta saliendo cuenta como enviado: la base tampoco lo deja borrar.
   const deletable = canDeleteBroadcast({ status: broadcast.status, sent: counts.sent + counts.sending, failed: counts.failed });
+  const reopenable = canReopenBroadcast({ status: broadcast.status, sent: counts.sent + counts.sending, failed: counts.failed });
+  const messageEditable = canEditBroadcastMessage(broadcast.status);
+
+  // «Editar mensaje»: el borrador local del texto, desde lo guardado.
+  const [editingMessage, setEditingMessage] = useState(false);
+  const [msgVariants, setMsgVariants] = useState<string[]>(broadcast.variants.length > 0 ? broadcast.variants : [""]);
+  const [msgSubject, setMsgSubject] = useState(broadcast.emailSubject);
+  const [msgPreheader, setMsgPreheader] = useState(broadcast.emailPreheader);
+  const [savingMessage, startSaveMessage] = useTransition();
+  const [messageError, setMessageError] = useState<string | null>(null);
+
+  function openMessageEditor() {
+    setMsgVariants(broadcast.variants.length > 0 ? broadcast.variants : [""]);
+    setMsgSubject(broadcast.emailSubject);
+    setMsgPreheader(broadcast.emailPreheader);
+    setMessageError(null);
+    setEditingMessage(true);
+  }
+
+  function saveMessage() {
+    setMessageError(null);
+    startSaveMessage(async () => {
+      const res = await saveBroadcastMessageAction(broadcast.id, { variants: msgVariants, emailSubject: msgSubject, emailPreheader: msgPreheader });
+      if (!res.ok) {
+        setMessageError(res.error);
+        return;
+      }
+      setEditingMessage(false);
+      router.refresh();
+    });
+  }
+
+  function reopen() {
+    if (
+      !window.confirm(
+        "¿Editar el broadcast? Vuelve a borrador y su cola se vacía: al programarlo de nuevo se arma otra vez la lista de a quiénes les llega. Mientras tanto no sale nada.",
+      )
+    )
+      return;
+    setError(null);
+    start(async () => {
+      const res = await reopenBroadcastAction(broadcast.id);
+      if (!res.ok) setError(res.error);
+      router.refresh();
+    });
+  }
 
   useEffect(() => {
     if (!live) return;
@@ -140,6 +212,16 @@ export function BroadcastProgress({
             <XCircle className="h-4 w-4" aria-hidden /> Cancelar
           </button>
         )}
+        {reopenable && (
+          <button type="button" disabled={pending} onClick={reopen} className={btn}>
+            <Pencil className="h-4 w-4" aria-hidden /> Editar
+          </button>
+        )}
+        {messageEditable && !editingMessage && (
+          <button type="button" disabled={pending} onClick={openMessageEditor} className={btn}>
+            <MessageSquareText className="h-4 w-4" aria-hidden /> Editar mensaje
+          </button>
+        )}
         {deletable && (
           <button type="button" disabled={pending} onClick={remove} className={cn(btn, "text-red-700 dark:text-red-400")}>
             <Trash2 className="h-4 w-4" aria-hidden /> Eliminar
@@ -199,7 +281,45 @@ export function BroadcastProgress({
             A este ritmo terminaría aprox. el <strong>{formatEta(eta, timeZone)}</strong>.
           </p>
         )}
-        {broadcast.previewText && (
+        {editingMessage ? (
+          <div className="space-y-3 rounded-lg border border-border bg-background p-3">
+            <p className="text-xs text-muted-foreground">
+              {counts.sent > 0
+                ? "Los que ya lo recibieron no cambian; los que faltan reciben el mensaje nuevo."
+                : "Cambia solo el mensaje: la lista de a quiénes les llega, el canal y la fecha quedan igual."}
+            </p>
+            <BroadcastMessageFields
+              idBase={`edit-${broadcast.id}`}
+              kind={broadcast.channelKind}
+              variants={msgVariants}
+              onVariantsChange={setMsgVariants}
+              emailSubject={msgSubject}
+              onEmailSubjectChange={setMsgSubject}
+              emailPreheader={msgPreheader}
+              onEmailPreheaderChange={setMsgPreheader}
+              variableList={variableList}
+              inputClass="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            {messageError && (
+              <p role="alert" className="text-sm text-red-700 dark:text-red-400">
+                {messageError}
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={saveMessage}
+                disabled={savingMessage}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+              >
+                {savingMessage && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Guardar mensaje
+              </button>
+              <button type="button" onClick={() => setEditingMessage(false)} disabled={savingMessage} className={btn}>
+                Descartar cambios
+              </button>
+            </div>
+          </div>
+        ) : broadcast.previewText && (
           <details className="text-sm">
             <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Ver el mensaje</summary>
             <p className="mt-2 whitespace-pre-wrap rounded-lg border border-border bg-background p-3">{broadcast.previewText}</p>

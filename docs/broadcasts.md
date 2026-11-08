@@ -184,6 +184,29 @@ queda `cancelled`, lo enviado no se deshace). Un destinatario: `pending`,
   lista (ícono de papelera) y en el detalle; `canDeleteBroadcast` es solo la
   pista para mostrarlo.
 
+## Editar un broadcast en cola (8/11/2026)
+
+Dos botones en el detalle de un programado o pausado:
+
+- **«Editar»** (todo): solo si nunca salió nada (la regla de «Eliminar»). El
+  broadcast vuelve a borrador y se abre el editor de siempre: nombre, canal,
+  filtros, mensaje, ritmo y fecha. Su cola se vacía; al programarlo de nuevo, la
+  audiencia se arma otra vez con los filtros de ese momento. Lo decide la base
+  (`reopen_unsent_broadcast`, 00355), con los mismos bloqueos que eliminar. Uno
+  que se está enviando primero se pausa.
+- **«Editar mensaje»**: también en uno pausado que ya mandó algunos. Cambia solo
+  el texto (versiones, o asunto, vista previa y cuerpo en email) y deja la
+  audiencia, el canal y la fecha. Funciona porque el despachador arma cada
+  mensaje al mandarlo (`renderChatMessage` / `renderEmail` sobre
+  `broadcasts.message_variants`): los que faltan reciben el nuevo y los ya
+  enviados no cambian. Si hay menos versiones que antes, a quien le tocaba una
+  que ya no existe le llega la primera. Se valida igual que un borrador
+  (`draftProblems`) y se guarda solo si sigue programado o pausado.
+
+Los campos del mensaje son un solo componente (`components/broadcasts/message-fields.tsx`)
+para el borrador y para «Editar mensaje». Cuándo se ofrece cada botón:
+`canReopenBroadcast` y `canEditBroadcastMessage` (`lib/broadcasts/list.ts`).
+
 ## La API
 
 `GET /api/v1/broadcasts`, `POST /api/v1/broadcasts` (crea un borrador:
@@ -206,10 +229,13 @@ queda `cancelled`, lo enviado no se deshace). Un destinatario: `pending`,
   Puede ir antes o después del código; sin ella, «Eliminar» responde un error
   claro. Aplicada y registrada en producción el 8/11/2026 UTC (versión
   `20261108180049`).
+- `00355_reopen_unsent_broadcast` (aditiva: una función, solo `service_role`).
+  Puede ir antes o después del código; sin ella, «Editar» responde un error claro.
 
 ```
 node scripts/verify-broadcasts.mjs   # RLS, índice único, claim_lane_slot (10 a la vez = 1), claim_broadcast_recipient, contadores
 node scripts/verify-broadcasts.mjs --despues-de-00347   # además, eliminar lo que nunca salió
+node scripts/verify-broadcasts.mjs --despues-de-00355   # además, volver a borrador para editar
 ```
 
 ## Pendiente

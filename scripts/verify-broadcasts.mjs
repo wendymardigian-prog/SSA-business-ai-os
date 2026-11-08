@@ -22,6 +22,11 @@
  *     otro workspace.
  *
  *   node scripts/verify-broadcasts.mjs --despues-de-00347   # suma el bloque 7
+ *   - (00355) `reopen_unsent_broadcast`: vuelve a borrador un programado o
+ *     pausado sin envios (vacia su cola y los contadores) y se niega con uno
+ *     enviando, uno con envios, uno terminado o de otro workspace.
+ *
+ *   node scripts/verify-broadcasts.mjs --despues-de-00355   # suma el bloque 8
  *
  * Crea y borra todo lo suyo (prefijo zz-test-). No se corre a la vez que otro
  * verify-*: comparten prefijo. Tomar el candado /private/tmp/ssa-verify.lock.
@@ -244,6 +249,58 @@ try {
     check((await del(draft)).data === "deleted", "un borrador se sigue borrando");
 
     const asUser = await owner.client.rpc("delete_unsent_broadcast", { p_workspace_id: ws.id, p_broadcast_id: withSent });
+    check(Boolean(asUser.error), "un usuario con sesion no puede llamarla");
+  }
+
+  // -------------------------------------------------------------------------
+  if (process.argv.includes("--despues-de-00355")) {
+    console.log("\n8. (00355) volver a borrador para editar");
+    const mk = async (name, status, recipientStatus) => {
+      const { data, error } = await svc.from("broadcasts").insert({
+        workspace_id: ws.id, name, status, channel_id: ch.id, total_recipients: 3, skipped: 1, started_at: new Date().toISOString(),
+      }).select("id").single();
+      if (error) throw new Error(`no pude crear ${name}: ${error.message}`);
+      if (recipientStatus) {
+        const ins = await svc.from("broadcast_recipients").insert(contacts.map((c, i) => ({
+          broadcast_id: data.id, workspace_id: ws.id, contact_id: c, channel_id: ch.id, target: "+1",
+          status: i === 0 ? recipientStatus : "pending",
+        })));
+        if (ins.error) throw new Error(`no pude crear los destinatarios de ${name}: ${ins.error.message}`);
+      }
+      return data.id;
+    };
+    const reopen = (id, workspaceId = ws.id) => svc.rpc("reopen_unsent_broadcast", { p_workspace_id: workspaceId, p_broadcast_id: id });
+    const row = async (id) => (await svc.from("broadcasts").select("status, total_recipients, skipped, started_at").eq("id", id).single()).data;
+    const queued = async (id) => ((await svc.from("broadcast_recipients").select("id").eq("broadcast_id", id)).data ?? []).length;
+
+    const scheduled = await mk("zz-test-editar-programado", "scheduled", "pending");
+    const r1 = await reopen(scheduled);
+    const s1 = await row(scheduled);
+    check(r1.data === "reopened" && s1.status === "draft" && s1.total_recipients === 0 && s1.skipped === 0 && s1.started_at === null && (await queued(scheduled)) === 0,
+      "un programado sin envios vuelve a borrador, con la cola y los contadores vacios", r1.error?.message ?? JSON.stringify(s1));
+    check((await reopen(scheduled)).data === "already_draft", "pedirlo de nuevo sobre un borrador no rompe nada");
+
+    const paused = await mk("zz-test-editar-pausado", "paused", "cancelled");
+    check((await reopen(paused)).data === "reopened" && (await row(paused)).status === "draft", "un pausado sin envios vuelve a borrador");
+
+    const withSent = await mk("zz-test-editar-con-envio", "paused", "sent");
+    check((await reopen(withSent)).data === "has_sends" && (await row(withSent)).status === "paused" && (await queued(withSent)) === 3,
+      "uno pausado con un enviado NO vuelve a borrador y su cola queda igual");
+
+    const inFlight = await mk("zz-test-editar-saliendo", "paused", "sending");
+    check((await reopen(inFlight)).data === "has_sends", "uno con un envio a mitad de camino NO vuelve a borrador");
+
+    const sending = await mk("zz-test-editar-enviando", "sending", null);
+    check((await reopen(sending)).data === "sending" && (await row(sending)).status === "sending", "uno que se esta enviando NO vuelve (primero se pausa)");
+
+    const done = await mk("zz-test-editar-terminado", "completed", null);
+    check((await reopen(done)).data === "not_editable", "uno terminado no se edita");
+
+    const other = await mk("zz-test-editar-otro-ws", "scheduled", null);
+    const { data: otherWs } = await svc.from("workspaces").insert({ name: "zz-test-broadcasts-otro2", slug: `zz-test-broadcasts-otro2-${stamp}` }).select("id").single();
+    check((await reopen(other, otherWs.id)).data === "not_found" && (await row(other)).status === "scheduled", "con otro workspace no lo encuentra ni lo toca");
+
+    const asUser = await owner.client.rpc("reopen_unsent_broadcast", { p_workspace_id: ws.id, p_broadcast_id: other });
     check(Boolean(asUser.error), "un usuario con sesion no puede llamarla");
   }
 } catch (err) {

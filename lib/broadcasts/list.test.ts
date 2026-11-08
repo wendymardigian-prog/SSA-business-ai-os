@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canDeleteBroadcast, parseStatusFilter, STATUS_FILTERS, statusFilterParam } from "./list";
+import { canDeleteBroadcast, canEditBroadcastMessage, canReopenBroadcast, parseStatusFilter, STATUS_FILTERS, statusFilterParam } from "./list";
 import { BROADCAST_STATUS } from "./status";
 
 describe("parseStatusFilter", () => {
@@ -36,5 +36,31 @@ describe("canDeleteBroadcast", () => {
   it("no se ofrece si salió o falló alguno", () => {
     expect(canDeleteBroadcast({ status: "cancelled", sent: 3, failed: 0 })).toBe(false);
     expect(canDeleteBroadcast({ status: "paused", sent: 0, failed: 1 })).toBe(false);
+  });
+});
+
+describe("canReopenBroadcast", () => {
+  it("se ofrece en un programado o pausado que nunca mandó nada", () => {
+    expect(canReopenBroadcast({ status: "scheduled", sent: 0, failed: 0 })).toBe(true);
+    expect(canReopenBroadcast({ status: "paused", sent: 0, failed: 0 })).toBe(true);
+  });
+
+  it("no se ofrece si ya salió o falló alguno", () => {
+    expect(canReopenBroadcast({ status: "paused", sent: 2, failed: 0 })).toBe(false);
+    expect(canReopenBroadcast({ status: "paused", sent: 0, failed: 1 })).toBe(false);
+  });
+
+  it("no se ofrece en un borrador, uno enviándose, terminado o cancelado", () => {
+    for (const status of ["draft", "sending", "completed", "cancelled"] as const) {
+      expect(canReopenBroadcast({ status, sent: 0, failed: 0 })).toBe(false);
+    }
+  });
+});
+
+describe("canEditBroadcastMessage", () => {
+  it("solo en programado o pausado", () => {
+    expect(canEditBroadcastMessage("scheduled")).toBe(true);
+    expect(canEditBroadcastMessage("paused")).toBe(true);
+    for (const status of ["draft", "sending", "completed", "cancelled"] as const) expect(canEditBroadcastMessage(status)).toBe(false);
   });
 });
