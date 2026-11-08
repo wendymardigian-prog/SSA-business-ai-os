@@ -9,6 +9,10 @@ export interface EditorGroup {
   channelLabel: string;
   inInbox: boolean;
   saveContacts: boolean;
+  /** 00344: 'group' o 'announce' (el de Avisos de una comunidad). */
+  kind?: string;
+  /** La comunidad del grupo, si es de una. */
+  communitySubject?: string | null;
 }
 
 export interface EditorGroupMessage {

@@ -32,6 +32,8 @@ import { completeTaskNode } from "../nodes/complete-task"; // @plantilla-quitar(
 import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
 import { sendMetaEventNode } from "../nodes/send-meta-event";
 import { sendPollNode } from "../nodes/send-poll";
+import { sendToGroupNode } from "../nodes/send-to-group";
+import { inviteToGroupNode } from "../nodes/invite-to-group";
 import { designGenerateNode } from "../nodes/design-generate";
 import { qualifyLeadNode } from "../nodes/qualify-lead";
 
@@ -88,6 +90,8 @@ registerNode(sendWhatsAppNumberNode);
 registerNode(sendMetaEventNode);
 // Grupos de WhatsApp: una encuesta a un grupo activado (sus votos pueden disparar otro flujo).
 registerNode(sendPollNode);
+registerNode(sendToGroupNode);
+registerNode(inviteToGroupNode);
 // Diseñador IA (DS7, F57): genera un certificado, una constancia o cualquier pieza desde una plantilla.
 registerNode(designGenerateNode);
 // Calificación del lead (00329): fija, suma, resta o calcula con reglas el nivel 1-5.

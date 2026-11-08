@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { WhatsappBanRiskNotice } from "@/components/channels/whatsapp-ban-risk-notice";
-import { listGroupsForFlowEditor } from "@/lib/actions/whatsapp-group-flow-editor";
-import type { EditorGroup } from "@/lib/whatsapp-groups/editor-types";
+import { GroupSelect } from "./group-select";
 import type { SendPollData } from "@/lib/flow-engine/nodes/send-poll";
 import { POLL_MAX_OPTIONS } from "@/lib/whatsapp-groups/poll";
 
@@ -20,21 +17,6 @@ const labelClass = "mb-2 block text-xs font-semibold text-foreground";
 export function SendPollPanel({ data: raw, onChange }: { data: Record<string, unknown>; onChange: (data: Record<string, unknown>) => void }) {
   const data = raw as SendPollData & Record<string, unknown>;
   const options = Array.isArray(data.options) ? data.options : ["", ""];
-  const [groups, setGroups] = useState<EditorGroup[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    listGroupsForFlowEditor().then((res) => {
-      if (!alive) return;
-      if (res.ok) setGroups(res.groups);
-      else setError(res.error);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   const setOptions = (next: string[]) => onChange({ ...data, options: next });
 
   return (
@@ -43,24 +25,7 @@ export function SendPollPanel({ data: raw, onChange }: { data: Record<string, un
 
       <div>
         <label htmlFor="poll-group" className={labelClass}>A qué grupo</label>
-        {groups && groups.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            No hay grupos activados. Se activan en{" "}
-            <Link href="/dashboard/settings/integrations/evolution" className="text-primary-ink underline">
-              Ajustes → Integraciones → WhatsApp → Grupos
-            </Link>
-            .
-          </p>
-        ) : (
-          <select id="poll-group" value={data.groupId ?? ""} onChange={(e) => onChange({ ...data, groupId: e.target.value || undefined })} className={inputClass}>
-            <option value="">{groups === null ? "Cargando…" : "Elegí un grupo…"}</option>
-            {(groups ?? []).map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.subject} · {g.channelLabel}
-              </option>
-            ))}
-          </select>
-        )}
+        <GroupSelect id="poll-group" value={data.groupId} onChange={(groupId) => onChange({ ...data, groupId })} />
       </div>
 
       <div>
@@ -106,11 +71,6 @@ export function SendPollPanel({ data: raw, onChange }: { data: Record<string, un
         La pregunta y las opciones admiten variables ({"{{contact.first_name}}"}). WhatsApp acepta de 2 a {POLL_MAX_OPTIONS} opciones distintas. Para
         reaccionar a los votos, armá otra automatización con «Votó en una encuesta de un grupo» → «Las que manda un paso».
       </p>
-      {error && (
-        <p role="alert" className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700 dark:bg-red-950/40 dark:text-red-300">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

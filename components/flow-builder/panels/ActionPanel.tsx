@@ -12,6 +12,7 @@ import { CreateTaskPanel } from "./CreateTaskPanel"; // @plantilla-quitar(tareas
 import { CompleteTaskPanel } from "./CompleteTaskPanel"; // @plantilla-quitar(tareas)
 import { SendWhatsAppNumberPanel } from "./SendWhatsAppNumberPanel";
 import { SendPollPanel } from "./SendPollPanel";
+import { InviteToGroupPanel, SendToGroupPanel } from "./SendToGroupPanel";
 import { MetaEventFields } from "@/components/automations/meta-event-fields";
 import type { MetaEventStepData } from "@/lib/meta/capi/events";
 import { DesignGeneratePanel } from "./DesignGeneratePanel";
@@ -99,6 +100,10 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
     // Grupos de WhatsApp: una encuesta a un grupo activado.
     case "send_poll" as NodeType:
       return <SendPollPanel data={rawData} onChange={onChange} />;
+    case "send_to_group" as NodeType:
+      return <SendToGroupPanel data={rawData} onChange={onChange} />;
+    case "invite_to_group" as NodeType:
+      return <InviteToGroupPanel data={rawData} onChange={onChange} />;
     // API de Conversiones (00328): el mismo formulario que en Formularios y Agenda.
     case "send_meta_event" as NodeType:
       return (

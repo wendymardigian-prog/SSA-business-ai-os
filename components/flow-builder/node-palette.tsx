@@ -1,6 +1,8 @@
 "use client";
 
 import { BarChart3,
+  UsersRound,
+  UserPlus,
   Zap,
   MessageSquare,
   Split,
@@ -283,6 +285,26 @@ const categories: PaletteCategory[] = [
         description: "Una encuesta de WhatsApp a un grupo activado",
         synonyms: ["encuesta", "grupo", "votacion", "whatsapp", "poll"],
         actionType: "send_poll",
+      },
+      // Grupos de WhatsApp (00344): un mensaje, un archivo o un recurso a un grupo (sirve sin contacto).
+      {
+        type: "action",
+        nodeType: "send_to_group",
+        label: "Enviar al grupo",
+        icon: UsersRound,
+        description: "Un mensaje, un archivo o un recurso a un grupo de WhatsApp",
+        synonyms: ["grupo", "comunidad", "whatsapp", "mensaje", "archivo", "avisos", "difusion"],
+        actionType: "send_to_group",
+      },
+      // Suma al contacto a un grupo; si WhatsApp no deja, le manda el link.
+      {
+        type: "action",
+        nodeType: "invite_to_group",
+        label: "Invitar a un grupo",
+        icon: UserPlus,
+        description: "Suma al contacto a un grupo de WhatsApp o le manda el link",
+        synonyms: ["grupo", "comunidad", "invitar", "agregar", "sumar", "link", "whatsapp"],
+        actionType: "invite_to_group",
       },
       // E15: un aviso al equipo en la campana (sirve también en flujos sin contacto).
       {

@@ -585,6 +585,27 @@ export function simulateFlow(
         break;
       }
 
+      // Grupos de WhatsApp (00344): un mensaje o un recurso a un grupo, e invitar al contacto. No se manda nada.
+      case "send_to_group": {
+        const text = interpolate((data.text as string) || "", variables);
+        steps.push({
+          nodeId: node.id,
+          nodeType: "send_to_group",
+          nodeLabel: label,
+          result: { type: "action", actionType: "send_to_group", detail: text ? `al grupo: ${text}` : data.assetId ? "un recurso al grupo" : "(sin mensaje)" },
+        });
+        break;
+      }
+      case "invite_to_group": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "invite_to_group",
+          nodeLabel: label,
+          result: { type: "action", actionType: "invite_to_group", detail: data.linkOnly ? "le mandaría el link del grupo" : "lo sumaría al grupo (o le mandaría el link)" },
+        });
+        break;
+      }
+
       // API de Conversiones (00328): en la simulación no se le manda nada a Meta.
       case "send_meta_event": {
         const eventName = typeof data.eventName === "string" && data.eventName.trim() ? data.eventName.trim() : "";
