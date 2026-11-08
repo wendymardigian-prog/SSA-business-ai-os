@@ -234,36 +234,45 @@ describe("lo que se escribe pasa por la limpieza del HTML cargado", () => {
   });
 });
 
-describe("un diseño publicado que se edita vuelve a armar sus archivos", () => {
-  it("guardar un diseño publicado encola el render de publicación", async () => {
+describe("guardar un diseño publicado NO vuelve a renderizar (F48b: se renderiza al publicar o exportar)", () => {
+  it("guardar un diseño publicado no encola nada: ni el render, ni la cola", async () => {
     const { db, env } = setup({ designs: [designRow({ published: true, status: "ready" })] });
-    await saveDocCore(env, { kind: "design", id: "d1", doc: docWithText("editado"), rev: 3 });
-    expect(enqueueDesignRender).toHaveBeenCalledTimes(1);
-    expect(enqueueDesignRender).toHaveBeenCalledWith(db.client, { designId: "d1", purpose: "publish" });
-  });
-
-  it("un borrador, una plantilla o un guardado que dio conflicto NO encolan nada", async () => {
-    const { env } = setup();
-    await saveDocCore(env, { kind: "design", id: "d1", doc: docWithText("x"), rev: 3 });
-    await saveDocCore(env, { kind: "template", id: "t1", doc: docWithText("{{contact.display_name}}", "carta_h"), rev: 5 });
+    expect(await saveDocCore(env, { kind: "design", id: "d1", doc: docWithText("editado"), rev: 3 })).toEqual({ ok: true, rev: 4 });
     expect(enqueueDesignRender).not.toHaveBeenCalled();
-    const pub = setup({ designs: [designRow({ published: true, rev: 9 })] });
-    expect(await saveDocCore(pub.env, { kind: "design", id: "d1", doc: docWithText("x"), rev: 3 })).toMatchObject({ conflict: true });
-    expect(enqueueDesignRender).not.toHaveBeenCalled();
+    expect(scheduleJob).not.toHaveBeenCalled();
+    expect(db.touched.has("scheduled_jobs")).toBe(false);
   });
 
-  it("un fallo al encolar no tumba el guardado", async () => {
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    enqueueDesignRender.mockRejectedValueOnce(new Error("cola caída"));
-    const { env } = setup({ designs: [designRow({ published: true })] });
-    expect(await saveDocCore(env, { kind: "design", id: "d1", doc: docWithText("x"), rev: 3 })).toEqual({ ok: true, rev: 4 });
-    spy.mockRestore();
-  });
-
-  it("restaurar una versión de un diseño publicado también lo vuelve a armar", async () => {
+  it("restaurar una versión de un diseño publicado tampoco encola nada", async () => {
     const { env } = setup({ designs: [designRow({ published: true })], design_versions: [{ id: "v1", workspace_id: WS, design_id: "d1", template_id: null, reason: "manual", author_kind: "user", author_id: USER, created_at: now.toISOString(), doc: docWithText("vieja") }] });
-    await restoreVersionCore(env, { kind: "design", id: "d1" }, "v1");
-    expect(enqueueDesignRender).toHaveBeenCalledWith(expect.anything(), { designId: "d1", purpose: "publish" });
+    expect(await restoreVersionCore(env, { kind: "design", id: "d1" }, "v1")).toMatchObject({ ok: true });
+    expect(enqueueDesignRender).not.toHaveBeenCalled();
+  });
+});
+
+describe("una pieza emitida (una generación) no se edita", () => {
+  const generation = () => designRow({ template_id: "t1", origin: "template", status: "ready" });
+  const version = { id: "v1", workspace_id: WS, design_id: "d1", template_id: null, reason: "manual", author_kind: "user", author_id: USER, created_at: now.toISOString(), doc: docWithText("vieja") };
+
+  it("guardar una generación se rechaza con un mensaje claro y no escribe", async () => {
+    const { db, env } = setup({ designs: [generation()] });
+    const out = await saveDocCore(env, { kind: "design", id: "d1", doc: docWithText("nuevo"), rev: 3 });
+    expect(out).toEqual({ ok: false, error: "Una pieza emitida no se edita: volvé a generarla desde la plantilla." });
+    expect(db.tables.designs[0].rev).toBe(3);
+    expect(versionsOf(db)).toHaveLength(0);
+  });
+
+  it("restaurar una versión de una generación se rechaza y no escribe", async () => {
+    const { db, env } = setup({ designs: [generation()], design_versions: [version] });
+    const out = await restoreVersionCore(env, { kind: "design", id: "d1" }, "v1");
+    expect(out).toEqual({ ok: false, error: "Una pieza emitida no se edita: volvé a generarla desde la plantilla." });
+    expect(db.tables.designs[0].rev).toBe(3);
+    expect(db.tables.design_versions).toHaveLength(1);
+  });
+
+  it("un diseño común sigue guardándose", async () => {
+    const { env } = setup();
+    expect(await saveDocCore(env, { kind: "design", id: "d1", doc: docWithText("x"), rev: 3 })).toEqual({ ok: true, rev: 4 });
   });
 });
 

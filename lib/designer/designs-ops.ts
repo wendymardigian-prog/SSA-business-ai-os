@@ -4,7 +4,8 @@
  *
  * Mismas reglas que `designs-core.ts`: recibe el cliente de SERVICIO y la persona y el negocio de la SESIÓN, escribe
  * siempre filtrando por ese negocio y devuelve un resultado (nunca lanza hacia la pantalla). El permiso lo chequea la
- * acción ANTES de llamar acá. Nada de esto encola un render (F48).
+ * acción ANTES de llamar acá. Nada de esto encola un render (F48): un diseño publicado se vuelve a renderizar al publicar
+ * o exportar, no al guardar.
  *
  * Solo servidor.
  */
@@ -16,7 +17,6 @@ import { asJson, auditActionFor, cleanName, hrefFor, insertVersion, maxNameLengt
 import { parseDesignDoc, type DesignDoc } from "./doc/schema";
 import { isFormatKey } from "./formats";
 import { sanitizeDocHtml } from "./import/edit";
-import { enqueueDesignRender } from "./jobs/render";
 import { archiveDecision, deleteBlockers, formatChangeOutcome } from "./screens/config";
 import { convertDocFormat } from "./screens/format-change";
 import { validateCustomVars } from "./screens/variables";
@@ -35,6 +35,9 @@ function mine<Q>(query: Q, env: CoreEnv, id: string): Q {
   return (query as unknown as Eqable).eq("id", id).eq("workspace_id", env.actor.workspaceId) as unknown as Q;
 }
 
+/** El mensaje cuando se intenta editar una pieza emitida desde una plantilla. */
+export const GENERATION_READ_ONLY = "Una pieza emitida no se edita: volvé a generarla desde la plantilla.";
+
 const nowOf = (env: CoreEnv) => (env.now ?? (() => new Date()))();
 
 // ─── Guardar con `rev` (F27) ─────────────────────────────────────────────────
@@ -50,7 +53,9 @@ export interface SaveInput extends Target {
  * Guarda el documento con control de versión: `UPDATE … WHERE rev = $rev`. Si no actualiza nada, otra persona (u otra
  * pestaña) guardó antes: responde `conflict` con lo vigente y la pantalla ofrece «Recargar»; nunca pisa en silencio.
  *
- * Después de guardar deja una versión SOLO si pasaron 10 minutos desde la última de edición manual. No encola nada.
+ * Después de guardar deja una versión SOLO si pasaron 10 minutos desde la última de edición manual. No encola nada, ni
+ * siquiera si el diseño está publicado: el editor avisa «Hay cambios sin publicar» y se republica a mano (F48b).
+ * Una pieza emitida (una generación) no se edita.
  */
 export async function saveDocCore(env: CoreEnv, input: SaveInput): Promise<SaveDocResult> {
   if (!Number.isInteger(input.rev) || input.rev < 0) return { ok: false, error: "No sabemos con qué versión estabas trabajando. Recargá la página." };
@@ -61,12 +66,13 @@ export async function saveDocCore(env: CoreEnv, input: SaveInput): Promise<SaveD
   // Lo que se escribe siempre pasa por la limpieza del HTML cargado: un `<script>` que llegara en un elemento `html` se saca.
   const clean = sanitizeDocHtml(parsed.doc, env.actor.workspaceId).doc;
 
-  const { data: row, error: readError } = await mine(env.service.from(table).select(input.kind === "design" ? "format, published" : "format"), env, input.id).maybeSingle();
+  const { data: row, error: readError } = await mine(env.service.from(table).select(input.kind === "design" ? "format, template_id" : "format"), env, input.id).maybeSingle();
   if (readError) {
     console.error("[designer] no pude leer para guardar:", readError.code ?? "error");
     return { ok: false, error: "No pudimos guardar. Probá de nuevo." };
   }
   if (!row) return { ok: false, error: "No encontramos este diseño." };
+  if (input.kind === "design" && (row as unknown as { template_id?: string | null }).template_id) return { ok: false, error: GENERATION_READ_ONLY };
 
   if (input.kind === "template" && clean.format !== (row as unknown as { format: string }).format) return { ok: false, error: "El formato de una plantilla se cambia desde Configuración." };
   const update: Record<string, unknown> = { doc: asJson(clean), format: clean.format, rev: input.rev + 1 };
@@ -92,18 +98,7 @@ export async function saveDocCore(env: CoreEnv, input: SaveInput): Promise<SaveD
   }
 
   await snapshotManualIfDue(env, input, clean);
-  // Un diseño ya publicado que se edita deja el link desactualizado: se vuelve a armar el juego de archivos.
-  if (input.kind === "design" && (row as unknown as { published?: boolean }).published) await requestPublishRender(env, input.id);
   return { ok: true, rev: (saved as { rev: number }).rev };
-}
-
-/** Vuelve a renderizar el juego publicado de un diseño. Nunca hace fallar a quien lo pide (el job se reagenda solo). */
-async function requestPublishRender(env: CoreEnv, designId: string): Promise<void> {
-  try {
-    await enqueueDesignRender(env.service, { designId, purpose: "publish" });
-  } catch (error) {
-    console.error("[designer] no pude encolar el render del diseño publicado:", error instanceof Error ? error.message : "error");
-  }
 }
 
 /** Deja una versión manual si pasaron 10 minutos desde la última. Nunca hace fallar el guardado. */
@@ -318,9 +313,10 @@ export async function restoreVersionCore(env: CoreEnv, target: Target, versionId
   const restored = { ok: true as const, doc: sanitizeDocHtml(parsedVersion.doc, env.actor.workspaceId).doc };
 
   const table = tableFor(target.kind);
-  const { data: row } = await mine(env.service.from(table).select(target.kind === "design" ? "format, rev, doc, published" : "format, rev, doc"), env, target.id).maybeSingle();
+  const { data: row } = await mine(env.service.from(table).select(target.kind === "design" ? "format, rev, doc, template_id" : "format, rev, doc"), env, target.id).maybeSingle();
   if (!row) return { ok: false, error: "No encontramos este diseño." };
-  const current = row as unknown as { format: string; rev: number; doc: Json; published?: boolean };
+  const current = row as unknown as { format: string; rev: number; doc: Json; template_id?: string | null };
+  if (target.kind === "design" && current.template_id) return { ok: false, error: GENERATION_READ_ONLY };
   if (target.kind === "template" && restored.doc.format !== current.format) return { ok: false, error: "Esa versión es de otro formato: cambiá el formato de la plantilla y volvé a intentar." };
 
   const previous = parseDesignDoc(current.doc);
@@ -331,7 +327,6 @@ export async function restoreVersionCore(env: CoreEnv, target: Target, versionId
     .maybeSingle();
   if (error || !saved) return { ok: false, error: "Alguien guardó mientras tanto. Probá de nuevo." };
   await insertVersion(env, target, restored.doc, "restore");
-  if (target.kind === "design" && current.published) await requestPublishRender(env, target.id);
   await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: target.id, action: auditActionFor(target.kind, "version_restored"), metadata: { version_id: versionId }, performedBy: env.actor.userId });
   return { ok: true, data: { rev: (saved as { rev: number }).rev } };
 }
