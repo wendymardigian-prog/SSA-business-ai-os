@@ -72,6 +72,8 @@ export interface DetailPageData {
   };
   /** La pieza de Contenido a la que está vinculado este anuncio (solo en el nivel anuncio), o null (Tirón 2, A2). */
   contentLink: AdContentLink | null;
+  /** Para que optimizan los AdSets de este objeto y el objetivo de su campaña: deciden que funnel se muestra (`ads-funnel.ts`). */
+  funnelSource: { goals: Array<string | null>; objective: string | null };
   /** Quien mira puede vincular el anuncio con una pieza: `content.create` (ya tiene `dashboards.ads.view` para estar acá). */
   canLinkContent: boolean;
   /** Lo que dice el CRM (la tabla de los hijos y el funnel). Si falla, se ve lo de Meta y lo avisa. */
@@ -190,14 +192,36 @@ export async function loadDetailPage(params: {
   const syncedAt =
     lastSyncedAt(ownRows(allRows, { level, objectId })) ?? account?.last_synced_at ?? null;
 
-  const crm = await loadCrmForRows(permissions, {
-    adAccountId,
-    rows: allRows,
-    since: sinceOf(range) ?? "2000-01-01",
-    until: untilOf(range),
-    timeZone,
-    now,
-  });
+  // Los AdSets que deciden el funnel: el propio, el del anuncio o, en una campaña, los que tuvieron actividad en el periodo
+  // (uno pausado hace meses no tiene por que mezclar el funnel de hoy).
+  const campaignId = level === "campaign" ? objectId : detail.campaignId;
+  const activeAdsets = [
+    ...new Set(allRows.filter((r) => r.level === "adset" && r.campaignId === objectId && (r.impressions ?? 0) > 0).map((r) => r.objectId)),
+  ];
+  const adsetIds = level === "adset" ? [objectId] : level === "ad" ? (detail.adsetId ? [detail.adsetId] : []) : activeAdsets;
+
+  const [crm, adsetGoals, campaignRow] = await Promise.all([
+    loadCrmForRows(permissions, {
+      adAccountId,
+      rows: allRows,
+      since: sinceOf(range) ?? "2000-01-01",
+      until: untilOf(range),
+      timeZone,
+      now,
+    }),
+    level === "campaign" && adsetIds.length === 0
+      ? supabase.from("meta_adsets").select("optimization_goal").eq("workspace_id", workspace.id).eq("campaign_id", objectId)
+      : adsetIds.length > 0
+        ? supabase.from("meta_adsets").select("optimization_goal").eq("workspace_id", workspace.id).in("adset_id", adsetIds)
+        : Promise.resolve({ data: [] as Array<{ optimization_goal: string | null }> }),
+    campaignId
+      ? supabase.from("meta_campaigns").select("objective").eq("workspace_id", workspace.id).eq("campaign_id", campaignId).maybeSingle()
+      : Promise.resolve({ data: null as { objective: string | null } | null }),
+  ]);
+  const funnelSource = {
+    goals: (adsetGoals.data ?? []).map((r) => r.optimization_goal),
+    objective: campaignRow.data?.objective ?? (level === "campaign" && objectMeta?.ok ? objectMeta.data.objective : null),
+  };
 
   // El vínculo manual con una pieza de Contenido (A2): solo se muestra en el menú del anuncio.
   let contentLink: AdContentLink | null = null;
@@ -240,6 +264,7 @@ export async function loadDetailPage(params: {
       error: objectMeta && !objectMeta.ok ? objectMeta.error : null,
     },
     contentLink,
+    funnelSource,
     canLinkContent: level === "ad" && can("content.create"),
     crm,
   };
