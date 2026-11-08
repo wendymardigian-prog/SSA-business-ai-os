@@ -78,3 +78,20 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - **Qué quedó:** se revisó con el navegador de la app (sesión iniciada, base real), sin crear nada: la lista vacía, el modal «Nuevo» (los 3 pasos y el paso «Archivo» de cargar HTML), Ajustes y el 404 del link público, a 1440 y a 390 px, en claro y en oscuro (el tema real, emulando el sistema). Se arregló el título de la lista, que se truncaba en escritorio. A 390 px no hay desplazamiento horizontal (ancho del documento 375).
 - **Por qué no más:** para ver el editor, Generaciones o un link publicado hay que crear un diseño, y el servidor de desarrollo escribe en la base REAL del negocio.
 - **Qué se decidió:** no crear nada en el negocio sin tu OK. Con tu OK, se crea uno llamado «zz-test revisión» y se borra al terminar; o se revisa en un clon de prueba. El aviso «Encountered a script tag…» de la consola aparece igual en `/f/` y viene del layout general, no del Diseñador.
+
+## Auditoría de la Ola 2 (8/11/2026 UTC)
+
+### Editar un diseño publicado ya no cambia el link: hay que «Publicar cambios»
+- **Qué quedó:** guardar (a mano, al restaurar o por la IA) ya no vuelve a armar los archivos del link; el editor marca «Hay cambios sin publicar» y el menú ofrece «Publicar cambios». La página web pública muestra la última versión publicada (00325).
+- **Por qué:** el plano dice que se re-renderiza al publicar o exportar (F48b), y un Member (con `designer.edit` y sin `designer.publish`) cambiaba lo que ve el público con solo guardar. Lo marcó el auditor.
+- **Qué se decidió:** publicar es la única puerta al link público. `verify-ds5` lo prueba con una web (lo editado no se ve hasta «Publicar cambios»).
+
+### «Permitir descargar» de una plantilla pide `designer.publish`
+- **Qué quedó:** en una plantilla, «Permitir descargar» (lo heredan sus generaciones) se cambia con `designer.publish`, como dice §4.1; «Se puede verificar» y el tipo de documento siguen con `designer.edit`.
+- **Por qué:** el plano pone «permitir descarga» en `designer.publish`; para plantillas era ambiguo.
+- **Qué se decidió:** lo más estricto.
+
+### Imágenes externas en un HTML cargado
+- **Qué quedó:** la limpieza conserva `<img src="https://…">` de otros sitios. En el link público de una web se cargan desde ese sitio; en una exportación salen vacías, porque el servicio de render solo sale a los hosts de `RENDER_ALLOWED_HOSTS`.
+- **Por qué:** quitarlas rompería muchas landings hechas con imágenes de un CDN; bajarlas al importar es otro trabajo (y otro riesgo: pedidos a sitios ajenos desde el servidor).
+- **Qué se decidió:** se dejan. Si molesta, al cargar se bajan con `safeFetch` (con tope) y pasan a `asset:`.
