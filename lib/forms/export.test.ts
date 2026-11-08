@@ -112,6 +112,18 @@ describe("URL de entrada y nombres de Meta en el CSV", () => {
   });
 });
 
+describe("País en el CSV", () => {
+  it("va justo después de la pregunta de teléfono, con el nombre sin bandera", () => {
+    const withPhone: ResponseColumn[] = [...columns, { key: "whatsapp", label: "WhatsApp", type: "phone", removed: false }];
+    const r = row({ answers: { ...row().answers, whatsapp: { label: "WhatsApp", type: "phone", value: "+51930000000" } } });
+    const [header, body] = buildResponsesMatrix([r], withPhone, opts);
+    const at = header.indexOf("WhatsApp");
+    expect(header[at + 1]).toBe("País");
+    expect(body[at + 1]).toBe("Perú");
+    expect(buildResponsesMatrix([row()], columns, opts)[0]).not.toContain("País");
+  });
+});
+
 describe("buildExportFilename", () => {
   it("nombre seguro y con extensión csv", () => {
     expect(buildExportFilename("Aplicación al programa", "todos", "2026-10-10")).toBe("aplicacion_al_programa_todos_2026-10-10.csv");

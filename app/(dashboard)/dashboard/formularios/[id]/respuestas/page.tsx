@@ -10,9 +10,10 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { metaLinkFromAttribution, metaLinkFromTouch, touchMetaIds } from "@/lib/attribution/meta-link";
 import { EMPTY_META_NAMES, loadMetaNamesByIds, metaIdsFrom } from "@/lib/attribution/meta-names";
 import { formTouchKey, loadTouchesByKey } from "@/lib/attribution/source-touches";
-import { flatAttribution } from "@/lib/forms/response-columns";
+import { availableDimensions, facetOptions, groupCounts, phoneFieldKey, RESPONSE_DIMENSIONS, type ResponseDimension } from "@/lib/forms/response-index";
 import { parseResponseFilters, responseColumns, type ResponseRow } from "@/lib/forms/responses";
-import { applyResponseFilters } from "@/lib/forms/responses-query";
+import { loadFormResponses } from "@/lib/forms/responses-load";
+import type { MultiFilterOption } from "@/lib/ui/multi-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +21,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Las respuestas de un formulario (F13). Lee con el cliente de la persona: la
- * RLS decide cuáles ve (un Member, solo las de contactos que ve). Los filtros de
- * la URL se aplican EN LA CONSULTA.
+ * RLS decide cuáles ve (un Member, solo las de contactos que ve). Estado, contacto
+ * y fecha van en la consulta; búsqueda, país y UTM los aplica `filterIndex`, y la
+ * página se corta en memoria (`loadFormResponses`, el mismo camino del CSV). Solo
+ * las filas de la página se completan con el contacto y el vínculo con Meta.
  */
 export default async function RespuestasPage({
   params,
@@ -42,31 +45,34 @@ export default async function RespuestasPage({
   const [timeZone, barData] = await Promise.all([resolveViewerTimezone(workspace.timezone), loadEditorBar(supabase, workspace.id, id)]);
   const filters = parseResponseFilters(sp);
   const pageSize = FORM_LIMITS.pageSize;
-  const from = (filters.page - 1) * pageSize;
 
   let definition = form.draft_definition;
   if (form.current_version_id) {
     const { data: version } = await supabase.from("form_versions").select("definition").eq("id", form.current_version_id).maybeSingle();
     if (version) definition = version.definition;
   }
+  const fields = fieldsOf(definition);
+  const phoneKey = phoneFieldKey(fields);
+  const dimensions = availableDimensions(phoneKey);
+  const groupBy = filters.groupBy && dimensions.includes(filters.groupBy) ? filters.groupBy : null;
 
-  const base = supabase
-    .from("form_submissions")
-    .select("id, created_at, status, contact_id, answers, score, nps_category, attribution", { count: "exact" })
-    .eq("form_id", id)
-    .eq("workspace_id", workspace.id);
-  const { data, count, error } = await applyResponseFilters(base, filters, timeZone)
-    .order("created_at", { ascending: false })
-    .range(from, from + pageSize - 1);
+  const loaded = await loadFormResponses(supabase, { workspaceId: workspace.id, formId: id, filters, timeZone, phoneKey });
+  const total = loaded.matching.length;
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(filters.page, lastPage);
+  const submissions = groupBy ? [] : loaded.matching.slice((page - 1) * pageSize, page * pageSize);
+  const facets = Object.fromEntries(
+    RESPONSE_DIMENSIONS.map((d) => [d, dimensions.includes(d) ? facetOptions(loaded.base, d, phoneKey) : []]),
+  ) as Record<ResponseDimension, MultiFilterOption[]>;
+  const groups = groupBy ? groupCounts(loaded.matching, groupBy, phoneKey) : null;
 
-  const submissions = data ?? [];
   const contactIds = [...new Set(submissions.map((s) => s.contact_id).filter((c): c is string => !!c))];
   const { data: contacts } = contactIds.length
     ? await supabase.from("contacts").select("id, display_name, email").in("id", contactIds)
     : { data: [] as Array<{ id: string; display_name: string | null; email: string | null }> };
   const byId = new Map((contacts ?? []).map((c) => [c.id, c]));
 
-  const attributions = new Map(submissions.map((s) => [s.id, flatAttribution(s.attribution)]));
+  const attributions = new Map(submissions.map((s) => [s.id, s.attribution]));
   // El vinculo con Meta es el del toque de cada respuesta; sin toque (sin contacto), los ids que trajo su URL.
   const touches = await loadTouchesByKey(await createServiceClient(), workspace.id, submissions.map((s) => formTouchKey(s.id)));
   const metaIds = submissions.map((s) => {
@@ -90,7 +96,9 @@ export default async function RespuestasPage({
     score: s.score,
     nps_category: s.nps_category,
   }));
-  const columns = responseColumns(fieldsOf(definition), rows);
+  // Las columnas salen de todas las respuestas del período, no solo de la página: una pregunta que ya no está
+  // aparece igual aunque esta página no la tenga, y filtrar no hace aparecer ni desaparecer columnas.
+  const columns = responseColumns(fields, loaded.base);
 
   const tableRows: ResponseTableRow[] = rows.map((r) => ({
     id: r.id,
@@ -117,11 +125,24 @@ export default async function RespuestasPage({
       formType={form.type as "custom" | "survey" | "contract"}
       rows={tableRows}
       columns={columns}
-      total={count ?? 0}
-      page={filters.page}
+      total={total}
+      baseTotal={loaded.base.length}
+      truncated={loaded.truncated}
+      page={page}
       pageSize={pageSize}
-      filters={{ from: filters.from ?? "", to: filters.to ?? "", status: filters.status ?? "all", contact: filters.contact ?? "all" }}
-      loadError={!!error}
+      filters={{
+        period: filters.period ?? { period: "historico", from: null, to: null },
+        legacyRange: !!(filters.from || filters.to),
+        status: filters.status ?? "all",
+        contact: filters.contact ?? "all",
+        q: filters.q ?? "",
+        dims: filters.dims ?? {},
+        groupBy,
+      }}
+      dimensions={dimensions}
+      facets={facets}
+      groups={groups}
+      loadError={loaded.error}
       canManage={ctx.can("forms.manage")}
       canExport={ctx.can("data.export")}
       timeZone={timeZone}

@@ -5,6 +5,7 @@
  * Así un Member con filtros inventados en la URL sigue viendo solo lo suyo.
  */
 import { endOfDay, startOfDay } from "@/lib/dates";
+import { resolveDashboardPeriod } from "@/lib/dashboards/period-filter";
 import type { ResponseFilters } from "./responses";
 
 export interface FilterableQuery<Q> {
@@ -15,11 +16,28 @@ export interface FilterableQuery<Q> {
   lte(column: string, value: unknown): Q;
 }
 
-export function applyResponseFilters<Q extends FilterableQuery<Q>>(query: Q, filters: ResponseFilters, timeZone: string): Q {
+/**
+ * Estado, contacto y fecha. El período del botón de fecha (un atajo o un rango, en la zona de quien
+ * mira) gana; los días de un link viejo (`desde`/`hasta`) cuentan solo si el período es el Histórico.
+ * Búsqueda, país y UTM no van acá: los aplica `filterIndex` (lib/forms/response-index.ts).
+ */
+export function applyResponseFilters<Q extends FilterableQuery<Q>>(
+  query: Q,
+  filters: ResponseFilters,
+  timeZone: string,
+  now: Date = new Date(),
+): Q {
   let q = query;
   if (filters.status && filters.status !== "all") q = q.eq("status", filters.status);
   if (filters.contact === "with") q = q.not("contact_id", "is", null);
   if (filters.contact === "without") q = q.is("contact_id", null);
+  const period = filters.period;
+  if (period && (period.period !== "historico" || (period.from && period.to))) {
+    const range = resolveDashboardPeriod(period, now, timeZone);
+    if (range.from) q = q.gte("created_at", range.from);
+    if (range.to) q = q.lte("created_at", range.to);
+    return q;
+  }
   if (filters.from) {
     const [y, m, d] = filters.from.split("-").map(Number);
     q = q.gte("created_at", startOfDay(y, m, d, timeZone).toISOString());

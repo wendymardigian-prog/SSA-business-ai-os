@@ -1,7 +1,7 @@
 import { parsePeriodFilter, periodFilterToParams, type PeriodFilter } from "@/lib/agent/ai-dashboard/url-state";
 import { formatRange, isoRangeToCivil } from "./chat/date-range";
 import { DEFAULT_PERIOD } from "./url-state";
-import { PERIOD_LABELS, resolvePeriod, type PeriodPreset, type ResolvedPeriod } from "./period";
+import { PERIOD_LABELS, isPeriodPreset, resolvePeriod, type PeriodPreset, type ResolvedPeriod } from "./period";
 
 /**
  * El periodo de un dashboard en la URL: un atajo (`range`) o un rango a medida (`from` y `to`), con el mismo
@@ -27,18 +27,23 @@ function single(params: RawParams, key: string): string | null {
   return typeof value === "string" ? value : null;
 }
 
-/** Lee el periodo. Tolerante: lo invalido cae a los 30 dias de siempre, y un rango invertido no cuenta como rango. */
-export function readDashboardPeriod(params: RawParams): PeriodFilter {
+/**
+ * Lee el periodo. Tolerante: lo invalido cae al atajo por defecto (los 30 dias de siempre, salvo que la pantalla
+ * pida otro, como Respuestas de un formulario, que arranca en el Historico), y un rango invertido no cuenta como rango.
+ */
+export function readDashboardPeriod(params: RawParams, defaultPreset: PeriodPreset = DEFAULT_PERIOD): PeriodFilter {
+  const rawRange = single(params, "range") ?? single(params, "periodo");
   const normalized = new URLSearchParams();
   for (const [key, value] of [
-    ["range", single(params, "range") ?? single(params, "periodo")],
+    ["range", rawRange],
     ["from", single(params, "from")],
     ["to", single(params, "to")],
   ] as const) {
     if (value) normalized.set(key, value);
   }
 
-  const filter = parsePeriodFilter(normalized);
+  const parsed = parsePeriodFilter(normalized);
+  const filter: PeriodFilter = rawRange && isPeriodPreset(rawRange) ? parsed : { ...parsed, period: defaultPreset };
   if (filter.from && filter.to && new Date(filter.from).getTime() > new Date(filter.to).getTime()) {
     return { ...filter, from: null, to: null };
   }
@@ -61,11 +66,20 @@ export function periodQuery(filter: PeriodFilter, extra: Record<string, string> 
  * Pone lo elegido en la URL sin tocar el resto de los filtros. Borra lo anterior: sin esto, elegir un atajo despues
  * de un rango no haria nada, porque el rango gana.
  */
-export function applyPeriodToParams(current: URLSearchParams, selection: PeriodSelection): URLSearchParams {
+export function applyPeriodToParams(
+  current: URLSearchParams,
+  selection: PeriodSelection,
+  defaultPreset: PeriodPreset = DEFAULT_PERIOD,
+): URLSearchParams {
   const params = new URLSearchParams(current);
   for (const key of ["range", "periodo", "from", "to"]) params.delete(key);
-  const filter: PeriodFilter = { period: selection.preset ?? DEFAULT_PERIOD, from: selection.from, to: selection.to };
-  for (const [key, value] of periodFilterToParams(filter)) params.set(key, value);
+  if (selection.from && selection.to) {
+    params.set("from", selection.from);
+    params.set("to", selection.to);
+  } else if (selection.preset && selection.preset !== defaultPreset) {
+    // Solo lo que difiere del default de ESTA pantalla: con otro default, «30 dias» tiene que quedar escrito.
+    params.set("range", selection.preset);
+  }
   return params;
 }
 

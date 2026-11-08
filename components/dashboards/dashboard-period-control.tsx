@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
-import { PERIOD_LABELS, PERIOD_PRESETS } from "@/lib/dashboards/period";
+import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
 import { applyPeriodToParams, type PeriodFilter, type PeriodSelection } from "@/lib/dashboards/period-filter";
 import { PeriodPopover } from "./chat/filters/period-popover";
 
@@ -11,7 +11,16 @@ import { PeriodPopover } from "./chat/filters/period-popover";
  * El selector de fechas de un dashboard: los atajos de siempre y el calendario, en la zona de quien mira.
  * Sin `onApply`, escribe lo elegido en la URL; una pantalla que atenua su contenido mientras carga pasa el suyo.
  */
-export function DashboardPeriodControl({ period, onApply }: { period: PeriodFilter; onApply?: (selection: PeriodSelection) => void }) {
+export function DashboardPeriodControl({
+  period,
+  onApply,
+  defaultPreset,
+}: {
+  period: PeriodFilter;
+  onApply?: (selection: PeriodSelection) => void;
+  /** El atajo que no se escribe en la URL: el mismo que lee la pagina (`readDashboardPeriod`). Sin decir nada, 30 dias. */
+  defaultPreset?: PeriodPreset;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -19,7 +28,7 @@ export function DashboardPeriodControl({ period, onApply }: { period: PeriodFilt
   const [pending, startTransition] = useTransition();
 
   function applyToUrl(selection: PeriodSelection) {
-    const query = applyPeriodToParams(new URLSearchParams(searchParams.toString()), selection).toString();
+    const query = applyPeriodToParams(new URLSearchParams(searchParams.toString()), selection, defaultPreset).toString();
     startTransition(() => router.push(query ? `${pathname}?${query}` : pathname));
   }
 
