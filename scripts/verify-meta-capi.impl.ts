@@ -130,7 +130,7 @@ try {
   const { data: variant } = await svc.from("product_variants").insert({ workspace_id: workspaceId, product_id: prod?.id, name: "zz-test variante" } as never).select("id").single();
   const { data: sale, error: saleError } = await db
     .from("sales")
-    .insert({ workspace_id: workspaceId, contact_id: contact.id, product_variant_id: variant?.id, product_snapshot: { product_id: prod?.id, variant_id: variant?.id }, base_amount: 300, final_amount: 300, status: "pending", financing_type: "full", sale_date: dateOf(0), attribution_type: "none" })
+    .insert({ workspace_id: workspaceId, contact_id: contact.id, product_variant_id: variant?.id, product_snapshot: { product_id: prod?.id, variant_id: variant?.id }, base_amount: 300, final_amount: 300, status: "pending_payment", financing_type: "full", sale_date: dateOf(0), attribution_type: "none" })
     .select("id")
     .single();
   if (saleError) throw new Error(`no pude crear la venta: ${saleError.message}`);
@@ -141,7 +141,7 @@ try {
   check((offEvents ?? []).length === 0, "con el interruptor apagado, un pago cobrado no encola nada");
 
   await db.from("integration_configs").update({ config: { pixel_id: "1234567890", purchase_enabled: "true" } }).eq("workspace_id", workspaceId).eq("provider", "meta_capi");
-  const { data: pending } = await db.from("payments").insert({ ...payBase, amount: 200, status: "pending", due_date: dateOf(-5) }).select("id").single();
+  const { data: pending } = await db.from("payments").insert({ ...payBase, amount: 200, status: "scheduled", due_date: dateOf(-5) }).select("id").single();
   const { data: before } = await db.from("meta_capi_events").select("id").eq("source_id", pending?.id);
   check((before ?? []).length === 0, "un pago pendiente no encola nada");
   await db.from("payments").update({ status: "paid", paid_at: new Date().toISOString(), paid_on: dateOf(0) }).eq("id", pending?.id);
@@ -151,7 +151,7 @@ try {
     "prendido, cobrarlo encola UNA compra con su monto",
     JSON.stringify(purchase),
   );
-  await db.from("payments").update({ status: "pending", paid_at: null, paid_on: null }).eq("id", pending?.id);
+  await db.from("payments").update({ status: "scheduled", paid_at: null, paid_on: null }).eq("id", pending?.id);
   await db.from("payments").update({ status: "paid", paid_at: new Date().toISOString(), paid_on: dateOf(0) }).eq("id", pending?.id);
   const { data: again } = await db.from("meta_capi_events").select("id").eq("source_id", pending?.id);
   check(again?.length === 1, "revertirlo y volver a cobrarlo no manda otra compra");

@@ -1397,7 +1397,7 @@ SSA le manda a Meta, desde el servidor, los leads, las reuniones y los pagos cob
 
 ## Migración
 
-`00328_meta_capi` (aditiva: las dos tablas, el trigger de `payments` y la limpieza diaria). Puede ir antes o después del código: hasta que alguien configure la tarjeta, el trigger no encola nada. **Sin aplicar todavía.** **La próxima libre es la `00329`** (la `00327` es de los crons con guarda) (confirmar con `list_migrations` y las ramas locales).
+`00328_meta_capi` (aditiva: las dos tablas, el trigger de `payments` y la limpieza diaria). Puede ir antes o después del código: hasta que alguien configure la tarjeta, el trigger no encola nada. **Aplicada y registrada** el 8/11/2026 UTC (versión `20261108060946`), después de ensayarla en una transacción que se deshizo sola, con `verify-meta-capi` en verde. **La próxima libre es la `00329`** (la `00327` es de los crons con guarda) (confirmar con `list_migrations` y las ramas locales).
 
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 

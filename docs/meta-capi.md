@@ -8,7 +8,7 @@ El Pixel del navegador pierde eventos: bloqueadores de anuncios, Safari, un lím
 servidor llegan igual. Si la web también mandó el evento por Pixel **con el mismo código** (`event_id`), Meta junta los dos
 envíos, no cuenta doble y se queda con los datos de los dos.
 
-Migración `00328_meta_capi`. Código en `lib/meta/capi/`.
+Migración `00328_meta_capi`, **aplicada y registrada** el 8/11/2026 UTC (versión `20261108060946`). Código en `lib/meta/capi/`. Verificación contra la base: `node scripts/verify-meta-capi.mjs` (con el candado `/private/tmp/ssa-verify.lock`).
 
 ## Cómo se configura
 
