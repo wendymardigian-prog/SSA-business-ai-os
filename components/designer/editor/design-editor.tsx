@@ -576,7 +576,8 @@ export function DesignEditor(props: DesignEditorProps) {
   const bg = FORMATS[doc.format];
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    // En el celular la barra de paneles (IA / Agregar / Capas) es fija abajo: el editor le deja su alto para no tapar la tira de páginas.
+    <div className={cn("flex h-full min-h-0 flex-col", !showGenerations && "max-sm:pb-[calc(3.5rem+env(safe-area-inset-bottom))]")}>
       <TopBar
         actions={actions}
         format={doc.format}

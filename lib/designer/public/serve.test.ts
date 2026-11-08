@@ -21,7 +21,7 @@ describe("loadPublicDesign", () => {
 
   it("un código con forma rara no llega ni a la base", async () => {
     const { db } = publicDb();
-    for (const bad of ["../../etc", "", null, undefined, "K8F2-WQ4M-7TQI"]) expect(await loadPublicDesign(db.client, bad as string)).toBeNull();
+    for (const bad of ["../../etc", "", null, undefined, "K8F2-WQ4M-7TQU"]) expect(await loadPublicDesign(db.client, bad as string)).toBeNull();
     expect(db.rpcCalls).toHaveLength(0);
   });
 

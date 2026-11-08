@@ -151,9 +151,29 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
   4. hacer que `public/model.test.ts` lea la definición desde la base de la plantilla, o marcarlo.
 
 ### Cierre (Ola 5): revisión visual
-- **Qué quedó:** la revisión a 1440 y 390 px, en claro y en oscuro, se hizo en la lista vacía, el modal «Nuevo» (sus 3 pasos y el paso «Archivo» de cargar HTML), Ajustes y el 404 del link público; se arregló el título truncado. NO se revisaron en pantalla: el editor con un diseño (lienzo, capas, barra del elemento, drawer de Configuración), el panel de la IA, el menú Publicar y Exportar, el link público de una pieza publicada y de una generación válida y anulada, la pestaña Generaciones y los modales «Emitir» y «Generar para varios», el modal «Usar en contenido», el grupo «Del diseño» y el aviso en el drawer de la pieza, y el panel del paso «Generar desde plantilla» en el lienzo.
-- **Por qué:** el servidor de desarrollo usa la base REAL del negocio: verlos exige crear un diseño, una plantilla, generaciones o una automatización ahí (el lienzo, además, guarda un borrador solo).
-- **Qué se decidió:** no crear nada en el negocio sin tu OK. La lógica de cada pantalla está en funciones puras con tests y las pantallas se renderizan en tests de servidor; lo que falta es mirarlas. Con tu OK, se crea todo con nombre «zz-test revisión» y se borra al terminar (o se revisa en un clon de prueba).
+- **Qué quedó:** primero se revisó sin datos (lista vacía, modal «Nuevo» con sus pasos, Ajustes, 404 del link). El 8/11/2026, con tu OK, se hizo la revisión **con datos**. Se armó un negocio de prueba aparte («zz-test-designer-revision», con su propio usuario y render simulado) con un carrusel publicado, un borrador, una plantilla de certificado con verificación, una generación válida y una anulada, una pieza de Contenido vinculada y una automatización en borrador. Se recorrieron a 1440 y 390 px, en oscuro y en claro:
+  - la lista;
+  - el editor (lienzo, IA, Agregar, Capas, barra del elemento, Configuración, menús Publicar, Exportar y «En contenido»);
+  - la plantilla con Generaciones y los modales «Emitir certificado» y «Generar para varios»;
+  - el link público de la pieza y de la generación válida y anulada;
+  - la pieza de Contenido con el grupo «Del diseño»;
+  - el panel del paso «Generar desde plantilla».
+
+  Todo se borró al terminar: el negocio, el usuario y los archivos de los buckets. El informe de residuos dio todo en 0.
+- **Qué se arregló:**
+  1. En la barra del editor, la flechita de «Exportar» y de «Publicado/Publicar» se bajaba a una segunda línea. Ahora no parten el texto ni se achican.
+  2. La barra del editor era más ancha que la pantalla con la barra lateral abierta: el engranaje quedaba cortado y, al abrir un menú, todo el editor se corría a la izquierda. El nombre tenía `sm:flex-none` y nunca cedía lugar; ahora sí cede. En una plantilla, además, el selector de formato es más angosto, «Automatizar» queda solo con su ícono por debajo de 1536 px y el «?» de atajos se oculta por debajo de 1536 px (los mismos atajos están en la pestaña Capas). A 1440 px ya entra todo, con «Emitir certificado» visible.
+  3. La pastilla «Listo» de la barra del elemento mostraba el ícono arriba del texto.
+  4. En celular, la barra fija de paneles (IA / Agregar / Capas) tapaba la tira de páginas. El editor ahora le deja su alto.
+  5. En el recuadro de verificación, el ✅ y el ⛔ quedaban pegados al texto.
+  6. Un código tipeado desde un impreso con «O» en lugar de cero, o «I»/«L» en lugar de uno, daba 404. Ahora se leen como manda Crockford (`normalizeDesignCode`, con test).
+- **Qué quedó a la vista sin cambiar:**
+  - Antes de que la página termine de cargar en el navegador, el editor dibuja la pestaña «Diseño» y el lienzo sin ajustar; al cargar pasa a la pestaña de la URL y ajusta. En desarrollo se nota unos segundos; en producción es un instante.
+  - El panel de un paso muestra un engranaje para TODAS las acciones (no es del Diseñador).
+  - En el drawer de la pieza, «Abrir el diseño» aparece arriba y en el grupo «Del diseño».
+  - Con el render simulado, las imágenes del link son de 1×1 en blanco. Lo de verdad se ve con `ssa-render` conectado.
+- **Por qué:** lo que quedó sin cambiar es menor o no es del módulo.
+- **Qué se decidió:** se deja así. Si molesta el doble «Abrir el diseño», se saca el de arriba cuando hay un grupo vinculado.
 
 ### «Dónde se usa» de una plantilla no lista Contenido
 - **Qué quedó:** la configuración de una plantilla lista las automatizaciones que la usan; no lista piezas de Contenido.

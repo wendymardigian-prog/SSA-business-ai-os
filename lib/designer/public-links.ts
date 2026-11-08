@@ -17,9 +17,12 @@ import { loadPublicBaseUrl, publicBaseUrl, type WorkspaceDomainSource } from "@/
 /** Un código de diseño: 12 caracteres Crockford base32 en tres grupos (`K8F2-WQ4M-7TQA`). */
 export const DESIGN_CODE_RE = /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
 
-/** Normaliza un código que llega por la URL: mayúsculas; `null` si no tiene la forma. */
+/**
+ * Normaliza un código que llega por la URL o que alguien tipea desde un impreso: mayúsculas y, como manda
+ * Crockford, la O se lee como 0 y la I y la L como 1 (el alfabeto no las usa). `null` si no tiene la forma.
+ */
 export function normalizeDesignCode(raw: string | null | undefined): string | null {
-  const code = (raw ?? "").trim().toUpperCase();
+  const code = (raw ?? "").trim().toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1");
   return DESIGN_CODE_RE.test(code) ? code : null;
 }
 

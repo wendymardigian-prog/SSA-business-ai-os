@@ -360,7 +360,7 @@ export function ElementToolbar(props: ElementToolbarProps) {
         );
       case "done":
         return (
-          <ToolButton key={id} label="Listo (Esc)" onClick={props.onDone} className="gap-1 px-2.5 text-xs font-medium">
+          <ToolButton key={id} label="Listo (Esc)" onClick={props.onDone} className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 text-xs font-medium">
             <Check className="h-3.5 w-3.5" aria-hidden /> Listo
           </ToolButton>
         );

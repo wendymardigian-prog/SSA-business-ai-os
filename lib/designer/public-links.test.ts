@@ -41,7 +41,10 @@ describe("links públicos del Diseñador IA (V4)", () => {
 
   it("normaliza el código de la URL (mayúsculas, alfabeto Crockford)", () => {
     expect(normalizeDesignCode("k8f2-wq4m-7tqa")).toBe("K8F2-WQ4M-7TQA");
-    expect(normalizeDesignCode("K8F2-WQ4M-7TQI")).toBeNull();
+    expect(normalizeDesignCode("K8F2-WQ4M-7TQU")).toBeNull();
+    // Crockford: lo que se confunde al tipear desde un impreso se lee como lo que es.
+    expect(normalizeDesignCode("4DYJ-P727-SKOY")).toBe("4DYJ-P727-SK0Y");
+    expect(normalizeDesignCode("K2RY-AQAH-ILWR")).toBe("K2RY-AQAH-11WR");
     expect(normalizeDesignCode("../../etc")).toBeNull();
   });
 });

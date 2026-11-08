@@ -49,12 +49,23 @@ export function MobileDownloadBar({ brand, download }: { brand: Brand; download:
 /** El recuadro de verificación de arriba: "✅ Certificado válido · emitido por … el … · Código …" o "⛔ … anulado · Motivo: …". */
 export function VerificationBox({ verification }: { verification: VerificationBoxView }) {
   const valid = verification.status === "valid";
+  // El ícono va aparte con su margen: pegado al texto, el espacio angosto lo dejaba encimado.
+  const cut = verification.text.indexOf(" ");
+  const icon = cut > 0 ? verification.text.slice(0, cut) : "";
+  const rest = cut > 0 ? verification.text.slice(cut + 1) : verification.text;
   return (
     <div
       role="status"
       className={`w-full rounded-xl border bg-card px-4 py-3 text-sm text-card-foreground ${valid ? "border-emerald-500/40" : "border-red-500/50"}`}
     >
-      <p className="font-semibold">{verification.text}</p>
+      <p className="font-semibold">
+        {icon && (
+          <span aria-hidden="true" className="mr-2">
+            {icon}
+          </span>
+        )}
+        {rest}
+      </p>
     </div>
   );
 }

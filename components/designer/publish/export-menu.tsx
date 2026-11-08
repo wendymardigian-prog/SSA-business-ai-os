@@ -18,7 +18,7 @@ import { PREPARING_NOTICE, PREPARING_NOTICE_MS, exportMenuView, exportProgress, 
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const triggerClass =
-  "inline-flex h-9 items-center rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
 
 /** Baja el archivo del link firmado de corta duración. */
 function download(url: string, fileName: string): void {

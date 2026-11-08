@@ -92,7 +92,7 @@ export function TopBar({
 
   const formatControl =
     actions.format.mode === "select" ? (
-      <select aria-label="Formato" value={format} onChange={(e) => onFormat(e.target.value as FormatKey)} className={cn(inputClass, "h-9 w-auto max-w-[220px]")}>
+      <select aria-label="Formato" value={format} onChange={(e) => onFormat(e.target.value as FormatKey)} className={cn(inputClass, "h-9 w-auto max-w-[172px]")}>
         {actions.format.options.map((key) => (
           <option key={key} value={key}>
             {FORMATS[key].label} · {FORMATS[key].width}×{FORMATS[key].height}
@@ -103,14 +103,15 @@ export function TopBar({
       <span className="inline-flex h-7 items-center whitespace-nowrap rounded-full bg-muted px-2.5 text-xs font-medium text-muted-foreground">{actions.format.label}</span>
     );
 
-  const rightButtons = (
+  // `compact`: la fila de la barra de arriba, donde no entra todo con la barra lateral abierta; la fila de abajo (pantallas chicas) va completa.
+  const rightButtons = (compact: boolean) => (
     <>
       {actions.useInContent.visible && slots.useInContent}
       {actions.exportMenu.visible && slots.exportMenu}
       {actions.publish.visible && slots.publish}
       {actions.automate.visible && (
-        <button type="button" onClick={onAutomate} className={secondaryButton}>
-          <Zap className="h-4 w-4" aria-hidden /> Automatizar
+        <button type="button" onClick={onAutomate} className={secondaryButton} aria-label="Automatizar" title="Automatizar">
+          <Zap className="h-4 w-4" aria-hidden /> <span className={compact ? "hidden 2xl:inline" : undefined}>Automatizar</span>
         </button>
       )}
       {actions.generateMany.visible && (
@@ -148,7 +149,7 @@ export function TopBar({
               e.currentTarget.blur();
             }
           }}
-          className="h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 text-[15px] font-semibold hover:border-border focus:border-primary-edge focus:bg-background focus:outline-none sm:max-w-[360px] sm:flex-none"
+          className="h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 text-[15px] font-semibold hover:border-border focus:border-primary-edge focus:bg-background focus:outline-none sm:max-w-[360px] sm:flex-initial"
         />
         <div className="hidden items-center gap-2 sm:flex">
           {formatControl}
@@ -167,7 +168,7 @@ export function TopBar({
             <button type="button" onClick={onRedo} disabled={!canRedo} aria-label="Rehacer (⌘ ⇧ Z)" title="Rehacer (⌘ ⇧ Z)" className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-35">
               <Redo2 className="h-4 w-4" aria-hidden />
             </button>
-            <Popover label="Atajos de teclado" trigger={<HelpCircle className="h-4 w-4" aria-hidden />} panelClassName="w-64 p-3" triggerClassName="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent">
+            <Popover label="Atajos de teclado" trigger={<HelpCircle className="h-4 w-4" aria-hidden />} panelClassName="w-64 p-3" triggerClassName="hidden h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent 2xl:grid">
               <ul className="flex flex-col gap-1.5 text-xs">
                 {SHORTCUTS.map((s) => (
                   <li key={s.keys} className="flex justify-between gap-3">
@@ -179,7 +180,7 @@ export function TopBar({
             </Popover>
           </div>
         )}
-        <div className="hidden items-center gap-2 lg:flex">{rightButtons}</div>
+        <div className="hidden items-center gap-2 lg:flex">{rightButtons(true)}</div>
         {actions.config.visible && (
           <button type="button" onClick={onConfig} aria-label="Configuración" title="Configuración" className={cn(secondaryButton, "w-9 px-0")}>
             <Settings className="h-4 w-4" aria-hidden />
@@ -197,7 +198,7 @@ export function TopBar({
           {formatControl}
           <span className={cn("inline-flex h-6 items-center rounded-full px-2.5 text-xs font-semibold sm:hidden", STATUS_TONE[actions.status.tone])}>{actions.status.label}</span>
           <span className={cn("text-xs md:hidden", SAVE_TONE[saveStatus])}>{saveText}</span>
-          <span className="flex flex-wrap items-center gap-2">{rightButtons}</span>
+          <span className="flex flex-wrap items-center gap-2">{rightButtons(false)}</span>
         </div>
       )}
     </header>
