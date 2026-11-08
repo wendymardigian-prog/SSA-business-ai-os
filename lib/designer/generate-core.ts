@@ -26,7 +26,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logAudit } from "@/lib/audit";
-import { membersWithPermission } from "@/lib/calls/notify";
+import { membersWithPermission } from "./permission-members";
 import { createNotificationOnce } from "@/lib/notifications/create";
 import type { Database, Json } from "@/lib/types/database";
 import type { MissingPolicy } from "./contracts";
