@@ -3,7 +3,7 @@
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CalendarClock, FileText, Lightbulb, Link2 as LinkIcon, Loader2, Plus, Users } from "lucide-react";
+import { CalendarClock, FileText, Lightbulb, Link2 as LinkIcon, Loader2, Plus, Sparkles, Users } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
 import { movePostToColumn } from "@/lib/actions/content";
 import { MARK_PUBLISHED_PARAM } from "@/lib/content/mark-published";
@@ -370,6 +370,17 @@ function PostCard({
           <span className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
               {post.authorship && <span>{post.authorship}</span>}
+              {post.hasDesign && (
+                <span
+                  className="inline-flex items-center text-primary-ink"
+                  title="Tiene un diseño del Diseñador IA"
+                  aria-label="Tiene un diseño del Diseñador IA"
+                  role="img"
+                  data-testid="has-design"
+                >
+                  <Sparkles className="h-3 w-3" aria-hidden />
+                </span>
+              )}
               {post.attributedContacts !== null && (
                 <span
                   className="inline-flex items-center gap-0.5 tabular-nums"
