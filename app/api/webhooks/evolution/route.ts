@@ -6,7 +6,7 @@
  * - connection.update: la sesion se abrio, se esta abriendo o se cayo
  * - call: una llamada (00258)
  * - group-participants.update: alguien entro o salio de un grupo (Grupos de WhatsApp, 00280)
- * - messages.delete / messages.edited: un mensaje se borro "para todos" (00353; ver lib/messages/revoke.ts)
+ * - messages.delete / messages.edited: un mensaje se borro "para todos" (00356; ver lib/messages/revoke.ts)
  *
  * Autenticacion: esta URL es publica, asi que se exige el header
  * x-webhook-token, el mismo que se configura al crear la instancia
@@ -201,7 +201,7 @@ async function handleWebhook(request: NextRequest) {
     return NextResponse.json({ ok: true, queued: "groups-update" });
   }
 
-  // Un mensaje borrado "para todos" (00353). No es un mensaje: marca la fila borrada y el camino termina aca. En la
+  // Un mensaje borrado "para todos" (00356). No es un mensaje: marca la fila borrada y el camino termina aca. En la
   // 2.3.7 llega por `messages.delete` y por `messages.edited` (el protocolMessage); si llegara por `messages.upsert`
   // tambien se ataja aca, ANTES de los grupos y del camino de los mensajes: si no, entraria como un mensaje vacio.
   if (event === "messages.delete" || event === "messages.edited" || event === "messages.upsert") {

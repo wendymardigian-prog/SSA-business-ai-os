@@ -1,5 +1,5 @@
 /**
- * Mensajes borrados "para todos" en WhatsApp (00353).
+ * Mensajes borrados "para todos" en WhatsApp (00356).
  *
  * LA REGLA: un borrado NO es un mensaje. Es un aviso de que OTRO mensaje ya no
  * existe en WhatsApp. Si siguiera el camino de un mensaje, entraria como un

@@ -139,7 +139,7 @@ function MessageBubble({
   onDelete,
 }: {
   message: Message;
-  /** Se ofrece «Eliminar para todos» (00353: WhatsApp, nuestro, dentro de los dos dias). */
+  /** Se ofrece «Eliminar para todos» (00356: WhatsApp, nuestro, dentro de los dos dias). */
   canDelete?: boolean;
   deleting?: boolean;
   onDelete?: () => void;
@@ -174,7 +174,7 @@ function MessageBubble({
   const isInbound = message.direction === "inbound";
   const isBot = message.sent_by_flow_id !== null || Boolean(message.sent_by_agent_id);
   const failed = !isInbound && message.status === "failed";
-  // Borrado "para todos" en WhatsApp (00353): la burbuja dice «Mensaje eliminado» y lo que decia queda plegado.
+  // Borrado "para todos" en WhatsApp (00356): la burbuja dice «Mensaje eliminado» y lo que decia queda plegado.
   const deleted = deletedBubbleView(message);
   const stickerOnly = !deleted && isStickerOnlyMessage(message, failed);
   const linkCardUrl = deleted ? null : messageLinkCardUrl(message, { outbound: !isInbound, failed, channelShowsCards: linkCards });
@@ -322,7 +322,7 @@ function MessageBubble({
 }
 
 /**
- * Un mensaje borrado "para todos" en WhatsApp (00353). Para el contacto ya no
+ * Un mensaje borrado "para todos" en WhatsApp (00356). Para el contacto ya no
  * existe; para el equipo, lo que decia queda guardado y se ve a pedido.
  */
 function DeletedMessageBody({ view, message }: { view: DeletedBubbleView; message: Message }) {
@@ -682,7 +682,7 @@ export function MessageThread({
     });
   }, []);
 
-  // «Eliminar para todos» (00353): se confirma antes, porque en WhatsApp no tiene vuelta.
+  // «Eliminar para todos» (00356): se confirma antes, porque en WhatsApp no tiene vuelta.
   const [confirmDelete, setConfirmDelete] = useState<Message | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 

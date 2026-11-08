@@ -148,14 +148,14 @@ describe("canDeleteForEveryone: cuando se ofrece «Eliminar para todos»", () =>
   });
 });
 
-describe("la vista previa de la lista (00353) dice lo mismo que la burbuja", () => {
+describe("la vista previa de la lista (00356) dice lo mismo que la burbuja", () => {
   it("la etiqueta del SQL es DELETED_MESSAGE_LABEL", () => {
-    const sql = readFileSync(join(process.cwd(), "supabase/migrations/00353_messages_deleted_for_everyone.sql"), "utf8");
+    const sql = readFileSync(join(process.cwd(), "supabase/migrations/00356_messages_deleted_for_everyone.sql"), "utf8");
     expect(sql).toContain(`THEN '${DELETED_MESSAGE_LABEL}'`);
   });
 
   it("el trigger del ultimo mensaje usa la vista previa con el borrado", () => {
-    const sql = readFileSync(join(process.cwd(), "supabase/migrations/00353_messages_deleted_for_everyone.sql"), "utf8");
+    const sql = readFileSync(join(process.cwd(), "supabase/migrations/00356_messages_deleted_for_everyone.sql"), "utf8");
     expect(sql).toMatch(/v_preview := private\.message_list_preview\(v_last\.text, v_last\.transcript, v_last\.attachments, v_last\.deleted_for_everyone_at\)/);
     expect(sql).toMatch(/AFTER UPDATE OF deleted_for_everyone_at ON public\.messages/);
   });

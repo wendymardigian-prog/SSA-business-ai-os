@@ -1,5 +1,5 @@
 /**
- * Marca un mensaje de WhatsApp como borrado "para todos" (00353).
+ * Marca un mensaje de WhatsApp como borrado "para todos" (00356).
  *
  * La unica puerta es `mark_message_deleted_for_everyone` (solo service_role):
  * busca el mensaje por su id de WhatsApp dentro del canal y no pisa un borrado

@@ -95,7 +95,7 @@ export async function loadRecentMessages(
     console.error("[agent-context] no pude leer los mensajes:", error.message);
     return [];
   }
-  // Un mensaje borrado "para todos" en WhatsApp (00353) no es contexto: el contacto lo retiro, o lo retiramos
+  // Un mensaje borrado "para todos" en WhatsApp (00356) no es contexto: el contacto lo retiro, o lo retiramos
   // nosotros y nunca le llego. Se saca aca y no en la consulta: asi los mocks de la cadena siguen sirviendo.
   return withoutDeletedMessages((data ?? []) as (StoredMessage & DeletableMessage)[]).reverse();
 }

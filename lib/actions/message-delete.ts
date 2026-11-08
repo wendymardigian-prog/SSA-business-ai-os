@@ -9,7 +9,7 @@ import { getEvolutionConfig } from "@/lib/evolution-config";
 import { deleteMessageForEveryone as evolutionDeleteForEveryone, EvolutionError } from "@/lib/evolution-client";
 
 /**
- * «Eliminar para todos» desde la bandeja (00353): borra en WhatsApp un mensaje
+ * «Eliminar para todos» desde la bandeja (00356): borra en WhatsApp un mensaje
  * que mandamos nosotros y lo marca borrado (la fila y el texto quedan).
  *
  * Es operar la conversacion: pide poder responder por esa cuenta, y la RLS

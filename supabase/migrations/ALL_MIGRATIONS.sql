@@ -61935,10 +61935,108 @@ BEGIN
 END $$;
 
 -- ============================================================
--- MIGRATION 353: MESSAGES DELETED FOR EVERYONE
+-- MIGRATION 354: OUTBOUND REOPENS CONVERSATION
 -- ============================================================
 -- ============================================================
--- 00353_messages_deleted_for_everyone
+-- 00354_outbound_reopens_conversation.sql
+-- ============================================================
+-- Un mensaje que mandamos nosotros reabre una conversacion cerrada.
+--
+-- Hasta hoy una conversacion solo se reabria cuando el contacto escribia
+-- (`lib/inbound.ts`). Un broadcast, una automatizacion, una secuencia o el
+-- agente mandaban el mensaje, quedaba guardado como ultimo mensaje, pero la
+-- conversacion seguia `closed` y la bandeja (que muestra "Abiertas" por
+-- defecto) no la mostraba. Paso con los broadcasts de WhatsApp a chats
+-- importados del historial, que nacen cerrados.
+--
+-- La regla, una sola para todo lo que sale (la decide la base, venga de donde
+-- venga el envio):
+--   - un mensaje SALIENTE que salio (ni `failed` ni `pending`),
+--   - recien enviado (creado hace menos de 10 minutos): lo importado del
+--     historial trae su fecha vieja y no reabre nada,
+--   - en una conversacion `closed` que se cerro ANTES de ese mensaje: "respondo
+--     y cierro" sigue dejandola cerrada.
+-- Una conversacion pospuesta (`snoozed`) no se toca. `closed_at` se conserva
+-- al reabrir, igual que cuando reabre un entrante (comentario de la 00067).
+--
+-- Nunca tumba el insert de un mensaje (EXCEPTION WHEN OTHERS).
+--
+-- Al final reabre las conversaciones de broadcasts que ya salieron con la
+-- conversacion cerrada (la misma regla, sin el limite de 10 minutos).
+--
+-- Aditiva: una funcion y dos triggers nuevos. Puede ir antes o despues del
+-- codigo (no hay codigo que la necesite).
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.messages_reopen_conversation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  BEGIN
+    IF NEW.direction::text = 'outbound'
+       AND NEW.created_at >= now() - interval '10 minutes' THEN
+      UPDATE public.conversations c
+      SET status = 'open'
+      WHERE c.id = NEW.conversation_id
+        AND c.status = 'closed'
+        AND c.deleted_at IS NULL
+        AND (c.closed_at IS NULL OR c.closed_at <= NEW.created_at);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'messages_reopen_conversation: no pude reabrir la conversacion % (%)', NEW.conversation_id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.messages_reopen_conversation() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS messages_zzz_reopen_conversation ON public.messages;
+CREATE TRIGGER messages_zzz_reopen_conversation
+  AFTER INSERT ON public.messages
+  FOR EACH ROW
+  WHEN (
+    NEW.direction::text = 'outbound'
+    AND NEW.status IS DISTINCT FROM 'failed'
+    AND NEW.status IS DISTINCT FROM 'pending'
+  )
+  EXECUTE FUNCTION public.messages_reopen_conversation();
+
+-- Un envio que se guardo `pending` y salio despues (o un reintento que salio).
+DROP TRIGGER IF EXISTS messages_zzz_reopen_conversation_update ON public.messages;
+CREATE TRIGGER messages_zzz_reopen_conversation_update
+  AFTER UPDATE OF status ON public.messages
+  FOR EACH ROW
+  WHEN (
+    NEW.direction::text = 'outbound'
+    AND OLD.status IN ('failed', 'pending')
+    AND NEW.status IS DISTINCT FROM 'failed'
+    AND NEW.status IS DISTINCT FROM 'pending'
+  )
+  EXECUTE FUNCTION public.messages_reopen_conversation();
+
+-- ------------------------------------------------------------
+-- Lo que ya salio: las conversaciones de broadcasts que quedaron cerradas.
+-- ------------------------------------------------------------
+UPDATE public.conversations c
+SET status = 'open'
+WHERE c.status = 'closed'
+  AND c.deleted_at IS NULL
+  AND EXISTS (
+    SELECT 1 FROM public.broadcast_recipients r
+    WHERE r.conversation_id = c.id
+      AND r.status = 'sent'
+      AND (c.closed_at IS NULL OR c.closed_at <= r.sent_at)
+  );
+
+-- ============================================================
+-- MIGRATION 356: MESSAGES DELETED FOR EVERYONE
+-- ============================================================
+-- ============================================================
+-- 00356_messages_deleted_for_everyone
 --
 -- Un mensaje de WhatsApp borrado "para todos" (desde el celular de cualquiera
 -- de las dos partes, o por la API de Evolution) seguia apareciendo en la
@@ -61960,7 +62058,7 @@ END $$;
 --    UPDATE, pero si de INSERT.
 -- 4. La vista previa de la lista: si el ultimo mensaje se borro, dice
 --    «Mensaje eliminado» (`messages_refresh_last_message`, copia de la 00265
---    con el cambio marcado «00353») y se recalcula al marcarlo (trigger nuevo
+--    con el cambio marcado «00356») y se recalcula al marcarlo (trigger nuevo
 --    `messages_zz_last_message_deleted`). El texto de la etiqueta es
 --    `DELETED_MESSAGE_LABEL` (lib/messages/revoke.ts); un test los compara.
 --
@@ -61990,7 +62088,7 @@ BEGIN
 END $$;
 
 COMMENT ON COLUMN public.messages.deleted_for_everyone_at IS
-  'Cuando se borro "para todos" en WhatsApp. La fila y el texto se conservan para el equipo. Se escribe solo con mark_message_deleted_for_everyone (00353).';
+  'Cuando se borro "para todos" en WhatsApp. La fila y el texto se conservan para el equipo. Se escribe solo con mark_message_deleted_for_everyone (00356).';
 COMMENT ON COLUMN public.messages.deleted_for_everyone_source IS
   'Quien lo borro: contact (el contacto), business (el telefono del negocio o la API de Evolution) o app (el boton de la bandeja).';
 COMMENT ON COLUMN public.messages.deleted_for_everyone_by IS
@@ -62123,7 +62221,7 @@ BEGIN
     -- al que se acaba de guardar.
     SELECT m.id, m.direction::text AS direction, m.created_at, m.origin::text AS origin, m.sent_by_user_id,
            m.text, m.transcript, m.attachments,
-           m.deleted_for_everyone_at  -- 00353
+           m.deleted_for_everyone_at  -- 00356
     INTO v_last
     FROM public.messages m
     WHERE m.conversation_id = NEW.conversation_id
@@ -62136,7 +62234,7 @@ BEGIN
       RETURN NEW;
     END IF;
 
-    -- 00353: un mensaje borrado "para todos" dice «Mensaje eliminado».
+    -- 00356: un mensaje borrado "para todos" dice «Mensaje eliminado».
     v_preview := private.message_list_preview(v_last.text, v_last.transcript, v_last.attachments, v_last.deleted_for_everyone_at);
 
     -- Fecha, direccion y preview salen SIEMPRE del ultimo mensaje, no del que
@@ -62178,101 +62276,3 @@ CREATE TRIGGER messages_zz_last_message_deleted
   FOR EACH ROW
   WHEN (OLD.deleted_for_everyone_at IS NULL AND NEW.deleted_for_everyone_at IS NOT NULL)
   EXECUTE FUNCTION public.messages_refresh_last_message();
-
--- ============================================================
--- MIGRATION 354: OUTBOUND REOPENS CONVERSATION
--- ============================================================
--- ============================================================
--- 00354_outbound_reopens_conversation.sql
--- ============================================================
--- Un mensaje que mandamos nosotros reabre una conversacion cerrada.
---
--- Hasta hoy una conversacion solo se reabria cuando el contacto escribia
--- (`lib/inbound.ts`). Un broadcast, una automatizacion, una secuencia o el
--- agente mandaban el mensaje, quedaba guardado como ultimo mensaje, pero la
--- conversacion seguia `closed` y la bandeja (que muestra "Abiertas" por
--- defecto) no la mostraba. Paso con los broadcasts de WhatsApp a chats
--- importados del historial, que nacen cerrados.
---
--- La regla, una sola para todo lo que sale (la decide la base, venga de donde
--- venga el envio):
---   - un mensaje SALIENTE que salio (ni `failed` ni `pending`),
---   - recien enviado (creado hace menos de 10 minutos): lo importado del
---     historial trae su fecha vieja y no reabre nada,
---   - en una conversacion `closed` que se cerro ANTES de ese mensaje: "respondo
---     y cierro" sigue dejandola cerrada.
--- Una conversacion pospuesta (`snoozed`) no se toca. `closed_at` se conserva
--- al reabrir, igual que cuando reabre un entrante (comentario de la 00067).
---
--- Nunca tumba el insert de un mensaje (EXCEPTION WHEN OTHERS).
---
--- Al final reabre las conversaciones de broadcasts que ya salieron con la
--- conversacion cerrada (la misma regla, sin el limite de 10 minutos).
---
--- Aditiva: una funcion y dos triggers nuevos. Puede ir antes o despues del
--- codigo (no hay codigo que la necesite).
--- ============================================================
-
-CREATE OR REPLACE FUNCTION public.messages_reopen_conversation()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-  BEGIN
-    IF NEW.direction::text = 'outbound'
-       AND NEW.created_at >= now() - interval '10 minutes' THEN
-      UPDATE public.conversations c
-      SET status = 'open'
-      WHERE c.id = NEW.conversation_id
-        AND c.status = 'closed'
-        AND c.deleted_at IS NULL
-        AND (c.closed_at IS NULL OR c.closed_at <= NEW.created_at);
-    END IF;
-  EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'messages_reopen_conversation: no pude reabrir la conversacion % (%)', NEW.conversation_id, SQLERRM;
-  END;
-  RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.messages_reopen_conversation() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS messages_zzz_reopen_conversation ON public.messages;
-CREATE TRIGGER messages_zzz_reopen_conversation
-  AFTER INSERT ON public.messages
-  FOR EACH ROW
-  WHEN (
-    NEW.direction::text = 'outbound'
-    AND NEW.status IS DISTINCT FROM 'failed'
-    AND NEW.status IS DISTINCT FROM 'pending'
-  )
-  EXECUTE FUNCTION public.messages_reopen_conversation();
-
--- Un envio que se guardo `pending` y salio despues (o un reintento que salio).
-DROP TRIGGER IF EXISTS messages_zzz_reopen_conversation_update ON public.messages;
-CREATE TRIGGER messages_zzz_reopen_conversation_update
-  AFTER UPDATE OF status ON public.messages
-  FOR EACH ROW
-  WHEN (
-    NEW.direction::text = 'outbound'
-    AND OLD.status IN ('failed', 'pending')
-    AND NEW.status IS DISTINCT FROM 'failed'
-    AND NEW.status IS DISTINCT FROM 'pending'
-  )
-  EXECUTE FUNCTION public.messages_reopen_conversation();
-
--- ------------------------------------------------------------
--- Lo que ya salio: las conversaciones de broadcasts que quedaron cerradas.
--- ------------------------------------------------------------
-UPDATE public.conversations c
-SET status = 'open'
-WHERE c.status = 'closed'
-  AND c.deleted_at IS NULL
-  AND EXISTS (
-    SELECT 1 FROM public.broadcast_recipients r
-    WHERE r.conversation_id = c.id
-      AND r.status = 'sent'
-      AND (c.closed_at IS NULL OR c.closed_at <= r.sent_at)
-  );

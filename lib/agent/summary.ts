@@ -239,7 +239,7 @@ export async function summarizeConversationOnClose(
     .order("created_at", { ascending: true })
     .limit(SUMMARY_MAX_MESSAGES);
   if (conversation.summarized_at) query = query.gt("created_at", conversation.summarized_at);
-  // Lo borrado "para todos" (00353) no entra al resumen: ya no es parte de la conversacion.
+  // Lo borrado "para todos" (00356) no entra al resumen: ya no es parte de la conversacion.
   const { data: allRows } = await query;
   const rows = withoutDeletedMessages(allRows ?? []);
   const messages = rows

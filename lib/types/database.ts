@@ -2822,7 +2822,7 @@ export interface Database {
           transcript_started_at: string | null;
           /** Por que no salio un envio fallido (00262). El texto queda con lo que se quiso mandar. */
           send_error: string | null;
-          /** Borrado "para todos" en WhatsApp (00353). La fila y el texto se conservan. Lo escribe solo el servidor. */
+          /** Borrado "para todos" en WhatsApp (00356). La fila y el texto se conservan. Lo escribe solo el servidor. */
           deleted_for_everyone_at: string | null;
           /** Quien lo borro: contact, business o app. */
           deleted_for_everyone_source: string | null;
@@ -7331,7 +7331,7 @@ export interface Database {
         Returns: Json;
       };
       /** Registra un evento CALL de Evolution (00258, solo service_role). */
-      /** Marca un mensaje de WhatsApp como borrado "para todos" (00353, solo service_role). Devuelve cuantas filas marco. */
+      /** Marca un mensaje de WhatsApp como borrado "para todos" (00356, solo service_role). Devuelve cuantas filas marco. */
       mark_message_deleted_for_everyone: {
         Args: {
           p_workspace_id: string;

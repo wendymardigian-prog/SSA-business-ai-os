@@ -1,5 +1,5 @@
 -- ============================================================
--- 00353_messages_deleted_for_everyone
+-- 00356_messages_deleted_for_everyone
 --
 -- Un mensaje de WhatsApp borrado "para todos" (desde el celular de cualquiera
 -- de las dos partes, o por la API de Evolution) seguia apareciendo en la
@@ -21,7 +21,7 @@
 --    UPDATE, pero si de INSERT.
 -- 4. La vista previa de la lista: si el ultimo mensaje se borro, dice
 --    «Mensaje eliminado» (`messages_refresh_last_message`, copia de la 00265
---    con el cambio marcado «00353») y se recalcula al marcarlo (trigger nuevo
+--    con el cambio marcado «00356») y se recalcula al marcarlo (trigger nuevo
 --    `messages_zz_last_message_deleted`). El texto de la etiqueta es
 --    `DELETED_MESSAGE_LABEL` (lib/messages/revoke.ts); un test los compara.
 --
@@ -51,7 +51,7 @@ BEGIN
 END $$;
 
 COMMENT ON COLUMN public.messages.deleted_for_everyone_at IS
-  'Cuando se borro "para todos" en WhatsApp. La fila y el texto se conservan para el equipo. Se escribe solo con mark_message_deleted_for_everyone (00353).';
+  'Cuando se borro "para todos" en WhatsApp. La fila y el texto se conservan para el equipo. Se escribe solo con mark_message_deleted_for_everyone (00356).';
 COMMENT ON COLUMN public.messages.deleted_for_everyone_source IS
   'Quien lo borro: contact (el contacto), business (el telefono del negocio o la API de Evolution) o app (el boton de la bandeja).';
 COMMENT ON COLUMN public.messages.deleted_for_everyone_by IS
@@ -184,7 +184,7 @@ BEGIN
     -- al que se acaba de guardar.
     SELECT m.id, m.direction::text AS direction, m.created_at, m.origin::text AS origin, m.sent_by_user_id,
            m.text, m.transcript, m.attachments,
-           m.deleted_for_everyone_at  -- 00353
+           m.deleted_for_everyone_at  -- 00356
     INTO v_last
     FROM public.messages m
     WHERE m.conversation_id = NEW.conversation_id
@@ -197,7 +197,7 @@ BEGIN
       RETURN NEW;
     END IF;
 
-    -- 00353: un mensaje borrado "para todos" dice «Mensaje eliminado».
+    -- 00356: un mensaje borrado "para todos" dice «Mensaje eliminado».
     v_preview := private.message_list_preview(v_last.text, v_last.transcript, v_last.attachments, v_last.deleted_for_everyone_at);
 
     -- Fecha, direccion y preview salen SIEMPRE del ultimo mensaje, no del que

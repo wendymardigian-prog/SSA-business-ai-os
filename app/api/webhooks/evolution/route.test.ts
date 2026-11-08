@@ -74,7 +74,7 @@ const discardPendingDrafts = vi.fn();
 const supersedePendingDrafts = vi.fn();
 vi.mock("@/lib/agent/drafts/lifecycle", () => ({ discardPendingDrafts, supersedePendingDrafts }));
 
-// Marcar un borrado "para todos" (00353) es una RPC: aca se prueba que la ruta la llame con lo correcto.
+// Marcar un borrado "para todos" (00356) es una RPC: aca se prueba que la ruta la llame con lo correcto.
 const markMessageDeletedForEveryone = vi.fn();
 vi.mock("@/lib/messages/revoke-inbound", () => ({ markMessageDeletedForEveryone }));
 
@@ -846,7 +846,7 @@ describe("webhook de Evolution: grupos de WhatsApp (00280)", () => {
   });
 });
 
-describe("webhook de Evolution: mensajes borrados para todos (00353)", () => {
+describe("webhook de Evolution: mensajes borrados para todos (00356)", () => {
   function expectNoMessagePath() {
     expect(claimWebhookEvent).not.toHaveBeenCalled();
     expect(insertMessage).not.toHaveBeenCalled();

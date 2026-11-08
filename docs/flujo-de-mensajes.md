@@ -416,7 +416,7 @@ Se guarda por el id con el que el PROVEEDOR conoce el mensaje, porque el hilo de
 muchos mensajes no tienen fila propia. Los dos webhooks la atajan antes del camino de los mensajes. Enviar: Evolution
 (`sendReaction`, v1 y v2) y Zernio (`addMessageReaction` / `removeMessageReaction`, probando el id nativo y el propio).
 
-## Mensajes borrados para todos (00353, 8/11/2026)
+## Mensajes borrados para todos (00356, 8/11/2026)
 
 Cuando alguien borra un mensaje de WhatsApp «para todos» (el contacto, el teléfono del negocio, la API de Evolution o el botón de la bandeja), la fila **no se borra**: se marca con `deleted_for_everyone_at`, `deleted_for_everyone_source` (`contact`, `business` o `app`) y, desde la bandeja, `deleted_for_everyone_by`.
 

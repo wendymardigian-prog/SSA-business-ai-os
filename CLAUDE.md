@@ -1710,7 +1710,7 @@ Todo lo que filtra la lista vive arriba de ella (`components/inbox/inbox-list-he
 - **El buscador se despliega desde el icono** y arranca abierto solo si la URL trae `?q=`. La `×` (o Esc) borra lo buscado y lo cierra. `SectionSearch` con `onClose` es ese modo; Broadcasts, Secuencias y Growth lo siguen usando en la barra de arriba.
 - **Limpiar filtros conserva lo abierto** (`?c=` y `?g=`).
 
-# Mensajes borrados para todos (00353, 8/11/2026)
+# Mensajes borrados para todos (00356, 8/11/2026)
 
 Un mensaje de WhatsApp borrado «para todos» (por el contacto, el teléfono del negocio, la API o el botón de la bandeja) se ve como «Mensaje eliminado» y el equipo puede ver lo que decía. Detalle en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md) («Mensajes borrados para todos»).
 
@@ -1721,7 +1721,7 @@ Un mensaje de WhatsApp borrado «para todos» (por el contacto, el teléfono del
 - **«Eliminar para todos»** solo en WhatsApp, saliente, salido, con id y de menos de 2 días (`canDeleteForEveryone`, la misma regla en el botón y en la acción).
 - **Un número viejo necesita volver a registrar el webhook** para recibir los avisos de borrado.
 
-`00353_messages_deleted_for_everyone` (aditiva) va **ANTES** de desplegar el código. La `00351` y la `00352` son de Servicios y la `00354` de «un saliente reabre la conversación». **La próxima libre es la `00355`** (confirmar con `list_migrations` y las ramas locales).
+`00356_messages_deleted_for_everyone` (aditiva) va **ANTES** de desplegar el código. La `00351` a la `00353` son de Servicios, la `00354` de «un saliente reabre la conversación» y la `00355` de reabrir un broadcast sin enviar. **La próxima libre es la `00357`** (confirmar con `list_migrations` y las ramas locales).
 
 # Links clicables y vista previa (6/11/2026)
 
