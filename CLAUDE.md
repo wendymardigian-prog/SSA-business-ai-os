@@ -1800,11 +1800,21 @@ Una comunidad es una comunidad madre (sin mensajes), un grupo de Avisos (mismo n
 
 ## Migración
 
-`00344_whatsapp_communities` (aditiva: seis columnas en `whatsapp_groups`, sus CHECK y un índice) va **ANTES** de desplegar el código: la bandeja y la lista de Grupos leen sus columnas. Ensayada en una transacción que se deshizo sola y **aplicada y registrada** el 8/11/2026 UTC (versión `20261108170116`), con `verify-whatsapp-groups --despues-de-00344` en verde. La `00340`, `00341` y `00343` son de otras sesiones y la `00342` parece reservada. **La próxima libre es la `00345`** (confirmar con `list_migrations` y las ramas locales).
+`00344_whatsapp_communities` (aditiva: seis columnas en `whatsapp_groups`, sus CHECK y un índice) va **ANTES** de desplegar el código: la bandeja y la lista de Grupos leen sus columnas. Ensayada en una transacción que se deshizo sola y **aplicada y registrada** el 8/11/2026 UTC (versión `20261108170116`), con `verify-whatsapp-groups --despues-de-00344` en verde. La `00340`, `00341` y `00343` son de otras sesiones y la `00342` parece reservada. **La próxima libre es la `00349`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-whatsapp-groups.mjs --despues-de-00344
 ```
+
+# Gráfico diario de un número de WhatsApp (00348, 8/11/2026)
+
+En la sección Historial de la tarjeta del número: los últimos 30 días (en la zona de quien mira), con los **enviados** apilados por origen (automatización, agente IA directo, borrador del agente aprobado, escrito por una persona, fuera del sistema) y los **recibidos** en un gráfico aparte. Lo que más importa vigilar es lo que sale: es lo que mira WhatsApp para bloquear un número.
+
+- **Cuenta la base**: `whatsapp_channel_daily_messages` (solo `service_role`), llamada por `loadWhatsappDailyMessages` (`lib/actions/whatsapp-stats.ts`) después de `channels.manage` y con el workspace de la sesión. Devuelve solo cuentas por día.
+- **Quién mandó cada mensaje** sigue el criterio de `chat_reply_is_human` (00261): `agent` con `sent_by_user_id` es un borrador aprobado; sin persona, envío directo; `flow`/`sequence`/`broadcast` es automatización; `external` o sin origen, fuera del sistema. Un envío fallido o pendiente no cuenta.
+- **Lo que sale a un grupo cuenta como enviado**; los recibidos son solo de chats privados (un grupo grande taparía el resto).
+- **Dos gráficos, dos escalas** (nunca dos medidas en un eje). Los colores son fijos por origen (paleta validada para daltonismo, claro y oscuro) y hay una tabla oculta para lectores de pantalla. La serie y los totales son puros (`lib/whatsapp-stats/daily.ts`).
+- `00348` (aditiva, una función de lectura): **aplicada y registrada** el 8/11/2026 UTC (versión `20261108180129`). La `00345` a la `00347` son de otras sesiones. **La próxima libre es la `00349`** (confirmar con `list_migrations` y las ramas locales).
 
 # Importacion de conversaciones de Zernio (28/10/2026)
 
