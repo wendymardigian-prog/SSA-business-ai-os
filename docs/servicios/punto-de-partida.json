@@ -1,0 +1,59 @@
+{
+  "_comment": "Foto de la base de produccion antes de la Corrida A1 de Servicios (8/11/2026). Solo lectura. Al cerrar la corrida, las huellas de 'no_se_tocan' y 'protegidas' tienen que ser las mismas.",
+  "tomada": "2026-11-08",
+  "ultima_migracion": "00329_contact_qualification (version 20261108071521, de otra sesion)",
+  "protegidas": {
+    "record_contact_touch(uuid,uuid,jsonb)": "2f51ddbf060e31528b89ce7481b38e3d",
+    "find_or_link_contact(uuid,text,text,text,text,text,text,timestamp with time zone,boolean)": "0aee03549e9361626ad4720c4a98254a",
+    "find_contact_for_form(uuid,text,text,jsonb)": "b7b5605c4a19a27865c7915f57c36fe8",
+    "find_or_create_contact(uuid,jsonb,jsonb,text,boolean)": "a71d6af701ea4460c5309631205de522",
+    "submit_form_response(uuid,uuid,uuid,jsonb,jsonb,jsonb,jsonb,jsonb)": "78a358d5ac8c4dfebd598bb3f5f91e7c",
+    "create_booking(25 parametros)": "dc462c28e99c353bbc9ca26198eddd64",
+    "create_sale(jsonb,uuid)": "adb766e6d657bf55db42779c7c53bcb3",
+    "resolve_meta_match(uuid,text,text,text,text,text,text,text)": "e3c54b36e4ea1a1a6ef4b07eb6bd1387"
+  },
+  "no_se_tocan": {
+    "get_public_form(text)": "213653eaa67009173e0373a4f6767d7b",
+    "private.call_app_cron(text)": "fa1c8e4243e54277f5787c5d29ad1a7d",
+    "private.call_app_cron_if_work(text,interval)": "988b9d1e0622994ace99215bd9a488a8",
+    "can_see_contact(contacts)": "e60b52a2ed7d16f666a711532e90c234",
+    "can_see_sale(sales)": "94424068c81ba105f69efe5c8b37c9c0",
+    "can_see_task(tasks)": "366c2d74a3a06ae087bee646e2d18665",
+    "handle_new_user()": "616170954fefbf5b9f310c40ca051cb9",
+    "has_permission(uuid,text)": "e955f005e8308868bc1e7a48f8d10d52",
+    "permission_scope(uuid,text)": "838e807b2823c2900423caa1ff807a95",
+    "private.scope_rank(text)": "1d4ad0be1105dfcedb67a9f44ac5b72b",
+    "private.owner_only_keys()": "fa9b64d9c0972d0bc79da00ed80f21d2",
+    "private.ungrantable_keys()": "91a80dd86291c5bc0c8d5e5ef5e2b513"
+  },
+  "se_cambian_a_proposito": {
+    "merge_contacts(uuid,uuid,uuid,uuid)": "7f27d943846711bb607897ba6b1b1834",
+    "commission_payee(jsonb,commission_rules,jsonb)": "ffe87f4173346482281942e609f1f3bb",
+    "generate_commissions_for_payment(uuid)": "3660acddcd712ee075bc61b09a423c8e",
+    "revert_commissions_for_payment(uuid)": "452c233b5a98f2aa7b98ef4e6c04a32b",
+    "private.member_permission_keys()": "b806cc3b46382c009fb08e12c70ebf6f",
+    "private.cron_has_work(text,timestamp with time zone)": "19b2b2b5a247d1bc1321f36ac3377e14"
+  },
+  "checks_que_se_amplian": {
+    "triggers.triggers_type_check": "CHECK ((type = ANY (ARRAY['keyword'::text, 'postback'::text, 'quick_reply'::text, 'welcome'::text, 'default'::text, 'comment_keyword'::text, 'new_contact'::text, 'crm_event'::text, 'inactivity'::text, 'email_received'::text, 'booking_created'::text, 'booking_rescheduled'::text, 'booking_cancelled'::text, 'booking_updated'::text, 'booking_ended'::text, 'booking_status_changed'::text, 'booking_before_start'::text, 'booking_after_end'::text, 'booking_after_created'::text, 'call_analyzed'::text, 'call_linked'::text, 'form_submitted'::text, 'survey_answered'::text, 'contract_signed'::text, 'sale_created'::text, 'sale_status_changed'::text, 'payment_created'::text, 'payment_status_changed'::text, 'payment_before_due'::text, 'payment_after_due'::text, 'eod_submitted'::text, 'webhook_received'::text, 'task_completed'::text, 'task_overdue'::text, 'whatsapp_group_joined'::text, 'whatsapp_group_reaction'::text, 'whatsapp_group_poll_vote'::text])))",
+    "forms.forms_type_check": "CHECK ((type = ANY (ARRAY['custom'::text, 'survey'::text, 'contract'::text, 'eod'::text])))",
+    "agent_runs.agent_runs_source_check": "CHECK ((source = ANY (ARRAY['agent'::text, 'flow_ai_node'::text, 'sequence_ai_step'::text, 'kb_indexing'::text, 'conversation_summary'::text, 'message_classification'::text, 'message_classification_eval'::text, 'content_copy'::text, 'ads_analysis'::text, 'audio_transcription'::text, 'media_description'::text, 'call_classification'::text, 'call_analysis'::text, 'call_correction'::text, 'call_summary'::text, 'call_prompt_test'::text, 'ads_matching'::text, 'designer'::text])))",
+    "agent_runs.agent_runs_agent_only_for_agent_sources": "CHECK (((agent_id IS NULL) OR (source = ANY (ARRAY['agent'::text, 'conversation_summary'::text, 'content_copy'::text]))))"
+  },
+  "triggers_en_tablas_que_se_enganchan": {
+    "payments": ["set_updated_at", "payments_protect_original_due_date", "payments_validate_method", "payments_fee_spec_from_snapshot", "payments_emit_status_change", "payments_refresh_sale_status", "payments_enqueue_commissions", "payments_mark_customer", "payments_enqueue_meta_capi_purchase"],
+    "sales": ["set_updated_at", "sales_emit_status_change"],
+    "form_submissions": ["set_updated_at"],
+    "contract_signatures": ["set_updated_at", "contract_signatures_protect"],
+    "bookings": ["set_updated_at"],
+    "tasks": ["tasks_before_write"],
+    "workspace_members": ["tasks_clean_member_refs"],
+    "contact_touches": ["set_updated_at", "contact_touches_content_code", "contact_touches_meta_match", "contact_touches_zz_channel"],
+    "products": ["set_updated_at", "products_audit"],
+    "product_variants": ["set_updated_at", "product_variants_audit"],
+    "workspaces": ["set_updated_at", "seed_booking_categories", "seed_copywriter_on_workspace", "seed_message_categories", "seed_roles_on_workspace", "seed_sales_defaults", "workspaces_commission_settings_guard", "workspaces_design_settings_check"]
+  },
+  "audit_log_policies": ["audit_log_insert", "audit_log_select", "audit_log_select_audit", "audit_log_select_calls", "audit_log_select_commissions", "audit_log_select_finance", "audit_log_select_sales", "audit_log_select_tasks"],
+  "schemas": ["auth", "cron", "extensions", "graphql", "graphql_public", "net", "private", "public", "realtime", "storage", "supabase_migrations", "vault"],
+  "api_exposed_schemas": "se completa al aplicar S01 (lista vigente leida por la Management API antes de sumar app_servicio)"
+}
