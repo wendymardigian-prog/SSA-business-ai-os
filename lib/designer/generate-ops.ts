@@ -19,6 +19,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logAudit } from "@/lib/audit";
+import { membersWithPermission } from "@/lib/calls/notify";
 import { createNotificationOnce } from "@/lib/notifications/create";
 import type { Database, Json } from "@/lib/types/database";
 import type { ActionResult, GenerateOneInput, GenerationPreview } from "./contracts";
@@ -55,6 +56,7 @@ function generationDeps(deps: OpsDeps): Required<GenerationDeps> {
     notify: deps.notify ?? createNotificationOnce,
     audit: deps.audit ?? logAudit,
     registered: deps.registered ?? resolveRegisteredValues,
+    members: deps.members ?? membersWithPermission,
   };
 }
 

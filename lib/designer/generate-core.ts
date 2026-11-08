@@ -26,6 +26,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logAudit } from "@/lib/audit";
+import { membersWithPermission } from "@/lib/calls/notify";
 import { createNotificationOnce } from "@/lib/notifications/create";
 import type { Database, Json } from "@/lib/types/database";
 import type { MissingPolicy } from "./contracts";
@@ -106,6 +107,8 @@ export interface GenerationDeps {
   notify?: typeof createNotificationOnce;
   audit?: typeof logAudit;
   registered?: typeof resolveRegisteredValues;
+  /** Quiénes tienen un permiso (a quién le llega el aviso de «falta un dato»). */
+  members?: typeof membersWithPermission;
 }
 
 const TEMPLATE_COLUMNS = "id, name, format, doc, custom_vars, date_format, verify, doc_type, doc_type_label, allow_download, archived_at";
@@ -193,6 +196,7 @@ export async function createGeneration(db: Db, input: CreateGenerationInput, dep
     notify: depsIn.notify ?? createNotificationOnce,
     audit: depsIn.audit ?? logAudit,
     registered: depsIn.registered ?? resolveRegisteredValues,
+    members: depsIn.members ?? membersWithPermission,
   };
   try {
     return await run(db, input, deps);
@@ -412,19 +416,26 @@ async function run(db: Db, input: CreateGenerationInput, deps: Required<Generati
   }
 
   if (failed) {
-    await safely("notify", () =>
-      deps.notify({
-        supabase: db,
-        workspaceId,
-        type: "design_generation_failed",
-        title: `No se generó ${nounOf(template) === "pieza" ? "una pieza" : `un ${nounOf(template)}`} de «${template.name}»`,
-        body: `${missingMessage(resolved.missing)}${subjectLabel ? ` (para ${subjectLabel})` : ""}. Completalo desde Generaciones → Reintentar.`,
-        entityType: "design_template",
-        entityId: templateId,
-        metadata: { design_id: designId, template_id: templateId, reason: "missing_data" },
-        withinMinutes: 30,
-      }),
-    );
+    await safely("notify", async () => {
+      // A quienes pueden generar (F55): un aviso por persona, para que lo vea también un rol que no es Owner ni Admin
+      // (un aviso sin destinatario lo ven solo ellos). Si no se puede saber quiénes son, queda para Owner y Admin.
+      const recipients = await deps.members(db, workspaceId, "designer.generate");
+      for (const recipientId of recipients.length > 0 ? recipients : [null]) {
+        await deps.notify({
+          supabase: db,
+          workspaceId,
+          type: "design_generation_failed",
+          title: `No se generó ${nounOf(template) === "pieza" ? "una pieza" : `un ${nounOf(template)}`} de «${template.name}»`,
+          body: `${missingMessage(resolved.missing)}${subjectLabel ? ` (para ${subjectLabel})` : ""}. Completalo desde Generaciones → Reintentar.`,
+          entityType: "design_template",
+          entityId: templateId,
+          ...(recipientId ? { recipientId } : {}),
+          metadata: { design_id: designId, template_id: templateId, reason: "missing_data" },
+          withinMinutes: 30,
+          perRecipient: true,
+        });
+      }
+    });
     return { ok: true, designId, code, status: "failed", missing: resolved.missing };
   }
 

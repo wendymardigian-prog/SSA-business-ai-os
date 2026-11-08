@@ -201,8 +201,10 @@ export default async function ds6(ctx: BlockContext): Promise<void> {
     if (!missing.ok) throw new Error("no se creó la pieza fallida");
     const failedRow = await row(missing.designId);
     check(failedRow.status === "failed" && failedRow.error === "Falta: Nombre como lo quiere en el certificado" && queue.length === 0, "con «Falta: Nombre como lo quiere en el certificado», sin encolar ningún render");
-    const { data: notices } = await raw.from("notifications").select("type, entity_type, entity_id").eq("workspace_id", t.id).eq("type", "design_generation_failed");
+    const { data: notices } = await raw.from("notifications").select("type, entity_type, entity_id, recipient_id").eq("workspace_id", t.id).eq("type", "design_generation_failed");
     check((notices ?? []).length >= 1 && (notices ?? []).every((n) => n.entity_type === "design_template" && n.entity_id === T2), "avisa en la campana (design_generation_failed, de la plantilla)");
+    check((notices ?? []).some((n) => n.recipient_id === t.owner.id), "…a quien tiene designer.generate (el Owner, con su nombre de destinatario)");
+    check(!(notices ?? []).some((n) => n.recipient_id === t.viewer.id || n.recipient_id === t.outsider.id), "…y no a quien solo puede ver o no tiene nada del Diseñador");
     for (const policy of ["empty", "template_default"] as const) {
       const out2 = await createGeneration(svc, { workspaceId: t.id, templateId: T2, contactId: a, overrides: {}, policy, publish: false, source: "manual", sourceRef: { kind: "user", user_id: t.owner.id }, actorUserId: t.owner.id }, deps);
       check(out2.ok && out2.status === "queued", `con «${policy === "empty" ? "Dejarlo vacío" : "Usar el valor de la plantilla"}» genera igual`, JSON.stringify(out2));

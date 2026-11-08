@@ -13,6 +13,7 @@ function deps() {
     notify: vi.fn(async (..._a: unknown[]) => true),
     audit: vi.fn(async (..._a: unknown[]) => "a1" as string | null),
     registered: vi.fn(async () => ({})),
+    members: vi.fn(async (..._a: unknown[]) => [] as string[]),
   };
 }
 type Spies = ReturnType<typeof deps>;
@@ -182,6 +183,23 @@ describe("createGeneration: si falta un dato (F55)", () => {
     expect(notice).toMatchObject({ type: "design_generation_failed", entityType: "design_template", entityId: TEMPLATE, workspaceId: WS });
     expect(notice.body).toContain("Falta: Nombre como lo quiere en el certificado");
     expect(JSON.stringify(notice.metadata)).not.toContain("lucia@ejemplo.com");
+  });
+
+  it("el aviso le llega a CADA persona que puede generar (también a un rol que no es Owner ni Admin), una vez por persona", async () => {
+    const d = deps();
+    d.members.mockResolvedValue(["u-owner", "u-rol-propio"]);
+    await createGeneration(generationDb().client, input({ overrides: {} }), asDeps(d));
+    expect(d.members).toHaveBeenCalledWith(expect.anything(), WS, "designer.generate");
+    const notices = d.notify.mock.calls.map((c) => c[0] as { recipientId?: string; perRecipient?: boolean; type: string });
+    expect(notices.map((n) => n.recipientId)).toEqual(["u-owner", "u-rol-propio"]);
+    expect(notices.every((n) => n.perRecipient === true && n.type === "design_generation_failed")).toBe(true);
+  });
+
+  it("si no se puede saber quiénes pueden generar, el aviso queda para Owner y Admin (sin destinatario)", async () => {
+    const d = deps();
+    await createGeneration(generationDb().client, input({ overrides: {} }), asDeps(d));
+    expect(d.notify).toHaveBeenCalledTimes(1);
+    expect(d.notify.mock.calls[0][0]).not.toHaveProperty("recipientId");
   });
 
   it("«Usar el valor de la plantilla» y «Dejarlo vacío» generan igual", async () => {

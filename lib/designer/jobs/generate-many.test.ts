@@ -29,6 +29,7 @@ function deps(over: Partial<GenerateManyDeps> = {}) {
     notify: vi.fn(async (..._a: unknown[]) => true),
     audit: vi.fn(async (..._a: unknown[]) => "a1" as string | null),
     registered: vi.fn(async () => ({})),
+    members: vi.fn(async (..._a: unknown[]) => [] as string[]),
     schedule: vi.fn(async (..._a: unknown[]) => ({ id: "j" })),
   };
   return { ...spies, ...over } as typeof spies & GenerateManyDeps;

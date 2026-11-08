@@ -14,6 +14,7 @@ function deps() {
     notify: vi.fn(async (..._a: unknown[]) => true),
     audit: vi.fn(async (..._a: unknown[]) => "a1" as string | null),
     registered: vi.fn(async () => ({})),
+    members: vi.fn(async (..._a: unknown[]) => [] as string[]),
     loadLinks: vi.fn(async (..._a: unknown[]) => LINKS),
   };
 }
