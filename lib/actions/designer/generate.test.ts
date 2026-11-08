@@ -43,16 +43,42 @@ vi.mock("@/lib/contacts/filter-options-load", () => filterOptions);
 import { countGenerationAudience, generateMany, generateOne, previewGeneration, regenerate, retryFailedGenerations, retryGeneration, sendGenerationEmail } from "./generate";
 import { generationDetail, listGenerations, loadGenerateContext, loadGenerateManyContext, searchGenerateContacts } from "./generations";
 
+/** Los contactos que la PERSONA ve con su sesión (la RLS de `contacts`); por defecto, todos. */
+let visibleContacts: ((id: string) => boolean) = () => true;
+const personaClient = {
+  persona: true,
+  from: () => {
+    const filters: Record<string, unknown> = {};
+    const chain = {
+      select: () => chain,
+      eq: (col: string, val: unknown) => ((filters[col] = val), chain),
+      maybeSingle: async () => ({ data: visibleContacts(String(filters.id)) ? { id: filters.id } : null, error: null }),
+    };
+    return chain;
+  },
+};
 const session = {
   workspace: { id: "ws-de-la-sesion", timezone: "America/Argentina/Buenos_Aires", custom_domain: null },
   user: { id: "user-de-la-sesion" },
-  supabase: { persona: true },
+  supabase: personaClient,
   can: (key: string) => ["designer.generate", "designer.view"].includes(key),
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  visibleContacts = () => true;
   getPermissionAction.mockResolvedValue(session);
+});
+
+describe("el alcance de leads (auditoría Ola 3)", () => {
+  it("un contacto que la persona no ve con su sesión: ni vista previa ni generación, y el núcleo no se toca", async () => {
+    visibleContacts = () => false;
+    const err = { ok: false, error: "No encontramos ese contacto." };
+    expect(await previewGeneration({ templateId: T, contactId: C, overrides: {} })).toEqual(err);
+    expect(await generateOne({ templateId: T, contactId: C, overrides: {}, publish: true })).toEqual(err);
+    expect(ops.previewGenerationCore).not.toHaveBeenCalled();
+    expect(ops.generateOneCore).not.toHaveBeenCalled();
+  });
 });
 
 describe("las acciones de generar piden designer.generate", () => {
@@ -84,9 +110,9 @@ describe("las acciones de generar piden designer.generate", () => {
 
   it("para varios, los contactos se leen con el cliente de la PERSONA (la RLS decide) y las piezas se escriben con el de servicio", async () => {
     await countGenerationAudience({ templateId: T, audienceParams: "tag=cohorte", skipExisting: true });
-    expect(bulk.countGenerationAudienceCore).toHaveBeenCalledWith({ service: { servicio: true }, user: { persona: true }, workspaceId: "ws-de-la-sesion", userId: "user-de-la-sesion", timeZone: "America/Argentina/Buenos_Aires" }, { templateId: T, audienceParams: "tag=cohorte", skipExisting: true });
+    expect(bulk.countGenerationAudienceCore).toHaveBeenCalledWith({ service: { servicio: true }, user: personaClient, workspaceId: "ws-de-la-sesion", userId: "user-de-la-sesion", timeZone: "America/Argentina/Buenos_Aires" }, { templateId: T, audienceParams: "tag=cohorte", skipExisting: true });
     await generateMany({ templateId: T, audienceParams: "tag=cohorte", skipExisting: true, publish: true, email: { subject: "x", body: "y" } });
-    expect(bulk.generateManyCore).toHaveBeenCalledWith(expect.objectContaining({ user: { persona: true }, service: { servicio: true } }), expect.objectContaining({ email: { subject: "x", body: "y" } }));
+    expect(bulk.generateManyCore).toHaveBeenCalledWith(expect.objectContaining({ user: personaClient, service: { servicio: true } }), expect.objectContaining({ email: { subject: "x", body: "y" } }));
   });
 
   it("revisa la forma de lo que manda el navegador antes de hacer nada", async () => {
@@ -125,12 +151,12 @@ describe("las lecturas de la pestaña Generaciones", () => {
     expect(out.ok).toBe(true);
     expect(getPermissionAction).toHaveBeenCalledWith("designer.view");
     const [client, input] = query.listGenerationsCore.mock.calls[0] as [unknown, { workspaceId: string; templateId: string; filters: unknown; can: { generate: boolean }; linkFor: (code: string) => string }];
-    expect(client).toEqual({ persona: true });
+    expect(client).toEqual(personaClient);
     expect(input).toMatchObject({ workspaceId: "ws-de-la-sesion", templateId: T, filters: { estado: "fallidas", q: "Ana", page: 2 }, can: { generate: true } });
     // El link sale del dominio del negocio, no del navegador.
     expect(input.linkFor("K8F2-WQ4M-7TQA")).toMatch(/^https?:\/\/.+\/d\/K8F2-WQ4M-7TQA$/);
     await generationDetail({ designId: D });
-    expect(query.generationDetailCore).toHaveBeenCalledWith({ persona: true }, expect.objectContaining({ workspaceId: "ws-de-la-sesion", designId: D, can: { generate: true } }));
+    expect(query.generationDetailCore).toHaveBeenCalledWith(personaClient, expect.objectContaining({ workspaceId: "ws-de-la-sesion", designId: D, can: { generate: true } }));
   });
 
   it("sin designer.view no se lee nada", async () => {
@@ -162,7 +188,7 @@ describe("las lecturas de la pestaña Generaciones", () => {
   it("«Generar para varios» trae la plantilla y las opciones de los filtros de Contactos, con la sesión de la persona", async () => {
     const out = await loadGenerateManyContext({ templateId: T });
     expect(out).toMatchObject({ ok: true, data: { template: { id: "t" }, filters: { options: { tag: [] }, customFields: [], hasAnonymous: false } } });
-    expect(filterOptions.loadContactFilterOptions).toHaveBeenCalledWith({ persona: true }, "ws-de-la-sesion");
+    expect(filterOptions.loadContactFilterOptions).toHaveBeenCalledWith(personaClient, "ws-de-la-sesion");
     getPermissionAction.mockResolvedValue(null);
     expect(await loadGenerateManyContext({ templateId: T })).toMatchObject({ ok: false });
   });
@@ -171,8 +197,8 @@ describe("las lecturas de la pestaña Generaciones", () => {
     await loadGenerateContext({ templateId: T });
     await searchGenerateContacts({ query: "lu" });
     expect(getPermissionAction.mock.calls.map((c) => c[0])).toEqual(["designer.generate", "designer.generate"]);
-    expect(query.loadGenerateContextCore).toHaveBeenCalledWith({ persona: true }, session.workspace, T);
-    expect(query.searchContactsCore).toHaveBeenCalledWith({ persona: true }, { workspaceId: "ws-de-la-sesion", query: "lu", timeZone: "America/Argentina/Buenos_Aires" });
+    expect(query.loadGenerateContextCore).toHaveBeenCalledWith(personaClient, session.workspace, T);
+    expect(query.searchContactsCore).toHaveBeenCalledWith(personaClient, { workspaceId: "ws-de-la-sesion", query: "lu", timeZone: "America/Argentina/Buenos_Aires" });
     getPermissionAction.mockResolvedValue(null);
     expect(await loadGenerateContext({ templateId: T })).toMatchObject({ ok: false });
     expect(await searchGenerateContacts({ query: "lu" })).toMatchObject({ ok: false });

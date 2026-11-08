@@ -25,11 +25,14 @@ const smallButton =
 export function DesignChangedNotices({
   notices,
   pending,
+  canAct,
   onUpdate,
   onKeep,
 }: {
   notices: DesignChangedNotice[];
   pending: boolean;
+  /** Puede escribir la pieza y tiene `designer.edit` + `content.create`: si no, el aviso se ve sin botones (lo que el permiso no da se oculta). */
+  canAct: boolean;
   onUpdate: (designId: string) => void;
   onKeep: (designId: string) => void;
 }) {
@@ -49,14 +52,16 @@ export function DesignChangedNotices({
             {notice.name ? <span className="text-muted-foreground"> · {notice.name}</span> : null}
             <span className="block text-muted-foreground sm:inline sm:before:content-['_·_']">{notice.body}</span>
           </p>
-          <span className="flex flex-wrap items-center gap-2">
-            <button type="button" disabled={pending} onClick={() => onUpdate(notice.designId)} className={smallButton}>
-              {notice.update}
-            </button>
-            <button type="button" disabled={pending} onClick={() => onKeep(notice.designId)} className={smallButton}>
-              {notice.keep}
-            </button>
-          </span>
+          {canAct ? (
+            <span className="flex flex-wrap items-center gap-2">
+              <button type="button" disabled={pending} onClick={() => onUpdate(notice.designId)} className={smallButton}>
+                {notice.update}
+              </button>
+              <button type="button" disabled={pending} onClick={() => onKeep(notice.designId)} className={smallButton}>
+                {notice.keep}
+              </button>
+            </span>
+          ) : null}
         </section>
       ))}
     </>

@@ -51,7 +51,7 @@ export async function EditorPage({ kind, id }: { kind: DesignKind; id: string })
       brand={{ name: brand.name, colorHex: brand.colorHex }}
       palette={parsed.palette ?? []}
       links={links ? { link: links.link, pdfUrl: links.pdfUrl } : null}
-      can={{ ...designerAbilities(ctx), automate: ctx.can("flows.edit") }}
+      can={{ ...designerAbilities(ctx), automate: ctx.can("flows.edit"), content: ctx.can("content.create") }}
       generationsCount={generationsCount}
       timeZone={timeZone}
       workspaceName={brand.name}

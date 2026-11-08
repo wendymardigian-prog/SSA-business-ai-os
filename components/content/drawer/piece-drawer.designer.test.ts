@@ -211,6 +211,13 @@ describe("«El diseño cambió» (F64)", () => {
     expect(html.indexOf("El diseño cambió")).toBeLessThan(html.indexOf('aria-labelledby="archivos"'));
   });
 
+  it("sin permiso para actuar (designer.edit + content.create y escribir la pieza), el aviso se ve SIN botones (auditoría Ola 3)", () => {
+    const html = render(changed({ designer: designer({ canDesign: false, designs: [design({ rev: 5 })] }) }));
+    expect(html).toContain("El diseño cambió");
+    expect(html).not.toContain("Actualizar los archivos");
+    expect(html).not.toContain("Dejar como está");
+  });
+
   it("no avisa si los archivos son de la versión actual del diseño", () => {
     const html = render(changed({ designer: designer({ designs: [design({ rev: 4 })] }) }));
 

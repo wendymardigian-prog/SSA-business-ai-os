@@ -117,3 +117,21 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - **Qué quedó:** una Historia con varias páginas arma todas, y Contenido avisa «Sobran archivos» (admite uno por historia) en vez de recortar en silencio. Los formatos carta y presentación solo ofrecen el «Carrusel PDF» de LinkedIn.
 - **Por qué:** recortar sin avisar pierde trabajo; un PDF es un documento.
 - **Qué se decidió:** se deja así.
+
+## Ola 3 · DS6 y auditoría (8/11/2026 UTC)
+
+### El selector «Contacto / <origen>» de emitir y de generar para varios
+- **Qué quedó:** F50 y F51 piden elegir entre «Contacto» y un origen que registre otro módulo (Servicios). El servidor ya acepta y valida `subjectRef` (solo de orígenes registrados, `validSubjectRef`), pero los modales solo buscan contactos.
+- **Por qué:** en esta corrida ningún módulo registra un origen (`registerDesignVariables` queda vacío salvo en su test), así que el selector no tendría qué listar.
+- **Qué se decidió:** lo construye Servicios cuando registre su origen: dibujar el selector cuando `registeredSubjectSources()` no esté vacío.
+
+### Detalles de las generaciones que quedan así
+- **Dos emisiones al mismo tiempo para la misma persona** pueden dejar dos piezas válidas: la regla «una válida por persona» la aplica la acción (como dice el plano), no la base. El modal frena el doble clic.
+- **Mandar por email con «Publicar con link» apagado** en una plantilla que no verifica deja un `{{design.link}}` que lleva a un 404. El modal arranca con «Publicar con link» prendido.
+- **«Reintentar las fallidas (N)»** cuenta también las que fallaron por falta de un dato; esas no se reintentan en tanda (piden el dato una por una) y el resultado lo dice.
+- **«Anular»** aparece solo en plantillas con verificación: anular es lo que hace «no válida» una pieza en su link de verificación.
+
+### Carta vertical y presentación en Contenido: solo como PDF de LinkedIn (para confirmar)
+- **Qué quedó:** el plano dice que los formatos que no van a redes (carta, A4, presentación, web) no ofrecen «Usar en contenido». DS8 dejó carta vertical y presentación solo para el «Carrusel PDF» de LinkedIn.
+- **Por qué:** un PDF es un documento, y LinkedIn publica documentos.
+- **Qué se decidió:** queda así hasta que lo confirmes; si preferís lo literal del plano, es sacarlos de `CONTENT_FORMATS` (`lib/designer/screens/toolbar.ts`) y de `content-map.ts`.

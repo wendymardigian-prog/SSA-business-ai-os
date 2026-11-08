@@ -968,6 +968,7 @@ export function PieceDrawer({
         <DesignChangedNotices
           notices={designNotices}
           pending={pending}
+          canAct={data.designer?.canDesign ?? false}
           onUpdate={(designId) =>
             run(() => saved(() => syncToPiece({ designId, force: true })), "Actualizando los archivos con la versión nueva del diseño.")
           }

@@ -47,6 +47,8 @@ export interface EditorDesign {
 /** Los permisos del Diseñador IA más el de Automatizaciones (el nodo lo usa quien edita automatizaciones). */
 export interface EditorCan extends DesignerCan {
   automate?: boolean;
+  /** `content.create`: «Usar en contenido» lo pide además de `designer.edit` (el servidor también). */
+  content?: boolean;
 }
 
 export type StatusTone = "ok" | "off" | "pur" | "warn" | "bad" | "act";
@@ -113,7 +115,7 @@ export function editorActions(design: EditorDesign, can: EditorCan): EditorActio
           { id: "generaciones", label: `Generaciones (${design.generationsCount})` },
         ]
       : null,
-    useInContent: { visible: contentEligible && can.edit && !design.archived, label: design.linkedToContent ? "En contenido ▾" : "Usar en contenido" },
+    useInContent: { visible: contentEligible && can.edit && can.content === true && !design.archived, label: design.linkedToContent ? "En contenido ▾" : "Usar en contenido" },
     exportMenu: {
       visible: can.edit,
       label: isTemplate ? "Exportar prueba ▾" : "Exportar ▾",

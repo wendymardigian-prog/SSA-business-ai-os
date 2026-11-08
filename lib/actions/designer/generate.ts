@@ -36,11 +36,24 @@ async function generateScope() {
   return { ctx, service, env: { service, workspaceId: ctx.workspace.id, userId: ctx.user.id } };
 }
 
+/**
+ * El alcance de leads: generar para una persona (y ver sus datos en la vista previa) exige que quien genera pueda VER ese
+ * contacto con su sesión (la RLS de `contacts` decide). El núcleo lee con el cliente de servicio, así que se mira acá.
+ */
+const CONTACT_NOT_VISIBLE = "No encontramos ese contacto.";
+async function canSeeContact(scope: NonNullable<Awaited<ReturnType<typeof generateScope>>>, contactId: string | null): Promise<boolean> {
+  if (!contactId) return true;
+  const { data, error } = await scope.ctx.supabase.from("contacts").select("id").eq("id", contactId).eq("workspace_id", scope.ctx.workspace.id).maybeSingle();
+  // Un error de lectura nunca abre.
+  return !error && !!data;
+}
+
 export async function previewGeneration(input: { templateId: string; contactId: string | null; overrides: Record<string, string> }): Promise<ActionResult<GenerationPreview>> {
   const scope = await generateScope();
   if (!scope) return { ok: false, error: NO_PERMISSION };
   const parsed = z.object({ templateId: uuid, contactId: uuid.nullable(), overrides }).safeParse(input);
   if (!parsed.success) return { ok: false, error: BAD_REQUEST };
+  if (!(await canSeeContact(scope, parsed.data.contactId))) return { ok: false, error: CONTACT_NOT_VISIBLE };
   return previewGenerationCore(scope.env, parsed.data);
 }
 
@@ -59,6 +72,7 @@ export async function generateOne(input: GenerateOneInput): Promise<ActionResult
     })
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: BAD_REQUEST };
+  if (!(await canSeeContact(scope, parsed.data.contactId))) return { ok: false, error: CONTACT_NOT_VISIBLE };
   const result = await generateOneCore(scope.env, parsed.data);
   if (result.ok) revalidatePath(`/dashboard/disenos/t/${parsed.data.templateId}`);
   return result;

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { CONTENT_FORMATS, editorActions, formatChoices, type EditorCan, type EditorDesign } from "./toolbar";
 
-const ALL: EditorCan = { view: true, edit: true, publish: true, generate: true, manage: true, automate: true };
-const MEMBER: EditorCan = { view: true, edit: true, publish: false, generate: false, manage: false };
+const ALL: EditorCan = { view: true, edit: true, publish: true, generate: true, manage: true, automate: true, content: true };
+// El Member de sistema tiene `content.create`.
+const MEMBER: EditorCan = { view: true, edit: true, publish: false, generate: false, manage: false, content: true };
 const VIEWER: EditorCan = { view: true, edit: false, publish: false, generate: false, manage: false };
 
 const design = (patch: Partial<EditorDesign> = {}): EditorDesign => ({
@@ -156,5 +157,13 @@ describe("«← Volver a la pieza» (F62)", () => {
     expect(editorActions({ ...base, contentPostId: "p-1", fromPiece: true }, can).back).toEqual({ label: "Volver a la pieza", href: "/dashboard/content?piece=p-1" });
     expect(editorActions({ ...base, contentPostId: "p-1", fromPiece: false }, can).back).toEqual({ label: "Diseños", href: "/dashboard/disenos" });
     expect(editorActions({ ...base, contentPostId: null, fromPiece: true }, can).back).toEqual({ label: "Diseños", href: "/dashboard/disenos" });
+  });
+});
+
+describe("«Usar en contenido» pide también content.create (auditoría Ola 3)", () => {
+  it("con designer.edit y sin content.create no se ve", () => {
+    const design = { kind: "design" as const, format: "v45" as const, origin: "ai", published: false, isGeneration: false, status: "draft", archived: false, verify: false, docType: null, docTypeLabel: null, generationsCount: 0, linkedToContent: false };
+    expect(editorActions(design, { ...MEMBER, content: false }).useInContent.visible).toBe(false);
+    expect(editorActions(design, MEMBER).useInContent.visible).toBe(true);
   });
 });
