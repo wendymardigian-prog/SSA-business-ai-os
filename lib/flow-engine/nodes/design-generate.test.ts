@@ -199,3 +199,53 @@ describe("«Generar desde plantilla» (F57)", () => {
     expect(designGenerateNode.outputs?.({}).map((o) => o.path)).toEqual(["design.id", "design.link", "design.pdf_url", "design.code", "design.status", "design.doc_type"]);
   });
 });
+
+describe("«Generar desde plantilla» nunca lanza (auditoría Ola 4)", () => {
+  function failingJobs(db: ReturnType<typeof world>) {
+    const from = db.client.from.bind(db.client);
+    (db.client as unknown as { from: (t: string) => unknown }).from = (table: string) =>
+      table === "scheduled_jobs" ? { insert: async () => ({ error: { message: "la base no respondió" } }) } : from(table as never);
+    return db;
+  }
+
+  it("si no se puede agendar el reintento, la generación queda failed con el motivo y el camino termina (no lanza)", async () => {
+    const db = failingJobs(world());
+    db.tables.designs.push({ id: "d-1", workspace_id: WS, code: "K8F2-WQ4M-7TQA", status: "rendering", error: null });
+    const { deps: d } = deps({ runDesignRender: vi.fn(async () => ({ status: "retry" as const, attempt: 1, at: "2026-11-07T15:01:00.000Z", error: "El servicio de render no respondió." })) });
+    const context = ctx();
+    const notes: Array<{ status: string; reason?: unknown }> = [];
+    context.noteStep = (n) => notes.push(n);
+    await expect(run(db, { templateId: TPL }, d, context)).resolves.toBe(DESIGN_STOP_HANDLE);
+    expect(notes.at(-1)).toEqual({ status: "failed", reason: "No se pudo agendar el reintento del PDF." });
+    expect(db.tables.designs[0]).toMatchObject({ status: "failed", error: "No se pudo agendar el reintento del PDF." });
+    expect((context.variables as Record<string, unknown>)[DESIGN_PENDING_VAR]).toBeUndefined();
+  });
+
+  it("un render que no pudo leer la generación se reintenta; uno que no la encuentra la deja failed", async () => {
+    const db = world();
+    db.tables.designs.push({ id: "d-1", workspace_id: WS, code: "K8F2-WQ4M-7TQA", status: "queued", error: null });
+    const { deps: d } = deps({ runDesignRender: vi.fn(async () => ({ status: "skipped" as const, reason: "read_failed" })) });
+    expect(await run(db, { templateId: TPL }, d)).toBe("pause");
+    expect(db.tables.scheduled_jobs).toHaveLength(1);
+
+    const db2 = world();
+    db2.tables.designs.push({ id: "d-1", workspace_id: WS, code: "K8F2-WQ4M-7TQA", status: "queued", error: null });
+    const { deps: d2 } = deps({ runDesignRender: vi.fn(async () => ({ status: "skipped" as const, reason: "not_found" })) });
+    expect(await run(db2, { templateId: TPL }, d2)).toBe(DESIGN_STOP_HANDLE);
+    expect(db2.tables.designs[0]).toMatchObject({ status: "failed", error: "El diseño generado ya no existe." });
+  });
+
+  it("«ya tenía uno» con su estado REAL: si todavía se está armando y hay que esperar el PDF, el paso espera esa pieza", async () => {
+    const db = world();
+    db.tables.designs.push({ id: "d-viejo", workspace_id: WS, code: "AAAA-BBBB-CCCC", status: "rendering", error: null });
+    const { deps: d } = deps({ result: { ok: false, reason: "existing", existing: { designId: "d-viejo", code: "AAAA-BBBB-CCCC" } } });
+    const context = ctx();
+    expect(await run(db, { templateId: TPL }, d, context)).toBe("pause");
+    expect((context.variables as Record<string, unknown>)[DESIGN_PENDING_VAR]).toEqual({ n1: "d-viejo" });
+
+    const { deps: d2 } = deps({ result: { ok: false, reason: "existing", existing: { designId: "d-viejo", code: "AAAA-BBBB-CCCC" } } });
+    const context2 = ctx();
+    expect(await run(db, { templateId: TPL, waitForPdf: false }, d2, context2)).toBeUndefined();
+    expect((context2.variables as { design: { status: string } }).design.status).toBe("queued");
+  });
+});

@@ -72,6 +72,15 @@ describe("«Enviar email» con el PDF del diseño (F59)", () => {
     expect(NO_DESIGN_TO_ATTACH).toBe("No hay un diseño generado en esta automatización.");
   });
 
+  it("si el diseño de la corrida falló o se anuló, el paso falla con un motivo claro y el email no sale", async () => {
+    vi.spyOn(loader, "loadEmailAttachments").mockResolvedValue({ files: [], missing: [], designProblem: "failed" });
+    const db = world();
+    const { input, notes } = args(db, { design: { id: "d-1" } });
+    await sendEmailNode.execute(input);
+    expect(sendTransactionalEmail).not.toHaveBeenCalled();
+    expect(notes).toEqual([{ status: "failed", reason: "El diseño de esta automatización no se pudo generar (o se anuló): el email no salió." }]);
+  });
+
   it("si todavía no está listo, el email no sale y el paso queda para después", async () => {
     vi.spyOn(loader, "loadEmailAttachments").mockResolvedValue({ files: [], missing: [], designProblem: "not_ready" });
     const db = world();
@@ -115,8 +124,8 @@ describe("loadEmailAttachments: la rama del diseño (F59)", () => {
     vi.restoreAllMocks();
     expect((await loader.loadEmailAttachments(storageWorld({ status: "ready" }).db.client as never, { workspaceId: "ws-1", refs, designId: null })).designProblem).toBe("missing");
     expect((await loader.loadEmailAttachments(storageWorld({ status: "ready", workspace_id: "otro" }).db.client as never, { workspaceId: "ws-1", refs, designId: "d-1" })).designProblem).toBe("missing");
-    expect((await loader.loadEmailAttachments(storageWorld({ status: "failed" }).db.client as never, { workspaceId: "ws-1", refs, designId: "d-1" })).designProblem).toBe("missing");
-    expect((await loader.loadEmailAttachments(storageWorld({ status: "void" }).db.client as never, { workspaceId: "ws-1", refs, designId: "d-1" })).designProblem).toBe("missing");
+    expect((await loader.loadEmailAttachments(storageWorld({ status: "failed" }).db.client as never, { workspaceId: "ws-1", refs, designId: "d-1" })).designProblem).toBe("failed");
+    expect((await loader.loadEmailAttachments(storageWorld({ status: "void" }).db.client as never, { workspaceId: "ws-1", refs, designId: "d-1" })).designProblem).toBe("failed");
     expect((await loader.loadEmailAttachments(storageWorld({ status: "rendering" }).db.client as never, { workspaceId: "ws-1", refs, designId: "d-1" })).designProblem).toBe("not_ready");
   });
 

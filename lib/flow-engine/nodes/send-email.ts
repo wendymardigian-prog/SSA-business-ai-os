@@ -191,6 +191,10 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     context.noteStep?.({ status: "failed", reason: NO_DESIGN_TO_ATTACH });
     return;
   }
+  if (loaded.designProblem === "failed") {
+    context.noteStep?.({ status: "failed", reason: "El diseño de esta automatización no se pudo generar (o se anuló): el email no salió." });
+    return;
+  }
   if (loaded.designProblem === "not_ready") {
     const retryAt = sessionId ? nextProviderRetry(context, node.id) : null;
     if (!retryAt || !sessionId) {

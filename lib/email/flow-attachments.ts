@@ -20,7 +20,7 @@ export interface LoadedEmailAttachments {
    * El PDF del diseño (F59) que se pidió y no se puede adjuntar: `missing` = no hay una generación en esta corrida (el
    * paso falla); `not_ready` = todavía se está armando (el paso espera). Sin pedirlo, no viene.
    */
-  designProblem?: "missing" | "not_ready";
+  designProblem?: "missing" | "not_ready" | "failed";
 }
 
 /** El nombre del PDF de un diseño: el nombre del diseño, legible ("constancia-ana-perez.pdf"). */
@@ -53,7 +53,7 @@ export async function loadEmailAttachments(
   if (!design) return { ...loaded, designProblem: "missing" };
   const row = design as { name: string; status: string; renders: { pdf_path?: unknown } | null };
   const pdfPath = typeof row.renders?.pdf_path === "string" ? row.renders.pdf_path : null;
-  if (row.status !== "ready" || !pdfPath) return { ...loaded, designProblem: row.status === "failed" || row.status === "void" ? "missing" : "not_ready" };
+  if (row.status !== "ready" || !pdfPath) return { ...loaded, designProblem: row.status === "failed" || row.status === "void" ? "failed" : "not_ready" };
 
   const { data: blob, error: downloadError } = await supabase.storage.from(DESIGN_RENDERS_BUCKET).download(pdfPath);
   if (downloadError || !blob) {

@@ -139,6 +139,8 @@ export async function automationsUsingTemplate(input: { templateId: string }): P
 export async function templatesForAutomation(): Promise<ActionResult<{ id: string; name: string; format: string; docNoun: string | null }[]>> {
   const ctx = await flowsContext();
   if (!ctx) return { ok: false, error: NO_PERMISSION };
+  // Sin `designer.view` la RLS no devolvería ninguna: mejor decirlo que mostrar «Todavía no hay plantillas».
+  if (!ctx.can("designer.view")) return { ok: false, error: "No tenés acceso al Diseñador IA: pedile a un Admin que te lo dé para elegir una plantilla." };
   const { data, error } = await ctx.supabase
     .from("design_templates")
     .select("id, name, format, verify, doc_type, doc_type_label")

@@ -146,3 +146,13 @@ describe("el selector de cada variable", () => {
     expect(selectToMapping("otra", undefined)).toEqual({ mode: "template" });
   });
 });
+
+describe("variableOptionLabel (las variables del disparador con sus rótulos, F57)", () => {
+  it("el rótulo del disparador primero, después los conocidos, y la ruta aparte", async () => {
+    const { variableOptionLabel } = await import("./node-config");
+    expect(variableOptionLabel("answer.nombre_certificado", { "answer.nombre_certificado": "¿Cómo querés que aparezca tu nombre?" })).toBe("¿Cómo querés que aparezca tu nombre? · answer.nombre_certificado");
+    expect(variableOptionLabel("contact.first_name")).toBe("Nombre · contact.first_name");
+    expect(variableOptionLabel("design.link")).toBe("Diseño generado: link · design.link");
+    expect(variableOptionLabel("respuesta_crm")).toBe("respuesta_crm");
+  });
+});

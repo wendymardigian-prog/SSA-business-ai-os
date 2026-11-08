@@ -20,6 +20,7 @@ const STATUS_LABELS: Record<string, string> = { draft: "Borrador", published: "P
 export function AutomateModal({ templateId, open, onClose }: AutomateModalProps) {
   const router = useRouter();
   const [using, setUsing] = useState<UsingFlow[] | null>(null);
+  const [usingError, setUsingError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -27,8 +28,16 @@ export function AutomateModal({ templateId, open, onClose }: AutomateModalProps)
     if (!open) return;
     let alive = true;
     automationsUsingTemplate({ templateId })
-      .then((res) => alive && setUsing(res.ok ? res.data : []))
-      .catch(() => alive && setUsing([]));
+      .then((res) => {
+        if (!alive) return;
+        setUsing(res.ok ? res.data : []);
+        setUsingError(!res.ok);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setUsing([]);
+        setUsingError(true);
+      });
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => {
@@ -105,6 +114,8 @@ export function AutomateModal({ templateId, open, onClose }: AutomateModalProps)
             </ul>
           </div>
         ) : null}
+
+        {usingError ? <p className="mt-3 text-xs text-muted-foreground">No pude ver qué automatizaciones ya usan esta plantilla.</p> : null}
 
         {error ? (
           <p role="alert" className="mt-3 text-sm text-destructive">

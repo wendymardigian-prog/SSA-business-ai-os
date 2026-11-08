@@ -243,3 +243,24 @@ export function selectToMapping(value: string, previous: unknown): VarMapping {
   if (value === "combine") return { mode: "combine", text: prevText };
   return { mode: "template" };
 }
+
+/** Rótulos conocidos de las variables que no vienen del esquema del disparador. */
+const KNOWN_VARIABLE_LABELS: Record<string, string> = {
+  "contact.first_name": "Nombre",
+  "contact.display_name": "Nombre completo",
+  "contact.email": "Email",
+  "contact.phone": "Teléfono",
+  "workspace.name": "Nombre del negocio",
+  ai_response: "Respuesta del agente de IA",
+};
+
+/**
+ * Cómo se ve una variable en el selector (F57: las del disparador «con sus rótulos»): el rótulo y, aparte, la ruta.
+ * `schemaLabels` son los del disparador (el texto de cada pregunta de un formulario). Puro.
+ */
+export function variableOptionLabel(path: string, schemaLabels: Record<string, string> = {}): string {
+  const fromDesign = designGenerateOutputs().find((o) => o.path === path)?.label;
+  const label = schemaLabels[path] || KNOWN_VARIABLE_LABELS[path] || fromDesign;
+  return label && label !== path ? `${label} · ${path}` : path;
+}
+

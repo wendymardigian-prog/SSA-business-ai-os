@@ -12,6 +12,7 @@ import {
   MISSING_POLICY_LABELS,
   parseMapping,
   selectToMapping,
+  variableOptionLabel,
   type DesignGenerateNodeData,
   type MappingRow,
   type NodeMissingPolicy,
@@ -33,10 +34,13 @@ export function DesignGeneratePanel({
   data,
   onChange,
   availableVariables,
+  variableLabels,
 }: {
   data: Record<string, unknown>;
   onChange: (data: Record<string, unknown>) => void;
   availableVariables?: string[];
+  /** El rótulo de cada variable del disparador (el texto de la pregunta…), por ruta. */
+  variableLabels?: Record<string, string>;
 }) {
   const node = data as DesignGenerateNodeData & Record<string, unknown>;
   const cfg = designGenerateDefaults(node);
@@ -162,7 +166,7 @@ export function DesignGeneratePanel({
                         <optgroup key={g.label} label={g.label}>
                           {g.vars.map((v) => (
                             <option key={v} value={`var:${v}`}>
-                              {v}
+                              {variableOptionLabel(v, variableLabels)}
                             </option>
                           ))}
                         </optgroup>

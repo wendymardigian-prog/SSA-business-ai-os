@@ -22,6 +22,7 @@ import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import type { ContactFlowContext, FlowExecutionContext } from "../types";
 import { interpolateVariables } from "../interpolate";
 import { deferFlowNode } from "../defer-node";
+import { nextProviderRetry } from "../provider-retry";
 import {
   DESIGN_GENERATE_LABEL,
   DESIGN_GENERATE_TYPE,
@@ -133,6 +134,35 @@ function docTypeOf(template: TemplateRow | null): string {
   return docTypeNoun(template.doc_type, template.doc_type_label);
 }
 
+/** Deja la generación `failed` con su motivo (para que no quede «En proceso» para siempre). Nunca lanza. */
+async function markFailed(db: Db, workspaceId: string, designId: string, error: string): Promise<void> {
+  try {
+    await db.from("designs").update({ status: "failed", error } as never).eq("id", designId).eq("workspace_id", workspaceId);
+  } catch (e) {
+    console.error("[flow-engine] «Generar desde plantilla» no pudo marcar la generación como fallida:", e instanceof Error ? e.message : "error");
+  }
+}
+
+/**
+ * Deja el paso para después (la MISMA generación queda pendiente). Si no se puede agendar el reintento, la generación
+ * queda `failed` con el motivo y el camino termina: el paso nunca lanza.
+ */
+async function deferPending(args: NodeExecutionArgs<DesignGenerateNodeData, ContactFlowContext>, design: DesignState, docType: string, deps: DesignGenerateDeps, retryAt: Date, message: string): Promise<string> {
+  const { supabase, context, node, sessionId } = args;
+  setPending(context, node.id, design.id);
+  await writeOutputs(supabase, context, { ...design, status: "queued" }, docType, deps);
+  try {
+    return await deferFlowNode(supabase, { nodeId: node.id, nodeType: DESIGN_GENERATE_TYPE, sessionId, context, retryAt, reason: "provider_retry", message });
+  } catch (error) {
+    console.error("[flow-engine] «Generar desde plantilla» no pudo dejar el paso para después:", error instanceof Error ? error.message : "error");
+    const reason = "No se pudo agendar el reintento del PDF.";
+    setPending(context, node.id, null);
+    await markFailed(supabase, context.workspaceId, design.id, reason);
+    await writeOutputs(supabase, context, { ...design, status: "failed", error: reason }, docType, deps);
+    return stop(context, reason);
+  }
+}
+
 /**
  * Renderiza la generación en el momento. El render NO se reagenda solo en la cola (lo reintenta este paso): así hay un
  * único reloj de reintentos y nunca dos renders de la misma generación a la vez.
@@ -146,20 +176,18 @@ async function renderNow(args: NodeExecutionArgs<DesignGenerateNodeData, Contact
     return undefined;
   }
   if (outcome.status === "retry") {
-    setPending(context, node.id, design.id);
-    await writeOutputs(supabase, context, { ...design, status: "queued" }, docType, deps);
-    return deferFlowNode(supabase, {
-      nodeId: node.id,
-      nodeType: DESIGN_GENERATE_TYPE,
-      sessionId,
-      context,
-      retryAt: new Date(outcome.at),
-      reason: "provider_retry",
-      message: `${outcome.error} Se vuelve a intentar solo (intento ${outcome.attempt} de 3).`,
-    });
+    return deferPending(args, design, docType, deps, new Date(outcome.at), `${outcome.error} Se vuelve a intentar solo (intento ${outcome.attempt} de 3).`);
+  }
+  // No se pudo leer la generación (un problema pasajero de la base): se reintenta igual que un render que falló.
+  if (outcome.status === "skipped" && outcome.reason === "read_failed") {
+    const retryAt = nextProviderRetry(context, node.id, deps.now());
+    if (retryAt) return deferPending(args, design, docType, deps, retryAt, "No se pudo leer el diseño. Se vuelve a intentar solo.");
   }
   setPending(context, node.id, null);
-  const error = outcome.status === "failed" ? outcome.error : "No se pudo armar el PDF.";
+  const error =
+    outcome.status === "failed" ? outcome.error : outcome.status === "skipped" && outcome.reason === "not_found" ? "El diseño generado ya no existe." : "No se pudo armar el PDF.";
+  // Que no quede «En proceso» para siempre (el render ya la deja `failed` cuando falla del todo; un salto, no).
+  if (outcome.status === "skipped") await markFailed(supabase, context.workspaceId, design.id, error);
   await writeOutputs(supabase, context, { ...design, status: "failed", error }, docType, deps);
   return stop(context, error);
 }
@@ -195,7 +223,7 @@ export async function runDesignGenerate(args: NodeExecutionArgs<DesignGenerateNo
         await writeOutputs(supabase, context, design, docType, deps);
         return stop(context, design.error || "No se pudo armar el PDF.");
       }
-      return renderNow(args, design, docType, deps);
+      return await renderNow(args, design, docType, deps);
     }
 
     if (!template) return stop(context, "La plantilla ya no existe.");
@@ -225,9 +253,16 @@ export async function runDesignGenerate(args: NodeExecutionArgs<DesignGenerateNo
 
     if (!result.ok) {
       if (result.reason === "existing") {
-        // Ya tiene una válida de esta plantilla: el flujo sigue con esa (no se emite otra ni se anula la anterior).
-        await writeOutputs(supabase, context, { id: result.existing.designId, code: result.existing.code, status: "ready", error: null }, docType, deps);
+        // Ya tiene una válida de esta plantilla: el flujo sigue con esa (no se emite otra ni se anula la anterior), con su
+        // estado REAL. Si todavía se está armando y hay que esperar el PDF, el paso espera (la misma pieza).
+        const read = await readDesign(supabase, context.workspaceId, result.existing.designId);
+        const existing: DesignState = read && read !== "error" ? read : { id: result.existing.designId, code: result.existing.code, status: "ready", error: null };
         context.noteStep?.({ status: "ok", reason: `Ya tenía uno válido (código ${result.existing.code}): se usa ese.` });
+        if (cfg.waitForPdf && existing.status !== "ready") {
+          const retryAt = nextProviderRetry(context, node.id, deps.now());
+          if (retryAt) return await deferPending(args, existing, docType, deps, retryAt, "El PDF de la pieza que ya tenía todavía se está armando.");
+        }
+        await writeOutputs(supabase, context, existing, docType, deps);
         return undefined;
       }
       return stop(context, result.error);
@@ -243,7 +278,8 @@ export async function runDesignGenerate(args: NodeExecutionArgs<DesignGenerateNo
       await writeOutputs(supabase, context, design, docType, deps);
       return undefined;
     }
-    return renderNow(args, design, docType, deps);
+    // `await` adentro del try: un error de `renderNow` lo atrapa el catch (el paso nunca lanza).
+    return await renderNow(args, design, docType, deps);
   } catch (error) {
     console.error("[flow-engine] «Generar desde plantilla» falló:", error instanceof Error ? error.message : String(error));
     return stop(context, "No se pudo generar el diseño.");
