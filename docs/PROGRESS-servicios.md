@@ -11,10 +11,13 @@
   - F2: `verify-auth-settings` sale **1** en producción: el registro público está prendido y "Leaked password protection" apagada. Es de panel: queda en PENDIENTE para Wendy. Paso sumado a `/setup`.
   - F3: `docs/seguridad-despliegue.md`.
   - `verify-servicios-migracion --todas` antes de aplicar nada: verde (huellas iguales).
-- [ ] **SV1** El servicio: F4, F5, F6, F7, F8, F9, F10, F11, F12, F93, F94, F96, F97, F99 (S01–S05) — **FRENADO en S02 (8/11)**
+- [x] **SV1** El servicio: F4, F5, F6, F7, F8, F9, F10, F11, F12, F93, F94, F96, F97, F99 (S01–S05) — frenado en S02 y retomado el 8/11 con la decisión de Wendy; **listo el 8/11**
   - S01 (00330) aplicada y verificada. Esquema `app_servicio` expuesto en la API (`public,graphql_public,app_servicio`), comprobado con `verify-api-schemas --con-app-servicio`.
-  - S02 (00331) falló `verify-forms` y se volvió atrás con su cabecera; la base quedó como antes (`verify-forms` otra vez en 0). Por la regla de la corrida, no se sigue con ningún bloque hasta que Wendy decida (PENDIENTE, «Corrida frenada en S02»).
-  - Escrito y sin aplicar: 00332 a 00336, las acciones, los 26 disparadores y los 5 pasos del editor (ocultos con el módulo apagado). Suite completa en verde.
+  - S02 (00331) falló `verify-forms` y se volvió atrás con su cabecera. Rehecha sin las tres claves foráneas (el trigger del módulo valida) y aplicada: `verify-forms` en 0.
+  - S03 a S05 (00332 a 00334) aplicadas y verificadas (`verify-sales`, `verify-rls`, `verify-commissions` en 0).
+  - `verify-services --bloque sv1`: **0** (69 chequeos: gemelas SQL = TS de los 11 archivos de casos, la guardia SV003, el módulo apagado, la venta sin configurar idéntica, la creación al cobrar, dos pagos a la vez, pago viejo, venta repetida, cancelación y pago revertido, crear a mano SV012/SV013/SV004, visibilidad por rol, confirmar/descartar, renovación y extensión por variante, pausa de 12 días, el enganche que falla no tumba el pago, apagar el módulo y las huellas protegidas).
+  - Suite completa en verde (salvo `disconnect-networks`, inestable y ajena: ver PENDIENTE), build compila, lint sin errores nuevos.
+  - La pantalla «Importar servicios» va con Clientes en SV3 (la ruta nace ahí); la acción `importServices` y `parseServicesImport` ya están.
 - [ ] **SV2** El camino: F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25 (S06–S07)
 - [ ] **PRD** Productos por variante: F114, F115, F116, F117, F31, F32
 - [ ] **SV3** Pantallas de Servicios: F26, F27, F28, F29, F30, F33, F95
@@ -35,10 +38,10 @@ La `00329` la ocupó otra sesión (`00329_contact_qualification`, aplicada el 8/
 | Id | Número | Archivo | Bloque | Estado |
 |---|---|---|---|---|
 | S01 | 00330 | `00330_app_servicio_core.sql` | SV1 | **aplicada y registrada** (8/11, versión `20261108082600`); `verify-servicios-migracion --s S01`, roles, rls y workspace-isolation en 0 |
-| S02 | 00331 | `00331_app_servicio_journey_tables.sql` | SV1 | **aplicada, falló `verify-forms` y se volvió atrás** (8/11). Ver PENDIENTE, «Corrida frenada en S02» |
-| S03 | 00332 | `00332_app_servicio_config_columns.sql` | SV1 | pendiente |
-| S04 | 00333 | `00333_app_servicio_engine.sql` | SV1 | pendiente |
-| S05 | 00334 | `00334_app_servicio_sales_triggers.sql` | SV1 | pendiente |
+| S02 | 00331 | `00331_app_servicio_journey_tables.sql` | SV1 | 1ª versión: falló `verify-forms` y se volvió atrás. **Rehecha sin claves foráneas en `form_submissions.service_id`, `form_submissions.service_item_id` y `contract_signatures.service_id` (decisión de Wendy, 8/11), aplicada y registrada** (versión `20261108135352`); `--s S02` y `verify-forms` en 0 |
+| S03 | 00332 | `00332_app_servicio_config_columns.sql` | SV1 | **aplicada y registrada** (versión `20261108135944`); `--s S03`, `verify-sales` y `verify-rls` en 0. Corregida el mismo día (los validadores sumaban un texto a una lista sin `::text`); reaplicada y el SQL registrado es el corregido |
+| S04 | 00333 | `00333_app_servicio_engine.sql` | SV1 | **aplicada y registrada** (versión `20261108140551`); `--s S04` en verde |
+| S05 | 00334 | `00334_app_servicio_sales_triggers.sql` | SV1 | **aplicada y registrada** (versión `20261108140802`); `--s S05` y `verify-commissions` en 0; `verify-sales` en 0 en la 2ª pasada (la 1ª se cortó por la CLI, sin relación con la migración) |
 | S06 | 00335 | `00335_app_servicio_completion_triggers.sql` | SV2 | pendiente |
 | S07 | 00336 | `00336_app_servicio_audit_and_triggers_check.sql` | SV2 | pendiente |
 | S08 | 00337 | `00337_app_servicio_portal_accounts.sql` | AC | pendiente |

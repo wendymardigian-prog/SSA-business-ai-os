@@ -1,6 +1,6 @@
 # PENDIENTE — Servicios v12, Corrida A1
 
-## ⛔ Corrida frenada en S02 (8/11/2026) — necesita una decisión
+## Corrida frenada en S02 (8/11/2026) — resuelto
 
 **Qué pasó.** La `00331` (S02) agrega la clave foránea `form_submissions.service_id → app_servicio.services` (y la de `contract_signatures.service_id`), como pide el §8 del plano. Al correr `verify-forms` justo después, el caso «con un link válido la respuesta va al contacto del link…» se cortó: el link firmado de un formulario puede llevar un `service_id` (existe desde la 00150, F20), y si ese servicio no existe la base rechaza el guardado con `23503` y **la respuesta se pierde** (`save_failed`). Antes de la 00331 se guardaba igual. Hoy no existe ningún servicio, así que cualquier link firmado con un `service_id` perdería respuestas.
 
@@ -13,7 +13,9 @@
 
 La otra salida, descartar el `service_id` que no existe como hace la 00164 con el `sale_id`, cambia lo que hoy guarda un formulario y obliga a tocar un caso de `verify-forms`. Por eso no la recomiendo.
 
-**Para retomar:** con la decisión, sacar las dos claves foráneas de la `00331` (y de su cabecera y de `verify-servicios-migracion.spec.mjs`), volver a ensayarla, aplicarla y seguir con `verify-forms`, después la 00332.
+**Decisión de Wendy (8/11):** sin clave foránea en `form_submissions.service_id`, `form_submissions.service_item_id` y `contract_signatures.service_id`; valida el trigger del módulo. La `00331` se rehízo así (`contact_notes.service_id` conserva la suya: es una columna nueva que solo escribe el módulo), se ensayó, se aplicó y `verify-forms` dio 0. En la `00335`, `submission_item_hook` es lo único que pone `service_item_id` (al insertar, solo con un paso del mismo negocio, contacto y servicio; después no cambia) y `submission_hook` usa el `service_id` solo si es un servicio de ese negocio y ese contacto. `verify-servicios-migracion --s S02` comprueba que esas tres columnas no tengan clave foránea.
+
+**Regla nueva para el resto de la corrida (Wendy, 8/11):** si una verificación falla por una restricción (clave foránea, CHECK, NOT NULL) que podría hacer fallar o perder algo que hoy funciona, no se frena: se vuelve atrás esa migración, se saca la restricción, se valida lo mismo en el trigger del módulo, se vuelve a aplicar y verificar, y se anota acá. Se frena solo si la base no vuelve a quedar como estaba, o si para seguir hay que cambiar o borrar datos existentes.
 
 Formato: **qué quedó · por qué · qué se decidió**. Lo que encontró la exploración del principio y la regla que se aplicó (el plano pide anotarlo acá) va en la primera sección.
 
@@ -52,6 +54,20 @@ Formato: **qué quedó · por qué · qué se decidió**. Lo que encontró la ex
 - **«Invitar al portal ahora» en la importación de servicios** queda para cuando exista la invitación (bloque AC).
 - **El editor de automatizaciones solo ofrece los disparadores y pasos de Servicios con el módulo prendido** (`FlowModulesProvider`). · Con el módulo apagado el editor tiene que ser el de siempre. · Una automatización que ya tiene uno lo sigue mostrando y se puede editar.
 - **Los 26 disparadores se registran todos en SV2**, también los que recién emiten bloques posteriores (`certificate_issued`, los del programa y las evaluaciones). · El CHECK de `triggers.type` se amplía una sola vez (00336). · Un disparador que todavía no emite nada no corre nunca: no cambia nada.
+
+## Correcciones durante SV1 (8/11)
+
+- **La 00332 se corrigió el mismo día.** · `verify-services` encontró que los validadores de la configuración (`validate_service_settings`, `validate_journey_template` y los del portal) hacían `v || 'texto'` sobre una lista `text[]`: Postgres lo lee como pegar dos listas y falla con `22P02`. Ninguna pantalla los usaba todavía y el módulo está apagado. · Se agregó `::text` a los 59 textos, se ensayó sobre la base, se reaplicó la migración entera (es idempotente y ninguna migración posterior redefine sus funciones) y se actualizó el SQL registrado. Mismo criterio que la 00231 y la 00259.
+- **La CLI de Supabase a veces no puede abrir su rol temporal** (`28P01`, «failed to connect as temp role») cuando se le piden muchas consultas seguidas. · Cortó una pasada de `verify-sales` y otra de `verify-services`. · `verify-services` reintenta solo ese error (hasta 5 veces, con espera creciente); los demás `verify-*` se repiten si pasa.
+
+## Decisiones de PRD (8/11)
+
+- **Ajustes › Productos cambia solo con el módulo prendido.** · F114 rediseña la lista, el producto y la variante, pero «con el módulo apagado no cambia nada». · Apagado, la lista y la ficha son las de siempre (sin tocar una línea); prendido, tarjetas → producto → variante. La ruta de la variante con el módulo apagado muestra solo «Precio y cobro».
+- **El drawer del workflow con sus pestañas Pasos e Historial (F117) queda simplificado.** · Editar los pasos dentro del camino duplicaría el lienzo de Automatizaciones. · Cada workflow se ve como su línea de chips con las cuentas de 30 días (ejecuciones, con error, esperando) y abre el editor completo con «Volver al camino» (validado: solo vuelve a una variante). «+ Workflow» crea la automatización en borrador con el disparador ya filtrado. Queda para después el drawer con Pasos/Historial en el lugar.
+- **Borrar un paso o una fase pausa sus workflows al guardar el camino** (`saveJourneyTemplate` → `unpublishFlow`) y la pantalla dice cuántos. Nunca frena el guardado.
+- **El link «Editar el contenido en Portal › programa»** apunta a `/dashboard/portal`, que llega con el bloque AC.
+- **«Nota de precios deprecados»** de la página del producto no existe: no hay versiones de precio (D12).
+- **`lib/publishing/disconnect-networks.test.ts` es inestable con la suite completa** (pasa solo; a veces falla por tiempo cuando corre todo junto). No es de esta rama.
 
 ## Pasos manuales de Wendy
 

@@ -45,13 +45,28 @@ let failures = 0;
 const ok = (m) => console.log("  ok  ", m);
 const fail = (m, extra) => { console.error("  FALLA", m, extra ? `\n        ${extra}` : ""); failures++; };
 const check = (cond, m, extra) => (cond ? ok(m) : fail(m, extra));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Igualdad de valores JSON sin importar el orden de las claves (la base devuelve un jsonb con sus claves
+// ordenadas a su manera; TypeScript, en el orden en que se escribieron).
+const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
+const eq = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
 const lit = (v) => (v === null || v === undefined ? "NULL" : `'${String(v).replace(/'/g, "''")}'`);
 const jlit = (v) => `${lit(JSON.stringify(v))}::jsonb`;
 
+// La CLI abre un rol temporal por consulta y, con muchas seguidas, a veces no se puede conectar con el
+// (SASL 28P01, "failed to connect as temp role"). Eso no es un resultado de la prueba: se reintenta.
+const TRANSIENT = /failed to connect as temp role|SQLSTATE 28P01|failed SASL auth|connection reset|ECONNRESET|timeout expired|unexpected status 50[234]|upstream connect error/i;
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 function sql(query) {
-  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
-  return JSON.parse(out).rows ?? [];
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+      return JSON.parse(out).rows ?? [];
+    } catch (e) {
+      const text = `${e.stdout ?? ""}${e.stderr ?? ""}${e.message ?? ""}`;
+      if (attempt >= 5 || !TRANSIENT.test(text)) throw e;
+      sleepSync(2000 * attempt);
+    }
+  }
 }
 function sqlErr(query) {
   try {
@@ -62,8 +77,28 @@ function sqlErr(query) {
   }
 }
 async function sqlAsync(query) {
-  const { stdout } = await execFileAsync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
-  return JSON.parse(stdout).rows ?? [];
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const { stdout } = await execFileAsync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+      return JSON.parse(stdout).rows ?? [];
+    } catch (e) {
+      const text = `${e.stdout ?? ""}${e.stderr ?? ""}${e.message ?? ""}`;
+      if (attempt >= 5 || !TRANSIENT.test(text)) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+  }
+}
+/**
+ * La consulta como una fila jsonb. Una que escribe (WITH x AS (UPDATE/INSERT ... RETURNING) SELECT ...) no puede ir
+ * adentro de una subconsulta: el SELECT final se envuelve y el WITH queda arriba.
+ */
+function wrapForJson(query) {
+  const q = query.trim();
+  if (/^WITH\b/i.test(q)) {
+    const at = q.lastIndexOf(") SELECT ");
+    if (at > 0) return `${q.slice(0, at + 1)} SELECT to_jsonb(t) FROM (${q.slice(at + 2)}) t`;
+  }
+  return `SELECT to_jsonb(t) FROM (${q}) t`;
 }
 /** Una consulta con la sesion de un usuario (rol authenticated + su JWT), en una transaccion que se deshace. */
 function asUser(uid, query) {
@@ -72,7 +107,7 @@ function asUser(uid, query) {
     PERFORM set_config('request.jwt.claims', ${lit(claims)}, true);
     PERFORM set_config('request.jwt.claim.sub', ${lit(uid)}, true);
     EXECUTE 'SET LOCAL ROLE authenticated';
-    EXECUTE ${lit(`SELECT to_jsonb(t) FROM (${query}) t`)} INTO r;
+    EXECUTE ${lit(wrapForJson(query))} INTO r;
     RAISE EXCEPTION 'RESULTADO: %', COALESCE(r::text, 'null');
   END $do$;`;
   const text = sqlErr(body) ?? "";
@@ -100,10 +135,11 @@ try {
     const runCases = (file, label, toSql, expected) => {
       const { cases } = json(file);
       const bad = [];
-      for (const c of cases) {
-        const got = sql(`SELECT ${toSql(c)} AS r`)[0]?.r;
-        if (!eq(got, expected(c))) bad.push(`${c.name}: dio ${JSON.stringify(got)}`);
-      }
+      // Todos los casos de un archivo en UNA consulta (cada llamada a la CLI tarda segundos).
+      const got = sql(`SELECT jsonb_build_array(${cases.map((c) => `to_jsonb(${toSql(c)})`).join(", ")}) AS r`)[0]?.r ?? [];
+      cases.forEach((c, i) => {
+        if (!eq(got[i], expected(c))) bad.push(`${c.name}: dio ${JSON.stringify(got[i])}`);
+      });
       check(bad.length === 0, `${label}: los ${cases.length} casos dan lo mismo que en TypeScript`, bad.slice(0, 3).join(" | "));
     };
     runCases("lib/services/service-settings.cases.json", "validate_service_settings", (c) => `to_jsonb(app_servicio.validate_service_settings(${jlit(c.settings)}, NULL))`, (c) => c.expected);
@@ -328,8 +364,9 @@ try {
     sql(`UPDATE app_servicio.services SET status = 'cancelled', cancelled_at = now(), cancel_reason = 'zz' WHERE id = ${lit(created)}`);
     const extCancel = asUser(owner.id, `SELECT app_servicio.svc_extend(${lit(created)}, '{"mode":"period","n":3,"unit":"days","kind":"bonus","reason":"zz"}'::jsonb) r`);
     check(!extCancel.ok && /SV030/.test(extCancel.error), "extender un cancelado se rechaza (SV030)", extCancel.error);
+    // 12 dias menos 5 minutos: con el redondeo hacia arriba del plano (F94) son 12, aunque la reanudacion tarde unos segundos.
     sql(`SELECT app_servicio.svc_pause(${lit(baseE)}, '{"reason":"zz-test viaje","cut_access":true}'::jsonb)`);
-    sql(`UPDATE app_servicio.services SET paused_at = now() - interval '12 days' WHERE id = ${lit(baseE)}`);
+    sql(`UPDATE app_servicio.services SET paused_at = now() - interval '12 days' + interval '5 minutes' WHERE id = ${lit(baseE)}`);
     const res = sql(`SELECT app_servicio.svc_resume(${lit(baseE)}, '{}'::jsonb) r`)[0]?.r;
     check(res?.shift_days === 12 && res?.ends_on === "2027-04-12", "una pausa de 12 dias corre el fin 12 dias", JSON.stringify(res));
     check(sql(`SELECT paused_days FROM app_servicio.services WHERE id = ${lit(baseE)}`)[0]?.paused_days === 12, "y suma paused_days");
@@ -348,6 +385,174 @@ try {
     console.log("\nsv1 · Apagar el modulo dice cuantos activos quedan");
     const off = sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, false) r`)[0]?.r;
     check(off?.changed === true && off?.active_services > 0 && /quedan como están/.test(off?.message ?? ""), "devuelve cuantos servicios activos quedan y el aviso", JSON.stringify(off));
+  }
+
+  if (run("sv2")) {
+    console.log("\nsv2 · El camino del cliente (F13-F24)");
+    sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+    // Lo que el camino usa: un formulario con su version y un tipo de reunion.
+    const { data: form } = await svc.from("forms").insert({ workspace_id: ws.id, name: "zz-test Diagnostico", type: "custom", slug: `zz-test-diag-${Date.now()}` }).select("id").single();
+    const { data: fver } = await svc.from("form_versions").insert({ workspace_id: ws.id, form_id: form.id, version_number: 1, definition: { fields: [] } }).select("id").single();
+    const { data: cat } = await svc.from("booking_categories").insert({ workspace_id: ws.id, name: "zz-test Servicio" }).select("id").single();
+    const { data: evt } = await svc.from("event_types").insert({ workspace_id: ws.id, category_id: cat.id, owner_user_id: owner.id, title: "zz-test Sesion", slug: `zz-test-sesion-${Date.now()}` }).select("id").single();
+    const vJ = await mkVariant("zz-test Con camino");
+    const template = {
+      v: 1,
+      phases: [
+        { key: "ph_aaaaa1", name: "Onboarding", advance: "auto", items: [
+          { key: "it_aaaaa1", kind: "form", name: "Diagnostico", ref: { form_id: form.id } },
+          { key: "it_aaaaa2", kind: "checkbox", name: "Llamada de bienvenida", assignee: "owner" },
+        ] },
+        { key: "ph_aaaaa2", name: "Trabajo", advance: "manual", items: [
+          { key: "it_aaaaa3", kind: "booking", name: "Sesion 1", ref: { event_type_id: evt.id, complete_on: "booked" } },
+          { key: "it_aaaaa4", kind: "team_task", name: "Revisar el plan", assignee: "owner" },
+        ] },
+      ],
+    };
+    const badTpl = sqlErr(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [{ key: "ph_x", name: "", items: [] }] })} WHERE id = ${lit(vJ.id)}`) ?? "";
+    check(/SV001/.test(badTpl), "un camino invalido se rechaza en la base (SV001)", badTpl.slice(0, 200));
+    sql(`UPDATE public.product_variants SET journey_template = ${jlit(template)}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vJ.id)}`);
+
+    const cJ = await newContact("camino");
+    const sJ = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cJ.id)}, 'variant_id', ${lit(vJ.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)})) id`)[0]?.id;
+    const phases = () => sql(`SELECT template_key k, status FROM app_servicio.service_phases WHERE service_id = ${lit(sJ)} ORDER BY position`);
+    const items = () => Object.fromEntries(sql(`SELECT template_key k, status, task_id FROM app_servicio.service_items WHERE service_id = ${lit(sJ)}`).map((r) => [r.k, r]));
+    const progress = () => sql(`SELECT progress_pct p FROM app_servicio.services WHERE id = ${lit(sJ)}`)[0]?.p;
+    check(eq(phases(), [{ k: "ph_aaaaa1", status: "in_progress" }, { k: "ph_aaaaa2", status: "pending" }]), "crear el servicio copia el camino: la primera fase en curso", JSON.stringify(phases()));
+    check(Object.keys(items()).length === 4 && Number(progress()) === 0, "con sus cuatro pasos pendientes y el avance en 0", JSON.stringify(items()));
+
+    const itemId = (k) => sql(`SELECT id FROM app_servicio.service_items WHERE service_id = ${lit(sJ)} AND template_key = ${lit(k)}`)[0]?.id;
+    const doneByMember = asUser(member.id, `SELECT app_servicio.svc_complete_item(${lit(itemId("it_aaaaa2"))}) r`);
+    check(doneByMember.ok && items().it_aaaaa2.status === "completed", "el responsable (Member) tilda un paso de su servicio", doneByMember.error);
+    check(Number(progress()) > 0, "el avance lo calcula la base (progress_pct)", String(progress()));
+    const notMine = asUser(member2.id, `SELECT app_servicio.svc_complete_item(${lit(itemId("it_aaaaa1"))}) r`);
+    check(!notMine.ok, "un Member que no ve el servicio no puede tildar sus pasos", notMine.error);
+    sql(`SELECT app_servicio.svc_uncomplete_item(${lit(itemId("it_aaaaa2"))})`);
+    check(items().it_aaaaa2.status === "pending", "destildar lo vuelve a pendiente");
+    sql(`SELECT app_servicio.svc_complete_item(${lit(itemId("it_aaaaa2"))})`);
+
+    const hasTrigger = (t) => sql(`SELECT count(*)::int n FROM pg_trigger WHERE tgname = ${lit(t)}`)[0]?.n === 1;
+    if (hasTrigger("trg_app_servicio_submission")) {
+      console.log("\nsv2 · Completado automatico (F17-F20)");
+      const insertSubmission = (contactId, meta = {}) => sql(`INSERT INTO public.form_submissions (workspace_id, form_id, form_version_id, idempotency_key, status, answers, contact_id, meta)
+        VALUES (${lit(ws.id)}, ${lit(form.id)}, ${lit(fver.id)}, gen_random_uuid(), 'received', '{}'::jsonb, ${lit(contactId)}, ${jlit(meta)}) RETURNING id, service_item_id`)[0];
+      const otherContact = await newContact("otro contacto");
+      const foreign = insertSubmission(otherContact.id, { service_item_id: itemId("it_aaaaa1") });
+      check(foreign?.service_item_id === null && items().it_aaaaa1.status === "pending", "un paso firmado de OTRO contacto se descarta y no completa nada");
+      const sub = insertSubmission(cJ.id);
+      check(items().it_aaaaa1.status === "completed", "la respuesta del formulario completa el paso");
+      check(eq(phases(), [{ k: "ph_aaaaa1", status: "completed" }, { k: "ph_aaaaa2", status: "in_progress" }]), "con la fase completa, avanza sola a la siguiente (advance: auto)", JSON.stringify(phases()));
+      const tampered = sqlErr(`UPDATE public.form_submissions SET service_item_id = gen_random_uuid() WHERE id = ${lit(sub.id)}`);
+      check(sql(`SELECT service_item_id FROM public.form_submissions WHERE id = ${lit(sub.id)}`)[0]?.service_item_id === null && !tampered, "service_item_id no se puede cambiar despues (sin clave foranea, lo cuida el trigger)", tampered ?? "");
+      const ev = sql(`SELECT event_type, payload FROM public.automation_events WHERE workspace_id = ${lit(ws.id)} AND (payload ->> 'service_id') = ${lit(sJ)}`);
+      const types = new Set(ev.map((e) => e.event_type));
+      check(["service_item_completed", "service_phase_completed", "service_phase_started"].every((t) => types.has(t)), "emite los eventos del camino", [...types].join(","));
+      check(ev.every((e) => !("booking_id" in (e.payload ?? {}))), "los eventos nunca llevan booking_id");
+
+      // La tarea del equipo (team_task) nace con la fase y completarla tilda el paso.
+      const taskId = items().it_aaaaa4.task_id;
+      check(!!taskId, "el paso de equipo crea su tarea al abrir la fase", JSON.stringify(items().it_aaaaa4));
+      if (taskId) {
+        await svc.from("tasks").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", taskId);
+        check(items().it_aaaaa4.status === "completed", "completar la tarea completa el paso");
+        await svc.from("tasks").update({ status: "pending", completed_at: null }).eq("id", taskId);
+        check(items().it_aaaaa4.status === "pending", "reabrir la tarea lo vuelve a pendiente");
+      }
+
+      // La reunion agendada completa su paso (complete_on: booked).
+      const start = new Date(Date.now() + 7 * 86_400_000);
+      const { error: bErr } = await svc.from("bookings").insert({ workspace_id: ws.id, uid: `zz-test-${randomUUID()}`, event_type_id: evt.id, host_user_id: owner.id, contact_id: cJ.id, title: "zz-test Sesion",
+        start_at: start.toISOString(), end_at: new Date(start.getTime() + 3_600_000).toISOString(), origin: "manual", status: "scheduled" });
+      check(!bErr && items().it_aaaaa3.status === "completed", "agendar la reunion completa su paso", bErr?.message);
+
+      console.log("\nsv2 · Un enganche que falla no tumba lo que lo origina");
+      // Se rompe el modulo adentro de una transaccion que se deshace: el insert/update tiene que pasar igual.
+      const forced = (label, statement, entity) => {
+        const r = sql(`BEGIN;
+          ALTER TABLE app_servicio.service_items RENAME TO service_items_zz_forzado;
+          ${statement};
+          SELECT (SELECT count(*)::int FROM public.audit_log WHERE workspace_id = ${lit(ws.id)} AND action = 'svc.hook_failed' AND changes ->> 'hook' = ${lit(entity)}) AS n;
+          ROLLBACK;`);
+        return r;
+      };
+      const rows = (r) => r?.[0]?.n ?? -1;
+      check(rows(forced("formulario", `INSERT INTO public.form_submissions (workspace_id, form_id, form_version_id, idempotency_key, status, answers, contact_id, meta)
+        VALUES (${lit(ws.id)}, ${lit(form.id)}, ${lit(fver.id)}, gen_random_uuid(), 'received', '{}'::jsonb, ${lit(cJ.id)}, '{}'::jsonb)`, "form_submission")) >= 1,
+        "una respuesta se guarda aunque el modulo falle, y queda svc.hook_failed");
+      const start2 = new Date(Date.now() + 9 * 86_400_000);
+      check(rows(forced("reunion", `INSERT INTO public.bookings (workspace_id, uid, event_type_id, host_user_id, contact_id, title, start_at, end_at, origin, status)
+        VALUES (${lit(ws.id)}, 'zz-test-forzado', ${lit(evt.id)}, ${lit(owner.id)}, ${lit(cJ.id)}, 'zz-test', ${lit(start2.toISOString())}::timestamptz, ${lit(new Date(start2.getTime() + 3_600_000).toISOString())}::timestamptz, 'manual', 'scheduled')`, "booking")) >= 1,
+        "una reunion se agenda aunque el modulo falle");
+      if (taskId) {
+        check(rows(forced("tarea", `UPDATE public.tasks SET status = 'completed', completed_at = now() WHERE id = ${lit(taskId)}`, "task")) >= 1, "una tarea se completa aunque el modulo falle");
+      }
+
+      console.log("\nsv2 · Con el modulo apagado no se completa nada");
+      sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, false)`);
+      const cOff2 = await newContact("camino apagado");
+      sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+      const sOff = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cOff2.id)}, 'variant_id', ${lit(vJ.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)})) id`)[0]?.id;
+      sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, false)`);
+      const subOff = insertSubmission(cOff2.id);
+      check(!!subOff && sql(`SELECT status FROM app_servicio.service_items WHERE service_id = ${lit(sOff)} AND template_key = 'it_aaaaa1'`)[0]?.status === "pending", "la respuesta se guarda y el paso queda como estaba");
+      sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+    } else {
+      console.log("  (sin la 00335 todavia: el completado automatico se prueba despues de aplicarla)");
+    }
+
+    if (sql(`SELECT count(*)::int n FROM pg_policies WHERE policyname = 'audit_log_select_services'`)[0]?.n === 1) {
+      console.log("\nsv2 · El historial del servicio (00336)");
+      const seen = (uid) => asUser(uid, `SELECT count(*)::int n FROM public.audit_log WHERE workspace_id = ${lit(ws.id)} AND entity_type IN ('service','service_item') AND (entity_id = ${lit(sJ)} OR (changes ->> 'service_id') = ${lit(sJ)})`).row?.n ?? -1;
+      check(seen(member.id) > 0, "el responsable (Member) ve el historial de su servicio");
+      check(seen(member2.id) === 0, "otro Member que no ve el servicio no ve su historial");
+      check(seen(outsider.id) === 0, "alguien de otro negocio tampoco");
+      const ck = sql(`SELECT pg_get_constraintdef(oid) d FROM pg_constraint WHERE conname = 'triggers_type_check'`)[0]?.d ?? "";
+      check(["keyword", "form_submitted", "task_completed", "service_created", "portal_access_expired"].every((t) => ck.includes(`'${t}'`)), "el CHECK de triggers.type acepta los viejos y los del modulo");
+    }
+  }
+
+  if (run("prd")) {
+    console.log("\nprd · Configuracion por variante (F114-F117, F31, F32)");
+    const { data: prd } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test Mentoria", product_type: "mentoria" }).select("id").single();
+    const mk = async (name) => (await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prd.id, name, price: 500, duration_type: "months", duration_value: 1 }).select("id, service_settings_rev, journey_template_rev, portal_settings_rev").single()).data;
+    const vA = await mk("zz-test A");
+    const vB = await mk("zz-test B");
+    const rev = (id, col) => sql(`SELECT ${col} r FROM public.product_variants WHERE id = ${lit(id)}`)[0]?.r;
+
+    const settingsA = { v: 1, mode: "create", when: { rule: "any_payment" }, confirm: false, start: "payment_date", owner: { mode: "fixed", user_id: member.id, fallback_user_id: owner.id }, renewal: "new_linked" };
+    const save1 = asUser(owner.id, `SELECT app_servicio.svc_save_service_settings(${lit(vA.id)}, ${jlit(settingsA)}, ${rev(vA.id, "service_settings_rev")}) r`);
+    check(save1.ok && save1.row?.r?.status === "ok", "el Owner guarda la configuracion de la variante", save1.error ?? JSON.stringify(save1.row));
+    const stale = asUser(owner.id, `SELECT app_servicio.svc_save_service_settings(${lit(vA.id)}, ${jlit(settingsA)}, 0) r`);
+    check(stale.ok && stale.row?.r?.status === "conflict", "con una version vieja responde conflict (no pisa)", JSON.stringify(stale.row));
+    const bad = asUser(owner.id, `SELECT app_servicio.svc_save_service_settings(${lit(vA.id)}, ${jlit({ v: 1, mode: "extend", when: { rule: "any_payment" }, extend: { n: 3, unit: "months" } })}, ${rev(vA.id, "service_settings_rev")}) r`);
+    check(bad.ok && bad.row?.r?.status === "invalid" && (bad.row?.r?.problems ?? []).length > 0, "extend sin variante de respaldo se rechaza con sus problemas", JSON.stringify(bad.row));
+    const byMember = asUser(member.id, `SELECT app_servicio.svc_save_service_settings(${lit(vB.id)}, ${jlit(settingsA)}, ${rev(vB.id, "service_settings_rev")}) r`);
+    check(!byMember.ok && /SV004|permiso/.test(byMember.error), "un Member no configura variantes (services.configure)", byMember.error);
+
+    const tplA = { v: 1, phases: [{ key: "ph_bbbbb1", name: "Inicio", duration_days: 30, advance: "auto", items: [{ key: "it_bbbbb1", kind: "checkbox", name: "Arranque" }] }] };
+    const saveTpl = asUser(admin.id, `SELECT app_servicio.svc_save_journey_template(${lit(vA.id)}, ${jlit(tplA)}, ${rev(vA.id, "journey_template_rev")}) r`);
+    check(saveTpl.ok && saveTpl.row?.r?.status === "ok", "el Admin guarda el camino con su version", saveTpl.error ?? JSON.stringify(saveTpl.row));
+
+    console.log("\nprd · El portal de la variante y products.portal_enabled (F116)");
+    const portalOf = () => sql(`SELECT portal_enabled e FROM public.products WHERE id = ${lit(prd.id)}`)[0]?.e;
+    check(portalOf() === false, "un producto nace sin portal");
+    const on = asUser(owner.id, `SELECT app_servicio.portal_admin_save_variant_portal(${lit(vA.id)}, ${jlit({ v: 1, enabled: true, sections: [{ section: "program", included: true }] })}, ${rev(vA.id, "portal_settings_rev")}) r`);
+    check(on.ok && on.row?.r?.status === "ok" && portalOf() === true, "prender el acceso de una variante prende el portal del producto", on.error ?? JSON.stringify(on.row));
+    sql(`SELECT app_servicio.portal_admin_save_variant_portal(${lit(vB.id)}, ${jlit({ v: 1, enabled: true, sections: [] })}, ${rev(vB.id, "portal_settings_rev")})`);
+    sql(`SELECT app_servicio.portal_admin_save_variant_portal(${lit(vA.id)}, ${jlit({ v: 1, enabled: false, sections: [] })}, ${rev(vA.id, "portal_settings_rev")})`);
+    check(portalOf() === true, "apagar una variante con otra prendida deja el portal prendido");
+    sql(`SELECT app_servicio.portal_admin_save_variant_portal(${lit(vB.id)}, ${jlit({ v: 1, enabled: false, sections: [] })}, ${rev(vB.id, "portal_settings_rev")})`);
+    check(portalOf() === false, "apagar la ultima lo apaga");
+    const notYet = asUser(owner.id, `SELECT app_servicio.portal_admin_save_variant_portal(${lit(vA.id)}, ${jlit({ v: 1, enabled: true, sections: [{ section: "fame", included: true }] })}, ${rev(vA.id, "portal_settings_rev")}) r`);
+    check(notYet.ok && notYet.row?.r?.status === "invalid" && JSON.stringify(notYet.row?.r?.problems).includes("Todavía no está disponible"), "una seccion fuera de las disponibles se rechaza", JSON.stringify(notYet.row));
+
+    console.log("\nprd · Copiar de otra variante");
+    const copied = asUser(owner.id, `SELECT app_servicio.svc_copy_variant_setup(${lit(vA.id)}, ${lit(vB.id)}, ARRAY['journey','service']) r`);
+    check(copied.ok && copied.row?.r?.status === "ok", "copia el camino y la configuracion", copied.error ?? JSON.stringify(copied.row));
+    const b = sql(`SELECT journey_template -> 'phases' -> 0 ->> 'key' k, service_settings ->> 'mode' m FROM public.product_variants WHERE id = ${lit(vB.id)}`)[0];
+    check(b?.k === "ph_bbbbb1" && b?.m === "create", "la otra variante queda con las mismas claves y el mismo modo", JSON.stringify(b));
+    const guard = asUser(owner.id, `WITH u AS (UPDATE public.product_variants SET journey_template = '{"v":1,"phases":[]}'::jsonb WHERE id = ${lit(vB.id)} RETURNING 1) SELECT count(*) n FROM u`);
+    check(!guard.ok && /SV003|desde sus pantallas/.test(guard.error), "el camino no se escribe directo con la sesion (SV003)", guard.error);
   }
 
   console.log("\nHuellas de las funciones protegidas");

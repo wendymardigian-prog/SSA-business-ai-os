@@ -5,11 +5,14 @@
 -- 1. `app_servicio.service_phases` y `app_servicio.service_items` (§8.2): la copia del camino de la
 --    variante en cada servicio. Se escriben solo con las funciones svc_* (sin politicas de escritura);
 --    se leen con `can_see_service`.
--- 2. Claves foraneas que faltaban: `form_submissions.service_id` y `contract_signatures.service_id`
---    (existen vacias desde la 00150 y la 00157) pasan a apuntar a `app_servicio.services`. Se agregan
---    NOT VALID y despues se validan (las columnas estan vacias en produccion).
--- 3. Columnas nuevas: `form_submissions.service_item_id` (el paso que completa una respuesta, F17) y
---    `contact_notes.service_id` (comentario interno de un servicio, F28).
+-- 2. `form_submissions.service_id` y `contract_signatures.service_id` (existen desde la 00150 y la 00157)
+--    quedan SIN clave foranea, a proposito (decision del 8/11/2026): el link firmado de un formulario puede
+--    traer un `service_id` de un servicio que no existe, y con la clave la base rechazaba el guardado y la
+--    respuesta se perdia (lo atrapo verify-forms). El modulo valida en sus triggers (00335): un servicio que
+--    no existe, o que no es de ese negocio y ese contacto, no se usa para nada.
+-- 3. Columnas nuevas: `form_submissions.service_item_id` (el paso que completa una respuesta, F17), tambien
+--    sin clave foranea (la pone solo el trigger del modulo, despues de comprobar el paso), y
+--    `contact_notes.service_id` (comentario interno de un servicio, F28; la escribe solo el modulo).
 --
 -- Aditiva + modifica estructura existente (dos FK y dos columnas en tablas de BAIOS en uso).
 -- Va ANTES de desplegar el codigo.
@@ -17,11 +20,10 @@
 -- Cómo volver atrás:
 --   ALTER TABLE public.contact_notes DROP COLUMN IF EXISTS service_id;
 --   ALTER TABLE public.form_submissions DROP COLUMN IF EXISTS service_item_id;
---   ALTER TABLE public.contract_signatures DROP CONSTRAINT IF EXISTS contract_signatures_service_id_fkey;
---   ALTER TABLE public.form_submissions DROP CONSTRAINT IF EXISTS form_submissions_service_id_fkey;
+--   DROP INDEX IF EXISTS public.idx_form_submissions_service, public.idx_contract_signatures_service;
 --   DROP TABLE IF EXISTS app_servicio.service_items;
 --   DROP TABLE IF EXISTS app_servicio.service_phases;
--- Riesgo: medio (FK nuevas sobre tablas en uso; las columnas service_id estan vacias).
+-- Riesgo: bajo (dos columnas nullable nuevas e indices parciales; ninguna restriccion nueva sobre tablas en uso).
 -- ============================================================================
 
 -- ─── 1. Fases ───────────────────────────────────────────────────────────────
@@ -148,25 +150,9 @@ DROP POLICY IF EXISTS service_items_select ON app_servicio.service_items;
 CREATE POLICY service_items_select ON app_servicio.service_items
   FOR SELECT TO authenticated USING (app_servicio.can_see_service(service_id));
 
--- ─── 4. Claves foraneas y columnas en tablas de BAIOS ───────────────────────
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'form_submissions_service_id_fkey') THEN
-    ALTER TABLE public.form_submissions
-      ADD CONSTRAINT form_submissions_service_id_fkey FOREIGN KEY (service_id)
-      REFERENCES app_servicio.services(id) ON DELETE SET NULL NOT VALID;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contract_signatures_service_id_fkey') THEN
-    ALTER TABLE public.contract_signatures
-      ADD CONSTRAINT contract_signatures_service_id_fkey FOREIGN KEY (service_id)
-      REFERENCES app_servicio.services(id) ON DELETE SET NULL NOT VALID;
-  END IF;
-END $$;
-ALTER TABLE public.form_submissions VALIDATE CONSTRAINT form_submissions_service_id_fkey;
-ALTER TABLE public.contract_signatures VALIDATE CONSTRAINT contract_signatures_service_id_fkey;
-
+-- ─── 4. Columnas e indices en tablas de BAIOS (sin claves foraneas: ver la cabecera) ───
 ALTER TABLE public.form_submissions
-  ADD COLUMN IF NOT EXISTS service_item_id uuid NULL REFERENCES app_servicio.service_items(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS service_item_id uuid NULL;
 CREATE INDEX IF NOT EXISTS idx_form_submissions_service_item ON public.form_submissions (service_item_id) WHERE service_item_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_form_submissions_service ON public.form_submissions (service_id) WHERE service_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_contract_signatures_service ON public.contract_signatures (service_id) WHERE service_id IS NOT NULL;
@@ -176,6 +162,6 @@ ALTER TABLE public.contact_notes
 CREATE INDEX IF NOT EXISTS idx_contact_notes_service ON public.contact_notes (service_id) WHERE service_id IS NOT NULL;
 
 COMMENT ON COLUMN public.form_submissions.service_item_id IS
-  'El paso del camino que completa esta respuesta (Servicios F17). Lo pone un trigger del modulo solo si el paso es del mismo servicio y contacto (00331/00335).';
+  'El paso del camino que completa esta respuesta (Servicios F17). Sin clave foranea: lo pone solo el trigger del modulo, despues de comprobar que el paso es del mismo negocio, servicio y contacto (00331/00335).';
 COMMENT ON COLUMN public.contact_notes.service_id IS
   'Comentario interno de un servicio (Servicios F28). NULL = del cliente (00331).';

@@ -64,15 +64,17 @@ export const SPECS = {
   },
   S02: {
     file: "00331_app_servicio_journey_tables.sql",
-    title: "Fases y pasos del servicio; claves foraneas de formularios, firmas y notas",
+    title: "Fases y pasos del servicio; columnas de formularios y notas (sin claves foraneas en formularios ni firmas)",
     tables: ["app_servicio.service_phases", "app_servicio.service_items"],
     columns: ["form_submissions:service_item_id", "contact_notes:service_id"],
     policies: ["app_servicio.service_phases:service_phases_select", "app_servicio.service_items:service_items_select"],
     sqlChecks: [
       {
-        label: "form_submissions.service_id y contract_signatures.service_id apuntan a services (validadas)",
-        query: `SELECT count(*) = 2 AS ok FROM pg_constraint WHERE contype = 'f' AND convalidated
-                AND conname IN ('form_submissions_service_id_fkey','contract_signatures_service_id_fkey')`,
+        label: "form_submissions.service_id, form_submissions.service_item_id y contract_signatures.service_id NO tienen clave foranea (lo valida el modulo)",
+        query: `SELECT count(*) = 0 AS ok FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+                WHERE c.contype = 'f' AND (
+                  (c.conrelid = 'public.form_submissions'::regclass AND a.attname IN ('service_id','service_item_id'))
+                  OR (c.conrelid = 'public.contract_signatures'::regclass AND a.attname = 'service_id'))`,
       },
     ],
   },

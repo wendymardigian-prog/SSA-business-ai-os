@@ -103,9 +103,16 @@ $$;
 -- ─── 1. form_submissions ────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION app_servicio.submission_item_hook()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+-- `service_item_id` no tiene clave foranea (00331): este trigger es lo unico que lo pone. Al insertar, solo
+-- con un paso que existe y es del mismo negocio, contacto y servicio; si no, NULL. Despues no cambia nunca.
 DECLARE
   v_item uuid;
 BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    NEW.service_item_id := OLD.service_item_id;
+    RETURN NEW;
+  END IF;
+  NEW.service_item_id := NULL;
   IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NEW; END IF;
   BEGIN
     IF NEW.meta ? 'service_item_id' AND (NEW.meta ->> 'service_item_id') ~* '^[0-9a-f-]{36}$' THEN
@@ -115,6 +122,7 @@ BEGIN
       NEW.service_item_id := v_item;  -- NULL si no es del mismo servicio y contacto: se descarta
     END IF;
   EXCEPTION WHEN OTHERS THEN
+    NEW.service_item_id := NULL;
     RAISE WARNING 'app_servicio.submission_item_hook: %', SQLERRM;
   END;
   RETURN NEW;
@@ -122,7 +130,7 @@ END;
 $$;
 DROP TRIGGER IF EXISTS trg_app_servicio_submission_item ON public.form_submissions;
 CREATE TRIGGER trg_app_servicio_submission_item
-  BEFORE INSERT ON public.form_submissions
+  BEFORE INSERT OR UPDATE OF service_item_id ON public.form_submissions
   FOR EACH ROW EXECUTE FUNCTION app_servicio.submission_item_hook();
 
 CREATE OR REPLACE FUNCTION app_servicio.submission_hook()
@@ -143,7 +151,9 @@ BEGIN
                     CASE v_type WHEN 'survey' THEN 'survey' ELSE 'form' END, 'form_submission');
         -- Un link firmado que no se pudo ubicar: no completa nada y avisa al responsable (F17).
         IF v_done IS NULL AND (NEW.meta ? 'service_item_id' OR NEW.service_id IS NOT NULL) THEN
-          SELECT s.owner_user_id INTO v_owner FROM app_servicio.services s WHERE s.id = NEW.service_id;
+          -- service_id no tiene clave foranea (00331): solo cuenta un servicio de este negocio y este contacto.
+          SELECT s.owner_user_id INTO v_owner FROM app_servicio.services s
+           WHERE s.id = NEW.service_id AND s.workspace_id = NEW.workspace_id AND s.contact_id = NEW.contact_id;
           PERFORM app_servicio.notify(NEW.workspace_id, v_owner, 'svc_item_unmatched', 'Llegó una respuesta que no se pudo ubicar',
             'No completó ningún paso del camino. Revisala.', 'form_submission', NEW.id);
           PERFORM app_servicio.audit(NEW.workspace_id, 'form_submission', NEW.id, 'svc.item_unmatched', jsonb_build_object('form_id', NEW.form_id), 'system');

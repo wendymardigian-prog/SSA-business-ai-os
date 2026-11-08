@@ -119,9 +119,9 @@ BEGIN
   IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN
     RETURN ARRAY['la configuración tiene que ser un objeto'];
   END IF;
-  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'; END IF;
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'::text; END IF;
   IF p ? 'mode' AND NOT COALESCE(p ->> 'mode' = ANY (ARRAY['create','extend','none']), false) THEN
-    RETURN v || 'modo desconocido';
+    RETURN v || 'modo desconocido'::text;
   END IF;
   v_mode := COALESCE(p ->> 'mode', 'none');
   v_allowed := CASE v_mode
@@ -137,42 +137,42 @@ BEGIN
 
   v_when := p -> 'when';
   IF v_when IS NULL OR jsonb_typeof(v_when) <> 'object' OR NOT COALESCE(v_when ->> 'rule' = ANY (ARRAY['any_payment','non_reservation','percent','amount']), false) THEN
-    v := v || 'elegí cuándo se crea';
+    v := v || 'elegí cuándo se crea'::text;
   ELSIF v_when ->> 'rule' = 'percent' AND NOT (app_servicio.j_int(v_when -> 'value') AND app_servicio.j_num(v_when -> 'value') BETWEEN 1 AND 100) THEN
-    v := v || 'el porcentaje va de 1 a 100';
+    v := v || 'el porcentaje va de 1 a 100'::text;
   ELSIF v_when ->> 'rule' = 'amount' AND NOT (app_servicio.j_int(v_when -> 'value') AND app_servicio.j_num(v_when -> 'value') >= 1) THEN
-    v := v || 'el monto tiene que ser mayor a cero';
+    v := v || 'el monto tiene que ser mayor a cero'::text;
   END IF;
 
   IF p ? 'light' THEN
     v_x := p -> 'light';
     IF jsonb_typeof(v_x) <> 'object' OR (v_x ? 'overdue_red_days' AND NOT (app_servicio.j_int(v_x -> 'overdue_red_days') AND app_servicio.j_num(v_x -> 'overdue_red_days') BETWEEN 1 AND 365)) THEN
-      v := v || 'los días para rojo por pagos van de 1 a 365';
+      v := v || 'los días para rojo por pagos van de 1 a 365'::text;
     END IF;
   END IF;
   IF p ? 'overdue_cut' THEN
     v_x := p -> 'overdue_cut';
     IF jsonb_typeof(v_x) <> 'object' OR (v_x ? 'days' AND NOT (app_servicio.j_int(v_x -> 'days') AND app_servicio.j_num(v_x -> 'days') BETWEEN 1 AND 365)) THEN
-      v := v || 'los días de mora van de 1 a 365';
+      v := v || 'los días de mora van de 1 a 365'::text;
     END IF;
   END IF;
 
   IF v_mode = 'create' THEN
-    IF p ? 'confirm' AND jsonb_typeof(p -> 'confirm') <> 'boolean' THEN v := v || '«Pedir confirmación» tiene que ser sí o no'; END IF;
-    IF p ? 'start' AND NOT COALESCE(p ->> 'start' = ANY (ARRAY['payment_date','sale_date','manual']), false) THEN v := v || 'elegí la fecha de inicio'; END IF;
-    IF p ? 'renewal' AND NOT COALESCE(p ->> 'renewal' = ANY (ARRAY['new_linked','extend','ask']), false) THEN v := v || 'elegí qué pasa si vuelve a comprar'; END IF;
+    IF p ? 'confirm' AND jsonb_typeof(p -> 'confirm') <> 'boolean' THEN v := v || '«Pedir confirmación» tiene que ser sí o no'::text; END IF;
+    IF p ? 'start' AND NOT COALESCE(p ->> 'start' = ANY (ARRAY['payment_date','sale_date','manual']), false) THEN v := v || 'elegí la fecha de inicio'::text; END IF;
+    IF p ? 'renewal' AND NOT COALESCE(p ->> 'renewal' = ANY (ARRAY['new_linked','extend','ask']), false) THEN v := v || 'elegí qué pasa si vuelve a comprar'::text; END IF;
     v_owner := p -> 'owner';
     IF v_owner IS NULL OR jsonb_typeof(v_owner) <> 'object' OR NOT COALESCE(v_owner ->> 'mode' = ANY (ARRAY['fixed','round_robin','conditions','previous']), false) THEN
-      v := v || 'elegí cómo se asigna el responsable';
+      v := v || 'elegí cómo se asigna el responsable'::text;
     ELSE
-      IF v_owner ->> 'mode' = 'fixed' AND NOT app_servicio.j_uuid(v_owner -> 'user_id') THEN v := v || 'elegí la persona'; END IF;
+      IF v_owner ->> 'mode' = 'fixed' AND NOT app_servicio.j_uuid(v_owner -> 'user_id') THEN v := v || 'elegí la persona'::text; END IF;
       IF v_owner ->> 'mode' = 'round_robin' AND NOT (jsonb_typeof(v_owner -> 'members') = 'array' AND jsonb_array_length(v_owner -> 'members') > 0) THEN
-        v := v || 'elegí las personas del reparto';
+        v := v || 'elegí las personas del reparto'::text;
       END IF;
       IF v_owner ->> 'mode' = 'conditions' AND NOT (jsonb_typeof(v_owner -> 'conditions') = 'array' AND jsonb_array_length(v_owner -> 'conditions') > 0) THEN
-        v := v || 'agregá al menos una condición';
+        v := v || 'agregá al menos una condición'::text;
       END IF;
-      IF NOT app_servicio.j_uuid(v_owner -> 'fallback_user_id') THEN v := v || 'elegí la persona de respaldo'; END IF;
+      IF NOT app_servicio.j_uuid(v_owner -> 'fallback_user_id') THEN v := v || 'elegí la persona de respaldo'::text; END IF;
       IF v_ws IS NOT NULL AND EXISTS (
         SELECT 1 FROM (
           SELECT x #>> '{}' AS uid FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v_owner -> 'members') = 'array' THEN v_owner -> 'members' ELSE '[]'::jsonb END) x
@@ -181,7 +181,7 @@ BEGIN
         ) people
         WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members m WHERE m.workspace_id = v_ws AND m.user_id::text = people.uid)
       ) THEN
-        v := v || 'hay una persona que no es del equipo';
+        v := v || 'hay una persona que no es del equipo'::text;
       END IF;
     END IF;
   END IF;
@@ -189,33 +189,33 @@ BEGIN
   IF v_mode = 'extend' THEN
     v_ext := p -> 'extend';
     IF v_ext IS NULL OR jsonb_typeof(v_ext) <> 'object' THEN
-      v := v || 'elegí cuánto suma';
-      v := v || 'elegí la variante de respaldo';
+      v := v || 'elegí cuánto suma'::text;
+      v := v || 'elegí la variante de respaldo'::text;
     ELSE
-      IF NOT (app_servicio.j_int(v_ext -> 'n') AND app_servicio.j_num(v_ext -> 'n') BETWEEN 1 AND 1000) THEN v := v || 'elegí cuánto suma'; END IF;
-      IF v_ext ? 'unit' AND NOT COALESCE(v_ext ->> 'unit' = ANY (ARRAY['days','weeks','months']), false) THEN v := v || 'elegí días, semanas o meses'; END IF;
+      IF NOT (app_servicio.j_int(v_ext -> 'n') AND app_servicio.j_num(v_ext -> 'n') BETWEEN 1 AND 1000) THEN v := v || 'elegí cuánto suma'::text; END IF;
+      IF v_ext ? 'unit' AND NOT COALESCE(v_ext ->> 'unit' = ANY (ARRAY['days','weeks','months']), false) THEN v := v || 'elegí días, semanas o meses'::text; END IF;
       IF v_ext ? 'if_no_service' AND NOT COALESCE(v_ext ->> 'if_no_service' = ANY (ARRAY['confirm','create']), false) THEN
-        v := v || 'elegí qué pasa si no tiene un servicio para extender';
+        v := v || 'elegí qué pasa si no tiene un servicio para extender'::text;
       END IF;
       IF v_ext ? 'target_variant_ids' AND jsonb_typeof(v_ext -> 'target_variant_ids') <> 'null'
          AND NOT (jsonb_typeof(v_ext -> 'target_variant_ids') = 'array'
                   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_ext -> 'target_variant_ids') x WHERE NOT app_servicio.j_uuid(x))) THEN
-        v := v || 'las variantes a extender no son válidas';
+        v := v || 'las variantes a extender no son válidas'::text;
       END IF;
       IF NOT app_servicio.j_uuid(v_ext -> 'fallback_variant_id') THEN
-        v := v || 'elegí la variante de respaldo';
+        v := v || 'elegí la variante de respaldo'::text;
       ELSIF v_product IS NOT NULL THEN
         SELECT pv.product_id, COALESCE(pv.service_settings ->> 'mode', 'none') INTO v_fb_product, v_fb_mode
           FROM public.product_variants pv WHERE pv.id = (v_ext ->> 'fallback_variant_id')::uuid;
-        IF v_fb_product IS DISTINCT FROM v_product THEN v := v || 'la variante de respaldo tiene que ser de este producto';
-        ELSIF v_fb_mode <> 'create' THEN v := v || 'la variante de respaldo tiene que crear un servicio';
+        IF v_fb_product IS DISTINCT FROM v_product THEN v := v || 'la variante de respaldo tiene que ser de este producto'::text;
+        ELSIF v_fb_mode <> 'create' THEN v := v || 'la variante de respaldo tiene que crear un servicio'::text;
         END IF;
       END IF;
       IF v_product IS NOT NULL AND jsonb_typeof(v_ext -> 'target_variant_ids') = 'array' AND EXISTS (
         SELECT 1 FROM jsonb_array_elements_text(v_ext -> 'target_variant_ids') t(id)
         WHERE NOT EXISTS (SELECT 1 FROM public.product_variants pv WHERE pv.id::text = t.id AND pv.product_id = v_product)
       ) THEN
-        v := v || 'las variantes a extender tienen que ser de este producto';
+        v := v || 'las variantes a extender tienen que ser de este producto'::text;
       END IF;
     END IF;
   END IF;
@@ -290,7 +290,7 @@ BEGIN
     END IF;
   ELSIF v_kind = 'certificate' THEN
     IF NOT app_servicio.j_uuid(v_ref -> 'template_id') THEN
-      v := v || 'Elegí la plantilla del certificado';
+      v := v || 'Elegí la plantilla del certificado'::text;
     ELSIF p_ws IS NOT NULL AND NOT EXISTS (
       SELECT 1 FROM public.design_templates t WHERE t.id = (v_ref ->> 'template_id')::uuid AND t.workspace_id = p_ws AND t.doc_type = 'certificado'
     ) THEN
@@ -352,22 +352,22 @@ BEGIN
     SELECT pv.workspace_id, pv.product_id INTO v_ws, v_product FROM public.product_variants pv WHERE pv.id = p_variant_id;
   END IF;
   v := v || app_servicio.unknown_keys(p, ARRAY['v','future_visibility','phases']);
-  IF p -> 'v' IS DISTINCT FROM '1'::jsonb THEN v := v || 'versión desconocida'; END IF;
+  IF p -> 'v' IS DISTINCT FROM '1'::jsonb THEN v := v || 'versión desconocida'::text; END IF;
   IF p ? 'future_visibility' AND NOT COALESCE(p ->> 'future_visibility' = ANY (ARRAY['names','names_and_descriptions','hidden']), false) THEN
-    v := v || 'elegí qué ve el cliente de las fases que vienen';
+    v := v || 'elegí qué ve el cliente de las fases que vienen'::text;
   END IF;
-  IF jsonb_typeof(p -> 'phases') IS DISTINCT FROM 'array' THEN RETURN v || 'faltan las fases'; END IF;
+  IF jsonb_typeof(p -> 'phases') IS DISTINCT FROM 'array' THEN RETURN v || 'faltan las fases'::text; END IF;
 
   FOR ph IN SELECT x FROM jsonb_array_elements(p -> 'phases') x LOOP
-    IF jsonb_typeof(ph) <> 'object' THEN v := v || 'hay una fase que no es válida'; CONTINUE; END IF;
+    IF jsonb_typeof(ph) <> 'object' THEN v := v || 'hay una fase que no es válida'::text; CONTINUE; END IF;
     v := v || app_servicio.unknown_keys(ph, ARRAY['key','name','duration_days','yellow_day','red_day','advance','challenge','late_light','items']);
     v_key := CASE WHEN jsonb_typeof(ph -> 'key') = 'string' THEN ph ->> 'key' END;
-    IF v_key IS NULL OR v_key !~ '^ph_[a-z0-9]{6}$' THEN v := v || 'hay una fase con una clave inválida';
+    IF v_key IS NULL OR v_key !~ '^ph_[a-z0-9]{6}$' THEN v := v || 'hay una fase con una clave inválida'::text;
     ELSIF v_key = ANY (v_phase_keys) THEN v := v || format('la clave %s está repetida', v_key);
     ELSE v_phase_keys := v_phase_keys || v_key;
     END IF;
     v_name := CASE WHEN jsonb_typeof(ph -> 'name') = 'string' THEN btrim(ph ->> 'name') ELSE '' END;
-    IF v_name = '' THEN v := v || 'hay una fase sin nombre'; END IF;
+    IF v_name = '' THEN v := v || 'hay una fase sin nombre'::text; END IF;
     v_label := CASE WHEN v_name = '' THEN 'la fase' ELSE v_name END;
     IF NOT (ph -> 'duration_days' IS NULL OR jsonb_typeof(ph -> 'duration_days') = 'null'
             OR (app_servicio.j_int(ph -> 'duration_days') AND app_servicio.j_num(ph -> 'duration_days') >= 0))
@@ -410,7 +410,7 @@ BEGIN
       v := v || app_servicio.unknown_keys(it, ARRAY['key','kind','name','description','required','assignee','assignee_user_id','visible_to_client',
         'portal_button','ref','due_rule','light','recurrence','late','reminders']);
       v_key := CASE WHEN jsonb_typeof(it -> 'key') = 'string' THEN it ->> 'key' END;
-      IF v_key IS NULL OR v_key !~ '^it_[a-z0-9]{6}$' THEN v := v || 'hay un paso con una clave inválida';
+      IF v_key IS NULL OR v_key !~ '^it_[a-z0-9]{6}$' THEN v := v || 'hay un paso con una clave inválida'::text;
       ELSIF v_key = ANY (v_item_keys) THEN v := v || format('la clave %s está repetida', v_key);
       ELSE v_item_keys := v_item_keys || v_key;
       END IF;
@@ -419,7 +419,7 @@ BEGIN
         v := v || format('«%s»: tipo de paso desconocido', v_nm);
         CONTINUE;
       END IF;
-      IF NOT (jsonb_typeof(it -> 'name') = 'string' AND btrim(it ->> 'name') <> '') THEN v := v || 'hay un paso sin nombre'; END IF;
+      IF NOT (jsonb_typeof(it -> 'name') = 'string' AND btrim(it ->> 'name') <> '') THEN v := v || 'hay un paso sin nombre'::text; END IF;
       IF it ? 'assignee' AND NOT COALESCE(it ->> 'assignee' = ANY (ARRAY['student','owner','user']), false) THEN v := v || format('«%s»: elegí a cargo de quién está', v_nm); END IF;
       IF it ->> 'assignee' = 'user' AND NOT app_servicio.j_uuid(it -> 'assignee_user_id') THEN v := v || format('«%s»: elegí la persona a cargo', v_nm); END IF;
       v := v || app_servicio.journey_item_ref_problems(it, v_nm, v_ws, v_product);
@@ -431,7 +431,7 @@ BEGIN
           v := v || format('«%s»: el plazo no es válido', v_nm);
         ELSIF due ->> 'from' = 'item_completed' THEN
           IF jsonb_typeof(due -> 'item_key') IS DISTINCT FROM 'string' OR NOT ((due ->> 'item_key') = ANY (v_before)) THEN
-            v := v || 'un paso solo puede depender de uno anterior';
+            v := v || 'un paso solo puede depender de uno anterior'::text;
           END IF;
         END IF;
       END IF;
@@ -538,14 +538,14 @@ DECLARE
 BEGIN
   IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN ARRAY['la configuración tiene que ser un objeto']; END IF;
   v := v || app_servicio.unknown_keys(p, ARRAY['v','enabled','ask_terms','sections']);
-  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'; END IF;
-  IF p ? 'enabled' AND jsonb_typeof(p -> 'enabled') <> 'boolean' THEN v := v || '«Acceso al portal» tiene que ser sí o no'; END IF;
-  IF p ? 'ask_terms' AND jsonb_typeof(p -> 'ask_terms') <> 'boolean' THEN v := v || '«Esta variante los pide» tiene que ser sí o no'; END IF;
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'::text; END IF;
+  IF p ? 'enabled' AND jsonb_typeof(p -> 'enabled') <> 'boolean' THEN v := v || '«Acceso al portal» tiene que ser sí o no'::text; END IF;
+  IF p ? 'ask_terms' AND jsonb_typeof(p -> 'ask_terms') <> 'boolean' THEN v := v || '«Esta variante los pide» tiene que ser sí o no'::text; END IF;
   IF p ? 'sections' THEN
-    IF jsonb_typeof(p -> 'sections') <> 'array' THEN v := v || 'las secciones no son válidas';
+    IF jsonb_typeof(p -> 'sections') <> 'array' THEN v := v || 'las secciones no son válidas'::text;
     ELSE
       FOR s IN SELECT x FROM jsonb_array_elements(p -> 'sections') x LOOP
-        IF jsonb_typeof(s) <> 'object' THEN v := v || 'hay una sección que no es válida'; CONTINUE; END IF;
+        IF jsonb_typeof(s) <> 'object' THEN v := v || 'hay una sección que no es válida'::text; CONTINUE; END IF;
         IF jsonb_typeof(s -> 'section') = 'string' THEN
           IF (s ->> 'section') = ANY (v_seen) THEN v := v || format('la sección %s está repetida', s ->> 'section'); END IF;
           v_seen := v_seen || (s ->> 'section');
@@ -572,9 +572,9 @@ DECLARE
 BEGIN
   IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN ARRAY['la configuración tiene que ser un objeto']; END IF;
   v := v || app_servicio.unknown_keys(p, ARRAY['v','sections','terms','community','affiliates','assistant']);
-  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'; END IF;
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'::text; END IF;
   IF p ? 'sections' THEN
-    IF jsonb_typeof(p -> 'sections') <> 'object' THEN v := v || 'las secciones no son válidas';
+    IF jsonb_typeof(p -> 'sections') <> 'object' THEN v := v || 'las secciones no son válidas'::text;
     ELSE
       FOR k IN SELECT key FROM jsonb_object_keys(p -> 'sections') WITH ORDINALITY AS t(key, ord) ORDER BY ord LOOP
         IF NOT COALESCE(k = ANY (ARRAY['program','calendar','challenge','certificate','assistant','community','affiliates','fame','projects']), false) THEN v := v || ('sección desconocida: ' || k);
@@ -586,24 +586,24 @@ BEGIN
   END IF;
   IF p ? 'terms' THEN
     t := p -> 'terms';
-    IF jsonb_typeof(t) <> 'object' THEN v := v || 'los términos no son válidos';
+    IF jsonb_typeof(t) <> 'object' THEN v := v || 'los términos no son válidos'::text;
     ELSE
       v := v || app_servicio.unknown_keys(t, ARRAY['enabled','form_id','ask_again_on_change']);
-      IF t -> 'enabled' = 'true'::jsonb AND NOT app_servicio.j_uuid(t -> 'form_id') THEN v := v || 'cargá los términos antes de prenderlos'; END IF;
+      IF t -> 'enabled' = 'true'::jsonb AND NOT app_servicio.j_uuid(t -> 'form_id') THEN v := v || 'cargá los términos antes de prenderlos'::text; END IF;
     END IF;
   END IF;
   IF p ? 'community' THEN
     c := p -> 'community';
-    IF jsonb_typeof(c) <> 'object' THEN v := v || 'la comunidad no es válida';
+    IF jsonb_typeof(c) <> 'object' THEN v := v || 'la comunidad no es válida'::text;
     ELSE
       v := v || app_servicio.unknown_keys(c, ARRAY['lesson_comments','spaces']);
       IF c ? 'spaces' THEN
-        IF jsonb_typeof(c -> 'spaces') <> 'array' THEN v := v || 'los espacios no son válidos';
+        IF jsonb_typeof(c -> 'spaces') <> 'array' THEN v := v || 'los espacios no son válidos'::text;
         ELSE
           FOR sp IN SELECT x FROM jsonb_array_elements(c -> 'spaces') x LOOP
             IF jsonb_typeof(sp) <> 'object' OR jsonb_typeof(sp -> 'key') IS DISTINCT FROM 'string' OR (sp ->> 'key') !~ '^[a-z0-9_]{1,40}$'
                OR jsonb_typeof(sp -> 'name') IS DISTINCT FROM 'string' OR btrim(sp ->> 'name') = '' THEN
-              v := v || 'hay un espacio sin nombre o con una clave inválida';
+              v := v || 'hay un espacio sin nombre o con una clave inválida'::text;
               CONTINUE;
             END IF;
             IF (sp ->> 'key') = ANY (v_keys) THEN v := v || format('el espacio %s está repetido', sp ->> 'key'); END IF;
@@ -617,20 +617,20 @@ BEGIN
     a := p -> 'affiliates';
     IF jsonb_typeof(a) <> 'object' OR (a ? 'visible_link_keys' AND NOT (jsonb_typeof(a -> 'visible_link_keys') = 'array'
        AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(a -> 'visible_link_keys') x WHERE jsonb_typeof(x) <> 'string' OR (x #>> '{}') !~ '^lk_[a-z0-9]{6}$'))) THEN
-      v := v || 'los links de afiliados no son válidos';
+      v := v || 'los links de afiliados no son válidos'::text;
     END IF;
   END IF;
   IF p ? 'assistant' THEN
     a := p -> 'assistant';
-    IF jsonb_typeof(a) <> 'object' THEN v := v || 'el asistente no es válido';
+    IF jsonb_typeof(a) <> 'object' THEN v := v || 'el asistente no es válido'::text;
     ELSE
       v := v || app_servicio.unknown_keys(a, ARRAY['excluded_kb_ids','monthly_limit_usd_per_student','credits_per_usd','credits_name','suggestions']);
       IF a ? 'monthly_limit_usd_per_student' AND NOT (jsonb_typeof(a -> 'monthly_limit_usd_per_student') = 'number'
          AND app_servicio.j_num(a -> 'monthly_limit_usd_per_student') BETWEEN 0 AND 10000) THEN
-        v := v || 'el límite por estudiante va de 0 a 10.000 dólares';
+        v := v || 'el límite por estudiante va de 0 a 10.000 dólares'::text;
       END IF;
       IF a ? 'credits_per_usd' AND NOT (app_servicio.j_int(a -> 'credits_per_usd') AND app_servicio.j_num(a -> 'credits_per_usd') BETWEEN 1 AND 100000) THEN
-        v := v || 'los créditos por dólar tienen que ser un número entero positivo';
+        v := v || 'los créditos por dólar tienen que ser un número entero positivo'::text;
       END IF;
     END IF;
   END IF;
@@ -650,30 +650,30 @@ DECLARE
 BEGIN
   IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN ARRAY['la configuración tiene que ser un objeto']; END IF;
   v := v || app_servicio.unknown_keys(p, ARRAY['v','host','from_email','welcome','login','support_whatsapp','extensions']);
-  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'; END IF;
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'::text; END IF;
   IF p ? 'host' AND jsonb_typeof(p -> 'host') <> 'null' AND NOT (jsonb_typeof(p -> 'host') = 'string' AND length(p ->> 'host') <= 253
      AND (p ->> 'host') ~ '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$') THEN
-    v := v || 'la dirección no es válida: escribila sin https:// ni barras';
+    v := v || 'la dirección no es válida: escribila sin https:// ni barras'::text;
   END IF;
   IF p ? 'from_email' AND jsonb_typeof(p -> 'from_email') <> 'null' AND NOT (jsonb_typeof(p -> 'from_email') = 'string' AND (p ->> 'from_email') ~ '^[^\s@]+@[^\s@]+\.[^\s@]+$') THEN
-    v := v || 'el email de «Enviar desde» no es válido';
+    v := v || 'el email de «Enviar desde» no es válido'::text;
   END IF;
   IF p ? 'welcome' THEN
     w := p -> 'welcome';
-    IF jsonb_typeof(w) <> 'object' THEN v := v || 'la bienvenida no es válida';
+    IF jsonb_typeof(w) <> 'object' THEN v := v || 'la bienvenida no es válida'::text;
     ELSE v := v || app_servicio.unknown_keys(w, ARRAY['home_text','invite_subject','invite_body']);
     END IF;
   END IF;
   IF p ? 'login' THEN
     l := p -> 'login';
-    IF jsonb_typeof(l) <> 'object' OR (l ? 'password_allowed' AND jsonb_typeof(l -> 'password_allowed') <> 'boolean') THEN v := v || '«Cómo entran» no es válido'; END IF;
+    IF jsonb_typeof(l) <> 'object' OR (l ? 'password_allowed' AND jsonb_typeof(l -> 'password_allowed') <> 'boolean') THEN v := v || '«Cómo entran» no es válido'::text; END IF;
   END IF;
   IF p ? 'support_whatsapp' AND jsonb_typeof(p -> 'support_whatsapp') <> 'null' AND NOT (jsonb_typeof(p -> 'support_whatsapp') = 'string' AND (p ->> 'support_whatsapp') ~ '^\+\d{6,15}$') THEN
-    v := v || 'el WhatsApp de soporte tiene que empezar con + y el código de país';
+    v := v || 'el WhatsApp de soporte tiene que empezar con + y el código de país'::text;
   END IF;
   IF p ? 'extensions' THEN
     e := p -> 'extensions';
-    IF jsonb_typeof(e) <> 'object' OR (e ? 'projects' AND jsonb_typeof(e -> 'projects') <> 'boolean') THEN v := v || 'las extensiones no son válidas'; END IF;
+    IF jsonb_typeof(e) <> 'object' OR (e ? 'projects' AND jsonb_typeof(e -> 'projects') <> 'boolean') THEN v := v || 'las extensiones no son válidas'::text; END IF;
   END IF;
   RETURN v;
 END;
