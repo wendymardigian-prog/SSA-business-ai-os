@@ -8,9 +8,12 @@ import { loadAutomationCapabilities } from "./capabilities";
 
 const WS = "ws-1";
 
-function world(over: { email?: boolean; channels?: Array<Record<string, unknown>>; agents?: Array<Record<string, unknown>> } = {}) {
+function world(over: { email?: boolean; capi?: Record<string, unknown>; channels?: Array<Record<string, unknown>>; agents?: Array<Record<string, unknown>> } = {}) {
   return memoryDb({
-    integration_configs: over.email === false ? [] : [{ workspace_id: WS, type: "email_provider", provider: "resend", is_active: true }],
+    integration_configs: [
+      ...(over.email === false ? [] : [{ workspace_id: WS, type: "email_provider", provider: "resend", is_active: true }]),
+      ...(over.capi ? [{ workspace_id: WS, type: "meta", provider: "meta_capi", ...over.capi }] : []),
+    ],
     channels: over.channels ?? [],
     agents: over.agents ?? [],
   }).client;
@@ -23,7 +26,7 @@ beforeEach(() => {
 
 describe("que conexiones tiene el negocio", () => {
   it("un negocio vacio no tiene nada conectado", async () => {
-    expect(await loadAutomationCapabilities(world({ email: false }), WS)).toEqual({ email: false, whatsapp_channel: false, ai: false, agent: false, channel: false });
+    expect(await loadAutomationCapabilities(world({ email: false }), WS)).toEqual({ email: false, whatsapp_channel: false, ai: false, agent: false, channel: false, meta_capi: false });
   });
 
   it("email: Resend activo", async () => {
@@ -48,6 +51,13 @@ describe("que conexiones tiene el negocio", () => {
   it("un canal desconectado no cuenta", async () => {
     const off = { platform: "whatsapp", provider: "evolution", evolution_instance: "ssa-x", workspace_id: WS, is_active: false };
     expect(await loadAutomationCapabilities(world({ channels: [off] }), WS)).toMatchObject({ channel: false, whatsapp_channel: false });
+  });
+
+  it("API de Conversiones: la integracion activa y con el ID del Pixel (00328)", async () => {
+    expect((await loadAutomationCapabilities(world(), WS)).meta_capi).toBe(false);
+    expect((await loadAutomationCapabilities(world({ capi: { is_active: true, config: { pixel_id: "1234567890" } } }), WS)).meta_capi).toBe(true);
+    expect((await loadAutomationCapabilities(world({ capi: { is_active: false, config: { pixel_id: "1234567890" } } }), WS)).meta_capi).toBe(false);
+    expect((await loadAutomationCapabilities(world({ capi: { is_active: true, config: {} } }), WS)).meta_capi).toBe(false);
   });
 
   it("agente: hace falta uno que converse (el copywriter no cuenta)", async () => {

@@ -19,6 +19,7 @@ import { parseStoredContractConfig } from "./contract/config";
 import { CONTRACTS_BUCKET } from "./contract/storage";
 import { recordFormTouch } from "@/lib/contacts/touch-entry";
 import { setEmailStatus } from "@/lib/email/subscription";
+import { rememberCapiRequestContext } from "@/lib/meta/capi/run";
 import { createNotification } from "@/lib/notifications/create";
 import { SLUG_PATTERN } from "./list";
 import { isPublicFormType, type FormField } from "./fields";
@@ -217,6 +218,12 @@ export function createSubmitPorts(service: Db): SubmitPorts {
         formName: form.name,
         attribution,
       });
+    },
+
+    // La IP y el navegador de quien respondió, para la API de Conversiones de Meta (00328). Solo si el negocio la
+    // configuró; nunca lanza.
+    async rememberRequestContext({ form, submissionId, ip, userAgent }) {
+      await rememberCapiRequestContext(service, { workspaceId: form.workspaceId, sourceType: "form", sourceId: submissionId, ip, userAgent });
     },
 
     async applyEmailConsent({ form, submissionId, contactId, action }) {

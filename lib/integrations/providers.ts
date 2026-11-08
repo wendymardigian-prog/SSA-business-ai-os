@@ -43,6 +43,11 @@ export interface ConfigField {
   secretBoundTo?: string;
   /** Es una direccion a la que llama el servidor: al cambiar se comprueba que no sea interna (`assertPublicUrl`). */
   publicUrl?: boolean;
+  /**
+   * Por que hay que volver a escribir el secreto de `secretBoundTo` cuando este campo cambia. Sin esto, el motivo es
+   * el de una direccion (Evolution). La API de Conversiones lo usa para el Pixel: el token se prueba contra ESE Pixel.
+   */
+  secretBoundReason?: string;
 }
 
 /**
@@ -493,6 +498,62 @@ export const PROVIDERS: ProviderDefinition[] = [
     docsUrl: "https://business.facebook.com/settings/system-users",
   },
 
+  // La API de Conversiones de Meta (00328): SSA le manda a un Pixel los eventos que valen (leads, reuniones, pagos)
+  // desde el servidor. Va aparte de la de arriba (que solo lee): otro token, que solo sirve para mandar eventos a ESE
+  // Pixel, y desconectar una no toca la otra.
+  {
+    id: "meta_capi",
+    type: "meta",
+    configProvider: "meta_capi",
+    connection: "system_token",
+    section: "connections",
+    types: ["anuncios"],
+    visible: true,
+    label: "Meta: API de Conversiones",
+    description:
+      "Le manda a tu Pixel de Meta los leads, las reuniones y los pagos desde el servidor, con los datos de la persona. Funciona aunque haya bloqueadores de anuncios.",
+    secretName: SECRET_NAMES.metaCapiToken,
+    minKeyLength: 40,
+    secretFields: [
+      {
+        key: "access_token",
+        label: "Token de acceso",
+        hint: "En Events Manager → tu Pixel → Configuración → API de Conversiones → «Generar token de acceso».",
+        secretName: SECRET_NAMES.metaCapiToken,
+        required: true,
+        minLength: 40,
+      },
+    ],
+    configFields: [
+      {
+        key: "pixel_id",
+        label: "ID del Pixel",
+        hint: "El número que aparece en Events Manager debajo del nombre del Pixel (también se llama «conjunto de datos»).",
+        placeholder: "1234567890123456",
+        required: true,
+        validate: (value) => (/^\d{5,25}$/.test(value.trim()) ? null : "El ID del Pixel es un número, sin espacios."),
+        secretBoundTo: "access_token",
+        secretBoundReason: "El token se prueba contra el Pixel nuevo antes de guardarlo.",
+      },
+      {
+        key: "test_event_code",
+        label: "Código de prueba (opcional)",
+        hint: "De Events Manager → Probar eventos. Mientras esté cargado, los eventos solo se ven en esa pestaña: borralo cuando termines de probar.",
+        placeholder: "TEST12345",
+        required: false,
+        validate: (value) => (/^[A-Za-z0-9]{1,40}$/.test(value.trim()) ? null : "El código de prueba son letras y números, sin espacios."),
+      },
+      {
+        // Se edita en su propia sección («Compras»): el formulario genérico no lo dibuja y guardar el token lo conserva.
+        key: "purchase_enabled",
+        label: "Mandar cada pago cobrado como compra",
+        required: false,
+        hidden: true,
+      },
+    ],
+    docsUrl: "https://business.facebook.com/events_manager2",
+  },
+
   // ── Email ────────────────────────────────────────────────────────────────
   // Conexion de Resend (2/11/2026): la recepcion paso a la tarjeta "Resend" (seccion "Recepcion de emails") y el
   // secreto a la seccion "Webhook". Esta definicion queda OCULTA para leer las filas viejas (`providerForConfigRow`,
@@ -884,7 +945,7 @@ export function secretRebindProblem(
     if (!field.secretBoundTo || newSecretKeys.includes(field.secretBoundTo)) continue;
     const secret = secretFieldsOf(provider).find((f) => f.key === field.secretBoundTo);
     const name = secret ? secret.label.toLowerCase() : "la clave";
-    return `Cambiaste "${field.label}": volvé a escribir ${name} en el mismo guardado. La guardada no se manda a una dirección nueva.`;
+    return `Cambiaste "${field.label}": volvé a escribir ${name} en el mismo guardado. ${field.secretBoundReason ?? "La guardada no se manda a una dirección nueva."}`;
   }
   return null;
 }

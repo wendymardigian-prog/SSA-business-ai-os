@@ -70,6 +70,7 @@ ${answers}
       entry_url, landing_page, referrer_url, page_url,
       utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_id,
       campaign_id, adset_id, ad_id, placement,
+      // meta_event_id: el mismo código que usó el Pixel (fbq("track", "Lead", {}, { eventID })), para que Meta no lo cuente dos veces.
       fbclid, fbp, fbc, meta_event_id,
     },
   }),

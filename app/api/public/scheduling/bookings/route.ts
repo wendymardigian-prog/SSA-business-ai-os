@@ -6,6 +6,8 @@ import { clientIp, originFrom, pickUtm, safeReferrer } from "@/lib/scheduling/an
 import { isValidTimeZone } from "@/lib/timezone";
 import { notifyBooking } from "@/lib/scheduling/notifications";
 import { bookingUtmPayload, fillFromRequestCookies } from "@/lib/scheduling/booker/attribution";
+import { rememberCapiRequestContext } from "@/lib/meta/capi/run";
+import { capiEventId } from "@/lib/meta/capi/build-event";
 
 /**
  * POST /api/public/scheduling/bookings (F26): crea la agenda.
@@ -59,8 +61,14 @@ export async function POST(request: NextRequest) {
 
   // El aviso al anfitrion no puede frenar la respuesta al invitado.
   const bookingId = result.bookingId;
+  const ip = clientIp(request.headers);
+  const userAgent = request.headers.get("user-agent");
   after(async () => {
     await notifyBooking(service, bookingId, "booking_created");
+    // La IP y el navegador de quien agendo, para la API de Conversiones de Meta (00328). Solo si el negocio la
+    // configuro; nunca lanza.
+    const { data: booking } = await service.from("bookings").select("workspace_id").eq("id", bookingId).maybeSingle();
+    if (booking) await rememberCapiRequestContext(service, { workspaceId: booking.workspace_id, sourceType: "booking", sourceId: bookingId, ip, userAgent });
   });
 
   return NextResponse.json({
@@ -68,5 +76,8 @@ export async function POST(request: NextRequest) {
     startUtc: result.startUtc,
     endUtc: result.endUtc,
     redirectUrl: result.redirectUrl,
+    // El codigo con el que «Enviar evento a Meta» manda esta reunion: una web con Pixel lo usa como `eventID` para que
+    // Meta no la cuente dos veces. No es el codigo publico de la reunion (ese es una credencial).
+    metaEventId: capiEventId({ type: "booking", bookingId }),
   });
 }

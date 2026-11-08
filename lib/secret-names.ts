@@ -62,6 +62,8 @@ export const SECRET_NAMES = {
   postproxyWebhookSecret: "postproxy_webhook_secret",
   /** Token de system user de Meta, para Ads y los insights de Instagram (B5). */
   metaSystemUserToken: "meta_system_user_token",
+  /** Token de la API de Conversiones de Meta (00328): solo manda eventos a un Pixel. Se genera en Events Manager. */
+  metaCapiToken: "meta_capi_token",
 
   // ── Formularios ──────────────────────────────────────────────────────────  @plantilla-quitar(formularios)
   /** Firma los links de formulario por contacto (HMAC). Se genera la primera vez.  @plantilla-quitar(formularios) */

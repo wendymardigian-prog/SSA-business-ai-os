@@ -34,6 +34,11 @@ export interface BookingEventPayload {
   endTime: string;
   eventSlug: string;
   meetUrl?: string;
+  /**
+   * El código con el que SSA le manda esta reunión a la API de Conversiones de Meta (00328). Una web con Pixel lo usa
+   * como `eventID` de su `Schedule`, y Meta la cuenta una sola vez.
+   */
+  metaEventId?: string;
 }
 
 export interface EmbedMessage<T = unknown> {

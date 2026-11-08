@@ -12,7 +12,7 @@ import {
   type Capabilities,
 } from "@/lib/flow-engine/node-requirements";
 
-const none: Capabilities = { email: false, whatsapp_channel: false, ai: false, agent: false, channel: false };
+const none: Capabilities = { email: false, whatsapp_channel: false, ai: false, agent: false, channel: false, meta_capi: false };
 
 const trigger = { id: "t", type: "trigger", data: {} };
 const email = { id: "e", type: "action", data: { actionType: "send_email" } };

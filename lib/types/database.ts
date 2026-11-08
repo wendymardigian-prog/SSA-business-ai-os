@@ -2369,6 +2369,88 @@ export interface Database {
         Update: Record<string, never>;
         Relationships: [];
       };
+      /** API de Conversiones de Meta (00328): cada evento que se manda o se saltea. Escribe solo el servidor. */
+      meta_capi_events: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          event_name: string;
+          event_id: string;
+          source_type: "form" | "booking" | "payment" | "contact";
+          source_id: string;
+          flow_id: string | null;
+          flow_session_id: string | null;
+          event_time: string;
+          params: Json;
+          status: "pending" | "sent" | "failed" | "skipped";
+          skip_reason: string | null;
+          attempts: number;
+          test: boolean;
+          action_source: "website" | "system_generated" | null;
+          fbtrace_id: string | null;
+          error: string | null;
+          sent_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          event_name: string;
+          event_id: string;
+          source_type: "form" | "booking" | "payment" | "contact";
+          source_id: string;
+          flow_id?: string | null;
+          flow_session_id?: string | null;
+          event_time: string;
+          params?: Json;
+          status?: "pending" | "sent" | "failed" | "skipped";
+          skip_reason?: string | null;
+          attempts?: number;
+          test?: boolean;
+          action_source?: "website" | "system_generated" | null;
+          fbtrace_id?: string | null;
+          error?: string | null;
+          sent_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: "pending" | "sent" | "failed" | "skipped";
+          skip_reason?: string | null;
+          attempts?: number;
+          test?: boolean;
+          action_source?: "website" | "system_generated" | null;
+          fbtrace_id?: string | null;
+          error?: string | null;
+          sent_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      /** API de Conversiones de Meta (00328): IP y navegador de quien respondió o agendó. Solo service_role; 8 días. */
+      meta_capi_request_context: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          source_type: "form" | "booking";
+          source_id: string;
+          client_ip: string | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          source_type: "form" | "booking";
+          source_id: string;
+          client_ip?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
       flow_session_steps: {
         Row: {
           id: string;
