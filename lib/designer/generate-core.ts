@@ -29,14 +29,14 @@ import { logAudit } from "@/lib/audit";
 import { createNotificationOnce } from "@/lib/notifications/create";
 import type { Database, Json } from "@/lib/types/database";
 import type { MissingPolicy } from "./contracts";
-import { docVariables, parseDesignDoc } from "./doc/schema";
+import { docVariables, parseDesignDoc, type DesignDoc } from "./doc/schema";
 import { resolveRegisteredValues, type SubjectRef } from "./extensions";
 import { enqueueDesignRender } from "./jobs/render";
 import { publishDesignCore } from "./publishing";
 import { parseCustomVarsList } from "./variables/custom";
-import { isMissingPolicy, missingMessage, resolveValues, type ResolveContact } from "./variables/resolve";
+import { isMissingPolicy, missingMessage, resolveValues, type ResolveContact, type ResolveResult } from "./variables/resolve";
 import { docTypeNoun, isDocType } from "./verification";
-import type { DateFormat } from "./variables/catalog";
+import type { CustomVar, DateFormat } from "./variables/catalog";
 
 type Db = SupabaseClient<Database>;
 
@@ -110,7 +110,7 @@ export interface GenerationDeps {
 
 const TEMPLATE_COLUMNS = "id, name, format, doc, custom_vars, date_format, verify, doc_type, doc_type_label, allow_download, archived_at";
 
-interface TemplateRow {
+export interface TemplateRow {
   id: string;
   name: string;
   format: string;
@@ -140,7 +140,7 @@ function nounOf(template: Pick<TemplateRow, "verify" | "doc_type" | "doc_type_la
   return template.verify && isDocType(template.doc_type) ? docTypeNoun(template.doc_type, template.doc_type_label).toLowerCase() : "pieza";
 }
 
-interface ExistingRow {
+export interface ExistingRow {
   id: string;
   code: string;
   status: string;
@@ -202,41 +202,106 @@ export async function createGeneration(db: Db, input: CreateGenerationInput, dep
   }
 }
 
-async function run(db: Db, input: CreateGenerationInput, deps: Required<GenerationDeps>): Promise<CreateGenerationResult> {
+/** Todo lo que se necesita saber para armar una pieza: la plantilla, el sujeto y los valores ya resueltos. */
+export interface GenerationContext {
+  template: TemplateRow;
+  doc: DesignDoc;
+  contact: (ResolveContact & { id: string }) | null;
+  subjectRef: SubjectRef | null;
+  subjectLabel: string | null;
+  workspace: { name: string | null; brand_name: string | null; timezone: string | null };
+  resolved: ResolveResult;
+  customVars: CustomVar[];
+}
+
+export type GenerationContextResult = ({ ok: true } & GenerationContext) | { ok: false; error: string; retryable: boolean };
+
+/**
+ * Lee la plantilla, el contacto y el negocio (siempre del negocio de quien llama) y resuelve los valores. No escribe nada:
+ * lo usan `createGeneration`, la vista previa del modal y los reintentos, así los tres ven lo mismo. Puede lanzar si la
+ * base se cae de forma inesperada; los que la llaman lo atajan.
+ */
+export async function loadGenerationContext(
+  db: Db,
+  input: {
+    workspaceId: string;
+    templateId: string;
+    contactId: string | null;
+    subjectRef?: SubjectRef | null;
+    overrides: Record<string, string>;
+    policy: MissingPolicy;
+    /** El código de la pieza si ya existe (un reintento). */
+    code?: string | null;
+  },
+  deps: Pick<Required<GenerationDeps>, "now" | "registered">,
+): Promise<GenerationContextResult> {
   const { workspaceId, templateId } = input;
-  if (!workspaceId || !templateId) return fail("Falta la plantilla.");
+  if (!workspaceId || !templateId) return { ok: false, error: "Falta la plantilla.", retryable: false };
   const policy: MissingPolicy = isMissingPolicy(input.policy) ? input.policy : "fail";
   const subjectRef: SubjectRef | null = input.subjectRef ?? null;
+  const bad = (error: string, retryable = false): GenerationContextResult => ({ ok: false, error, retryable });
 
-  // 1. La plantilla y el sujeto, siempre del negocio de quien llama.
   const { data: tpl, error: tplError } = await db.from("design_templates").select(TEMPLATE_COLUMNS).eq("id", templateId).eq("workspace_id", workspaceId).maybeSingle();
   if (tplError) {
     console.error("[designer] no pude leer la plantilla:", tplError.message);
-    return fail("No se pudo leer la plantilla.", true);
+    return bad("No se pudo leer la plantilla.", true);
   }
-  if (!tpl) return fail("La plantilla ya no existe.");
+  if (!tpl) return bad("La plantilla ya no existe.");
   const template = tpl as unknown as TemplateRow;
-  if (template.archived_at) return fail("La plantilla está archivada: restaurala para generar piezas.");
+  if (template.archived_at) return bad("La plantilla está archivada: restaurala para generar piezas.");
   const parsed = parseDesignDoc(template.doc);
-  if (!parsed.ok) return fail("El documento de la plantilla no es válido.");
+  if (!parsed.ok) return bad("El documento de la plantilla no es válido.");
 
   let contact: (ResolveContact & { id: string }) | null = null;
   if (input.contactId) {
     const { data, error } = await db.from("contacts").select("id, display_name, email, phone").eq("id", input.contactId).eq("workspace_id", workspaceId).is("deleted_at", null).maybeSingle();
     if (error) {
       console.error("[designer] no pude leer el contacto:", error.message);
-      return fail("No se pudo leer el contacto.", true);
+      return bad("No se pudo leer el contacto.", true);
     }
-    if (!data) return fail("El contacto ya no existe.");
+    if (!data) return bad("El contacto ya no existe.");
     contact = data as unknown as ResolveContact & { id: string };
   }
 
   const { data: ws, error: wsError } = await db.from("workspaces").select("name, brand_name, timezone").eq("id", workspaceId).maybeSingle();
   if (wsError || !ws) {
     if (wsError) console.error("[designer] no pude leer el negocio:", wsError.message);
-    return fail("No se pudo leer el negocio.", true);
+    return bad("No se pudo leer el negocio.", true);
   }
-  const workspace = ws as { name: string | null; brand_name: string | null; timezone: string | null };
+  const workspace = ws as GenerationContext["workspace"];
+
+  const registered = await deps.registered({ workspaceId, subject: subjectRef, contactId: input.contactId });
+  const customVars = parseCustomVarsList(template.custom_vars);
+  const resolved = resolveValues(
+    {
+      docKeys: docVariables(parsed.doc),
+      customVars,
+      dateFormat: dateFormatOf(template.date_format),
+      verify: template.verify,
+      docType: template.doc_type,
+      docTypeLabel: template.doc_type_label,
+    },
+    { contact, workspaceName: workspace.brand_name || workspace.name, registered, code: input.code ?? null, now: deps.now(), timeZone: workspace.timezone || "UTC" },
+    input.overrides ?? {},
+    policy,
+  );
+  return { ok: true, template, doc: parsed.doc, contact, subjectRef, subjectLabel: contact?.display_name?.trim() || subjectRef?.label || null, workspace, resolved, customVars };
+}
+
+/** ¿Ya tiene una pieza válida de esta plantilla? (solo cuenta si la plantilla verifica). Las más recientes primero. */
+export async function findValidFor(db: Db, workspaceId: string, templateId: string, subject: { contactId: string | null; subjectRef: SubjectRef | null }): Promise<ExistingRow[] | "error"> {
+  return validOf(db, workspaceId, templateId, subject);
+}
+
+async function run(db: Db, input: CreateGenerationInput, deps: Required<GenerationDeps>): Promise<CreateGenerationResult> {
+  const { workspaceId, templateId } = input;
+  const policy: MissingPolicy = isMissingPolicy(input.policy) ? input.policy : "fail";
+
+  // 1. La plantilla, el sujeto y los valores.
+  const context = await loadGenerationContext(db, { workspaceId, templateId, contactId: input.contactId, subjectRef: input.subjectRef ?? null, overrides: input.overrides ?? {}, policy }, deps);
+  if (!context.ok) return fail(context.error, context.retryable);
+  const { template, resolved, subjectRef, subjectLabel } = context;
+  const now = deps.now();
 
   // 2. ¿Ya tiene una válida? (solo las plantillas con verificación: una sola por persona).
   let replaced: ExistingRow[] = [];
@@ -252,28 +317,10 @@ async function run(db: Db, input: CreateGenerationInput, deps: Required<Generati
     }
   }
 
-  // 3. Los valores.
-  const registered = await deps.registered({ workspaceId, subject: subjectRef, contactId: input.contactId });
-  const now = deps.now();
-  const resolved = resolveValues(
-    {
-      docKeys: docVariables(parsed.doc),
-      customVars: parseCustomVarsList(template.custom_vars),
-      dateFormat: dateFormatOf(template.date_format),
-      verify: template.verify,
-      docType: template.doc_type,
-      docTypeLabel: template.doc_type_label,
-    },
-    { contact, workspaceName: workspace.brand_name || workspace.name, registered, now, timeZone: workspace.timezone || "UTC" },
-    input.overrides ?? {},
-    policy,
-  );
-  // El código lo asigna la base: un «código vacío» guardado taparía al que el render pone solo desde la fila.
+  // 3. El código lo asigna la base: un «código vacío» guardado taparía al que el render pone solo desde la fila.
   const values = { ...resolved.values };
   delete values["design.code"];
-
   const failed = !resolved.ok;
-  const subjectLabel = contact?.display_name?.trim() || subjectRef?.label || null;
 
   // 4. La fila: una copia CONGELADA del documento (F52).
   const sourceRef: Record<string, unknown> | null = input.sourceRef || input.email ? { ...(input.sourceRef ?? {}), ...(input.email ? { email_request: { subject: input.email.subject, body: input.email.body } } : {}) } : null;
