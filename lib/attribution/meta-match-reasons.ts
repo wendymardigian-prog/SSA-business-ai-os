@@ -54,7 +54,7 @@ export function describeMatchReason(code: string, ctx: ReasonContext = {}): stri
         : "Lo que trae no coincide con ningún anuncio ni campaña del catálogo.";
     }
     case "name_without_id":
-      return "Solo trae nombres o etiquetas, sin ningún id. Dos campañas o anuncios pueden llamarse igual, así que no se vincula por nombre: elegilo a mano.";
+      return "Trae solo el nombre del anuncio, sin ningún id ni campaña: no alcanza para saber cuál es. Elegilo a mano (vale para todos los que lleguen igual).";
     case "fbclid_only":
       return "Solo trae el id de clic de Facebook: no alcanza para saber el anuncio.";
     case "organic_content":
@@ -100,7 +100,15 @@ export function describeMatchMethod(method: string | null | undefined): string |
     case "utm_campaign_id":
       return "por la campaña del enlace (era su id)";
     case "utm_campaign_name":
-      return "por el nombre de la campaña";
+      return "por el nombre de la campaña (único)";
+    case "utm_campaign_similar":
+      return "por parecido con el nombre de la campaña";
+    case "utm_content_similar_adset":
+      return "por parecido con el nombre del anuncio, dentro de su conjunto";
+    case "utm_content_similar_campaign":
+      return "por parecido con el nombre del anuncio, dentro de su campaña";
+    case "rule":
+      return "por una regla (lo elegiste para estos mismos UTMs)";
     case "manual":
       return "a mano";
     default:

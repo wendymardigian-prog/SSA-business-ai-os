@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from "vitest";
 import cases from "./channel.cases.json";
-import { CHANNEL_LABELS, TOUCH_CHANNELS, isOriginChannel, touchChannel, type TouchChannelInput } from "./channel";
+import mediumCases from "./effective-medium.cases.json";
+import { CHANNEL_LABELS, TOUCH_CHANNELS, effectiveTouchMedium, isOriginChannel, touchChannel, type TouchChannelInput } from "./channel";
 
 describe("touchChannel (casos compartidos con la funcion SQL)", () => {
   it("hay al menos 20 casos y todos traen los 15 campos de la funcion SQL", () => {
@@ -60,5 +61,17 @@ describe("CHANNEL_LABELS", () => {
   it("hay una etiqueta por canal", () => {
     expect(Object.keys(CHANNEL_LABELS).sort()).toEqual([...TOUCH_CHANNELS].sort());
     expect(CHANNEL_LABELS).toEqual({ organic: "Orgánico", paid: "Pauta", referral: "Referido", direct: "Directo" });
+  });
+});
+
+describe("effectiveTouchMedium (casos compartidos con private.touch_effective_medium, 00318)", () => {
+  it.each(mediumCases.cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(effectiveTouchMedium(c.medium, c.raw)).toBe(c.expected);
+  });
+
+  it("con el medium efectivo, el anuncio de un formulario es pauta y el link de la bio es organico", () => {
+    expect(touchChannel({ origin: "form", medium: effectiveTouchMedium("form", { utm: { utm_medium: "paid" } }), source: "meta" })).toBe("paid");
+    expect(touchChannel({ origin: "form", medium: effectiveTouchMedium("form", { utm: { utm_medium: "social" } }), source: "ig" })).toBe("organic");
+    expect(touchChannel({ origin: "form", medium: effectiveTouchMedium("form", null), source: "web" })).toBe("direct");
   });
 });

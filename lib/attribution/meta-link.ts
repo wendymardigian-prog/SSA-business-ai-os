@@ -90,7 +90,8 @@ export function metaLinkFromTouch(touch: MatchFields, names: MetaNames, options:
     },
     method: status === "matched" ? describeMatchMethod(touch.meta_match_method) : null,
     reasons: describeMatchReasons(touch.meta_match_reason),
-    autoIgnored: status === "ignored" && (touch.meta_match_reason ?? "").includes("organic_content"),
+    // Lo ignoro el sistema: por ser contenido organico, o por una regla «No es un anuncio» (00318), que se cambia en Reglas.
+    autoIgnored: status === "ignored" && ((touch.meta_match_reason ?? "").includes("organic_content") || touch.meta_match_method === "rule"),
   };
 }
 
