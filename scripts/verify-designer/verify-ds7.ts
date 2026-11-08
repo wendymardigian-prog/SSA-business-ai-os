@@ -12,7 +12,7 @@
 
 import { randomUUID } from "node:crypto";
 import { runDesignGenerate } from "../../lib/flow-engine/nodes/design-generate";
-import { formVariables } from "../../lib/forms/automation/variables";
+import { formVariables } from "../../lib/forms/automation/variables"; // @plantilla-quitar(formularios)
 import { DESIGN_STOP_HANDLE } from "../../lib/designer/automation/node-config";
 import { designFlowTemplate, FORM_NOT_CHOSEN_PROBLEM } from "../../lib/designer/automation/flow-template";
 import { loadEmailAttachments } from "../../lib/email/flow-attachments";
@@ -74,6 +74,7 @@ export default async function ds7(ctx: BlockContext): Promise<void> {
     if (error) throw new Error(`no pude crear la sesión: ${error.message}`);
     return data.id as string;
   };
+  // @plantilla-desde(formularios)
   // El formulario de prueba, publicado: «¿Cómo querés que aparezca tu nombre?» (clave `nombre_certificado`).
   const { data: form, error: formError } = await raw
     .from("forms")
@@ -114,10 +115,13 @@ export default async function ds7(ctx: BlockContext): Promise<void> {
       fieldKeys: ["nombre_certificado"],
       baseUrl: "https://app.ejemplo.test",
       publicBaseUrl: "https://app.ejemplo.test",
-    });
+    }) as unknown as Record<string, unknown>;
   };
+  // @plantilla-hasta(formularios)
+  // Sin el módulo Formularios (plantilla de estudiantes), las variables se arman como las dejaría el disparador.
+  // @plantilla-sin(formularios): const answerForm = async (answer: string, _contactId: string): Promise<Record<string, unknown>> => ({ answer: { nombre_certificado: answer } });
 
-  const context = (formVars: ReturnType<typeof formVariables>, contactId: string = contact.id): FlowExecutionContext => ({
+  const context = (formVars: Record<string, unknown>, contactId: string = contact.id): FlowExecutionContext => ({
     triggerId: "zz-test",
     flowId: flow!.id,
     channelId: "",

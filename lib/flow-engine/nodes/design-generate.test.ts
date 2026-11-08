@@ -241,8 +241,21 @@ describe("«Generar desde plantilla» nunca lanza (auditoría Ola 4)", () => {
     const { deps: d } = deps({ result: { ok: false, reason: "existing", existing: { designId: "d-viejo", code: "AAAA-BBBB-CCCC" } } });
     const context = ctx();
     expect(await run(db, { templateId: TPL }, d, context)).toBe("pause");
-    expect((context.variables as Record<string, unknown>)[DESIGN_PENDING_VAR]).toEqual({ n1: "d-viejo" });
+    expect((context.variables as Record<string, unknown>)[DESIGN_PENDING_VAR]).toEqual({ n1: "ajena:d-viejo" });
 
+    // Al volver: una pieza ajena solo se MIRA (nunca se renderiza acá); si ya está lista, sigue.
+    const render = vi.fn();
+    const back = ctx({ variables: { ...(context.variables as Record<string, unknown>) } as never });
+    const { deps: dBack } = deps({ runDesignRender: render as never });
+    expect(await run(db, { templateId: TPL }, dBack, back)).toBe("pause");
+    expect(render).not.toHaveBeenCalled();
+    db.tables.designs[0].status = "ready";
+    const back2 = ctx({ variables: { ...(back.variables as Record<string, unknown>) } as never });
+    expect(await run(db, { templateId: TPL }, dBack, back2)).toBeUndefined();
+    expect(render).not.toHaveBeenCalled();
+    expect((back2.variables as { design: { id: string; status: string } }).design).toMatchObject({ id: "d-viejo", status: "ready" });
+
+    db.tables.designs[0].status = "rendering";
     const { deps: d2 } = deps({ result: { ok: false, reason: "existing", existing: { designId: "d-viejo", code: "AAAA-BBBB-CCCC" } } });
     const context2 = ctx();
     expect(await run(db, { templateId: TPL, waitForPdf: false }, d2, context2)).toBeUndefined();

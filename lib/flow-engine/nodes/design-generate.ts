@@ -41,6 +41,8 @@ import { docTypeNoun, isDocType } from "@/lib/designer/verification";
 
 /** La generación que este paso está esperando (por paso), en las variables de la sesión. */
 export const DESIGN_PENDING_VAR = "__design_pending";
+/** Prefijo de una pieza pendiente que no creó este paso (ver `deferPending`). */
+const FOREIGN_PREFIX = "ajena:";
 
 type Db = NodeExecutionArgs["supabase"];
 
@@ -147,9 +149,11 @@ async function markFailed(db: Db, workspaceId: string, designId: string, error: 
  * Deja el paso para después (la MISMA generación queda pendiente). Si no se puede agendar el reintento, la generación
  * queda `failed` con el motivo y el camino termina: el paso nunca lanza.
  */
-async function deferPending(args: NodeExecutionArgs<DesignGenerateNodeData, ContactFlowContext>, design: DesignState, docType: string, deps: DesignGenerateDeps, retryAt: Date, message: string): Promise<string> {
+async function deferPending(args: NodeExecutionArgs<DesignGenerateNodeData, ContactFlowContext>, design: DesignState, docType: string, deps: DesignGenerateDeps, retryAt: Date, message: string, foreign = false): Promise<string> {
   const { supabase, context, node, sessionId } = args;
-  setPending(context, node.id, design.id);
+  // Una pieza que NO creó este paso («ya tenía una») se marca ajena: al volver solo se mira, nunca se renderiza (tiene su
+  // propio render en marcha; dos a la vez romperían «un solo reloj de reintentos»).
+  setPending(context, node.id, foreign ? `${FOREIGN_PREFIX}${design.id}` : design.id);
   await writeOutputs(supabase, context, { ...design, status: "queued" }, docType, deps);
   try {
     return await deferFlowNode(supabase, { nodeId: node.id, nodeType: DESIGN_GENERATE_TYPE, sessionId, context, retryAt, reason: "provider_retry", message });
@@ -205,8 +209,10 @@ export async function runDesignGenerate(args: NodeExecutionArgs<DesignGenerateNo
     const docType = docTypeOf(template);
 
     // Volver después de un render que falló: la MISMA generación, nunca otra.
-    const pendingId = pendingMap(context)[node.id];
-    if (pendingId) {
+    const pendingRaw = pendingMap(context)[node.id];
+    if (pendingRaw) {
+      const foreign = pendingRaw.startsWith(FOREIGN_PREFIX);
+      const pendingId = foreign ? pendingRaw.slice(FOREIGN_PREFIX.length) : pendingRaw;
       const design = await readDesign(supabase, context.workspaceId, pendingId);
       if (design === "error") return stop(context, "No se pudo leer el diseño generado.");
       if (!design) {
@@ -222,6 +228,16 @@ export async function runDesignGenerate(args: NodeExecutionArgs<DesignGenerateNo
         setPending(context, node.id, null);
         await writeOutputs(supabase, context, design, docType, deps);
         return stop(context, design.error || "No se pudo armar el PDF.");
+      }
+      if (foreign) {
+        // Ajena y todavía armándose: se vuelve a esperar (sin renderizarla); agotada la espera, el camino sigue con su
+        // estado real (el PDF todavía no está, pero la pieza es válida y su link funciona).
+        const retryAt = nextProviderRetry(context, node.id, deps.now());
+        if (retryAt) return await deferPending(args, design, docType, deps, retryAt, "El PDF de la pieza que ya tenía todavía se está armando.", true);
+        setPending(context, node.id, null);
+        await writeOutputs(supabase, context, design, docType, deps);
+        context.noteStep?.({ status: "ok", reason: "La pieza que ya tenía sigue armándose: el flujo siguió sin esperar más." });
+        return undefined;
       }
       return await renderNow(args, design, docType, deps);
     }
@@ -260,7 +276,7 @@ export async function runDesignGenerate(args: NodeExecutionArgs<DesignGenerateNo
         context.noteStep?.({ status: "ok", reason: `Ya tenía uno válido (código ${result.existing.code}): se usa ese.` });
         if (cfg.waitForPdf && existing.status !== "ready") {
           const retryAt = nextProviderRetry(context, node.id, deps.now());
-          if (retryAt) return await deferPending(args, existing, docType, deps, retryAt, "El PDF de la pieza que ya tenía todavía se está armando.");
+          if (retryAt) return await deferPending(args, existing, docType, deps, retryAt, "El PDF de la pieza que ya tenía todavía se está armando.", true);
         }
         await writeOutputs(supabase, context, existing, docType, deps);
         return undefined;

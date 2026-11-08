@@ -805,6 +805,15 @@ Auditor Opus de solo lectura, dos pasadas (8/11/2026 UTC). **Veredicto final: to
   - Decisión: un flujo que genera diseños con un disparador de formulario SIN formulario elegido no se publica (vacío = cualquier formulario: emitiría certificados por una encuesta). Solo aplica a flujos con «Generar desde plantilla».
   - Decisión: si el contacto ya tiene una pieza válida de esa plantilla (`reason: "existing"`), el flujo sigue con ESA (no se anula ni se emite otra).
 
+
+### Auditoría de la Ola 4 (F57–F60) — resultado final
+
+Auditor Opus de solo lectura, dos pasadas (8/11/2026 UTC). **Veredicto final: todo «cumple».**
+- **1ª pasada:** los criterios literales y V4 cumplían; una falla media (el paso podía lanzar: `return renderNow` sin `await` dentro del `try`, y `deferFlowNode` lanza si no puede guardar el reintento) y cuatro bajas (el verify sin un formulario de verdad, un render `skipped` dejaba la generación trabada, «ya tenía uno» decía siempre «Lista», el selector sin rótulos). Arregladas en `5023dba` y `e8266a6`.
+- **2ª pasada:** todo «cumple». Encontró una baja nueva (una pieza ajena pendiente podía renderizarse en paralelo con su propio render): arreglada al cierre, una pieza que no creó el paso solo se mira y se espera, con test.
+- **Pruebas:** `verify-designer ds7` 21/21; `verify-flow-runs` y `verify-flow-metrics` «Todo en orden»; caracterización de los adjuntos de Recursos intacta (un solo commit).
+- **Revisión visual del panel del nodo:** requiere abrir el lienzo de una automatización en la base real (el lienzo guarda un borrador): queda con la del editor en PENDIENTE.
+
 ### Ola 5
 
 #### X · Cierre (sesión principal + auditor)
