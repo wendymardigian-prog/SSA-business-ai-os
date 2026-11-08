@@ -37,6 +37,37 @@ describe("applyResponseFilters", () => {
   });
 });
 
+describe("el período del botón de fecha", () => {
+  const NOW = new Date("2026-11-07T15:00:00Z");
+
+  it("el Histórico no agrega nada", () => {
+    const { q, calls } = spy();
+    applyResponseFilters(q, { period: { period: "historico", from: null, to: null }, status: "all", contact: "all", page: 1 }, "UTC", NOW);
+    expect(calls).toEqual([]);
+  });
+
+  it("un atajo filtra desde su inicio", () => {
+    const { q, calls } = spy();
+    applyResponseFilters(q, { period: { period: "7d", from: null, to: null }, status: "all", contact: "all", page: 1 }, "UTC", NOW);
+    expect(calls[0]?.[0]).toBe("gte");
+    expect(calls[0]?.[1]).toBe("created_at");
+  });
+
+  it("un rango a medida va tal cual y le gana a los días de un link viejo", () => {
+    const { q, calls } = spy();
+    const from = "2026-11-01T03:00:00.000Z";
+    const to = "2026-11-03T02:59:59.999Z";
+    applyResponseFilters(q, { period: { period: "historico", from, to }, from: "2026-01-01", status: "all", contact: "all", page: 1 }, "UTC", NOW);
+    expect(calls).toEqual([["gte", "created_at", from], ["lte", "created_at", to]]);
+  });
+
+  it("con el Histórico, un link viejo con desde/hasta sigue filtrando", () => {
+    const { q, calls } = spy();
+    applyResponseFilters(q, { period: { period: "historico", from: null, to: null }, from: "2026-10-10", status: "all", contact: "all", page: 1 }, "UTC", NOW);
+    expect(calls).toEqual([["gte", "created_at", "2026-10-10T00:00:00.000Z"]]);
+  });
+});
+
 describe("formatInZone", () => {
   it("23:30 de Costa Rica se muestra como 23:30 del 10/10", () => {
     expect(formatInZone("2026-10-11T05:30:00Z", "America/Costa_Rica")).toMatch(/^10\/10\/2026.*23:30$/);

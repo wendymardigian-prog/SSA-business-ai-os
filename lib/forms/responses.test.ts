@@ -59,13 +59,31 @@ describe("answerToText", () => {
 describe("parseResponseFilters", () => {
   it("valida lo que viene de la URL", () => {
     expect(parseResponseFilters({ desde: "2026-10-01", hasta: "mal", estado: "spam", contacto: "sin", pagina: "3" })).toEqual({
+      period: { period: "historico", from: null, to: null },
       from: "2026-10-01",
       to: null,
       status: "spam",
       contact: "without",
+      q: "",
+      dims: {},
+      groupBy: null,
       page: 3,
     });
     expect(parseResponseFilters({ estado: "hack", pagina: "-2" })).toMatchObject({ status: "all", page: 1 });
+  });
+
+  it("el período arranca en el Histórico y lee el botón de fecha", () => {
+    expect(parseResponseFilters({}).period).toEqual({ period: "historico", from: null, to: null });
+    expect(parseResponseFilters({ range: "30d" }).period?.period).toBe("30d");
+  });
+
+  it("búsqueda, dimensiones y agrupar, validados", () => {
+    const f = parseResponseFilters({ q: "  ana  ", pais: "PE,AR,peru,__none,PE", fuente: "meta,ig", agrupar: "pais" });
+    expect(f.q).toBe("ana");
+    expect(f.dims).toEqual({ pais: ["PE", "AR", "__none"], fuente: ["meta", "ig"] });
+    expect(f.groupBy).toBe("pais");
+    expect(parseResponseFilters({ agrupar: "cualquiera" }).groupBy).toBeNull();
+    expect(parseResponseFilters({ q: "x".repeat(500) }).q).toHaveLength(100);
   });
 });
 

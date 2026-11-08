@@ -1252,6 +1252,15 @@ Un link de agenda (`/calendario/<usuario>/<evento>`) o de formulario (`/f/<slug>
 - **`robots.txt` tiene un grupo para los lectores de vista previa** (`lib/og/robots.ts`): pueden leer `/calendario/`, `/f/` y `/l/`, nunca `/calendario/agenda/` (ahi la URL es una credencial). Las paginas siguen con `noindex` y el resto de los robots sigue bloqueado.
 - **Una tarjeta nunca cambia por `?c=` ni `?preview=1`**: un link firmado no personaliza nada y un borrador no tiene tarjeta.
 
+# Respuestas de formularios: país, buscar, filtrar y agrupar (7/11/2026, sin migración)
+
+Barra en una fila (buscar, fecha, Filtros, Agrupar por, Columnas, Exportar), columna «País» del teléfono y resumen por país, fuente, medio, campaña o contenido. Detalle en [docs/formularios.md](docs/formularios.md) («Respuestas: país, buscar, filtrar y agrupar»).
+
+- **El país de un teléfono sale de `countryFromPhone`** (`lib/phone-country.ts`): prefijo más largo, +1 por código de área, +7 por 76/77. `lib/scheduling/phone-countries.ts` es otra cosa (la lista del selector).
+- **Tabla y CSV van por `loadFormResponses`**: estado, contacto y fecha en la consulta (RLS de quien mira); búsqueda, país y UTM en `filterIndex`. Si se cambia un filtro, se cambia ahí y los dos lo ven igual.
+- **Respuestas arranca en el Histórico** (`RESPONSES_DEFAULT_PERIOD`). `readDashboardPeriod` / `applyPeriodToParams` / `DashboardPeriodControl` aceptan `defaultPreset`; sin pasarlo, siguen en 30 días.
+- **Agrupar: la suma de los grupos es el total** (lo vacío va a `__none`).
+
 # Webhooks, atribucion y anuncios (Extra L, construido el 13/10/2026)
 
 Webhooks entrantes con flujos que arrancan sin contacto, atribucion que no pierde nada, catalogo de Meta, el vinculo de cada toque con su

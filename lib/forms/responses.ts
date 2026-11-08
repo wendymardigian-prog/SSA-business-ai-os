@@ -6,6 +6,9 @@
  * de un campo que ya no existe, con su etiqueta más reciente.
  */
 import type { FormField, FormType } from "./fields";
+import { readDashboardPeriod, type PeriodFilter } from "@/lib/dashboards/period-filter";
+import type { PeriodPreset } from "@/lib/dashboards/period";
+import { RESPONSE_DIMENSIONS, NO_VALUE, type DimensionFilters, type ResponseDimension } from "./response-index";
 
 export type SubmissionStatus = "received" | "no_contact" | "spam";
 
@@ -115,14 +118,51 @@ export function emailStatusLabel(status: string | null | undefined): string {
 }
 
 export interface ResponseFilters {
+  /**
+   * El período del botón de fecha (el mismo de los dashboards): `range`, o `from` y `to`. Sin nada,
+   * el Histórico (`RESPONSES_DEFAULT_PERIOD`).
+   */
+  period?: PeriodFilter;
+  /** Días civiles de los links viejos (`desde`/`hasta`, AAAA-MM-DD). Valen solo si el período no es un rango. */
   from?: string | null;
   to?: string | null;
   status?: SubmissionStatus | "all" | null;
   contact?: "with" | "without" | "all" | null;
+  /** Lo buscado. */
+  q?: string;
+  /** País (código ISO), fuente, medio, campaña y contenido: varios valores por dimensión. */
+  dims?: DimensionFilters;
+  /** Ver cuántas respuestas hay de cada valor, en vez de la lista. */
+  groupBy?: ResponseDimension | null;
   page: number;
 }
 
+/** Respuestas arranca mostrando todo: un formulario de una clase vive pocas semanas, y 30 días escondería lo viejo sin avisar. */
+export const RESPONSES_DEFAULT_PERIOD: PeriodPreset = "historico";
+
 const STATUSES = new Set<string>(["received", "no_contact", "spam"]);
+const MAX_SEARCH = 100;
+const MAX_VALUES = 30;
+const MAX_VALUE_LENGTH = 200;
+
+function dimensionValues(dimension: ResponseDimension, raw: string | undefined): string[] {
+  if (!raw) return [];
+  const values = raw
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v && v.length <= MAX_VALUE_LENGTH)
+    .filter((v) => dimension !== "pais" || v === NO_VALUE || /^[A-Z]{2}$/.test(v));
+  return [...new Set(values)].slice(0, MAX_VALUES);
+}
+
+/** Los parámetros de la URL de cada dimensión. */
+export const DIMENSION_PARAM: Record<ResponseDimension, string> = {
+  pais: "pais",
+  fuente: "fuente",
+  medio: "medio",
+  campana: "campana",
+  contenido: "contenido",
+};
 
 /** Los filtros de la URL, validados. */
 export function parseResponseFilters(params: Record<string, string | string[] | undefined>): ResponseFilters {
@@ -138,11 +178,21 @@ export function parseResponseFilters(params: Record<string, string | string[] | 
   const contact = one("contacto");
   // `page` es el que usa la paginación del dashboard; `pagina` queda como alias.
   const page = Number(one("page") ?? one("pagina"));
+  const group = one("agrupar");
+  const dims: DimensionFilters = {};
+  for (const dimension of RESPONSE_DIMENSIONS) {
+    const values = dimensionValues(dimension, one(DIMENSION_PARAM[dimension]));
+    if (values.length) dims[dimension] = values;
+  }
   return {
+    period: readDashboardPeriod(params, RESPONSES_DEFAULT_PERIOD),
     from: date("desde"),
     to: date("hasta"),
     status: status && STATUSES.has(status) ? (status as SubmissionStatus) : "all",
     contact: contact === "con" ? "with" : contact === "sin" ? "without" : "all",
+    q: (one("q") ?? "").trim().slice(0, MAX_SEARCH),
+    dims,
+    groupBy: group && (RESPONSE_DIMENSIONS as readonly string[]).includes(group) ? (group as ResponseDimension) : null,
     page: Number.isInteger(page) && page >= 1 ? page : 1,
   };
 }
