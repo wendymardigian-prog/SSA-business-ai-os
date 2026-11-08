@@ -131,6 +131,12 @@ async function handleWebhook(request: NextRequest) {
   // no se haya movido. Sin canal conocido queda el token del entorno, que es
   // lo que se validaba siempre.
   const expected = await getEvolutionWebhookToken(supabase, channel?.workspace_id ?? null);
+  // Una instancia que no es nuestra y sin token del entorno contra el cual mirarla: no hay nada que proteger (no se
+  // procesa ni se escribe nada), asi que se ignora con 200. Con un 500, Evolution reintentaba cada aviso 10 veces
+  // (pasó el 8/11/2026 con una conexión vieja del mismo número que seguía apuntando acá).
+  if (!channel && !expected) {
+    return NextResponse.json({ ok: true, skipped: "instancia desconocida" });
+  }
   if (!expected) {
     console.error("[evolution] no hay token de webhook ni en Vault ni en el entorno");
     return NextResponse.json({ error: "Webhook no configurado" }, { status: 500 });
