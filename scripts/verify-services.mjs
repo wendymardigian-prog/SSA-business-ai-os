@@ -68,6 +68,15 @@ function sql(query) {
     }
   }
 }
+/** Como sql(), pero si falla anota la falla con el error completo y devuelve null (no corta la verificacion). */
+function sqlErrOrRows(query, label) {
+  try {
+    return sql(query);
+  } catch (e) {
+    fail(`${label}: la consulta fallo`, `${e.stderr ?? ""}${e.stdout ?? ""}`.replace(/\s+/g, " ").slice(0, 600));
+    return null;
+  }
+}
 function sqlErr(query) {
   try {
     sql(query);
@@ -422,8 +431,12 @@ try {
     check(Object.keys(items()).length === 4 && Number(progress()) === 0, "con sus cuatro pasos pendientes y el avance en 0", JSON.stringify(items()));
 
     const itemId = (k) => sql(`SELECT id FROM app_servicio.service_items WHERE service_id = ${lit(sJ)} AND template_key = ${lit(k)}`)[0]?.id;
+    // asUser corre en una transaccion que se deshace: aca se prueba que la base LE PERMITE tildarlo (devuelve true);
+    // despues se tilda de verdad para probar el avance.
     const doneByMember = asUser(member.id, `SELECT app_servicio.svc_complete_item(${lit(itemId("it_aaaaa2"))}) r`);
-    check(doneByMember.ok && items().it_aaaaa2.status === "completed", "el responsable (Member) tilda un paso de su servicio", doneByMember.error);
+    check(doneByMember.ok && doneByMember.row?.r === true, "el responsable (Member) puede tildar un paso a su cargo", doneByMember.error ?? JSON.stringify(doneByMember.row));
+    sql(`SELECT app_servicio.svc_complete_item(${lit(itemId("it_aaaaa2"))})`);
+    check(items().it_aaaaa2.status === "completed", "el paso queda completado");
     check(Number(progress()) > 0, "el avance lo calcula la base (progress_pct)", String(progress()));
     const notMine = asUser(member2.id, `SELECT app_servicio.svc_complete_item(${lit(itemId("it_aaaaa1"))}) r`);
     check(!notMine.ok, "un Member que no ve el servicio no puede tildar sus pasos", notMine.error);
@@ -468,11 +481,11 @@ try {
       console.log("\nsv2 · Un enganche que falla no tumba lo que lo origina");
       // Se rompe el modulo adentro de una transaccion que se deshace: el insert/update tiene que pasar igual.
       const forced = (label, statement, entity) => {
-        const r = sql(`BEGIN;
+        const r = sqlErrOrRows(`BEGIN;
           ALTER TABLE app_servicio.service_items RENAME TO service_items_zz_forzado;
           ${statement};
           SELECT (SELECT count(*)::int FROM public.audit_log WHERE workspace_id = ${lit(ws.id)} AND action = 'svc.hook_failed' AND changes ->> 'hook' = ${lit(entity)}) AS n;
-          ROLLBACK;`);
+          ROLLBACK;`, label);
         return r;
       };
       const rows = (r) => r?.[0]?.n ?? -1;
@@ -483,6 +496,17 @@ try {
       check(rows(forced("reunion", `INSERT INTO public.bookings (workspace_id, uid, event_type_id, host_user_id, contact_id, title, start_at, end_at, origin, status)
         VALUES (${lit(ws.id)}, 'zz-test-forzado', ${lit(evt.id)}, ${lit(owner.id)}, ${lit(cJ.id)}, 'zz-test', ${lit(start2.toISOString())}::timestamptz, ${lit(new Date(start2.getTime() + 3_600_000).toISOString())}::timestamptz, 'manual', 'scheduled')`, "booking")) >= 1,
         "una reunion se agenda aunque el modulo falle");
+      {
+        // La venta: su enganche lee services. Con la tabla rota, cancelar la venta tiene que pasar igual.
+        const cSale = await newContact("venta con modulo roto");
+        const saleX = await createSale(cSale.id, vPlain.id, [sched("full", 1000)], { financing_type: "full" });
+        const r = sqlErrOrRows(`BEGIN;
+          ALTER TABLE app_servicio.services RENAME TO services_zz_forzado;
+          UPDATE public.sales SET status = 'cancelled', cancelled_at = now(), cancellation_reason = 'zz-test' WHERE id = ${lit(saleX)};
+          SELECT (SELECT status FROM public.sales WHERE id = ${lit(saleX)}) AS st;
+          ROLLBACK;`, "venta");
+        check(r?.[0]?.st === "cancelled", "una venta se cancela aunque el modulo falle", JSON.stringify(r));
+      }
       if (taskId) {
         check(rows(forced("tarea", `UPDATE public.tasks SET status = 'completed', completed_at = now() WHERE id = ${lit(taskId)}`, "task")) >= 1, "una tarea se completa aunque el modulo falle");
       }

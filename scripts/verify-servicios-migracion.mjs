@@ -198,6 +198,10 @@ function verifyGlobal() {
     seen.add(h.tgname + h.proname);
     check(/app_servicio\.module_on\s*\(/.test(h.def), `${h.tgname} sale sin hacer nada con el modulo apagado (llama a app_servicio.module_on)`);
     check(/EXCEPTION\s+WHEN\s+OTHERS/i.test(h.def), `${h.tgname} no hace fallar lo que lo dispara (EXCEPTION WHEN OTHERS)`);
+    // Un tipo de tabla del modulo en el DECLARE se resuelve al entrar, ANTES del bloque que atrapa los errores:
+    // un problema con esa tabla haria fallar la operacion de BAIOS. Se declara `record` (lo atrapo verify-services sv2).
+    const declare = (h.def.match(/\bDECLARE\b([\s\S]*?)\bBEGIN\b/i)?.[1] ?? "").replace(/--.*$/gm, "");
+    check(!/\bapp_servicio\.\w+\s*(%ROWTYPE)?\s*;/i.test(declare), `${h.tgname} no declara variables con tipos de tablas del modulo`);
   }
 
   // Ninguna tabla nueva en public (las 14 de A1 viven en los esquemas del modulo).

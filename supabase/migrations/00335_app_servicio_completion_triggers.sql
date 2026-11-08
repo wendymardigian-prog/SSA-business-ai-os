@@ -204,8 +204,10 @@ CREATE TRIGGER trg_app_servicio_signature
 CREATE OR REPLACE FUNCTION app_servicio.booking_hook()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
+  -- `record` y no el tipo de la tabla del modulo: un tipo se resuelve al ENTRAR a la funcion, antes del bloque que
+  -- atrapa los errores, y un problema con la tabla haria fallar la operacion de BAIOS (verify-services, sv2).
   v_when text;
-  it app_servicio.service_items;
+  it record;
   v_count integer;
   v_signed uuid;
   v_prev_system text := COALESCE(current_setting('app_servicio.system', true), '');

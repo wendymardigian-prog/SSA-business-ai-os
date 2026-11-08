@@ -60,6 +60,8 @@ Formato: **qué quedó · por qué · qué se decidió**. Lo que encontró la ex
 - **La 00332 se corrigió el mismo día.** · `verify-services` encontró que los validadores de la configuración (`validate_service_settings`, `validate_journey_template` y los del portal) hacían `v || 'texto'` sobre una lista `text[]`: Postgres lo lee como pegar dos listas y falla con `22P02`. Ninguna pantalla los usaba todavía y el módulo está apagado. · Se agregó `::text` a los 59 textos, se ensayó sobre la base, se reaplicó la migración entera (es idempotente y ninguna migración posterior redefine sus funciones) y se actualizó el SQL registrado. Mismo criterio que la 00231 y la 00259.
 - **La CLI de Supabase a veces no puede abrir su rol temporal** (`28P01`, «failed to connect as temp role») cuando se le piden muchas consultas seguidas. · Cortó una pasada de `verify-sales` y otra de `verify-services`. · `verify-services` reintenta solo ese error (hasta 5 veces, con espera creciente); los demás `verify-*` se repiten si pasa.
 
+- **La 00334 y la 00335 se corrigieron el mismo día (un enganche que no atrapaba un error).** · `verify-services` sv2 rompe adrede una tabla del módulo dentro de una transacción que se deshace, y la reunión NO se agendaba: `booking_hook` (y `sale_hook`) declaraban variables con el tipo de una tabla del módulo, y Postgres resuelve esas declaraciones al entrar a la función, antes del bloque `EXCEPTION`. · Se declaran como `record`; se ensayaron, se reaplicaron (son idempotentes) y se actualizó su SQL registrado. `verify-servicios-migracion` suma un chequeo que falla si un enganche vuelve a declarar un tipo del módulo, y `verify-services` prueba también la venta cancelada con el módulo roto. Ningún dato cambió (el módulo está apagado en todos los negocios).
+
 ## Decisiones de PRD (8/11)
 
 - **Ajustes › Productos cambia solo con el módulo prendido.** · F114 rediseña la lista, el producto y la variante, pero «con el módulo apagado no cambia nada». · Apagado, la lista y la ficha son las de siempre (sin tocar una línea); prendido, tarjetas → producto → variante. La ruta de la variante con el módulo apagado muestra solo «Precio y cobro».
@@ -68,6 +70,12 @@ Formato: **qué quedó · por qué · qué se decidió**. Lo que encontró la ex
 - **El link «Editar el contenido en Portal › programa»** apunta a `/dashboard/portal`, que llega con el bloque AC.
 - **«Nota de precios deprecados»** de la página del producto no existe: no hay versiones de precio (D12).
 - **`lib/publishing/disconnect-networks.test.ts` es inestable con la suite completa** (pasa solo; a veces falla por tiempo cuando corre todo junto). No es de esta rama.
+
+## Decisiones de SV3 (8/11)
+
+- **Clientes lee directo de las tablas, sin las vistas `services_list` / `clients_list` / `service_detail`.** · El plan las ponía en S04 (00333), que ya estaba aplicada; sumarlas hubiera sido otra migración fuera de la numeración. · Se lee con el cliente de quien mira (la RLS decide igual que una vista `security_invoker`), en tandas: una página de servicios y después sus contactos, fases y responsables en una consulta cada uno. Si hace falta velocidad, las vistas van en una migración propia.
+- **«Clientes» va en el grupo Ventas del menú, no en un grupo «Servicios» nuevo.** · Un grupo nuevo cambia el orden de los grupos que fijan seis tests del menú (plano formularios-ui) aunque quede vacío. · Va al final de Ventas y solo se ve con el módulo prendido (bandera `services`). Se extendieron dos tests: la lista de ítems de `items.test.ts` (como se hizo con Diseñador IA) y la bandera del Admin en `active.test.ts`. «Portal» se suma igual en AC.
+- **Los filtros «Accesos por vencer» y «Entregas por revisar»** responden vacío hasta que existan los accesos (AC) y las entregas (EV).
 
 ## Pasos manuales de Wendy
 
