@@ -81,7 +81,7 @@ export async function extractStyleRequest(db: Db, input: ExtractRequest, deps: E
 
   // Los diseños elegidos se dibujan con el servicio de render (una sola página, la primera).
   for (const id of input.designIds) {
-    const { data } = await db.from("designs").select("id, name, doc").eq("id", id).eq("workspace_id", input.workspaceId).maybeSingle();
+    const { data } = await db.from("designs").select("id, name, doc").eq("id", id).eq("workspace_id", input.workspaceId).is("template_id", null).maybeSingle();
     if (!data) return fail("Uno de los diseños elegidos ya no existe.");
     const parsed = parseDesignDoc(data.doc);
     if (!parsed.ok) return fail(`El diseño «${data.name}» no se puede leer.`);
