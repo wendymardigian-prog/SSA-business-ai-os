@@ -43,7 +43,7 @@ function storage() {
 const serviceClient = () => ({ ...db.client, storage: storage() });
 const authedClient = () => ({ ...db.client, storage: storage() });
 
-import { archiveDesign, createDesign, deleteDesign, listUploadedImages, renameDesign, saveDesignDoc, signDesignAssetUrls, uploadDesignImageAction } from "./designs";
+import { archiveDesign, createDesign, deleteDesign, listUploadedImages, renameDesign, saveDesignDoc, signDesignAssetUrls, updateTemplateSettings, uploadDesignImageAction } from "./designs";
 
 beforeEach(() => {
   asked.length = 0;
@@ -201,5 +201,48 @@ describe("permisos de cada acción (las tres capas: acá, la de la acción)", ()
     allowed = new Set(["designer.view", "designer.edit", "designer.manage"]);
     expect(await deleteDesign({ kind: "design", id: "d1" })).toMatchObject({ ok: true });
     expect(db.tables.designs).toHaveLength(0);
+  });
+});
+
+describe("la configuración de una plantilla: «Permitir descargar» pide designer.publish (§4.1)", () => {
+  const seedTemplate = () => {
+    db = memoryDb({ designs: [], design_templates: [{ id: "t1", workspace_id: WS, name: "Constancia", format: "carta_h", doc: { v: 1 }, rev: 1, verify: false, doc_type: null, doc_type_label: null, date_format: "long", allow_download: true, custom_vars: [], archived_at: null }], design_versions: [], audit_log: [], ai_threads: [] });
+  };
+
+  it("con designer.edit pero sin designer.publish, cambiar la descarga se rechaza y no escribe", async () => {
+    seedTemplate();
+    const out = await updateTemplateSettings({ id: "t1", allow_download: false });
+    expect(out).toMatchObject({ ok: false });
+    expect(asked).toContain("designer.publish");
+    expect(db.tables.design_templates[0].allow_download).toBe(true);
+  });
+
+  it("con designer.publish alcanza para la descarga (no pide designer.edit)", async () => {
+    seedTemplate();
+    allowed = new Set(["designer.view", "designer.publish"]);
+    expect(await updateTemplateSettings({ id: "t1", allow_download: false })).toMatchObject({ ok: true });
+    expect(asked).not.toContain("designer.edit");
+    expect(db.tables.design_templates[0].allow_download).toBe(false);
+  });
+
+  it("«Se puede verificar», el tipo y las fechas siguen pidiendo designer.edit, no designer.publish", async () => {
+    seedTemplate();
+    allowed = new Set(["designer.view", "designer.publish"]);
+    expect(await updateTemplateSettings({ id: "t1", date_format: "short" })).toMatchObject({ ok: false });
+    expect(await updateTemplateSettings({ id: "t1", verify: true, doc_type: "certificado" })).toMatchObject({ ok: false });
+    expect(db.tables.design_templates[0].date_format).toBe("long");
+    allowed = new Set(["designer.view", "designer.edit"]);
+    asked.length = 0;
+    expect(await updateTemplateSettings({ id: "t1", date_format: "short" })).toMatchObject({ ok: true });
+    expect(asked).toEqual(["designer.edit"]);
+  });
+
+  it("un pedido que toca las dos cosas pide las dos claves", async () => {
+    seedTemplate();
+    expect(await updateTemplateSettings({ id: "t1", date_format: "en", allow_download: false })).toMatchObject({ ok: false });
+    expect(db.tables.design_templates[0]).toMatchObject({ date_format: "long", allow_download: true });
+    allowed = new Set(["designer.view", "designer.edit", "designer.publish"]);
+    expect(await updateTemplateSettings({ id: "t1", date_format: "en", allow_download: false })).toMatchObject({ ok: true });
+    expect(db.tables.design_templates[0]).toMatchObject({ date_format: "en", allow_download: false });
   });
 });
