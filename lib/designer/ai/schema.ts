@@ -64,6 +64,8 @@ const opSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("update"), id: z.string().min(1).max(40), set: z.record(z.string(), z.unknown()) }),
   z.object({ op: z.literal("remove"), id: z.string().min(1).max(40) }),
   z.object({ op: z.literal("reorder"), ids: z.array(z.string().min(1).max(40)).max(200) }),
+  /** Cambia el TEXTO de un nodo marcado (`tx`) de un bloque HTML cargado (`id` = el elemento html). Texto plano, nunca HTML. */
+  z.object({ op: z.literal("updateText"), id: z.string().min(1).max(40), tx: z.string().min(1).max(20), text: z.string().max(2000) }),
 ]);
 export type PatchOp = z.infer<typeof opSchema>;
 

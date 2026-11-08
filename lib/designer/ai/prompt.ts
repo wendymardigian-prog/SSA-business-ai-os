@@ -19,6 +19,7 @@
 import type { ContentAiContext } from "../contracts";
 import type { DesignDoc } from "../doc/schema";
 import { formatOf, isPrintFormat, type FormatKey } from "../formats";
+import { listEditableTexts } from "../import/mark-text";
 import { wordsPerPage, type DesignStyle } from "../styles";
 import type { VariableGroup } from "../variables/catalog";
 import { designRules, COVER_IMAGE_FORMATS } from "./rules";
@@ -117,6 +118,11 @@ export function buildSystemPrompt(input: PromptInput): string {
   lines.push(`FUENTES PERMITIDAS (usá solo estas, escritas igual): ${input.allowedFonts.join(", ")}.`);
   lines.push("");
   lines.push(MODE_INSTRUCTIONS[input.mode]);
+  if (input.mode !== "first" && input.doc?.pages.some((p) => p.elements.some((e) => e.type === "html"))) {
+    lines.push(
+      "El documento tiene bloques HTML cargados (type html): no ves su HTML y no se editan con update. SOLO podés cambiar el texto de un nodo marcado con la operación updateText {id: el elemento html, tx: la marca, text: el texto nuevo}, usando la lista «textos-html». El texto es plano: nunca escribas HTML ni etiquetas.",
+    );
+  }
   if (input.mode === "first" && COVER_IMAGE_FORMATS.includes(input.format)) {
     lines.push("Si hay imágenes adjuntas, la primera va de fondo de la portada (background type image con su overlay); decidí si repetirla o variar en las demás páginas.");
   }
@@ -132,12 +138,36 @@ export function docForPrompt(doc: DesignDoc): string {
   for (const page of slim.pages) {
     for (const el of page.elements) {
       if (el.type === "html") {
-        el.html = "[HTML cargado: no se edita desde acá]";
+        el.html = "[HTML cargado: no se ve acá; sus textos editables van en la lista «textos-html»]";
         delete el.css;
       }
     }
   }
   return JSON.stringify(slim);
+}
+
+/** Cuántos textos de bloques HTML cargados se le muestran a la IA, y el largo de cada uno. */
+export const MAX_HTML_TEXTS = 150;
+export const MAX_HTML_TEXT_CHARS = 200;
+
+/**
+ * Los textos editables de los bloques HTML cargados, uno por línea: `elemento · tx · "texto actual"`. Es lo único que la IA
+ * ve de un bloque cargado (no su HTML). `null` si el documento no tiene bloques HTML con textos marcados.
+ */
+export function htmlTextsList(doc: DesignDoc | undefined): { lines: string[]; total: number } | null {
+  if (!doc) return null;
+  const all: string[] = [];
+  for (const page of doc.pages) {
+    for (const el of page.elements) {
+      if (el.type !== "html") continue;
+      for (const t of listEditableTexts(el.html)) {
+        const text = t.text.replace(/\s+/g, " ").trim();
+        if (!text) continue;
+        all.push(`${el.id} · ${t.id} · ${JSON.stringify(text.length > MAX_HTML_TEXT_CHARS ? `${text.slice(0, MAX_HTML_TEXT_CHARS - 1)}…` : text)}`);
+      }
+    }
+  }
+  return all.length ? { lines: all.slice(0, MAX_HTML_TEXTS), total: all.length } : null;
 }
 
 function scopeLine(scope: PatchScope | undefined): string | null {
@@ -198,6 +228,12 @@ export function buildUserPrompt(input: PromptInput): string {
   if (scope) parts.push(scope);
 
   if (input.doc && input.mode !== "first") parts.push(`Documento actual (JSON):\n${dataBlock("documento", n, docForPrompt(input.doc))}`);
+
+  const htmlTexts = input.mode === "first" ? null : htmlTextsList(input.doc);
+  if (htmlTexts) {
+    const more = htmlTexts.total > htmlTexts.lines.length ? `\n(y ${htmlTexts.total - htmlTexts.lines.length} textos más que no se muestran)` : "";
+    parts.push(`Textos de los bloques HTML cargados (elemento · tx · texto actual). Para cambiar uno, usá la operación updateText con el elemento y el tx:\n${dataBlock("textos-html", n, htmlTexts.lines.join("\n") + more)}`);
+  }
 
   if (input.history?.length) {
     const rows = input.history.map((m) => `${m.role === "user" ? "Persona" : "IA"}: ${m.content.slice(0, 400)}`).join("\n");

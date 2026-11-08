@@ -320,7 +320,7 @@ async function work(ctx: WorkContext): Promise<AiGenerateOutcome> {
       return ctx.fail("invalid", "No pude aplicar ese cambio", run.runId);
     }
     // Lo que se guarda es lo que devuelve la limpieza: nada de HTML que no estuviera ya en el diseño.
-    const valid = { ok: true as const, doc: sanitizeAiDoc(parsedMerge.doc, mine).doc };
+    const valid = { ok: true as const, doc: sanitizeAiDoc(parsedMerge.doc, mine, target.workspaceId).doc };
     if (payload.mode === "style") {
       // Para poder volver atrás: el diseño de antes queda como versión.
       await insertVersion(db, { workspaceId: target.workspaceId, kind: target.kind, id: target.id, doc: mine, reason: "manual", authorKind: "user", authorId: payload.userId ?? null, createdBy: payload.userId ?? null });

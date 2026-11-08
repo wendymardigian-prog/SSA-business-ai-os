@@ -145,7 +145,7 @@ async function leaveGreeting(
     const variables = input.kind === "template" ? ", convertí partes en variables" : "";
     await appendMessage(service, thread, {
       role: "assistant",
-      content: `Cargué ${input.record.fileName}: ${what}. Guardé las imágenes y las fuentes${removed}. Tocá cualquier texto para editarlo${variables} o pedime cambios acá.`,
+      content: `Cargué ${input.record.fileName}: ${what}. Guardé las imágenes y las fuentes${removed}. Tocá cualquier texto para editarlo${variables} o pedime cambios en los textos acá.`,
       context: { scope: {} },
       result: { changed_pages: [], summary: "Cargó el archivo" },
     });

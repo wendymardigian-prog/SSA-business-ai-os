@@ -17,6 +17,7 @@
  */
 
 import { MAX_PAGES } from "../formats";
+import { replaceNodeText } from "../import/mark-text";
 import { newId, type DesignDoc, type DesignPage } from "../doc/schema";
 import type { AiElement, AiPage, DesignPatch, PatchOp } from "./schema";
 
@@ -79,6 +80,24 @@ function applyOps(page: Page, ops: readonly PatchOp[], problems: string[], where
         continue;
       }
       page.elements.splice(idx, 1);
+    } else if (op.op === "updateText") {
+      const idx = page.elements.findIndex((e) => e.id === op.id);
+      const el = idx < 0 ? undefined : page.elements[idx];
+      if (!el) {
+        problems.push(`${where}: no existe el elemento ${op.id}`);
+        continue;
+      }
+      if (el.type !== "html") {
+        problems.push(`${where}: el elemento ${op.id} no es un bloque HTML cargado (su texto se cambia con update)`);
+        continue;
+      }
+      // Cambia SOLO ese nodo; el texto es plano: un `<` se escapa (nunca se convierte en una etiqueta).
+      const html = replaceNodeText(el.html, op.tx, op.text);
+      if (html === null) {
+        problems.push(`${where}: el bloque ${op.id} no tiene ningún texto marcado «${op.tx}»`);
+        continue;
+      }
+      page.elements[idx] = { ...el, html };
     } else if (op.op === "reorder") {
       const byId = new Map(page.elements.map((e) => [e.id, e]));
       const missing = op.ids.filter((id) => !byId.has(id));
