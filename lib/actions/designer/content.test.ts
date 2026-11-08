@@ -8,11 +8,11 @@ import { MemoryDb } from "@/lib/designer/testing/memory-db";
 import { DESIGN, POST, USER, WS, world } from "@/lib/designer/testing/content-fixtures";
 
 const state: { keys: string[]; role: string; db: MemoryDb; sessionDb: MemoryDb } = { keys: [], role: "member", db: world(), sessionDb: world() };
-const startAi = vi.fn(async () => ({ ok: true as const, data: { threadId: "t", messageId: "m" } }));
+const startAi = vi.fn(async (_input: unknown) => ({ ok: true as const, data: { threadId: "t", messageId: "m" } }));
 
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => state.db.client }));
-vi.mock("@/lib/actions/designer/ai", () => ({ startAiDesign: (input: unknown) => startAi(input as never) }));
+vi.mock("@/lib/actions/designer/ai", () => ({ startAiDesign: (input: unknown) => startAi(input) }));
 vi.mock("@/lib/auth/guards", () => ({
   getPermissionContext: async () => ({
     workspace: { id: WS, design_settings: {}, name: "Academia Ejemplo", brand_name: null, brand_color: null },

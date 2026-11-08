@@ -21,7 +21,7 @@ import { canWritePost } from "@/lib/content/piece-drawer";
 import { createServiceClient } from "@/lib/supabase/server";
 import { startAiDesign } from "@/lib/actions/designer/ai";
 import { pieceChoices, type PieceChoice, type PieceRow } from "@/lib/designer/content-pieces";
-import { describeLink, designFromPieceCore, keepPieceFilesCore, loadModalData, syncToPieceCore, unlinkCore, useInContentCore, type LinkEnv } from "@/lib/designer/content-link";
+import { describeLink, designFromPieceCore, keepPieceFilesCore, loadModalData, syncToPieceCore, unlinkCore, linkToContentCore, type LinkEnv } from "@/lib/designer/content-link";
 import type { ContentLinkInfo, DesignFromPieceData, SyncToPieceData, UseInContentData, UseInContentModalData } from "@/lib/designer/content-link-types";
 import type { ActionResult, UseInContentInput } from "@/lib/designer/contracts";
 import { parseDesignSettings } from "@/lib/designer/settings-schema";
@@ -59,7 +59,7 @@ async function guarded<T>(run: (s: { ctx: Ctx; env: LinkEnv }) => Promise<Action
 /** «Usar en contenido» (F63): crea una pieza nueva en Borrador o vincula una existente, y encola `design_content_sync`. */
 export async function useInContent(input: UseInContentInput): Promise<ActionResult<UseInContentData>> {
   return guarded(async ({ env }) => {
-    const result = await useInContentCore(env, input);
+    const result = await linkToContentCore(env, input);
     if (result.ok) {
       revalidatePath(CONTENT_PATH);
       revalidatePath("/dashboard/disenos");

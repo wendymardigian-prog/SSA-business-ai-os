@@ -10,7 +10,7 @@ import {
   pieceHref,
   syncToPieceCore,
   unlinkCore,
-  useInContentCore,
+  linkToContentCore,
   type LinkEnv,
 } from "./content-link";
 import { DESIGN, POST, USER, WS, docWithPages, mediaOf, networksOf, post, world } from "./testing/content-fixtures";
@@ -51,7 +51,7 @@ describe("«Usar en contenido» → crear una pieza nueva (F63)", () => {
     const db = unlinked();
     db.rows("content_posts").length = 0;
     const queue = enqueue();
-    const out = await useInContentCore(env(db), input(), { enqueue: queue as never });
+    const out = await linkToContentCore(env(db), input(), { enqueue: queue as never });
 
     expect(out.ok).toBe(true);
     const created = db.rows("content_posts")[0];
@@ -67,7 +67,7 @@ describe("«Usar en contenido» → crear una pieza nueva (F63)", () => {
   it("con varias redes, la primera es la principal y las demás viajan en el pedido del job", async () => {
     const db = unlinked();
     const queue = enqueue();
-    await useInContentCore(env(db), input({ networks: [{ platform: "instagram", format: "carousel" }, { platform: "linkedin", format: "pdf" }, { platform: "threads", format: "carousel" }] }), { enqueue: queue as never });
+    await linkToContentCore(env(db), input({ networks: [{ platform: "instagram", format: "carousel" }, { platform: "linkedin", format: "pdf" }, { platform: "threads", format: "carousel" }] }), { enqueue: queue as never });
 
     const created = db.rows("content_posts").find((p) => p.title === "Mi pieza nueva")!;
     expect((created.networks as Array<{ platform: string; format: string }>).map((n) => [n.platform, n.format])).toEqual([["instagram", "carousel"], ["linkedin", "pdf"], ["threads", "carousel"]]);
@@ -79,7 +79,7 @@ describe("«Usar en contenido» → crear una pieza nueva (F63)", () => {
     const db = unlinked();
     db.rows("content_posts")[0].status = "draft";
     db.rows("content_posts")[0].position = 40;
-    await useInContentCore(env(db), input({ title: "   " }), { enqueue: enqueue() as never });
+    await linkToContentCore(env(db), input({ title: "   " }), { enqueue: enqueue() as never });
 
     const created = db.rows("content_posts").find((p) => p.id !== POST)!;
     expect(created.title).toBe("Carrusel de prueba");
@@ -88,7 +88,7 @@ describe("«Usar en contenido» → crear una pieza nueva (F63)", () => {
 
   it("no acepta una red que no sirve para el diseño, repetida, vacía o de más", async () => {
     const db = unlinked();
-    const run = (networks: Array<{ platform: string; format: string }>) => useInContentCore(env(db), input({ networks }), { enqueue: enqueue() as never });
+    const run = (networks: Array<{ platform: string; format: string }>) => linkToContentCore(env(db), input({ networks }), { enqueue: enqueue() as never });
 
     expect(await run([])).toEqual({ ok: false, error: "Elegí al menos una red." });
     expect(await run([{ platform: "instagram", format: "reel" }])).toEqual({ ok: false, error: "Una de las redes elegidas no sirve para este diseño." });
@@ -102,26 +102,26 @@ describe("«Usar en contenido» → crear una pieza nueva (F63)", () => {
   it("un título larguísimo se rechaza", async () => {
     const db = unlinked();
 
-    expect(await useInContentCore(env(db), input({ title: "x".repeat(201) }), { enqueue: enqueue() as never })).toEqual({ ok: false, error: "El título va de 1 a 200 caracteres." });
+    expect(await linkToContentCore(env(db), input({ title: "x".repeat(201) }), { enqueue: enqueue() as never })).toEqual({ ok: false, error: "El título va de 1 a 200 caracteres." });
   });
 
   it("un formato de diseño que no va a redes (carta A4) no se usa en contenido", async () => {
     const db = unlinked({ format: "a4_v" });
 
-    expect(await useInContentCore(env(db), input(), { enqueue: enqueue() as never })).toEqual({ ok: false, error: "Este formato de diseño no se publica en redes." });
+    expect(await linkToContentCore(env(db), input(), { enqueue: enqueue() as never })).toEqual({ ok: false, error: "Este formato de diseño no se publica en redes." });
   });
 
   it("un diseño que no existe, archivado o una pieza emitida desde una plantilla", async () => {
-    expect(await useInContentCore(env(unlinked()), { ...input(), designId: "otro" })).toEqual({ ok: false, error: "No encontramos este diseño." });
-    expect((await useInContentCore(env(unlinked({ design: { archived_at: "2026-11-01T00:00:00Z" } })), input())).ok).toBe(false);
-    expect((await useInContentCore(env(unlinked({ design: { template_id: "t" } })), input())).ok).toBe(false);
+    expect(await linkToContentCore(env(unlinked()), { ...input(), designId: "otro" })).toEqual({ ok: false, error: "No encontramos este diseño." });
+    expect((await linkToContentCore(env(unlinked({ design: { archived_at: "2026-11-01T00:00:00Z" } })), input())).ok).toBe(false);
+    expect((await linkToContentCore(env(unlinked({ design: { template_id: "t" } })), input())).ok).toBe(false);
   });
 
   it("un diseño de otro negocio no se ve", async () => {
     const db = unlinked();
     db.rows("designs")[0].workspace_id = "otro";
 
-    expect(await useInContentCore(env(db), input())).toEqual({ ok: false, error: "No encontramos este diseño." });
+    expect(await linkToContentCore(env(db), input())).toEqual({ ok: false, error: "No encontramos este diseño." });
   });
 
   it("«Que el copywriter proponga el caption»: con permiso de IA lo pide y le da el texto del diseño de punto de partida", async () => {
@@ -132,7 +132,7 @@ describe("«Usar en contenido» → crear una pieza nueva (F63)", () => {
       return doc;
     })();
     const copy = vi.fn(async () => ({ ok: true as const, agentId: "ag" }));
-    const out = await useInContentCore(env(db), input({ proposeCaption: true }), { enqueue: enqueue() as never, enqueueCopy: copy as never });
+    const out = await linkToContentCore(env(db), input({ proposeCaption: true }), { enqueue: enqueue() as never, enqueueCopy: copy as never });
 
     expect(out.ok && out.data.notice).toBeUndefined();
     const created = db.rows("content_posts").find((p) => p.id !== POST)!;
@@ -143,7 +143,7 @@ describe("«Usar en contenido» → crear una pieza nueva (F63)", () => {
   it("sin permiso de IA la pieza se crea igual y lo dice", async () => {
     const db = unlinked();
     const copy = vi.fn();
-    const out = await useInContentCore(env(db, { canUseAi: false }), input({ proposeCaption: true }), { enqueue: enqueue() as never, enqueueCopy: copy as never });
+    const out = await linkToContentCore(env(db, { canUseAi: false }), input({ proposeCaption: true }), { enqueue: enqueue() as never, enqueueCopy: copy as never });
 
     expect(out.ok).toBe(true);
     expect(copy).not.toHaveBeenCalled();
@@ -154,20 +154,20 @@ describe("«Usar en contenido» → crear una pieza nueva (F63)", () => {
   it("si el copywriter no puede empezar (apagado) la pieza queda creada y se explica por qué", async () => {
     const db = unlinked();
     const copy = vi.fn(async () => ({ ok: false as const, error: "El copywriter esta apagado." }));
-    const out = await useInContentCore(env(db), input({ proposeCaption: true }), { enqueue: enqueue() as never, enqueueCopy: copy as never });
+    const out = await linkToContentCore(env(db), input({ proposeCaption: true }), { enqueue: enqueue() as never, enqueueCopy: copy as never });
 
     expect(out.ok && out.data.notice).toContain("el copywriter no pudo empezar: El copywriter esta apagado.");
   });
 
   it("sin pedir el caption, no llama al copywriter", async () => {
     const copy = vi.fn();
-    await useInContentCore(env(unlinked()), input(), { enqueue: enqueue() as never, enqueueCopy: copy as never });
+    await linkToContentCore(env(unlinked()), input(), { enqueue: enqueue() as never, enqueueCopy: copy as never });
 
     expect(copy).not.toHaveBeenCalled();
   });
 
   it("crear una pieza nueva no necesita poder escribir las demás (un Member la crea y es suya)", async () => {
-    const out = await useInContentCore(env(unlinked(), { canWritePiece: () => false }), input(), { enqueue: enqueue() as never });
+    const out = await linkToContentCore(env(unlinked(), { canWritePiece: () => false }), input(), { enqueue: enqueue() as never });
 
     expect(out.ok).toBe(true);
   });
@@ -179,7 +179,7 @@ describe("«Usar en contenido» → vincular a una pieza existente (F63)", () =>
   it("vincula, deja la red con el formato que cuadra y encola la sincronización", async () => {
     const db = unlinked({ pages: 4 });
     const queue = enqueue();
-    const out = await useInContentCore(env(db), link(), { enqueue: queue as never });
+    const out = await linkToContentCore(env(db), link(), { enqueue: queue as never });
 
     expect(out.ok && out.data).toMatchObject({ postId: POST, href: pieceHref(POST) });
     expect(design(db)).toMatchObject({ content_post_id: POST, content_network: "instagram" });
@@ -190,7 +190,7 @@ describe("«Usar en contenido» → vincular a una pieza existente (F63)", () =>
 
   it("si la pieza no tiene la red, la suma con su formato (sin fecha, sin archivos)", async () => {
     const db = unlinked({ format: "sq", pages: 5, networks: [{ platform: "instagram", planned_at: null, format: "carousel", files: [] }] });
-    await useInContentCore(env(db), link("linkedin"), { enqueue: enqueue() as never });
+    await linkToContentCore(env(db), link("linkedin"), { enqueue: enqueue() as never });
 
     expect(networksOf(db)).toHaveLength(2);
     expect(networksOf(db)[1]).toMatchObject({ platform: "linkedin", format: "pdf", files: [], planned_at: null });
@@ -199,14 +199,14 @@ describe("«Usar en contenido» → vincular a una pieza existente (F63)", () =>
 
   it("el formato que la red de la pieza ya tiene (y sirve) se respeta", async () => {
     const db = unlinked({ pages: 3, networks: [{ platform: "instagram", planned_at: null, format: "image", files: ["x"] }] });
-    await useInContentCore(env(db), link(), { enqueue: enqueue() as never });
+    await linkToContentCore(env(db), link(), { enqueue: enqueue() as never });
 
     expect(networksOf(db)[0]).toMatchObject({ format: "image", files: ["x"] });
   });
 
   it("una red sin formato de diseño (un Reel) toma el de la publicación, mientras no esté programada", async () => {
     const db = unlinked({ pages: 3, networks: [{ platform: "instagram", planned_at: null, format: "reel", files: [] }] });
-    await useInContentCore(env(db), link(), { enqueue: enqueue() as never });
+    await linkToContentCore(env(db), link(), { enqueue: enqueue() as never });
 
     expect(networksOf(db)[0].format).toBe("carousel");
   });
@@ -217,7 +217,7 @@ describe("«Usar en contenido» → vincular a una pieza existente (F63)", () =>
       networks: [{ platform: "instagram", planned_at: "2026-12-01T10:00:00Z", format: "reel", files: ["v"] }],
       publications: [{ id: "sp", content_post_id: POST, platform: "instagram", status: "scheduled", scheduled_at: "2026-12-01T10:00:00Z", published_at: null, origin: "system", publisher: null, deleted_at: null }],
     });
-    await useInContentCore(env(db), link(), { enqueue: enqueue() as never });
+    await linkToContentCore(env(db), link(), { enqueue: enqueue() as never });
 
     expect(networksOf(db)[0]).toMatchObject({ format: "reel", files: ["v"] });
     expect(design(db).content_post_id).toBe(POST);
@@ -226,7 +226,7 @@ describe("«Usar en contenido» → vincular a una pieza existente (F63)", () =>
   it("solo se vincula una pieza que la persona puede escribir", async () => {
     const db = unlinked();
     const queue = enqueue();
-    const out = await useInContentCore(env(db, { canWritePiece: () => false }), link(), { enqueue: queue as never });
+    const out = await linkToContentCore(env(db, { canWritePiece: () => false }), link(), { enqueue: queue as never });
 
     expect(out).toEqual({ ok: false, error: NO_WRITE });
     expect(design(db).content_post_id).toBeNull();
@@ -234,26 +234,26 @@ describe("«Usar en contenido» → vincular a una pieza existente (F63)", () =>
   });
 
   it("una pieza que no existe, archivada o de otro negocio", async () => {
-    expect(await useInContentCore(env(unlinked()), { ...link(), postId: "nada" })).toEqual({ ok: false, error: "No encontramos esa pieza." });
-    expect(await useInContentCore(env(unlinked()), { ...link(), postId: "nada" })).toMatchObject({ ok: false });
+    expect(await linkToContentCore(env(unlinked()), { ...link(), postId: "nada" })).toEqual({ ok: false, error: "No encontramos esa pieza." });
+    expect(await linkToContentCore(env(unlinked()), { ...link(), postId: "nada" })).toMatchObject({ ok: false });
     const archived = unlinked();
     archived.rows("content_posts")[0].archived_at = "2026-11-01T00:00:00Z";
-    expect(await useInContentCore(env(archived), link())).toEqual({ ok: false, error: "Esa pieza está archivada." });
+    expect(await linkToContentCore(env(archived), link())).toEqual({ ok: false, error: "Esa pieza está archivada." });
     const other = unlinked();
     other.rows("content_posts")[0].workspace_id = "otro";
-    expect(await useInContentCore(env(other), link())).toEqual({ ok: false, error: "No encontramos esa pieza." });
+    expect(await linkToContentCore(env(other), link())).toEqual({ ok: false, error: "No encontramos esa pieza." });
   });
 
   it("un diseño que no sirve para esa red", async () => {
     const db = unlinked({ format: "story" });
 
-    expect(await useInContentCore(env(db), link("linkedin"), { enqueue: enqueue() as never })).toEqual({ ok: false, error: "Este diseño no sirve para esa red." });
+    expect(await linkToContentCore(env(db), link("linkedin"), { enqueue: enqueue() as never })).toEqual({ ok: false, error: "Este diseño no sirve para esa red." });
   });
 
   it("si otro diseño ya usaba esa red de esa pieza, este lo reemplaza y el otro queda desvinculado (sus archivos se quedan)", async () => {
     const db = unlinked({ media: PAGES(2) });
     db.rows("designs").push({ id: "otro-diseno", workspace_id: WS, name: "Versión anterior", format: "v45", doc: docWithPages("v45", 2), rev: 1, content_post_id: POST, content_network: "instagram", archived_at: null, template_id: null });
-    const out = await useInContentCore(env(db), link(), { enqueue: enqueue() as never });
+    const out = await linkToContentCore(env(db), link(), { enqueue: enqueue() as never });
 
     expect(out.ok && out.data.notice).toContain("«Versión anterior»");
     expect(db.rows("designs").find((d) => d.id === "otro-diseno")).toMatchObject({ content_post_id: null, content_network: null });
@@ -264,7 +264,7 @@ describe("«Usar en contenido» → vincular a una pieza existente (F63)", () =>
 
   it("deja constancia en el historial", async () => {
     const db = unlinked();
-    await useInContentCore(env(db), link(), { enqueue: enqueue() as never });
+    await linkToContentCore(env(db), link(), { enqueue: enqueue() as never });
 
     expect(db.rows("audit_log")[0]).toMatchObject({ workspace_id: WS, entity_type: "design", entity_id: DESIGN, action: "design.content_linked", performed_by: USER });
   });

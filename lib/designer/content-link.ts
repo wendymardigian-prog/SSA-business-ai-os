@@ -201,7 +201,7 @@ function networkEntryFor(platform: string, target: ContentTarget): NetworkEntry 
 
 // ─── F63: «Usar en contenido» ────────────────────────────────────────────────
 
-export interface UseInContentDeps {
+export interface LinkToContentDeps {
   enqueue?: typeof enqueueContentSync;
   enqueueCopy?: typeof enqueueCopy;
 }
@@ -211,7 +211,7 @@ export interface UseInContentDeps {
  * redes elegidas (cada una con su formato de Contenido, sin fecha), y los archivos llegan cuando corre el job: quedan
  * en su biblioteca y elegidos en orden en cada red.
  */
-export async function useInContentCore(env: LinkEnv, input: UseInContentInput, deps: UseInContentDeps = {}): Promise<ActionResult<UseInContentData>> {
+export async function linkToContentCore(env: LinkEnv, input: UseInContentInput, deps: LinkToContentDeps = {}): Promise<ActionResult<UseInContentData>> {
   const design = await readDesign(env, input.designId);
   if (!design) return fail("No encontramos este diseño.");
   if (design.isGeneration) return fail("Una pieza emitida desde una plantilla no se usa en contenido.");
