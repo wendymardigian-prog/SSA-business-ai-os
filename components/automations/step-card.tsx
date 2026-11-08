@@ -5,6 +5,10 @@ import { Lock, MoreHorizontal } from "lucide-react";
 import { InsertAssetButton } from "@/components/response-assets/insert-asset-button";
 import { EmailCategoryField } from "./email-category-field";
 import { MetaEventFields } from "./meta-event-fields";
+import { QualifyLeadFields } from "./qualify-lead-fields";
+import { useMemo } from "react";
+import { conditionGroupsFor } from "@/lib/automations/step-tree-edit";
+import type { QualifyLeadStepData } from "@/lib/flow-engine/qualify-lead";
 import type { MetaEventStepData } from "@/lib/meta/capi/events";
 import { PopoverMenu, type MenuItem } from "@/components/automations/popover-menu";
 import { useStepEditor } from "@/components/automations/step-tree-context";
@@ -37,13 +41,16 @@ const RECIPIENT_OPTION: Record<EmailRecipient, string> = {
 const CANCEL_STATUSES = ["cancelled_other", "cancelled_no_response", "cancelled_not_qualified"] as const;
 
 export function ActionCard({ step, index, steps }: { step: ActionStep; index: number; steps: Step[] }) {
-  const { screen, edit, disabled, sendStepTest, canSendTest, capabilities } = useStepEditor();
+  const { screen, edit, disabled, sendStepTest, canSendTest, capabilities, tree, catalog } = useStepEditor();
   const kind = kindOfStep(step, screen);
   const problem = actionProblem(step, screen);
   // Una accion sin su conexion se puede armar, pero NO se confunde con una que va a ejecutarse (G1).
   const missing = missingFor(requirementsOfNode({ type: step.nodeType, data: step.data }), capabilities);
 
   const patch = (data: NodeData) => edit((t) => patchStepData(t, step.id, data));
+  // Las reglas de «Calificar lead» miran los mismos campos que «Condiciones» en este punto.
+  const isQualify = kind?.key === "qualify_lead";
+  const qualifyGroups = useMemo(() => (isQualify ? conditionGroupsFor(tree, step.id, catalog) : []), [isQualify, tree, step.id, catalog]);
 
   const items: MenuItem[] = [
     { key: "up", label: "Subir", disabled: !canMove(steps, index, -1), onSelect: () => edit((t) => moveStep(t, step.id, -1)) },
@@ -87,6 +94,16 @@ export function ActionCard({ step, index, steps }: { step: ActionStep; index: nu
           patch={(next) => patch(next as NodeData)}
           disabled={disabled}
           bookingToggle={screen === "agenda" ? "show" : "hide"}
+          inputClassName={inputClass}
+        />
+      )}
+      {isQualify && (
+        <QualifyLeadFields
+          idPrefix={name}
+          data={step.data as Partial<QualifyLeadStepData>}
+          patch={(next) => patch(next as NodeData)}
+          groups={qualifyGroups}
+          disabled={disabled}
           inputClassName={inputClass}
         />
       )}

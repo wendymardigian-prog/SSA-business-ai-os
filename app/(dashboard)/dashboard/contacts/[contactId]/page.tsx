@@ -42,6 +42,10 @@ import { LastStatusBadge, StatusFields } from "@/components/contacts/status-fiel
 import { InterestFields } from "@/components/contacts/interest-fields";
 import { loadInterestCatalog } from "@/lib/contacts/interest-load";
 import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
+import { loadQualificationSettings } from "@/lib/contacts/qualification-settings-load";
+import { QualificationField } from "@/components/contacts/qualification-field";
+import { QualificationBadge } from "@/components/contacts/qualification-badge";
+import type { QualificationSource } from "@/lib/contacts/qualification";
 import { isStatusRole } from "@/lib/contacts/statuses";
 import { AttributionSection } from "@/components/contacts/attribution-section";
 import { HistorySection } from "@/components/contacts/history-section";
@@ -122,6 +126,8 @@ export default async function ContactDetailPage({
     statusChangesRes,
     statusSettings,
     interestCatalog,
+    qualificationChangesRes,
+    qualificationSettings,
   ] = await Promise.all([
       supabase
         .from("contacts")
@@ -218,6 +224,15 @@ export default async function ContactDetailPage({
       loadContactStatusSettings(workspace.id),
       // El producto de interes (00246): el catalogo lo lee cualquier miembro.
       loadInterestCatalog(supabase, workspace.id),
+      // ...y los cambios del nivel de calificacion (00329). Misma RLS que los estados.
+      supabase
+        .from("contact_qualification_changes")
+        .select("id, old_level, new_level, source, changed_by, changed_by_agent_id, reason, created_at")
+        .eq("contact_id", contactId)
+        .eq("workspace_id", workspace.id)
+        .order("created_at", { ascending: false })
+        .limit(HISTORY_FETCH),
+      loadQualificationSettings(workspace.id),
     ]);
 
   const contact = contactRes.data;
@@ -360,7 +375,12 @@ export default async function ContactDetailPage({
 
   // Los nombres de los agentes que cambiaron un estado (solo id y nombre).
   const statusRows = statusChangesRes.data ?? [];
-  const agentIds = [...new Set(statusRows.map((r) => r.changed_by_agent_id).filter((id): id is string => Boolean(id)))];
+  const qualificationRows = qualificationChangesRes.data ?? [];
+  const agentIds = [
+    ...new Set(
+      [...statusRows, ...qualificationRows].map((r) => r.changed_by_agent_id).filter((id): id is string => Boolean(id)),
+    ),
+  ];
   const { data: agentRows } = agentIds.length
     ? await supabase.from("agents").select("id, name").eq("workspace_id", workspace.id).in("id", agentIds)
     : { data: [] as Array<{ id: string; name: string }> };
@@ -408,6 +428,20 @@ export default async function ContactDetailPage({
             ? (labels.get(r.changed_by) ?? "Alguien del equipo")
             : "El sistema",
       })),
+    qualificationSettings,
+    qualificationChanges: qualificationRows.map((r) => ({
+      id: r.id,
+      oldLevel: r.old_level,
+      newLevel: r.new_level,
+      source: r.source as QualificationSource,
+      createdAt: r.created_at,
+      reason: r.reason,
+      actorLabel: r.changed_by_agent_id
+        ? `Agente IA${agentNames.get(r.changed_by_agent_id) ? ` · ${agentNames.get(r.changed_by_agent_id)}` : ""}`
+        : r.changed_by
+          ? (labels.get(r.changed_by) ?? "Alguien del equipo")
+          : null,
+    })),
     limit: HISTORY_LIMIT,
   });
 
@@ -466,6 +500,7 @@ export default async function ContactDetailPage({
                   status={contact.last_status}
                   at={contact.last_status_at}
                 />
+                <QualificationBadge settings={qualificationSettings} level={contact.qualification_level} />
                 <TemperatureBadge value={temperature} />
                 {contact.do_not_contact && <DoNotContactBadge />}
                 {/* Conocido (00256) y Cliente (00268). */}
@@ -648,6 +683,16 @@ export default async function ContactDetailPage({
                 contactId={contact.id}
                 settings={statusSettings}
                 values={contact}
+                canEdit={perms.can("contacts.edit")}
+              />
+            </Section>
+
+            {/* Calificación del lead (00329): del 1 al 5, con los nombres del negocio. */}
+            <Section title="Calificación">
+              <QualificationField
+                contactId={contact.id}
+                level={contact.qualification_level}
+                settings={qualificationSettings}
                 canEdit={perms.can("contacts.edit")}
               />
             </Section>

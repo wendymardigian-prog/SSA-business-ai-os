@@ -29,9 +29,11 @@ import { BarChart3,
   Ban,
   Sparkles,
   Target,
+  Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
+import { describeQualifyStep, type QualifyLeadStepData } from "@/lib/flow-engine/qualify-lead";
 import { NodeBlockedNotice } from "../capabilities-context";
 
 export interface ActionNodeProps {
@@ -170,6 +172,7 @@ const actionConfig: Record<
   },
   send_poll: { icon: BarChart3, label: "Enviar encuesta", color: "bg-gray-500" },
   send_meta_event: { icon: Target, label: "Enviar evento a Meta", color: "bg-gray-500" },
+  qualify_lead: { icon: Gauge, label: "Calificar lead", color: "bg-gray-500" },
   enrollSequence: { icon: ListOrdered, label: "Inscribir en secuencia", color: "bg-gray-500" },
   notify_team: { icon: Bell, label: "Avisar en la campana", color: "bg-gray-500" },
   cancel_booking: { icon: CalendarX, label: "Cancelar la reunión", color: "bg-gray-500" },
@@ -255,6 +258,8 @@ function getSummary(nodeData: ActionNodeProps): string | null {
       return (nodeData as { question?: string }).question?.trim() || null;
     case "send_meta_event" as NodeType:
       return (nodeData as { eventName?: string }).eventName?.trim() || null;
+    case "qualify_lead" as NodeType:
+      return describeQualifyStep(nodeData as Partial<QualifyLeadStepData>);
     case "privateReply":
       return (nodeData as { text?: string }).text?.trim() || null;
     // Diseñador IA (F57): la plantilla elegida.

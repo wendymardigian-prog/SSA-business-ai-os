@@ -1,0 +1,21 @@
+[
+  { "name": "fijar 3 desde sin calificar", "old": null, "mode": "set", "value": 3, "expected": 3 },
+  { "name": "fijar 5 desde 2", "old": 2, "mode": "set", "value": 5, "expected": 5 },
+  { "name": "fijar un nivel inválido", "old": 2, "mode": "set", "value": 6, "expected": "invalid" },
+  { "name": "fijar 0 es inválido", "old": null, "mode": "set", "value": 0, "expected": "invalid" },
+  { "name": "fijar sin valor es inválido", "old": 1, "mode": "set", "value": null, "expected": "invalid" },
+  { "name": "sumar 1 desde sin calificar da 1", "old": null, "mode": "add", "value": 1, "expected": 1 },
+  { "name": "sumar 3 desde sin calificar da 3", "old": null, "mode": "add", "value": 3, "expected": 3 },
+  { "name": "restar desde sin calificar no hace nada", "old": null, "mode": "add", "value": -1, "expected": null },
+  { "name": "sumar 0 desde sin calificar no hace nada", "old": null, "mode": "add", "value": 0, "expected": null },
+  { "name": "sumar 1 desde 3 da 4", "old": 3, "mode": "add", "value": 1, "expected": 4 },
+  { "name": "sumar 1 desde 5 queda en 5", "old": 5, "mode": "add", "value": 1, "expected": 5 },
+  { "name": "sumar 10 desde 2 queda en 5", "old": 2, "mode": "add", "value": 10, "expected": 5 },
+  { "name": "restar 1 desde 3 da 2", "old": 3, "mode": "add", "value": -1, "expected": 2 },
+  { "name": "restar 1 desde 1 queda en 1", "old": 1, "mode": "add", "value": -1, "expected": 1 },
+  { "name": "restar 4 desde 3 queda en 1", "old": 3, "mode": "add", "value": -4, "expected": 1 },
+  { "name": "sumar 0 desde 4 queda en 4", "old": 4, "mode": "add", "value": 0, "expected": 4 },
+  { "name": "sumar sin valor es inválido", "old": 4, "mode": "add", "value": null, "expected": "invalid" },
+  { "name": "quitar desde 4", "old": 4, "mode": "clear", "value": null, "expected": null },
+  { "name": "quitar desde sin calificar", "old": null, "mode": "clear", "value": null, "expected": null }
+]

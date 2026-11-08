@@ -39,7 +39,7 @@ export function staticTriggerVariables(triggerType: string | null | undefined): 
     case "new_contact":
       return ["event_type", "event_source"];
     case "crm_event":
-      return ["event_type", "event_tag_name", "event_value", "event_role", "event_reason"];
+      return ["event_type", "event_tag_name", "event_value", "event_role", "event_reason", "event_level", "event_previous_level"];
     case "whatsapp_group_joined":
       return ["group.name"];
     case "whatsapp_group_reaction":

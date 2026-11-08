@@ -9,6 +9,7 @@
  * un tipo nuevo pueda meterse en el medio sin renumerar todo.
  */
 
+import { QUALIFICATION_CHANGED_EVENT, qualificationEventMatches } from "../qualify-lead";
 import { registerTrigger } from "./registry";
 import type { TriggerMatchArgs } from "./types";
 
@@ -217,6 +218,9 @@ export function crmEventMatches(
 
   const expected = config.value;
   if (expected === undefined || expected === null || expected === "") return true;
+
+  // Calificación (00329): "up", "down", "eq:4", "gte:4" o "lt:3" (ver qualify-lead.ts).
+  if (event.event_type === QUALIFICATION_CHANGED_EVENT) return qualificationEventMatches(expected, event.payload);
 
   // Pipeline (00245): el valor es el rol ("setter": cualquier cambio de ese
   // estado) o rol y estado ("setter:calificado": cuando pasa a ese estado).

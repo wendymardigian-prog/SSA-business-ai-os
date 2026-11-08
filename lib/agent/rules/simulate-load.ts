@@ -51,12 +51,15 @@ export async function loadSimulationCases(service: Db, workspaceId: string, sinc
 
     let tags: string[] = [];
     let temperature: string | null = null;
+    let qualification: number | null = null;
     if (d.contact_id) {
       const [{ data: contact }, { data: tagRows }] = await Promise.all([
-        service.from("contacts").select("lead_temperature").eq("id", d.contact_id).maybeSingle(),
+        service.from("contacts").select("lead_temperature, qualification_level").eq("id", d.contact_id).maybeSingle(),
         service.from("contact_tags").select("tags(name)").eq("contact_id", d.contact_id),
       ]);
       temperature = (contact as { lead_temperature?: string | null } | null)?.lead_temperature ?? null;
+      const level = (contact as { qualification_level?: unknown } | null)?.qualification_level;
+      qualification = typeof level === "number" ? level : null;
       tags = ((tagRows ?? []) as Array<{ tags: { name: string } | { name: string }[] | null }>)
         .flatMap((r) => (Array.isArray(r.tags) ? r.tags : r.tags ? [r.tags] : []))
         .map((t) => t.name);
@@ -68,6 +71,7 @@ export async function loadSimulationCases(service: Db, workspaceId: string, sinc
       burstCount: 1,
       lastInboundText: leadText,
       temperature,
+      qualification,
       tags,
       hasPriorOutbound: true,
       hasPriorMessages: true,

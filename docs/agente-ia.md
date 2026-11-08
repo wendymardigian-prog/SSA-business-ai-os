@@ -1055,3 +1055,14 @@ encolaba jobs que fallaban a propósito.
   acciones que ya existían. Se pide con `loadConversationActivity` (cliente del usuario: la RLS decide qué ve).
 - **Disponibilidad**: `lib/agent/availability.ts` es la única regla que mira el interruptor, el modelo y las IAs
   conectadas. Ver la sección del CLAUDE.md.
+
+## La calificación del lead (00329)
+
+- **`calificar_lead`** pone el nivel de calificación (1 a 5) con la rúbrica del negocio (Ajustes → Estados). Nace apagada; la 00329
+  la prendió en los agentes que ya tenían `cambiar_temperatura`, con el mismo «puede bajar». Por defecto solo sube y no pisa un nivel
+  que puso una persona o una automatización (`p_only_raise` y `p_respect_human` de `set_contact_qualification`, decididos bajo el
+  bloqueo). Queda en `audit_log` (`qualification`) y se revierte desde Acciones.
+- **El contexto**: el bloque del CRM muestra el nivel («3 · Medio»). La rúbrica completa solo viaja si el agente tiene la herramienta.
+- **Clasificación al cierre**: con la herramienta, el JSON suma la clave `calificacion` y el prompt los niveles del negocio. Sin la
+  herramienta, el prompt queda exactamente igual. Un número fuera de 1-5 se ignora sin perder el resumen.
+- **Reglas de respuesta**: el campo «Calificación del contacto (1 a 5)» con «mayor que» y «menor que».

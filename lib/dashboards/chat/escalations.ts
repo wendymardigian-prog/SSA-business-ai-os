@@ -136,6 +136,7 @@ export function ruleResultRows(
 const ACTION_NAMES: Record<string, string> = {
   tag: "Etiquetó",
   temperature: "Cambió la temperatura",
+  qualification: "Calificó al lead",
   followup: "Programó un seguimiento",
   assign: "Asignó a una persona",
   human_takeover: "Derivó a una persona",

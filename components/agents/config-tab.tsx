@@ -397,7 +397,7 @@ function ClosingSection({ form, set }: SectionProps) {
       <Checkbox
         checked={form.classifyOnClose}
         onChange={(classifyOnClose) => set({ classifyOnClose })}
-        label="Clasificar al cerrar (etiquetas, temperatura, próximo seguimiento)"
+        label="Clasificar al cerrar (etiquetas, temperatura, calificación, próximo seguimiento)"
         description="Solo con las herramientas habilitadas y dentro de sus límites. Todo queda en Acciones y se puede revertir."
       />
     </Section>

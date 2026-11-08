@@ -1,9 +1,12 @@
+import { parseQualificationSettings } from "./qualification";
 import { describe, expect, it } from "vitest";
 import {
   appendCards,
   columnOf,
   evaluateContactDrop,
-  groupingRole,
+  axisFilterParam,
+  groupingAxis,
+  qualificationColumnDefs,
   kanbanColumnClause,
   kanbanColumnDefs,
   moveCard,
@@ -31,8 +34,11 @@ describe("la vista y la agrupación en la URL", () => {
     expect(parseContactView("lista")).toBe("tabla");
     expect(parseKanbanGrouping("vendedor")).toBe("vendedor");
     expect(parseKanbanGrouping("temperatura")).toBe("setter");
-    expect(groupingRole("vendedor")).toBe("closer");
-    expect(groupingRole("setter")).toBe("setter");
+    expect(parseKanbanGrouping("calificacion")).toBe("calificacion");
+    expect(groupingAxis("vendedor")).toBe("closer");
+    expect(groupingAxis("setter")).toBe("setter");
+    expect(groupingAxis("calificacion")).toBe("qualification");
+    expect(axisFilterParam("qualification")).toBe("calif");
   });
 });
 
@@ -58,6 +64,21 @@ describe("las columnas", () => {
   it("cada columna filtra por la columna de su rol", () => {
     expect(kanbanColumnClause("setter", "nuevo")).toEqual({ op: "eq", column: "setter_status", value: "nuevo" });
     expect(kanbanColumnClause("closer", "ninguno")).toEqual({ op: "is_null", column: "closer_status" });
+    expect(kanbanColumnClause("qualification", "4")).toEqual({ op: "eq", column: "qualification_level", value: 4 });
+    expect(kanbanColumnClause("qualification", "ninguno")).toEqual({ op: "is_null", column: "qualification_level" });
+  });
+
+  it("por calificación: «Sin calificar» y los 5 niveles con su nombre; con filtro, solo esos", () => {
+    const settings = parseQualificationSettings(null);
+    expect(qualificationColumnDefs(settings).map((c) => [c.key, c.name])).toEqual([
+      ["ninguno", "Sin calificar"],
+      ["1", "1 · No califica"],
+      ["2", "2 · Bajo"],
+      ["3", "3 · Medio"],
+      ["4", "4 · Bueno"],
+      ["5", "5 · Ideal"],
+    ]);
+    expect(qualificationColumnDefs(settings, ["5", "4"]).map((c) => c.key)).toEqual(["4", "5"]);
   });
 });
 

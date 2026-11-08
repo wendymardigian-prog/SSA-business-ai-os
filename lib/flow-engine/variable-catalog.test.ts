@@ -16,7 +16,7 @@ const EXAMPLES: Record<string, Record<string, unknown>> = {
   email_received: { message: "texto", email_subject: "Consulta" },
   inactivity: { inactivity_hours: "24" },
   new_contact: { event_type: "contact_created", event_source: "instagram" },
-  crm_event: { event_type: "tag_added", event_tag_name: "vip", event_value: "x", event_role: "setter", event_reason: "pidio" },
+  crm_event: { event_type: "tag_added", event_tag_name: "vip", event_value: "x", event_role: "setter", event_reason: "pidio", event_level: 4, event_previous_level: 3 },
 };
 
 describe("cada variable fija que ofrece el selector se resuelve", () => {

@@ -20,7 +20,14 @@ export interface Rule {
 /** Contexto del turno para evaluar reglas. Los campos `final` faltan antes de generar. */
 export interface RuleContext {
   inbound: { text: string; is_known_button: boolean; length: number; burst_count: number };
-  contact: { temperature: string | null; tags: string[]; is_new: boolean; previous_episodes: number };
+  contact: {
+    temperature: string | null;
+    /** Nivel de calificación 1-5 (00329); null = sin calificar. Opcional para no romper contextos viejos. */
+    qualification?: number | null;
+    tags: string[];
+    is_new: boolean;
+    previous_episodes: number;
+  };
   conversation: { assigned: boolean; window_hours_left: number | null; is_episode_start: boolean; channel: string };
   time: { in_business_hours: boolean };
   response?: { text: string; has_link: boolean; parts: number };
@@ -50,6 +57,7 @@ function readField(ctx: RuleContext, field: string): unknown {
     case "inbound.length": return ctx.inbound.length;
     case "inbound.burst_count": return ctx.inbound.burst_count;
     case "contact.temperature": return ctx.contact.temperature;
+    case "contact.qualification": return ctx.contact.qualification ?? null;
     case "contact.tags": return ctx.contact.tags;
     case "contact.is_new": return ctx.contact.is_new;
     case "contact.previous_episodes": return ctx.contact.previous_episodes;

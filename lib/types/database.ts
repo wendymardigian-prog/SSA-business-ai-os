@@ -528,6 +528,10 @@ export type AuditAction =
   | "setter_status"
   /** Pipeline (00245): cambiaron las listas de estados del negocio. */
   | "contact_statuses.updated"
+  /** Calificacion (00329): el agente de IA cambio el nivel de calificacion (se puede revertir). */
+  | "qualification"
+  /** Calificacion (00329): cambiaron los nombres o la rubrica de los niveles. */
+  | "qualification_settings.updated"
   | "delete"
   | "restore"
   | "assign"
@@ -1225,6 +1229,8 @@ export interface Database {
           finance_settings: Json; // @plantilla-quitar(finanzas)
           /** Pipeline de contactos (00245): las listas de estados de setter y de vendedor. */
           contact_status_settings: Json;
+          /** Calificacion (00329): nombre y descripcion de los 5 niveles. */
+          qualification_settings: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings: Json;
           team_alerts_settings: Json;
@@ -1284,6 +1290,7 @@ export interface Database {
           payment_methods?: Json;
           finance_settings?: Json; // @plantilla-quitar(finanzas)
           contact_status_settings?: Json;
+          qualification_settings?: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
@@ -1336,6 +1343,7 @@ export interface Database {
           payment_methods?: Json;
           finance_settings?: Json; // @plantilla-quitar(finanzas)
           contact_status_settings?: Json;
+          qualification_settings?: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
@@ -1671,6 +1679,13 @@ export interface Database {
           last_status_role: "setter" | "closer" | null;
           last_status: string | null;
           last_status_at: string | null;
+          /**
+           * Nivel de calificacion 1-5 (00329). Solo lectura: se escribe con
+           * `set_contact_qualification` (un trigger rechaza cualquier otro cambio).
+           */
+          qualification_level: number | null;
+          qualification_at: string | null;
+          qualification_by_agent: boolean;
           /** Producto de interes y su variante opcional (00246). */
           interest_product_id: string | null;
           interest_variant_id: string | null;
@@ -2883,6 +2898,33 @@ export interface Database {
         ];
       };
       /** Reacciones (emoji) a mensajes (migracion 00237). Solo las escribe el servidor; no son mensajes. */
+      contact_qualification_changes: {
+        /** Calificacion (00329): el historial del nivel. Escribe solo `set_contact_qualification`. */
+        Row: {
+          id: string;
+          workspace_id: string;
+          contact_id: string;
+          old_level: number | null;
+          new_level: number | null;
+          source: "person" | "agent" | "automation" | "import" | "merge" | "seed";
+          changed_by: string | null;
+          changed_by_agent_id: string | null;
+          flow_id: string | null;
+          reason: string | null;
+          created_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [
+          {
+            foreignKeyName: "contact_qualification_changes_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "contacts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       contact_status_changes: {
         /** Pipeline (00245): el historial de los estados. Escribe solo `set_contact_status`. */
         Row: {
@@ -7214,6 +7256,23 @@ export interface Database {
       };
       // @plantilla-hasta(tareas)
       /** La fusion de contactos (00207), en una transaccion. Solo service_role. */
+      /** Calificacion (00329): la unica forma de cambiar el nivel de calificacion. Solo service_role. */
+      set_contact_qualification: {
+        Args: {
+          p_workspace_id: string;
+          p_contact_id: string;
+          p_mode: "set" | "add" | "clear";
+          p_value?: number | null;
+          p_actor_user?: string | null;
+          p_actor_agent?: string | null;
+          p_source?: "person" | "agent" | "automation" | "import";
+          p_flow_id?: string | null;
+          p_reason?: string | null;
+          p_respect_human?: boolean;
+          p_only_raise?: boolean;
+        };
+        Returns: Json;
+      };
       /** Pipeline (00245): la unica forma de cambiar el estado de setter o de vendedor. Solo service_role. */
       set_contact_status: {
         Args: {

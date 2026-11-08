@@ -812,3 +812,25 @@ de Formularios y de la Agenda (`meta_event` en `ACTION_KINDS`) y en el lienzo. E
   único y se anota como salteado. Un salteo o un fallo queda en el historial de ejecuciones con `noteStep`.
 - **Purchase no se ofrece**: lo manda cada pago cobrado (trigger de `payments`), con el interruptor de la tarjeta.
 - El panel del lienzo y el editor de pasos usan el mismo formulario (`components/automations/meta-event-fields.tsx`).
+
+## «Calificar lead» y «Cambió la calificación» (00329)
+
+El nivel de calificación del lead (1 a 5) se cambia desde una automatización con el nodo `qualify_lead`, se compara con la condición
+`contact.qualification_level` y dispara flujos con el evento `qualification_changed`. Detalle del dato en
+[pipeline-contactos.md](pipeline-contactos.md).
+
+- **El paso** (`lib/flow-engine/nodes/qualify-lead.ts`, reglas puras en `lib/flow-engine/qualify-lead.ts`), `needsContact: true`,
+  nunca lanza. Se arma en el editor de pasos de Formularios y de la Agenda (`qualify_lead` en `ACTION_KINDS`) y en el lienzo
+  (`QualifyLeadPanel`). Cuatro modos:
+  - **Fijar un nivel** (1-5);
+  - **Sumar o restar puntos** (de -4 a +4);
+  - **Según reglas**: cada regla tiene condiciones (el mismo constructor y el mismo evaluador que «Condiciones») y sus puntos. Se
+    miran **todas** y se suman las que se cumplen, desde el nivel actual o desde un nivel fijo. Un solo cambio por paso;
+  - **Quitar la calificación**.
+
+  Pasa por `set_contact_qualification` con origen `automation` y el flujo; el motivo del historial nombra las reglas que se
+  cumplieron (nunca los valores de las respuestas). Sin reglas que se cumplan, o si el nivel queda igual, se anota como salteado.
+- **La condición** «Calificación del lead (1 a 5)» es de tipo número: «Sin calificar» cuenta como vacío.
+- **El disparador** es una opción de «Evento del CRM»: «Cambió la calificación», con `config.value` = `""` (cualquiera), `up`,
+  `down`, `eq:N`, `gte:N` (al cruzar hacia N o más) o `lt:N` (al bajar de N). La regla es `qualificationEventMatches`, y las
+  variables `event_level` y `event_previous_level` viajan al flujo.
