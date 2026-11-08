@@ -8,6 +8,7 @@ import type { ThreadMessage } from "@/lib/whatsapp-groups/thread";
 import { cn } from "@/lib/utils";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { CreateGroupAutomationDialog } from "./create-group-automation-dialog";
+import { PollAnswerTagsDialog } from "./poll-answer-tags-dialog";
 import { MessageText } from "@/components/inbox/message-text";
 
 /**
@@ -20,6 +21,7 @@ export function GroupMessageBubble({ message, canCreateAutomation }: { message: 
   const [dialogOpen, setDialogOpen] = useState(false);
   // «Ver quién votó»: antes los nombres solo salían pasando el mouse (no andaba en el celular).
   const [showVoters, setShowVoters] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
   const timeZone = useViewerTimezone();
   const time = new Date(message.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit", timeZone });
   const offerAutomation = canCreateAutomation && !message.failed && (message.outbound || message.poll !== null);
@@ -92,18 +94,34 @@ export function GroupMessageBubble({ message, canCreateAutomation }: { message: 
                 </div>
               );
             })}
-            {message.poll.totalVoters > 0 && (
-              <button
-                type="button"
-                aria-expanded={showVoters}
-                onClick={() => setShowVoters((v) => !v)}
-                className={cn(
-                  "pt-0.5 text-[11px] font-medium underline underline-offset-2",
-                  message.outbound ? "text-primary-foreground/90 hover:text-primary-foreground" : "text-primary-ink",
+            {(message.poll.totalVoters > 0 || (canCreateAutomation && !message.failed)) && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
+                {message.poll.totalVoters > 0 && (
+                  <button
+                    type="button"
+                    aria-expanded={showVoters}
+                    onClick={() => setShowVoters((v) => !v)}
+                    className={cn(
+                      "text-[11px] font-medium underline underline-offset-2",
+                      message.outbound ? "text-primary-foreground/90 hover:text-primary-foreground" : "text-primary-ink",
+                    )}
+                  >
+                    {showVoters ? "Ocultar quién votó" : "Ver quién votó"}
+                  </button>
                 )}
-              >
-                {showVoters ? "Ocultar quién votó" : "Ver quién votó"}
-              </button>
+                {canCreateAutomation && !message.failed && (
+                  <button
+                    type="button"
+                    onClick={() => setTagsOpen(true)}
+                    className={cn(
+                      "text-[11px] font-medium underline underline-offset-2",
+                      message.outbound ? "text-primary-foreground/90 hover:text-primary-foreground" : "text-primary-ink",
+                    )}
+                  >
+                    Etiquetar según la respuesta
+                  </button>
+                )}
+              </div>
             )}
           </div>
         ) : (
@@ -146,6 +164,15 @@ export function GroupMessageBubble({ message, canCreateAutomation }: { message: 
           </button>
         )}
       </div>
+
+      {tagsOpen && message.poll && (
+        <PollAnswerTagsDialog
+          messageId={message.id}
+          pollName={message.poll.name}
+          options={message.poll.options.map((o) => o.name)}
+          onClose={() => setTagsOpen(false)}
+        />
+      )}
 
       {dialogOpen && (
         <CreateGroupAutomationDialog

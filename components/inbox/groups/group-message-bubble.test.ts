@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/dashboard-chrome", () => ({ useViewerTimezone: () => "America/Argentina/Buenos_Aires" }));
 vi.mock("./create-group-automation-dialog", () => ({ CreateGroupAutomationDialog: () => null }));
+vi.mock("./poll-answer-tags-dialog", () => ({ PollAnswerTagsDialog: () => null }));
 
 import { GroupMessageBubble } from "./group-message-bubble";
 import type { ThreadMessage } from "@/lib/whatsapp-groups/thread";
@@ -26,7 +27,7 @@ const poll = (options: NonNullable<ThreadMessage["poll"]>["options"], totalVoter
   createdAt: "2026-11-08T12:00:00.000Z",
 });
 
-const render = (message: ThreadMessage) => renderToStaticMarkup(createElement(GroupMessageBubble, { message, canCreateAutomation: false }));
+const render = (message: ThreadMessage, canCreateAutomation = false) => renderToStaticMarkup(createElement(GroupMessageBubble, { message, canCreateAutomation }));
 
 describe("GroupMessageBubble: quién votó", () => {
   it("con votos ofrece «Ver quién votó» (cerrado al principio)", () => {
@@ -42,3 +43,12 @@ describe("GroupMessageBubble: quién votó", () => {
     expect(render(poll([{ name: "Sí", count: 0, voters: [] }], 0))).not.toContain("Ver quién votó");
   });
 });
+
+describe("GroupMessageBubble: etiquetar según la respuesta", () => {
+  it("lo ofrece solo a quien puede crear automatizaciones", () => {
+    const message = poll([{ name: "Sí", count: 0, voters: [] }], 0);
+    expect(render(message, true)).toContain("Etiquetar según la respuesta");
+    expect(render(message, false)).not.toContain("Etiquetar según la respuesta");
+  });
+});
+
