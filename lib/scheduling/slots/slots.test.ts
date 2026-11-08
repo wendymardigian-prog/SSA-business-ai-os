@@ -203,6 +203,33 @@ describe("motor de horarios: otros casos", () => {
     ]);
   });
 
+  it("Liberar espacio: el ocupado de Google dentro de una reunión liberada no cuenta (doble reserva a propósito)", () => {
+    const out = getAvailableSlots(
+      input({
+        weekly: { "1": [R("09:00", "12:00")] },
+        // El evento de Google de la reunión liberada sigue figurando (10:00–10:30)…
+        busy: [{ startUtc: "2026-10-05T16:00:00.000Z", endUtc: "2026-10-05T16:30:00.000Z" }],
+        // …pero esa reunión se liberó: su rango no bloquea.
+        freed: [{ start_at: "2026-10-05T16:00:00.000Z", end_at: "2026-10-05T16:30:00.000Z" }],
+      }),
+    );
+    expect(starts(out["2026-10-05"])).toContain("2026-10-05T16:00:00.000Z");
+  });
+
+  it("Liberar espacio: lo de Google que excede el rango liberado sigue bloqueando", () => {
+    const out = getAvailableSlots(
+      input({
+        weekly: { "1": [R("09:00", "12:00")] },
+        // Google fusionó la reunión liberada (10:00–10:30) con otro evento real (10:30–11:00).
+        busy: [{ startUtc: "2026-10-05T16:00:00.000Z", endUtc: "2026-10-05T17:00:00.000Z" }],
+        freed: [{ start_at: "2026-10-05T16:00:00.000Z", end_at: "2026-10-05T16:30:00.000Z" }],
+      }),
+    );
+    const lunes = starts(out["2026-10-05"]);
+    expect(lunes).toContain("2026-10-05T16:00:00.000Z"); // 10:00 libre
+    expect(lunes).not.toContain("2026-10-05T16:30:00.000Z"); // 10:30 sigue ocupado
+  });
+
   it("una agenda del sistema bloquea con sus buffers y los del evento nuevo a la vez", () => {
     const slots = availableSlots(
       input({

@@ -12,8 +12,8 @@
  * no sueltos en el contenido como antes.
  */
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Plus, Settings } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -27,7 +27,8 @@ import { TaskWorkbench } from "@/components/tasks/task-workbench"; // @plantilla
 import { tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(tareas)
 import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
 import type { MemberLite } from "@/lib/tasks/table-model"; // @plantilla-quitar(tareas)
-import { BookingDetailPanel, type BookingDetailData } from "./detail-panel";
+import { BookingDetailPanel, BookingDetailSkeleton, type BookingDetailData } from "./detail-panel";
+import { loadBookingDetail } from "@/lib/actions/scheduling/booking-detail";
 import { BookManualDialog, type ManualEventOption } from "./book-manual-dialog";
 import { AgendaFiltersMenu } from "./agenda-filters-menu";
 import { AgendaFilterSummary } from "./agenda-filter-summary";
@@ -97,7 +98,6 @@ export function BookingsScreen({
   utmOptions,
   canReassign,
   reassignHostOptions,
-  detail,
   metaLinks,
   canLinkMeta,
   view,
@@ -143,7 +143,6 @@ export function BookingsScreen({
   canReassign: boolean;
   /** Quién tiene perfil de agenda, para elegir a quién reasignar (incluye al anfitrión actual, se saca al armar el detalle). */
   reassignHostOptions: Array<{ userId: string; label: string; hasGoogle: boolean }>;
-  detail: BookingDetailData | null;
   /** El vínculo con Meta de cada reunión de la lista. */
   metaLinks: Record<string, MetaLink>;
   /** `settings.general`: vincular, ignorar o quitar el vínculo con Meta. */
@@ -171,7 +170,8 @@ export function BookingsScreen({
   tasks?: AgendaTasksProps;
 }) {
   const router = useRouter();
-  const { setParam, setPeriod, clearAll } = useAgendaUrl();
+  const searchParams = useSearchParams();
+  const { pending: navigating, setParam, setPeriod, clearAll } = useAgendaUrl();
   const [manualOpen, setManualOpen] = useState(false);
   const [cancelDrop, setCancelDrop] = useState<{ id: string; status: BookingStatus } | null>(null);
   const [reason, setReason] = useState("");
@@ -186,8 +186,51 @@ export function BookingsScreen({
     [categories, eventOptions, hostOptions],
   );
 
-  const openDetail = (id: string) => setParam("agenda", id);
-  const closeDetail = () => setParam("agenda", null);
+  // El detalle abierto vive en `?agenda=` (un link lo abre), pero abrirlo o
+  // cerrarlo NO le pide la página al servidor: se cambia la URL con la API del
+  // navegador y el detalle se pide aparte (`loadBookingDetail`). Antes cada
+  // clic recargaba la pantalla entera.
+  const openId = searchParams.get("agenda");
+
+  // La pestaña elegida se marca en el clic, sin esperar al servidor: mientras
+  // la navegación está en curso se muestra la elegida; al terminar, manda otra
+  // vez lo que dice la página.
+  const [clicked, setClicked] = useState<string | null>(null);
+  const shownView = navigating && clicked ? clicked : view;
+  // Lo último que llegó del servidor, con el id que se pidió: si no coincide con
+  // el abierto, se muestra el esqueleto (y no los datos de otra reunión).
+  const [loaded, setLoaded] = useState<{ id: string; data: BookingDetailData | null } | null>(null);
+  const detail = loaded && loaded.id === openId ? loaded.data : null;
+  const detailMissing = loaded !== null && loaded.id === openId && loaded.data === null;
+
+  const openDetail = useCallback((id: string) => {
+    const next = new URLSearchParams(window.location.search);
+    next.set("agenda", id);
+    window.history.pushState(null, "", `?${next.toString()}`);
+  }, []);
+  const closeDetail = useCallback(() => {
+    const next = new URLSearchParams(window.location.search);
+    next.delete("agenda");
+    const qs = next.toString();
+    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+  }, []);
+
+  // Se vuelve a pedir al abrir otra reunión y cada vez que la página trae datos
+  // nuevos (`items` cambia después de un `router.refresh()` de una acción).
+  useEffect(() => {
+    if (!openId) return;
+    let alive = true;
+    loadBookingDetail(openId)
+      .then((data) => {
+        if (alive) setLoaded({ id: openId, data });
+      })
+      .catch(() => {
+        if (alive) setLoaded({ id: openId, data: null });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [openId, items]);
 
   function move(id: string, status: BookingStatus) {
     setError(null);
@@ -257,9 +300,13 @@ export function BookingsScreen({
                 <button
                   key={v.key}
                   type="button"
-                  aria-pressed={view === v.key}
-                  onClick={() => setParam("vista", v.key === "list" ? null : v.key)}
-                  className={view === v.key ? "rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground" : "rounded-md px-3 py-1 text-xs text-muted-foreground hover:bg-muted"}
+                  aria-pressed={shownView === v.key}
+                  onClick={() => {
+                    if (v.key === shownView) return;
+                    setClicked(v.key);
+                    setParam("vista", v.key === "list" ? null : v.key);
+                  }}
+                  className={shownView === v.key ? "rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground" : "rounded-md px-3 py-1 text-xs text-muted-foreground hover:bg-muted"}
                 >
                   {v.label}
                 </button>
@@ -292,6 +339,11 @@ export function BookingsScreen({
           </>
         }
       />
+      {/* Mientras el servidor trae los datos de un filtro o una vista nueva, una barra arriba lo dice: antes no se veía nada y parecía colgado. */}
+      <div aria-hidden className={`h-0.5 w-full overflow-hidden ${navigating ? "" : "invisible"}`}>
+        <div className="h-full w-1/3 animate-[agenda-loading_1s_ease-in-out_infinite] bg-primary" />
+      </div>
+      {navigating && <span className="sr-only" role="status">Cargando…</span>}
       <ReconnectBanner accounts={brokenAccounts} />
       <AgendaFilterSummary filters={filters} catalog={catalog} />
 
@@ -421,8 +473,11 @@ export function BookingsScreen({
         </div>
       )}
 
-      {detail && (
+      {openId && !detail && <BookingDetailSkeleton missing={detailMissing} onClose={closeDetail} />}
+
+      {openId && detail && (
         <BookingDetailPanel
+          key={detail.id}
           booking={detail}
           canLinkMeta={canLinkMeta}
           categories={categories}
@@ -441,7 +496,10 @@ export function BookingsScreen({
           timezone={timezone}
           timeFormat={timeFormat}
           onClose={() => setManualOpen(false)}
-          onCreated={(bookingId) => openDetail(bookingId)}
+          onCreated={(bookingId) => {
+            router.refresh();
+            openDetail(bookingId);
+          }}
           searchContacts={(term) => searchContactsForBooking(term)}
           hosts={manualHosts}
           currentUserId={viewerId}

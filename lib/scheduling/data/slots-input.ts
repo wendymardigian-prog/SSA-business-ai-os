@@ -162,31 +162,20 @@ export async function buildSlotsInput(
 
   // Las agendas activas del anfitrion en el rango, con los buffers de SU
   // evento (una agenda de otro evento bloquea con los buffers de ese otro).
+  // Las liberadas (Agenda v2) no bloquean: es justo el efecto buscado, que el
+  // equipo pueda ofrecer ese mismo horario de nuevo. Ademas su rango se pasa
+  // como `freed`, para que el evento de Google que sigue figurando no lo tape.
   const margin = 4 * 60 * 60 * 1000;
   const { data: bookingRows } = await service
     .from("bookings")
-    .select("id, start_at, end_at, event_type_id, event_types!inner(before_buffer_minutes, after_buffer_minutes)")
+    .select("id, start_at, end_at, slot_released_at, event_type_id, event_types!inner(before_buffer_minutes, after_buffer_minutes)")
     .eq("host_user_id", hostId)
     .eq("status_group", "active")
-    // Liberar espacio (Agenda v2) la saca de acá: es justo el efecto buscado,
-    // que el equipo pueda ofrecer ese mismo horario de nuevo.
-    .is("slot_released_at", null)
     .lt("start_at", new Date(new Date(options.to).getTime() + margin).toISOString())
     .gt("end_at", new Date(new Date(options.from).getTime() - margin).toISOString());
 
-  const bookings = ((bookingRows ?? []) as unknown as Array<{
-    id: string;
-    start_at: string;
-    end_at: string;
-    event_types: { before_buffer_minutes: number; after_buffer_minutes: number } | null;
-  }>)
-    .filter((b) => b.id !== options.excludeBookingId)
-    .map((b) => ({
-      start_at: b.start_at,
-      end_at: b.end_at,
-      before_buffer_minutes: b.event_types?.before_buffer_minutes ?? 0,
-      after_buffer_minutes: b.event_types?.after_buffer_minutes ?? 0,
-    }));
+  const rows = (bookingRows ?? []) as unknown as HostBookingRow[];
+  const { bookings, freed } = splitHostBookings(rows, options.excludeBookingId);
 
   // Los topes por dia y semana cuentan solo las agendas DE ESTE evento.
   const { data: countRows } = await service
@@ -242,6 +231,7 @@ export async function buildSlotsInput(
       outOfOffice: (oooRows ?? []).map((o) => ({ starts_at: o.starts_at, ends_at: o.ends_at })),
       busy,
       bookings,
+      freed,
       bookingCounts: counts,
       now,
       range: { from: options.from, to: options.to },
@@ -257,4 +247,38 @@ export async function buildSlotsInput(
       row: event,
     },
   };
+}
+
+type HostBookingRow = {
+  id: string;
+  start_at: string;
+  end_at: string;
+  slot_released_at: string | null;
+  event_types: { before_buffer_minutes: number; after_buffer_minutes: number } | null;
+};
+
+/**
+ * Separa las agendas del anfitrion en las que bloquean y los rangos donde el
+ * ocupado de Google no cuenta: las liberadas y la que se esta reagendando (su
+ * propio evento sigue en Google hasta que se mueva).
+ */
+export function splitHostBookings(
+  rows: HostBookingRow[],
+  excludeBookingId?: string,
+): { bookings: { start_at: string; end_at: string; before_buffer_minutes: number; after_buffer_minutes: number }[]; freed: { start_at: string; end_at: string }[] } {
+  const bookings: { start_at: string; end_at: string; before_buffer_minutes: number; after_buffer_minutes: number }[] = [];
+  const freed: { start_at: string; end_at: string }[] = [];
+  for (const b of rows) {
+    if (b.slot_released_at || b.id === excludeBookingId) {
+      freed.push({ start_at: b.start_at, end_at: b.end_at });
+      continue;
+    }
+    bookings.push({
+      start_at: b.start_at,
+      end_at: b.end_at,
+      before_buffer_minutes: b.event_types?.before_buffer_minutes ?? 0,
+      after_buffer_minutes: b.event_types?.after_buffer_minutes ?? 0,
+    });
+  }
+  return { bookings, freed };
 }

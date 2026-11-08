@@ -99,37 +99,7 @@ export async function listBookings(
   const page = Math.max(1, query.page ?? 1);
   const size = query.limit ?? PAGE_SIZE;
 
-  let q = supabase.from("bookings").select(SELECT, { count: "exact" }).eq("workspace_id", workspaceId);
-
-  if (query.from) q = q.gte("start_at", query.from);
-  if (query.to) q = q.lt("start_at", query.to);
-  if (query.endFrom) q = q.gt("end_at", query.endFrom);
-  if (query.endTo) q = q.lte("end_at", query.endTo);
-  if (query.statuses?.length) q = q.in("status", query.statuses);
-  if (query.statusGroups?.length) q = q.in("status_group", query.statusGroups);
-  if (query.hostUserIds?.length) q = q.in("host_user_id", query.hostUserIds);
-  if (query.eventTypeIds?.length) q = q.in("event_type_id", query.eventTypeIds);
-  if (query.contactId) q = q.eq("contact_id", query.contactId);
-  if (query.origins?.length) q = q.in("origin", query.origins);
-  if (query.utmSources?.length) q = q.in("utm->>utm_source", query.utmSources);
-  if (query.utmMediums?.length) q = q.in("utm->>utm_medium", query.utmMediums);
-  if (query.utmCampaigns?.length) q = q.in("utm->>utm_campaign", query.utmCampaigns);
-  if (query.search?.trim()) {
-    const needle = `%${query.search.trim().replace(/[%_]/g, "")}%`;
-    q = q.or(`booker_name.ilike.${needle},booker_email.ilike.${needle},booker_phone.ilike.${needle}`);
-  }
-
-  // El área y el tipo viven adentro del snapshot jsonb, no en una columna: se
-  // compara con `->>` en vez de `.in()`. Va DENTRO de la consulta (antes de
-  // `.range()`), no en memoria después: si no, el total y la paginación
-  // cuentan filas que después se descartan.
-  if (query.categoryIds?.length) {
-    const ids = query.categoryIds.filter((id) => UUID_RE.test(id));
-    if (ids.length) {
-      const list = ids.join(",");
-      q = q.or(`category_snapshot->>area_id.in.(${list}),category_snapshot->>type_id.in.(${list})`);
-    }
-  }
+  let q = applyBookingFilters(supabase.from("bookings").select(SELECT, { count: "exact" }).eq("workspace_id", workspaceId), query);
 
   q = q.order("start_at", { ascending: query.ascending ?? false }).range((page - 1) * size, page * size - 1);
 
@@ -174,6 +144,67 @@ export async function listBookings(
 }
 
 /**
+ * Los filtros de la Agenda sobre una consulta de `bookings`: los mismos para la
+ * lista y para los contadores, así las dos cuentas no se separan nunca.
+ */
+function applyBookingFilters<Q extends { gte: any; lt: any; gt: any; lte: any; in: any; eq: any; or: any }>(q: Q, query: BookingQuery): Q {
+  if (query.from) q = q.gte("start_at", query.from);
+  if (query.to) q = q.lt("start_at", query.to);
+  if (query.endFrom) q = q.gt("end_at", query.endFrom);
+  if (query.endTo) q = q.lte("end_at", query.endTo);
+  if (query.statuses?.length) q = q.in("status", query.statuses);
+  if (query.statusGroups?.length) q = q.in("status_group", query.statusGroups);
+  if (query.hostUserIds?.length) q = q.in("host_user_id", query.hostUserIds);
+  if (query.eventTypeIds?.length) q = q.in("event_type_id", query.eventTypeIds);
+  if (query.contactId) q = q.eq("contact_id", query.contactId);
+  if (query.origins?.length) q = q.in("origin", query.origins);
+  if (query.utmSources?.length) q = q.in("utm->>utm_source", query.utmSources);
+  if (query.utmMediums?.length) q = q.in("utm->>utm_medium", query.utmMediums);
+  if (query.utmCampaigns?.length) q = q.in("utm->>utm_campaign", query.utmCampaigns);
+  if (query.search?.trim()) {
+    const needle = `%${query.search.trim().replace(/[%_]/g, "")}%`;
+    q = q.or(`booker_name.ilike.${needle},booker_email.ilike.${needle},booker_phone.ilike.${needle}`);
+  }
+
+  // El área y el tipo viven adentro del snapshot jsonb, no en una columna: se
+  // compara con `->>` en vez de `.in()`. Va DENTRO de la consulta (antes de
+  // `.range()`), no en memoria después: si no, el total y la paginación
+  // cuentan filas que después se descartan.
+  if (query.categoryIds?.length) {
+    const ids = query.categoryIds.filter((id) => UUID_RE.test(id));
+    if (ids.length) {
+      const list = ids.join(",");
+      q = q.or(`category_snapshot->>area_id.in.(${list}),category_snapshot->>type_id.in.(${list})`);
+    }
+  }
+
+  return q;
+}
+
+/**
+ * Lo mínimo para contar las pastillas de la Agenda (estado y horario), con los
+ * mismos filtros y los mismos `!inner` que la lista (una reunión cuyo contacto
+ * no se ve tampoco se cuenta). Antes se traían hasta 500 reuniones completas
+ * DESPUÉS de la lista; esto va en paralelo y trae tres columnas.
+ */
+export async function listBookingStatuses(
+  supabase: Db,
+  workspaceId: string,
+  query: BookingQuery = {},
+): Promise<Array<{ status: BookingStatus; start_at: string; end_at: string }>> {
+  const q = applyBookingFilters(
+    supabase.from("bookings").select("status, start_at, end_at, event_types!inner(id), contacts!inner(id)").eq("workspace_id", workspaceId),
+    query,
+  ).limit(query.limit ?? 2000);
+  const { data, error } = await q;
+  if (error) {
+    console.error("[agenda] no pude contar las agendas:", error.message);
+    return [];
+  }
+  return (data ?? []) as unknown as Array<{ status: BookingStatus; start_at: string; end_at: string }>;
+}
+
+/**
  * Las fuentes, medios y campañas de UTM que de verdad existen en el
  * workspace, para las opciones del filtro "UTM" (Agenda v2, 00129).
  *
@@ -202,12 +233,19 @@ export async function hostNames(workspaceId: string): Promise<Map<string, string
   return memberLabels(await getWorkspaceMembers(workspaceId));
 }
 
-/** El detalle de una agenda, con su historial (F36). */
+/**
+ * El detalle de una agenda, con su historial (F36). Un solo viaje: la reunión
+ * con su evento y su contacto embebidos, en paralelo con el historial (los dos
+ * solo necesitan el id). El contacto y el evento pasan por su RLS igual que
+ * antes: si quien mira no ve el contacto, viene `null`.
+ */
 export async function getBookingDetail(supabase: Db, id: string) {
-  const { data: booking } = await supabase.from("bookings").select("*").eq("id", id).maybeSingle();
-  if (!booking) return null;
-
-  const [{ data: history }, { data: event }, { data: contact }] = await Promise.all([
+  const [{ data: row }, { data: history }] = await Promise.all([
+    supabase
+      .from("bookings")
+      .select("*, event_types(id, title, slug, color, duration_minutes, booking_fields), contacts(id, display_name, email, phone)")
+      .eq("id", id)
+      .maybeSingle(),
     supabase
       .from("audit_log")
       .select("id, action, metadata, changes, performed_at, performed_by, performed_by_agent_id")
@@ -215,9 +253,12 @@ export async function getBookingDetail(supabase: Db, id: string) {
       .eq("entity_id", id)
       .order("performed_at", { ascending: false })
       .limit(50),
-    supabase.from("event_types").select("id, title, slug, color, duration_minutes").eq("id", booking.event_type_id).maybeSingle(),
-    supabase.from("contacts").select("id, display_name, email, phone").eq("id", booking.contact_id).maybeSingle(),
   ]);
+  if (!row) return null;
 
-  return { booking, history: history ?? [], event, contact };
+  const { event_types: event, contacts: contact, ...booking } = row as typeof row & {
+    event_types: { id: string; title: string; slug: string; color: string | null; duration_minutes: number; booking_fields: unknown } | null;
+    contacts: { id: string; display_name: string | null; email: string | null; phone: string | null } | null;
+  };
+  return { booking: booking as Database["public"]["Tables"]["bookings"]["Row"], history: history ?? [], event, contact };
 }
