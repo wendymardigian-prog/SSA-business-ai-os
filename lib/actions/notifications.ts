@@ -5,6 +5,7 @@ import { getWorkspace } from "@/lib/workspace";
 import { getMyNotificationPrefs } from "@/lib/account/notification-prefs";
 import { mutedBellTypes } from "@/lib/notifications/preferences";
 import { bellRecipientFilter, mutedTypesList } from "@/lib/notifications/bell-filter";
+import { BELL_COUNT_CAP } from "@/lib/notifications/bell-count";
 
 /**
  * Server Actions del centro de notificaciones (F18).
@@ -125,23 +126,30 @@ export async function listNotifications(limit = 20): Promise<NotificationItem[]>
   }));
 }
 
-/** Cuantas sin leer. Alimenta el numerito de la campana. */
+/**
+ * Cuantas sin leer, hasta `BELL_COUNT_CAP`. Alimenta el numerito de la campana,
+ * que nunca muestra mas que «9+» (`lib/notifications/bell-count.ts`).
+ *
+ * Sin `count: "exact"` a proposito: contarlas todas evaluaba la RLS en cada
+ * aviso sin leer del negocio, en cada carga de pagina. Ordenado por fecha usa el
+ * indice del workspace y corta en cuanto junta las que hacen falta.
+ */
 export async function countUnreadNotifications(): Promise<number> {
   const { supabase, workspace, recipients, muted } = await bellScope();
 
   let query = supabase
     .from("notifications")
-    .select("id", { count: "exact", head: true })
+    .select("id")
     .eq("workspace_id", workspace.id)
     .is("read_at", null)
     .or(recipients);
   if (muted) query = query.not("type", "in", muted);
-  const { count, error } = await query;
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(BELL_COUNT_CAP);
 
   if (error) {
     console.error("[notificaciones] no pude contar las no leidas:", error.message);
     return 0;
   }
 
-  return count ?? 0;
+  return Math.min(data?.length ?? 0, BELL_COUNT_CAP);
 }
