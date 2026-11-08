@@ -135,3 +135,17 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - **Qué quedó:** el plano dice que los formatos que no van a redes (carta, A4, presentación, web) no ofrecen «Usar en contenido». DS8 dejó carta vertical y presentación solo para el «Carrusel PDF» de LinkedIn.
 - **Por qué:** un PDF es un documento, y LinkedIn publica documentos.
 - **Qué se decidió:** queda así hasta que lo confirmes; si preferís lo literal del plano, es sacarlos de `CONTENT_FORMATS` (`lib/designer/screens/toolbar.ts`) y de `content-map.ts`.
+
+## Cierre (Ola 5): la plantilla de estudiantes
+
+### La exportación común sale limpia; la de estudiantes necesita la sincronización de BAIOS
+- **Qué quedó:** `node scripts/export-template.mjs` sale limpio (4.507 archivos, sin restos identificables) y `npx vitest run scripts/plantilla` da 82/82. Con `--perfil=estudiantes`, `tsc`, `eslint`, `build` y «nombres» pasan, pero fallan tres controles:
+  - **vitest**: 5 archivos. 3 son del Diseñador IA y se deben a que la base de la plantilla (`plantilla-estudiantes/supabase/migrations`, un archivo por área) todavía no tiene sus tablas, sus claves del Member ni el `designer` en el CHECK de `agent_runs`: `member-sql-parity`, `run-labels` y `lib/designer/public/model.test.ts` (lee `00320_designer_tables.sql`, que la plantilla no lleva). Los otros 2 (`lib/dashboards/chat/core-migration.test.ts`, que lee la `00305`, y `lib/actions/piece-link-destinations.test.ts`) vienen de `main`.
+  - **historia**: 9 comentarios nombran un módulo que no viaja; 7 son del Diseñador IA (`ai/retry.ts`, `permission-members.ts`, `ai/action-types.ts`, `contracts.ts`, `automation/flow-template.ts`, `lib/nav/items.test.ts`, `scripts/verify-designer/verify-ds7.ts`).
+  - **textos**: 18 textos visibles nombran Formularios o Tareas; 14 son del Diseñador IA. Son el modal «Automatizar» y su borrador «Formulario enviado», la ayuda del panel del nodo, el «TAREA:» de las instrucciones de la IA y un falso positivo en la limpieza de HTML («formulario» = la etiqueta `<form>` de un archivo cargado).
+- **Por qué:** la base de la plantilla se regenera desde una base de referencia local (`scripts/plantilla/build-reference.mjs` + `generate-migrations.mjs`, con Supabase local en Docker), y esta máquina no tiene Docker. Es el paso de la sincronización de BAIOS después del merge, como en las sincronizaciones anteriores («la plantilla de estudiantes suma lo nuevo: base, marcas, controles y textos»).
+- **Qué se decidió:** en la sincronización se resuelve:
+  1. sumar el área «Diseñador IA» en `scripts/plantilla/areas.mjs` y regenerar las migraciones;
+  2. marcar con `@plantilla-quitar(formularios)` lo que depende de Formularios: «Automatizar» (modal, acción, botón) arma un flujo «Formulario enviado», que la plantilla no tiene;
+  3. reescribir esos comentarios y textos;
+  4. hacer que `public/model.test.ts` lea la definición desde la base de la plantilla, o marcarlo.
