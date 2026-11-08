@@ -56,7 +56,7 @@ Tres orígenes (`lib/designer/variables/catalog.ts`):
 
 ## Las reglas de la IA
 
-Fijas en `lib/designer/ai/rules.ts` y en el prompt (con su test): una idea por página y un título por página; tamaño mínimo de letra y palabras por página según el formato (`FORMATS[fmt].minFontSize`, `wordsPerPage`); todo dentro de las zonas seguras; contraste 4,5:1 para texto y 3:1 para texto grande y elementos (`lib/designer/color.ts`); en carruseles, portada con gancho y cierre con llamado a la acción; sobre una foto, una capa de color que asegure la lectura (`overlayForContrast`). La revisión automática (`qa.ts`) mide el render y corrige con una pasada (nunca más de 2 en total).
+Fijas en `lib/designer/ai/rules.ts` y en el prompt (con su test): una idea por página y un título por página; tamaño mínimo de letra y palabras por página según el formato (`FORMATS[fmt].minFontSize`, `wordsPerPage`); todo dentro de las zonas seguras; contraste medido de 4,5:1 para el texto de cuerpo y 3:1 para los títulos grandes (`lib/designer/color.ts`); nada de texto sobre caras (punto focal); solo fuentes de la lista; la IA no genera imágenes (usa las adjuntas, colores, degradés y formas); en carruseles, portada con gancho y cierre con llamado a la acción; sobre una foto, una capa de color que asegure la lectura (`overlayForContrast`). La revisión automática (`qa.ts`) mide el render y corrige con una pasada (nunca más de 2 en total).
 
 ## Datos
 
