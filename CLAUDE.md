@@ -481,6 +481,8 @@ sus automatizaciones y la habilidad del agente. El detalle en
   docs/agendamiento.md.
 - **Una reunion la ve tambien el setter de su contacto** (00241, `can_see_booking`).
   Los flujos de un evento los toca solo quien puede editar ese evento.
+- **Un espacio liberado se ofrece aunque Google lo marque ocupado**: `busyRanges` resta del ocupado de Google el rango de cada reunión liberada y de la que se reagenda (`freed`, `splitHostBookings`). Es la doble reserva a propósito; lo que excede ese rango sigue bloqueando.
+- **El detalle de una reunión se pide aparte** (`loadBookingDetail`, `lib/actions/scheduling/booking-detail.ts`): abrir o cerrar el panel cambia `?agenda=` con la API del navegador y NO recarga la página. La página de Agenda carga en dos tandas en paralelo; los contadores de las pastillas salen de `listBookingStatuses` (tres columnas), nunca de traer reuniones completas.
 - **Cambiar el anfitrion de un evento** (00290, editor → Detalles, pide
   `scheduling.manage_others`) solo cambia las reuniones NUEVAS: las ya agendadas
   conservan su `host_user_id`. Va por `change_event_type_host`, en una transaccion,

@@ -8,9 +8,15 @@
  * - Agendas del sistema: agrandadas con los buffers de SU evento y con los
  *   del evento nuevo. Así, una agenda de 10:00 a 10:30 con 15 min después no
  *   deja agendar a las 10:30 aunque el evento nuevo no tenga buffers.
+ * - Espacios liberados: dentro del rango de una reunión con «Liberar espacio»
+ *   (o de la que se está reagendando) el ocupado de Google NO cuenta. Google
+ *   no dice de qué evento es cada ocupado, y el evento de esa reunión puede
+ *   seguir figurando (el job que lo pone «libre» todavía no corrió, falló, o
+ *   es la copia del anfitrión nuevo después de reasignar). Es la doble reserva
+ *   a propósito: liberar es justamente permitir agendar encima.
  */
 import type { UtcInterval } from "../types";
-import { mergeOverlapping, type Range } from "./date-ranges";
+import { mergeOverlapping, subtractRanges, type Range } from "./date-ranges";
 
 const MIN = 60_000;
 
@@ -26,6 +32,8 @@ export interface BusyInput {
   outOfOffice?: { starts_at: string; ends_at: string }[];
   busy?: UtcInterval[];
   bookings?: SystemBooking[];
+  /** Rangos donde el ocupado de Google no cuenta (reuniones liberadas, la que se reagenda). */
+  freed?: { start_at: string; end_at: string }[];
   /** Buffers del evento que se está agendando. */
   newBeforeMinutes: number;
   newAfterMinutes: number;
@@ -40,8 +48,12 @@ export function busyRanges(input: BusyInput): Range[] {
     out.push({ start: Date.parse(o.starts_at), end: Date.parse(o.ends_at) });
   }
 
-  for (const b of input.busy ?? []) {
-    out.push({ start: Date.parse(b.startUtc) - after, end: Date.parse(b.endUtc) + before });
+  const google = (input.busy ?? []).map((b) => ({ start: Date.parse(b.startUtc), end: Date.parse(b.endUtc) }));
+  const freed = (input.freed ?? [])
+    .map((f) => ({ start: Date.parse(f.start_at), end: Date.parse(f.end_at) }))
+    .filter((r) => Number.isFinite(r.start) && Number.isFinite(r.end) && r.end > r.start);
+  for (const g of freed.length > 0 ? subtractRanges(google, freed) : google) {
+    out.push({ start: g.start - after, end: g.end + before });
   }
 
   for (const b of input.bookings ?? []) {

@@ -74,6 +74,43 @@ export interface BookingDetailData {
   saleLoad: { config: WizardConfig; initial: WizardInitial } | null; // @plantilla-quitar(ventas)
 }
 
+/**
+ * El panel mientras llega el detalle (se pide aparte, `loadBookingDetail`): se
+ * abre en el momento con el mismo marco, así el clic responde enseguida.
+ */
+export function BookingDetailSkeleton({ missing, onClose }: { missing: boolean; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} aria-hidden />
+      <aside role="dialog" aria-label="Detalle de la agenda" aria-busy={!missing} className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-card shadow-xl">
+        <header className="flex items-start gap-2 border-b border-border p-4">
+          <div className="min-w-0 flex-1 space-y-2">
+            {missing ? <p className="font-semibold">No encontré esa agenda</p> : <div className="h-4 w-40 animate-pulse rounded bg-muted" />}
+            {!missing && <div className="h-3 w-56 animate-pulse rounded bg-muted" />}
+          </div>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted">
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+        <div className="flex flex-col gap-3 p-4">
+          {missing ? (
+            <p className="text-sm text-muted-foreground">Puede que se haya borrado o que no tengas acceso a ella.</p>
+          ) : (
+            Array.from({ length: 6 }, (_, i) => <div key={i} className="h-4 animate-pulse rounded bg-muted" style={{ width: `${90 - i * 8}%` }} />)
+          )}
+        </div>
+      </aside>
+    </>
+  );
+}
+
 const OUTCOME_SHORTCUTS: BookingStatus[] = ["no_show", "followup_warm", "followup_cold", "sale", "not_qualified"];
 
 export function BookingDetailPanel({
