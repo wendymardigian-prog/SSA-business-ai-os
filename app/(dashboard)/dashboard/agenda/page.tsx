@@ -8,28 +8,23 @@ import { eventDefaults } from "@/lib/scheduling/data/event-context";
 import { loadMeetContext } from "@/lib/scheduling/data/meet-availability";
 import { meetAvailableFor } from "@/lib/scheduling/meet-availability";
 import { brokenCalendarAccounts } from "@/lib/scheduling/data/attention";
-import { bookingAttributionOf, bookingUtmOptions, getBookingDetail, hostNames, listBookings } from "@/lib/scheduling/data/bookings";
+import { bookingUtmOptions, hostNames, listBookingStatuses, listBookings } from "@/lib/scheduling/data/bookings";
 import { metaLinkFromTouch, touchMetaIds, type MetaLink } from "@/lib/attribution/meta-link";
 import { EMPTY_META_NAMES, loadMetaNamesByIds } from "@/lib/attribution/meta-names";
 import { loadBookingMatches } from "@/lib/attribution/source-touches";
-import { loadBookingCalls } from "@/lib/calls/contact-section"; // @plantilla-quitar(llamadas)
-import { canLoadSaleFromBooking, prefillFromBooking } from "@/lib/sales/booking-link"; // @plantilla-quitar(ventas)
-import { snapshotText } from "@/lib/sales/sale-text"; // @plantilla-quitar(ventas)
-import { loadWizardConfig } from "@/lib/sales/wizard/load"; // @plantilla-quitar(ventas)
 import { listCategories, listEventTypes, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { expandCategoryFilter, categoryLabel } from "@/lib/scheduling/categories";
-import { quickFilterCounts, type QuickFilter } from "@/lib/scheduling/bookings-view";
-import { ORIGIN_LABELS, isBookingOrigin, type AgendaFilters } from "@/lib/scheduling/agenda-filters";
+import { quickFilterCounts } from "@/lib/scheduling/bookings-view";
+import { isBookingOrigin, type AgendaFilters } from "@/lib/scheduling/agenda-filters";
 import { isAgendaPeriod, resolveAgendaPeriod, DEFAULT_AGENDA_PERIOD, type AgendaPeriod } from "@/lib/scheduling/agenda-period";
 import { statusesInGroup, isBookingStatus } from "@/lib/scheduling/booking-status";
-import { publicBaseUrl, bookingPublicUrl, eventPublicUrl } from "@/lib/scheduling/public-url";
+import { publicBaseUrl, eventPublicUrl } from "@/lib/scheduling/public-url";
 import { dateInTz } from "@/lib/scheduling/time/tz";
-import { visibleFields } from "@/lib/scheduling/booking-fields";
 import { listParam, pickPage, sanitizeSearch } from "@/lib/url-params";
 import { BookingsScreen, type QuickPick } from "@/components/scheduling/bookings/bookings-view";
 import type { ShareableEvent } from "@/components/scheduling/bookings/share-links-menu";
 import type { CalendarView } from "@/lib/scheduling/calendar-view";
-import type { BookingField, BookingOrigin, BookingStatus } from "@/lib/scheduling/types";
+import type { BookingOrigin, BookingStatus } from "@/lib/scheduling/types";
 import { rangeFor } from "@/lib/scheduling/calendar-range";
 import { startOfDay, endOfDay, todayInputValue } from "@/lib/dates";
 import { TASK_COLUMNS } from "@/lib/tasks/core"; // @plantilla-quitar(tareas)
@@ -85,18 +80,41 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const customFrom = one(query.desde);
   const customTo = one(query.hasta);
 
-  const [profile, broken, categories, events, defaults] = await Promise.all([
-    ctx.can("scheduling.use") ? getProfileForUser(ctx.supabase, ctx.workspace.id, ctx.user.id) : Promise.resolve(null),
-    ctx.can("scheduling.use") ? brokenCalendarAccounts(ctx.supabase, ctx.workspace.id, ctx.user.id) : Promise.resolve([]),
-    listCategories(ctx.supabase, ctx.workspace.id),
-    listEventTypes(ctx.supabase, ctx.workspace.id),
-    ctx.can("scheduling.use")
-      ? eventDefaults(ctx.supabase, ctx.workspace as { id: string; scheduling_auto_create_flows?: boolean }, ctx.user.id)
-      : Promise.resolve(null),
-  ]);
+  // Primera tanda, todo en paralelo: lo que no depende de los filtros. Antes iban
+  // en cinco pasos seguidos (y la mitad, al final de la pagina).
+  const service = await createServiceClient();
+  const [profile, broken, categories, events, defaults, timezone, names, { data: anyBooking }, utmOptions, { data: profileRows }, { data: googleRows }, { data: confirmationRows }] =
+    await Promise.all([
+      ctx.can("scheduling.use") ? getProfileForUser(ctx.supabase, ctx.workspace.id, ctx.user.id) : Promise.resolve(null),
+      ctx.can("scheduling.use") ? brokenCalendarAccounts(ctx.supabase, ctx.workspace.id, ctx.user.id) : Promise.resolve([]),
+      listCategories(ctx.supabase, ctx.workspace.id),
+      listEventTypes(ctx.supabase, ctx.workspace.id),
+      ctx.can("scheduling.use")
+        ? eventDefaults(ctx.supabase, ctx.workspace as { id: string; scheduling_auto_create_flows?: boolean }, ctx.user.id)
+        : Promise.resolve(null),
+      // La zona de quien mira, la misma de todo el sistema. `scheduling_profiles.timezone` es otra cosa: la de su horario de atencion.
+      resolveViewerTimezone((ctx.workspace as { timezone?: string }).timezone),
+      hostNames(ctx.workspace.id),
+      // "¿Hay ALGUNA agenda?" alcanza con una fila: un `count exact` recorria todas pasando la RLS por cada una.
+      ctx.supabase.from("bookings").select("id").eq("workspace_id", ctx.workspace.id).limit(1),
+      bookingUtmOptions(ctx.supabase, ctx.workspace.id),
+      // El link público de cada evento necesita el usuario de su dueño. De paso,
+      // quién tiene perfil de agenda (para reasignar) y quién conectó Google. Lo
+      // segundo (solo el user_id) lo lee el servidor: la RLS de las conexiones se
+      // las muestra solo a Owner y Admin, y un rol que reasigna no veia a nadie.
+      ctx.supabase.from("scheduling_profiles").select("user_id, username").eq("workspace_id", ctx.workspace.id),
+      service.from("oauth_connections").select("user_id").eq("workspace_id", ctx.workspace.id).eq("provider", "google_calendar").eq("status", "active"),
+      // Los flujos de confirmacion prendidos: el modal de agendar a mano dice si sale el email.
+      // Con el servidor: un rol sin permiso sobre automatizaciones tambien tiene que saberlo.
+      service
+        .from("triggers")
+        .select("config, flows!inner(status)")
+        .eq("workspace_id", ctx.workspace.id)
+        .eq("type", "booking_created")
+        .eq("is_active", true)
+        .eq("flows.status", "published"),
+    ]);
 
-  // La zona de quien mira, la misma de todo el sistema. `scheduling_profiles.timezone` es otra cosa: la de su horario de atencion.
-  const timezone = await resolveViewerTimezone((ctx.workspace as { timezone?: string }).timezone);
   const categoryRows = categories.map(toCategoryRow);
   const anchor = /^\d{4}-\d{2}-\d{2}$/.test(one(query.dia) ?? "") ? (one(query.dia) as string) : dateInTz(new Date(), timezone);
 
@@ -188,67 +206,32 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
             ...(quick === "needs_outcome" ? { endTo: now.toISOString() } : {}),
           };
 
-  const [{ items, total }, names] = impossible
-    ? [{ items: [], total: 0 }, await hostNames(ctx.workspace.id)]
-    : await Promise.all([listBookings(ctx.supabase, ctx.workspace.id, listQuery), hostNames(ctx.workspace.id)]);
-
-  // Los contadores de las pastillas miran todo el período con los demás
-  // filtros, no la pastilla elegida ni la página.
-  const { items: forCounts } = await listBookings(ctx.supabase, ctx.workspace.id, {
-    from: resolvedPeriod.from,
-    to: resolvedPeriod.to,
-    ...base,
-    statuses: fineStatuses,
-    limit: 500,
-  });
-  const quickCounts = quickFilterCounts(
-    forCounts.map((i) => ({ status: i.status, start_at: i.startAt, end_at: i.endAt })),
-    now,
-  );
+  // Segunda tanda, en paralelo: la lista, los contadores de las pastillas y quien
+  // puede crear un Meet. Los contadores miran todo el período con los demás
+  // filtros, no la pastilla elegida ni la página; traen solo estado y horario.
+  const [{ items, total }, forCounts, meetContext] = await Promise.all([
+    impossible ? Promise.resolve({ items: [], total: 0 }) : listBookings(ctx.supabase, ctx.workspace.id, listQuery),
+    listBookingStatuses(ctx.supabase, ctx.workspace.id, { from: resolvedPeriod.from, to: resolvedPeriod.to, ...base, statuses: fineStatuses }),
+    // Quien puede crear un Google Meet al agendar a mano (lo vuelve a comprobar el servidor al agendar).
+    loadMeetContext(service, ctx.workspace.id, [...names.keys(), ...events.map((e) => e.owner_user_id)]),
+  ]);
+  const quickCounts = quickFilterCounts(forCounts, now);
   const counts: Record<QuickPick, number> = { all: forCounts.length, ...quickCounts };
 
-  const detail = query.agenda ? await getBookingDetail(ctx.supabase, one(query.agenda) ?? "") : null;
   const publicBase = publicBaseUrl(ctx.workspace as { scheduling_public_base_url?: string | null });
 
-  // El vinculo con Meta de lo que se muestra: la lista (solo en esa vista) y la reunion abierta. Las reuniones ya las
-  // leyo la sesion, asi que la RLS decidio cuales ve; el toque va con el cliente de servicio porque quien atiende una
+  // El vinculo con Meta de la lista (solo en esa vista). El detalle de una reunion se pide aparte
+  // (`loadBookingDetail`): abrirlo ya no recarga la pagina. Las reuniones ya las leyo la sesion, asi
+  // que la RLS decidio cuales ve; el toque va con el cliente de servicio porque quien atiende una
   // reunion puede no ver su contacto. Los nombres, con la sesion: sin `dashboards.ads.view` se ven los ids.
-  const linkTargets = [
-    ...(view === "list" ? items.map((i) => ({ id: i.id, contactId: i.contactId, createdAt: i.createdAt })) : []),
-    ...(detail ? [{ id: detail.booking.id, contactId: detail.booking.contact_id, createdAt: detail.booking.created_at }] : []),
-  ];
-  const bookingMatches = linkTargets.length ? await loadBookingMatches(await createServiceClient(), ctx.workspace.id, linkTargets) : new Map();
+  const linkTargets = view === "list" ? items.map((i) => ({ id: i.id, contactId: i.contactId, createdAt: i.createdAt })) : [];
+  const bookingMatches = linkTargets.length ? await loadBookingMatches(service, ctx.workspace.id, linkTargets) : new Map();
   const matchedTouches = [...bookingMatches.values()].flatMap((m) => (m.touch ? [m.touch] : []));
   const metaNames = ctx.can("dashboards.ads.view") && matchedTouches.length ? await loadMetaNamesByIds(ctx.supabase, ctx.workspace.id, matchedTouches.map(touchMetaIds)) : EMPTY_META_NAMES;
   const metaLinks: Record<string, MetaLink> = {};
   for (const [id, match] of bookingMatches) {
     if (match.touch) metaLinks[id] = metaLinkFromTouch(match.touch, metaNames, { ownTouchId: match.ownTouchId, inherited: match.inherited });
   }
-  // @plantilla-desde(llamadas)
-  // Las llamadas vinculadas a esta agenda (F34): solo con `calls.view`, y solo las que la RLS deja ver.
-  const bookingCalls =
-    detail && ctx.can("calls.view") ? await loadBookingCalls(ctx.supabase, { workspaceId: ctx.workspace.id, bookingId: detail.booking.id, names }) : [];
-  // @plantilla-hasta(llamadas)
-
-  // @plantilla-desde(ventas)
-  // Las ventas que nacieron de esta agenda (Ventas, F24): solo con `sales.view`, y solo las que la RLS deja ver.
-  const bookingSales =
-    detail && ctx.can("sales.view")
-      ? (await ctx.supabase.from("sales").select("id, status, final_amount, product_snapshot").eq("booking_id", detail.booking.id).eq("workspace_id", ctx.workspace.id).order("created_at", { ascending: false })).data ?? []
-      : [];
-  // «Cargar venta»: con `sales.manage`, si la reunión ya pasó y tiene un resultado.
-  let saleLoad: { config: Awaited<ReturnType<typeof loadWizardConfig>>; initial: { contact: { id: string; name: string }; bookingId: string; vendedorId: string | null } } | null = null;
-  if (detail && ctx.can("sales.manage") && canLoadSaleFromBooking({ status: detail.booking.status, contact_id: detail.booking.contact_id, start_at: detail.booking.start_at }, new Date())) {
-    const config = await loadWizardConfig(ctx);
-    const prefill = prefillFromBooking(
-      { id: detail.booking.id, contact_id: detail.booking.contact_id, start_at: detail.booking.start_at, status: detail.booking.status, host_user_id: detail.booking.host_user_id },
-      new Set(config.members.map((m) => m.id)),
-    );
-    if (prefill && config.catalog.length > 0) {
-      saleLoad = { config, initial: { contact: { id: prefill.contactId, name: detail.contact?.display_name ?? detail.booking.booker_name ?? "Contacto" }, bookingId: prefill.bookingId, vendedorId: prefill.vendedorId } };
-    }
-  }
-  // @plantilla-hasta(ventas)
 
   // "Todavía no hay NINGUNA agenda" es un problema distinto de "ninguna con
   // estos filtros": antes los dos mostraban el mismo cartel de "Conectar
@@ -291,32 +274,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   }
   // @plantilla-hasta(tareas)
 
-  const [{ count: everCount }, utmOptions] = await Promise.all([
-    ctx.supabase.from("bookings").select("id", { count: "exact", head: true }).eq("workspace_id", ctx.workspace.id),
-    bookingUtmOptions(ctx.supabase, ctx.workspace.id),
-  ]);
-
-  // El link público de cada evento necesita el usuario de su dueño. De paso,
-  // quién tiene perfil de agenda (para reasignar) y quién conectó Google. Lo
-  // segundo (solo el user_id) lo lee el servidor: la RLS de las conexiones se
-  // las muestra solo a Owner y Admin, y un rol que reasigna no veia a nadie.
-  const [{ data: profileRows }, { data: googleRows }] = await Promise.all([
-    ctx.supabase.from("scheduling_profiles").select("user_id, username").eq("workspace_id", ctx.workspace.id),
-    (await createServiceClient()).from("oauth_connections").select("user_id").eq("workspace_id", ctx.workspace.id).eq("provider", "google_calendar").eq("status", "active"),
-  ]);
   const usernameByUser = new Map((profileRows ?? []).map((p) => [p.user_id, p.username]));
-  // Quien puede crear un Google Meet al agendar a mano (lo vuelve a comprobar el servidor al agendar).
-  const meetContext = await loadMeetContext(await createServiceClient(), ctx.workspace.id, [...names.keys(), ...events.map((e) => e.owner_user_id)]);
   const hasGoogleByUser = new Set((googleRows ?? []).map((c) => c.user_id));
-  // Los flujos de confirmacion prendidos: el modal de agendar a mano dice si sale el email.
-  // Con el servidor: un rol sin permiso sobre automatizaciones tambien tiene que saberlo.
-  const { data: confirmationRows } = await (await createServiceClient())
-    .from("triggers")
-    .select("config, flows!inner(status)")
-    .eq("workspace_id", ctx.workspace.id)
-    .eq("type", "booking_created")
-    .eq("is_active", true)
-    .eq("flows.status", "published");
   const confirmationConfigs = (confirmationRows ?? []).map((t) => (t.config ?? {}) as BookingTriggerConfig);
   const shareableEvents: ShareableEvent[] = events
     .filter((e) => e.status === "active")
@@ -370,51 +329,13 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       confirmationConfigs={confirmationConfigs}
       viewerId={ctx.user.id}
       shareableEvents={shareableEvents}
-      hasEverBooked={(everCount ?? 0) > 0}
+      hasEverBooked={(anyBooking ?? []).length > 0}
       hasCalendar={defaults?.hasCalendar ?? false}
       utmOptions={utmOptions}
       canReassign={ctx.scope("bookings") === "all"}
       reassignHostOptions={[...names.keys()]
         .filter((userId) => usernameByUser.has(userId))
         .map((userId) => ({ userId, label: names.get(userId) ?? "Sin nombre", hasGoogle: hasGoogleByUser.has(userId) }))}
-      detail={
-        detail
-          ? {
-              id: detail.booking.id,
-              uid: detail.booking.uid,
-              title: detail.booking.title,
-              startAt: detail.booking.start_at,
-              endAt: detail.booking.end_at,
-              status: detail.booking.status,
-              hostUserId: detail.booking.host_user_id,
-              hostName: names.get(detail.booking.host_user_id) ?? "Sin nombre",
-              hostTimezone: detail.booking.host_timezone ?? timezone,
-              inviteeTimezone: detail.booking.booker_timezone ?? timezone,
-              contactId: detail.booking.contact_id,
-              contactName: detail.contact?.display_name ?? detail.booking.booker_name ?? null,
-              bookerEmail: detail.booking.booker_email,
-              bookerPhone: detail.booking.booker_phone,
-              responses: answersOf(detail.booking.responses, events, detail.booking.event_type_id),
-              internalNotes: detail.booking.internal_notes,
-              locationType: detail.booking.location_type,
-              locationText: detail.booking.location_text,
-              meetUrl: detail.booking.meet_url,
-              origin: ORIGIN_LABELS[detail.booking.origin as keyof typeof ORIGIN_LABELS] ?? detail.booking.origin,
-              categoryId: detail.booking.category_id,
-              categoryLabel: snapshotLabel(detail.booking.category_snapshot),
-              syncStatus: detail.booking.google_sync_status,
-              syncError: detail.booking.google_sync_error,
-              rescheduleUrl: `${bookingPublicUrl(publicBase, detail.booking.uid)}/reagendar`,
-              history: detail.history.map((h) => ({ id: h.id, at: h.performed_at, text: historyText(h, names) })),
-              attribution: bookingAttributionOf(detail.booking.utm, detail.booking.referrer_url),
-              metaLink: metaLinks[detail.booking.id] ?? null,
-              slotReleasedAt: detail.booking.slot_released_at,
-              calls: bookingCalls, // @plantilla-quitar(llamadas)
-              sales: bookingSales.map((x) => ({ id: x.id, status: x.status, finalAmount: Number(x.final_amount) || 0, product: snapshotText(x.product_snapshot) })), // @plantilla-quitar(ventas)
-              saleLoad, // @plantilla-quitar(ventas)
-            }
-          : null
-      }
       metaLinks={metaLinks}
       canLinkMeta={ctx.can("settings.general")}
       view={view}
@@ -435,62 +356,4 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       tasks={agendaTasks} // @plantilla-quitar(tareas)
     />
   );
-}
-
-function snapshotLabel(snapshot: unknown): string {
-  const snap = snapshot as { area_name?: string | null; type_name?: string | null } | null;
-  if (!snap?.area_name) return "";
-  return snap.type_name ? `${snap.area_name} · ${snap.type_name}` : snap.area_name;
-}
-
-/**
- * Las respuestas con la etiqueta del formulario. Si el evento cambió de
- * preguntas, la clave se muestra tal cual: es preferible a esconder una
- * respuesta que la persona sí escribió.
- */
-function answersOf(
-  responses: unknown,
-  events: Array<{ id: string; booking_fields: unknown }>,
-  eventTypeId: string,
-): Array<{ label: string; value: string }> {
-  const fields = ((events.find((e) => e.id === eventTypeId)?.booking_fields as BookingField[] | undefined) ?? []) as BookingField[];
-  const byId = new Map(fields.map((f) => [f.identifier, f.label]));
-  const out: Array<{ label: string; value: string }> = [];
-  for (const [key, value] of Object.entries((responses as Record<string, unknown>) ?? {})) {
-    if (value === null || value === undefined || value === "") continue;
-    out.push({ label: byId.get(key) ?? key, value: Array.isArray(value) ? value.join(", ") : String(value) });
-  }
-  return out;
-}
-
-/** Una línea del historial en palabras. */
-function historyText(entry: { action: string; metadata: unknown; changes: unknown; performed_by: string | null }, names: Map<string, string>): string {
-  const who = entry.performed_by ? names.get(entry.performed_by) ?? "Alguien del equipo" : "El sistema";
-  const meta = (entry.metadata ?? {}) as Record<string, unknown>;
-  const changes = (entry.changes ?? {}) as Record<string, { old?: unknown; new?: unknown }>;
-
-  switch (entry.action) {
-    case "booking.created":
-      return `Se agendó (${ORIGIN_LABELS[meta.origin as keyof typeof ORIGIN_LABELS] ?? meta.origin ?? "origen desconocido"})`;
-    case "booking.rescheduled":
-      return `${who} cambió la fecha`;
-    case "booking.cancelled":
-      return `${meta.by === "invitee" ? "El invitado" : who} canceló${meta.reason ? `: ${meta.reason}` : ""}`;
-    case "booking.status_changed":
-      return `${who} cambió el estado a ${String(changes.status?.new ?? "")}`;
-    case "booking.updated":
-      return `${who} editó la agenda`;
-    case "booking.sync_ok":
-      return "Google Calendar quedó al día";
-    case "booking.sync_failed":
-      return `No se pudo sincronizar con Google${meta.error ? `: ${meta.error}` : ""}`;
-    case "booking.slot_released":
-      return `${who} liberó el espacio: otro lead puede agendar este horario`;
-    case "booking.slot_occupied":
-      return `${who} volvió a ocupar el espacio`;
-    case "booking.host_changed":
-      return `${who} reasignó el anfitrión`;
-    default:
-      return entry.action;
-  }
 }

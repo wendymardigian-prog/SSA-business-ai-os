@@ -30,6 +30,17 @@ import { isBookingTriggered } from "../do-not-contact";
 import { createNotificationOnce } from "@/lib/notifications/create";
 import { parseEmailAttachments, type EmailAttachmentRef } from "@/lib/email/attachment-limits";
 import { loadEmailAttachments } from "@/lib/email/flow-attachments";
+import { clearProviderRetry, nextProviderRetry, PROVIDER_RETRY_VAR, retryNote } from "../provider-retry";
+
+/** El motivo cuando el paso adjunta el PDF del diseño y la corrida no generó ninguno (Diseñador IA, F59). */
+export const NO_DESIGN_TO_ATTACH = "No hay un diseño generado en esta automatización.";
+const DESIGN_NOT_READY = "El PDF del diseño todavía se está armando.";
+
+/** La generación de ESTA corrida: la deja «Generar desde plantilla» en `variables.design.id`. */
+function designIdOf(context: FlowExecutionContext): string | null {
+  const design = (context.variables as Record<string, unknown> | undefined)?.design as { id?: unknown } | undefined;
+  return typeof design?.id === "string" && design.id ? design.id : null;
+}
 
 /** El motivo que queda en el historial cuando una reserva publica paso el tope de emails al invitado. */
 export const GUEST_EMAILS_SUPPRESSED_REASON = "Esa dirección ya recibió el máximo de emails de reservas de hoy: no se le mandó.";
@@ -173,7 +184,28 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   // Los adjuntos se bajan UNA vez para todas las personas. Si alguno ya no esta (se borro el recurso), el email sale
   // igual sin ese archivo —lo importante es el mensaje— y se avisa en la campana, una vez por automatizacion.
   const refs = parseEmailAttachments(data.attachments);
-  const loaded = refs.length > 0 ? await loadEmailAttachments(supabase, { workspaceId: context.workspaceId, refs }) : { files: [], missing: [] };
+  const loaded = refs.length > 0 ? await loadEmailAttachments(supabase, { workspaceId: context.workspaceId, refs, designId: designIdOf(context) }) : { files: [], missing: [] };
+  // El PDF del diseño (F59) no es un adjunto más: el email existe para mandarlo. Sin diseño, el paso falla; si todavía
+  // se está armando, el email NO sale y el paso espera (1, 5 y 15 minutos), como «Generar desde plantilla».
+  if (loaded.designProblem === "missing") {
+    context.noteStep?.({ status: "failed", reason: NO_DESIGN_TO_ATTACH });
+    return;
+  }
+  if (loaded.designProblem === "failed") {
+    context.noteStep?.({ status: "failed", reason: "El diseño de esta automatización no se pudo generar (o se anuló): el email no salió." });
+    return;
+  }
+  if (loaded.designProblem === "not_ready") {
+    const retryAt = sessionId ? nextProviderRetry(context, node.id) : null;
+    if (!retryAt || !sessionId) {
+      clearProviderRetry(context, node.id);
+      context.noteStep?.({ status: "failed", reason: "El PDF del diseño no estuvo listo a tiempo: el email no salió." });
+      return;
+    }
+    const attempt = (((context.variables as Record<string, unknown>)[PROVIDER_RETRY_VAR] as Record<string, number> | undefined)?.[node.id]) ?? 1;
+    return deferFlowNode(supabase, { nodeId: node.id, nodeType: "send_email", sessionId, context, retryAt, reason: "provider_retry", message: retryNote(DESIGN_NOT_READY, attempt) });
+  }
+  if (refs.length > 0) clearProviderRetry(context, node.id);
   if (loaded.missing.length > 0) await warnMissingAttachments(supabase, context, node.id, loaded.missing);
 
   for (const to of recipients) {

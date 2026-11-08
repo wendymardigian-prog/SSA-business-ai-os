@@ -297,9 +297,11 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     // Ajustes ahora lo ven todos (todos llegan a Recursos). Por eso el menu se compara como CONJUNTO.
     const REMOVED_FROM_MENU = ["Conocimiento", "Recursos", "Integraciones"];
     // Extra I (Finanzas) y Anuncios: Owner y Admin GANAN un item. No se regenera la foto: se declara aca, a proposito.
-    const ADDED_TO_MENU = ["Finanzas", "Anuncios"];
+    // Diseñador IA: Owner y Admin ganan «Diseñador IA» (designer.view).
+    const ADDED_TO_MENU = ["Finanzas", "Anuncios", "Diseñador IA"];
     // Cambio aprobado M9 (Extra I): el Member de sistema tambien gana «Finanzas», por `commissions.view`.
-    const ADDED_TO_MENU_MEMBER = ["Finanzas"];
+    // Cambio aprobado M12 (Diseñador IA): el Member de sistema gana «Diseñador IA», por `designer.view`.
+    const ADDED_TO_MENU_MEMBER = ["Finanzas", "Diseñador IA"];
     const sorted = (names: string[]) => [...names].sort();
 
     it("Owner y Admin ven lo mismo que antes (el menu, salvo el rediseño aprobado de formularios-ui)", () => {

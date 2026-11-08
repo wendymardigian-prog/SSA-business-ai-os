@@ -51,7 +51,7 @@ NO reescribir (ya existe en ZernFlow, solo verificar/extender):
 - Broadcasts (tablas y UI del fork; desde el 3/11/2026 rehechos con canal, filtros de Contactos y cola de envíos: ver "Broadcasts y la cola de envíos").
 - Webhook event ledger para idempotencia (tabla `webhook_events`).
 - Flow versions (historial al publicar).
-- Realtime en `conversations` y `messages`.
+- Realtime en `conversations` (`messages` salio de la publicacion en la 00327: nadie la escuchaba; ver "Los cron y su guarda").
 - Integracion base con Zernio para Instagram (DMs, comentarios, story replies).
 
 # Stack
@@ -389,7 +389,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 - **El menu y las pestanas salen de funciones puras** (`visibleNavItems`, `visibleSettingsTabs`, `tabsForViewer`, `pageActions`, `integrationSections`, `generalSectionsFor`, `visibleChannels`, `canExport`): los componentes solo las componen. `adminOnly` ya no existe, es `permissions`.
 - **Exportar CSV es `canExport`** (`lib/auth/export.ts`) en los cuatro lugares: el endpoint, la accion y el boton. Un Member no exporta (cambio aprobado M2).
 - **La bandeja va por CUENTA conectada (00249)**: cada rol guarda en `permissions.channels` «todas las cuentas» (incluye las futuras) o una lista por cuenta, cada una con su alcance (solo asignadas / + sin asignar / todas) y «responde». Lo aplica la base (`can_see_conversation` decide por la cuenta; ver un chat deja ver la ficha del contacto) y la pantalla usa las mismas reglas (`lib/auth/channel-permissions.ts`, gemelas SQL con `channel-permissions.cases.json`): el menú de cuentas, el composer y los 403 de envío, borradores, reacciones, adjuntos y recursos. Las seis claves `inbox.<red>.*` y el alcance `conversations` se retiraron. Resumen en `docs/roles.md`, «La bandeja por cuenta».
-- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones", M10 edita el contenido de su pieza (o la asignada) en cualquier estado, sin poder mover el estado fuera de Borrador / En producción / En revisión (00253). Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
+- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones", M10 edita el contenido de su pieza (o la asignada) en cualquier estado, sin poder mover el estado fuera de Borrador / En producción / En revisión (00253), M12 ve y edita diseños del Diseñador IA (`designer.view` y `designer.edit`, 00319; no publica, no emite ni anula). Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
 
 ## Migraciones (00208 a 00214, todas aplicadas y registradas)
 
@@ -481,6 +481,8 @@ sus automatizaciones y la habilidad del agente. El detalle en
   docs/agendamiento.md.
 - **Una reunion la ve tambien el setter de su contacto** (00241, `can_see_booking`).
   Los flujos de un evento los toca solo quien puede editar ese evento.
+- **Un espacio liberado se ofrece aunque Google lo marque ocupado**: `busyRanges` resta del ocupado de Google el rango de cada reunión liberada y de la que se reagenda (`freed`, `splitHostBookings`). Es la doble reserva a propósito; lo que excede ese rango sigue bloqueando.
+- **El detalle de una reunión se pide aparte** (`loadBookingDetail`, `lib/actions/scheduling/booking-detail.ts`): abrir o cerrar el panel cambia `?agenda=` con la API del navegador y NO recarga la página. La página de Agenda carga en dos tandas en paralelo; los contadores de las pastillas salen de `listBookingStatuses` (tres columnas), nunca de traer reuniones completas.
 - **Cambiar el anfitrion de un evento** (00290, editor → Detalles, pide
   `scheduling.manage_others`) solo cambia las reuniones NUEVAS: las ya agendadas
   conservan su `host_user_id`. Va por `change_event_type_host`, en una transaccion,
@@ -1252,6 +1254,15 @@ Un link de agenda (`/calendario/<usuario>/<evento>`) o de formulario (`/f/<slug>
 - **`robots.txt` tiene un grupo para los lectores de vista previa** (`lib/og/robots.ts`): pueden leer `/calendario/`, `/f/` y `/l/`, nunca `/calendario/agenda/` (ahi la URL es una credencial). Las paginas siguen con `noindex` y el resto de los robots sigue bloqueado.
 - **Una tarjeta nunca cambia por `?c=` ni `?preview=1`**: un link firmado no personaliza nada y un borrador no tiene tarjeta.
 
+# Respuestas de formularios: país, buscar, filtrar y agrupar (7/11/2026, sin migración)
+
+Barra en una fila (buscar, fecha, Filtros, Agrupar por, Columnas, Exportar), columna «País» del teléfono y resumen por país, fuente, medio, campaña o contenido. Detalle en [docs/formularios.md](docs/formularios.md) («Respuestas: país, buscar, filtrar y agrupar»).
+
+- **El país de un teléfono sale de `countryFromPhone`** (`lib/phone-country.ts`): prefijo más largo, +1 por código de área, +7 por 76/77. `lib/scheduling/phone-countries.ts` es otra cosa (la lista del selector).
+- **Tabla y CSV van por `loadFormResponses`**: estado, contacto y fecha en la consulta (RLS de quien mira); búsqueda, país y UTM en `filterIndex`. Si se cambia un filtro, se cambia ahí y los dos lo ven igual.
+- **Respuestas arranca en el Histórico** (`RESPONSES_DEFAULT_PERIOD`). `readDashboardPeriod` / `applyPeriodToParams` / `DashboardPeriodControl` aceptan `defaultPreset`; sin pasarlo, siguen en 30 días.
+- **Agrupar: la suma de los grupos es el total** (lo vacío va a `__none`).
+
 # Webhooks, atribucion y anuncios (Extra L, construido el 13/10/2026)
 
 Webhooks entrantes con flujos que arrancan sin contacto, atribucion que no pierde nada, catalogo de Meta, el vinculo de cada toque con su
@@ -1300,6 +1311,7 @@ cuentan los toques que pueden traer datos de anuncio)** y `00195` (`ads_crm_metr
   del CRM va en centavos y se pasa con `fromCents`; el Total calcula los cocientes sobre los totales.
 - **La pantalla Anuncios (`/dashboard/anuncios`, menú → Adquisición) es la misma tabla del dashboard**, con el mismo permiso y la misma consulta (`loadCrmForRows`): si se cambia una, cambian las dos.
 - **El desglose de anuncios es siempre la tabla de `crm-table.tsx`** (dashboard, detalles y Anuncios), con las columnas por nivel. Lo que devuelve el CRM es de toda la cuenta: un detalle la filtra con `scope` (`filterByParent`), y entonces «Leads totales» del total se pide para lo que se ve (igual con cualquier filtro). El dashboard y los detalles usan `CrmLevelTable`; **Anuncios arma la misma tabla con `useCrmLevelTable` + `CrmLevelBody` y lleva pestañas, buscador, estado, Filtros, Columnas y Exportar a la barra superior**, todo en la URL (`lib/dashboards/ads-table-filters.ts`, `ads-drill.ts`). En Anuncios un clic en una fila abre un menú y baja de nivel sin salir; en el resto lleva al detalle. En las tres, el encabezado ordena y fija columnas (`ads-table-view.ts`, fijas en `localStorage`) y las métricas de eficiencia se pintan contra la mediana de lo que se ve (`ads-tone.ts`, ±20 %, nunca volúmenes ni el Total). Detalle en docs/dashboards.md («La barra superior», «Ordenar, fijar columnas y el semáforo»).
+- **El funnel de un detalle sigue la optimización del AdSet** (`lib/dashboards/ads-funnel.ts`): cambian solo los pasos de Meta; los leads (Meta y CRM contra el mismo paso), agendas y ventas son iguales en todos, y desde los leads se calcula sobre el CRM. Las visitas al perfil solo vienen en `results` de Meta y se guardan en `actions` como `result:<indicador>`.
 - **Los tooltips de los gráficos usan `TOOLTIP_TEXT`** (`ads-charts.tsx`): sin `itemStyle`, recharts pinta de negro lo que no trae color y no se lee en el tema oscuro.
 - **Alcance y Frec. de cada fila los da Meta en vivo, los dos de la misma respuesta** (`fetchObjectReach`), y solo se piden si esas columnas están a la vista (`loadCrmObjectReach`). No calcular la frecuencia con las impresiones guardadas: lo guardado llega hasta el último sync y daría menos de 1. Lo que Meta no dio es la suma de los días y se ve con «≈» (`CrmRow.reachIsSum`). **El valor de compras usa un solo nombre, igual que el conteo** (`purchaseValueOf`); lo guardado antes del 6/11/2026 no se puede recontar sin releer de Meta (pasos en docs/dashboards.md).
 - **La Frecuencia de las tarjetas también es la de Meta** (`fetchUniqueReach`, tercer parámetro de `computeTotals`): con alcance en vivo nunca se divide lo guardado, y si Meta no la dio es «—». La variación del período anterior pasa por `computePreviousTotals` en el dashboard y los detalles: alcance en vivo contra sumado no se compara.
@@ -1368,6 +1380,24 @@ En la tabla Meta vs CRM, una venta sin anuncio en su toque cuenta para el últim
 ## Migración
 
 `00318_meta_match_rules_similar` (aditiva: la tabla, las funciones, los CHECK de la tarea de IA y, al final, el re-vínculo y el canal de lo existente) va **ANTES** de desplegar el código: **aplicada y registrada** el 7/11/2026 (versión `20261107215432`), después de ensayarla en una transacción que se deshizo sola. Resultado: «Sin vincular» quedó en 0, 87 toques de anuncios en «Para revisar» y 37 orgánicos fuera de la lista. **La próxima libre es la `00319`** (confirmar con `list_migrations` y las ramas locales).
+
+# API de Conversiones de Meta (00328, 8/11/2026)
+
+SSA le manda a Meta, desde el servidor, los leads, las reuniones y los pagos cobrados con los datos de la persona juntos; si la web mandó el mismo evento por Pixel con el mismo código, Meta lo cuenta una vez. Tarjeta **Ajustes → Integraciones → «Meta: API de Conversiones»** (Pixel + token, aparte de la de lectura); leads y reuniones con el paso **«Enviar evento a Meta»** (editor de pasos de Formularios y Agenda, y el lienzo); compras con el interruptor de la tarjeta. Detalle en [docs/meta-capi.md](docs/meta-capi.md).
+
+## Lo que no se puede romper
+
+- **Un evento se manda una sola vez**: índice único `(workspace_id, event_name, event_id)` en `meta_capi_events`. El código sale de `capiEventId` (el `meta_event_id` de la web, `form.<id>`, `booking.<id>`, `payment.<id>` o `flow.<ejecución>.<paso>`): siempre el mismo para lo mismo. Una reunión nunca usa su código público (es una credencial).
+- **Nada tumba lo que lo origina**: el paso solo anota y encola (`enqueueCapiEvent`), el trigger de `payments` va en `EXCEPTION WHEN OTHERS` y guardar la IP nunca lanza. El job `meta_capi_send` no lanza por Meta: reagenda a 1, 5 y 15 minutos y después queda `failed`.
+- **Los datos de la persona se leen al mandar y nunca se guardan ni se loguean**: `meta_capi_events` no tiene `contact_id` (así `merge_contacts` no cambia), ni hashes ni IP. El token va en el cuerpo, nunca en la URL.
+- **La IP y el navegador** (`meta_capi_request_context`) solo se guardan si el negocio configuró la API, solo `service_role`, y se borran a los 8 días (cron `meta-capi-cleanup`).
+- **La hora es la de lo que pasó**, nunca la de cuando corre el flujo; más de 7 días se saltea (Meta rechazaría el lote).
+- **Purchase no se ofrece en el paso**: lo manda cada pago cobrado, así no hay dos caminos para la misma plata.
+- **`lib/meta/capi/events.ts` es lo único que importa el navegador**; `normalize.ts` usa `node:crypto`. La versión de la Graph API es propia (`CAPI_GRAPH_VERSION`).
+
+## Migración
+
+`00328_meta_capi` (aditiva: las dos tablas, el trigger de `payments` y la limpieza diaria). Puede ir antes o después del código: hasta que alguien configure la tarjeta, el trigger no encola nada. **Aplicada y registrada** el 8/11/2026 UTC (versión `20261108060946`), después de ensayarla en una transacción que se deshizo sola, con `verify-meta-capi` en verde. **La próxima libre es la `00329`** (la `00327` es de los crons con guarda) (confirmar con `list_migrations` y las ramas locales).
 
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 
@@ -1571,6 +1601,29 @@ cualquier estado), **aplicada y registrada** el 22/10/2026 (version `20261022202
 ```
 node scripts/verify-contact-pipeline.mjs   # 00244-00246: valores tipados, estados, guardia, RLS del historial, producto de interés
 node scripts/verify-contact-merge.mjs      # la fusión, con estados y producto de interés
+```
+
+# Nivel de calificación del lead (00329, 8/11/2026)
+
+Un número del 1 al 5 por contacto (o «Sin calificar»), con el nombre y la rúbrica de cada nivel configurables en **Ajustes → Estados**. Convive con la temperatura. Se cambia a mano (ficha, bandeja, Kanban), con el paso «Calificar lead» (fijar, sumar/restar o «según reglas»), lo pone el agente (`calificar_lead` y la clasificación al cierre) o entra por CSV. Detalle en [docs/pipeline-contactos.md](docs/pipeline-contactos.md) («Nivel de calificación»), [docs/flow-registry.md](docs/flow-registry.md) y [docs/agente-ia.md](docs/agente-ia.md).
+
+## Lo que no se puede romper
+
+- **Una sola puerta**: `set_contact_qualification` (solo `service_role`) y desde el código solo `lib/contacts/qualification-core.ts`. La guardia `contacts_qualification_guard` (QL001) rechaza cualquier otra escritura de `qualification_level`, `qualification_at` y `qualification_by_agent`, también del service role; `lib/contacts/qualification-single-entry.test.ts` lo exige en el código.
+- **La regla de recorte tiene gemelas**: `private.qualification_next_level` y `nextQualificationLevel`, con `lib/contacts/qualification.cases.json` (vitest y `verify-contact-qualification`). Desde «Sin calificar» se cuenta desde 0; nunca pasa de 5 ni baja de 1.
+- **Los niveles son fijos (1-5); se edita el nombre y la descripción** (`workspaces.qualification_settings`, DEFAULT literal = `DEFAULT_QUALIFICATION_SETTINGS`). Guardar pide `contact_statuses.manage`.
+- **Cada cambio deja su fila en `contact_qualification_changes`** (lo lee quien ve el contacto) y emite `qualification_changed`, que es una opción de «Evento del CRM» (`qualificationEventMatches`: `up`, `down`, `eq:N`, `gte:N`, `lt:N`).
+- **«Según reglas» mira TODAS las reglas** (no la primera, como «Condiciones») con el mismo evaluador, y aplica un solo cambio. El motivo nombra las reglas, nunca los valores.
+- **El agente solo sube y no pisa a una persona** salvo que se le permita, y lo decide la base bajo el bloqueo (`p_only_raise`, `p_respect_human`). Sin la herramienta, el prompt del cierre no cambia ni un carácter.
+- **La fusión no reescribió `merge_contacts`**: el trigger `contacts_qualification_on_merge` mueve el historial y deja el nivel más alto (la tabla está en `CONTACT_MERGE_EXCLUSIONS`).
+- La columna nueva de la lista nace oculta.
+
+## Migración
+
+`00329_contact_qualification` (aditiva: columnas, ajustes, historial, función, guardia, trigger de fusión, la siembra frío = 2 / tibio = 3 / caliente = 4 y `calificar_lead` en los agentes que tenían `cambiar_temperatura`) va **ANTES** de desplegar el código: **aplicada y registrada** el 8/11/2026 UTC (versión `20261108071521`), después de ensayarla en una transacción que se deshizo sola (sembró 71 contactos: 17 en nivel 2 y 54 en nivel 3, sin emitir eventos; 1 agente con `calificar_lead`), con `verify-contact-qualification` y `verify-contact-pipeline` en verde y la guardia de la fusión cubriendo las 28 relaciones con `contacts`. **La próxima libre es la `00330`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-contact-qualification.mjs   # después de aplicar: regla SQL = TS, función, guardia, RLS, 10 a la vez, fusión
 ```
 
 # Automatizaciones: auditoría (construido, 23/10/2026)
@@ -2049,6 +2102,41 @@ Auditoria completa en cuatro lotes (PRs #171 dependencias, #168 Altas, #172 Medi
 - DNS rebinding en `safeFetch` (fijar la IP validada con undici).
 - No hay CSP de scripts (solo `frame-ancestors`).
 
+# Diseñador IA (construido, 8/11/2026)
+
+Diseñar piezas visuales con IA o a mano (carruseles, historias, presentaciones, PDF, certificados, páginas web), publicarlas con un link `/d/<código>` o exportarlas, y generar piezas desde **plantillas** (a mano, para varios o desde una automatización), conectado con Contenido. En el código es `designer` / `design_*` y `/dashboard/disenos`; en lo visible, **Diseñador IA**. Resumen en [docs/designer.md](docs/designer.md); avance, pruebas y auditorías en `docs/PROGRESS-designer.md`; decisiones en `docs/PENDIENTE-designer.md`; contratos en `docs/designer/contratos.md`; el servicio de render en Railway, en `docs/designer/puesta-en-marcha.md`.
+
+## Lo que no se puede romper
+
+- **Un solo render: `renderPageHTML`** (`lib/designer/render/page-html.ts`) para el lienzo, la vista previa, el link, la exportación y las generaciones. Nunca produce `<script>` ni `on*`. El HTML de una página cargada se muestra siempre en un iframe `srcdoc` con `sandbox` sin `allow-scripts`. Todo documento que se guarda pasa por `sanitizeDocHtml` (`lib/designer/import/edit.ts`), lo escriba una persona, la IA o un archivo.
+- **Publicar es la única puerta al link público.** Guardar (a mano, la IA, restaurar) no cambia lo que ve el público: `design_public_get` devuelve la última versión `publish` (00325) y el render de publicar se arma con esa versión (`latestPublishedDoc`; si no se puede leer, reagenda, nunca usa el borrador). El editor avisa «Hay cambios sin publicar». Un Member (`designer.edit` sin `designer.publish`) no puede cambiar el link.
+- **Una generación (fila de `designs` con `template_id`) es una copia congelada**: no se edita ni por la IA (`saveDocCore`, `restoreVersionCore`, `loadTarget`, `saveDocWithRev`). Se vuelve a generar desde la plantilla.
+- **El link público sale SOLO de `design_public_get`** (anon la ejecuta a propósito; nunca devuelve el negocio, emails, teléfonos ni ids de la persona). **Sin pie «Hecho con…»** (white label). Una generación se muestra solo `ready` o `void`; tope de 120/min por IP; `noindex` salvo una web con «Permitir buscadores».
+- **Todo link que ve alguien de afuera** con `publicBaseUrl` / `loadDesignLinks` (`lib/designer/public-links.ts`): nunca `appUrl()` ni el dominio del navegador.
+- **Verificación solo en plantillas de formato impreso**, apagada por defecto, con tipo de documento; textos y botones de `lib/designer/verification.ts`. Gemelas con los CHECK de la base (`verification.cases.json`).
+- **Archivos validados por bytes** (PNG/JPG/WebP; un SVG se rechaza; fuentes por firma; zips sin `..`, sin enlaces simbólicos, hasta 300 archivos y 50 MB). El tope de las Server Actions es 51 MB (`next.config.ts`) y cada acción vuelve a validar.
+- **Un solo juego de archivos por diseño propio** (F48b) y **sin miniaturas renderizadas** (la lista dibuja en vivo; guardar no encola renders). La limpieza diaria (`design_cleanup`, cron por SQL directo) nunca borra la versión actual ni la última publicada, ni archivos de una generación.
+- **Los jobs** (`design_render`, `design_generate_many`, `design_content_sync`, `design_ai_generate`, `design_cleanup`) nunca lanzan por un proveedor: reagendan a 1, 5 y 15 minutos. Sin `RENDER_SERVICE_URL`/`RENDER_SERVICE_SECRET`: «Falta conectar el servicio de render». En tests y verify, siempre `DESIGNER_FAKE_RENDER=1`.
+- **La IA**: el pedido viaja como dato; tope de gasto antes de llamar (`source: "designer"` en `openAiRun`); máximo 2 pasadas de corrección; en un HTML cargado cambia solo textos (`updateText`), no el CSS.
+- **Las variables usan las claves del catálogo de Automatizaciones** (`contact.*`, `workspace.name`): no se inventan otras; `lib/designer/variables/catalog.test.ts` falla si se separan. Otro módulo suma las suyas con `registerDesignVariables` (`lib/designer/extensions.ts`, el punto de extensión de Servicios; hoy vacío).
+- **La IA nunca escribe directo en la base**: devuelve un documento o un parche que se valida (Zod), se aplica sobre la versión en la que se pidió, se limpia y recién ahí se guarda con `rev`.
+- **Conversaciones en `ai_threads` / `ai_messages`** (genéricas de BAIOS), RLS por canal: `designer` → `designer.view`; `assistant` → `user_id = auth.uid()` y miembro; `portal` → ninguna todavía. La fusión de contactos reapunta `designs.subject_contact_id` y `ai_threads.contact_id` por trigger (`contacts_designs_on_merge`); `merge_contacts` no se tocó.
+- **Automatizaciones**: el paso «Generar desde plantilla» (`designGenerate`) usa `createGeneration` (`lib/designer/generate-core.ts`) y nunca lanza (corta el camino con `handle:design_stopped` y el motivo). Deja `design.id`, `design.link`, `design.pdf_url`, `design.code`, `design.status` y `design.doc_type`. Sin plantilla, o con un disparador de formulario sin formulario elegido, no se publica. «Enviar email» adjunta el PDF de la generación de ESA corrida. Detalle en `docs/flow-registry.md`.
+- **Contenido**: los archivos de un diseño vinculado llegan con id estable (`design-<id>-<n>`); una red publicada nunca se toca, una programada (o fallida) solo avisa. Publicar, programar, el borrado a 30 días y los permisos de Contenido no cambiaron. Detalle en `docs/contenido.md`.
+
+## Migraciones
+
+`00319` (ajustes, permisos del Member M12, buckets privados), `00320` (tablas, RLS, códigos, `design_public_get`, fusión, limpieza diaria), `00321` (CHECK de `agent_runs.source` + `designer`), `00322` (corrige el trigger del documento), `00324` (el bucket `design-renders` acepta `error.json`), `00325` (`design_public_get` devuelve lo publicado) y `00326` (el CHECK de `agent_runs.source` con `ads_matching` Y `designer`: la 00321 había pisado el `ads_matching` de la 00318), todas **aplicadas y registradas** el 7 y 8/11/2026 UTC. La `00318` y la `00323` son de otras sesiones. **Una migración que redefine un CHECK parte del que está EN LA BASE (`pg_get_constraintdef`), no de un archivo viejo**: si no, borra lo que sumó otra sesión en el medio. **La próxima libre es la `00327`** (confirmar con `list_migrations` y las ramas locales). En un clon nuevo van ANTES de desplegar el código.
+
+## Verificación
+
+```
+node scripts/verify-designer.mjs                 # bloques ds0, ds2, ds5, ds6, ds7, ds8 (render simulado)
+node scripts/verify-designer.mjs --bloque ds5    # uno solo
+```
+
+Mismas reglas que los demás: crean y limpian sus datos (`zz-test-`), de a uno y con el candado `/private/tmp/ssa-verify.lock`.
+
 # Seguridad
 
 ## Autenticacion y sesiones
@@ -2225,6 +2313,30 @@ Dos cosas que se pisaban: el barrido que cierra las conversaciones inactivas y e
 
 `00306_closable_inactive_conversations` (aditiva, una funcion de lectura) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 7/11/2026 UTC (version `20261107060614`), con los permisos comprobados (solo `service_role`) y la funcion devolviendo las mismas 165 conversaciones que un conteo independiente. La `00307` y la `00308` son de Grabaciones (Etapa 5). **La proxima libre es la `00309`** (confirmar con `list_migrations` y las ramas locales).
 
+# Los cron y su guarda (8/11/2026)
+
+El 8/11/2026 la base quedo "Unhealthy": pg_cron llamaba a la app ~16.500 veces por dia aunque no hubiera nada que hacer (`agent-bursts` y `send-queue` cada 15 s, `jobs`, `sequences` y `automation-events` cada minuto). Desde la 00327 cada cron pasa antes por una guarda en SQL. Detalle, la tabla de que mira cada una y la medicion en [docs/crons.md](docs/crons.md).
+
+## Lo que no se puede romper
+
+- **La guarda copia el `WHERE` del handler**: `private.cron_work_<ruta>` mira lo mismo que `app/api/cron/<ruta>`. **Si un handler cambia, cambia su guarda** en una migracion nueva: `lib/cron/guards.test.ts` ata cada umbral a la constante del codigo y tiene una "alarma" con lo que llama cada handler (un barrido nuevo lo hace fallar). Lo que la guarda no mira a proposito lo cubre la llamada de seguridad y se anota en `coveredBySafetyCall` (`lib/cron/guards.json`).
+- **Ante la duda, llama**: un error de la guarda o una ruta sin guarda llaman a la app. Y cada cron llama igual una vez cada tanto (10 min los rapidos; 1 h, 2 h o 1 dia los lentos): si la guarda se equivoca, se pierde ese rato, nunca el trabajo. Mira 5 s hacia adelante en los limites de arriba.
+- **`private.call_app_cron` no se reescribe**: la envuelve `private.call_app_cron_if_work`. Un cron nuevo que llama a la app va con guarda o en `UNGUARDED_CRONS` con el motivo (el test lo exige). `bg-dispatch` y `metrics-sync` quedan sin guarda a proposito (deciden por la hora de cada negocio en TypeScript).
+- **`private.cron_guard_state` es UNLOGGED**: no escribe WAL y vacia es valida (se llama). Tiene los contadores de llamadas y salteadas.
+- **La decision tiene gemelas**: `private.cron_guard_decide` y `shouldCallCron`, con `lib/cron/guard-decide.cases.json`.
+- **Realtime publica exactamente `lib/realtime/tables.ts`** (las tablas que escucha la interfaz; lo compara `lib/realtime/tables.test.ts`). Una tabla publicada que nadie escucha le cuesta a la base en cada cambio.
+- **Purgas**: `scheduled_jobs` completados y cancelados a los 30 dias, fallidos a los 90, pendientes nunca (`purge-scheduled-jobs`); `cron.job_run_details` a 1 dia.
+- En la plantilla de estudiantes, la poda deja `private.cron_work_jobs_extra` en `false` (no tiene webhooks propios).
+
+## Migracion
+
+`00327_cron_guards` (aditiva: el codigo no cambia; puede ir antes o despues de un deploy): **aplicada y registrada** el 8/11/2026 UTC (version `20261108050809`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-cron-guards` en verde. En los primeros 10 minutos todas las corridas salieron bien y, por ejemplo, `agent-bursts` corrio 41 veces y llamo a la app 2. **La proxima libre es la `00328`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-cron-guards.mjs   # despues de aplicar: decision SQL = TS, comandos, permisos, Realtime y cada guarda con y sin el dato justo
+node scripts/measure-cron-load.mjs    # antes y despues (solo lee)
+```
+
 # Buenas practicas de desarrollo
 
 ## Estructura de codigo
@@ -2267,5 +2379,5 @@ El modelo de datos y la arquitectura se disenan pensando en todas las etapas, au
 - **El video no se copia**: se pide a Meta al verlo (`fetchAdVideoSource`); el link vence.
 - **Sumar un campo al catálogo de Meta es subir `CATALOG_FIELDS_VERSION`**: si no, los anuncios que no cambian nunca lo traen (el sync es incremental).
 
-`00323_meta_ads_video_transcript` (aditiva): **aplicada y registrada** el 7/11/2026 (versión `20261107224824`), después de ensayarla en una transacción que se deshizo sola. **La próxima libre es la `00324`** (confirmar con `list_migrations` y las ramas locales).
+`00323_meta_ads_video_transcript` (aditiva): **aplicada y registrada** el 7/11/2026 (versión `20261107224824`), después de ensayarla en una transacción que se deshizo sola. La `00324` a la `00329` son de otras sesiones: **la próxima libre es la `00330`** (confirmar con `list_migrations` y las ramas locales).
 

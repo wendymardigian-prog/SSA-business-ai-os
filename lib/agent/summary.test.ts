@@ -265,3 +265,22 @@ describe("parseSummaryOutput", () => {
     expect(parseSummaryOutput('{"clasificacion":{}}')).toBeNull();
   });
 });
+
+describe("la calificación al cierre (00329)", () => {
+  it("se pide solo si el agente puede calificar: sin la herramienta el prompt no cambia", async () => {
+    const { buildSummaryTechnicalPrompt } = await import("./summary");
+    const base = { temperature: true, followup: true };
+    const without = buildSummaryTechnicalPrompt("n", [], true, base);
+    const withRubric = buildSummaryTechnicalPrompt("n", [], true, { ...base, qualificationRubric: "1 = No califica\n5 = Ideal" });
+    expect(without).not.toContain("calificacion");
+    expect(withRubric.startsWith(without)).toBe(true);
+    expect(withRubric).toContain('"calificacion"');
+    expect(withRubric).toContain("5 = Ideal");
+  });
+
+  it("parseSummaryOutput lee el nivel; uno fuera de 1-5 se ignora sin perder el resumen", () => {
+    expect(parseSummaryOutput('{"resumen":"ok","clasificacion":{"calificacion":4}}')?.clasificacion.calificacion).toBe(4);
+    expect(parseSummaryOutput('{"resumen":"ok","clasificacion":{}}')?.clasificacion.calificacion).toBeNull();
+    expect(parseSummaryOutput('{"resumen":"ok","clasificacion":{"calificacion":9}}')?.clasificacion.calificacion).toBeNull();
+  });
+});

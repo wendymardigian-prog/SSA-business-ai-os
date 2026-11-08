@@ -16,6 +16,7 @@ import type { Database } from "@/lib/types/database";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { getAgentType } from "@/lib/agent/agent-types";
 import { isEmailConfigured } from "@/lib/email/send";
+import { parseCapiConfig, META_CAPI_PROVIDER_ID } from "@/lib/meta/capi/config";
 import { ALL_CONNECTED, type Capabilities } from "./node-requirements";
 
 type Db = SupabaseClient<Database>;
@@ -31,7 +32,7 @@ async function safely<T>(label: string, read: () => Promise<T>, fallback: T): Pr
 
 /** Con el cliente de servicio: son lecturas de configuracion del negocio, ya autorizadas por quien llama. */
 export async function loadAutomationCapabilities(service: Db, workspaceId: string): Promise<Capabilities> {
-  const [email, ai, channels, agents] = await Promise.all([
+  const [email, ai, channels, agents, metaCapi] = await Promise.all([
     safely("el email", () => isEmailConfigured(service, workspaceId), ALL_CONNECTED.email),
     safely("las IAs", async () => (await listConnectedAiProviders(workspaceId, service)).length > 0, ALL_CONNECTED.ai),
     safely(
@@ -60,7 +61,23 @@ export async function loadAutomationCapabilities(service: Db, workspaceId: strin
       },
       ALL_CONNECTED.agent,
     ),
+    // La API de Conversiones de Meta (00328): la integracion activa y con el Pixel. El token lo exige el guardado.
+    safely(
+      "la API de Conversiones",
+      async () => {
+        const { data, error } = await service
+          .from("integration_configs")
+          .select("is_active, config")
+          .eq("workspace_id", workspaceId)
+          .eq("type", "meta")
+          .eq("provider", META_CAPI_PROVIDER_ID)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        return parseCapiConfig(data) !== null;
+      },
+      ALL_CONNECTED.meta_capi,
+    ),
   ]);
 
-  return { email, whatsapp_channel: channels.whatsapp, ai, agent: agents, channel: channels.any };
+  return { email, whatsapp_channel: channels.whatsapp, ai, agent: agents, channel: channels.any, meta_capi: metaCapi };
 }

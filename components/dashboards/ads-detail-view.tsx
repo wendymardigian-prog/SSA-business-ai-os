@@ -23,6 +23,7 @@ import { ComparisonCards } from "./ads/comparison-cards";
 import { DailyTableCard } from "./ads/daily-table";
 import { EvolutionCard } from "./ads/evolution-card";
 import { FunnelCard } from "./ads/funnel-viz";
+import { resolveFunnelKind, sumActions } from "@/lib/dashboards/ads-funnel";
 import { HeaderFilters, RefreshButton } from "./ads/header-controls";
 import { HierarchyCard, type Level } from "./ads/hierarchy-tables";
 import { ActionsCard, DeviceCard, PlacementCard, RankingsCard, VideoCard, type Live } from "./ads/insight-cards";
@@ -107,6 +108,8 @@ export interface AdsDetailViewProps {
   canLinkContent?: boolean;
   /** El video, la transcripción y el guion (solo en el nivel anuncio). */
   adMedia?: AdMedia | null;
+  /** Para que optimizan sus AdSets y el objetivo de su campaña: deciden el funnel. */
+  funnelSource?: { goals: Array<string | null>; objective: string | null };
   /** Lo que dice el CRM: la tabla de los hijos y el funnel. */
   crm: CrmTableData;
 }
@@ -127,6 +130,7 @@ export function AdsDetailView({
   contentLink = null,
   canLinkContent = false,
   adMedia = null,
+  funnelSource = { goals: [], objective: null },
   crm,
 }: AdsDetailViewProps) {
   const router = useRouter();
@@ -213,6 +217,8 @@ export function AdsDetailView({
   // Sin fila en el CRM es que no hubo nada atribuido: cero, no un dato faltante.
   const crmMetrics = crm.metrics[level].find((metric) => metric.objectId === detail.objectId);
   const funnelCrm = crm.error ? null : { leadsTotal: crmMetrics?.leadsTotal ?? 0, bookings: crmMetrics?.bookings ?? 0, sales: crmMetrics?.sales ?? 0 };
+  const funnelActions = useMemo(() => sumActions(own), [own]);
+  const funnel = resolveFunnelKind(funnelSource);
 
   return (
     <div className="flex h-full flex-col">
@@ -380,7 +386,15 @@ export function AdsDetailView({
 
         <AudienceCard result={live.audience} />
         <HourlyCard result={live.hourly} currency={currency} />
-        <FunnelCard totals={detail.totals} currency={currency} crm={funnelCrm} crmFailed={Boolean(crm.error)} />
+        <FunnelCard
+          totals={detail.totals}
+          actions={funnelActions}
+          kind={funnel.kind}
+          mixed={funnel.mixed}
+          currency={currency}
+          crm={funnelCrm}
+          crmFailed={Boolean(crm.error)}
+        />
 
         {CHILD_LEVELS[level].length > 0 && (
           <HierarchyCard

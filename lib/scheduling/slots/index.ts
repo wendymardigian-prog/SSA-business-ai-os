@@ -48,6 +48,11 @@ export interface SlotsInput {
   busy?: UtcInterval[];
   /** Agendas activas del anfitrión (de cualquier evento), con los buffers de su evento. */
   bookings?: SystemBooking[];
+  /**
+   * Rangos donde el ocupado de Google no cuenta: las reuniones con «Liberar
+   * espacio» y la que se está reagendando (su propio evento sigue en Google).
+   */
+  freed?: { start_at: string; end_at: string }[];
   /** Conteos de agendas de ESTE evento por día y semana, en la zona del horario. */
   bookingCounts?: BookingCounts;
   now: Date | string;
@@ -76,6 +81,7 @@ export function freeWindows(input: SlotsInput): Range[] {
     outOfOffice: input.outOfOffice,
     busy: input.busy,
     bookings: input.bookings,
+    freed: input.freed,
     newBeforeMinutes: input.eventType.before_buffer_minutes ?? 0,
     newAfterMinutes: input.eventType.after_buffer_minutes ?? 0,
   });

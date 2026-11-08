@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { SENDER_CONFIG_KEYS } from "@/lib/email/senders";
 import { RESEND_CONNECTION_CONFIG_KEYS } from "@/lib/email/resend-config";
+import { META_CAPI_OWN_CONFIG_KEYS } from "@/lib/meta/capi/config";
 import { SOCIAL_PROVIDER_IDS, syncAccountsAfterChange } from "@/lib/social/sync-hook";
 import { createServiceClient } from "@/lib/supabase/server";
 import { credentialsForPublisher } from "@/lib/publishing/credentials";
@@ -87,6 +88,8 @@ const DISCOVERED_CONFIG_KEYS = [
   ...SENDER_CONFIG_KEYS,
   // La tarjeta Resend (conexion de Resend): el acceso de la key, el webhook y la recepcion. Mismo motivo.
   ...RESEND_CONNECTION_CONFIG_KEYS,
+  // La API de Conversiones (00328): «Mandar cada pago cobrado como compra» y el nombre del Pixel. Mismo motivo.
+  ...META_CAPI_OWN_CONFIG_KEYS,
 ] as const;
 
 function discoveredConfigOf(previous: unknown): Record<string, Json> {

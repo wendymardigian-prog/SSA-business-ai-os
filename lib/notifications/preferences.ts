@@ -188,6 +188,15 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     audience: ADMINS,
     defaults: BELL,
   },
+  {
+    key: "design_generation_failed",
+    section: "contenido",
+    label: "Una generación del Diseñador IA no se hizo",
+    description: "Una plantilla no pudo generar una pieza: falta un dato o falló el archivo. Se completa o se reintenta desde Generaciones.",
+    types: ["design_generation_failed"],
+    audience: { kind: "admins", permissions: ["designer.generate"] },
+    defaults: BELL,
+  },
   // ── Lo que solo tiene sentido con esos módulos ──
   // @plantilla-desde(comisiones)
   {

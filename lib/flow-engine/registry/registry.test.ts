@@ -39,6 +39,12 @@ const NODOS_DE_ACCION = [
   "sendAsset",
   // Tareas × CRM (R4).  @plantilla-quitar(tareas)
   "complete_task", // @plantilla-quitar(tareas)
+  // Diseñador IA (F57).
+  "designGenerate",
+  // API de Conversiones de Meta (00328).
+  "send_meta_event",
+  // Calificación del lead (00329).
+  "qualify_lead",
 ] as const;
 
 describe("registro de nodos", () => {
@@ -54,8 +60,11 @@ describe("registro de nodos", () => {
     // + `complete_task` ("Completar tarea", Tareas × CRM, R4).  @plantilla-quitar(tareas)
     // + `send_whatsapp_number` ("Enviar WhatsApp a un número", Extra L Tirón 2, D3).
     // + `send_poll` ("Enviar encuesta", Grupos de WhatsApp).
-    expect(listNodes()).toHaveLength(33); // @plantilla-quitar(ventas,webhooks,tareas)
-    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(27);
+    // + `designGenerate` ("Generar desde plantilla", Diseñador IA, F57).
+    // + `send_meta_event` ("Enviar evento a Meta", API de Conversiones, 00328).
+    // + `qualify_lead` ("Calificar lead", 00329).
+    expect(listNodes()).toHaveLength(36); // @plantilla-quitar(ventas,webhooks,tareas)
+    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(30);
   });
 
   it.each(NODOS_DE_ACCION)(
@@ -83,12 +92,13 @@ describe("registro de nodos", () => {
     expect(resolveNodeType({ type: "noExiste", data: {} })).toBeUndefined();
   });
 
-  it("solo aiResponse y httpRequest persisten variables", () => {
+  it("solo aiResponse, httpRequest y designGenerate persisten variables", () => {
     const persisten = listNodes()
       .filter((n) => n.persistsVariables)
       .map((n) => n.type)
       .sort();
-    expect(persisten).toEqual(["aiResponse", "httpRequest"]);
+    // designGenerate (Diseñador IA, F58): `design.*` y la generación pendiente tienen que sobrevivir a una pausa.
+    expect(persisten).toEqual(["aiResponse", "designGenerate", "httpRequest"]);
   });
 
   it("todos los nodos tienen etiqueta y funcion de ejecucion", () => {

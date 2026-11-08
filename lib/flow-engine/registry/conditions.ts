@@ -207,6 +207,8 @@ const FLOW_VARIABLE_PREFIXES = [
   "metrics.", // @plantilla-quitar(formularios)
   "channel.", // @plantilla-quitar(formularios)
   "report.", // @plantilla-quitar(formularios)
+  // Diseñador IA (F58): lo que deja «Generar desde plantilla» (`design.status`, `design.code`...).
+  "design.",
 ];
 for (const prefix of FLOW_VARIABLE_PREFIXES) {
   registerTypedField({
@@ -247,6 +249,13 @@ registerTypedField({
   prefix: "contact.lead_temperature",
   label: "Temperatura del lead",
   value: ({ contact }) => (typeof contact.lead_temperature === "string" ? contact.lead_temperature : undefined),
+});
+
+// Calificación del lead (00329): un número de 1 a 5. Sin calificar = sin valor (lo atrapa "está vacío").
+registerTypedField({
+  prefix: "contact.qualification_level",
+  label: "Calificación del lead",
+  value: ({ contact }) => (typeof contact.qualification_level === "number" ? contact.qualification_level : undefined),
 });
 
 // Pipeline de contactos (00245). Sin estado = sin valor (el "esta vacio" del evaluador lo atrapa).

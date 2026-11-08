@@ -1,0 +1,184 @@
+{
+  "template": {
+    "docKeys": ["nombre_en_el_certificado", "contact.first_name", "design.issued_on", "design.code", "curso"],
+    "customVars": [
+      { "key": "nombre_en_el_certificado", "label": "Nombre como lo quiere en el certificado", "sample": "Ana Pérez", "default": null },
+      { "key": "curso", "label": "Curso", "sample": "Curso de ejemplo", "default": "Curso general" },
+      { "key": "nota_interna", "label": "Nota interna", "sample": "", "default": null }
+    ],
+    "dateFormat": "long",
+    "verify": true,
+    "docType": "certificado",
+    "docTypeLabel": null
+  },
+  "subject": {
+    "contact": { "display_name": "Lucía Ferreyra", "email": "lucia@ejemplo.com", "phone": "+54 9 11 5555 0000" },
+    "workspaceName": "Academia Ejemplo",
+    "now": "2026-11-08T02:00:00Z",
+    "timeZone": "America/Argentina/Buenos_Aires"
+  },
+  "cases": [
+    {
+      "name": "fail: con todo lo necesario se genera",
+      "overrides": { "nombre_en_el_certificado": "Lucía Ferreyra de Salas" },
+      "policy": "fail",
+      "expect": {
+        "ok": true,
+        "missing": [],
+        "values": {
+          "nombre_en_el_certificado": "Lucía Ferreyra de Salas",
+          "contact.first_name": "Lucía",
+          "curso": "Curso general",
+          "design.issued_on": "7 de noviembre de 2026",
+          "design.doc_type": "Certificado",
+          "workspace.name": "Academia Ejemplo"
+        }
+      }
+    },
+    {
+      "name": "fail: una propia sin valor ni defecto frena y dice cuál falta",
+      "policy": "fail",
+      "expect": { "ok": false, "missing": ["nombre_en_el_certificado"], "values": { "nombre_en_el_certificado": "" } }
+    },
+    {
+      "name": "fail: el mensaje usa el nombre en español de la variable",
+      "policy": "fail",
+      "expect": { "ok": false, "missingLabels": ["Nombre como lo quiere en el certificado"] }
+    },
+    {
+      "name": "fail: un contacto sin nombre de pila usable frena",
+      "subject": { "contact": { "display_name": "F", "email": null, "phone": null } },
+      "overrides": { "nombre_en_el_certificado": "F" },
+      "policy": "fail",
+      "expect": { "ok": false, "missing": ["contact.first_name"] }
+    },
+    {
+      "name": "fail: sin contacto, lo del contacto que el documento usa falta",
+      "subject": { "contact": null },
+      "overrides": { "nombre_en_el_certificado": "Alguien" },
+      "policy": "fail",
+      "expect": { "ok": false, "missing": ["contact.first_name"] }
+    },
+    {
+      "name": "template_default: una propia sin valor toma su valor de ejemplo y se genera",
+      "policy": "template_default",
+      "expect": { "ok": true, "missing": ["nombre_en_el_certificado"], "values": { "nombre_en_el_certificado": "Ana Pérez" }, "sources": { "nombre_en_el_certificado": "sample" } }
+    },
+    {
+      "name": "template_default: lo del contacto no se inventa, queda vacío",
+      "subject": { "contact": { "display_name": "F" } },
+      "overrides": { "nombre_en_el_certificado": "Alguien" },
+      "policy": "template_default",
+      "expect": { "ok": true, "missing": ["contact.first_name"], "values": { "contact.first_name": "" } }
+    },
+    {
+      "name": "template_default: una propia sin ejemplo queda vacía",
+      "template": {
+        "docKeys": ["nombre_en_el_certificado"],
+        "customVars": [{ "key": "nombre_en_el_certificado", "label": "Nombre como lo quiere en el certificado", "sample": "", "default": null }]
+      },
+      "policy": "template_default",
+      "expect": { "ok": true, "missing": ["nombre_en_el_certificado"], "values": { "nombre_en_el_certificado": "" } }
+    },
+    {
+      "name": "empty: lo que falta queda vacío y se genera",
+      "policy": "empty",
+      "expect": { "ok": true, "missing": ["nombre_en_el_certificado"], "values": { "nombre_en_el_certificado": "", "contact.first_name": "Lucía" }, "sources": { "nombre_en_el_certificado": "empty" } }
+    },
+    {
+      "name": "lo que se pasa gana sobre el sujeto y el valor por defecto",
+      "overrides": { "nombre_en_el_certificado": "Lu", "contact.first_name": "Luli", "curso": "Curso de verano" },
+      "policy": "fail",
+      "expect": {
+        "ok": true,
+        "values": { "nombre_en_el_certificado": "Lu", "contact.first_name": "Luli", "curso": "Curso de verano" },
+        "sources": { "contact.first_name": "override", "curso": "override" }
+      }
+    },
+    {
+      "name": "sin lo que se pasa, el sujeto; sin el sujeto, el valor por defecto",
+      "overrides": { "nombre_en_el_certificado": "Lu" },
+      "policy": "fail",
+      "expect": { "ok": true, "values": { "curso": "Curso general" }, "sources": { "curso": "default", "contact.first_name": "subject" } }
+    },
+    {
+      "name": "un valor de solo espacios cuenta como no pasado",
+      "overrides": { "nombre_en_el_certificado": "   ", "contact.first_name": "  " },
+      "policy": "fail",
+      "expect": { "ok": false, "missing": ["nombre_en_el_certificado"], "values": { "contact.first_name": "Lucía" } }
+    },
+    {
+      "name": "el código nunca falta: queda vacío al crear (lo completa la base)",
+      "overrides": { "nombre_en_el_certificado": "Lu" },
+      "policy": "fail",
+      "expect": { "ok": true, "missing": [], "values": { "design.code": "" }, "sources": { "design.code": "system" } }
+    },
+    {
+      "name": "en un reintento el código es el de la pieza",
+      "subject": { "code": "K8F2-WQ4M-7TQA" },
+      "overrides": { "nombre_en_el_certificado": "Lu" },
+      "policy": "fail",
+      "expect": { "ok": true, "values": { "design.code": "K8F2-WQ4M-7TQA" } }
+    },
+    {
+      "name": "la fecha de emisión es la del negocio, no la del servidor (en UTC ya es el 8)",
+      "overrides": { "nombre_en_el_certificado": "Lu" },
+      "policy": "fail",
+      "expect": { "ok": true, "values": { "design.issued_on": "7 de noviembre de 2026", "design.today": "7 de noviembre de 2026" } }
+    },
+    {
+      "name": "la fecha usa el formato corto de la plantilla",
+      "template": { "dateFormat": "short" },
+      "overrides": { "nombre_en_el_certificado": "Lu" },
+      "policy": "fail",
+      "expect": { "ok": true, "values": { "design.issued_on": "07/11/2026" } }
+    },
+    {
+      "name": "la fecha usa el formato en inglés y la zona del negocio",
+      "template": { "dateFormat": "en" },
+      "subject": { "timeZone": "UTC" },
+      "overrides": { "nombre_en_el_certificado": "Lu" },
+      "policy": "fail",
+      "expect": { "ok": true, "values": { "design.issued_on": "November 8, 2026" } }
+    },
+    {
+      "name": "el tipo de documento sale del tipo de la plantilla («Otro» con su nombre)",
+      "template": { "docType": "otro", "docTypeLabel": "Credencial" },
+      "overrides": { "nombre_en_el_certificado": "Lu" },
+      "policy": "fail",
+      "expect": { "ok": true, "values": { "design.doc_type": "Credencial" } }
+    },
+    {
+      "name": "sin verificación el tipo de documento queda vacío y no falta",
+      "template": { "verify": false, "docKeys": ["design.doc_type"] },
+      "policy": "fail",
+      "expect": { "ok": true, "missing": [], "values": { "design.doc_type": "" } }
+    },
+    {
+      "name": "una variable que el sistema no conoce y el documento usa falta, con su clave como nombre",
+      "template": { "docKeys": ["algo_raro"] },
+      "policy": "fail",
+      "expect": { "ok": false, "missing": ["algo_raro"], "missingLabels": ["algo_raro"] }
+    },
+    {
+      "name": "una propia que el documento no usa no cuenta como dato que falta",
+      "template": { "docKeys": ["curso"] },
+      "policy": "fail",
+      "expect": { "ok": true, "missing": [], "values": { "nota_interna": "" } }
+    },
+    {
+      "name": "lo que resuelve un módulo registrado entra con su clave",
+      "template": { "docKeys": ["prueba.nombre"] },
+      "subject": { "registered": { "prueba.nombre": "Valor del módulo" } },
+      "policy": "fail",
+      "expect": { "ok": true, "values": { "prueba.nombre": "Valor del módulo" }, "sources": { "prueba.nombre": "subject" } }
+    },
+    {
+      "name": "un módulo que no devolvió su valor deja la variable faltando",
+      "template": { "docKeys": ["prueba.nombre"] },
+      "subject": { "registered": { "prueba.otro": "x" } },
+      "policy": "fail",
+      "expect": { "ok": false, "missing": ["prueba.nombre"] }
+    }
+  ]
+}

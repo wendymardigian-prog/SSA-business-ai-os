@@ -15,6 +15,7 @@
 
 import { validateContactField, type ContactFieldKey, CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { CUSTOM_VALUE_ERROR_MESSAGES, normalizeCustomValue } from "@/lib/custom-fields";
+import { parseQualificationLevel } from "@/lib/contacts/qualification";
 import { isSubscriptionTarget, rowSubscription, type RowSubscription, type SubscriptionTarget, type RawSubscriptionCells } from "./subscription";
 
 /** Las columnas de atribución que puede traer el archivo (todas opcionales). */
@@ -35,7 +36,10 @@ export type CustomTarget = `custom:${string}`;
  * Ademas de los campos del contacto, el CSV puede traer tags, campos
  * personalizados y datos de atribución.
  */
-export type ImportColumnTarget = ContactFieldKey | "tags" | AttributionTarget | SubscriptionTarget | CustomTarget | "";
+export type ImportColumnTarget = ContactFieldKey | "tags" | typeof QUALIFICATION_TARGET | AttributionTarget | SubscriptionTarget | CustomTarget | "";
+
+/** El nivel de calificación (00329): un número del 1 al 5. Se escribe con `set_contact_qualification`. */
+export const QUALIFICATION_TARGET = "qualification" as const;
 
 /** Lo que el mapeo necesita saber de un campo personalizado. */
 export interface ImportCustomField {
@@ -87,7 +91,8 @@ const HEADER_HINTS: Partial<Record<ImportColumnTarget, string[]>> = {
   twitter_username: ["twitter", "x", "usuario twitter"],
   facebook_id: ["facebook", "fb"],
   linkedin_profile_url: ["linkedin", "perfil linkedin"],
-  lead_temperature: ["temperatura", "temperature", "calificacion"],
+  lead_temperature: ["temperatura", "temperature"],
+  qualification: ["calificacion", "nivel de calificacion", "calificacion del lead", "nivel", "score", "lead score", "puntaje"],
   next_followup_date: ["seguimiento", "proximo seguimiento", "followup", "follow up"],
   tags: ["tags", "etiquetas", "tag", "etiqueta"],
   "attr:source": ["utm source", "fuente", "source", "utm_source"],
@@ -162,6 +167,8 @@ export interface MappedRow {
   attribution: RowAttribution;
   /** Suscripcion a emails (E6). `null` = el archivo no trae la columna: el estado no se toca. */
   subscription: RowSubscription | null;
+  /** Nivel de calificación 1-5 (00329). `null` = la fila no lo trae: no se toca. */
+  qualification?: number | null;
 }
 
 export type RowResult = { ok: true; row: MappedRow } | { ok: false; line: number; error: string };
@@ -190,6 +197,7 @@ export function mapRow(
   const custom: Record<string, string> = {};
   const attribution: RowAttribution = {};
   const subscriptionCells: RawSubscriptionCells = {};
+  let qualification: number | null = null;
   const fieldsById = new Map(customFields.map((f) => [f.id, f]));
 
   for (let i = 0; i < mapping.length; i++) {
@@ -216,6 +224,14 @@ export function mapRow(
       const value = normalizeCustomValue(field.type, raw);
       if (!value.ok) return { ok: false, line, error: `${field.name} ${CUSTOM_VALUE_ERROR_MESSAGES[value.reason]}` };
       custom[field.id] = value.value;
+      continue;
+    }
+
+    if (target === QUALIFICATION_TARGET) {
+      // Acepta "4", "4 - Bueno" o "4/5": manda el primer número, que tiene que ser del 1 al 5.
+      const level = parseQualificationLevel(/^\s*(\d+)/.exec(raw)?.[1] ?? "");
+      if (level === null) return { ok: false, line, error: "Calificación: tiene que ser un número del 1 al 5" };
+      qualification = level;
       continue;
     }
 
@@ -273,7 +289,7 @@ export function mapRow(
   const sub = rowSubscription(subscriptionCells, mapping.some((m) => m.target === "sub:status"), new Date(`${today}T23:59:59.999Z`));
   if (!sub.ok) return { ok: false, line, error: sub.error };
 
-  return { ok: true, row: { line, patch, tags, custom, attribution, subscription: sub.value } };
+  return { ok: true, row: { line, patch, tags, custom, attribution, subscription: sub.value, qualification } };
 }
 
 /** Las columnas que se van a importar, para el resumen previo. */

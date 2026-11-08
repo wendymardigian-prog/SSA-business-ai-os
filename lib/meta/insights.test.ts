@@ -184,6 +184,23 @@ describe("normalizar una fila (F55)", () => {
     expect(row?.videoAvgTimeSeconds).toBe(7.4);
   });
 
+  it("el resultado del objetivo se guarda con las acciones, con su prefijo (las visitas al perfil solo vienen por ahi)", () => {
+    const row = normalizeInsight(
+      {
+        ...raw,
+        results: [
+          { indicator: "profile_visit_view", values: [{ value: "843" }] },
+          { indicator: "mixed", values: [{ value: "0" }] },
+          { indicator: "actions:lead", values: [] },
+        ],
+      },
+      "campaign",
+      "act_1",
+    );
+
+    expect(row?.actions).toEqual({ lead: 12, link_click: 300, "result:profile_visit_view": 843 });
+  });
+
   it("sin video, el tiempo promedio queda en null y no en cero", () => {
     expect(normalizeInsight(raw, "campaign", "act_1")?.videoAvgTimeSeconds).toBeNull();
   });

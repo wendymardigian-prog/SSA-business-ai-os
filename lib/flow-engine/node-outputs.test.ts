@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { nodeOutputs, canonicalNodeType, nodeTypesWithOutputs } from "./node-outputs";
 import { listNodes } from "./registry";
+import { availableConditionFields, flattenFields, upstreamOf } from "./condition-catalog";
 
 describe("nodeOutputs", () => {
   it("httpRequest aporta la variable donde guarda la respuesta", () => {
@@ -34,5 +35,29 @@ describe("node-outputs y el registro dicen lo mismo", () => {
     const http = listNodes().find((n) => n.type === "httpRequest")!;
     const data = { method: "GET", url: "x", responseVariable: "crm" };
     expect((http.outputs as (d: unknown) => unknown)(data)).toEqual(nodeOutputs({ type: "httpRequest", data }));
+  });
+});
+
+describe("«Generar desde plantilla» (Diseñador IA, F58)", () => {
+  it("deja sus seis salidas con su rótulo, y Condiciones las ofrece DESPUÉS del paso", () => {
+    const outputs = nodeOutputs({ type: "action", data: { actionType: "designGenerate", templateId: "tpl-1" } });
+    expect(outputs.map((o) => o.path)).toEqual(["design.id", "design.link", "design.pdf_url", "design.code", "design.status", "design.doc_type"]);
+    expect(outputs.every((o) => o.label.startsWith("Diseño generado: "))).toBe(true);
+
+    const graph = {
+      nodes: [
+        { id: "t", type: "trigger", data: {} },
+        { id: "g", type: "action", data: { actionType: "designGenerate", templateId: "tpl-1" } },
+        { id: "c", type: "branch", data: {} },
+      ],
+      edges: [
+        { source: "t", target: "g" },
+        { source: "g", target: "c" },
+      ],
+    };
+    const after = flattenFields(availableConditionFields({ upstreamNodes: upstreamOf(graph, "c") })).map((f) => f.path);
+    expect(after).toEqual(expect.arrayContaining(["design.status", "design.code"]));
+    const before = flattenFields(availableConditionFields({ upstreamNodes: upstreamOf(graph, "g") })).map((f) => f.path);
+    expect(before).not.toContain("design.status");
   });
 });

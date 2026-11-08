@@ -14,6 +14,8 @@ import {
   type ColumnGroup,
 } from "@/lib/attribution/columns";
 import { cellFor, type ResponseColumn, type StoredAnswer } from "./responses";
+import { countryFromPhone } from "@/lib/phone-country";
+import { phoneFieldKey } from "./response-index";
 
 export {
   EMPTY_COLUMN_PREFS,
@@ -52,10 +54,20 @@ const DEFAULT_ATTRIBUTION_COLUMNS: ReadonlySet<string> = new Set([
   "entry_url",
 ]);
 
-/** Las preguntas primero, en su orden, y la atribución al final. */
+/** «🇵🇪 Perú», sacado del prefijo del teléfono; vacío si no tiene uno internacional. */
+export function countryCell(phone: string): string {
+  const country = countryFromPhone(phone);
+  return country ? `${country.flag} ${country.name}`.trim() : "";
+}
+
+/**
+ * Las preguntas primero, en su orden, y la atribución al final. Justo después de la pregunta de
+ * teléfono (la primera), «País», que sale de su prefijo.
+ */
 export function responseColumnDefs(answers: readonly ResponseColumn[]): ResponseColumnDef[] {
-  const answerDefs = answers.map(
-    (column): ResponseColumnDef => ({
+  const phoneKey = phoneFieldKey(answers);
+  const answerDefs = answers.flatMap((column): ResponseColumnDef[] => {
+    const def: ResponseColumnDef = {
       key: `answer:${column.key}`,
       label: column.label,
       group: "answers",
@@ -63,8 +75,18 @@ export function responseColumnDefs(answers: readonly ResponseColumn[]): Response
       removed: column.removed,
       hint: column.removed ? "Este campo ya no está en el formulario" : undefined,
       value: (row) => cellFor(row, column),
-    }),
-  );
+    };
+    if (column.key !== phoneKey) return [def];
+    const country: ResponseColumnDef = {
+      key: `country:${column.key}`,
+      label: "País",
+      group: "answers",
+      defaultVisible: true,
+      hint: `Sale del prefijo de «${column.label}»`,
+      value: (row) => countryCell(cellFor(row, column)),
+    };
+    return [def, country];
+  });
   return [...answerDefs, ...attributionColumnDefs(DEFAULT_ATTRIBUTION_COLUMNS)];
 }
 

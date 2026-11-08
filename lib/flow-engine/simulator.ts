@@ -4,6 +4,7 @@
  * flow builder.
  */
 
+import { describeQualifyStep, type QualifyLeadStepData } from "./qualify-lead";
 import type { Node, Edge } from "@xyflow/react";
 import { pickPath, type BranchNodeData, type FieldValue } from "./condition-eval";
 import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "./branch-paths";
@@ -580,6 +581,41 @@ export function simulateFlow(
           nodeType: "send_poll",
           nodeLabel: label,
           result: { type: "action", actionType: "send_poll", detail: question ? `encuesta: ${question}` : "(sin pregunta)" },
+        });
+        break;
+      }
+
+      // API de Conversiones (00328): en la simulación no se le manda nada a Meta.
+      case "send_meta_event": {
+        const eventName = typeof data.eventName === "string" && data.eventName.trim() ? data.eventName.trim() : "";
+        steps.push({
+          nodeId: node.id,
+          nodeType: "send_meta_event",
+          nodeLabel: label,
+          result: { type: "action", actionType: "send_meta_event", detail: eventName ? `le avisaría a Meta: ${eventName}` : "(sin evento)" },
+        });
+        break;
+      }
+
+      // Calificación del lead (00329): en la simulación no se cambia nada.
+      case "qualify_lead": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "qualify_lead",
+          nodeLabel: label,
+          result: { type: "action", actionType: "qualify_lead", detail: describeQualifyStep(data as Partial<QualifyLeadStepData>) },
+        });
+        break;
+      }
+
+      // Diseñador IA (F57): en la simulación no se genera ningún diseño ni se llama al render.
+      case "designGenerate": {
+        const name = typeof data.templateName === "string" && data.templateName.trim() ? data.templateName.trim() : "";
+        steps.push({
+          nodeId: node.id,
+          nodeType: "designGenerate",
+          nodeLabel: label,
+          result: { type: "action", actionType: "designGenerate", detail: name ? `generaría «${name}»` : "(sin plantilla)" },
         });
         break;
       }

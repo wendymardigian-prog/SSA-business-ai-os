@@ -59,6 +59,9 @@ describe("Member de sistema", () => {
         // SIN `commissions.manage` y SIN `expenses.*`.
         "commissions.view",
         // @plantilla-hasta(comisiones)
+        // Diseñador IA (cambio aprobado M12): ve y edita diseños y plantillas. SIN publicar, generar,
+        // anular ni administrar (`designer.publish`, `designer.generate`, `designer.manage`).
+        "designer.view", "designer.edit",
       ].sort(),
     );
   });

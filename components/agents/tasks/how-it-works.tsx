@@ -104,6 +104,16 @@ export function AgentCloseTable({ task, rows }: { task: AiTaskDef; rows: AgentCl
                     value={!a.temperature.enabled ? "Herramienta apagada: no la cambia" : a.temperature.canLower ? "Puede subirla y bajarla" : "Solo puede subirla"}
                   />
                   <Row
+                    label="Calificación (1 a 5)"
+                    value={
+                      !a.qualification?.enabled
+                        ? "Herramienta apagada: no califica"
+                        : a.qualification.canLower
+                          ? "Puede subirla y bajarla, con los niveles de Ajustes → Estados"
+                          : "Solo puede subirla, con los niveles de Ajustes → Estados"
+                    }
+                  />
+                  <Row
                     label="Seguimiento"
                     value={
                       !a.followup.enabled

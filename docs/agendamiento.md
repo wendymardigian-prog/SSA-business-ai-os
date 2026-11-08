@@ -208,8 +208,18 @@ revierte.
   `occupy` (`lib/jobs/handlers/booking-sync.ts`). Si todavía no hay evento
   sincronizado, no hay nada que tocar en Google — el efecto real ya lo tiene
   la base.
+- **El ocupado de Google no tapa un espacio liberado** (7/11/2026). `freeBusy` no
+  dice de qué evento es cada ocupado, y el de la reunión liberada puede seguir
+  figurando: el job todavía no corrió, falló, es la copia del anfitrión nuevo
+  después de reasignar, o la caché de 60 s. Por eso `splitHostBookings`
+  (`slots-input.ts`) pasa el rango de cada liberada (y de la que se está
+  reagendando) como `freed`, y `busyRanges` se lo RESTA al ocupado de Google
+  antes de sumar los buffers. Es la doble reserva a propósito: dentro de ese
+  rango se ofrece el horario aunque Google lo muestre ocupado. Lo que excede el
+  rango (otro evento real pegado) sigue bloqueando.
 - Botón en el panel de detalle, visible solo con `bookings.manage` sobre una
-  agenda activa.
+  agenda activa. La reunión liberada se ve punteada, con «Espacio liberado», en
+  la lista, el Kanban y el calendario.
 
 ## Cambiar el anfitrión de un evento (00290, 4/11/2026)
 

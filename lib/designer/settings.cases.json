@@ -1,0 +1,334 @@
+[
+ {
+  "name": "vacío",
+  "settings": {},
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "con versión",
+  "settings": {
+   "v": 1
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "paleta",
+  "settings": {
+   "palette": [
+    "#0f1115",
+    "#c4d94a"
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "fuentes de Google",
+  "settings": {
+   "fonts": {
+    "google": [
+     "Archivo Black",
+     "Poppins"
+    ]
+   }
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "fuente subida",
+  "settings": {
+   "fonts": {
+    "uploaded": [
+     {
+      "family": "Mi Marca Sans",
+      "weight": 700,
+      "style": "normal",
+      "path": "11111111-2222-3333-4444-555555555555/fonts/marca.woff2",
+      "format": "woff2"
+     }
+    ]
+   }
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "estilo propio",
+  "settings": {
+   "styles": [
+    {
+     "key": "c_abcd",
+     "name": "Mi estilo",
+     "palette": {
+      "bg": "#000000",
+      "text": "#ffffff",
+      "accent": "#c4d94a"
+     },
+     "fonts": {
+      "title": "Inter",
+      "body": "Inter"
+     },
+     "density": {
+      "v45": 25
+     },
+     "rules": "texto"
+    }
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "todo junto",
+  "settings": {
+   "v": 1,
+   "palette": [
+    "#ffffff"
+   ],
+   "fonts": {
+    "google": [
+     "Comic Neue"
+    ],
+    "uploaded": [
+     {
+      "family": "Mi Marca Sans",
+      "weight": 700,
+      "style": "normal",
+      "path": "11111111-2222-3333-4444-555555555555/fonts/marca.woff2",
+      "format": "woff2"
+     }
+    ]
+   },
+   "styles": [
+    {
+     "key": "c_abcd",
+     "name": "Mi estilo",
+     "palette": {
+      "bg": "#000000",
+      "text": "#ffffff",
+      "accent": "#c4d94a"
+     },
+     "fonts": {
+      "title": "Inter",
+      "body": "Inter"
+     },
+     "density": {
+      "v45": 25
+     },
+     "rules": "texto"
+    }
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "no es un objeto",
+  "settings": [
+   1
+  ],
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "versión desconocida",
+  "settings": {
+   "v": 2
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "paleta que no es lista",
+  "settings": {
+   "palette": "#fff"
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "color inválido en la paleta",
+  "settings": {
+   "palette": [
+    "rojo"
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "fuentes que no son objeto",
+  "settings": {
+   "fonts": [
+    "Inter"
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "Google que no es lista",
+  "settings": {
+   "fonts": {
+    "google": "Inter"
+   }
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "subidas que no son lista",
+  "settings": {
+   "fonts": {
+    "uploaded": {
+     "family": "Mi Marca Sans",
+     "weight": 700,
+     "style": "normal",
+     "path": "11111111-2222-3333-4444-555555555555/fonts/marca.woff2",
+     "format": "woff2"
+    }
+   }
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "estilos que no son lista",
+  "settings": {
+   "styles": {
+    "key": "c_abcd",
+    "name": "Mi estilo",
+    "palette": {
+     "bg": "#000000",
+     "text": "#ffffff",
+     "accent": "#c4d94a"
+    },
+    "fonts": {
+     "title": "Inter",
+     "body": "Inter"
+    },
+    "density": {
+     "v45": 25
+    },
+    "rules": "texto"
+   }
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "estilo sin clave",
+  "settings": {
+   "styles": [
+    {
+     "name": "Mi estilo",
+     "palette": {
+      "bg": "#000000",
+      "text": "#ffffff",
+      "accent": "#c4d94a"
+     },
+     "fonts": {
+      "title": "Inter",
+      "body": "Inter"
+     },
+     "density": {
+      "v45": 25
+     },
+     "rules": "texto"
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "estilo sin nombre",
+  "settings": {
+   "styles": [
+    {
+     "key": "c_abcd",
+     "palette": {
+      "bg": "#000000",
+      "text": "#ffffff",
+      "accent": "#c4d94a"
+     },
+     "fonts": {
+      "title": "Inter",
+      "body": "Inter"
+     },
+     "density": {
+      "v45": 25
+     },
+     "rules": "texto"
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "estilo propio sin c_",
+  "settings": {
+   "styles": [
+    {
+     "key": "social",
+     "name": "Mi estilo",
+     "palette": {
+      "bg": "#000000",
+      "text": "#ffffff",
+      "accent": "#c4d94a"
+     },
+     "fonts": {
+      "title": "Inter",
+      "body": "Inter"
+     },
+     "density": {
+      "v45": 25
+     },
+     "rules": "texto"
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "fuente subida fuera de su carpeta",
+  "settings": {
+   "fonts": {
+    "uploaded": [
+     {
+      "family": "Mi Marca Sans",
+      "weight": 700,
+      "style": "normal",
+      "path": "otra/ruta.woff2",
+      "format": "woff2"
+     }
+    ]
+   }
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "formato de fuente desconocido",
+  "settings": {
+   "fonts": {
+    "uploaded": [
+     {
+      "family": "Mi Marca Sans",
+      "weight": 700,
+      "style": "normal",
+      "path": "11111111-2222-3333-4444-555555555555/fonts/marca.woff2",
+      "format": "eot"
+     }
+    ]
+   }
+  },
+  "valid": false,
+  "sql": true
+ }
+]

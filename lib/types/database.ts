@@ -498,6 +498,9 @@ export type AuditEntityType =
   | "webhook_endpoint" // @plantilla-quitar(webhooks)
   /** Un anuncio del catalogo de Meta (00191): el vinculo manual con una pieza de Contenido (Extra L, Tiron 2, A2). */
   | "meta_ad"
+  /** Diseñador IA (00320): un diseño o una generación, y una plantilla (publicar, despublicar, generar, anular, archivar). */
+  | "design"
+  | "design_template"
   /** Tareas (00196). Las RPC de 00197 escriben `task.completed`, `task.date_shifted`, `task.blockers_changed` y `task.deleted`.  @plantilla-quitar(tareas) */
   /** Finanzas (Extra I, 00225): gastos, plantillas recurrentes y proveedores. Las categorias y la configuracion se auditan sobre "workspace".  @plantilla-quitar(finanzas) */
   | "expense" // @plantilla-quitar(finanzas)
@@ -525,6 +528,10 @@ export type AuditAction =
   | "setter_status"
   /** Pipeline (00245): cambiaron las listas de estados del negocio. */
   | "contact_statuses.updated"
+  /** Calificacion (00329): el agente de IA cambio el nivel de calificacion (se puede revertir). */
+  | "qualification"
+  /** Calificacion (00329): cambiaron los nombres o la rubrica de los niveles. */
+  | "qualification_settings.updated"
   | "delete"
   | "restore"
   | "assign"
@@ -783,7 +790,28 @@ export type AuditAction =
   | "commission_rule.paused" // @plantilla-quitar(comisiones)
   | "commission_rule.resumed" // @plantilla-quitar(comisiones)
   | "commission_rule.archived" // @plantilla-quitar(comisiones)
-  | "commission_rule.reordered"; // @plantilla-quitar(comisiones)
+  | "commission_rule.reordered" // @plantilla-quitar(comisiones)
+  /** Diseñador IA (entity design / design_template). Lo que cambia el estado público queda en el historial. */
+  | "design.created"
+  | "design.renamed"
+  | "design.duplicated"
+  | "design.archived"
+  | "design.restored"
+  | "design.deleted"
+  | "design.version_restored"
+  | "design.published"
+  | "design.unpublished"
+  | "design.public_options_changed"
+  | "design.voided"
+  | "design.generated"
+  | "design.regenerated"
+  | "design.email_sent"
+  | "design.content_linked"
+  | "design.content_unlinked"
+  | "design_template.created"
+  | "design_template.settings_changed"
+  | "design_template.archived"
+  | "design_template.automation_created";
 /** Quien hizo la accion (migracion 00144). */
 export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
@@ -847,6 +875,8 @@ export type AgentRunSource =
   // los pide el sistema al recibir un mensaje.
   | "audio_transcription"
   | "media_description"
+  /** Diseñador IA (00321): crear y cambiar diseños con IA, revisión automática y estilos propios. */
+  | "designer"
   // Llamadas (00148): clasificar, analizar, corregir con IA, probar el borrador y resumir.  @plantilla-quitar(llamadas)
   | "call_classification" // @plantilla-quitar(llamadas)
   | "call_analysis" // @plantilla-quitar(llamadas)
@@ -1202,9 +1232,13 @@ export interface Database {
           finance_settings: Json; // @plantilla-quitar(finanzas)
           /** Pipeline de contactos (00245): las listas de estados de setter y de vendedor. */
           contact_status_settings: Json;
+          /** Calificacion (00329): nombre y descripcion de los 5 niveles. */
+          qualification_settings: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings: Json;
           team_alerts_settings: Json;
+          /** Diseñador IA (00319): estilos propios, fuentes y paleta extra. */
+          design_settings: Json;
           website_settings: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */ // @plantilla-quitar(ventas)
@@ -1259,9 +1293,11 @@ export interface Database {
           payment_methods?: Json;
           finance_settings?: Json; // @plantilla-quitar(finanzas)
           contact_status_settings?: Json;
+          qualification_settings?: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
+          design_settings?: Json;
           website_settings?: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
@@ -1310,9 +1346,11 @@ export interface Database {
           payment_methods?: Json;
           finance_settings?: Json; // @plantilla-quitar(finanzas)
           contact_status_settings?: Json;
+          qualification_settings?: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
+          design_settings?: Json;
           website_settings?: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
@@ -1644,6 +1682,13 @@ export interface Database {
           last_status_role: "setter" | "closer" | null;
           last_status: string | null;
           last_status_at: string | null;
+          /**
+           * Nivel de calificacion 1-5 (00329). Solo lectura: se escribe con
+           * `set_contact_qualification` (un trigger rechaza cualquier otro cambio).
+           */
+          qualification_level: number | null;
+          qualification_at: string | null;
+          qualification_by_agent: boolean;
           /** Producto de interes y su variante opcional (00246). */
           interest_product_id: string | null;
           interest_variant_id: string | null;
@@ -2106,6 +2151,220 @@ export interface Database {
           },
         ];
       };
+      // Diseñador IA (00320). Escribe SOLO el servidor (cliente de servicio, después del permiso).
+      design_templates: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          format: string;
+          doc: Json;
+          rev: number;
+          custom_vars: Json;
+          date_format: "long" | "short" | "en";
+          verify: boolean;
+          doc_type: "certificado" | "constancia" | "diploma" | "otro" | null;
+          doc_type_label: string | null;
+          allow_download: boolean;
+          origin: "ai" | "image" | "html" | "blank";
+          style: string | null;
+          archived_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          format: string;
+          doc: Json;
+          rev?: number;
+          custom_vars?: Json;
+          date_format?: "long" | "short" | "en";
+          verify?: boolean;
+          doc_type?: "certificado" | "constancia" | "diploma" | "otro" | null;
+          doc_type_label?: string | null;
+          allow_download?: boolean;
+          origin: "ai" | "image" | "html" | "blank";
+          style?: string | null;
+          archived_at?: string | null;
+          created_by?: string | null;
+        };
+        Update: Partial<Omit<Database["public"]["Tables"]["design_templates"]["Insert"], "workspace_id">>;
+        Relationships: [];
+      };
+      designs: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          format: string;
+          doc: Json;
+          rev: number;
+          origin: "ai" | "image" | "html" | "blank" | "template";
+          style: string | null;
+          code: string;
+          published: boolean;
+          allow_download: boolean;
+          allow_indexing: boolean;
+          published_at: string | null;
+          template_id: string | null;
+          subject_contact_id: string | null;
+          subject_ref: Json | null;
+          values: Json;
+          status: "draft" | "queued" | "rendering" | "ready" | "failed" | "void";
+          error: string | null;
+          attempts: number;
+          next_attempt_at: string | null;
+          source: "manual" | "bulk" | "automation" | "module" | null;
+          source_ref: Json | null;
+          email_status: "sent" | "failed" | "skipped" | null;
+          void_reason: string | null;
+          voided_at: string | null;
+          voided_by: string | null;
+          renders: Json;
+          content_post_id: string | null;
+          content_network: string | null;
+          last_qa: Json | null;
+          archived_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          format: string;
+          doc: Json;
+          rev?: number;
+          origin: "ai" | "image" | "html" | "blank" | "template";
+          style?: string | null;
+          code?: string;
+          published?: boolean;
+          allow_download?: boolean;
+          allow_indexing?: boolean;
+          published_at?: string | null;
+          template_id?: string | null;
+          subject_contact_id?: string | null;
+          subject_ref?: Json | null;
+          values?: Json;
+          status?: "draft" | "queued" | "rendering" | "ready" | "failed" | "void";
+          error?: string | null;
+          attempts?: number;
+          next_attempt_at?: string | null;
+          source?: "manual" | "bulk" | "automation" | "module" | null;
+          source_ref?: Json | null;
+          email_status?: "sent" | "failed" | "skipped" | null;
+          void_reason?: string | null;
+          voided_at?: string | null;
+          voided_by?: string | null;
+          renders?: Json;
+          content_post_id?: string | null;
+          content_network?: string | null;
+          last_qa?: Json | null;
+          archived_at?: string | null;
+          created_by?: string | null;
+        };
+        Update: Partial<Omit<Database["public"]["Tables"]["designs"]["Insert"], "workspace_id" | "code">>;
+        Relationships: [];
+      };
+      design_versions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          template_id: string | null;
+          design_id: string | null;
+          doc: Json;
+          reason: "ai" | "manual" | "publish" | "restore" | "generate" | "import";
+          author_kind: "user" | "ai";
+          author_id: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          template_id?: string | null;
+          design_id?: string | null;
+          doc: Json;
+          reason: "ai" | "manual" | "publish" | "restore" | "generate" | "import";
+          author_kind: "user" | "ai";
+          author_id?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      // Conversaciones con IA fuera de la bandeja (00320, genéricas de BAIOS). Escribe SOLO el servidor.
+      ai_threads: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          channel: "designer" | "portal" | "assistant";
+          agent_id: string | null;
+          user_id: string | null;
+          contact_id: string | null;
+          subject_type: "design" | "design_template" | "product" | null;
+          subject_id: string | null;
+          title: string | null;
+          last_message_at: string | null;
+          archived_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          channel: "designer" | "portal" | "assistant";
+          agent_id?: string | null;
+          user_id?: string | null;
+          contact_id?: string | null;
+          subject_type?: "design" | "design_template" | "product" | null;
+          subject_id?: string | null;
+          title?: string | null;
+          last_message_at?: string | null;
+          archived_at?: string | null;
+          created_by?: string | null;
+        };
+        Update: Partial<Omit<Database["public"]["Tables"]["ai_threads"]["Insert"], "workspace_id" | "channel">>;
+        Relationships: [];
+      };
+      ai_messages: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          thread_id: string;
+          role: "user" | "assistant";
+          content: string;
+          attachments: Json;
+          context: Json;
+          result: Json | null;
+          citations: Json;
+          agent_run_id: string | null;
+          feedback: "up" | "down" | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          thread_id: string;
+          role: "user" | "assistant";
+          content: string;
+          attachments?: Json;
+          context?: Json;
+          result?: Json | null;
+          citations?: Json;
+          agent_run_id?: string | null;
+          feedback?: "up" | "down" | null;
+          created_at?: string;
+        };
+        Update: { feedback?: "up" | "down" | null; result?: Json | null };
+        Relationships: [];
+      };
       flow_link_clicks: {
         Row: {
           id: string;
@@ -2124,6 +2383,88 @@ export interface Database {
           button_key?: string | null;
           session_id?: string | null;
           clicked_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      /** API de Conversiones de Meta (00328): cada evento que se manda o se saltea. Escribe solo el servidor. */
+      meta_capi_events: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          event_name: string;
+          event_id: string;
+          source_type: "form" | "booking" | "payment" | "contact";
+          source_id: string;
+          flow_id: string | null;
+          flow_session_id: string | null;
+          event_time: string;
+          params: Json;
+          status: "pending" | "sent" | "failed" | "skipped";
+          skip_reason: string | null;
+          attempts: number;
+          test: boolean;
+          action_source: "website" | "system_generated" | null;
+          fbtrace_id: string | null;
+          error: string | null;
+          sent_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          event_name: string;
+          event_id: string;
+          source_type: "form" | "booking" | "payment" | "contact";
+          source_id: string;
+          flow_id?: string | null;
+          flow_session_id?: string | null;
+          event_time: string;
+          params?: Json;
+          status?: "pending" | "sent" | "failed" | "skipped";
+          skip_reason?: string | null;
+          attempts?: number;
+          test?: boolean;
+          action_source?: "website" | "system_generated" | null;
+          fbtrace_id?: string | null;
+          error?: string | null;
+          sent_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: "pending" | "sent" | "failed" | "skipped";
+          skip_reason?: string | null;
+          attempts?: number;
+          test?: boolean;
+          action_source?: "website" | "system_generated" | null;
+          fbtrace_id?: string | null;
+          error?: string | null;
+          sent_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      /** API de Conversiones de Meta (00328): IP y navegador de quien respondió o agendó. Solo service_role; 8 días. */
+      meta_capi_request_context: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          source_type: "form" | "booking";
+          source_id: string;
+          client_ip: string | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          source_type: "form" | "booking";
+          source_id: string;
+          client_ip?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
         };
         Update: Record<string, never>;
         Relationships: [];
@@ -2560,6 +2901,33 @@ export interface Database {
         ];
       };
       /** Reacciones (emoji) a mensajes (migracion 00237). Solo las escribe el servidor; no son mensajes. */
+      contact_qualification_changes: {
+        /** Calificacion (00329): el historial del nivel. Escribe solo `set_contact_qualification`. */
+        Row: {
+          id: string;
+          workspace_id: string;
+          contact_id: string;
+          old_level: number | null;
+          new_level: number | null;
+          source: "person" | "agent" | "automation" | "import" | "merge" | "seed";
+          changed_by: string | null;
+          changed_by_agent_id: string | null;
+          flow_id: string | null;
+          reason: string | null;
+          created_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [
+          {
+            foreignKeyName: "contact_qualification_changes_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "contacts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       contact_status_changes: {
         /** Pipeline (00245): el historial de los estados. Escribe solo `set_contact_status`. */
         Row: {
@@ -6626,6 +6994,12 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
+      /** Diseñador IA (00320): lo único que ve el link público /d/<código>. anon la puede ejecutar. */
+      design_public_get: { Args: { p_code: string }; Returns: Json };
+      /** Diseñador IA (00320): gemela de estructura del documento (`lib/designer/doc/schema.ts`). */
+      validate_design_doc: { Args: { p: Json }; Returns: boolean };
+      /** Diseñador IA (00319): gemela de estructura de `workspaces.design_settings`. */
+      validate_design_settings: { Args: { p: Json }; Returns: boolean };
       // @plantilla-desde(comisiones)
       /** Comisiones (00231): los hechos de un pago que mira el motor. Solo service_role. */
       commission_facts: { Args: { p_payment_id: string }; Returns: Json };
@@ -6897,6 +7271,23 @@ export interface Database {
       };
       // @plantilla-hasta(tareas)
       /** La fusion de contactos (00207), en una transaccion. Solo service_role. */
+      /** Calificacion (00329): la unica forma de cambiar el nivel de calificacion. Solo service_role. */
+      set_contact_qualification: {
+        Args: {
+          p_workspace_id: string;
+          p_contact_id: string;
+          p_mode: "set" | "add" | "clear";
+          p_value?: number | null;
+          p_actor_user?: string | null;
+          p_actor_agent?: string | null;
+          p_source?: "person" | "agent" | "automation" | "import";
+          p_flow_id?: string | null;
+          p_reason?: string | null;
+          p_respect_human?: boolean;
+          p_only_raise?: boolean;
+        };
+        Returns: Json;
+      };
       /** Pipeline (00245): la unica forma de cambiar el estado de setter o de vendedor. Solo service_role. */
       set_contact_status: {
         Args: {

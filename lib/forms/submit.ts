@@ -165,6 +165,11 @@ export interface SubmitPorts {
     contactId: string;
     action: MarketingConsentAction;
   }): Promise<void>;
+  /**
+   * La IP y el navegador de quien respondió, para la API de Conversiones de Meta (00328): Meta los pide para un evento
+   * de web y la respuesta solo guarda un hash de la IP. Opcional para los puertos de prueba. No lanza.
+   */
+  rememberRequestContext?(input: { form: LoadedForm; submissionId: string; ip: string; userAgent: string | null }): Promise<void>;
   /** Avisa de la respuesta nueva a quien corresponda. */
   notify(input: {
     form: LoadedForm;
@@ -523,7 +528,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   }
 
   // 11. Lo que va DESPUÉS del commit: el toque y el aviso. Una falla acá se registra y nada más.
-  if (!saved.duplicate) await afterSave(ports, form, saved, attribution, values);
+  if (!saved.duplicate) await afterSave(ports, form, saved, attribution, values, input);
 
   // 12. Responder.
   logResult(form.id, saved.duplicate ? "duplicate" : "saved", saved.submissionId);
@@ -581,6 +586,7 @@ async function afterSave(
   saved: Extract<SaveResult, { ok: true }>,
   attribution: Record<string, unknown>,
   values: Record<string, unknown>,
+  input: Pick<SubmitInput, "ip" | "userAgent">,
 ): Promise<void> {
   if (saved.contactId) {
     try {
@@ -602,6 +608,13 @@ async function afterSave(
   }
   // Una respuesta marcada como spam no avisa a nadie.
   if (saved.status === "spam") return;
+  if (ports.rememberRequestContext) {
+    try {
+      await ports.rememberRequestContext({ form, submissionId: saved.submissionId, ip: input.ip, userAgent: input.userAgent });
+    } catch {
+      console.error(`[forms] no pude guardar el contexto para Meta (form=${form.id}, submission=${saved.submissionId})`);
+    }
+  }
   try {
     await ports.notify({ form, submissionId: saved.submissionId, contactId: saved.contactId, contactCreated: saved.contactCreated });
   } catch {
@@ -637,6 +650,9 @@ function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayloa
     // El id del evento del Pixel de Meta que mandó la web (para no contar dos veces el mismo lead cuando se sume
     // la API de Conversiones). Es de ESTE envío, no del toque: no va en la atribución.
     ...(metaEventIdOf(payload.attribution) ? { meta_event_id: metaEventIdOf(payload.attribution) } : {}),
+    // El id anónimo del navegador que la web le pasó al Pixel (`external_id`): la API de Conversiones lo manda igual,
+    // así Meta reconoce a la misma persona. También es del envío: no va en la atribución.
+    ...(metaExternalIdOf(payload.attribution) ? { meta_external_id: metaExternalIdOf(payload.attribution) } : {}),
     // Datos que no se pudieron guardar en el contacto (país no reconocido…): el detalle de la respuesta los muestra.
     ...(contactNotes.length > 0 ? { contact_notes: contactNotes.map((n) => ({ ...n, text: n.text.slice(0, 100) })) } : {}),
   };
@@ -644,6 +660,15 @@ function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayloa
 
 /** Lo que se acepta como id de evento del Pixel: letras, números y `._:-`, hasta 100. */
 export const META_EVENT_ID_PATTERN = /^[A-Za-z0-9._:-]{1,100}$/;
+
+/** El `external_id` (id anónimo del navegador) que la web manda dentro de `attribution`, si tiene forma válida. */
+export function metaExternalIdOf(attribution: unknown): string | null {
+  if (!attribution || typeof attribution !== "object" || Array.isArray(attribution)) return null;
+  const raw = (attribution as Record<string, unknown>).external_id;
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return META_EVENT_ID_PATTERN.test(value) ? value : null;
+}
 
 /** El `meta_event_id` que la web manda dentro de `attribution`, si tiene forma válida. */
 export function metaEventIdOf(attribution: unknown): string | null {

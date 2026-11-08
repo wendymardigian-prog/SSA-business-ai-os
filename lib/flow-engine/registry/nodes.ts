@@ -30,7 +30,10 @@ import { upsertContactNode } from "../nodes/upsert-contact"; // @plantilla-quita
 import { createTaskNode } from "../nodes/create-task"; // @plantilla-quitar(tareas)
 import { completeTaskNode } from "../nodes/complete-task"; // @plantilla-quitar(tareas)
 import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
+import { sendMetaEventNode } from "../nodes/send-meta-event";
 import { sendPollNode } from "../nodes/send-poll";
+import { designGenerateNode } from "../nodes/design-generate";
+import { qualifyLeadNode } from "../nodes/qualify-lead";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -81,5 +84,11 @@ registerNode(completeTaskNode);
 // @plantilla-hasta(tareas)
 // Tiron 2, D3: un aviso por WhatsApp a un numero que puede no ser de ningun contacto (sirve con y sin contacto).
 registerNode(sendWhatsAppNumberNode);
+// La API de Conversiones de Meta (00328): «Enviar evento a Meta».
+registerNode(sendMetaEventNode);
 // Grupos de WhatsApp: una encuesta a un grupo activado (sus votos pueden disparar otro flujo).
 registerNode(sendPollNode);
+// Diseñador IA (DS7, F57): genera un certificado, una constancia o cualquier pieza desde una plantilla.
+registerNode(designGenerateNode);
+// Calificación del lead (00329): fija, suma, resta o calcula con reglas el nivel 1-5.
+registerNode(qualifyLeadNode);

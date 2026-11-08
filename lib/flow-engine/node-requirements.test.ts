@@ -3,6 +3,7 @@ import {
   ALL_CONNECTED,
   REQUIREMENT_INFO,
   blockedNodes,
+  configProblems,
   missingFor,
   needsText,
   requirementProblems,
@@ -11,7 +12,7 @@ import {
   type Capabilities,
 } from "@/lib/flow-engine/node-requirements";
 
-const none: Capabilities = { email: false, whatsapp_channel: false, ai: false, agent: false, channel: false };
+const none: Capabilities = { email: false, whatsapp_channel: false, ai: false, agent: false, channel: false, meta_capi: false };
 
 const trigger = { id: "t", type: "trigger", data: {} };
 const email = { id: "e", type: "action", data: { actionType: "send_email" } };
@@ -108,5 +109,26 @@ describe("pasos bloqueados de un flujo", () => {
 
   it("una accion sin requisitos (esperar, tag) nunca se bloquea", () => {
     expect(blockedNodes([trigger, delay, tag], [{ source: "t", target: "d" }, { source: "d", target: "g" }], none)).toEqual([]);
+  });
+});
+
+describe("configProblems: lo que le falta a la configuración de un paso (Diseñador IA, F57)", () => {
+  const t = { id: "t", type: "trigger" };
+  const sinPlantilla = { id: "g", type: "action", data: { actionType: "designGenerate" } };
+  const conPlantilla = { id: "g2", type: "designGenerate", data: { templateId: "tpl-1" } };
+
+  it("«Generar desde plantilla» sin plantilla no se publica", () => {
+    expect(configProblems([t, sinPlantilla], [{ source: "t", target: "g" }])).toEqual(["Elegí la plantilla del paso «Generar desde plantilla»."]);
+  });
+
+  it("un email que adjunta el PDF del diseño sin un «Generar desde plantilla» antes no se publica (F59)", () => {
+    const email = { id: "e", type: "action", data: { actionType: "send_email", attachments: [{ kind: "design", from: "design" }] } };
+    expect(configProblems([t, email], [{ source: "t", target: "e" }])).toEqual(["El email adjunta el PDF del diseño, pero no hay un paso «Generar desde plantilla» antes."]);
+    expect(configProblems([t, conPlantilla, email], [{ source: "t", target: "g2" }, { source: "g2", target: "e" }])).toEqual([]);
+  });
+
+  it("con plantilla, o suelto sin conectar al disparador, no frena", () => {
+    expect(configProblems([t, conPlantilla], [{ source: "t", target: "g2" }])).toEqual([]);
+    expect(configProblems([t, sinPlantilla], [])).toEqual([]);
   });
 });

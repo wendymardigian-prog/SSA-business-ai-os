@@ -52,11 +52,11 @@ export function buildSystemPrompt(agent: AgentConfig, nonce: string, toolNames: 
     );
   }
   const crmTools = toolNames.filter((t) =>
-    ["etiquetar_contacto", "cambiar_temperatura", "programar_seguimiento", "asignar_conversacion", "pausarse"].includes(t),
+    ["etiquetar_contacto", "cambiar_temperatura", "calificar_lead", "programar_seguimiento", "asignar_conversacion", "pausarse"].includes(t),
   );
   if (crmTools.length > 0) {
     rules.push(
-      "Las herramientas del CRM (etiquetar, temperatura, seguimiento, asignar, pausarte) se usan cuando la conversacion lo justifica, sin anunciarselo al lead. Si una herramienta te dice que algo no esta permitido, no insistas.",
+      "Las herramientas del CRM (etiquetar, temperatura, calificacion, seguimiento, asignar, pausarte) se usan cuando la conversacion lo justifica, sin anunciarselo al lead. Si una herramienta te dice que algo no esta permitido, no insistas.",
     );
   }
 
@@ -89,6 +89,11 @@ export interface HistoryMessage {
 export interface ContactContext {
   name: string | null;
   leadTemperature: string | null;
+  /** Calificación 1-5 (00329) y su nombre ("3 · Medio"); null = sin calificar. */
+  qualificationLevel?: number | null;
+  qualificationLabel?: string | null;
+  /** Los 5 niveles con su descripción, para que el agente sepa cuál poner. */
+  qualificationRubric?: string | null;
   tags: string[];
   nextFollowupDate: string | null;
   summary: string | null;
@@ -124,11 +129,17 @@ export function buildModelMessages(args: {
   contact: ContactContext;
   nonce: string;
   revision?: DraftRevision | null;
+  /** Si el agente tiene `calificar_lead`: suma la rúbrica del negocio al contexto. */
+  includeQualificationRubric?: boolean;
 }): ModelMessage[] {
   const { nonce } = args;
   const crmLines = [
     args.contact.name ? `Nombre: ${args.contact.name}` : null,
     args.contact.leadTemperature ? `Temperatura: ${args.contact.leadTemperature}` : null,
+    args.contact.qualificationLabel ? `Calificacion: ${args.contact.qualificationLabel} (de 5)` : args.includeQualificationRubric ? "Calificacion: sin calificar" : null,
+    args.includeQualificationRubric && args.contact.qualificationRubric
+      ? `Niveles de calificacion del negocio (para calificar_lead):\n${args.contact.qualificationRubric}`
+      : null,
     args.contact.tags.length ? `Etiquetas: ${args.contact.tags.join(", ")}` : null,
     args.contact.nextFollowupDate ? `Proximo seguimiento: ${args.contact.nextFollowupDate}` : null,
   ].filter(Boolean);

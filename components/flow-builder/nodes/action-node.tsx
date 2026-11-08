@@ -27,9 +27,13 @@ import { BarChart3,
   BadgeDollarSign,
   CalendarClock,
   Ban,
+  Sparkles,
+  Target,
+  Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
+import { describeQualifyStep, type QualifyLeadStepData } from "@/lib/flow-engine/qualify-lead";
 import { NodeBlockedNotice } from "../capabilities-context";
 
 export interface ActionNodeProps {
@@ -167,6 +171,8 @@ const actionConfig: Record<
     color: "bg-gray-500",
   },
   send_poll: { icon: BarChart3, label: "Enviar encuesta", color: "bg-gray-500" },
+  send_meta_event: { icon: Target, label: "Enviar evento a Meta", color: "bg-gray-500" },
+  qualify_lead: { icon: Gauge, label: "Calificar lead", color: "bg-gray-500" },
   enrollSequence: { icon: ListOrdered, label: "Inscribir en secuencia", color: "bg-gray-500" },
   notify_team: { icon: Bell, label: "Avisar en la campana", color: "bg-gray-500" },
   cancel_booking: { icon: CalendarX, label: "Cancelar la reunión", color: "bg-gray-500" },
@@ -174,6 +180,8 @@ const actionConfig: Record<
   mark_payment_paid: { icon: BadgeDollarSign, label: "Marcar pago como cobrado", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
   reschedule_payment: { icon: CalendarClock, label: "Reprogramar pago", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
   set_sale_status: { icon: Ban, label: "Cancelar la venta", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
+  // Diseñador IA (F57).
+  designGenerate: { icon: Sparkles, label: "Generar desde plantilla", color: "bg-gray-500" },
 };
 
 /** El nombre de cada accion (lo usan el nodo y el encabezado del panel lateral). */
@@ -248,8 +256,15 @@ function getSummary(nodeData: ActionNodeProps): string | null {
     }
     case "send_poll" as NodeType:
       return (nodeData as { question?: string }).question?.trim() || null;
+    case "send_meta_event" as NodeType:
+      return (nodeData as { eventName?: string }).eventName?.trim() || null;
+    case "qualify_lead" as NodeType:
+      return describeQualifyStep(nodeData as Partial<QualifyLeadStepData>);
     case "privateReply":
       return (nodeData as { text?: string }).text?.trim() || null;
+    // Diseñador IA (F57): la plantilla elegida.
+    case "designGenerate" as NodeType:
+      return (nodeData as { templateName?: string; templateId?: string }).templateId ? ((nodeData as { templateName?: string }).templateName?.trim() || "Plantilla elegida") : null;
     case "send_email" as NodeType: {
       if (nodeData.to === "variable") return nodeData.toVariable?.trim() ? `A ${nodeData.toVariable.trim()}` : null;
       if (nodeData.to === "fixed") return nodeData.fixedEmail?.trim() ? `A ${nodeData.fixedEmail.trim()}` : null;

@@ -58292,6 +58292,897 @@ BEGIN
 END $$;
 
 -- ============================================================
+-- MIGRATION 319: DESIGNER SETTINGS PERMISSIONS
+-- ============================================================
+-- ============================================================================
+-- 00319_designer_settings_permissions  (Diseñador IA, D1)
+-- ============================================================================
+-- 1. `workspaces.design_settings` (estilos propios, fuentes agregadas y subidas, paleta extra) con su
+--    validador de estructura `public.validate_design_settings(jsonb)` por trigger. La validación fina es
+--    `lib/designer/settings-schema.ts` (Zod); los casos de `lib/designer/settings.cases.json` corren contra
+--    las dos (vitest y `verify-designer --bloque ds0`).
+-- 2. Permisos: el Member de sistema suma `designer.view` y `designer.edit` (cambio aprobado M12). Se
+--    redefine `private.member_permission_keys()` COPIANDO la vigente (00250) letra por letra y sumando las
+--    dos claves al final; `lib/auth/member-sql-parity.test.ts` la compara con `MEMBER_PERMISSION_KEYS`.
+--    `designer.publish`, `designer.generate` y `designer.manage` quedan para Owner, Admin y los roles
+--    personalizados que las tengan (no hace falta SQL: `has_permission` lee el catálogo de cada rol).
+-- 3. Buckets PRIVADOS `design-assets` (imágenes subidas, fuentes y recursos de HTML cargados; 20 MB por
+--    archivo) y `design-renders` (PNG y PDF generados). El primer segmento de la ruta es el workspace.
+--    Lectura: miembros con `designer.view`. Escritura: solo el servidor (service_role), sin políticas.
+--    Lectura pública NUNCA: el link público sirve archivos por una ruta del servidor (F44).
+--
+-- Aditiva + modifica la lista de permisos del Member. Va ANTES de desplegar el código.
+--
+-- Cómo volver atrás:
+--   DROP TRIGGER IF EXISTS workspaces_design_settings_check ON public.workspaces;
+--   DROP FUNCTION IF EXISTS public.workspaces_design_settings_check();
+--   DROP FUNCTION IF EXISTS public.validate_design_settings(jsonb);
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS design_settings;
+--   DROP POLICY IF EXISTS design_assets_select ON storage.objects;
+--   DROP POLICY IF EXISTS design_renders_select ON storage.objects;
+--   -- (vaciar los buckets antes) DELETE FROM storage.buckets WHERE id IN ('design-assets','design-renders');
+--   -- y `private.member_permission_keys()` vuelve a la definición de 00250 (la misma de abajo SIN las dos
+--   -- últimas claves `designer.view` y `designer.edit`).
+-- Riesgo: medio (cambia lo que ve el Member de sistema: el menú suma «Diseñador IA»).
+-- ============================================================================
+
+-- ─── 1. Ajustes del Diseñador IA ────────────────────────────────────────────
+
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS design_settings jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+-- Gemela mínima de `designSettingsSchema` (estructura y tipos). Devuelve true o false, nunca NULL.
+CREATE OR REPLACE FUNCTION public.validate_design_settings(p jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_item jsonb;
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN
+    RETURN false;
+  END IF;
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN
+    RETURN false;
+  END IF;
+  IF p ? 'palette' THEN
+    IF jsonb_typeof(p -> 'palette') <> 'array' OR jsonb_array_length(p -> 'palette') > 24 THEN
+      RETURN false;
+    END IF;
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p -> 'palette') LOOP
+      IF jsonb_typeof(v_item) <> 'string' OR (v_item #>> '{}') !~ '^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$' THEN
+        RETURN false;
+      END IF;
+    END LOOP;
+  END IF;
+  IF p ? 'fonts' THEN
+    IF jsonb_typeof(p -> 'fonts') <> 'object' THEN
+      RETURN false;
+    END IF;
+    IF (p -> 'fonts') ? 'google' THEN
+      IF jsonb_typeof(p -> 'fonts' -> 'google') <> 'array' THEN
+        RETURN false;
+      END IF;
+      FOR v_item IN SELECT * FROM jsonb_array_elements(p -> 'fonts' -> 'google') LOOP
+        IF jsonb_typeof(v_item) <> 'string' THEN
+          RETURN false;
+        END IF;
+      END LOOP;
+    END IF;
+    IF (p -> 'fonts') ? 'uploaded' THEN
+      IF jsonb_typeof(p -> 'fonts' -> 'uploaded') <> 'array' THEN
+        RETURN false;
+      END IF;
+      FOR v_item IN SELECT * FROM jsonb_array_elements(p -> 'fonts' -> 'uploaded') LOOP
+        IF jsonb_typeof(v_item) <> 'object'
+           OR jsonb_typeof(v_item -> 'family') IS DISTINCT FROM 'string'
+           OR jsonb_typeof(v_item -> 'path') IS DISTINCT FROM 'string' THEN
+          RETURN false;
+        END IF;
+      END LOOP;
+    END IF;
+  END IF;
+  IF p ? 'styles' THEN
+    IF jsonb_typeof(p -> 'styles') <> 'array' THEN
+      RETURN false;
+    END IF;
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p -> 'styles') LOOP
+      IF jsonb_typeof(v_item) <> 'object'
+         OR jsonb_typeof(v_item -> 'key') IS DISTINCT FROM 'string'
+         OR jsonb_typeof(v_item -> 'name') IS DISTINCT FROM 'string' THEN
+        RETURN false;
+      END IF;
+    END LOOP;
+  END IF;
+  RETURN true;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.validate_design_settings(jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.validate_design_settings(jsonb) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.workspaces_design_settings_check()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT public.validate_design_settings(NEW.design_settings) THEN
+    RAISE EXCEPTION 'Los ajustes del Diseñador IA no tienen la forma esperada' USING ERRCODE = '22023';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.workspaces_design_settings_check() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS workspaces_design_settings_check ON public.workspaces;
+CREATE TRIGGER workspaces_design_settings_check
+  BEFORE INSERT OR UPDATE OF design_settings ON public.workspaces
+  FOR EACH ROW EXECUTE FUNCTION public.workspaces_design_settings_check();
+
+-- ─── 2. Permisos del Member (cambio aprobado M12) ──────────────────────────
+-- Copia de 00250 + `designer.view` y `designer.edit` al final.
+
+CREATE OR REPLACE FUNCTION private.member_permission_keys()
+ RETURNS text[]
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT ARRAY[
+    'dashboards.chat.view',
+    'contacts.view',
+    'contacts.edit',
+    'contacts.assign',
+    'flows.view',
+    'flows.edit',
+    'flows.publish',
+    'sequences.view',
+    'agents.view',
+    'content.view',
+    'content.create',
+    'scheduling.use',
+    'bookings.view',
+    'bookings.manage',
+    'calls.view',
+    'forms.view',
+    'sales.view',
+    'sales.manage',
+    'payments.manage',
+    'tasks.view',
+    'tasks.edit',
+    'commissions.view',
+    'designer.view',
+    'designer.edit'
+  ]::text[]
+$function$;
+REVOKE ALL ON FUNCTION private.member_permission_keys() FROM PUBLIC, anon, authenticated;
+
+-- ─── 3. Buckets privados ────────────────────────────────────────────────────
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('design-assets', 'design-assets', false, 20971520, NULL)
+ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = EXCLUDED.file_size_limit, allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('design-renders', 'design-renders', false, 52428800, ARRAY['image/png', 'application/pdf', 'application/zip'])
+ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = EXCLUDED.file_size_limit, allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- Lectura: miembro con `designer.view` del workspace del primer segmento. Sin políticas de escritura
+-- (sube y borra el servidor con el cliente de servicio, después de validar los bytes y el permiso).
+DROP POLICY IF EXISTS design_assets_select ON storage.objects;
+CREATE POLICY design_assets_select ON storage.objects FOR SELECT TO authenticated USING (
+  bucket_id = 'design-assets'
+  AND (storage.foldername(name))[1] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  AND (SELECT public.has_permission(((storage.foldername(name))[1])::uuid, 'designer.view'))
+);
+
+DROP POLICY IF EXISTS design_renders_select ON storage.objects;
+CREATE POLICY design_renders_select ON storage.objects FOR SELECT TO authenticated USING (
+  bucket_id = 'design-renders'
+  AND (storage.foldername(name))[1] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  AND (SELECT public.has_permission(((storage.foldername(name))[1])::uuid, 'designer.view'))
+);
+
+-- ============================================================
+-- MIGRATION 320: DESIGNER TABLES
+-- ============================================================
+-- ============================================================================
+-- 00320_designer_tables  (Diseñador IA, D2)
+-- ============================================================================
+-- Cinco tablas nuevas, todas con RLS de lectura y SIN políticas de escritura (escriben Server Actions y
+-- jobs con el cliente de servicio, después de validar el permiso y el negocio):
+--   - design_templates   plantillas (con variables, verificación solo en formatos impresos).
+--   - designs            diseños propios (template_id NULL) y GENERACIONES (template_id con valor).
+--   - design_versions    historial del documento (solo el `doc`, sin imágenes).
+--   - ai_threads         conversaciones con una IA fuera de la bandeja (GENÉRICA de BAIOS: Diseñador IA,
+--                        después el tutor del portal y el asistente).
+--   - ai_messages        sus mensajes.
+-- Además:
+--   - `public.validate_design_doc(jsonb)`: gemela de estructura de `lib/designer/doc/schema.ts` (casos
+--     compartidos en `lib/designer/doc/doc.cases.json`), por trigger en plantillas, diseños y versiones.
+--   - `private.design_new_code()`: 12 caracteres Crockford base32 en tres grupos (K8F2-WQ4M-7TQA), único
+--     global. Lo pone un trigger (un DEFAULT no puede llamar a `private`: corre con los permisos de quien
+--     inserta).
+--   - `public.design_public_get(code)`: lo único que ve el link público (`anon` puede ejecutarla a
+--     propósito). Nunca devuelve el workspace, emails, teléfonos ni ids del sujeto.
+--   - Fusión de contactos: `contacts_designs_on_merge` reapunta `designs.subject_contact_id` y
+--     `ai_threads.contact_id` cuando `merge_contacts` borra el duplicado con `metadata.merged_into` (mismo
+--     patrón que 00256, sin reescribir `merge_contacts`). Por eso las dos tablas van a
+--     `CONTACT_MERGE_EXCLUSIONS` con ese motivo.
+--   - Limpieza diaria: `private.enqueue_design_cleanup()` encola un `design_cleanup` por negocio y por día
+--     SOLO si tiene algo para limpiar; `cron.schedule` diario por SQL directo (no toca `call_app_cron`).
+--     Con las tablas vacías no encola nada: es segura antes del deploy.
+--
+-- Aditiva. Va ANTES de desplegar el código (lo lee).
+--
+-- Cómo volver atrás (con respaldo previo en docs/designer/respaldo-<tabla>.json si hay datos reales):
+--   SELECT cron.unschedule('design-cleanup') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'design-cleanup');
+--   DROP FUNCTION IF EXISTS private.enqueue_design_cleanup(timestamptz);
+--   DROP TRIGGER IF EXISTS contacts_designs_on_merge ON public.contacts;
+--   DROP FUNCTION IF EXISTS public.contacts_designs_on_merge();
+--   DROP FUNCTION IF EXISTS public.design_public_get(text);
+--   DROP TABLE IF EXISTS public.ai_messages, public.ai_threads, public.design_versions, public.designs, public.design_templates;
+--   DROP FUNCTION IF EXISTS public.designs_set_code(), public.design_doc_check(), public.validate_design_doc(jsonb), private.design_new_code();
+-- Riesgo: bajo.
+-- ============================================================================
+
+-- ─── Validador de estructura del documento ──────────────────────────────────
+-- Estructura, conteos y tipos (la validación fina es la de Zod en el servidor). True o false, nunca NULL.
+
+CREATE OR REPLACE FUNCTION public.validate_design_doc(p jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_pages jsonb;
+  v_page jsonb;
+  v_el jsonb;
+  v_n int;
+  v_num numeric;
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN false; END IF;
+  IF p -> 'v' IS DISTINCT FROM '1'::jsonb THEN RETURN false; END IF;
+  IF (p ->> 'format') IS NULL OR (p ->> 'format') NOT IN ('carta_v','carta_h','a4_v','a4_h','sq','v45','story','wide','web') THEN RETURN false; END IF;
+  v_pages := p -> 'pages';
+  IF v_pages IS NULL OR jsonb_typeof(v_pages) <> 'array' THEN RETURN false; END IF;
+  v_n := jsonb_array_length(v_pages);
+  IF v_n < 1 OR v_n > 20 THEN RETURN false; END IF;
+  IF (p ->> 'format') = 'web' AND v_n <> 1 THEN RETURN false; END IF;
+
+  FOR v_page IN SELECT * FROM jsonb_array_elements(v_pages) LOOP
+    IF jsonb_typeof(v_page) <> 'object' OR jsonb_typeof(v_page -> 'id') IS DISTINCT FROM 'string' THEN RETURN false; END IF;
+    IF jsonb_typeof(v_page -> 'background') IS DISTINCT FROM 'object' THEN RETURN false; END IF;
+    IF (v_page -> 'background' ->> 'type') IS NULL OR (v_page -> 'background' ->> 'type') NOT IN ('color','gradient','image') THEN RETURN false; END IF;
+    IF jsonb_typeof(v_page -> 'elements') IS DISTINCT FROM 'array' OR jsonb_array_length(v_page -> 'elements') > 200 THEN RETURN false; END IF;
+    FOR v_el IN SELECT * FROM jsonb_array_elements(v_page -> 'elements') LOOP
+      IF jsonb_typeof(v_el) <> 'object' OR jsonb_typeof(v_el -> 'id') IS DISTINCT FROM 'string' THEN RETURN false; END IF;
+      IF (v_el ->> 'type') IS NULL OR (v_el ->> 'type') NOT IN ('text','image','shape','html') THEN RETURN false; END IF;
+      IF jsonb_typeof(v_el -> 'x') IS DISTINCT FROM 'number' OR jsonb_typeof(v_el -> 'y') IS DISTINCT FROM 'number' OR jsonb_typeof(v_el -> 'w') IS DISTINCT FROM 'number' THEN RETURN false; END IF;
+      v_num := (v_el ->> 'x')::numeric; IF v_num < 0 OR v_num > 100 THEN RETURN false; END IF;
+      v_num := (v_el ->> 'y')::numeric; IF v_num < 0 OR v_num > 100 THEN RETURN false; END IF;
+      v_num := (v_el ->> 'w')::numeric; IF v_num <= 0 OR v_num > 100 THEN RETURN false; END IF;
+    END LOOP;
+  END LOOP;
+  RETURN true;
+EXCEPTION WHEN OTHERS THEN
+  RETURN false;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.validate_design_doc(jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.validate_design_doc(jsonb) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.design_doc_check()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT public.validate_design_doc(NEW.doc) THEN
+    RAISE EXCEPTION 'El documento del diseño no tiene la forma esperada' USING ERRCODE = '22023';
+  END IF;
+  IF TG_TABLE_NAME IN ('design_templates', 'designs') AND (NEW.doc ->> 'format') IS DISTINCT FROM NEW.format THEN
+    RAISE EXCEPTION 'El formato del documento no coincide con el de la fila' USING ERRCODE = '22023';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.design_doc_check() FROM PUBLIC, anon, authenticated;
+
+-- ─── Códigos ────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION private.design_new_code()
+RETURNS text
+LANGUAGE plpgsql
+VOLATILE
+SET search_path = ''
+AS $$
+DECLARE
+  v_alphabet constant text := '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  v_bytes bytea;
+  v_raw text;
+  v_code text;
+  v_try int := 0;
+BEGIN
+  LOOP
+    v_bytes := extensions.gen_random_bytes(12);
+    v_raw := '';
+    FOR i IN 0..11 LOOP
+      v_raw := v_raw || substr(v_alphabet, (get_byte(v_bytes, i) % 32) + 1, 1);
+    END LOOP;
+    v_code := substr(v_raw, 1, 4) || '-' || substr(v_raw, 5, 4) || '-' || substr(v_raw, 9, 4);
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.designs d WHERE d.code = v_code);
+    v_try := v_try + 1;
+    IF v_try > 20 THEN
+      RAISE EXCEPTION 'No se pudo generar un código único';
+    END IF;
+  END LOOP;
+  RETURN v_code;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.design_new_code() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.design_new_code() TO service_role;
+
+-- ─── design_templates ───────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.design_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 120),
+  format text NOT NULL CHECK (format IN ('carta_v','carta_h','a4_v','a4_h','sq','v45','story','wide')),
+  doc jsonb NOT NULL,
+  rev integer NOT NULL DEFAULT 0,
+  custom_vars jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(custom_vars) = 'array'),
+  date_format text NOT NULL DEFAULT 'long' CHECK (date_format IN ('long','short','en')),
+  verify boolean NOT NULL DEFAULT false,
+  doc_type text NULL CHECK (doc_type IS NULL OR doc_type IN ('certificado','constancia','diploma','otro')),
+  doc_type_label text NULL,
+  allow_download boolean NOT NULL DEFAULT true,
+  origin text NOT NULL CHECK (origin IN ('ai','image','html','blank')),
+  style text NULL,
+  archived_at timestamptz NULL,
+  created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  -- V1/V2 (plano 1.2): la verificación solo en formatos impresos, con tipo de documento; el nombre solo con «otro».
+  CONSTRAINT design_templates_verify_print CHECK (NOT verify OR format IN ('carta_v','carta_h','a4_v','a4_h')),
+  CONSTRAINT design_templates_verify_type CHECK (NOT verify OR doc_type IS NOT NULL),
+  CONSTRAINT design_templates_verify_other_label CHECK (NOT verify OR doc_type IS DISTINCT FROM 'otro' OR doc_type_label IS NOT NULL),
+  CONSTRAINT design_templates_label_only_other CHECK (doc_type_label IS NULL OR (doc_type = 'otro' AND char_length(btrim(doc_type_label)) BETWEEN 1 AND 40))
+);
+
+CREATE INDEX IF NOT EXISTS idx_design_templates_workspace ON public.design_templates (workspace_id, updated_at DESC) WHERE archived_at IS NULL;
+
+-- ─── designs (diseños propios y generaciones) ───────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.designs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 200),
+  format text NOT NULL CHECK (format IN ('carta_v','carta_h','a4_v','a4_h','sq','v45','story','wide','web')),
+  doc jsonb NOT NULL,
+  rev integer NOT NULL DEFAULT 0,
+  origin text NOT NULL CHECK (origin IN ('ai','image','html','blank','template')),
+  style text NULL,
+  code text NOT NULL,
+  published boolean NOT NULL DEFAULT false,
+  allow_download boolean NOT NULL DEFAULT true,
+  allow_indexing boolean NOT NULL DEFAULT false,
+  published_at timestamptz NULL,
+  -- NO ACTION a propósito: borrar un workspace entero no choca en el medio de la cascada.
+  template_id uuid NULL REFERENCES public.design_templates(id),
+  subject_contact_id uuid NULL REFERENCES public.contacts(id) ON DELETE SET NULL,
+  subject_ref jsonb NULL,
+  "values" jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof("values") = 'object'),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','queued','rendering','ready','failed','void')),
+  error text NULL,
+  attempts integer NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NULL,
+  source text NULL CHECK (source IS NULL OR source IN ('manual','bulk','automation','module')),
+  source_ref jsonb NULL,
+  email_status text NULL CHECK (email_status IS NULL OR email_status IN ('sent','failed','skipped')),
+  void_reason text NULL,
+  voided_at timestamptz NULL,
+  voided_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  renders jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(renders) = 'object'),
+  content_post_id uuid NULL REFERENCES public.content_posts(id) ON DELETE SET NULL,
+  content_network text NULL,
+  last_qa jsonb NULL,
+  archived_at timestamptz NULL,
+  created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT designs_code_format CHECK (code ~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$'),
+  CONSTRAINT designs_void_reason CHECK (status <> 'void' OR (void_reason IS NOT NULL AND char_length(btrim(void_reason)) > 0)),
+  CONSTRAINT designs_indexing_web CHECK (NOT allow_indexing OR format = 'web'),
+  CONSTRAINT designs_generation_source CHECK (template_id IS NULL OR source IS NOT NULL)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_designs_code ON public.designs (code);
+CREATE INDEX IF NOT EXISTS idx_designs_template ON public.designs (workspace_id, template_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_designs_template_subject ON public.designs (template_id, subject_contact_id) WHERE status <> 'void';
+CREATE INDEX IF NOT EXISTS idx_designs_content_post ON public.designs (content_post_id) WHERE content_post_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_designs_own ON public.designs (workspace_id, updated_at DESC) WHERE template_id IS NULL AND archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_designs_subject ON public.designs (subject_contact_id) WHERE subject_contact_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.designs_set_code()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.code IS NULL OR NEW.code = '' THEN
+    NEW.code := private.design_new_code();
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.designs_set_code() FROM PUBLIC, anon, authenticated;
+
+-- El código se pone antes de los CHECK: `code` es NOT NULL pero el trigger BEFORE corre primero.
+ALTER TABLE public.designs ALTER COLUMN code SET DEFAULT '';
+
+DROP TRIGGER IF EXISTS designs_set_code ON public.designs;
+CREATE TRIGGER designs_set_code BEFORE INSERT ON public.designs FOR EACH ROW EXECUTE FUNCTION public.designs_set_code();
+
+-- ─── design_versions ────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.design_versions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  template_id uuid NULL REFERENCES public.design_templates(id) ON DELETE CASCADE,
+  design_id uuid NULL REFERENCES public.designs(id) ON DELETE CASCADE,
+  doc jsonb NOT NULL,
+  reason text NOT NULL CHECK (reason IN ('ai','manual','publish','restore','generate','import')),
+  author_kind text NOT NULL CHECK (author_kind IN ('user','ai')),
+  author_id uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT design_versions_one_subject CHECK (num_nonnulls(template_id, design_id) = 1)
+);
+
+CREATE INDEX IF NOT EXISTS idx_design_versions_design ON public.design_versions (design_id, created_at DESC) WHERE design_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_design_versions_template ON public.design_versions (template_id, created_at DESC) WHERE template_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_design_versions_age ON public.design_versions (workspace_id, created_at);
+
+-- ─── ai_threads / ai_messages (genéricas de BAIOS) ─────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.ai_threads (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  channel text NOT NULL CHECK (channel IN ('designer','portal','assistant')),
+  agent_id uuid NULL REFERENCES public.agents(id) ON DELETE SET NULL,
+  user_id uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  contact_id uuid NULL REFERENCES public.contacts(id) ON DELETE SET NULL,
+  subject_type text NULL CHECK (subject_type IS NULL OR subject_type IN ('design','design_template','product')),
+  subject_id uuid NULL,
+  title text NULL,
+  last_message_at timestamptz NULL,
+  archived_at timestamptz NULL,
+  created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT ai_threads_designer_subject CHECK (channel <> 'designer' OR (subject_type IN ('design','design_template') AND subject_id IS NOT NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_threads_channel ON public.ai_threads (workspace_id, channel, last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_threads_contact ON public.ai_threads (contact_id) WHERE contact_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ai_threads_user ON public.ai_threads (user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_threads_designer_subject ON public.ai_threads (subject_type, subject_id) WHERE channel = 'designer';
+
+CREATE TABLE IF NOT EXISTS public.ai_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  thread_id uuid NOT NULL REFERENCES public.ai_threads(id) ON DELETE CASCADE,
+  role text NOT NULL CHECK (role IN ('user','assistant')),
+  content text NOT NULL CHECK (char_length(content) <= 20000),
+  attachments jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(attachments) = 'array'),
+  context jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(context) = 'object'),
+  result jsonb NULL,
+  citations jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(citations) = 'array'),
+  agent_run_id uuid NULL REFERENCES public.agent_runs(id) ON DELETE SET NULL,
+  feedback text NULL CHECK (feedback IS NULL OR feedback IN ('up','down')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_thread ON public.ai_messages (thread_id, created_at);
+
+-- ─── Triggers comunes ───────────────────────────────────────────────────────
+
+DROP TRIGGER IF EXISTS design_templates_doc_check ON public.design_templates;
+CREATE TRIGGER design_templates_doc_check BEFORE INSERT OR UPDATE OF doc, format ON public.design_templates FOR EACH ROW EXECUTE FUNCTION public.design_doc_check();
+DROP TRIGGER IF EXISTS designs_doc_check ON public.designs;
+CREATE TRIGGER designs_doc_check BEFORE INSERT OR UPDATE OF doc, format ON public.designs FOR EACH ROW EXECUTE FUNCTION public.design_doc_check();
+DROP TRIGGER IF EXISTS design_versions_doc_check ON public.design_versions;
+CREATE TRIGGER design_versions_doc_check BEFORE INSERT ON public.design_versions FOR EACH ROW EXECUTE FUNCTION public.design_doc_check();
+
+DROP TRIGGER IF EXISTS update_design_templates_updated_at ON public.design_templates;
+CREATE TRIGGER update_design_templates_updated_at BEFORE UPDATE ON public.design_templates FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+DROP TRIGGER IF EXISTS update_designs_updated_at ON public.designs;
+CREATE TRIGGER update_designs_updated_at BEFORE UPDATE ON public.designs FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+DROP TRIGGER IF EXISTS update_ai_threads_updated_at ON public.ai_threads;
+CREATE TRIGGER update_ai_threads_updated_at BEFORE UPDATE ON public.ai_threads FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ─── RLS: solo lectura ─────────────────────────────────────────────────────
+
+ALTER TABLE public.design_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.designs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.design_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_threads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_messages ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS design_templates_select ON public.design_templates;
+CREATE POLICY design_templates_select ON public.design_templates FOR SELECT TO authenticated
+  USING ((SELECT public.is_workspace_member(workspace_id)) AND (SELECT public.has_permission(workspace_id, 'designer.view')));
+
+DROP POLICY IF EXISTS designs_select ON public.designs;
+CREATE POLICY designs_select ON public.designs FOR SELECT TO authenticated
+  USING ((SELECT public.is_workspace_member(workspace_id)) AND (SELECT public.has_permission(workspace_id, 'designer.view')));
+
+DROP POLICY IF EXISTS design_versions_select ON public.design_versions;
+CREATE POLICY design_versions_select ON public.design_versions FOR SELECT TO authenticated
+  USING ((SELECT public.is_workspace_member(workspace_id)) AND (SELECT public.has_permission(workspace_id, 'designer.view')));
+
+-- Por canal: el Diseñador con `designer.view`; el asistente, solo la persona dueña del hilo y solo si es
+-- miembro de ese negocio; el portal todavía sin política (la suma Servicios).
+DROP POLICY IF EXISTS ai_threads_select ON public.ai_threads;
+CREATE POLICY ai_threads_select ON public.ai_threads FOR SELECT TO authenticated
+  USING (
+    (channel = 'designer' AND (SELECT public.is_workspace_member(workspace_id)) AND (SELECT public.has_permission(workspace_id, 'designer.view')))
+    OR (channel = 'assistant' AND user_id = (SELECT auth.uid()) AND (SELECT public.is_workspace_member(workspace_id)))
+  );
+
+DROP POLICY IF EXISTS ai_messages_select ON public.ai_messages;
+CREATE POLICY ai_messages_select ON public.ai_messages FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.ai_threads t WHERE t.id = ai_messages.thread_id));
+
+REVOKE ALL ON public.design_templates FROM anon, authenticated;
+REVOKE ALL ON public.designs FROM anon, authenticated;
+REVOKE ALL ON public.design_versions FROM anon, authenticated;
+REVOKE ALL ON public.ai_threads FROM anon, authenticated;
+REVOKE ALL ON public.ai_messages FROM anon, authenticated;
+GRANT SELECT ON public.design_templates TO authenticated;
+GRANT SELECT ON public.designs TO authenticated;
+GRANT SELECT ON public.design_versions TO authenticated;
+GRANT SELECT ON public.ai_threads TO authenticated;
+GRANT SELECT ON public.ai_messages TO authenticated;
+GRANT ALL ON public.design_templates TO service_role;
+GRANT ALL ON public.designs TO service_role;
+GRANT ALL ON public.design_versions TO service_role;
+GRANT ALL ON public.ai_threads TO service_role;
+GRANT ALL ON public.ai_messages TO service_role;
+
+-- ─── Lectura pública del link /d/<código> ───────────────────────────────────
+-- Devuelve SOLO lo que muestra el link: un diseño PUBLICADO o una generación de una plantilla con
+-- verificación (para mostrar "válido" o "anulado"). Nunca el workspace, emails, teléfonos ni ids del
+-- sujeto; el documento solo para una página web propia (no tiene datos de nadie). `anon` la puede
+-- ejecutar a propósito (el link es público).
+
+CREATE OR REPLACE FUNCTION public.design_public_get(p_code text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_code text := upper(btrim(coalesce(p_code, '')));
+  v_d public.designs%ROWTYPE;
+  v_t public.design_templates%ROWTYPE;
+  v_ws public.workspaces%ROWTYPE;
+  v_is_generation boolean;
+  v_verify boolean := false;
+BEGIN
+  IF v_code !~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$' THEN
+    RETURN NULL;
+  END IF;
+  SELECT * INTO v_d FROM public.designs WHERE code = v_code;
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+  v_is_generation := v_d.template_id IS NOT NULL;
+  IF v_is_generation THEN
+    SELECT * INTO v_t FROM public.design_templates WHERE id = v_d.template_id;
+    v_verify := coalesce(v_t.verify, false);
+  END IF;
+  IF NOT (v_d.published OR (v_is_generation AND v_verify)) THEN
+    RETURN NULL;
+  END IF;
+  IF v_d.archived_at IS NOT NULL AND NOT v_is_generation THEN
+    RETURN NULL;
+  END IF;
+  SELECT * INTO v_ws FROM public.workspaces WHERE id = v_d.workspace_id;
+
+  RETURN jsonb_build_object(
+    'code', v_d.code,
+    'name', v_d.name,
+    'format', v_d.format,
+    'kind', CASE WHEN v_is_generation THEN 'generation' ELSE 'design' END,
+    'status', v_d.status,
+    'published', v_d.published,
+    'allow_download', CASE WHEN v_is_generation THEN coalesce(v_t.allow_download, true) AND v_d.allow_download ELSE v_d.allow_download END,
+    'allow_indexing', v_d.allow_indexing AND v_d.format = 'web',
+    'published_at', v_d.published_at,
+    'issued_at', v_d.created_at,
+    'verify', v_verify,
+    'doc_type', CASE WHEN v_verify THEN v_t.doc_type END,
+    'doc_type_label', CASE WHEN v_verify THEN v_t.doc_type_label END,
+    'void_reason', CASE WHEN v_d.status = 'void' THEN v_d.void_reason END,
+    'voided_at', v_d.voided_at,
+    'page_count', jsonb_array_length(v_d.doc -> 'pages'),
+    'rendered', (v_d.renders ? 'pages' OR v_d.renders ? 'pdf_path'),
+    'rendered_version', v_d.renders -> 'version',
+    'business_name', coalesce(nullif(btrim(v_ws.brand_name), ''), v_ws.name),
+    'business_timezone', coalesce(v_ws.timezone, 'UTC'),
+    'doc', CASE WHEN v_d.format = 'web' AND NOT v_is_generation THEN v_d.doc END
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.design_public_get(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.design_public_get(text) TO anon, authenticated, service_role;
+COMMENT ON FUNCTION public.design_public_get(text) IS
+  'Lo único que ve el link público /d/<código> del Diseñador IA. anon puede ejecutarla a propósito: nunca devuelve workspace, emails, teléfonos ni ids del sujeto.';
+
+-- ─── Fusión de contactos ────────────────────────────────────────────────────
+-- `merge_contacts` (00247) borra el duplicado con `metadata.merged_into`. Al ver eso, lo que apuntaba al
+-- duplicado pasa al principal. Nunca tumba la fusión: un error queda en un WARNING.
+
+CREATE OR REPLACE FUNCTION public.contacts_designs_on_merge()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_main uuid;
+BEGIN
+  IF OLD.deleted_at IS NOT NULL OR NEW.deleted_at IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF NOT (coalesce(NEW.metadata, '{}'::jsonb) ? 'merged_into') THEN
+    RETURN NULL;
+  END IF;
+  BEGIN
+    v_main := (NEW.metadata ->> 'merged_into')::uuid;
+  EXCEPTION WHEN others THEN
+    RETURN NULL;
+  END;
+  BEGIN
+    UPDATE public.designs SET subject_contact_id = v_main WHERE subject_contact_id = OLD.id AND workspace_id = NEW.workspace_id;
+    UPDATE public.ai_threads SET contact_id = v_main WHERE contact_id = OLD.id AND workspace_id = NEW.workspace_id;
+  EXCEPTION WHEN others THEN
+    RAISE WARNING 'contacts_designs_on_merge: no pude mover los diseños del contacto %: %', OLD.id, SQLERRM;
+  END;
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.contacts_designs_on_merge() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contacts_designs_on_merge ON public.contacts;
+CREATE TRIGGER contacts_designs_on_merge
+  AFTER UPDATE OF deleted_at ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_designs_on_merge();
+
+-- ─── Limpieza diaria (F48b) ─────────────────────────────────────────────────
+-- Encola UN `design_cleanup` por negocio y por día, solo si tiene versiones de más de 30 días o
+-- exportaciones sueltas de más de 7. Qué se borra lo decide `cleanupPlan` (lib/designer/cleanup.ts).
+
+CREATE OR REPLACE FUNCTION private.enqueue_design_cleanup(p_now timestamptz DEFAULT now())
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws uuid;
+  v_key text;
+  v_enqueued integer := 0;
+BEGIN
+  FOR v_ws IN
+    SELECT DISTINCT v.workspace_id FROM public.design_versions v WHERE v.created_at < p_now - interval '30 days'
+    UNION
+    SELECT DISTINCT ((storage.foldername(o.name))[1])::uuid
+    FROM storage.objects o
+    WHERE o.bucket_id = 'design-renders'
+      AND o.name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/exports/'
+      AND o.created_at < p_now - interval '7 days'
+  LOOP
+    BEGIN
+      v_key := 'design_cleanup:' || v_ws::text || ':' || (p_now AT TIME ZONE 'UTC')::date::text;
+      CONTINUE WHEN EXISTS (SELECT 1 FROM public.scheduled_jobs j WHERE j.dedupe_key = v_key);
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES ('design_cleanup', jsonb_build_object('workspace_id', v_ws), p_now, v_key)
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+      IF FOUND THEN
+        v_enqueued := v_enqueued + 1;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'enqueue_design_cleanup: no pude encolar el workspace %: %', v_ws, SQLERRM;
+    END;
+  END LOOP;
+  RETURN v_enqueued;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_design_cleanup(timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.enqueue_design_cleanup(timestamptz) TO service_role;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'design-cleanup') THEN
+    PERFORM cron.unschedule('design-cleanup');
+  END IF;
+END $$;
+
+SELECT cron.schedule('design-cleanup', '23 4 * * *', $$SELECT private.enqueue_design_cleanup()$$);
+
+-- ============================================================
+-- MIGRATION 321: AGENT RUNS SOURCE DESIGNER
+-- ============================================================
+-- ============================================================================
+-- 00321_agent_runs_source_designer  (Diseñador IA, D3)
+-- ============================================================================
+-- El CHECK de `agent_runs.source` suma 'designer': los costos de IA del Diseñador IA se registran como
+-- cualquier corrida (`openAiRun`), aparecen en Costos como «Diseñador IA» y respetan los topes del negocio.
+-- Todos los valores que ya existen siguen valiendo. `lib/agent/run-labels.test.ts` compara la lista con
+-- `RUN_SOURCE_LABELS`, y `AGENT_RUN_SOURCES` no compila si le falta uno de `AgentRunSource`.
+--
+-- CHECK vigente en la base antes de esta migración (leído con pg_get_constraintdef el 7/11/2026):
+--   CHECK ((source = ANY (ARRAY['agent'::text, 'flow_ai_node'::text, 'sequence_ai_step'::text,
+--     'kb_indexing'::text, 'conversation_summary'::text, 'message_classification'::text,
+--     'message_classification_eval'::text, 'content_copy'::text, 'ads_analysis'::text,
+--     'audio_transcription'::text, 'media_description'::text, 'call_classification'::text,
+--     'call_analysis'::text, 'call_correction'::text, 'call_summary'::text, 'call_prompt_test'::text])))
+--
+-- Cómo volver atrás (primero, que no quede ninguna corrida `designer`:
+--   UPDATE public.agent_runs SET source = 'flow_ai_node' WHERE source = 'designer';  -- o borrarlas):
+--   ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_check;
+--   ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check
+--     CHECK (source = ANY (ARRAY['agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing',
+--       'conversation_summary', 'message_classification', 'message_classification_eval', 'content_copy',
+--       'ads_analysis', 'audio_transcription', 'media_description', 'call_classification', 'call_analysis',
+--       'call_correction', 'call_summary', 'call_prompt_test']));
+--
+-- Riesgo: alto (cambia un CHECK existente), pero el nuevo es un superconjunto del viejo. Va ANTES del deploy.
+-- Idempotente: si el CHECK ya tiene 'designer', no hace nada.
+-- ============================================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'agent_runs_source_check'
+      AND conrelid = 'public.agent_runs'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%''designer''%'
+  ) THEN
+    ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_check;
+    ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check
+      CHECK (source = ANY (ARRAY[
+        'agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing', 'conversation_summary',
+        'message_classification', 'message_classification_eval', 'content_copy', 'ads_analysis',
+        'audio_transcription', 'media_description',
+        'call_classification', 'call_analysis', 'call_correction', 'call_summary', 'call_prompt_test',
+        'designer'
+      ]));
+  END IF;
+END $$;
+
+-- ============================================================
+-- MIGRATION 322: DESIGNER DOC CHECK FIX
+-- ============================================================
+-- ============================================================================
+-- 00322_designer_doc_check_fix  (Diseñador IA, corrige la 00320)
+-- ============================================================================
+-- 1. `public.design_doc_check()` (trigger de `design_templates`, `designs` y `design_versions`) comparaba
+--    `NEW.format` en la misma condición que `TG_TABLE_NAME`. plpgsql no corta un AND antes de resolver los
+--    campos, y `design_versions` no tiene `format`: insertar una versión fallaba con
+--    `record "new" has no field "format"`. Lo detectó `verify-permissions-matrix` antes de que el código
+--    nuevo se usara (nadie escribía todavía en estas tablas). Ahora la comparación va en un IF aparte.
+-- 2. `private.enqueue_design_cleanup()` contaba como candidata cualquier versión de más de 30 días, aunque
+--    fuera la ACTUAL de su pieza (que nunca se borra): un negocio con un diseño viejo sin tocar recibía un
+--    job por día que no borraba nada. Ahora solo cuenta una versión vieja que tenga otra más nueva en su
+--    pieza (la regla fina sigue siendo `cleanupPlan`, que además respeta la última publicada).
+--
+-- Misma firma, ninguna tabla. Puede ir antes o después del deploy.
+--
+-- Definiciones de la 00320, para volver atrás:
+--   CREATE OR REPLACE FUNCTION public.design_doc_check() RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
+--   BEGIN
+--     IF NOT public.validate_design_doc(NEW.doc) THEN
+--       RAISE EXCEPTION 'El documento del diseño no tiene la forma esperada' USING ERRCODE = '22023';
+--     END IF;
+--     IF TG_TABLE_NAME IN ('design_templates', 'designs') AND (NEW.doc ->> 'format') IS DISTINCT FROM NEW.format THEN
+--       RAISE EXCEPTION 'El formato del documento no coincide con el de la fila' USING ERRCODE = '22023';
+--     END IF;
+--     RETURN NEW;
+--   END; $$;
+--   (y `private.enqueue_design_cleanup` con `SELECT DISTINCT v.workspace_id FROM public.design_versions v
+--    WHERE v.created_at < p_now - interval '30 days'` en la primera rama del UNION; el resto igual a la de abajo).
+-- Riesgo: bajo.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.design_doc_check()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT public.validate_design_doc(NEW.doc) THEN
+    RAISE EXCEPTION 'El documento del diseño no tiene la forma esperada' USING ERRCODE = '22023';
+  END IF;
+  -- Solo plantillas y diseños tienen `format` (las versiones no): la comparación va aparte.
+  IF TG_TABLE_NAME IN ('design_templates', 'designs') THEN
+    IF (NEW.doc ->> 'format') IS DISTINCT FROM to_jsonb(NEW) ->> 'format' THEN
+      RAISE EXCEPTION 'El formato del documento no coincide con el de la fila' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.design_doc_check() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION private.enqueue_design_cleanup(p_now timestamptz DEFAULT now())
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws uuid;
+  v_key text;
+  v_enqueued integer := 0;
+BEGIN
+  FOR v_ws IN
+    -- Una versión vieja que NO es la actual de su pieza (hay otra más nueva).
+    SELECT DISTINCT v.workspace_id
+    FROM public.design_versions v
+    WHERE v.created_at < p_now - interval '30 days'
+      AND EXISTS (
+        SELECT 1 FROM public.design_versions n
+        WHERE n.workspace_id = v.workspace_id
+          AND n.created_at > v.created_at
+          AND ((v.design_id IS NOT NULL AND n.design_id = v.design_id) OR (v.template_id IS NOT NULL AND n.template_id = v.template_id))
+      )
+    UNION
+    SELECT DISTINCT ((storage.foldername(o.name))[1])::uuid
+    FROM storage.objects o
+    WHERE o.bucket_id = 'design-renders'
+      AND o.name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/exports/'
+      AND o.created_at < p_now - interval '7 days'
+  LOOP
+    BEGIN
+      v_key := 'design_cleanup:' || v_ws::text || ':' || (p_now AT TIME ZONE 'UTC')::date::text;
+      CONTINUE WHEN EXISTS (SELECT 1 FROM public.scheduled_jobs j WHERE j.dedupe_key = v_key);
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES ('design_cleanup', jsonb_build_object('workspace_id', v_ws), p_now, v_key)
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+      IF FOUND THEN
+        v_enqueued := v_enqueued + 1;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'enqueue_design_cleanup: no pude encolar el workspace %: %', v_ws, SQLERRM;
+    END;
+  END LOOP;
+  RETURN v_enqueued;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_design_cleanup(timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.enqueue_design_cleanup(timestamptz) TO service_role;
+
+-- ============================================================
 -- MIGRATION 323: META ADS VIDEO TRANSCRIPT
 -- ============================================================
 -- ============================================================
@@ -58387,3 +59278,1593 @@ COMMENT ON COLUMN public.meta_ads.transcript_source IS
 CREATE INDEX IF NOT EXISTS idx_meta_ads_video
   ON public.meta_ads (workspace_id, video_id)
   WHERE video_id IS NOT NULL;
+
+-- ============================================================
+-- MIGRATION 324: DESIGNER RENDERS ERROR MARKER
+-- ============================================================
+-- 00324_designer_renders_error_marker
+--
+-- Diseñador IA: una exportación que falla del todo deja `design-renders/<ws>/<pieza>/exports/<marca>/error.json` con
+-- el motivo, para que la pantalla deje de mostrar «Preparando tu archivo…» y diga por qué (`EXPORT_ERROR_FILE`,
+-- lib/designer/jobs/render.ts). El bucket (00319) solo aceptaba PNG, PDF y ZIP, así que ese archivo nunca se subía:
+-- lo encontró `verify-designer --bloque ds5`. Se suma `application/json` a los tipos admitidos.
+--
+-- Aditiva e idempotente: no cambia ningún archivo ni política. Puede ir antes o después del deploy.
+--
+-- Cómo volver atrás:
+--   update storage.buckets
+--      set allowed_mime_types = array['image/png','application/pdf','application/zip']
+--    where id = 'design-renders';
+
+UPDATE storage.buckets
+   SET allowed_mime_types = allowed_mime_types || array['application/json']
+ WHERE id = 'design-renders'
+   -- Sin lista (NULL = cualquier tipo) no hay nada que sumar: no se restringe de más.
+   AND allowed_mime_types IS NOT NULL
+   AND NOT ('application/json' = ANY (allowed_mime_types));
+
+-- ============================================================
+-- MIGRATION 325: DESIGNER PUBLIC PUBLISHED DOC
+-- ============================================================
+-- 00325_designer_public_published_doc
+--
+-- Diseñador IA (auditoría de la Ola 2): el link público de una página WEB mostraba el documento que se está editando.
+-- Con eso, guardar un cambio (`designer.edit`, que tiene un Member) cambiaba lo que ve el público sin pasar por
+-- «Publicar» (`designer.publish`, que el Member no tiene). Ahora `design_public_get` devuelve el documento de la última
+-- versión `publish` (la guarda `publishDesign`; la limpieza diaria nunca la borra, F48b) y, si no hubiera ninguna, el
+-- vigente. Lo mismo para `page_count`. Las piezas que no son web ya mostraban los archivos del último render de
+-- publicar. Misma firma, mismos permisos (`anon` la puede ejecutar a propósito: el link es público).
+--
+-- Huella antes de esta migración: md5(pg_get_functiondef) = 946a7bca14473cfd8592737eb3c59570.
+--
+-- Cómo volver atrás: volver a correr el bloque `CREATE OR REPLACE FUNCTION public.design_public_get` de la 00320
+-- (definición completa abajo, comentada).
+--
+-- Definición anterior (00320):
+-- CREATE OR REPLACE FUNCTION public.design_public_get(p_code text)
+-- RETURNS jsonb
+-- LANGUAGE plpgsql
+-- STABLE
+-- SECURITY DEFINER
+-- SET search_path = ''
+-- AS $$
+-- DECLARE
+--   v_code text := upper(btrim(coalesce(p_code, '')));
+--   v_d public.designs%ROWTYPE;
+--   v_t public.design_templates%ROWTYPE;
+--   v_ws public.workspaces%ROWTYPE;
+--   v_is_generation boolean;
+--   v_verify boolean := false;
+-- BEGIN
+--   IF v_code !~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$' THEN
+--     RETURN NULL;
+--   END IF;
+--   SELECT * INTO v_d FROM public.designs WHERE code = v_code;
+--   IF NOT FOUND THEN
+--     RETURN NULL;
+--   END IF;
+--   v_is_generation := v_d.template_id IS NOT NULL;
+--   IF v_is_generation THEN
+--     SELECT * INTO v_t FROM public.design_templates WHERE id = v_d.template_id;
+--     v_verify := coalesce(v_t.verify, false);
+--   END IF;
+--   IF NOT (v_d.published OR (v_is_generation AND v_verify)) THEN
+--     RETURN NULL;
+--   END IF;
+--   IF v_d.archived_at IS NOT NULL AND NOT v_is_generation THEN
+--     RETURN NULL;
+--   END IF;
+--   SELECT * INTO v_ws FROM public.workspaces WHERE id = v_d.workspace_id;
+--
+--   RETURN jsonb_build_object(
+--     'code', v_d.code,
+--     'name', v_d.name,
+--     'format', v_d.format,
+--     'kind', CASE WHEN v_is_generation THEN 'generation' ELSE 'design' END,
+--     'status', v_d.status,
+--     'published', v_d.published,
+--     'allow_download', CASE WHEN v_is_generation THEN coalesce(v_t.allow_download, true) AND v_d.allow_download ELSE v_d.allow_download END,
+--     'allow_indexing', v_d.allow_indexing AND v_d.format = 'web',
+--     'published_at', v_d.published_at,
+--     'issued_at', v_d.created_at,
+--     'verify', v_verify,
+--     'doc_type', CASE WHEN v_verify THEN v_t.doc_type END,
+--     'doc_type_label', CASE WHEN v_verify THEN v_t.doc_type_label END,
+--     'void_reason', CASE WHEN v_d.status = 'void' THEN v_d.void_reason END,
+--     'voided_at', v_d.voided_at,
+--     'page_count', jsonb_array_length(v_d.doc -> 'pages'),
+--     'rendered', (v_d.renders ? 'pages' OR v_d.renders ? 'pdf_path'),
+--     'rendered_version', v_d.renders -> 'version',
+--     'business_name', coalesce(nullif(btrim(v_ws.brand_name), ''), v_ws.name),
+--     'business_timezone', coalesce(v_ws.timezone, 'UTC'),
+--     'doc', CASE WHEN v_d.format = 'web' AND NOT v_is_generation THEN v_d.doc END
+--   );
+-- END;
+-- $$;
+
+CREATE OR REPLACE FUNCTION public.design_public_get(p_code text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_code text := upper(btrim(coalesce(p_code, '')));
+  v_d public.designs%ROWTYPE;
+  v_t public.design_templates%ROWTYPE;
+  v_ws public.workspaces%ROWTYPE;
+  v_is_generation boolean;
+  v_verify boolean := false;
+  -- 00325: el documento PUBLICADO (la última versión `publish`), no el que se está editando.
+  v_pub_doc jsonb;
+BEGIN
+  IF v_code !~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$' THEN
+    RETURN NULL;
+  END IF;
+  SELECT * INTO v_d FROM public.designs WHERE code = v_code;
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+  v_is_generation := v_d.template_id IS NOT NULL;
+  IF v_is_generation THEN
+    SELECT * INTO v_t FROM public.design_templates WHERE id = v_d.template_id;
+    v_verify := coalesce(v_t.verify, false);
+  END IF;
+  IF NOT (v_d.published OR (v_is_generation AND v_verify)) THEN
+    RETURN NULL;
+  END IF;
+  IF v_d.archived_at IS NOT NULL AND NOT v_is_generation THEN
+    RETURN NULL;
+  END IF;
+  SELECT * INTO v_ws FROM public.workspaces WHERE id = v_d.workspace_id;
+  -- Un diseño propio publicado muestra lo que se publicó: un cambio guardado después (con `designer.edit`) recién se ve
+  -- al «Publicar cambios» (con `designer.publish`). Una generación es una copia congelada: su documento es el suyo.
+  IF NOT v_is_generation THEN
+    SELECT v.doc INTO v_pub_doc
+      FROM public.design_versions v
+     WHERE v.design_id = v_d.id AND v.reason = 'publish'
+     ORDER BY v.created_at DESC
+     LIMIT 1;
+  END IF;
+  v_pub_doc := coalesce(v_pub_doc, v_d.doc);
+
+  RETURN jsonb_build_object(
+    'code', v_d.code,
+    'name', v_d.name,
+    'format', v_d.format,
+    'kind', CASE WHEN v_is_generation THEN 'generation' ELSE 'design' END,
+    'status', v_d.status,
+    'published', v_d.published,
+    'allow_download', CASE WHEN v_is_generation THEN coalesce(v_t.allow_download, true) AND v_d.allow_download ELSE v_d.allow_download END,
+    'allow_indexing', v_d.allow_indexing AND v_d.format = 'web',
+    'published_at', v_d.published_at,
+    'issued_at', v_d.created_at,
+    'verify', v_verify,
+    'doc_type', CASE WHEN v_verify THEN v_t.doc_type END,
+    'doc_type_label', CASE WHEN v_verify THEN v_t.doc_type_label END,
+    'void_reason', CASE WHEN v_d.status = 'void' THEN v_d.void_reason END,
+    'voided_at', v_d.voided_at,
+    'page_count', jsonb_array_length(v_pub_doc -> 'pages'),
+    'rendered', (v_d.renders ? 'pages' OR v_d.renders ? 'pdf_path'),
+    'rendered_version', v_d.renders -> 'version',
+    'business_name', coalesce(nullif(btrim(v_ws.brand_name), ''), v_ws.name),
+    'business_timezone', coalesce(v_ws.timezone, 'UTC'),
+    'doc', CASE WHEN v_d.format = 'web' AND NOT v_is_generation THEN v_pub_doc END
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.design_public_get(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.design_public_get(text) TO anon, authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 326: AGENT RUNS SOURCE ADS MATCHING AND DESIGNER
+-- ============================================================
+-- 00326_agent_runs_source_ads_matching_and_designer
+--
+-- Arregla una regresión: la 00318 (conciliación de anuncios) sumó 'ads_matching' al CHECK de `agent_runs.source`, y la
+-- 00321 (Diseñador IA), aplicada 17 minutos después, redefinió el mismo CHECK copiando la versión de la 00148 más
+-- 'designer', sin 'ads_matching'. Desde entonces una corrida de IA de la conciliación no se puede guardar. Esta
+-- migración deja el CHECK con TODOS los valores: los de la 00148, 'ads_matching' (00318) y 'designer' (00321).
+--
+-- Aditiva: solo agranda la lista. Puede ir antes o después del deploy. Idempotente.
+--
+-- CHECK vigente antes de esta migración (leído de la base el 8/11/2026):
+--   CHECK ((source = ANY (ARRAY['agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing', 'conversation_summary',
+--     'message_classification', 'message_classification_eval', 'content_copy', 'ads_analysis', 'audio_transcription',
+--     'media_description', 'call_classification', 'call_analysis', 'call_correction', 'call_summary', 'call_prompt_test',
+--     'designer'])))
+--
+-- Cómo volver atrás: volver a crear el CHECK de arriba (sin 'ads_matching'); no conviene: rompe la conciliación.
+
+DO $$
+BEGIN
+  ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_check;
+  ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check
+    CHECK (source = ANY (ARRAY[
+      'agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing', 'conversation_summary', 'message_classification',
+      'message_classification_eval', 'content_copy', 'ads_analysis', 'audio_transcription', 'media_description',
+      'call_classification', 'call_analysis', 'call_correction', 'call_summary', 'call_prompt_test',
+      'ads_matching', 'designer'
+    ]));
+END $$;
+
+-- ============================================================
+-- MIGRATION 327: CRON GUARDS
+-- ============================================================
+-- ============================================================================
+-- 00327: los cron llaman a la app solo si hay algo que hacer
+-- ============================================================================
+--
+-- Por que: el 8/11/2026 la base quedo "Unhealthy". De las ~17.000 llamadas por
+-- dia que pg_cron le hace a la app con private.call_app_cron, casi todas no
+-- encuentran nada: agent-bursts y send-queue corren cada 15 segundos (~5.600
+-- veces cada uno), automation-events, jobs y sequences cada minuto. Cada
+-- llamada despierta a la app, que le hace varias consultas a la base, y le
+-- cuesta a la base descifrar dos secretos de Vault.
+--
+-- Que hace (sin cambiar lo que hace el sistema):
+--
+-- 1. Una guarda por cron: private.cron_work_<ruta>(p_now) mira, con las MISMAS
+--    condiciones que el handler de app/api/cron/<ruta>, si hay trabajo. Si no
+--    hay, no se llama a la app. La guarda mira 5 segundos hacia adelante
+--    (lo que tarda en llegar la llamada) y ante cualquier error llama igual.
+-- 2. Una llamada de seguridad: aunque la guarda diga que no hay nada, cada
+--    cron llama a la app al menos una vez cada N minutos (10 por defecto). Si
+--    la guarda se equivoca, se pierden como mucho N minutos, nunca el trabajo.
+--    Tambien cubre lo que la guarda NO mira a proposito: la limpieza del
+--    registro de webhooks (webhook_events, 48 h) en /api/cron/jobs y el aviso
+--    de salud del refresco en /api/cron/drafts-refresh (una vez por dia).
+-- 3. private.call_app_cron NO se toca: private.call_app_cron_if_work la
+--    envuelve. El estado (la ultima llamada y los contadores) vive en una
+--    tabla UNLOGGED: no escribe WAL. Si la base se reinicia de golpe, la tabla
+--    se vacia y el primer tic de cada cron llama (nada se pierde).
+-- 4. private.alert_draft_windows sale enseguida si no hay borradores vivos con
+--    ventana (antes creaba una tabla temporal cada 5 minutos: escrituras en el
+--    catalogo de la base aunque no hubiera nada).
+-- 5. Realtime: messages sale de la publicacion supabase_realtime. Ninguna
+--    pantalla la escucha (la bandeja escucha conversations y vuelve a pedir el
+--    hilo); cada mensaje guardado se decodificaba para nadie. Ver
+--    lib/realtime/tables.ts.
+-- 6. Purgas: scheduled_jobs completados o cancelados de mas de 30 dias, y
+--    fallidos de mas de 90 (los pendientes nunca); el historial de pg_cron
+--    (cron.job_run_details) pasa de 3 dias a 1.
+--
+-- Que crons NO llevan guarda, y por que:
+--   - bg-dispatch y metrics-sync: deciden por la hora de cada negocio con reglas
+--     que viven en TypeScript (planDispatch, isSyncHour). Copiarlas al SQL
+--     seria una gemela mas para 120 llamadas por dia. Siguen igual.
+--   - social-token-refresh y content-media-cleanup: una vez por semana o por dia.
+--
+-- Las condiciones de cada guarda y su lugar en el codigo estan en
+-- lib/cron/guards.ts; lib/cron/guards.test.ts ata cada umbral de aca con la
+-- constante del codigo y avisa si un handler suma un barrido nuevo. Si se
+-- cambia un handler, se cambia su guarda en una migracion nueva.
+--
+-- Aditiva: puede ir antes o despues del deploy (el codigo no cambia).
+--
+-- ---------------------------------------------------------------------------
+-- Para volver atras (los comandos de antes, leidos de cron.job el 8/11/2026):
+--   agent-bursts       SELECT private.call_app_cron('agent-bursts')
+--   send-queue         SELECT private.call_app_cron('send-queue')
+--   automation-events  SELECT private.call_app_cron('automation-events')
+--   jobs               SELECT private.call_app_cron('jobs')
+--   sequences          SELECT private.call_app_cron('sequences')
+--   content-upload     SELECT private.call_app_cron('content-upload');
+--   drafts-refresh     SELECT private.call_app_cron('drafts-refresh')
+--   whatsapp-health    SELECT private.call_app_cron('whatsapp-health')
+--   inactivity         SELECT private.call_app_cron('inactivity')
+--   bg-collect         SELECT private.call_app_cron('bg-collect')
+--   purge-cron-runs    SELECT private.purge_cron_run_details(3)
+-- con: SELECT cron.alter_job(jobid, command := '<comando>') FROM cron.job WHERE jobname = '<nombre>';
+-- Realtime: ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
+-- La purga nueva: SELECT cron.unschedule('purge-scheduled-jobs');
+--
+-- private.alert_draft_windows antes de esta migracion (pg_get_functiondef, 8/11/2026):
+--
+-- CREATE OR REPLACE FUNCTION private.alert_draft_windows()
+--  RETURNS jsonb
+--  LANGUAGE plpgsql
+--  SECURITY DEFINER
+--  SET search_path TO ''
+-- AS $function$
+-- DECLARE
+--   v_since timestamptz;
+--   v_drafts integer := 0;
+--   v_notifications integer := 0;
+-- BEGIN
+--   SELECT value::timestamptz INTO v_since FROM private.system_config WHERE key = 'draft_alerts_since';
+--   v_since := COALESCE(v_since, now());
+--
+--   CREATE TEMP TABLE IF NOT EXISTS pg_temp.draft_alerts (
+--     id uuid, workspace_id uuid, owner uuid, window_hours integer, new_cuts smallint[], deepest smallint
+--   ) ON COMMIT DROP;
+--   TRUNCATE pg_temp.draft_alerts;
+--
+--   INSERT INTO pg_temp.draft_alerts (id, workspace_id, owner, window_hours, new_cuts, deepest)
+--   SELECT x.id, x.workspace_id, x.owner, x.w, x.cuts, (SELECT max(t) FROM unnest(x.cuts) t)
+--   FROM (
+--     SELECT d.id, d.workspace_id, COALESCE(c.setter_id, c.vendedor_id) AS owner, w.w,
+--       ARRAY(
+--         SELECT t FROM unnest(ARRAY[2, 4, 8]::smallint[]) t
+--         WHERE (d.sendable_until - now()) <= make_interval(secs => w.w * 3600.0 / t)
+--           AND NOT (t = ANY (d.alerted_thresholds))
+--       ) AS cuts
+--     FROM public.agent_drafts d
+--     JOIN public.channels ch ON ch.id = d.channel_id
+--     JOIN public.contacts c ON c.id = d.contact_id
+--     CROSS JOIN LATERAL (SELECT public.messaging_window_hours(ch.platform, ch.messaging_window_hours) AS w) w
+--     WHERE d.status IN ('pending', 'failed')
+--       AND d.sendable_until IS NOT NULL
+--       AND d.sendable_until > now()
+--       AND d.created_at >= v_since
+--       AND w.w > 0
+--     FOR UPDATE OF d SKIP LOCKED
+--   ) x
+--   WHERE cardinality(x.cuts) > 0;
+--
+--   (el resto, igual que abajo)
+-- $function$
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1. El estado de la guarda (UNLOGGED: no escribe WAL)
+-- ----------------------------------------------------------------------------
+CREATE UNLOGGED TABLE IF NOT EXISTS private.cron_guard_state (
+  path text PRIMARY KEY,
+  -- La ultima vez que se llamo a la app por este cron (por trabajo o por seguridad).
+  last_called_at timestamptz NOT NULL,
+  -- Contadores para medir: cuantas veces se llamo y cuantas se salteo, desde counted_since.
+  called_count bigint NOT NULL DEFAULT 0,
+  skipped_count bigint NOT NULL DEFAULT 0,
+  counted_since timestamptz NOT NULL DEFAULT now()
+);
+REVOKE ALL ON TABLE private.cron_guard_state FROM PUBLIC, anon, authenticated;
+COMMENT ON TABLE private.cron_guard_state IS
+  'Guarda de los cron (00327): ultima llamada a la app y contadores por ruta. UNLOGGED a proposito: sin WAL, y vacia es valida (se llama).';
+
+-- ----------------------------------------------------------------------------
+-- 2. La decision (gemela de shouldCallCron en lib/cron/guards.ts, casos en
+--    lib/cron/guard-decide.cases.json)
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.cron_guard_decide(
+  p_has_work boolean,
+  p_last_called_at timestamptz,
+  p_safety interval,
+  p_now timestamptz
+) RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO ''
+AS $$
+  SELECT CASE
+    -- Hay trabajo, o la guarda no sabe (NULL: sin guarda o fallo): se llama.
+    WHEN p_has_work IS DISTINCT FROM false THEN true
+    -- Nunca se llamo (o la tabla se vacio), o faltan datos para decidir: se llama.
+    WHEN p_last_called_at IS NULL OR p_safety IS NULL OR p_now IS NULL THEN true
+    -- Una ultima llamada "en el futuro" es un reloj raro: se llama.
+    WHEN p_last_called_at > p_now THEN true
+    -- La llamada de seguridad: paso el intervalo desde la ultima.
+    ELSE p_last_called_at <= p_now - p_safety
+  END
+$$;
+REVOKE ALL ON FUNCTION private.cron_guard_decide(boolean, timestamptz, interval, timestamptz) FROM PUBLIC, anon, authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 3. Las guardas, una por ruta. Cada condicion copia la consulta del handler
+--    (el archivo esta al lado). Todas reciben p_now para poder probarlas con
+--    datos de prueba en una fecha vieja (scripts/verify-cron-guards.mjs): por
+--    eso las que no dependen de la hora piden ademas created_at <= p_now, que
+--    con p_now = now() no cambia nada.
+--    Regla de los 5 segundos: un limite de ARRIBA (run_at <= ...) usa v_now =
+--    p_now + 5 s, porque la app mira un instante despues; uno de ABAJO usa p_now.
+-- ----------------------------------------------------------------------------
+
+-- app/api/cron/agent-bursts/route.ts
+CREATE OR REPLACE FUNCTION private.cron_work_agent_bursts(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+BEGIN
+  -- Turnos del agente vencidos (la cola de la ruta).
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'pending' AND j.type = 'agent_burst' AND j.run_at <= v_now
+  ) THEN RETURN true; END IF;
+
+  -- Turnos trabados en processing (expireStuckJobs, STALE_CLAIM_MS = 6 min).
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'processing' AND j.type = 'agent_burst' AND j.claimed_at < v_now - interval '6 minutes'
+  ) THEN RETURN true; END IF;
+
+  -- Corridas de IA abiertas de un proceso que murio, de CUALQUIER origen
+  -- (closeStaleRuns en lib/ai/run.ts, 10 minutos).
+  IF EXISTS (
+    SELECT 1 FROM public.agent_runs r
+    WHERE r.status = 'running' AND r.created_at < v_now - interval '10 minutes'
+  ) THEN RETURN true; END IF;
+
+  RETURN false;
+END;
+$$;
+
+-- app/api/cron/send-queue/route.ts -> runSendQueue (lib/send-queue/dispatch.ts)
+CREATE OR REPLACE FUNCTION private.cron_work_send_queue(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+BEGIN
+  -- Destinatarios que quedaron `sending` (reapStaleSending, STALE_SENDING_MS = 5 min).
+  IF EXISTS (
+    SELECT 1 FROM public.broadcast_recipients r
+    WHERE r.status = 'sending' AND r.claimed_at < v_now - interval '5 minutes'
+  ) THEN RETURN true; END IF;
+
+  -- Broadcasts programados cuya hora llego (activateScheduled).
+  IF EXISTS (
+    SELECT 1 FROM public.broadcasts b
+    WHERE b.status = 'scheduled' AND b.scheduled_for <= v_now
+  ) THEN RETURN true; END IF;
+
+  -- Broadcasts enviandose cuyo carril puede trabajar (runLane): sin carril
+  -- todavia (lo crea), o sin pausa y con next_send_at ya cumplido. Un carril
+  -- pausado o esperando no hace nada hasta su hora.
+  IF EXISTS (
+    SELECT 1
+    FROM public.broadcasts b
+    LEFT JOIN public.channel_send_lanes l ON l.channel_id = b.channel_id
+    WHERE b.status = 'sending'
+      AND b.channel_id IS NOT NULL
+      AND b.created_at <= v_now
+      AND (l.channel_id IS NULL OR (l.paused_at IS NULL AND (l.next_send_at IS NULL OR l.next_send_at <= v_now)))
+  ) THEN RETURN true; END IF;
+
+  RETURN false;
+END;
+$$;
+
+-- app/api/cron/automation-events/route.ts
+CREATE OR REPLACE FUNCTION private.cron_work_automation_events(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+BEGIN
+  -- La cola de eventos sin procesar (incluye los que esperan el link de Meet).
+  RETURN EXISTS (
+    SELECT 1 FROM public.automation_events e
+    WHERE e.processed_at IS NULL AND e.created_at <= p_now + interval '5 seconds'
+  );
+END;
+$$;
+
+-- app/api/cron/sequences/route.ts -> public.claim_sequence_enrollments (mismo WHERE)
+CREATE OR REPLACE FUNCTION private.cron_work_sequences(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.sequence_enrollments e
+    WHERE e.status = 'active'
+      AND e.next_step_at IS NOT NULL
+      AND e.next_step_at <= v_now
+      AND (e.locked_at IS NULL OR e.locked_at < v_now - interval '5 minutes')
+  );
+END;
+$$;
+
+-- app/api/cron/content-upload/route.ts (SLOW_JOB_TYPES de lib/content/jobs.ts)
+CREATE OR REPLACE FUNCTION private.cron_work_content_upload(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'pending'
+      AND j.type IN ('content_upload', 'content_provider_schedule')
+      AND j.run_at <= v_now
+  ) THEN RETURN true; END IF;
+
+  -- Reclamados que quedaron colgados (STALE_CLAIM_MS = 10 min), o sin fecha de reclamo.
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'processing'
+      AND j.type IN ('content_upload', 'content_provider_schedule')
+      AND j.run_at <= v_now
+      AND (j.claimed_at IS NULL OR j.claimed_at < v_now - interval '10 minutes')
+  ) THEN RETURN true; END IF;
+
+  RETURN false;
+END;
+$$;
+
+-- Lo que suman al cron de jobs los modulos opcionales (hoy, los envios
+-- recibidos por un endpoint propio que nadie proceso: lib/webhooks/reaper.ts).
+-- En la plantilla de estudiantes la poda la deja en false.
+CREATE OR REPLACE FUNCTION private.cron_work_jobs_extra(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+BEGIN
+  IF to_regclass('public.inbound_webhooks') IS NULL THEN
+    RETURN false;
+  END IF;
+  -- Guardados y sin procesar (RECEIVED_STALE_MS = 2 min).
+  IF EXISTS (
+    SELECT 1 FROM public.inbound_webhooks w
+    WHERE w.status = 'received' AND w.received_at < v_now - interval '2 minutes'
+  ) THEN RETURN true; END IF;
+  -- Procesandose desde hace demasiado (PROCESSING_STALE_MS = 15 min).
+  IF EXISTS (
+    SELECT 1 FROM public.inbound_webhooks w
+    WHERE w.status = 'processing' AND w.processing_started_at < v_now - interval '15 minutes'
+  ) THEN RETURN true; END IF;
+  RETURN false;
+END;
+$$;
+
+-- app/api/cron/jobs/route.ts. Lo que NO mira a proposito: borrar webhook_events
+-- de mas de 48 h (casi siempre hay alguno; esperar hasta la llamada de
+-- seguridad solo deja el registro unos minutos mas, y eso no cambia nada).
+CREATE OR REPLACE FUNCTION private.cron_work_jobs(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+  v_agent record;
+BEGIN
+  -- La cola general: pendientes vencidos y reclamos viejos (STALE_INVOCATION_MS = 5 min)
+  -- o sin fecha de reclamo. Sin los turnos del agente ni las subidas largas, que
+  -- tienen su propia ruta.
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'pending'
+      AND j.run_at <= v_now
+      AND j.type NOT IN ('agent_burst', 'content_upload')
+  ) THEN RETURN true; END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'processing'
+      AND j.run_at <= v_now
+      AND j.type NOT IN ('agent_burst', 'content_upload')
+      AND (j.claimed_at IS NULL OR j.claimed_at < v_now - interval '5 minutes')
+  ) THEN RETURN true; END IF;
+
+  -- Documentos de Conocimiento borrados hace mas de 30 dias (purgeDeletedKnowledgeDocuments).
+  IF EXISTS (
+    SELECT 1 FROM public.knowledge_base k
+    WHERE k.deleted_at IS NOT NULL AND k.deleted_at < v_now - interval '30 days'
+  ) THEN RETURN true; END IF;
+
+  -- Publicaciones colgadas en "publicando" (sweepStuckPublications, STUCK_AFTER_MINUTES = 30).
+  IF EXISTS (
+    SELECT 1 FROM public.social_posts p
+    WHERE p.status = 'publishing' AND p.updated_at < v_now - interval '30 minutes' AND p.deleted_at IS NULL
+  ) THEN RETURN true; END IF;
+
+  -- Agendadas en el proveedor cuya hora paso (reconcileProviderSchedules, RECONCILE_AFTER_MINUTES = 15).
+  IF EXISTS (
+    SELECT 1 FROM public.social_posts p
+    WHERE p.status = 'scheduled'
+      AND p.publisher_ref IS NOT NULL
+      AND p.scheduled_at < v_now - interval '15 minutes'
+      AND p.deleted_at IS NULL
+  ) THEN RETURN true; END IF;
+
+  -- Transcripciones colgadas (reapStuckTranscriptions, STUCK_TRANSCRIPT_MS = 10 min).
+  IF EXISTS (
+    SELECT 1 FROM public.messages m
+    WHERE m.transcript_status = 'pending' AND m.transcript_started_at < v_now - interval '10 minutes'
+  ) THEN RETURN true; END IF;
+
+  -- Cierre por inactividad (sweepInactiveConversations): la MISMA consulta que
+  -- usa la app, por cada agente prendido con canales. La app ademas filtra por
+  -- tipo de agente: aca se pregunta de mas, nunca de menos.
+  -- SWEEP_MAX_AGE_DAYS = 14 y el default de close_after_inactive_hours = 12
+  -- (lib/agent/closing.ts y lib/agent/config.ts).
+  FOR v_agent IN
+    SELECT a.workspace_id, a.enabled_channel_ids, COALESCE(a.close_after_inactive_hours, 12) AS hours
+    FROM public.agents a
+    WHERE a.deleted_at IS NULL
+      AND a.is_enabled
+      AND cardinality(a.enabled_channel_ids) > 0
+      AND a.created_at <= v_now
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM public.closable_inactive_conversations(
+        v_agent.workspace_id,
+        v_agent.enabled_channel_ids,
+        v_now - make_interval(hours => v_agent.hours),
+        p_now - interval '14 days',
+        v_now,
+        1
+      )
+    ) THEN RETURN true; END IF;
+  END LOOP;
+
+  RETURN private.cron_work_jobs_extra(p_now);
+END;
+$$;
+
+-- app/api/cron/drafts-refresh/route.ts (refreshPendingDrafts). El aviso de
+-- salud (checkRefreshHealth) es diario: lo cubre la llamada de seguridad (1 h).
+CREATE OR REPLACE FUNCTION private.cron_work_drafts_refresh(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.agent_drafts d
+    WHERE d.status IN ('pending', 'failed') AND d.created_at <= p_now + interval '5 seconds'
+  );
+END;
+$$;
+
+-- app/api/cron/whatsapp-health/route.ts: hay algun numero de Evolution para revisar.
+CREATE OR REPLACE FUNCTION private.cron_work_whatsapp_health(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.channels c
+    WHERE c.provider = 'evolution' AND c.evolution_instance IS NOT NULL AND c.created_at <= p_now + interval '5 seconds'
+  );
+END;
+$$;
+
+-- app/api/cron/inactivity/route.ts: hay algun disparador de inactividad activo en un flujo publicado.
+CREATE OR REPLACE FUNCTION private.cron_work_inactivity(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.triggers t
+    JOIN public.flows f ON f.id = t.flow_id
+    WHERE t.type = 'inactivity'
+      AND t.is_active
+      AND f.status = 'published'
+      AND t.created_at <= p_now + interval '5 seconds'
+  );
+END;
+$$;
+
+-- app/api/cron/bg-collect/route.ts todavia no hace nada (el after() esta vacio).
+-- Cuando haga algo, esta guarda tiene que mirar lo mismo.
+CREATE OR REPLACE FUNCTION private.cron_work_bg_collect(p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO ''
+AS $$
+  SELECT false
+$$;
+
+-- El indice de guardas. NULL = esa ruta no tiene guarda (siempre se llama).
+CREATE OR REPLACE FUNCTION private.cron_has_work(p_path text, p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+BEGIN
+  RETURN CASE p_path
+    WHEN 'agent-bursts' THEN private.cron_work_agent_bursts(p_now)
+    WHEN 'send-queue' THEN private.cron_work_send_queue(p_now)
+    WHEN 'automation-events' THEN private.cron_work_automation_events(p_now)
+    WHEN 'sequences' THEN private.cron_work_sequences(p_now)
+    WHEN 'content-upload' THEN private.cron_work_content_upload(p_now)
+    WHEN 'jobs' THEN private.cron_work_jobs(p_now)
+    WHEN 'drafts-refresh' THEN private.cron_work_drafts_refresh(p_now)
+    WHEN 'whatsapp-health' THEN private.cron_work_whatsapp_health(p_now)
+    WHEN 'inactivity' THEN private.cron_work_inactivity(p_now)
+    WHEN 'bg-collect' THEN private.cron_work_bg_collect(p_now)
+    ELSE NULL
+  END;
+END;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 4. El envoltorio que llaman los cron. Ante cualquier error de la guarda,
+--    llama: perder trabajo es peor que una llamada de mas.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.call_app_cron_if_work(p_path text, p_safety interval DEFAULT interval '10 minutes')
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_work boolean;
+  v_last timestamptz;
+BEGIN
+  BEGIN
+    v_work := private.cron_has_work(p_path, now());
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'cron_has_work(%) fallo, se llama igual: %', p_path, SQLERRM;
+    v_work := NULL;
+  END;
+
+  SELECT s.last_called_at INTO v_last FROM private.cron_guard_state s WHERE s.path = p_path;
+
+  IF NOT private.cron_guard_decide(v_work, v_last, p_safety, now()) THEN
+    UPDATE private.cron_guard_state SET skipped_count = skipped_count + 1 WHERE path = p_path;
+    RETURN NULL;
+  END IF;
+
+  BEGIN
+    INSERT INTO private.cron_guard_state AS s (path, last_called_at, called_count)
+    VALUES (p_path, now(), 1)
+    ON CONFLICT (path) DO UPDATE SET last_called_at = EXCLUDED.last_called_at, called_count = s.called_count + 1;
+  EXCEPTION WHEN OTHERS THEN
+    -- Sin poder anotar la llamada, se llama igual (el proximo tic tambien llamara).
+    RAISE WARNING 'cron_guard_state(%) no se pudo anotar: %', p_path, SQLERRM;
+  END;
+
+  RETURN private.call_app_cron(p_path);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.cron_work_agent_bursts(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_work_send_queue(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_work_automation_events(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_work_sequences(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_work_content_upload(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_work_jobs_extra(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_work_jobs(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_work_drafts_refresh(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_work_whatsapp_health(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_work_inactivity(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_work_bg_collect(timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cron_has_work(text, timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.call_app_cron_if_work(text, interval) FROM PUBLIC, anon, authenticated;
+
+COMMENT ON FUNCTION private.call_app_cron_if_work(text, interval) IS
+  'Envuelve private.call_app_cron (00327): llama a la app solo si private.cron_has_work dice que hay trabajo, o si paso p_safety desde la ultima llamada.';
+
+-- ----------------------------------------------------------------------------
+-- 5. Los cron pasan por la guarda (cambia solo el comando, no el horario).
+--    La llamada de seguridad es de 10 minutos para los que corren cada 15 s,
+--    cada minuto o cada 2; mas larga para los lentos (si no, nunca se
+--    saltearian): whatsapp-health y drafts-refresh 1 hora (lo que la guarda de
+--    drafts-refresh no mira es un aviso diario), inactivity 2 horas y
+--    bg-collect 1 dia (no hace nada). Gemela: CRON_GUARDS en lib/cron/guards.ts.
+-- ----------------------------------------------------------------------------
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT * FROM (VALUES
+      ('agent-bursts', '10 minutes'),
+      ('send-queue', '10 minutes'),
+      ('automation-events', '10 minutes'),
+      ('jobs', '10 minutes'),
+      ('sequences', '10 minutes'),
+      ('content-upload', '10 minutes'),
+      ('whatsapp-health', '1 hour'),
+      ('inactivity', '2 hours'),
+      ('drafts-refresh', '1 hour'),
+      ('bg-collect', '1 day')
+    ) AS v(path, safety)
+  LOOP
+    PERFORM cron.alter_job(
+      j.jobid,
+      command := format('SELECT private.call_app_cron_if_work(%L, interval %L)', r.path, r.safety)
+    )
+    FROM cron.job j
+    WHERE j.jobname = r.path;
+  END LOOP;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 6. Alertas de ventana: salir enseguida si no hay borradores vivos con ventana
+--    (el mismo WHERE de adentro, sin el calculo de los cortes).
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.alert_draft_windows()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_since timestamptz;
+  v_drafts integer := 0;
+  v_notifications integer := 0;
+BEGIN
+  SELECT value::timestamptz INTO v_since FROM private.system_config WHERE key = 'draft_alerts_since';
+  v_since := COALESCE(v_since, now());
+
+  -- 00327: sin borradores vivos con ventana no hay nada que avisar. Antes de
+  -- esto, cada 5 minutos se creaba y borraba la tabla temporal igual.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.agent_drafts d
+    WHERE d.status IN ('pending', 'failed')
+      AND d.sendable_until IS NOT NULL
+      AND d.sendable_until > now()
+      AND d.created_at >= v_since
+  ) THEN
+    RETURN jsonb_build_object('drafts', 0, 'notifications', 0);
+  END IF;
+
+  CREATE TEMP TABLE IF NOT EXISTS pg_temp.draft_alerts (
+    id uuid, workspace_id uuid, owner uuid, window_hours integer, new_cuts smallint[], deepest smallint
+  ) ON COMMIT DROP;
+  TRUNCATE pg_temp.draft_alerts;
+
+  INSERT INTO pg_temp.draft_alerts (id, workspace_id, owner, window_hours, new_cuts, deepest)
+  SELECT x.id, x.workspace_id, x.owner, x.w, x.cuts, (SELECT max(t) FROM unnest(x.cuts) t)
+  FROM (
+    SELECT d.id, d.workspace_id, COALESCE(c.setter_id, c.vendedor_id) AS owner, w.w,
+      ARRAY(
+        SELECT t FROM unnest(ARRAY[2, 4, 8]::smallint[]) t
+        WHERE (d.sendable_until - now()) <= make_interval(secs => w.w * 3600.0 / t)
+          AND NOT (t = ANY (d.alerted_thresholds))
+      ) AS cuts
+    FROM public.agent_drafts d
+    JOIN public.channels ch ON ch.id = d.channel_id
+    JOIN public.contacts c ON c.id = d.contact_id
+    CROSS JOIN LATERAL (SELECT public.messaging_window_hours(ch.platform, ch.messaging_window_hours) AS w) w
+    WHERE d.status IN ('pending', 'failed')
+      AND d.sendable_until IS NOT NULL
+      AND d.sendable_until > now()
+      AND d.created_at >= v_since
+      AND w.w > 0
+    FOR UPDATE OF d SKIP LOCKED
+  ) x
+  WHERE cardinality(x.cuts) > 0;
+
+  UPDATE public.agent_drafts d
+  SET alerted_thresholds = d.alerted_thresholds || a.new_cuts
+  FROM pg_temp.draft_alerts a
+  WHERE d.id = a.id;
+  GET DIAGNOSTICS v_drafts = ROW_COUNT;
+
+  INSERT INTO public.notifications (workspace_id, type, title, body, entity_type, entity_id, recipient_id, metadata)
+  SELECT
+    g.workspace_id,
+    'draft_window',
+    format(
+      '%s borrador%s %s con menos de %s de ventana',
+      g.n,
+      CASE WHEN g.n = 1 THEN '' ELSE 'es' END,
+      CASE WHEN g.owner IS NULL THEN 'sin asignar'
+           WHEN g.n = 1 THEN 'tuyo' ELSE 'tuyos' END,
+      CASE WHEN g.window_hours % g.deepest = 0 THEN (g.window_hours / g.deepest)::text || ' h'
+           ELSE round(g.window_hours::numeric / g.deepest * 60)::text || ' min' END
+    ),
+    CASE WHEN g.owner IS NULL
+      THEN 'Nadie los tiene asignados. Pasada la ventana, la plataforma ya no deja responder.'
+      ELSE 'Pasada la ventana, la plataforma ya no deja responder: quedan para responder a mano.' END,
+    'draft_queue',
+    NULL,
+    g.owner,
+    jsonb_build_object('threshold', g.deepest, 'count', g.n, 'draft_ids', to_jsonb(g.ids), 'unassigned', g.owner IS NULL)
+  FROM (
+    SELECT workspace_id, owner, deepest, window_hours, count(*) AS n, array_agg(id) AS ids
+    FROM pg_temp.draft_alerts
+    GROUP BY workspace_id, owner, deepest, window_hours
+  ) g;
+  GET DIAGNOSTICS v_notifications = ROW_COUNT;
+
+  RETURN jsonb_build_object('drafts', v_drafts, 'notifications', v_notifications);
+END;
+$function$;
+
+-- ----------------------------------------------------------------------------
+-- 7. Realtime: messages sale de la publicacion (nadie la escucha).
+-- ----------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'messages'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime DROP TABLE public.messages;
+  END IF;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 8. Purgas
+-- ----------------------------------------------------------------------------
+
+-- scheduled_jobs: completados y cancelados pasados p_done_days (minimo 7),
+-- fallidos pasados p_failed_days (minimo 30). Los pendientes y en curso nunca.
+-- Ningun codigo mira jobs terminados viejos: las claves de dedupe que se
+-- consultan llevan la fecha o la ventana de hoy.
+CREATE OR REPLACE FUNCTION private.purge_scheduled_jobs(p_done_days integer DEFAULT 30, p_failed_days integer DEFAULT 90)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_deleted integer := 0;
+BEGIN
+  DELETE FROM public.scheduled_jobs j
+  WHERE (
+      j.status IN ('completed', 'cancelled')
+      AND GREATEST(j.created_at, j.run_at) < now() - make_interval(days => GREATEST(COALESCE(p_done_days, 30), 7))
+    ) OR (
+      j.status = 'failed'
+      AND GREATEST(j.created_at, j.run_at) < now() - make_interval(days => GREATEST(COALESCE(p_failed_days, 90), 30))
+    );
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$$;
+REVOKE ALL ON FUNCTION private.purge_scheduled_jobs(integer, integer) FROM PUBLIC, anon, authenticated;
+
+SELECT cron.schedule('purge-scheduled-jobs', '35 4 * * *', $$SELECT private.purge_scheduled_jobs(30, 90)$$);
+
+-- El historial de pg_cron: de 3 dias a 1. Con la purga diaria quedan entre 24
+-- y 48 horas, suficiente para medir un dia entero.
+SELECT cron.alter_job(j.jobid, command := 'SELECT private.purge_cron_run_details(1)')
+FROM cron.job j
+WHERE j.jobname = 'purge-cron-runs';
+
+-- ============================================================
+-- MIGRATION 328: META CAPI
+-- ============================================================
+-- ============================================================================
+-- 00328 — API de Conversiones de Meta (CAPI)
+-- ============================================================================
+-- SSA le manda a Meta, desde el servidor, los eventos que valen (un lead, una reunión, un pago cobrado) con todos los
+-- datos de la persona juntos. Si la web también lo mandó por Pixel con el mismo código, Meta junta los dos envíos.
+--
+--   1. `meta_capi_events`: cada evento que se manda (o se saltea), con su estado. Es la cola y el registro a la vez:
+--      el índice único (workspace, evento, código) hace que un reintento del paso o del job nunca mande dos veces.
+--      Sin `contact_id` a propósito (la persona sale de lo que disparó el evento): `merge_contacts` no cambia. Sin
+--      hashes ni IP: solo el resultado.
+--   2. `meta_capi_request_context`: la IP y el navegador de quien respondió un formulario o agendó, que Meta pide para
+--      un evento de web y que SSA no guarda en ningún otro lado (la respuesta solo guarda un hash de la IP). Se escribe
+--      solo si el negocio tiene la API de Conversiones configurada y se borra a los 8 días (Meta no acepta eventos de
+--      más de 7). Solo `service_role`.
+--   3. El trigger de `payments`: un pago que pasa a cobrado (no un reembolso, monto positivo) encola su compra
+--      (Purchase), si el negocio prendió «Mandar cada pago cobrado como compra». Envuelto en EXCEPTION: un cobro
+--      NUNCA falla por esto. No mira para atrás: los pagos cobrados antes no se mandan.
+--   4. La limpieza diaria (pg_cron, SQL directo, sin `call_app_cron`).
+--
+-- Aditiva. Puede ir antes o después del código: hasta que una persona configure la API de Conversiones (pantalla
+-- nueva), el trigger no encola nada y no se escribe ningún contexto.
+--
+-- Como volver atras:
+--   SELECT cron.unschedule('meta-capi-cleanup');
+--   DROP TRIGGER IF EXISTS payments_enqueue_meta_capi_purchase ON public.payments;
+--   DROP FUNCTION IF EXISTS private.enqueue_meta_capi_purchase();
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type = 'meta_capi_send' AND status = 'pending';
+--   DROP TABLE IF EXISTS public.meta_capi_request_context;
+--   DROP TABLE IF EXISTS public.meta_capi_events;
+-- Riesgo: bajo. Tablas nuevas; lo único que toca algo existente es un trigger que solo encola.
+-- Idempotente.
+-- ============================================================================
+
+SET search_path = '';
+
+-- 1. Los eventos -----------------------------------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.meta_capi_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  event_name text NOT NULL CHECK (char_length(event_name) BETWEEN 1 AND 50),
+  event_id text NOT NULL CHECK (char_length(event_id) BETWEEN 1 AND 200),
+  source_type text NOT NULL CHECK (source_type IN ('form', 'booking', 'payment', 'contact')),
+  -- La respuesta, la reunión, el pago o el contacto. Sin FK: lo que lo disparó puede borrarse y el registro queda.
+  source_id uuid NOT NULL,
+  flow_id uuid REFERENCES public.flows(id) ON DELETE SET NULL,
+  flow_session_id uuid REFERENCES public.flow_sessions(id) ON DELETE SET NULL,
+  -- Cuándo pasó (no cuándo se mandó): Meta no acepta eventos de más de 7 días.
+  event_time timestamptz NOT NULL,
+  -- Lo configurado en el paso o en el pago: valor, moneda, nombre del contenido, solo reuniones del lead. Sin datos de la persona.
+  params jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(params) = 'object'),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'skipped')),
+  skip_reason text CHECK (skip_reason IS NULL OR skip_reason ~ '^[a-z_]{1,40}$'),
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  -- Se mandó con el código de prueba de Events Manager: Meta lo muestra solo en «Probar eventos».
+  test boolean NOT NULL DEFAULT false,
+  action_source text CHECK (action_source IS NULL OR action_source IN ('website', 'system_generated')),
+  fbtrace_id text CHECK (fbtrace_id IS NULL OR char_length(fbtrace_id) <= 100),
+  error text CHECK (error IS NULL OR char_length(error) <= 500),
+  sent_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.meta_capi_events IS
+  'Cada evento de la API de Conversiones de Meta (00328). Un evento se manda una sola vez (índice único por workspace, evento y código). Sin contact_id ni datos de la persona a propósito.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_capi_events_event
+  ON public.meta_capi_events(workspace_id, event_name, event_id);
+CREATE INDEX IF NOT EXISTS idx_meta_capi_events_recent
+  ON public.meta_capi_events(workspace_id, created_at DESC);
+
+ALTER TABLE public.meta_capi_events ENABLE ROW LEVEL SECURITY;
+
+-- Lo ve quien ve o configura las integraciones del negocio. Escribe solo el servidor (sin políticas de escritura).
+DROP POLICY IF EXISTS meta_capi_events_select ON public.meta_capi_events;
+CREATE POLICY meta_capi_events_select ON public.meta_capi_events FOR SELECT
+  USING (
+    COALESCE((select public.has_permission(workspace_id, 'integrations.view')), false)
+    OR COALESCE((select public.has_permission(workspace_id, 'integrations.manage')), false)
+  );
+
+REVOKE ALL ON public.meta_capi_events FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.meta_capi_events TO authenticated;
+GRANT ALL ON public.meta_capi_events TO service_role;
+
+-- 2. La IP y el navegador ---------------------------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.meta_capi_request_context (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  source_type text NOT NULL CHECK (source_type IN ('form', 'booking')),
+  source_id uuid NOT NULL,
+  client_ip text CHECK (client_ip IS NULL OR char_length(client_ip) <= 64),
+  user_agent text CHECK (user_agent IS NULL OR char_length(user_agent) <= 500),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.meta_capi_request_context IS
+  'La IP y el navegador de quien respondió un formulario o agendó, para la API de Conversiones de Meta (00328). Solo service_role; se borra a los 8 días.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_capi_request_context_source
+  ON public.meta_capi_request_context(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_meta_capi_request_context_created
+  ON public.meta_capi_request_context(created_at);
+
+ALTER TABLE public.meta_capi_request_context ENABLE ROW LEVEL SECURITY;
+-- Sin políticas: ni authenticated ni anon la leen. Solo el servidor.
+REVOKE ALL ON public.meta_capi_request_context FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.meta_capi_request_context TO service_role;
+
+-- 3. La compra de cada pago cobrado -----------------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION private.enqueue_meta_capi_purchase()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_event_id uuid;
+BEGIN
+  BEGIN
+    IF NEW.status = 'paid' AND NEW.type <> 'refund' AND COALESCE(NEW.amount, 0) > 0
+       AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'paid')
+       AND EXISTS (
+         SELECT 1 FROM public.integration_configs ic
+          WHERE ic.workspace_id = NEW.workspace_id
+            AND ic.type = 'meta'
+            AND ic.provider = 'meta_capi'
+            AND ic.is_active
+            AND COALESCE(ic.config ->> 'pixel_id', '') <> ''
+            AND ic.config ->> 'purchase_enabled' = 'true'
+       ) THEN
+      INSERT INTO public.meta_capi_events (workspace_id, event_name, event_id, source_type, source_id, event_time, params)
+      VALUES (NEW.workspace_id, 'Purchase', 'payment.' || NEW.id::text, 'payment', NEW.id, COALESCE(NEW.paid_at, now()),
+              jsonb_build_object('value', NEW.amount, 'currency', NEW.currency))
+      ON CONFLICT (workspace_id, event_name, event_id) DO NOTHING
+      RETURNING id INTO v_event_id;
+
+      IF v_event_id IS NOT NULL THEN
+        INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+        VALUES ('meta_capi_send', jsonb_build_object('eventLogId', v_event_id, 'attempt', 1), now(), 'meta_capi:' || v_event_id::text)
+        ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'enqueue_meta_capi_purchase: no pude encolar el pago %: %', NEW.id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_meta_capi_purchase() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS payments_enqueue_meta_capi_purchase ON public.payments;
+CREATE TRIGGER payments_enqueue_meta_capi_purchase
+  AFTER INSERT OR UPDATE OF status ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION private.enqueue_meta_capi_purchase();
+
+-- 4. La limpieza diaria ---------------------------------------------------------------------------------------------
+-- La IP y el navegador, a los 8 días (Meta no acepta eventos de más de 7). El registro de envíos, a los 180 días.
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'meta-capi-cleanup') THEN
+    PERFORM cron.unschedule('meta-capi-cleanup');
+  END IF;
+END $$;
+
+SELECT cron.schedule(
+  'meta-capi-cleanup',
+  '23 4 * * *',
+  $$DELETE FROM public.meta_capi_request_context WHERE created_at < now() - interval '8 days';
+    DELETE FROM public.meta_capi_events WHERE created_at < now() - interval '180 days' AND status <> 'pending';$$
+);
+
+-- ============================================================
+-- MIGRATION 329: CONTACT QUALIFICATION
+-- ============================================================
+-- ============================================================
+-- 00329_contact_qualification
+-- ============================================================
+-- El NIVEL DE CALIFICACION del lead: de 1 a 5 (NULL = «Sin calificar»). Convive
+-- con la temperatura (`lead_temperature`), que no se toca.
+--
+-- Lo que suma:
+--
+--  1. `workspaces.qualification_settings` (jsonb): el nombre y la descripcion
+--     (la rubrica) de cada uno de los 5 niveles, `{ levels: [{ level, name,
+--     description }] }`. Los niveles son fijos; lo que se edita es el texto.
+--     El DEFAULT es un LITERAL igual a `DEFAULT_QUALIFICATION_SETTINGS`
+--     (lib/contacts/qualification.ts; `qualification.test.ts` los compara): un
+--     DEFAULT que llama a una funcion de `private` rompe el alta de un workspace
+--     (ver 00248).
+--  2. Columnas en `contacts`: `qualification_level` (1-5), `qualification_at` y
+--     `qualification_by_agent` (true si el nivel ACTUAL lo puso el agente de IA).
+--  3. `contact_qualification_changes`: el historial. Lo lee quien ve el contacto
+--     (`can_see_contact`); escribe solo el servidor.
+--  4. `set_contact_qualification(...)`: la UNICA forma de cambiar el nivel.
+--     Fija, suma o resta (recortando entre 1 y 5) o lo quita, anota el cambio y
+--     emite `qualification_changed`. La regla de recorte es gemela de
+--     `applyQualificationChange` (lib/contacts/qualification.ts), con los casos
+--     de `lib/contacts/qualification.cases.json`.
+--  5. `contacts_qualification_guard`: rechaza un cambio DIRECTO a esas columnas
+--     (QL001). Pasa solo con la marca `app.contact_qualification_internal`.
+--  6. `contacts_qualification_on_merge`: al fusionar (`merge_contacts` borra el
+--     duplicado con `metadata.merged_into`), mueve el historial al principal y se
+--     queda con el nivel MAS ALTO. Mismo patron que 00256 y 00320: no se
+--     reescribe `merge_contacts`; la tabla va en `CONTACT_MERGE_EXCLUSIONS`.
+--  7. La siembra: los contactos con temperatura y sin nivel arrancan con
+--     frio = 2, tibio = 3, caliente = 4 (sin tocar la temperatura ni el
+--     `updated_at`, y sin emitir eventos). Corre una sola vez.
+--  8. Los agentes que tienen `cambiar_temperatura` suman `calificar_lead` (con
+--     la misma configuracion de «puede bajar»).
+--
+-- Aditiva. Va ANTES de desplegar el codigo (la ficha y la lista leen las columnas).
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS contacts_qualification_on_merge ON public.contacts;
+--   DROP FUNCTION IF EXISTS public.contacts_qualification_on_merge();
+--   DROP TRIGGER IF EXISTS contacts_qualification_guard ON public.contacts;
+--   DROP FUNCTION IF EXISTS private.contacts_qualification_guard();
+--   DROP FUNCTION IF EXISTS public.set_contact_qualification(uuid, uuid, text, integer, uuid, uuid, text, uuid, text, boolean, boolean);
+--   DROP FUNCTION IF EXISTS private.qualification_next_level(smallint, text, integer);
+--   DROP TABLE IF EXISTS public.contact_qualification_changes;
+--   ALTER TABLE public.contacts DROP COLUMN IF EXISTS qualification_level,
+--     DROP COLUMN IF EXISTS qualification_at, DROP COLUMN IF EXISTS qualification_by_agent;
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS qualification_settings;
+--   UPDATE public.agents SET allowed_tools = array_remove(allowed_tools, 'calificar_lead'),
+--     tools_config = tools_config - 'calificar_lead';
+--
+-- Idempotente: IF NOT EXISTS, CREATE OR REPLACE, DROP ... IF EXISTS.
+-- ============================================================
+
+CREATE SCHEMA IF NOT EXISTS private;
+
+-- ------------------------------------------------------------
+-- 1. Los nombres y la rubrica de cada nivel
+-- ------------------------------------------------------------
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS qualification_settings jsonb NOT NULL DEFAULT '{
+    "levels": [
+      {"level": 1, "name": "No califica", "description": "No encaja con lo que ofrecemos o no tiene un interés real."},
+      {"level": 2, "name": "Bajo", "description": "Muestra algo de interés, pero le faltan varias condiciones: necesidad, presupuesto o momento."},
+      {"level": 3, "name": "Medio", "description": "Tiene la necesidad y el interés, pero falta confirmar el presupuesto o quién decide."},
+      {"level": 4, "name": "Bueno", "description": "Cumple casi todo: necesidad clara, presupuesto y decide; falta dar el siguiente paso."},
+      {"level": 5, "name": "Ideal", "description": "Cliente ideal: cumple todo y está listo para avanzar."}
+    ]
+  }'::jsonb;
+
+-- ------------------------------------------------------------
+-- 2. Las columnas del contacto
+-- ------------------------------------------------------------
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS qualification_level smallint;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS qualification_at timestamptz;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS qualification_by_agent boolean NOT NULL DEFAULT false;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contacts_qualification_level_check') THEN
+    ALTER TABLE public.contacts
+      ADD CONSTRAINT contacts_qualification_level_check
+      CHECK (qualification_level IS NULL OR qualification_level BETWEEN 1 AND 5);
+  END IF;
+  -- Un nivel sin fecha (o una fecha sin nivel) no tiene sentido.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contacts_qualification_dates_check') THEN
+    ALTER TABLE public.contacts
+      ADD CONSTRAINT contacts_qualification_dates_check
+      CHECK ((qualification_level IS NULL) = (qualification_at IS NULL));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_contacts_qualification_level
+  ON public.contacts (workspace_id, qualification_level) WHERE deleted_at IS NULL AND qualification_level IS NOT NULL;
+
+-- ------------------------------------------------------------
+-- 3. El historial
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.contact_qualification_changes (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id        uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  contact_id          uuid NOT NULL REFERENCES public.contacts(id) ON DELETE CASCADE,
+  old_level           smallint CHECK (old_level IS NULL OR old_level BETWEEN 1 AND 5),
+  new_level           smallint CHECK (new_level IS NULL OR new_level BETWEEN 1 AND 5),
+  -- De donde vino: una persona, el agente de IA, una automatizacion, una
+  -- importacion, una fusion de contactos o la siembra desde la temperatura.
+  source              text NOT NULL CHECK (source IN ('person', 'agent', 'automation', 'import', 'merge', 'seed')),
+  changed_by          uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  changed_by_agent_id uuid REFERENCES public.agents(id) ON DELETE SET NULL,
+  flow_id             uuid REFERENCES public.flows(id) ON DELETE SET NULL,
+  -- El motivo (lo que dijo el agente, la regla que se cumplio). Nunca un mensaje del lead.
+  reason              text CHECK (reason IS NULL OR char_length(reason) <= 300),
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  CHECK (old_level IS DISTINCT FROM new_level)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contact_qualification_changes_contact
+  ON public.contact_qualification_changes (contact_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_contact_qualification_changes_workspace
+  ON public.contact_qualification_changes (workspace_id, created_at DESC);
+
+ALTER TABLE public.contact_qualification_changes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS contact_qualification_changes_select ON public.contact_qualification_changes;
+CREATE POLICY contact_qualification_changes_select ON public.contact_qualification_changes
+  FOR SELECT TO authenticated
+  USING (
+    (SELECT public.is_workspace_member(workspace_id))
+    AND EXISTS (
+      SELECT 1 FROM public.contacts c
+       WHERE c.id = contact_qualification_changes.contact_id
+         AND c.workspace_id = contact_qualification_changes.workspace_id
+         AND public.can_see_contact(c)
+    )
+  );
+-- Sin politicas de INSERT/UPDATE/DELETE: escribe solo `set_contact_qualification`.
+
+REVOKE ALL ON TABLE public.contact_qualification_changes FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.contact_qualification_changes TO authenticated;
+GRANT ALL ON TABLE public.contact_qualification_changes TO service_role;
+
+-- ------------------------------------------------------------
+-- 4. La regla de recorte (gemela de `applyQualificationChange`)
+-- ------------------------------------------------------------
+-- 'set'   : p_value entre 1 y 5 (otro valor devuelve -1: invalido).
+-- 'add'   : suma p_value (negativo resta) y recorta entre 1 y 5. Desde «Sin
+--           calificar» se cuenta desde 0: +1 da 1, +3 da 3, y restar no hace nada.
+-- 'clear' : quita el nivel.
+-- Devuelve el nivel nuevo (NULL = sin calificar) o -1 si el pedido es invalido.
+CREATE OR REPLACE FUNCTION private.qualification_next_level(p_old smallint, p_mode text, p_value integer)
+RETURNS integer
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v integer;
+BEGIN
+  IF p_mode = 'clear' THEN
+    RETURN NULL;
+  ELSIF p_mode = 'set' THEN
+    IF p_value IS NULL OR p_value < 1 OR p_value > 5 THEN RETURN -1; END IF;
+    RETURN p_value;
+  ELSIF p_mode = 'add' THEN
+    IF p_value IS NULL THEN RETURN -1; END IF;
+    v := coalesce(p_old, 0) + p_value;
+    IF p_old IS NULL AND v < 1 THEN RETURN NULL; END IF;
+    RETURN greatest(1, least(5, v));
+  END IF;
+  RETURN -1;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.qualification_next_level(smallint, text, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.qualification_next_level(smallint, text, integer) TO service_role;
+
+-- ------------------------------------------------------------
+-- 5. El guardia: ningun nivel sin pasar por la funcion
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.contacts_qualification_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF coalesce(current_setting('app.contact_qualification_internal', true), '') = 'on' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.qualification_level IS NOT NULL OR NEW.qualification_at IS NOT NULL OR NEW.qualification_by_agent THEN
+      RAISE EXCEPTION 'El nivel de calificacion se cambia con set_contact_qualification' USING ERRCODE = 'QL001';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.qualification_level IS DISTINCT FROM OLD.qualification_level
+     OR NEW.qualification_at IS DISTINCT FROM OLD.qualification_at
+     OR NEW.qualification_by_agent IS DISTINCT FROM OLD.qualification_by_agent THEN
+    RAISE EXCEPTION 'El nivel de calificacion se cambia con set_contact_qualification' USING ERRCODE = 'QL001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.contacts_qualification_guard() FROM PUBLIC, anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 6. La siembra desde la temperatura (una sola vez, antes del guardia)
+-- ------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.contact_qualification_changes WHERE source = 'seed') THEN
+    PERFORM set_config('app.contact_qualification_internal', 'on', true);
+    ALTER TABLE public.contacts DISABLE TRIGGER set_updated_at;
+
+    WITH seeded AS (
+      UPDATE public.contacts
+         SET qualification_level = CASE lead_temperature WHEN 'cold' THEN 2 WHEN 'warm' THEN 3 WHEN 'hot' THEN 4 END,
+             qualification_at = now(),
+             qualification_by_agent = false
+       WHERE qualification_level IS NULL
+         AND lead_temperature IN ('cold', 'warm', 'hot')
+         AND deleted_at IS NULL
+      RETURNING id, workspace_id, qualification_level
+    )
+    INSERT INTO public.contact_qualification_changes (workspace_id, contact_id, old_level, new_level, source, reason)
+    SELECT workspace_id, id, NULL, qualification_level, 'seed', 'Conversión desde la temperatura'
+      FROM seeded;
+
+    ALTER TABLE public.contacts ENABLE TRIGGER set_updated_at;
+    PERFORM set_config('app.contact_qualification_internal', 'off', true);
+  END IF;
+END $$;
+
+DROP TRIGGER IF EXISTS contacts_qualification_guard ON public.contacts;
+CREATE TRIGGER contacts_qualification_guard
+  BEFORE INSERT OR UPDATE ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION private.contacts_qualification_guard();
+
+-- ------------------------------------------------------------
+-- 7. La funcion
+-- ------------------------------------------------------------
+-- Devuelve jsonb:
+--   { result: 'changed' | 'unchanged' | 'not_found' | 'invalid' | 'protected' | 'not_raised',
+--     old_level, new_level, change_id }
+--
+-- p_source: 'person' | 'agent' | 'automation' | 'import' (la fusion y la siembra
+--   no pasan por aca).
+-- p_respect_human: para el agente. Si el nivel actual lo puso una PERSONA (o una
+--   automatizacion, una importacion), no se pisa ('protected').
+-- p_only_raise: para el agente sin «puede bajar»: un nivel mas bajo que el actual
+--   (o quitarlo) no se aplica ('not_raised'). Se decide aca, bajo el bloqueo.
+CREATE OR REPLACE FUNCTION public.set_contact_qualification(
+  p_workspace_id  uuid,
+  p_contact_id    uuid,
+  p_mode          text,
+  p_value         integer DEFAULT NULL,
+  p_actor_user    uuid DEFAULT NULL,
+  p_actor_agent   uuid DEFAULT NULL,
+  p_source        text DEFAULT 'person',
+  p_flow_id       uuid DEFAULT NULL,
+  p_reason        text DEFAULT NULL,
+  p_respect_human boolean DEFAULT false,
+  p_only_raise    boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_contact public.contacts%ROWTYPE;
+  v_old     smallint;
+  v_next    integer;
+  v_new     smallint;
+  v_now     timestamptz := now();
+  v_change  uuid;
+  v_dir     text;
+BEGIN
+  IF p_mode IS NULL OR p_mode NOT IN ('set', 'add', 'clear') THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+  IF p_source IS NULL OR p_source NOT IN ('person', 'agent', 'automation', 'import') THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+
+  SELECT * INTO v_contact
+    FROM public.contacts
+   WHERE id = p_contact_id
+     AND workspace_id = p_workspace_id
+     AND deleted_at IS NULL
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('result', 'not_found');
+  END IF;
+
+  v_old := v_contact.qualification_level;
+  v_next := private.qualification_next_level(v_old, p_mode, p_value);
+  IF v_next = -1 THEN
+    RETURN jsonb_build_object('result', 'invalid', 'old_level', v_old);
+  END IF;
+  v_new := v_next::smallint;
+
+  IF v_old IS NOT DISTINCT FROM v_new THEN
+    RETURN jsonb_build_object('result', 'unchanged', 'old_level', v_old, 'new_level', v_new);
+  END IF;
+
+  IF p_respect_human AND v_old IS NOT NULL AND NOT v_contact.qualification_by_agent THEN
+    RETURN jsonb_build_object('result', 'protected', 'old_level', v_old, 'new_level', v_new);
+  END IF;
+
+  IF p_only_raise AND v_old IS NOT NULL AND (v_new IS NULL OR v_new < v_old) THEN
+    RETURN jsonb_build_object('result', 'not_raised', 'old_level', v_old, 'new_level', v_new);
+  END IF;
+
+  PERFORM set_config('app.contact_qualification_internal', 'on', true);
+  UPDATE public.contacts
+     SET qualification_level = v_new,
+         qualification_at = CASE WHEN v_new IS NULL THEN NULL ELSE v_now END,
+         qualification_by_agent = v_new IS NOT NULL AND p_actor_agent IS NOT NULL,
+         updated_at = v_now
+   WHERE id = p_contact_id;
+  PERFORM set_config('app.contact_qualification_internal', 'off', true);
+
+  INSERT INTO public.contact_qualification_changes
+    (workspace_id, contact_id, old_level, new_level, source, changed_by, changed_by_agent_id, flow_id, reason, created_at)
+  VALUES
+    (p_workspace_id, p_contact_id, v_old, v_new, p_source, p_actor_user, p_actor_agent, p_flow_id,
+     left(nullif(btrim(coalesce(p_reason, '')), ''), 300), v_now)
+  RETURNING id INTO v_change;
+
+  v_dir := CASE
+    WHEN v_new IS NULL THEN 'cleared'
+    WHEN v_old IS NULL OR v_new > v_old THEN 'up'
+    ELSE 'down'
+  END;
+
+  -- El evento de automatizacion nunca tumba el cambio.
+  BEGIN
+    PERFORM public.emit_automation_event(
+      p_workspace_id, 'qualification_changed', p_contact_id,
+      jsonb_build_object('level', v_new, 'previous_level', v_old, 'direction', v_dir,
+                         'source', p_source, 'change_id', v_change)
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'set_contact_qualification: no pude emitir el evento: %', SQLERRM;
+  END;
+
+  RETURN jsonb_build_object('result', 'changed', 'old_level', v_old, 'new_level', v_new, 'change_id', v_change);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_contact_qualification(uuid, uuid, text, integer, uuid, uuid, text, uuid, text, boolean, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_contact_qualification(uuid, uuid, text, integer, uuid, uuid, text, uuid, text, boolean, boolean) TO service_role;
+
+-- ------------------------------------------------------------
+-- 8. La fusion de contactos
+-- ------------------------------------------------------------
+-- `merge_contacts` (00247) borra el duplicado con `metadata.merged_into` antes de
+-- mudar nada. Al ver eso: el historial del duplicado pasa al principal y, si el
+-- duplicado tenia un nivel mas alto, el principal se queda con ese (y lo anota).
+-- Nunca tumba la fusion.
+CREATE OR REPLACE FUNCTION public.contacts_qualification_on_merge()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_main      uuid;
+  v_main_lvl  smallint;
+BEGIN
+  IF OLD.deleted_at IS NOT NULL OR NEW.deleted_at IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF NOT (coalesce(NEW.metadata, '{}'::jsonb) ? 'merged_into') THEN
+    RETURN NULL;
+  END IF;
+  BEGIN
+    v_main := (NEW.metadata ->> 'merged_into')::uuid;
+  EXCEPTION WHEN others THEN
+    RETURN NULL;
+  END;
+
+  BEGIN
+    UPDATE public.contact_qualification_changes
+       SET contact_id = v_main
+     WHERE contact_id = OLD.id AND workspace_id = NEW.workspace_id;
+
+    IF OLD.qualification_level IS NOT NULL THEN
+      SELECT qualification_level INTO v_main_lvl
+        FROM public.contacts
+       WHERE id = v_main AND workspace_id = NEW.workspace_id;
+      IF FOUND AND (v_main_lvl IS NULL OR OLD.qualification_level > v_main_lvl) THEN
+        PERFORM set_config('app.contact_qualification_internal', 'on', true);
+        UPDATE public.contacts
+           SET qualification_level = OLD.qualification_level,
+               qualification_at = coalesce(OLD.qualification_at, now()),
+               qualification_by_agent = OLD.qualification_by_agent
+         WHERE id = v_main AND workspace_id = NEW.workspace_id;
+        PERFORM set_config('app.contact_qualification_internal', 'off', true);
+        INSERT INTO public.contact_qualification_changes
+          (workspace_id, contact_id, old_level, new_level, source, reason)
+        VALUES
+          (NEW.workspace_id, v_main, v_main_lvl, OLD.qualification_level, 'merge', 'Fusión de contactos');
+      END IF;
+    END IF;
+  EXCEPTION WHEN others THEN
+    PERFORM set_config('app.contact_qualification_internal', 'off', true);
+    RAISE WARNING 'contacts_qualification_on_merge: no pude mover la calificacion del contacto %: %', OLD.id, SQLERRM;
+  END;
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.contacts_qualification_on_merge() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contacts_qualification_on_merge ON public.contacts;
+CREATE TRIGGER contacts_qualification_on_merge
+  AFTER UPDATE OF deleted_at ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_qualification_on_merge();
+
+-- ------------------------------------------------------------
+-- 9. El agente: donde ya calificaba con la temperatura, suma el nivel
+-- ------------------------------------------------------------
+UPDATE public.agents
+   SET allowed_tools = array_append(allowed_tools, 'calificar_lead'),
+       tools_config = CASE
+         WHEN tools_config ? 'cambiar_temperatura' AND NOT (tools_config ? 'calificar_lead')
+           THEN tools_config || jsonb_build_object('calificar_lead',
+                  jsonb_build_object('canLower', coalesce((tools_config -> 'cambiar_temperatura' -> 'canLower'), 'false'::jsonb)))
+         ELSE tools_config
+       END
+ WHERE 'cambiar_temperatura' = ANY (allowed_tools)
+   AND NOT ('calificar_lead' = ANY (allowed_tools));

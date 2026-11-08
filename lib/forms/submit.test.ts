@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { submitForm, safeFileName, buildAttribution, bodyLimitBytes, metaEventIdOf, marketingConsentAction, type LoadedForm, type SubmitPorts, type SubmitInput, type SaveInput } from "./submit";
+import { submitForm, safeFileName, buildAttribution, bodyLimitBytes, metaEventIdOf, metaExternalIdOf, marketingConsentAction, type LoadedForm, type SubmitPorts, type SubmitInput, type SaveInput } from "./submit";
 import { newField, type FormField } from "./fields";
 import { NO_BUSINESS_SIGNER } from "./defaults";
 
@@ -757,6 +757,16 @@ describe("submitForm: la web de un cliente (origin site)", () => {
     expect(saves[0].meta).toMatchObject({ meta_event_id: "lead-7f3a.1" });
     expect(saves[0].attribution).toMatchObject({ utm_source: "ig", fbp: "fb.1.123.456", fbc: "fb.1.123.AbC" });
     expect(saves[0].attribution).not.toHaveProperty("meta_event_id");
+  });
+
+  it("guarda el external_id del navegador en meta como meta_external_id (no en la atribución)", async () => {
+    const { ports, saves } = makePorts(makeForm([field("email", "email")]));
+    const browserId = "3f1c2b9e-7a4d-4e1f-9c8b-2a6d5e4f3b21";
+    await submitForm(ports, baseInput({ origin: "site", answers: { email: "a@x.com" }, attribution: { external_id: ` ${browserId} ` } }));
+    expect(saves[0].meta).toMatchObject({ meta_external_id: browserId });
+    expect(saves[0].attribution).not.toHaveProperty("external_id");
+    expect(metaExternalIdOf({ external_id: "<script>" })).toBeNull();
+    expect(metaExternalIdOf({ external_id: 42 })).toBeNull();
   });
 
   it("un meta_event_id con forma rara no se guarda", () => {

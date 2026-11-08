@@ -28,6 +28,8 @@ import { BarChart3,
   Ban,
   UserRoundPlus,
   Smartphone,
+  Target,
+  Gauge,
 } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Search } from "lucide-react";
@@ -252,6 +254,26 @@ const categories: PaletteCategory[] = [
         synonyms: ["whatsapp", "aviso", "telefono"],
         actionType: "send_whatsapp_number",
       },
+      // Calificación del lead (00329): fija, suma o resta el nivel 1-5, o lo calcula con reglas.
+      {
+        type: "action",
+        nodeType: "qualify_lead",
+        label: "Calificar lead",
+        icon: Gauge,
+        description: "Fija, suma o resta el nivel de calificación (1 a 5), o lo calcula con reglas",
+        synonyms: ["calificacion", "calificar", "puntaje", "score", "nivel", "lead scoring", "puntos"],
+        actionType: "qualify_lead",
+      },
+      // API de Conversiones (00328): le avisa a Meta que pasó algo que vale (un lead, una reunión).
+      {
+        type: "action",
+        nodeType: "send_meta_event",
+        label: "Enviar evento a Meta",
+        icon: Target,
+        description: "Le avisa a Meta un lead o una reunión, desde el servidor",
+        synonyms: ["meta", "facebook", "pixel", "conversiones", "capi", "anuncio", "lead"],
+        actionType: "send_meta_event",
+      },
       // Grupos de WhatsApp: una encuesta a un grupo activado (sirve sin contacto).
       {
         type: "action",
@@ -344,6 +366,21 @@ const categories: PaletteCategory[] = [
         actionType: "set_sale_status",
       },
       // @plantilla-hasta(ventas)
+    ],
+  },
+  // Diseñador IA (F57): una pieza desde una plantilla (un certificado, una constancia...) para el contacto.
+  {
+    name: "Diseñador IA",
+    items: [
+      {
+        type: "action",
+        nodeType: "designGenerate",
+        label: "Generar desde plantilla",
+        icon: Sparkles,
+        description: "Un certificado, una constancia o cualquier pieza con los datos del contacto",
+        synonyms: ["certificado", "constancia", "diploma", "diseño", "pdf", "plantilla"],
+        actionType: "designGenerate",
+      },
     ],
   },
 ];

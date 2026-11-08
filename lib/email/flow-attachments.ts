@@ -9,17 +9,69 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { CHAT_MEDIA_BUCKET, extensionForMime, safeFilename } from "@/lib/chat-media/bucket";
 import { FILE_KINDS } from "@/lib/response-assets/kind";
-import { MAX_EMAIL_ATTACHMENT_BYTES, MAX_EMAIL_ATTACHMENTS, type EmailAttachmentRef } from "./attachment-limits";
+import { DESIGN_RENDERS_BUCKET } from "@/lib/designer/storage";
+import { assetAttachments, isDesignAttachment, MAX_EMAIL_ATTACHMENT_BYTES, MAX_EMAIL_ATTACHMENTS, type AssetAttachmentRef, type EmailAttachmentRef } from "./attachment-limits";
 
 export interface LoadedEmailAttachments {
   files: Array<{ filename: string; content: string }>;
   /** Los que no se pudieron adjuntar (borrados, sin archivo, o que se pasaban del tope), con su nombre. */
   missing: string[];
+  /**
+   * El PDF del diseño (F59) que se pidió y no se puede adjuntar: `missing` = no hay una generación en esta corrida (el
+   * paso falla); `not_ready` = todavía se está armando (el paso espera). Sin pedirlo, no viene.
+   */
+  designProblem?: "missing" | "not_ready" | "failed";
 }
 
+/** El nombre del PDF de un diseño: el nombre del diseño, legible ("constancia-ana-perez.pdf"). */
+function designPdfName(name: string): string {
+  return `${safeFilename(name.replace(/\.[a-z0-9]{2,5}$/i, ""), "diseno")}.pdf`;
+}
+
+/**
+ * Carga los adjuntos de un paso «Enviar email». Los recursos de la banca, como siempre; el PDF del diseño (F59), de la
+ * generación de ESTA corrida (`design.id`, lo deja «Generar desde plantilla»), solo si es del negocio y está lista.
+ */
 export async function loadEmailAttachments(
   supabase: SupabaseClient<Database>,
-  args: { workspaceId: string; refs: EmailAttachmentRef[] },
+  args: { workspaceId: string; refs: EmailAttachmentRef[]; designId?: string | null },
+): Promise<LoadedEmailAttachments> {
+  const loaded = await loadAssetAttachments(supabase, { workspaceId: args.workspaceId, refs: assetAttachments(args.refs) });
+  if (!args.refs.some(isDesignAttachment)) return loaded;
+
+  if (!args.designId) return { ...loaded, designProblem: "missing" };
+  const { data: design, error } = await supabase
+    .from("designs")
+    .select("id, name, status, renders")
+    .eq("id", args.designId)
+    .eq("workspace_id", args.workspaceId)
+    .maybeSingle();
+  if (error) {
+    console.error("[email] no pude leer el diseño a adjuntar:", error.message);
+    return { ...loaded, designProblem: "not_ready" };
+  }
+  if (!design) return { ...loaded, designProblem: "missing" };
+  const row = design as { name: string; status: string; renders: { pdf_path?: unknown } | null };
+  const pdfPath = typeof row.renders?.pdf_path === "string" ? row.renders.pdf_path : null;
+  if (row.status !== "ready" || !pdfPath) return { ...loaded, designProblem: row.status === "failed" || row.status === "void" ? "failed" : "not_ready" };
+
+  const { data: blob, error: downloadError } = await supabase.storage.from(DESIGN_RENDERS_BUCKET).download(pdfPath);
+  if (downloadError || !blob) {
+    console.error("[email] no pude bajar el PDF del diseño:", downloadError?.message ?? "sin archivo");
+    return { ...loaded, designProblem: "not_ready" };
+  }
+  const bytes = Buffer.from(await blob.arrayBuffer());
+  const total = loaded.files.reduce((sum, f) => sum + Buffer.byteLength(f.content, "base64"), 0);
+  if (loaded.files.length >= MAX_EMAIL_ATTACHMENTS || total + bytes.byteLength > MAX_EMAIL_ATTACHMENT_BYTES) {
+    return { ...loaded, missing: [...loaded.missing, row.name] };
+  }
+  return { ...loaded, files: [...loaded.files, { filename: designPdfName(row.name), content: bytes.toString("base64") }] };
+}
+
+/** Los recursos de la banca (lo de siempre, sin cambios: lo fija `attachments-characterization.test.ts`). */
+async function loadAssetAttachments(
+  supabase: SupabaseClient<Database>,
+  args: { workspaceId: string; refs: AssetAttachmentRef[] },
 ): Promise<LoadedEmailAttachments> {
   const refs = args.refs.slice(0, MAX_EMAIL_ATTACHMENTS);
   const missing = args.refs.slice(MAX_EMAIL_ATTACHMENTS).map((r) => r.name ?? "un adjunto");

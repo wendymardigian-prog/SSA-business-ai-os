@@ -12,6 +12,8 @@
 import { ATTRIBUTION_KEYS, VISIT_META_KEYS } from "@/lib/attribution/keys";
 import { bestEntryUrl } from "./attribution-view";
 import { FORM_LIMITS } from "./limits";
+import { countryFromPhone } from "@/lib/phone-country";
+import { phoneFieldKey } from "./response-index";
 import {
   cellFor,
   emailStatusLabel,
@@ -76,6 +78,13 @@ export function buildResponsesMatrix(
 ): string[][] {
   const attrKeys = attributionColumns(rows);
   const derived = DERIVED_COLUMNS.filter((column) => rows.some((row) => column.value(row) !== ""));
+  // «País» va justo después de la pregunta de teléfono, como en la tabla (sin bandera: es un CSV).
+  const phoneKey = phoneFieldKey(columns);
+  const answerColumns = columns.flatMap((c) => {
+    const cell = { label: c.label, value: (row: ResponseRow) => cellFor(row, c, "; ") };
+    if (c.key !== phoneKey) return [cell];
+    return [cell, { label: "País", value: (row: ResponseRow) => countryFromPhone(cellFor(row, c))?.name ?? "" }];
+  });
   const header = [
     "Fecha",
     "Contacto",
@@ -83,7 +92,7 @@ export function buildResponsesMatrix(
     "Estado",
     ...(options.includeScore ? ["Puntaje", "Categoría NPS"] : []),
     ...(options.includeEmailStatus ? ["Email del contrato"] : []),
-    ...columns.map((c) => c.label),
+    ...answerColumns.map((c) => c.label),
     ...attrKeys.map((k) => `Atribución: ${k}`),
     ...derived.map((column) => column.label),
   ];
@@ -97,7 +106,7 @@ export function buildResponsesMatrix(
       ? [row.score === null || row.score === undefined ? "" : String(row.score), row.nps_category ?? ""]
       : []),
     ...(options.includeEmailStatus ? [emailStatusLabel(row.email_status)] : []),
-    ...columns.map((c) => cellFor(row, c, "; ")),
+    ...answerColumns.map((c) => c.value(row)),
     ...attrKeys.map((k) => {
       const v = row.attribution?.[k];
       return typeof v === "string" ? v : "";

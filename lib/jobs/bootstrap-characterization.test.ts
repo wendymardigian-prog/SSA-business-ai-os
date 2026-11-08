@@ -44,6 +44,12 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "contract_email", // @plantilla-quitar(formularios)
       "contract_pdf", // @plantilla-quitar(formularios)
       "describe_media",
+      // Diseñador IA (F6): render, generar para varios, sincronizar con Contenido, la IA y la limpieza diaria.
+      "design_ai_generate",
+      "design_cleanup",
+      "design_content_sync",
+      "design_generate_many",
+      "design_render",
       // Reporte de fin de día (E13): el recordatorio. // @plantilla-quitar(formularios)
       "eod_reminder_sweep", // @plantilla-quitar(formularios)
       "fathom_history_import", // @plantilla-quitar(llamadas)
@@ -58,6 +64,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       // Catalogo de Meta (Extra L, AT2): las miniaturas de los anuncios.
       "meta_ad_thumbnails",
       "meta_ads_sync",
+      // La API de Conversiones de Meta (00328): cada evento que se le manda.
+      "meta_capi_send",
       "metrics_sync",
       // Mi cuenta → Notificaciones (00275): la entrega de un aviso por email y WhatsApp.
       "notification_deliver",

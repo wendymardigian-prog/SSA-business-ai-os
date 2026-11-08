@@ -180,3 +180,22 @@ describe("campos personalizados y atribución en el CSV", () => {
     expect(r.ok && r.row.custom).toEqual({});
   });
 });
+
+describe("la calificación (00329)", () => {
+  const mapping = [
+    { header: "Email", target: "email" as const },
+    { header: "Calificación", target: "qualification" as const },
+  ];
+  it("«Calificación» se sugiere al nivel, no a la temperatura", () => {
+    expect(suggestMapping(["Calificación", "Temperatura"]).map((m) => m.target)).toEqual(["qualification", "lead_temperature"]);
+  });
+  it("acepta 1 a 5 (también «4 - Bueno»); vacío no toca nada", () => {
+    const ok = mapRow(["ana@x.com", "4 - Bueno"], mapping, 0);
+    expect(ok.ok && ok.row.qualification).toBe(4);
+    const empty = mapRow(["ana@x.com", ""], mapping, 0);
+    expect(empty.ok && empty.row.qualification).toBeNull();
+  });
+  it("un número fuera de rango es un error de la fila", () => {
+    expect(mapRow(["ana@x.com", "7"], mapping, 0)).toEqual({ ok: false, line: 2, error: "Calificación: tiene que ser un número del 1 al 5" });
+  });
+});

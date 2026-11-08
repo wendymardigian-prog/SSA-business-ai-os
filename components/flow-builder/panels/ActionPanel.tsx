@@ -12,6 +12,9 @@ import { CreateTaskPanel } from "./CreateTaskPanel"; // @plantilla-quitar(tareas
 import { CompleteTaskPanel } from "./CompleteTaskPanel"; // @plantilla-quitar(tareas)
 import { SendWhatsAppNumberPanel } from "./SendWhatsAppNumberPanel";
 import { SendPollPanel } from "./SendPollPanel";
+import { MetaEventFields } from "@/components/automations/meta-event-fields";
+import type { MetaEventStepData } from "@/lib/meta/capi/events";
+import { DesignGeneratePanel } from "./DesignGeneratePanel";
 import { PrivateReplyPanel } from "./PrivateReplyPanel";
 import type { AttributionPanelContext } from "./SendMessagePanel";
 import { SendEmailPanel } from "./SendEmailPanel";
@@ -47,6 +50,8 @@ interface ActionPanelProps {
   availableVariables?: string[];
   /** «Atribución de links» de «Responder por privado» (UTM y contar clics de los botones). */
   attributionContext?: AttributionPanelContext;
+  /** El rótulo de las variables del disparador (el texto de cada pregunta…), por ruta. */
+  variableLabels?: Record<string, string>;
 }
 
 interface ActionSubPanelProps {
@@ -55,7 +60,7 @@ interface ActionSubPanelProps {
   availableVariables?: string[];
 }
 
-export function ActionPanel({ data: rawData, onChange, availableVariables, attributionContext }: ActionPanelProps) {
+export function ActionPanel({ data: rawData, onChange, availableVariables, attributionContext, variableLabels }: ActionPanelProps) {
   const data = rawData as ActionPanelData;
   const actionType = data.actionType || "addTag";
 
@@ -94,6 +99,17 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
     // Grupos de WhatsApp: una encuesta a un grupo activado.
     case "send_poll" as NodeType:
       return <SendPollPanel data={rawData} onChange={onChange} />;
+    // API de Conversiones (00328): el mismo formulario que en Formularios y Agenda.
+    case "send_meta_event" as NodeType:
+      return (
+        <MetaEventFields
+          idPrefix="meta-event"
+          data={rawData as MetaEventStepData}
+          patch={(next) => onChange({ ...rawData, ...next })}
+          bookingToggle="hint"
+          inputClassName="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      );
     // Etapa 4 (F46) + Tirón 2, D4: el email, ahora también a la dirección de una variable.
     case "send_email" as NodeType:
       return <SendEmailPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
@@ -121,6 +137,9 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
       return <CancelBookingPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
     case "set_booking_status" as NodeType:
       return <SetBookingStatusPanel data={rawData} onChange={onChange} />;
+    // Diseñador IA (F57): una pieza desde una plantilla para el contacto del disparador.
+    case "designGenerate" as NodeType:
+      return <DesignGeneratePanel data={rawData} onChange={onChange} availableVariables={availableVariables} variableLabels={variableLabels} />;
     default:
       return (
         <p className="text-sm text-muted-foreground">

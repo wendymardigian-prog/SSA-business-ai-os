@@ -21,6 +21,7 @@ import { registerMetricsHandlers } from "@/lib/jobs/handlers/metrics-sync";
 import { registerMetaAdsHandlers } from "@/lib/jobs/handlers/meta-ads-sync";
 import { registerMetaAdThumbnailsHandler } from "@/lib/jobs/handlers/meta-ad-thumbnails";
 import { registerZernioAdOriginHandler } from "@/lib/jobs/handlers/zernio-ad-origin";
+import { registerMetaCapiHandler } from "@/lib/jobs/handlers/meta-capi";
 import { registerWhatsappGroupImportHandler } from "@/lib/jobs/handlers/whatsapp-group-import";
 import { registerInboxImportHandlers } from "@/lib/jobs/handlers/inbox-import";
 import { registerWhatsappHistoryImportHandler } from "@/lib/jobs/handlers/whatsapp-history-import";
@@ -28,6 +29,7 @@ import { registerBookingJobHandlers } from "@/lib/jobs/handlers/booking-sync";
 import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-relative";
 import { registerFlowWaitTimeoutHandler } from "@/lib/jobs/handlers/flow-wait-timeout";
 import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
+import { registerDesignerHandlers } from "@/lib/jobs/handlers/designer";
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
 import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync"; // @plantilla-quitar(llamadas)
@@ -101,6 +103,8 @@ export function registerPublishing(): void {
   registerMetaAdThumbnailsHandler();
   // El anuncio de origen de una conversacion de Instagram, desde Zernio (Tiron 2, A1).
   registerZernioAdOriginHandler();
+  // La API de Conversiones de Meta: cada evento que se le manda (00328).
+  registerMetaCapiHandler();
   // «Importar miembros» de un grupo de WhatsApp (00280).
   registerWhatsappGroupImportHandler();
   // La importacion de conversaciones de Zernio, por partes y sin tope (00267).
@@ -117,6 +121,7 @@ export function registerPublishing(): void {
   // Las tareas de IA en segundo plano (F24). Despacha por `payload.task`: una
   // tarea sin implementacion falla con el motivo, no completa en silencio.
   registerBgTaskHandler();
+  registerDesignerHandlers();
 
   // Mejoras de Chat: pasar a texto las notas de voz, para que el agente sepa
   // que le dijeron (F7).

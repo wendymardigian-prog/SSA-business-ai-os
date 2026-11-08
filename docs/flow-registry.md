@@ -643,7 +643,7 @@ Cualquier disparador nuevo sin contacto (Tareas, por ejemplo) chocaba con un `CH
 
 ## Conexiones que necesita cada acción (G1, 16/10/2026)
 
-Un nodo puede declarar `requires: Requirement[]` (`email`, `whatsapp_channel`, `ai`, `agent`, `channel`). El editor
+Un nodo puede declarar `requires: Requirement[]` (`email`, `whatsapp_channel`, `ai`, `agent`, `channel`, `meta_capi`). El editor
 muestra la acción bloqueada si falta (atenuada, con candado, "Necesita: …" y el link para conectarlo) pero se puede
 agregar y guardar en borrador; **publicar o prender un flujo con un paso bloqueado que se alcanza desde el disparador
 se rechaza** (`publishFlow`, `toggleFormFlow`, `toggleEventFlow`, todos por `connectionProblemsForGraph`).
@@ -779,3 +779,58 @@ Cada automatización tiene su pantalla: `/dashboard/flows/[flowId]/ejecuciones`,
 node scripts/verify-flow-runs.mjs   # quién ve qué, variables, el trigger, el motor, la consulta y la limpieza
 ```
 
+## «Generar desde plantilla» (Diseñador IA, noviembre 2026)
+
+Paso del grupo **Diseñador IA** (`type: "designGenerate"`, alias `action/designGenerate`). Genera una pieza de una plantilla del Diseñador IA (un certificado, una constancia…) para el contacto del disparador (`needsContact: true`). Motor en `lib/flow-engine/nodes/design-generate.ts`; reglas puras en `lib/designer/automation/node-config.ts`; panel `components/flow-builder/panels/DesignGeneratePanel.tsx`.
+
+- **Con qué se llena cada variable**: valor de la plantilla (por defecto), una variable del disparador o de pasos anteriores, del contacto, la fecha de hoy, un texto fijo o «Combinar…» (`{{answer.nombre}} {{answer.apellido}}`). Lo que no se resuelve no se pasa y decide «Si falta un dato» (por defecto «No generar y avisarme»).
+- **La generación** la crea `createGeneration` (`lib/designer/generate-core.ts`, sin sesión) con `source: "automation"` y la corrida en `source_ref`. Si el contacto ya tiene una pieza válida de esa plantilla, el flujo sigue con esa.
+- **«Esperar el PDF antes de seguir»** (prendido por defecto): el render corre en el momento. Si el servicio falla de forma pasajera, el paso se deja para después (`deferFlowNode`) y reintenta a 1, 5 y 15 minutos LA MISMA generación (su id queda en `__design_pending`). Si sigue fallando, o si falta un dato con «No generar», el camino termina (`handle:design_stopped`, sin conexión: la ejecución queda «con fallos») con el motivo en el historial. El paso nunca lanza: lanzar haría fallar el evento entero y la cola volvería a correr todos sus flujos.
+- **Salidas** (`variables.design`, se guardan en la sesión): `design.id`, `design.link`, `design.pdf_url`, `design.code`, `design.status`, `design.doc_type`. Los links con el dominio del negocio (`loadDesignLinks`). `design.` está en `FLOW_VARIABLE_PREFIXES` y en `CONTACT_FREE_PREFIXES`: Condiciones las ofrece DESPUÉS del paso.
+- **Al publicar**: sin plantilla no se publica (`configProblems` en `node-requirements.ts`); un flujo que genera diseños con un disparador de formulario SIN formulario elegido tampoco («Falta elegir el formulario.»: vacío = cualquier formulario).
+- **«Enviar email» con el PDF**: `EmailAttachmentRef` admite `{kind: "design", from: "design"}` («Adjuntar el PDF del diseño generado», solo con un «Generar desde plantilla» antes). Al enviar se busca la generación de ESA corrida (`design.id`): sin ella el paso falla con «No hay un diseño generado en esta automatización.»; si todavía se está armando, el email no sale y el paso espera 1, 5 y 15 minutos. Los adjuntos de Recursos no cambiaron (`lib/email/attachments-characterization.test.ts`).
+- **«Automatizar»** desde la plantilla crea el borrador «Formulario enviado → Generar desde plantilla → Enviar email» (`lib/designer/automation/flow-template.ts`).
+
+Pruebas: `design-generate.test.ts`, `send-email-design.test.ts`, `node-config.test.ts`, `flow-template.test.ts`, `node-outputs.test.ts`, `node-requirements.test.ts`; `verify-designer --bloque ds7`.
+
+
+## «Enviar evento a Meta» (API de Conversiones, 00328)
+
+El nodo `send_meta_event` le avisa a la API de Conversiones de Meta que pasó algo que vale. Se arma en el editor de pasos
+de Formularios y de la Agenda (`meta_event` en `ACTION_KINDS`) y en el lienzo. El detalle del módulo está en
+[meta-capi.md](meta-capi.md).
+
+- **`needsContact: true`** y **`requires: ["meta_capi"]`**: el requisito nuevo, la integración «Meta: API de Conversiones»
+  activa y con el ID del Pixel (`loadAutomationCapabilities`). Sin ella, el paso se ve bloqueado y el flujo no se publica.
+- **De qué se trata lo decide el paso** con las variables del flujo:
+  - `submission.id` (o `event_submission_id`) es la respuesta del formulario;
+  - `event_booking_id` es la reunión;
+  - si no hay ninguna de las dos, el contacto.
+
+  El código del evento sale de `capiEventId` y la hora es la de la respuesta o la reunión.
+- **No manda en línea**: anota en `meta_capi_events` y encola `meta_capi_send`. Un evento repetido choca con el índice
+  único y se anota como salteado. Un salteo o un fallo queda en el historial de ejecuciones con `noteStep`.
+- **Purchase no se ofrece**: lo manda cada pago cobrado (trigger de `payments`), con el interruptor de la tarjeta.
+- El panel del lienzo y el editor de pasos usan el mismo formulario (`components/automations/meta-event-fields.tsx`).
+
+## «Calificar lead» y «Cambió la calificación» (00329)
+
+El nivel de calificación del lead (1 a 5) se cambia desde una automatización con el nodo `qualify_lead`, se compara con la condición
+`contact.qualification_level` y dispara flujos con el evento `qualification_changed`. Detalle del dato en
+[pipeline-contactos.md](pipeline-contactos.md).
+
+- **El paso** (`lib/flow-engine/nodes/qualify-lead.ts`, reglas puras en `lib/flow-engine/qualify-lead.ts`), `needsContact: true`,
+  nunca lanza. Se arma en el editor de pasos de Formularios y de la Agenda (`qualify_lead` en `ACTION_KINDS`) y en el lienzo
+  (`QualifyLeadPanel`). Cuatro modos:
+  - **Fijar un nivel** (1-5);
+  - **Sumar o restar puntos** (de -4 a +4);
+  - **Según reglas**: cada regla tiene condiciones (el mismo constructor y el mismo evaluador que «Condiciones») y sus puntos. Se
+    miran **todas** y se suman las que se cumplen, desde el nivel actual o desde un nivel fijo. Un solo cambio por paso;
+  - **Quitar la calificación**.
+
+  Pasa por `set_contact_qualification` con origen `automation` y el flujo; el motivo del historial nombra las reglas que se
+  cumplieron (nunca los valores de las respuestas). Sin reglas que se cumplan, o si el nivel queda igual, se anota como salteado.
+- **La condición** «Calificación del lead (1 a 5)» es de tipo número: «Sin calificar» cuenta como vacío.
+- **El disparador** es una opción de «Evento del CRM»: «Cambió la calificación», con `config.value` = `""` (cualquiera), `up`,
+  `down`, `eq:N`, `gte:N` (al cruzar hacia N o más) o `lt:N` (al bajar de N). La regla es `qualificationEventMatches`, y las
+  variables `event_level` y `event_previous_level` viajan al flujo.

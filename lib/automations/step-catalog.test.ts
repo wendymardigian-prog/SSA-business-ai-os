@@ -7,12 +7,20 @@ import { actionKind, actionKindsFor, actionProblem, describeAction, emailRecipie
 const step = (nodeType: string, data: Record<string, unknown>): ActionStep => ({ kind: "action", id: "x", nodeType, data });
 
 describe("que se ofrece en cada pantalla", () => {
-  it("Formularios: email, mensaje, esperar y tags (Condiciones aparte)", () => {
-    expect(actionKindsFor("forms").map((k) => k.key)).toEqual(["email", "message", "delay", "tag_add", "tag_remove"]);
+  it("Formularios: email, mensaje, esperar, tags, el evento a Meta y calificar (Condiciones aparte)", () => {
+    expect(actionKindsFor("forms").map((k) => k.key)).toEqual(["email", "message", "delay", "tag_add", "tag_remove", "meta_event", "qualify_lead"]);
   });
 
   it("Agenda suma el estado de la reunion y cancelarla", () => {
-    expect(actionKindsFor("agenda").map((k) => k.key)).toEqual(["email", "message", "delay", "tag_add", "tag_remove", "booking_status", "cancel_booking"]);
+    expect(actionKindsFor("agenda").map((k) => k.key)).toEqual(["email", "message", "delay", "tag_add", "tag_remove", "booking_status", "cancel_booking", "meta_event", "qualify_lead"]);
+  });
+
+  it("«Calificar lead»: se valida y se describe", () => {
+    const q = (data: Record<string, unknown>) => step("action", { actionType: "qualify_lead", ...data });
+    expect(validateActionData(q({ mode: "add", points: 1 }), "forms")).toBeNull();
+    expect(validateActionData(q({ mode: "set", level: 7 }), "forms")).toBe("Calificar lead: Elegí un nivel del 1 al 5.");
+    expect(validateActionData(q({ mode: "rules", base: "current", rules: [] }), "agenda")).toBe("Calificar lead: Sumá al menos una regla.");
+    expect(describeAction(q({ mode: "add", points: -1 }), "forms")).toBe("Calificar lead: -1 punto");
   });
 
   it("el email: al contacto o a una direccion fija; en la Agenda tambien al anfitrion", () => {
@@ -92,5 +100,25 @@ describe("actionProblem y validateActionData", () => {
 
   it("conserva claves de mas que el editor no conoce (no las rechaza ni las pierde)", () => {
     expect(validateActionData(step("sendMessage", { messages: [{ text: "x", imageUrl: "https://i" }], onlyIfPhone: true, cosaNueva: 1 }), "forms")).toBeNull();
+  });
+});
+
+describe("Enviar evento a Meta (00328)", () => {
+  const meta = (data: Record<string, unknown>): ActionStep => ({ kind: "action", id: "m1", nodeType: "action", data: { actionType: "send_meta_event", ...data } });
+
+  it("nace en «Lead» en Formularios y en «Schedule» en la Agenda", () => {
+    expect(newActionStep(actionKind("meta_event"), [], () => 0.5, "forms").data.eventName).toBe("Lead");
+    expect(newActionStep(actionKind("meta_event"), [], () => 0.5, "agenda").data.eventName).toBe("Schedule");
+  });
+
+  it("se describe con el evento que recibe Meta", () => {
+    expect(describeAction(meta({ eventName: "Lead" }), "forms")).toBe("Enviar «Lead» a Meta");
+  });
+
+  it("un nombre propio sirve; Purchase y uno vacío no", () => {
+    expect(validateActionData(meta({ eventName: "LlamadaCalificada", currency: "USD" }), "agenda")).toBeNull();
+    expect(validateActionData(meta({ eventName: "Purchase" }), "forms")).toMatch(/compra/);
+    expect(actionProblem(meta({ eventName: "" }), "forms")).toMatch(/Elegí/);
+    expect(validateActionData(meta({ eventName: "Lead", currency: "pesos" }), "forms")).toMatch(/moneda/);
   });
 });

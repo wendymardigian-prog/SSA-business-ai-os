@@ -21,12 +21,15 @@
  */
 
 import { canonicalNodeType } from "./node-outputs";
+import { designGenerateProblem, hasDesignStepBefore, isDesignGenerateNode, type DesignGenerateNodeData } from "@/lib/designer/automation/node-config";
+import { isDesignAttachment, parseEmailAttachments } from "@/lib/email/attachment-limits";
+import { designFlowFormProblem } from "@/lib/designer/automation/flow-template";
 
-export type Requirement = "email" | "whatsapp_channel" | "ai" | "agent" | "channel";
+export type Requirement = "email" | "whatsapp_channel" | "ai" | "agent" | "channel" | "meta_capi";
 export type Capabilities = Record<Requirement, boolean>;
 
 /** Todo conectado: lo que se usa cuando no se sabe (una pantalla que no cargo las conexiones no bloquea nada). */
-export const ALL_CONNECTED: Capabilities = { email: true, whatsapp_channel: true, ai: true, agent: true, channel: true };
+export const ALL_CONNECTED: Capabilities = { email: true, whatsapp_channel: true, ai: true, agent: true, channel: true, meta_capi: true };
 
 export interface RequirementInfo {
   /** Lo que falta, corto: "Email (Resend)". */
@@ -43,6 +46,7 @@ export const REQUIREMENT_INFO: Record<Requirement, RequirementInfo> = {
   ai: { label: "Una IA conectada", href: "/dashboard/settings/integrations", cta: "Conectar una IA" },
   agent: { label: "Un agente de IA", href: "/dashboard/agents", cta: "Ir a Agentes IA" },
   channel: { label: "Un canal de mensajería (Instagram, WhatsApp o email)", href: "/dashboard/settings/integrations", cta: "Conectar un canal" },
+  meta_capi: { label: "La API de Conversiones de Meta", href: "/dashboard/settings/integrations/meta_capi", cta: "Conectar la API de Conversiones" },
 };
 
 /** Por tipo canonico del registro (no por el `type` del canvas: un nodo "action" lo resuelve `canonicalNodeType`). */
@@ -55,6 +59,7 @@ export const NODE_REQUIREMENTS: Readonly<Record<string, readonly Requirement[]>>
   resumeAgent: ["agent"],
   sendMessage: ["channel"],
   sendAsset: ["channel"],
+  send_meta_event: ["meta_capi"],
 };
 
 /** El nombre de las acciones con requisitos, para decir cual esta bloqueada sin importar el registro. */
@@ -67,6 +72,7 @@ const NODE_NAMES: Readonly<Record<string, string>> = {
   resumeAgent: "Reanudar agente de IA",
   sendMessage: "Enviar mensaje",
   sendAsset: "Enviar recurso",
+  send_meta_event: "Enviar evento a Meta",
 };
 
 export function requirementsOfType(type: string): readonly Requirement[] {
@@ -157,4 +163,32 @@ export function requirementProblems(blocked: readonly BlockedNode[]): string[] {
     const where = b.missing.map((r) => REQUIREMENT_INFO[r].cta).join(" / ");
     return `«${b.name}» no se va a poder ejecutar: falta ${what}. ${where} y volvé a publicar.`;
   });
+}
+
+/**
+ * Lo que le falta a la CONFIGURACIÓN de un paso para poder publicarse (no una conexión): hoy, «Generar desde plantilla»
+ * sin plantilla (Diseñador IA, F57). Como los bloqueos de arriba, cuenta solo lo que se alcanza desde el disparador.
+ */
+export function configProblems(nodes: GraphNodeLike[], edges: GraphEdgeLike[]): string[] {
+  const reachable = reachableFromTrigger(nodes, edges);
+  const problems = new Set<string>();
+  // Un flujo que genera diseños con un formulario sin elegir correría con cualquier formulario (F60).
+  const formProblem = designFlowFormProblem(nodes.filter((n) => !!n?.id && reachable.has(n.id as string)) as Array<{ type?: string; data?: unknown }>);
+  if (formProblem) problems.add(formProblem);
+  for (const node of nodes) {
+    if (!node?.id || !reachable.has(node.id)) continue;
+    if (isDesignGenerateNode(node as { type?: string; data?: unknown })) {
+      const problem = designGenerateProblem(node.data as DesignGenerateNodeData | undefined);
+      if (problem) problems.add(problem);
+      continue;
+    }
+    // «Adjuntar el PDF del diseño generado» (F59) sin un «Generar desde plantilla» antes: nunca habría PDF que adjuntar.
+    const attachments = (node.data as { attachments?: unknown } | undefined)?.attachments;
+    if (attachments && parseEmailAttachments(attachments).some(isDesignAttachment)) {
+      const graphNodes = nodes.filter((n): n is { id: string; type?: string; data?: unknown } => !!n?.id);
+      const graphEdges = edges.filter((e): e is { source: string; target: string } => !!e?.source && !!e?.target);
+      if (!hasDesignStepBefore(node.id, graphNodes, graphEdges)) problems.add("El email adjunta el PDF del diseño, pero no hay un paso «Generar desde plantilla» antes.");
+    }
+  }
+  return [...problems];
 }

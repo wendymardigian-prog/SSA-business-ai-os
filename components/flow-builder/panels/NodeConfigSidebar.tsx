@@ -13,8 +13,11 @@ import { DelayPanel } from "./DelayPanel";
 import { ActionPanel } from "./ActionPanel";
 import { AiResponsePanel } from "./AiResponsePanel";
 import { BranchPanel } from "./BranchPanel";
+import { QualifyLeadPanel } from "./QualifyLeadPanel";
+import { QUALIFY_LEAD_TYPE } from "@/lib/flow-engine/qualify-lead";
 import { UpsertContactPanel } from "./UpsertContactPanel"; // @plantilla-quitar(webhooks)
 import { canonicalNodeType } from "@/lib/flow-engine/node-outputs";
+import { DESIGN_OUTPUT_KEYS } from "@/lib/designer/automation/node-config";
 import { flowSendsMessages } from "@/lib/webhooks/once-per-contact"; // @plantilla-quitar(webhooks)
 import { getConditionCatalogInputs } from "@/lib/actions/flow-conditions";
 import { chosenType } from "@/lib/flow-engine/trigger-catalog";
@@ -80,23 +83,29 @@ function getFlowVariables({ node, nodes, edges, schemaPaths }: { node: Node; nod
       const responseVariable = String((n.data as Record<string, unknown>).responseVariable ?? "").trim();
       if (responseVariable) upstreamOutputs.push(responseVariable, `${responseVariable}_status`, `${responseVariable}_ok`);
     }
+    // Diseñador IA (F58): las seis salidas de «Generar desde plantilla».
+    if (kind === "designGenerate") upstreamOutputs.push(...DESIGN_OUTPUT_KEYS);
   }
 
   return pickerVariables({ triggerType, schemaPaths, upstreamOutputs, contactBefore });
 }
 
 /** Las rutas del esquema del disparador (las preguntas de un formulario, los datos de la reunion…), del servidor. */
-function useTriggerSchemaPaths(flowId: string, triggerData: Record<string, unknown> | undefined): string[] {
-  const [paths, setPaths] = useState<string[]>([]);
+function useTriggerSchemaPaths(flowId: string, triggerData: Record<string, unknown> | undefined): { paths: string[]; labels: Record<string, string> } {
+  const [paths, setPaths] = useState<{ paths: string[]; labels: Record<string, string> }>({ paths: [], labels: {} });
   const key = JSON.stringify(triggerData ?? {});
   useEffect(() => {
     let alive = true;
     getConditionCatalogInputs({ flowId, triggerData: JSON.parse(key) as Record<string, unknown> })
       .then((res) => {
-        if (alive) setPaths(res.ok ? res.inputs.triggerSchema.map((f) => f.path) : []);
+        if (!alive) return;
+        const fields = res.ok ? res.inputs.triggerSchema : [];
+        // El rótulo de cada variable (el texto de la pregunta, «Fecha de la reunión»…): lo usa el selector de «Generar
+        // desde plantilla» (F57: las variables del disparador «con sus rótulos»).
+        setPaths({ paths: fields.map((f) => f.path), labels: Object.fromEntries(fields.map((f) => [f.path.replace(/^variable:/, ""), f.label])) });
       })
       .catch(() => {
-        if (alive) setPaths([]);
+        if (alive) setPaths({ paths: [], labels: {} });
       });
     return () => {
       alive = false;
@@ -161,7 +170,7 @@ const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: s
 export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node, nodes, edges, onChange, onClose, onDelete, onConvert, onChangeTrigger }: NodeConfigSidebarProps) {
   const nodeType = node.type || "action";
   const triggerNodeData = nodes.find((n) => n.type === "trigger")?.data as Record<string, unknown> | undefined;
-  const schemaPaths = useTriggerSchemaPaths(flowId, triggerNodeData);
+  const { paths: schemaPaths, labels: schemaLabels } = useTriggerSchemaPaths(flowId, triggerNodeData);
   const variables = useMemo(() => getFlowVariables({ node, nodes, edges, schemaPaths }), [node, nodes, edges, schemaPaths]);
   const baseConfig = nodeTypeConfig[nodeType] || nodeTypeConfig.action;
   // Una accion se llama por lo que hace ("Enviar email"), no "Acción".
@@ -232,7 +241,11 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
       case "aiResponse":
         return <AiResponsePanel data={data} onChange={handleChange} availableVariables={variables} />;
       case "action":
-        return <ActionPanel data={data} onChange={handleChange} availableVariables={variables} attributionContext={attributionContext} />;
+        // «Calificar lead» (00329) necesita los campos del flujo para sus reglas, como «Condiciones».
+        if ((data as { actionType?: string }).actionType === QUALIFY_LEAD_TYPE) {
+          return <QualifyLeadPanel flowId={flowId} nodeId={node.id} data={data} nodes={nodes} edges={edges} onChange={handleChange} />;
+        }
+        return <ActionPanel data={data} onChange={handleChange} availableVariables={variables} variableLabels={schemaLabels} attributionContext={attributionContext} />;
       default:
         return (
           <p className="text-sm text-muted-foreground">

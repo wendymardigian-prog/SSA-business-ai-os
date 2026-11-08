@@ -87,6 +87,24 @@ describe("applyPeriodToParams", () => {
   });
 });
 
+describe("una pantalla con otro atajo por defecto (Respuestas de un formulario: el Historico)", () => {
+  it("sin atajo en la URL lee el de la pantalla; lo invalido tambien cae ahi", () => {
+    expect(readDashboardPeriod({}, "historico")).toEqual({ period: "historico", from: null, to: null });
+    expect(readDashboardPeriod({ range: "cualquiera" }, "historico").period).toBe("historico");
+    expect(readDashboardPeriod({ range: "30d" }, "historico").period).toBe("30d");
+  });
+
+  it("los 30 dias quedan escritos y el default de la pantalla no", () => {
+    expect(applyPeriodToParams(new URLSearchParams(), { preset: "30d", from: null, to: null }, "historico").toString()).toBe("range=30d");
+    expect(applyPeriodToParams(new URLSearchParams("range=7d"), { preset: "historico", from: null, to: null }, "historico").toString()).toBe("");
+  });
+
+  it("las demas pantallas no cambian: sin decir nada, el default sigue siendo 30 dias", () => {
+    expect(applyPeriodToParams(new URLSearchParams(), { preset: "historico", from: null, to: null }).toString()).toBe("range=historico");
+    expect(applyPeriodToParams(new URLSearchParams(), { preset: "30d", from: null, to: null }).toString()).toBe("");
+  });
+});
+
 describe("periodLabel", () => {
   it("un atajo dice su nombre", () => {
     expect(periodLabel({ period: "7d", from: null, to: null }, ZONE)).toBe("Últimos 7 días");

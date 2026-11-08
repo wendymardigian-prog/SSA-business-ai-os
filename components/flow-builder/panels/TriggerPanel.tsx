@@ -1,5 +1,6 @@
 "use client";
 
+import { parseQualificationTrigger, type QualificationTriggerKind } from "@/lib/flow-engine/qualify-lead";
 import { useEffect, useState, useMemo } from "react";
 import { useActiveWorkspaceId } from "@/components/dashboard-chrome";
 import { createClient } from "@/lib/supabase/client";
@@ -135,6 +136,8 @@ const CRM_EVENTS: Array<{ value: string; label: string; valueLabel: string; valu
   { value: "do_not_contact", label: 'Se marcó "no contactar"', valueLabel: "Solo por este motivo", valuePlaceholder: "" },
   // Pipeline (00245): el valor lo arma su propio selector (rol, o rol:estado).
   { value: "status_changed", label: "Cambió el estado del contacto", valueLabel: "Qué estado", valuePlaceholder: "" },
+  // Calificación (00329): el valor lo arma su propio selector (sube, baja, llega a N…).
+  { value: "qualification_changed", label: "Cambió la calificación", valueLabel: "Qué cambio", valuePlaceholder: "" },
 ];
 
 const matchTypes: Array<{ value: "exact" | "contains" | "startsWith"; label: string }> = [
@@ -394,6 +397,8 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
 
           {data.event === "status_changed" ? (
             <StatusChangedPicker flowId={flowId} value={typeof data.value === "string" ? data.value : ""} onChange={(value) => onChange({ ...data, value })} />
+          ) : data.event === "qualification_changed" ? (
+            <QualificationChangedPicker value={typeof data.value === "string" ? data.value : ""} onChange={(value) => onChange({ ...data, value })} />
           ) : (
           <div>
             <label className="mb-2 block text-xs font-semibold text-foreground">
@@ -757,6 +762,65 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
             El valor que tiene que traer {triggerType === "postback" ? "el botón que toca el lead" : "la respuesta rápida que toca el lead"}. Solo Instagram: en WhatsApp las opciones llegan como lista numerada.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Cambió la calificación" (00329): qué cambio dispara el flujo. Guarda "", "up", "down",
+ * "eq:N", "gte:N" o "lt:N" (`parseQualificationTrigger`, lib/flow-engine/qualify-lead.ts).
+ */
+function QualificationChangedPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const { kind, level } = parseQualificationTrigger(value);
+  const selectClass =
+    "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
+  const needsLevel = kind === "eq" || kind === "gte" || kind === "lt";
+  const encode = (k: QualificationTriggerKind, n: number | null) =>
+    k === "any" ? "" : k === "up" || k === "down" ? k : `${k}:${n ?? (k === "lt" ? 3 : 4)}`;
+  return (
+    <div className="space-y-3">
+      <div>
+        <label htmlFor="qualification-trigger-kind" className="mb-2 block text-xs font-semibold text-foreground">
+          Qué cambio
+        </label>
+        <select
+          id="qualification-trigger-kind"
+          value={kind}
+          onChange={(e) => onChange(encode(e.target.value as QualificationTriggerKind, level))}
+          className={selectClass}
+        >
+          <option value="any">Cualquier cambio</option>
+          <option value="up">Cuando sube</option>
+          <option value="down">Cuando baja</option>
+          <option value="gte">Cuando llega a un nivel o más</option>
+          <option value="eq">Cuando queda en un nivel</option>
+          <option value="lt">Cuando baja de un nivel</option>
+        </select>
+      </div>
+      {needsLevel && (
+        <div>
+          <label htmlFor="qualification-trigger-level" className="mb-2 block text-xs font-semibold text-foreground">
+            Nivel
+          </label>
+          <select
+            id="qualification-trigger-level"
+            value={String(level ?? "")}
+            onChange={(e) => onChange(encode(kind, Number(e.target.value)))}
+            className={selectClass}
+          >
+            {[1, 2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[11px] text-muted-foreground/60">
+            {kind === "gte"
+              ? "Dispara una vez al cruzar ese nivel: si ya estaba arriba y sigue subiendo, no vuelve a disparar."
+              : "Los nombres de cada nivel se eligen en Ajustes → Estados."}
           </p>
         </div>
       )}

@@ -1,3 +1,5 @@
+import { loadQualificationSettings } from "@/lib/contacts/qualification-settings-load";
+import { qualificationLabel, qualificationRubricText } from "@/lib/contacts/qualification";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { ContactContext, HistoryMessage } from "./prompt";
@@ -240,7 +242,7 @@ export async function loadContactContext(supabase: Db, contactId: string): Promi
   const [{ data: contact }, { data: tagRows }] = await Promise.all([
     supabase
       .from("contacts")
-      .select("display_name, lead_temperature, next_followup_date, ai_conversation_summary")
+      .select("display_name, lead_temperature, qualification_level, workspace_id, next_followup_date, ai_conversation_summary")
       .eq("id", contactId)
       .maybeSingle(),
     supabase.from("contact_tags").select("tags(name)").eq("contact_id", contactId),
@@ -251,9 +253,16 @@ export async function loadContactContext(supabase: Db, contactId: string): Promi
     .map((t) => t.name)
     .filter(Boolean);
 
+  // Calificación (00329): el nivel con el nombre del negocio, y la rúbrica (la usa el prompt solo si el agente puede calificar).
+  const level = typeof contact?.qualification_level === "number" ? contact.qualification_level : null;
+  const qualificationSettings = contact?.workspace_id ? await loadQualificationSettings(contact.workspace_id, supabase) : null;
+
   return {
     name: contact?.display_name ?? null,
     leadTemperature: contact?.lead_temperature ?? null,
+    qualificationLevel: level,
+    qualificationLabel: level !== null && qualificationSettings ? qualificationLabel(qualificationSettings, level) : null,
+    qualificationRubric: qualificationSettings ? qualificationRubricText(qualificationSettings) : null,
     tags,
     nextFollowupDate: contact?.next_followup_date ?? null,
     summary: contact?.ai_conversation_summary ?? null,

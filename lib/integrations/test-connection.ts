@@ -21,6 +21,7 @@ import { validateMetaToken } from "@/lib/meta/token";
 import { fetchAdAccounts } from "@/lib/meta/accounts";
 import { checkAiProviderKey } from "./ai-key-check";
 import { probeResendKey } from "@/lib/email/resend-api";
+import { probeCapiPixel } from "@/lib/meta/capi/send";
 
 export type ConnectionTest =
   | {
@@ -86,6 +87,21 @@ export async function testConnection(input: TestInput): Promise<ConnectionTest> 
           accounts.accounts.length > 0
             ? `Conectado. El token alcanza ${accounts.accounts.length} cuenta(s) publicitaria(s): elegí cuáles sincronizar.`
             : "Conectado, pero el token no alcanza ninguna cuenta publicitaria. Revisá los permisos en el Business Manager.",
+      };
+    }
+
+    // La API de Conversiones (00328): que el token sirva para ESE Pixel. Cambiar el Pixel exige volver a escribir el
+    // token (`secretBoundTo`), asi que nunca queda un Pixel sin probar.
+    case "meta_capi": {
+      const token = (input.secrets.access_token ?? "").trim();
+      if (!token) return { ok: true };
+      const pixelId = (input.config.pixel_id ?? "").trim();
+      const probe = await probeCapiPixel(pixelId, token, input.fetchImpl as typeof fetch);
+      if (!probe.ok) return probe;
+      return {
+        ok: true,
+        detail: probe.name ? `Conectado al Pixel «${probe.name}».` : "Conectado al Pixel.",
+        ...(probe.name ? { config: { pixel_name: probe.name } } : {}),
       };
     }
 
