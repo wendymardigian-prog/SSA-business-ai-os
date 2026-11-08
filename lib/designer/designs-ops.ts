@@ -17,6 +17,7 @@ import { asJson, auditActionFor, cleanName, hrefFor, insertVersion, maxNameLengt
 import { parseDesignDoc, type DesignDoc } from "./doc/schema";
 import { isFormatKey } from "./formats";
 import { sanitizeDocHtml } from "./import/edit";
+import { enqueueContentSyncIfLinked } from "./content-sync";
 import { archiveDecision, deleteBlockers, formatChangeOutcome } from "./screens/config";
 import { convertDocFormat } from "./screens/format-change";
 import { validateCustomVars } from "./screens/variables";
@@ -101,6 +102,8 @@ export async function saveDocCore(env: CoreEnv, input: SaveInput): Promise<SaveD
   }
 
   await snapshotManualIfDue(env, input, clean);
+  // Vinculado a una pieza de Contenido: sus archivos se actualizan solos (30 s después, juntando cambios; F64). Nunca lanza.
+  if (input.kind === "design") await enqueueContentSyncIfLinked(env.service, input.id);
   return { ok: true, rev: (saved as { rev: number }).rev };
 }
 
@@ -331,6 +334,7 @@ export async function restoreVersionCore(env: CoreEnv, target: Target, versionId
   if (error || !saved) return { ok: false, error: "Alguien guardó mientras tanto. Probá de nuevo." };
   await insertVersion(env, target, restored.doc, "restore");
   await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: target.id, action: auditActionFor(target.kind, "version_restored"), metadata: { version_id: versionId }, performedBy: env.actor.userId });
+  if (target.kind === "design") await enqueueContentSyncIfLinked(env.service, target.id);
   return { ok: true, data: { rev: (saved as { rev: number }).rev } };
 }
 

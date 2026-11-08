@@ -129,7 +129,7 @@ export function TopBar({
   return (
     <header className="shrink-0 border-b border-border bg-card">
       <div className="flex h-14 items-center gap-2 px-3 sm:px-4">
-        <Link href={actions.back.href} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={`Volver a ${actions.back.label}`}>
+        <Link href={actions.back.href} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={actions.back.label.startsWith("Volver") ? actions.back.label : `Volver a ${actions.back.label}`}>
           <ChevronLeft className="h-4 w-4" aria-hidden />
           <span className="hidden md:inline">{actions.back.label}</span>
         </Link>

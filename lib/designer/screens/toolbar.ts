@@ -39,6 +39,9 @@ export interface EditorDesign {
   generationsCount: number;
   /** Diseños: ya está vinculado a una pieza de Contenido. */
   linkedToContent: boolean;
+  /** La pieza vinculada y si se llegó desde ella (`?desde=pieza`): «← Volver a la pieza» (F62). */
+  contentPostId?: string | null;
+  fromPiece?: boolean;
 }
 
 /** Los permisos del Diseñador IA más el de Automatizaciones (el nodo lo usa quien edita automatizaciones). */
@@ -97,7 +100,11 @@ export function editorActions(design: EditorDesign, can: EditorCan): EditorActio
   const contentEligible = !isTemplate && !design.isGeneration && CONTENT_FORMATS.includes(design.format);
 
   return {
-    back: isTemplate ? { label: "Plantillas", href: "/dashboard/disenos?tab=plantillas" } : { label: "Diseños", href: "/dashboard/disenos" },
+    back: isTemplate
+      ? { label: "Plantillas", href: "/dashboard/disenos?tab=plantillas" }
+      : design.fromPiece && design.contentPostId
+        ? { label: "Volver a la pieza", href: `/dashboard/content?piece=${encodeURIComponent(design.contentPostId)}` }
+        : { label: "Diseños", href: "/dashboard/disenos" },
     format: { mode: canChangeFormat ? "select" : "fixed", label: canChangeFormat ? def.label : fixedLabel, options: canChangeFormat ? options : [] },
     status: statusOf(design),
     tabs: isTemplate

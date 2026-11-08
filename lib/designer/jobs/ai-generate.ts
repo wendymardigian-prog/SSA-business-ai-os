@@ -39,6 +39,7 @@ import { hasAnswer, recentHistory, type MessageRow } from "../ai/conversation";
 import { sanitizeAiDoc } from "../ai/doc-sanitize";
 import { decideAiFailure, isTruncated } from "../ai/retry";
 import { insertVersion, loadTarget, saveDocWithRev, type TargetRow } from "../ai/db";
+import { enqueueContentSyncIfLinked } from "../content-sync";
 import { keptManualNotice, mergeAiPatch } from "../ai/merge";
 import { makeMeasure, type MeasureFn } from "../ai/measure";
 import { changedPageIndexes, describeChange } from "../ai/patch";
@@ -345,7 +346,8 @@ async function work(ctx: WorkContext): Promise<AiGenerateOutcome> {
   await insertVersion(db, { workspaceId: target.workspaceId, kind: target.kind, id: target.id, doc: saved.doc, reason: "ai", authorKind: "ai", authorId: null, createdBy: payload.userId ?? null });
 
   // Un diseño ya publicado NO se vuelve a renderizar acá: sus archivos se rehacen solo al publicar
-  // (el editor avisa «cambios sin publicar»).
+  // (el editor avisa «cambios sin publicar»). Vinculado a una pieza de Contenido, sí se sincroniza (F64; nunca lanza).
+  if (target.kind === "design") await enqueueContentSyncIfLinked(db, target.id);
 
   const changedPages = changedPageIndexes(saved.before, saved.doc);
   const pages = saved.doc.pages.length;

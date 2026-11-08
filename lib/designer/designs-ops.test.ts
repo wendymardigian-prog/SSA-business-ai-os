@@ -557,3 +557,17 @@ describe("configuración de una plantilla (F28)", () => {
     expect(db.log).toEqual([]);
   });
 });
+
+describe("guardar un diseño vinculado a Contenido encola su sincronización (F64)", () => {
+  it("vinculado: encola design_content_sync con 30 s de espera; sin vincular, nada", async () => {
+    const linked = setup({ designs: [designRow({ content_post_id: "11111111-1111-4111-8111-111111111111", content_network: "instagram" })] });
+    expect(await saveDocCore(linked.env, { kind: "design", id: "d1", doc: docWithText("nuevo"), rev: 3 })).toEqual({ ok: true, rev: 4 });
+    expect(scheduleJob).toHaveBeenCalledTimes(1);
+    expect(scheduleJob.mock.calls[0][1]).toBe("design_content_sync");
+    expect(scheduleJob.mock.calls[0][2]).toEqual({ designId: "d1" });
+    scheduleJob.mockClear();
+    const alone = setup({ designs: [designRow()] });
+    await saveDocCore(alone.env, { kind: "design", id: "d1", doc: docWithText("nuevo"), rev: 3 });
+    expect(scheduleJob).not.toHaveBeenCalled();
+  });
+});

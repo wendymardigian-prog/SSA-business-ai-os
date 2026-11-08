@@ -116,6 +116,7 @@ export function DesignEditor(props: DesignEditorProps) {
   const [panelParam, setPanelParam] = useUrlParam("panel");
   const [configParam, setConfigParam] = useUrlParam("config");
   const [tabParam] = useUrlParam("tab");
+  const [fromParam] = useUrlParam("desde");
   const [aiParam, setAiParam] = useUrlParam("ia");
   const panel = parsePanel(panelParam, isTemplate, record.origin, !readOnly);
   const [sheet, setSheet] = useState<PanelId | null>(null);
@@ -434,6 +435,8 @@ export function DesignEditor(props: DesignEditorProps) {
       docTypeLabel: template?.docTypeLabel ?? null,
       generationsCount: props.generationsCount,
       linkedToContent: !!record.contentPostId,
+      contentPostId: record.contentPostId,
+      fromPiece: fromParam === "pieza",
     },
     editorCan,
   );

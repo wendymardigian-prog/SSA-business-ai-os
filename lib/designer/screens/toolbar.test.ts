@@ -147,3 +147,14 @@ describe("barra superior del editor (F17)", () => {
     expect(editorActions(template({ archived: true }), ALL).primary.visible).toBe(false);
   });
 });
+
+describe("«← Volver a la pieza» (F62)", () => {
+  it("si se llegó desde una pieza de Contenido, volver lleva a esa pieza; si no, a Diseños", async () => {
+    const { editorActions } = await import("./toolbar");
+    const base = { kind: "design" as const, format: "v45" as const, origin: "ai", published: false, isGeneration: false, status: "draft", archived: false, verify: false, docType: null, docTypeLabel: null, generationsCount: 0, linkedToContent: true };
+    const can = { view: true, edit: true, publish: false, generate: false, manage: false };
+    expect(editorActions({ ...base, contentPostId: "p-1", fromPiece: true }, can).back).toEqual({ label: "Volver a la pieza", href: "/dashboard/content?piece=p-1" });
+    expect(editorActions({ ...base, contentPostId: "p-1", fromPiece: false }, can).back).toEqual({ label: "Diseños", href: "/dashboard/disenos" });
+    expect(editorActions({ ...base, contentPostId: null, fromPiece: true }, can).back).toEqual({ label: "Diseños", href: "/dashboard/disenos" });
+  });
+});
