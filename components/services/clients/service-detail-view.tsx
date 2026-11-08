@@ -59,10 +59,11 @@ export interface ServiceDetailData {
   }>;
 }
 
-type Tab = "actividad" | "camino" | "datos";
+type Tab = "actividad" | "camino" | "accesos" | "datos";
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: "actividad", label: "Actividad" },
   { key: "camino", label: "Camino" },
+  { key: "accesos", label: "Accesos" },
   { key: "datos", label: "Datos" },
 ];
 
@@ -78,8 +79,11 @@ export function ServiceDetailView({
   userNames,
   timeZone,
   permissions,
+  accesses,
 }: {
   data: ServiceDetailData;
+  /** La pestaña Accesos (bloque AC): se arma en el servidor con lo que la persona puede ver. */
+  accesses?: React.ReactNode;
   initialTab: Tab;
   today: string;
   members: Array<{ id: string; name: string }>;
@@ -280,6 +284,7 @@ export function ServiceDetailView({
                 ))}
               </ol>
             )}
+            {tab === "accesos" && accesses}
             {tab === "datos" && (
               <dl className="grid gap-3 text-sm sm:grid-cols-2">
                 <Datum label="Origen" value={`${data.origin}${data.originReason ? ` · ${data.originReason}` : ""}`} />

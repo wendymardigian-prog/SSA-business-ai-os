@@ -360,7 +360,8 @@ describe("caracterizacion: el menu (F68)", () => {
     // Anuncios no le saca nada al Member: es un item nuevo, con un permiso que nunca tuvo.
     // Afiliados (Servicios A1, F105) tampoco: item nuevo con claves que el Member no tiene (su «Mis links» va en el
     // menu de usuario, con affiliates.use).
-    expect(ocultas).toEqual(["Afiliados", "Anuncios", "Social"]);
+    // Portal (Servicios A1, F35/F43): pide claves del portal que el Member no tiene (solo portal.view_as).
+    expect(ocultas).toEqual(["Afiliados", "Anuncios", "Portal", "Social"]);
   });
 
   it("las demas las ve un Member", () => {

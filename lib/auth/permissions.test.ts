@@ -142,7 +142,8 @@ describe("el Member es exactamente el de hoy (F68)", () => {
     // tiene commissions.view (sus comisiones), asi que lo ve. Sigue sin Social.
     // Anuncios tampoco: es un item nuevo, con un permiso que nunca tuvo (dashboards.ads.view).
     // Afiliados (Servicios A1, F105): item nuevo con affiliates.view_all / affiliates.settings, que el Member no tiene.
-    expect(ocultos).toEqual(["Afiliados", "Anuncios", "Social"]);
+    // Portal (Servicios A1, F35/F43): pide claves del portal que el Member no tiene (solo portal.view_as).
+    expect(ocultos).toEqual(["Afiliados", "Anuncios", "Portal", "Social"]);
     expect(NAV_ITEMS.some((i) => i.name === "Conocimiento")).toBe(false);
     expect(can(member, "knowledge.view")).toBe(false);
     // Social no es por cargo (F78): se ve con `social.view`, que el Member de sistema no tiene.

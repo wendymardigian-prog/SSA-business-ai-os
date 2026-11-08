@@ -89,6 +89,43 @@ Formato: **qué quedó · por qué · qué se decidió**. Lo que encontró la ex
 - **`commission_apply_max` (pagar solo la mayor) se compara en `verify-affiliates`**, no en `verify-commissions` (el plan lo ponía ahí). Corre los mismos casos de `when-also-seller.cases.json`.
 - **El afiliado de una venta no se puede tocar con la sesión por dos lados:** `sales` no tiene política de UPDATE (0 filas) y, si la tuviera, la guarda dice AF010. `verify-affiliates` comprueba las dos cosas.
 
+## Decisiones de AC (8/11)
+
+- **El único de accesos vigentes es `(service_id, product_id, section)`**, no `(service_id, section)` como decía §8.2. · Un acceso extra puede ser de OTRO programa (F40), y con el único del plano un servicio no podía tener el Programa de su producto y el de otro a la vez. · Es más amplio, no más flojo: sigue sin haber dos vigentes de la misma sección y programa por servicio.
+- **`portal_access` suma `until_type` y `workspace_id`.** · El corte al completar o renovar (F38) necesita saber qué accesos duran «lo que dure el servicio», y adivinarlo por la fecha falla. · `until_type` se guarda al abrir; extender a mano lo pasa a `manual`.
+- **«Todavía no» = no hay fila, y una revocada no vuelve sola.** · El cron diario (`svc_access_tick`) y los hechos (fase, paso, Reto) abren solo lo que nunca se abrió. Volver a darlo es «Dar ahora» o un acceso extra.
+- **El esquema del portal no se expone, así que las pantallas leen con funciones.** · `portal_admin_service_accesses` y `portal_admin_account` (corrección del mismo día de la 00341: el SQL registrado es el corregido) miran el permiso y el alcance con la sesión. Ni el servidor puede leer `app_servicio_portal` por REST.
+- **Dos claves nuevas:** `services.access` (dar, extender, quitar y dar ahora un acceso) y `portal.accounts` (invitar, reenviar, suspender y reactivar). Las usa el plano (F40, F41) y no estaban en el catálogo. Owner y Admin las tienen; el Member no.
+- **El pase de «Ver como estudiante» puede no tener cuenta** (`account_id` NULL con `kind <> 'student'`): un contacto sin email no tiene cuenta y igual se puede previsualizar. Lo cuida un CHECK.
+- **Reactivar una cuenta suspendida** (`portal_admin_reactivate_account`) no estaba en el plano; sin ella, una suspensión por error no tenía vuelta.
+- **Pendiente:** el aviso por email al email viejo cuando cambia el del contacto (hoy queda en el historial, sin email); la comprobación «Conectado» de la dirección del portal (`https://<host>/api/salud`, Parte 2); la mora corre en el cron diario de la S16 (`svc_access_tick` ya la incluye). La fusión de contactos con cuenta o accesos del portal la cubre el gancho de la S16.
+
+## Decisiones de PR (8/11)
+
+- **`program_live_recordings` (F51, el módulo calculado «Sesiones semanales») va en la S12 (CA)**, no en la S10. · Nombra `live_sessions` y `live_session_dates`, que nacen en la S12, y ninguna migración nombra tablas que todavía no existen.
+- **La transcripción sin Voyage queda en `error`, no en `pending`.** · `indexText` (el mismo de Grabaciones) marca `error` si no hay Voyage; el plano decía `pending`. Se reintenta desde Conocimiento al conectar Voyage. El texto queda guardado igual.
+- **El segundo de cada fragmento se escribe después de indexar** (`knowledge_chunks.start_second` por `chunk_index`), porque `indexText` no lo recibe. Solo con `.vtt` o `.srt`.
+- **Quedan para después, con su lugar ya hecho:** «Copiar a otro programa» (F50); «Elegir un Fathom» para el video de una clase; la pestaña Programa de la ficha del servicio (avance por módulo y «Abrir ahora»: la función `svc_open_module_now` ya existe); arrastrar con el mouse en el árbol (se mueve con Subir/Bajar y Alt+↑/↓); la marca «Nuevo» de 7 días al abrirse algo oculto (es del portal, Parte 2).
+- **Dos claves nuevas: `program.manage` y `program.activate`** (§4.1). Owner y Admin las tienen; el Member no. Y `portal.view` para ver el Portal sin cambiar nada.
+
+## Decisiones de EV (8/11)
+
+- **`submission_hook` de la 00335 no se toca.** · Las evaluaciones y actividades tienen sus propios triggers (antes de guardar: intento y nota; después: eventos y pasos del camino), que salen enseguida para los tipos de siempre. Así un error en lo nuevo no puede tocar las respuestas de Formularios.
+- **`forms.product_id` borra en cascada con el producto** (los productos se archivan, no se borran; si alguna vez se borra uno, se van sus formularios del portal en vez de fallar el borrado).
+- **Formularios no lista los del portal** (filtro en la página) y abrir uno por su URL da 404. La página pública ya los descartaba (`isPublicFormType`).
+
+## Decisiones de CA (8/11)
+
+- **Tres claves nuevas: `live_sessions.manage`, `attendance.manage` y `recordings.to_portal`** (§4.1). Owner y Admin; el Member no. «Agregar al portal» pide además la clave de lo que crea (`live_sessions.manage` para una fecha, `program.manage` para una clase): la base la vuelve a pedir igual.
+- **Una persona del equipo siempre marca `team`.** · `attendance_mark` fuerza el origen cuando no lo llama el sistema; `self` y `click` los marca solo el portal (Parte 2). Así nadie del equipo puede fingir un clic.
+- **El link de la reunión no se lee con la sesión** (privilegio por columna). La pantalla lo lee con el cliente de servicio, del negocio de la sesión, después del permiso de la página.
+- **La grilla «Asistencia por estudiante» usa la base de cada fecha como «con acceso».** · La base ya exige acceso Calendario vigente y la variante de la sesión; con una base más chica (fase, días, variante) alguien con acceso pero fuera de la base se ve como «·». La ficha de la sesión sí lo distingue («Sin acceso ese día» / «Fuera de la base»).
+- **«Se mide sobre: … (N)» en Próximas va sin el número.** · Contar la base de cada fecha futura es una consulta por fecha; se muestra el número en las Sesiones recurrentes (el de la última fecha) y en cada fecha pasada.
+- **La asistencia del período se lee en una sola consulta** (`live_attendance_overview`, hasta 120 días); la pantalla mira los últimos 90.
+- **«Clase» en los negocios que se creen después: al prender el módulo.** · La migración se lo sumó a los 6 negocios que ya tenían el área Servicio (F64). Un negocio nuevo con el módulo apagado nace igual que antes (4 áreas y 9 tipos: `verify-scheduling` lo exige); al prender el módulo, o al nacer el área con el módulo prendido, recibe «Clase». No se tocó `seed_booking_categories_for_workspace` (es de la Agenda).
+- **Sacarle a `authenticated` una sola columna no sirve si tiene la tabla entera.** · La 1ª versión de la 00346 hacía `REVOKE SELECT (meeting_url)` y el link se seguía leyendo (lo atrapó `verify-program`). Ahora el permiso de `live_sessions` es por columnas, sin `meeting_url`. Una columna nueva que lea la pantalla se suma a ese `GRANT`.
+- **Quedan para después:** la pestaña Asistencia de la ficha del servicio (la grilla del Calendario ya la tiene por estudiante); el disparador «Faltó» (lo emite el cron de la S16); la descripción con el resumen de la IA en «Agregar al portal» (hoy arranca vacía y se escribe a mano); el desbloqueo de la clase nueva se configura después en Contenido.
+
 ## Revisión visual (8/11)
 
 - **No se pudo hacer en esta corrida.** · La app local (`localhost:3097`) pide iniciar sesión y en el navegador de la sesión no hay una abierta; la regla es no escribir credenciales. Además, las pantallas nuevas solo se ven con el módulo prendido, y solo se puede prender en un negocio de prueba. · Queda para Wendy, a 1440 y 390 px y en claro y oscuro, comparando con `claude/v12/prototipo-v12-panel.html`: Ajustes › Productos (tarjetas, producto, variante con sus cuatro pestañas, el drawer del paso, la regla de una sección del portal y la línea de workflows), Clientes (Servicios en tabla y tablero, Clientes, ficha del cliente, ficha del servicio, Importar servicios), la sección Servicios del contacto y de la venta, la columna Servicio en Ventas y los cinco pasos de Servicios en Automatizaciones. Con el módulo apagado, comprobar que Productos, Ventas, la ficha del contacto y de la venta y el editor de automatizaciones se ven iguales que antes.

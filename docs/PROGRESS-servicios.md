@@ -34,16 +34,31 @@
   - Pantallas: Afiliados (Resumen, Afiliados con el alta de uno externo, Reglas) en el grupo Ventas; Mis links en el menú de usuario; el link corto `/r/<código>/<link>` (público, con tope y `noindex`); el campo Afiliado en las fichas del contacto y de la venta; «Editar» en la ficha de una comisión. Tres disparadores nuevos en Automatizaciones.
   - Gemelas: `product-links`, `affiliate-settings`, `affiliate-assign` y `when-also-seller`, corridas contra la base en `verify-affiliates` (44 comprobaciones en 0). `verify-servicios-migracion --s S13`, `verify-commissions --despues-de-00235`, `verify-contact-merge` y `verify-sales` en 0. Huellas protegidas iguales.
   - Pendiente (ver PENDIENTE): el campo Afiliado en el asistente de venta y «Copiar con mi código» en Formularios y Agenda.
-- [ ] **AC** Accesos y cuentas: F34, F35, F36, F37, F38, F39, F40, F41, F42, F43, F44, F109 (S08–S09)
-- [ ] **PR** Programa: F45, F46, F47, F48, F49, F50, F51, F100, F101, F102, F112 (S10)
-- [ ] **EV** Evaluaciones y actividades: F52, F53, F54, F55, F56, F57, F113 (S11)
-- [ ] **CA** Calendario y grabaciones: F58, F59, F60, F61, F62, F63, F64, F65 (S12)
+- [x] **AC** Accesos y cuentas: F34, F35, F36, F37, F38, F39, F40, F41, F42, F43, F44, F109 (S08–S09) — **listo el 8/11** (revisión visual pendiente)
+  - `00340` (esquema cerrado `app_servicio_portal`, cuentas, sesiones, bucket `portal-avatars`) y `00341` (accesos, motor, corte, mora, a mano, invitación, «Ver como estudiante», lecturas para SSA) aplicadas y registradas.
+  - Pantallas: Portal (Programas con «+ Agregar programa», Ajustes del portal), la página de cada programa (Ajustes del programa y Afiliados), la pestaña Accesos de la ficha del servicio y la tarjeta Portal de la ficha del cliente (invitar, reenviar, suspender, reactivar, «Ver como estudiante»). «Portal» en el menú (con el módulo prendido).
+  - Gemelas `access-rule` (29) y `access` (9) contra la base; `verify-portal-schema` (esquema cerrado, RLS, sin secretos en claro, la API no lo expone), `verify-servicios-migracion --s S08,S09`, `verify-services` (sv1, sv2, prd y ac), `verify-contact-merge` y `verify-rls` en 0.
+- [x] **PR** Programa: F45, F46, F47, F48, F49, F50, F51, F100, F101, F102, F112 (S10) — **listo el 8/11** (revisión visual pendiente; F50 «Copiar a otro programa» y la pestaña Programa de la ficha del servicio quedan en PENDIENTE)
+  - `00342` aplicada y registrada; corregida el mismo día (`app_servicio.emit_service`: pasarle una fila de `services` como `record` a `emit` fallaba) y el SQL registrado es el corregido.
+  - Portal › programa › Contenido: el árbol (módulos, submódulos, clases), lo nuevo nace inactivo, Subir/Bajar y Alt+↑/↓, el drawer de cada clase (video normalizado, página, documento, recursos, portada, desbloqueo, transcripción a Conocimiento con el segundo de cada parte).
+  - Gemelas `unlock` (31) y `video-url` (17); `verify-program --bloque pr`, `verify-servicios-migracion --s S10` y `verify-contact-merge` en 0.
+- [x] **EV** Evaluaciones y actividades: F52, F53, F54, F55, F56, F57, F113 (S11) — **listo el 8/11** (revisión visual pendiente)
+  - `00345` aplicada y registrada (la `00344` la ocupó otra sesión). Tipos `terms`, `quiz` y `activity` atados a un programa (no aparecen en Formularios ni tienen página pública); la nota y el intento los calcula la base; la revisión con escala, comentario y nota interna (EV001/EV002); los términos al entrar, que se vuelven a pedir con una versión nueva.
+  - Pantallas: el editor de evaluación y actividad en el drawer de la clase, Portal › Por revisar y el bloque de términos en Ajustes del programa.
+  - Gemelas `quiz-grade` (14), `grading` (19) y `terms` (9) contra la base; `verify-program --bloque ev` y `verify-servicios-migracion --s S11` en 0; `verify-forms` en 0 (ver CA: la 1ª pasada se cortó por la CLI).
+- [x] **CA** Calendario y grabaciones: F58, F59, F60, F61, F62, F63, F64, F65 (S12) — **listo el 8/11** (revisión visual pendiente)
+  - `00346` aplicada y registrada (8/11, versión `20261108173804`), después de ensayarla en una transacción que se deshizo sola. Corregida el mismo día (el link de la reunión se negaba por columna con la tabla entera concedida, y se leía: ahora el permiso es por columnas; y «Clase» se creaba también en un negocio nuevo con el módulo apagado: ahora se crea al prender el módulo) y el SQL registrado es el corregido.
+  - Portal › programa › Calendario: Lista (KPIs, Próximas con «Link de la clase» para el equipo, Pasadas con «N de M · clics sin confirmar · grabación»), Mes (chips por serie, punto rojo sin grabación, + por día), Sesiones recurrentes (promedio de las últimas 6 fechas con barritas) y Asistencia por estudiante. El panel de la sesión (una vez / se repite, Para, sobre quiénes se mide, contar el clic) con Mover y Cancelar esta fecha, y la ficha de una fecha pasada (grabación por link o Fathom, «Activa en el portal», marcar y quitar con motivo, «Agregar un estudiante que asistió»).
+  - Grabaciones: menú «⋯» con «Agregar al portal» (asistente de 4 pasos) y «Ver en el portal», y la columna «En el portal», solo con el módulo prendido.
+  - Gemelas `occurrences` (11), `attendance-window` (5) y `attendance-base` (10) corridas contra la base en `verify-program --bloque ca` (39 comprobaciones en 0); `live-sessions`, `calendar-view` y `add-to-portal` con sus tests. `verify-servicios-migracion --s S12`, `verify-scheduling --despues-de-00290`, `verify-contact-merge` y `verify-forms` en 0.
 - [ ] **CE** Certificados: F66, F67, F68, F69
 - [ ] **CO** Comunidad: F76, F77, F111 (S14)
 - [ ] **IA** Tutor: F83, F84, F85, F86, F87, F110 (S15)
 - [ ] **X** Cierre: F88, F89, F90, F91, F92, F108 (S16)
 
 ## Migraciones (S0x → número real)
+
+**Renumeración del 8/11 (3ª):** otra rama local (`community-groups-display`) usa la `00344`, así que **S11 pasa a la 00345, S12 a la 00346, S14 a la 00347, S15 a la 00348 y S16 a la 00349**.
 
 **Renumeración del 8/11 (2ª):** otras ramas locales ocupan la `00338` (`purge_stale_unread_notifications`) y la `00339` (`scheduled_time_trigger`), así que **S08 a S12 pasan a la 00340, 00341, 00342, 00344 y 00345; S13 queda en la 00343; S14 a S16 van de la 00346 a la 00348**. Numéricamente la S13 (00343) queda antes que la S11 (00344): no nombra nada de S08 a S12, así que un clon nuevo las aplica en orden sin problema. Antes, la `00337` también la ocupó otra sesión (`00337_email_guard_fast_time_zone`, 8/11). Antes, la `00329` la ocupó otra sesión (`00329_contact_qualification`, aplicada el 8/11 a las 07:15 UTC, mientras se armaba este plan). Por eso **S01–S16 van de la 00330 a la 00345** (la tabla del plan, más abajo, decía 00329–00344). Si otra sesión ocupa un número antes de aplicar, se corre el resto y se anota acá.
 
@@ -56,15 +71,15 @@
 | S05 | 00334 | `00334_app_servicio_sales_triggers.sql` | SV1 | **aplicada y registrada** (versión `20261108140802`; corregida el mismo día: `sale_hook` declara `record`); `--s S05` y `verify-commissions` en 0; `verify-sales` en 0 en la 2ª pasada (la 1ª se cortó por la CLI, sin relación con la migración) |
 | S06 | 00335 | `00335_app_servicio_completion_triggers.sql` | SV2 | **aplicada y registrada** (versión `20261108150155`); `--s S06`, `verify-forms`, `verify-scheduling` y `verify-tasks` en 0. Corregida el mismo día (`booking_hook` declara `record`, ver PENDIENTE) |
 | S07 | 00336 | `00336_app_servicio_audit_and_triggers_check.sql` | SV2 | **aplicada y registrada** (versión `20261108151119`); `--s S07` y `verify-audit-visibility --despues-de-00168` en 0 |
-| S08 | 00340 | `00340_app_servicio_portal_accounts.sql` | AC | pendiente |
-| S09 | 00341 | `00341_app_servicio_portal_access.sql` | AC | pendiente |
-| S10 | 00342 | `00342_app_servicio_program.sql` | PR | pendiente |
-| S11 | 00344 | `00344_app_servicio_portal_forms.sql` | EV | pendiente |
-| S12 | 00345 | `00345_app_servicio_calendar.sql` | CA | pendiente |
+| S08 | 00340 | `00340_app_servicio_portal_accounts.sql` | AC | **aplicada y registrada** (8/11, versión `20261108163225`), ensayada junto con la 00341 |
+| S09 | 00341 | `00341_app_servicio_portal_access.sql` | AC | **aplicada y registrada** (8/11, versión `20261108163233`); corregida el mismo día (lecturas para SSA: el esquema del portal no se expone) y el SQL registrado es el corregido |
+| S10 | 00342 | `00342_app_servicio_program.sql` | PR | **aplicada y registrada** (8/11, versión `20261108170843`), después de ensayarla en una transacción que se deshizo sola; corregida el mismo día (`emit_service`) y el SQL registrado es el corregido; `--s S10` y `verify-program --bloque pr` en 0 |
+| S11 | 00345 | `00345_app_servicio_portal_forms.sql` | EV | **aplicada y registrada** (8/11, versión `20261108171604`), después de ensayarla; `--s S11` y `verify-program --bloque ev` en 0 |
+| S12 | 00346 | `00346_app_servicio_calendar.sql` | CA | **aplicada y registrada** (8/11, versión `20261108173804`), después de ensayarla; corregida el mismo día (permiso por columnas del link y «Clase» al prender el módulo) y el SQL registrado es el corregido; `--s S12`, `verify-program --bloque ca` y `verify-scheduling` en 0 |
 | S13 | 00343 | `00343_affiliates.sql` | AF | **aplicada y registrada** (8/11, versión `20261108161154`), después de ensayarla en una transacción que se deshizo sola; `--s S13` en 0 |
-| S14 | 00346 | `00346_app_servicio_community.sql` | CO | pendiente |
-| S15 | 00347 | `00347_app_servicio_tutor.sql` | IA | pendiente |
-| S16 | 00348 | `00348_app_servicio_merge_and_cron.sql` | X | pendiente |
+| S14 | 00347 | `00347_app_servicio_community.sql` | CO | pendiente |
+| S15 | 00348 | `00348_app_servicio_tutor.sql` | IA | pendiente |
+| S16 | 00349 | `00349_app_servicio_merge_and_cron.sql` | X | pendiente |
 
 ## Punto de partida (8/11/2026)
 

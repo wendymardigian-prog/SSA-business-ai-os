@@ -53,6 +53,18 @@ export const CONTACT_MERGE_EXCLUSIONS: Readonly<Record<string, string>> = {
     "Afiliados (00343): el proveedor vinculado a un afiliado externo lo reapunta `merge_contacts` (si el principal ya tiene uno, el del duplicado queda sin contacto).", // @plantilla-quitar(finanzas)
   "app_servicio.services": // @plantilla-quitar(servicios)
     "Servicios A1: los servicios del duplicado los reapunta `app_servicio.merge_contacts_hook`, que `merge_contacts` llama desde la S16 (bloque X).", // @plantilla-quitar(servicios)
+  "app_servicio_portal.portal_access": // @plantilla-quitar(servicios)
+    "Servicios A1 (00341): los accesos al portal siguen al servicio; los reapunta el mismo `merge_contacts_hook` (S16).", // @plantilla-quitar(servicios)
+  "app_servicio_portal.portal_accounts": // @plantilla-quitar(servicios)
+    "Servicios A1 (00340): la cuenta del portal la une `merge_contacts_hook` (S16): si los dos tienen, queda la del principal.", // @plantilla-quitar(servicios)
+  "app_servicio_portal.program_progress": // @plantilla-quitar(servicios)
+    "Servicios A1 (00342): el avance en el programa lo une `merge_contacts_hook` (S16): si los dos vieron la misma clase, queda lo más avanzado.", // @plantilla-quitar(servicios)
+  "app_servicio_portal.portal_sessions": // @plantilla-quitar(servicios)
+    "Servicios A1 (00340): `preview_contact_id` de un pase de «Ver como estudiante» (vence a los 60 segundos); lo reapunta `merge_contacts_hook` (S16).", // @plantilla-quitar(servicios)
+  "app_servicio_portal.live_attendance": // @plantilla-quitar(servicios)
+    "Servicios A1 (00346): la asistencia a las clases en vivo la une `merge_contacts_hook` (S16): si los dos asistieron a la misma fecha, queda una.", // @plantilla-quitar(servicios)
+  "app_servicio.link_clicks": // @plantilla-quitar(servicios)
+    "Servicios A1 (00346): los clics al link de una clase los reapunta `merge_contacts_hook` (S16).", // @plantilla-quitar(servicios)
 };
 
 export interface MergeMoved {

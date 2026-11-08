@@ -26,6 +26,7 @@ import {
 } from "@/lib/calls/list";
 import { statusLabel } from "@/lib/calls/status";
 import type { CallAnalysisStatus } from "@/lib/types/database";
+import { CallPortalMenu } from "@/components/services/portal/call-portal-menu"; // @plantilla-quitar(servicios)
 
 /**
  * La lista de llamadas (F12). Que se ve lo decide la base (RLS) y los filtros
@@ -83,6 +84,8 @@ interface Props {
   hasApp: boolean;
   hasLiveConnection: boolean;
   nudgeConnect: boolean;
+  /** Servicios (F65): las grabaciones de esta página que ya están en el portal, y si puede agregarlas. */
+  portal?: { inPortal: string[]; canAdd: boolean } | null; // @plantilla-quitar(servicios)
 }
 
 // El almacenamiento del navegador puede no estar (ventana privada, datos bloqueados): la lista sigue andando sin vistas guardadas.
@@ -420,6 +423,7 @@ export function CallsList(props: Props) {
                         {["Lead / llamada", "Fecha", "Duración", "Quien grabó", "Tipo", "Resultado", "Puntaje", "Lead", "Estado", ""].map((h, i) => (
                           <th key={i} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{i === 6 ? "Puntaje closer" : i === 7 ? "Puntaje lead" : h}</th>
                         ))}
+                        {props.portal && <th scope="col" className="whitespace-nowrap px-3 py-2 font-medium">En el portal</th>} {/* @plantilla-quitar(servicios) */}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -454,6 +458,16 @@ export function CallsList(props: Props) {
                             </td>
                             <td className="px-3 py-2"><StatusChip status={r.status} /></td>
                             <td className="px-3 py-2"><AlertsChip open={r.hasOpenAlerts} /></td>
+                            {/* @plantilla-desde(servicios) */}
+                            {props.portal && (
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-muted-foreground">{props.portal.inPortal.includes(r.id) ? "Sí" : "—"}</span>
+                                  <CallPortalMenu callId={r.id} inPortal={props.portal.inPortal.includes(r.id)} canAdd={props.portal.canAdd} />
+                                </div>
+                              </td>
+                            )}
+                            {/* @plantilla-hasta(servicios) */}
                           </tr>
                         );
                       })}

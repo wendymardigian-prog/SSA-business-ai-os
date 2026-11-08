@@ -1,3 +1,4 @@
+import { isPortalFormType } from "@/lib/forms/fields"; // @plantilla-quitar(servicios)
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/guards";
 import { publicBaseUrl } from "@/lib/public-url";
@@ -35,6 +36,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
   const { supabase, workspace } = ctx;
   const { data: form } = await supabase.from("forms").select("*").eq("id", id).eq("workspace_id", workspace.id).maybeSingle();
   if (!form) notFound();
+  if (isPortalFormType(form.type)) notFound(); // Servicios A1 (F52): se editan desde la clase del programa. @plantilla-quitar(servicios)
 
   const [{ data: versionRows }, members, timeZone] = await Promise.all([
     supabase.from("form_versions").select("id, version_number, definition, contract_text, contract_text_sha256, published_by, published_at").eq("form_id", id).order("version_number", { ascending: false }),

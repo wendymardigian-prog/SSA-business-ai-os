@@ -128,6 +128,8 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // Servicios (F26): solo con el modulo prendido en el negocio (bandera `services` = workspaces.services_enabled). Va en el
   // grupo Ventas, despues de Ventas y Finanzas: un grupo nuevo cambiaria el menu de todos aunque quede vacio (ver PENDIENTE).
   { name: "Clientes", href: "/dashboard/clientes", icon: "GraduationCap", permissions: ["services.view"], requires: "services", group: "ventas" },
+  // Portal (F35, F43): los programas del portal y sus ajustes, con el modulo prendido.
+  { name: "Portal", href: "/dashboard/portal", icon: "AppWindow", permissions: ["portal.view", "portal.sections", "portal.access_rules", "portal.settings"], requires: "services", group: "ventas" },
   // @plantilla-hasta(servicios)
   // Afiliados (Servicios A1, F105): al final del grupo Ventas para no mover el orden de los demas. Lo ve quien tiene el
   // resumen o las reglas; «Mis links» (affiliates.use) va en el menu de usuario, no aca.

@@ -17,7 +17,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { runCleanup } from "./test-cleanup.mjs";
@@ -590,6 +590,141 @@ try {
     check(b?.n === "Inicio" && b?.i === 1 && /^ph_[a-z0-9]{6}$/.test(b?.k ?? "") && b?.k !== "ph_bbbbb1" && b?.m === "create", "la otra variante queda con el mismo camino (claves nuevas) y el mismo modo", JSON.stringify(b));
     const guard = asUser(owner.id, `WITH u AS (UPDATE public.product_variants SET journey_template = '{"v":1,"phases":[]}'::jsonb WHERE id = ${lit(vB.id)} RETURNING 1) SELECT count(*) n FROM u`);
     check(!guard.ok && /SV003|desde sus pantallas/.test(guard.error), "el camino no se escribe directo con la sesion (SV003)", guard.error);
+  }
+
+  if (run("ac")) {
+    console.log("\nac · Casos compartidos (gemelas de accesos)");
+    const rules = json("lib/portal-admin/access-rule.cases.json");
+    const picks = json("lib/portal-admin/access.cases.json");
+    const runList = (list, label, toSql, expected) => {
+      const got = sql(`SELECT jsonb_build_array(${list.map((c) => `to_jsonb(${toSql(c)})`).join(", ")}) AS r`)[0]?.r ?? [];
+      const bad = list.filter((c, i) => !eq(got[i], expected(c))).map((c) => c.name);
+      check(bad.length === 0, `${label}: los ${list.length} casos dan lo mismo que en TypeScript`, bad.slice(0, 3).join(" | "));
+    };
+    runList(rules.window, "portal_access_window", (c) => `app_servicio.portal_access_window(${jlit(c.input)})`, (c) => c.expected);
+    runList(rules.until, "portal_access_until_reached", (c) => `app_servicio.portal_access_until_reached(${jlit({ until: c.until, event: c.event })})`, (c) => c.expected);
+    runList(picks.cases, "portal_access_pick", (c) => `app_servicio.portal_access_pick(${jlit({ rows: c.rows, now: c.now })})`, (c) => c.expected);
+
+    console.log("\nac · El motor de accesos (F37, F109)");
+    sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+    const vP = await mkVariant("zz-test Con portal");
+    sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [
+      { key: "ph_por001", name: "Onboarding", advance: "auto", items: [{ key: "it_por001", kind: "checkbox", name: "Bienvenida" }] },
+      { key: "ph_por002", name: "Implementacion", advance: "manual", items: [{ key: "it_por002", kind: "checkbox", name: "Plan listo" }] },
+    ] })}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vP.id)}`);
+    const portalSettings = { v: 1, enabled: true, sections: [
+      { section: "program", included: true, opens: { type: "service_start" }, until: { type: "service" } },
+      { section: "community", included: true, opens: { type: "service_start" }, until: { type: "months", n: 12 } },
+      { section: "assistant", included: true, opens: { type: "phase_completed", ref: "ph_por001" }, until: { type: "service" } },
+      { section: "challenge", included: true, opens: { type: "service_start" }, until: { type: "item_completed", ref: "it_por002" } },
+    ] };
+    const setPortal = sqlErr(`UPDATE public.product_variants SET portal_settings = ${jlit(portalSettings)}, portal_settings_rev = portal_settings_rev + 1 WHERE id = ${lit(vP.id)}`);
+    check(setPortal === null, "la variante queda con su portal", setPortal?.slice(0, 300));
+    const cP = await newContact("con portal", { email: `zz-test-portal-${Date.now()}@example.test` });
+    const sP = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cP.id)}, 'variant_id', ${lit(vP.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)})) id`)[0]?.id;
+    const acc = () => Object.fromEntries(sql(`SELECT section, until_type, ends_at, revoked_at, revoke_reason, suspended_pause_at, source FROM app_servicio_portal.portal_access WHERE service_id = ${lit(sP)}`).map((r) => [r.section, r]));
+    let a = acc();
+    check(!!a.program && !!a.community && !!a.challenge && !a.assistant, "al empezar: Programa, Comunidad y Reto; el Asistente todavía no (no hay fila)", JSON.stringify(Object.keys(a)));
+    const months12 = sql(`SELECT ((a.ends_at AT TIME ZONE app_servicio.ws_tz(${lit(ws.id)}))::date = (app_servicio.today_in(${lit(ws.id)}) + interval '12 months')::date) ok FROM app_servicio_portal.portal_access a WHERE a.service_id = ${lit(sP)} AND a.section = 'community'`)[0]?.ok;
+    check(months12 === true, "Comunidad «12 meses desde que se abre»: vence en 12 meses, a las 23:59 del negocio");
+    check(sql(`SELECT count(*)::int n FROM app_servicio_portal.portal_accounts WHERE contact_id = ${lit(cP.id)}`)[0]?.n === 1, "el primer acceso crea la cuenta del portal (el contacto tiene email)");
+    const effective = sql(`SELECT app_servicio.portal_access_effective(${lit(cP.id)}, ${lit(prod.id)}, 'program') id`)[0]?.id;
+    check(!!effective, "portal_access_effective devuelve el acceso vigente");
+
+    const itemOf = (k) => sql(`SELECT id FROM app_servicio.service_items WHERE service_id = ${lit(sP)} AND template_key = ${lit(k)}`)[0]?.id;
+    sql(`SELECT app_servicio.svc_complete_item(${lit(itemOf("it_por001"))})`);
+    a = acc();
+    check(!!a.assistant && a.assistant.until_type === "service", "al completar la fase Onboarding se abre el Asistente, hasta lo que dure el servicio", JSON.stringify(a.assistant ?? null));
+    sql(`SELECT app_servicio.svc_complete_item(${lit(itemOf("it_por002"))})`);
+    a = acc();
+    check(!!a.challenge?.revoked_at && a.challenge.revoke_reason === "until_reached", "al completar el paso del «hasta», el Reto queda revocado con until_reached", JSON.stringify(a.challenge));
+
+    console.log("\nac · Pausa, a mano y corte (F38, F40)");
+    sql(`SELECT app_servicio.svc_pause(${lit(sP)}, '{"reason":"zz-test","cut_access":true}'::jsonb)`);
+    check(!!acc().program.suspended_pause_at, "pausar con corte suspende los accesos (suspendido no es revocado)");
+    check(sql(`SELECT app_servicio.portal_access_effective(${lit(cP.id)}, ${lit(prod.id)}, 'program') id`)[0]?.id === null, "y mientras tanto no hay acceso vigente");
+    sql(`SELECT app_servicio.svc_resume(${lit(sP)})`);
+    check(acc().program.suspended_pause_at === null, "al reanudar vuelven");
+
+    const noReason = asUser(owner.id, `SELECT app_servicio.svc_access_grant_extra(${lit(sP)}, 'calendar', NULL, NULL, ' ') r`);
+    check(!noReason.ok && /AC001|motivo/.test(noReason.error), "un acceso extra sin motivo se rechaza (AC001)", noReason.error);
+    const extra = await rpcAs(owner, "svc_access_grant_extra", { p_service_id: sP, p_section: "calendar", p_product_id: null, p_ends_on: null, p_reason: "zz-test cortesía" });
+    check(!extra.error && acc().calendar?.source === "manual_extra", "con motivo, el Owner da un acceso extra", extra.error);
+    const communityId = sql(`SELECT id FROM app_servicio_portal.portal_access WHERE service_id = ${lit(sP)} AND section = 'community'`)[0]?.id;
+    const tomorrow = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+    const earlier = asUser(owner.id, `SELECT app_servicio.svc_access_extend(${lit(communityId)}, ${lit(tomorrow)}::date, 'zz-test') r`);
+    check(!earlier.ok && /AC002/.test(earlier.error), "extender a una fecha anterior se rechaza (AC002)", earlier.error);
+    const byMember = asUser(member.id, `SELECT app_servicio.svc_access_grant_extra(${lit(sP)}, 'calendar', NULL, NULL, 'x') r`);
+    check(!byMember.ok && /SV004|permiso/.test(byMember.error), "un Member no da accesos (services.access)", byMember.error);
+
+    console.log("\nac · Invitación y vista previa (F41, F42)");
+    const sha = (t) => createHash("sha256").update(t).digest("hex");
+    const inv1 = await rpcAs(owner, "portal_admin_invite", { p_workspace_id: ws.id, p_contact_id: cP.id });
+    check(!inv1.error && inv1.data?.status === "ok" && /^[0-9a-f]{64}$/.test(inv1.data?.token ?? ""), "invitar devuelve el token una sola vez", inv1.error ?? JSON.stringify({ status: inv1.data?.status }));
+    const stored = sql(`SELECT invite_token_hash h FROM app_servicio_portal.portal_accounts WHERE contact_id = ${lit(cP.id)}`)[0]?.h;
+    check(stored === sha(inv1.data?.token ?? "") && stored !== inv1.data?.token, "la base guarda solo la huella");
+    check(sql(`SELECT app_servicio.portal_invite_token_valid(${lit(stored)}) v`)[0]?.v === true, "y la huella vale");
+    const inv2 = await rpcAs(owner, "portal_admin_invite", { p_workspace_id: ws.id, p_contact_id: cP.id });
+    check(inv2.data?.status === "rate_limited", "reenviar enseguida espera un minuto");
+    sql(`UPDATE app_servicio_portal.portal_accounts SET invite_sent_at = now() - interval '2 minutes' WHERE contact_id = ${lit(cP.id)}`);
+    const inv3 = await rpcAs(owner, "portal_admin_invite", { p_workspace_id: ws.id, p_contact_id: cP.id });
+    check(inv3.data?.status === "ok" && inv3.data?.token !== inv1.data?.token, "reenviar después genera un token nuevo");
+    check(sql(`SELECT app_servicio.portal_invite_token_valid(${lit(stored)}) v`)[0]?.v === false && sql(`SELECT app_servicio.portal_invite_token_valid(${lit(sha(inv3.data?.token ?? ""))}) v`)[0]?.v === true, "el anterior deja de valer");
+    const memberInv = asUser(member.id, `SELECT app_servicio.portal_admin_invite(${lit(ws.id)}, ${lit(cP.id)}) r`);
+    check(!memberInv.ok, "un Member no invita (portal.accounts)", memberInv.error);
+
+    const notSeen = asUser(member2.id, `SELECT app_servicio.portal_admin_create_preview_pass(${lit(ws.id)}, ${lit(cP.id)}) r`);
+    check(!notSeen.ok, "un Member que no ve al cliente no puede «Ver como estudiante»", notSeen.error);
+    const pass = await rpcAs(owner, "portal_admin_create_preview_pass", { p_workspace_id: ws.id, p_contact_id: cP.id });
+    const passRow = pass.data?.token ? sql(`SELECT kind, token_hash, extract(epoch FROM expires_at - now()) secs, preview_user_id FROM app_servicio_portal.portal_sessions WHERE token_hash = ${lit(sha(pass.data.token))}`)[0] : null;
+    check(!pass.error && passRow?.kind === "preview_pass" && Number(passRow.secs) <= 61 && Number(passRow.secs) > 30 && passRow.preview_user_id === owner.id, "el pase de vista previa vale 60 segundos y queda a nombre de quien lo pidió", pass.error ?? JSON.stringify(passRow));
+    check(sql(`SELECT count(*)::int n FROM public.audit_log WHERE entity_id = ${lit(cP.id)} AND action = 'portal.view_as'`)[0]?.n >= 1, "queda portal.view_as en el historial");
+    const accountId = sql(`SELECT id FROM app_servicio_portal.portal_accounts WHERE contact_id = ${lit(cP.id)}`)[0]?.id;
+    const susp = await rpcAs(owner, "portal_admin_suspend_account", { p_account_id: accountId, p_reason: "zz-test" });
+    check(!susp.error && sql(`SELECT count(*)::int n FROM app_servicio_portal.portal_sessions WHERE account_id = ${lit(accountId)} AND revoked_at IS NULL`)[0]?.n === 0, "suspender la cuenta revoca sus sesiones", susp.error);
+    const newEmail = `zz-test-portal-nuevo-${Date.now()}@example.test`;
+    sql(`UPDATE public.contacts SET email = ${lit(newEmail)} WHERE id = ${lit(cP.id)}`);
+    check(sql(`SELECT email FROM app_servicio_portal.portal_accounts WHERE id = ${lit(accountId)}`)[0]?.email === newEmail, "si cambia el email del contacto, la cuenta lo sigue");
+
+    console.log("\nac · Mora (F39)");
+    const vM = await mkVariant("zz-test Con mora");
+    sql(`UPDATE public.product_variants SET portal_settings = ${jlit({ v: 1, enabled: true, sections: [{ section: "program", included: true }] })}, portal_settings_rev = portal_settings_rev + 1 WHERE id = ${lit(vM.id)}`);
+    setSettings(vM.id, { ...createRule("any_payment"), overdue_cut: { enabled: true, days: 30, restore: true } });
+    const cM = await newContact("con mora");
+    const late = new Date(Date.now() - 40 * 86_400_000).toISOString().slice(0, 10);
+    const saleM = await createSale(cM.id, vM.id, [sched("reservation", 300, ayer), sched("installment", 700, late)]);
+    const pM = await paymentsOf(saleM);
+    await markPaid(pM[0].id);
+    const sM = servicesOfSale(saleM)[0]?.id;
+    check(!!sM && sql(`SELECT count(*)::int n FROM app_servicio_portal.portal_access WHERE service_id = ${lit(sM)}`)[0]?.n === 1, "cobrar crea el servicio con su acceso", String(sM));
+    await svc.from("payments").update({ status: "overdue" }).eq("id", pM[1].id);
+    const sweep1 = sql(`SELECT app_servicio.svc_overdue_sweep(${lit(ws.id)}) r`)[0]?.r;
+    check(sql(`SELECT suspended_overdue_at IS NOT NULL s FROM app_servicio_portal.portal_access WHERE service_id = ${lit(sM)}`)[0]?.s === true, "un pago vencido hace más de 30 días suspende el acceso", JSON.stringify(sweep1));
+    await markPaid(pM[1].id);
+    sql(`SELECT app_servicio.svc_overdue_sweep(${lit(ws.id)})`);
+    check(sql(`SELECT suspended_overdue_at IS NULL s FROM app_servicio_portal.portal_access WHERE service_id = ${lit(sM)}`)[0]?.s === true, "al ponerse al día, vuelve solo (restore)");
+
+    console.log("\nac · Cancelar corta todo, también los extras (F38)");
+    sql(`SELECT app_servicio.svc_cancel(${lit(sP)}, 'zz-test')`);
+    const live = sql(`SELECT count(*)::int n FROM app_servicio_portal.portal_access WHERE service_id = ${lit(sP)} AND revoked_at IS NULL`)[0]?.n;
+    check(live === 0, "al cancelar no queda ningún acceso vigente", String(live));
+
+    console.log("\nac · Un fallo del motor no tumba el camino");
+    const cF = await newContact("falla");
+    const sF = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cF.id)}, 'variant_id', ${lit(vP.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)})) id`)[0]?.id;
+    const forced = sqlErr(`DO $$ DECLARE n int; a int; BEGIN
+      ALTER FUNCTION app_servicio.svc_apply_access_event(uuid, text, text) RENAME TO zz_svc_apply_access_event_off;
+      UPDATE app_servicio.service_phases SET status = 'completed', completed_at = now() WHERE service_id = ${lit(sF)} AND status = 'in_progress';
+      GET DIAGNOSTICS n = ROW_COUNT;
+      SELECT count(*) INTO a FROM public.audit_log WHERE entity_id = ${lit(sF)} AND action = 'svc.hook_failed';
+      RAISE EXCEPTION 'RESULTADO: % %', n, a;
+    END $$`);
+    check(/RESULTADO: 1 [1-9]/.test(forced ?? ""), "la fase se completa igual y queda svc.hook_failed (y todo se deshace)", forced?.slice(0, 300));
+
+    console.log("\nac · Con el módulo apagado no abre nada");
+    sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, false)`);
+    check(sql(`SELECT app_servicio.svc_apply_access_event(${lit(sF)}, 'tick', NULL) n`)[0]?.n === 0, "svc_apply_access_event no hace nada");
+    sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
   }
 
   console.log("\nHuellas de las funciones protegidas");

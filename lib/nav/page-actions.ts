@@ -419,6 +419,14 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Servicio",
     tooltip: "El servicio de un cliente: su camino, su semáforo, sus datos y lo que se puede hacer.",
   },
+  "/dashboard/portal": {
+    title: "Portal",
+    tooltip: "Los programas del portal de tus clientes y los ajustes del portal: la dirección, la bienvenida y cómo entran.",
+  },
+  "/dashboard/portal/[productId]": {
+    title: "Programa",
+    tooltip: "El programa en el portal: qué secciones tiene, qué variantes dan acceso y qué links ven los estudiantes.",
+  },
   "/dashboard/settings/productos/[id]/variantes/[variantId]": {
     title: "Variante",
     tooltip: "La configuración de una variante: su camino del cliente, qué pasa al cobrarse, su portal y su precio.",

@@ -23,6 +23,7 @@ import {
   ListChecks,
   ListTodo,
   GraduationCap, // @plantilla-quitar(servicios)
+  AppWindow, // @plantilla-quitar(servicios)
   Handshake, // @plantilla-quitar(ventas)
   ChevronDown,
   PanelLeftClose,
@@ -63,6 +64,7 @@ const ICONS: Record<string, LucideIcon> = {
   LayoutGrid, GitBranch, MessageSquare, Users, Bot, Settings,
   Clapperboard, Grid3x3, Megaphone, CalendarDays, PhoneCall, ClipboardList, CircleDollarSign, Wallet, ListChecks, ListTodo, Sparkles,
   GraduationCap, // @plantilla-quitar(servicios)
+  AppWindow, // @plantilla-quitar(servicios)
   Handshake, // @plantilla-quitar(ventas)
 };
 

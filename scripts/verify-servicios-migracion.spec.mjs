@@ -151,7 +151,11 @@ export const SPECS = {
     file: "00341_app_servicio_portal_access.sql",
     title: "Accesos al portal",
     tables: ["app_servicio_portal.portal_access"],
-    functions: ["app_servicio.portal_access_effective", "app_servicio.portal_section_enabled", "app_servicio.portal_admin_create_preview_pass"],
+    functions: [
+      "app_servicio.portal_access_effective", "app_servicio.portal_section_enabled", "app_servicio.portal_admin_create_preview_pass",
+      "app_servicio.portal_access_window", "app_servicio.portal_access_pick", "app_servicio.svc_apply_access_event", "app_servicio.svc_overdue_sweep",
+      "app_servicio.portal_admin_invite", "app_servicio.portal_invite_token_valid", "app_servicio.portal_admin_service_accesses",
+    ],
   },
   S10: {
     file: "00342_app_servicio_program.sql",
@@ -159,20 +163,27 @@ export const SPECS = {
     tables: ["app_servicio.program_items", "app_servicio_portal.program_progress"],
     columns: ["knowledge_base:program_item_id", "knowledge_chunks:start_second"],
     buckets: ["program-resources"],
-    functions: ["app_servicio.program_item_unlocked", "app_servicio.program_live_recordings"],
+    // program_live_recordings va con el Calendario (S12): nombra tablas que nacen ahi.
+    functions: ["app_servicio.program_item_unlocked", "app_servicio.program_unlock_plan", "app_servicio.svc_open_module"],
   },
   S11: {
-    file: "00344_app_servicio_portal_forms.sql",
+    file: "00345_app_servicio_portal_forms.sql",
     title: "Formularios del portal",
     columns: ["forms:product_id", "form_submissions:review_status", "form_submissions:grade", "form_submissions:context"],
     checks: [{ name: "forms_type_check", adds: ["terms", "quiz", "activity"] }],
-    functions: ["app_servicio.quiz_grade", "app_servicio.submission_review", "app_servicio.portal_terms_pending"],
+    functions: ["app_servicio.quiz_grade_plan", "app_servicio.grading_passed", "app_servicio.submission_review", "app_servicio.portal_terms_pending"],
   },
   S12: {
-    file: "00345_app_servicio_calendar.sql",
+    file: "00346_app_servicio_calendar.sql",
     title: "Calendario y asistencia",
     tables: ["app_servicio.live_sessions", "app_servicio.live_session_dates", "app_servicio.link_clicks", "app_servicio_portal.live_attendance"],
-    functions: ["app_servicio.live_session_occurrences", "app_servicio.attendance_base_members", "app_servicio.attendance_mark"],
+    functions: [
+      "app_servicio.live_occurrences_plan", "app_servicio.live_attendance_window", "app_servicio.attendance_base_plan",
+      "app_servicio.live_session_occurrences", "app_servicio.attendance_base_members", "app_servicio.attendance_mark",
+      "app_servicio.attendance_remove", "app_servicio.live_session_save", "app_servicio.live_date_save",
+      "app_servicio.live_attendance_overview", "app_servicio.program_live_recordings",
+    ],
+    triggers: ["booking_categories:trg_app_servicio_booking_area_clase", "workspaces:trg_app_servicio_module_clase"],
   },
   S13: {
     file: "00343_affiliates.sql",
@@ -186,14 +197,14 @@ export const SPECS = {
     checks: [{ name: "triggers_type_check", adds: ["affiliate_lead_created", "affiliate_sale_created", "affiliate_assignment_expired"] }],
   },
   S14: {
-    file: "00346_app_servicio_community.sql",
+    file: "00347_app_servicio_community.sql",
     title: "Comunidad",
     tables: ["app_servicio_portal.community_posts", "app_servicio_portal.community_reactions"],
     buckets: ["community-media"],
     functions: ["app_servicio.community_can_post", "app_servicio.community_unanswered"],
   },
   S15: {
-    file: "00347_app_servicio_tutor.sql",
+    file: "00348_app_servicio_tutor.sql",
     title: "Tutor del programa",
     columns: ["products:tutor_agent_id"],
     checks: [
@@ -203,7 +214,7 @@ export const SPECS = {
     policies: ["ai_threads:ai_threads_select_portal"],
   },
   S16: {
-    file: "00348_app_servicio_merge_and_cron.sql",
+    file: "00349_app_servicio_merge_and_cron.sql",
     title: "Fusion de contactos y cron diario del servicio",
     functions: ["app_servicio.merge_contacts_hook", "private.enqueue_svc_daily"],
   },

@@ -31,7 +31,7 @@ export interface ClientDetailData {
  * La ficha del cliente (F28): cabecera, KPIs (servicios, total cobrado, último contacto), sus servicios y la
  * actividad con filtros (todo · por servicio · antes de la venta) y el compositor de comentario interno.
  */
-export function ClientDetailView({ data, today, canCreate, newServiceOptions }: { data: ClientDetailData; today: string; canCreate: boolean; newServiceOptions: NewServiceOptions }) {
+export function ClientDetailView({ data, today, canCreate, newServiceOptions, portal }: { data: ClientDetailData; today: string; canCreate: boolean; newServiceOptions: NewServiceOptions; /** La tarjeta del portal (bloque AC). */ portal?: React.ReactNode }) {
   const router = useRouter();
   const [filter, setFilter] = useState<TimelineFilter>({ kind: "all" });
   const [comment, setComment] = useState("");
@@ -102,6 +102,8 @@ export function ClientDetailView({ data, today, canCreate, newServiceOptions }: 
               <dd className="text-lg font-semibold">{data.lastContact ? data.lastContact.slice(0, 10).split("-").reverse().join("/") : "—"}</dd>
             </div>
           </dl>
+
+          {portal}
 
           <section aria-labelledby="sus-servicios" className="space-y-2">
             <h2 id="sus-servicios" className="text-sm font-semibold">

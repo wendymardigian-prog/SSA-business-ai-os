@@ -1,0 +1,793 @@
+{
+  "_comment": "Casos de gradeQuiz (F54). Corren contra lib/program/quiz.ts y contra app_servicio.quiz_grade_plan (verify-program --bloque ev).",
+  "cases": [
+    {
+      "name": "todo bien",
+      "settings": {
+        "pass_pct": 70,
+        "attempts": 2,
+        "questions": {
+          "q1": {
+            "points": 1,
+            "correct": [
+              "B"
+            ]
+          },
+          "q2": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ]
+          },
+          "q3": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ],
+            "partial": true
+          }
+        }
+      },
+      "answers": {
+        "q1": "B",
+        "q2": [
+          "A",
+          "C"
+        ],
+        "q3": [
+          "C",
+          "A"
+        ]
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 5.0,
+        "earned": 5.0,
+        "pct": 100.0,
+        "passed": true,
+        "counted": true,
+        "per_question": {
+          "q1": {
+            "earned": 1,
+            "points": 1,
+            "correct": true
+          },
+          "q2": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          },
+          "q3": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          }
+        }
+      }
+    },
+    {
+      "name": "una única mal",
+      "settings": {
+        "pass_pct": 70,
+        "attempts": 2,
+        "questions": {
+          "q1": {
+            "points": 1,
+            "correct": [
+              "B"
+            ]
+          },
+          "q2": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ]
+          },
+          "q3": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ],
+            "partial": true
+          }
+        }
+      },
+      "answers": {
+        "q1": "A",
+        "q2": [
+          "A",
+          "C"
+        ],
+        "q3": [
+          "A",
+          "C"
+        ]
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 5.0,
+        "earned": 4.0,
+        "pct": 80.0,
+        "passed": true,
+        "counted": true,
+        "per_question": {
+          "q1": {
+            "earned": 0,
+            "points": 1,
+            "correct": false
+          },
+          "q2": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          },
+          "q3": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          }
+        }
+      }
+    },
+    {
+      "name": "múltiple todo o nada: falta una",
+      "settings": {
+        "pass_pct": 70,
+        "attempts": 2,
+        "questions": {
+          "q1": {
+            "points": 1,
+            "correct": [
+              "B"
+            ]
+          },
+          "q2": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ]
+          },
+          "q3": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ],
+            "partial": true
+          }
+        }
+      },
+      "answers": {
+        "q1": "B",
+        "q2": [
+          "A"
+        ],
+        "q3": [
+          "A",
+          "C"
+        ]
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 5.0,
+        "earned": 3.0,
+        "pct": 60.0,
+        "passed": false,
+        "counted": true,
+        "per_question": {
+          "q1": {
+            "earned": 1,
+            "points": 1,
+            "correct": true
+          },
+          "q2": {
+            "earned": 0,
+            "points": 2,
+            "correct": false
+          },
+          "q3": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          }
+        }
+      }
+    },
+    {
+      "name": "múltiple parcial: una de dos",
+      "settings": {
+        "pass_pct": 70,
+        "attempts": 2,
+        "questions": {
+          "q1": {
+            "points": 1,
+            "correct": [
+              "B"
+            ]
+          },
+          "q2": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ]
+          },
+          "q3": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ],
+            "partial": true
+          }
+        }
+      },
+      "answers": {
+        "q1": "B",
+        "q2": [
+          "A",
+          "C"
+        ],
+        "q3": [
+          "A"
+        ]
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 5.0,
+        "earned": 4.0,
+        "pct": 80.0,
+        "passed": true,
+        "counted": true,
+        "per_question": {
+          "q1": {
+            "earned": 1,
+            "points": 1,
+            "correct": true
+          },
+          "q2": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          },
+          "q3": {
+            "earned": 1.0,
+            "points": 2,
+            "correct": false
+          }
+        }
+      }
+    },
+    {
+      "name": "múltiple parcial: una bien y una mal = 0",
+      "settings": {
+        "pass_pct": 70,
+        "attempts": 2,
+        "questions": {
+          "q1": {
+            "points": 1,
+            "correct": [
+              "B"
+            ]
+          },
+          "q2": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ]
+          },
+          "q3": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ],
+            "partial": true
+          }
+        }
+      },
+      "answers": {
+        "q1": "B",
+        "q2": [
+          "A",
+          "C"
+        ],
+        "q3": [
+          "A",
+          "B"
+        ]
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 5.0,
+        "earned": 3.0,
+        "pct": 60.0,
+        "passed": false,
+        "counted": true,
+        "per_question": {
+          "q1": {
+            "earned": 1,
+            "points": 1,
+            "correct": true
+          },
+          "q2": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          },
+          "q3": {
+            "earned": 0,
+            "points": 2,
+            "correct": false
+          }
+        }
+      }
+    },
+    {
+      "name": "múltiple parcial: nunca baja de 0",
+      "settings": {
+        "pass_pct": 70,
+        "attempts": 2,
+        "questions": {
+          "q1": {
+            "points": 1,
+            "correct": [
+              "B"
+            ]
+          },
+          "q2": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ]
+          },
+          "q3": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ],
+            "partial": true
+          }
+        }
+      },
+      "answers": {
+        "q1": "B",
+        "q2": [
+          "A",
+          "C"
+        ],
+        "q3": [
+          "B",
+          "D",
+          "E"
+        ]
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 5.0,
+        "earned": 3.0,
+        "pct": 60.0,
+        "passed": false,
+        "counted": true,
+        "per_question": {
+          "q1": {
+            "earned": 1,
+            "points": 1,
+            "correct": true
+          },
+          "q2": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          },
+          "q3": {
+            "earned": 0,
+            "points": 2,
+            "correct": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sin responder nada",
+      "settings": {
+        "pass_pct": 70,
+        "attempts": 2,
+        "questions": {
+          "q1": {
+            "points": 1,
+            "correct": [
+              "B"
+            ]
+          },
+          "q2": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ]
+          },
+          "q3": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ],
+            "partial": true
+          }
+        }
+      },
+      "answers": {},
+      "attempt": 1,
+      "expected": {
+        "total": 5.0,
+        "earned": 0.0,
+        "pct": 0.0,
+        "passed": false,
+        "counted": true,
+        "per_question": {
+          "q1": {
+            "earned": 0,
+            "points": 1,
+            "correct": false
+          },
+          "q2": {
+            "earned": 0,
+            "points": 2,
+            "correct": false
+          },
+          "q3": {
+            "earned": 0,
+            "points": 2,
+            "correct": false
+          }
+        }
+      }
+    },
+    {
+      "name": "tercer intento con 2 permitidos: no cuenta",
+      "settings": {
+        "pass_pct": 70,
+        "attempts": 2,
+        "questions": {
+          "q1": {
+            "points": 1,
+            "correct": [
+              "B"
+            ]
+          },
+          "q2": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ]
+          },
+          "q3": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ],
+            "partial": true
+          }
+        }
+      },
+      "answers": {
+        "q1": "B",
+        "q2": [
+          "A",
+          "C"
+        ],
+        "q3": [
+          "A",
+          "C"
+        ]
+      },
+      "attempt": 3,
+      "expected": {
+        "total": 5.0,
+        "earned": 5.0,
+        "pct": 100.0,
+        "passed": true,
+        "counted": false,
+        "per_question": {
+          "q1": {
+            "earned": 1,
+            "points": 1,
+            "correct": true
+          },
+          "q2": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          },
+          "q3": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          }
+        }
+      }
+    },
+    {
+      "name": "segundo intento: cuenta",
+      "settings": {
+        "pass_pct": 70,
+        "attempts": 2,
+        "questions": {
+          "q1": {
+            "points": 1,
+            "correct": [
+              "B"
+            ]
+          },
+          "q2": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ]
+          },
+          "q3": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ],
+            "partial": true
+          }
+        }
+      },
+      "answers": {
+        "q1": "B",
+        "q2": [
+          "A",
+          "C"
+        ],
+        "q3": [
+          "A",
+          "C"
+        ]
+      },
+      "attempt": 2,
+      "expected": {
+        "total": 5.0,
+        "earned": 5.0,
+        "pct": 100.0,
+        "passed": true,
+        "counted": true,
+        "per_question": {
+          "q1": {
+            "earned": 1,
+            "points": 1,
+            "correct": true
+          },
+          "q2": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          },
+          "q3": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          }
+        }
+      }
+    },
+    {
+      "name": "70 % justo aprueba",
+      "settings": {
+        "pass_pct": 70,
+        "questions": {
+          "a": {
+            "points": 7,
+            "correct": [
+              "X"
+            ]
+          },
+          "b": {
+            "points": 3,
+            "correct": [
+              "Y"
+            ]
+          }
+        }
+      },
+      "answers": {
+        "a": "X",
+        "b": "N"
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 10.0,
+        "earned": 7.0,
+        "pct": 70.0,
+        "passed": true,
+        "counted": true,
+        "per_question": {
+          "a": {
+            "earned": 7,
+            "points": 7,
+            "correct": true
+          },
+          "b": {
+            "earned": 0,
+            "points": 3,
+            "correct": false
+          }
+        }
+      }
+    },
+    {
+      "name": "por debajo no aprueba",
+      "settings": {
+        "pass_pct": 71,
+        "questions": {
+          "a": {
+            "points": 7,
+            "correct": [
+              "X"
+            ]
+          },
+          "b": {
+            "points": 3,
+            "correct": [
+              "Y"
+            ]
+          }
+        }
+      },
+      "answers": {
+        "a": "X",
+        "b": "N"
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 10.0,
+        "earned": 7.0,
+        "pct": 70.0,
+        "passed": false,
+        "counted": true,
+        "per_question": {
+          "a": {
+            "earned": 7,
+            "points": 7,
+            "correct": true
+          },
+          "b": {
+            "earned": 0,
+            "points": 3,
+            "correct": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sin preguntas",
+      "settings": {
+        "pass_pct": 70,
+        "questions": {}
+      },
+      "answers": {
+        "a": "X"
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 0.0,
+        "earned": 0.0,
+        "pct": 0,
+        "passed": false,
+        "counted": true,
+        "per_question": {}
+      }
+    },
+    {
+      "name": "una respuesta de más en múltiple todo o nada",
+      "settings": {
+        "pass_pct": 70,
+        "attempts": 2,
+        "questions": {
+          "q1": {
+            "points": 1,
+            "correct": [
+              "B"
+            ]
+          },
+          "q2": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ]
+          },
+          "q3": {
+            "points": 2,
+            "correct": [
+              "A",
+              "C"
+            ],
+            "partial": true
+          }
+        }
+      },
+      "answers": {
+        "q1": "B",
+        "q2": [
+          "A",
+          "B",
+          "C"
+        ],
+        "q3": [
+          "A",
+          "C"
+        ]
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 5.0,
+        "earned": 3.0,
+        "pct": 60.0,
+        "passed": false,
+        "counted": true,
+        "per_question": {
+          "q1": {
+            "earned": 1,
+            "points": 1,
+            "correct": true
+          },
+          "q2": {
+            "earned": 0,
+            "points": 2,
+            "correct": false
+          },
+          "q3": {
+            "earned": 2,
+            "points": 2,
+            "correct": true
+          }
+        }
+      }
+    },
+    {
+      "name": "verdadero/falso",
+      "settings": {
+        "questions": {
+          "vf": {
+            "points": 1,
+            "correct": [
+              "Verdadero"
+            ]
+          }
+        }
+      },
+      "answers": {
+        "vf": "Verdadero"
+      },
+      "attempt": 1,
+      "expected": {
+        "total": 1.0,
+        "earned": 1.0,
+        "pct": 100.0,
+        "passed": true,
+        "counted": true,
+        "per_question": {
+          "vf": {
+            "earned": 1,
+            "points": 1,
+            "correct": true
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "_comment": "Casos de inAttendanceWindow (F61). Corren contra la gemela TS y contra app_servicio.live_attendance_window.",
+  "cases": [
+    {
+      "name": "10 min antes: entra",
+      "startsAt": "2026-11-04T01:00:00Z",
+      "endsAt": "2026-11-04T02:00:00Z",
+      "at": "2026-11-04T00:50:00Z",
+      "expected": true
+    },
+    {
+      "name": "11 min antes: no",
+      "startsAt": "2026-11-04T01:00:00Z",
+      "endsAt": "2026-11-04T02:00:00Z",
+      "at": "2026-11-04T00:49:00Z",
+      "expected": false
+    },
+    {
+      "name": "durante",
+      "startsAt": "2026-11-04T01:00:00Z",
+      "endsAt": "2026-11-04T02:00:00Z",
+      "at": "2026-11-04T01:30:00Z",
+      "expected": true
+    },
+    {
+      "name": "30 min después del final: entra",
+      "startsAt": "2026-11-04T01:00:00Z",
+      "endsAt": "2026-11-04T02:00:00Z",
+      "at": "2026-11-04T02:30:00Z",
+      "expected": true
+    },
+    {
+      "name": "31 después: no",
+      "startsAt": "2026-11-04T01:00:00Z",
+      "endsAt": "2026-11-04T02:00:00Z",
+      "at": "2026-11-04T02:31:00Z",
+      "expected": false
+    }
+  ]
+}

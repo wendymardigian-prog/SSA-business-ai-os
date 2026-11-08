@@ -1,0 +1,136 @@
+{
+  "_comment": "Casos de termsPending (F113). Corren contra lib/program/terms.ts y contra app_servicio.portal_terms_plan (verify-program --bloque ev).",
+  "cases": [
+    {
+      "name": "prendidos y sin aceptar: se piden",
+      "input": {
+        "enabled": true,
+        "formId": "f1",
+        "askAgainOnChange": true,
+        "variantsAsk": [
+          true
+        ],
+        "acceptedVersionIds": [],
+        "currentVersionId": "v1"
+      },
+      "expected": true
+    },
+    {
+      "name": "apagados",
+      "input": {
+        "enabled": false,
+        "formId": "f1",
+        "askAgainOnChange": true,
+        "variantsAsk": [
+          true
+        ],
+        "acceptedVersionIds": [],
+        "currentVersionId": "v1"
+      },
+      "expected": false
+    },
+    {
+      "name": "sin formulario",
+      "input": {
+        "enabled": true,
+        "formId": null,
+        "askAgainOnChange": true,
+        "variantsAsk": [
+          true
+        ],
+        "acceptedVersionIds": [],
+        "currentVersionId": "v1"
+      },
+      "expected": false
+    },
+    {
+      "name": "la variante no los pide",
+      "input": {
+        "enabled": true,
+        "formId": "f1",
+        "askAgainOnChange": true,
+        "variantsAsk": [
+          false
+        ],
+        "acceptedVersionIds": [],
+        "currentVersionId": "v1"
+      },
+      "expected": false
+    },
+    {
+      "name": "dos servicios: basta con que una los pida",
+      "input": {
+        "enabled": true,
+        "formId": "f1",
+        "askAgainOnChange": true,
+        "variantsAsk": [
+          false,
+          true
+        ],
+        "acceptedVersionIds": [],
+        "currentVersionId": "v1"
+      },
+      "expected": true
+    },
+    {
+      "name": "ya aceptados",
+      "input": {
+        "enabled": true,
+        "formId": "f1",
+        "askAgainOnChange": true,
+        "variantsAsk": [
+          true
+        ],
+        "acceptedVersionIds": [
+          "v1"
+        ],
+        "currentVersionId": "v1"
+      },
+      "expected": false
+    },
+    {
+      "name": "versión nueva con pedirlos de nuevo",
+      "input": {
+        "enabled": true,
+        "formId": "f1",
+        "askAgainOnChange": true,
+        "variantsAsk": [
+          true
+        ],
+        "acceptedVersionIds": [
+          "v1"
+        ],
+        "currentVersionId": "v2"
+      },
+      "expected": true
+    },
+    {
+      "name": "versión nueva sin pedirlos de nuevo",
+      "input": {
+        "enabled": true,
+        "formId": "f1",
+        "askAgainOnChange": false,
+        "variantsAsk": [
+          true
+        ],
+        "acceptedVersionIds": [
+          "v1"
+        ],
+        "currentVersionId": "v2"
+      },
+      "expected": false
+    },
+    {
+      "name": "sin servicios vigentes",
+      "input": {
+        "enabled": true,
+        "formId": "f1",
+        "askAgainOnChange": true,
+        "variantsAsk": [],
+        "acceptedVersionIds": [],
+        "currentVersionId": "v1"
+      },
+      "expected": false
+    }
+  ]
+}

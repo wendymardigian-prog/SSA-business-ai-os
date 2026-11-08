@@ -286,7 +286,7 @@ describe("grupos del menu (bloque N, N1)", () => {
       // @plantilla-sin(formularios): ["inicio", ["Dashboards", "Bandeja"]],
       ["adquisicion", ["Contenido", "Social", "Anuncios"]],
       // Servicios A1: Clientes al final del grupo (se ve solo con el modulo prendido) y despues Afiliados (F105).
-      ["ventas", ["Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas", "Clientes", "Afiliados"]], // Extra I: Finanzas al final del grupo // @plantilla-quitar(llamadas,ventas,finanzas,comisiones,servicios)
+      ["ventas", ["Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas", "Clientes", "Portal", "Afiliados"]], // Extra I: Finanzas al final del grupo // @plantilla-quitar(llamadas,ventas,finanzas,comisiones,servicios)
       // @plantilla-sin(llamadas,ventas,finanzas,comisiones,servicios): ["ventas", ["Contactos", "Agenda"]],
       // Diseñador IA: después de Formularios.
       ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA", "Ajustes"]], // @plantilla-quitar(tareas,formularios)

@@ -8,6 +8,9 @@ import { loadNewServiceOptions } from "@/lib/services/screens/load-new-service";
 import { todayIn } from "@/lib/services/screens/today";
 import { formatPriceUsd } from "@/lib/content/taxonomy";
 import { ClientDetailView } from "@/components/services/clients/client-detail-view";
+import { PortalAccountCard } from "@/components/services/clients/portal-account-card";
+import { loadPortalAccount, loadPortalHost } from "@/lib/portal-admin/load";
+import { createServiceClient } from "@/lib/supabase/server";
 
 /** La ficha del cliente (F28). Sin acceso a ningún servicio del contacto, 404 (lo decide la RLS). */
 export default async function ClientPage({ params }: { params: Promise<{ contactId: string }> }) {
@@ -35,8 +38,21 @@ export default async function ClientPage({ params }: { params: Promise<{ contact
     paid = ((pays ?? []) as Array<{ amount: number; type: string }>).reduce((n, p) => n + (Number(p.amount) || 0), 0);
     firstSaleAt = ((sales ?? []) as Array<{ created_at: string }>)[0]?.created_at ?? null;
   }
+  // La cuenta del portal (F41, F42): la función mira el permiso y que la persona vea el contacto.
+  const [account, { host }] = await Promise.all([loadPortalAccount(supabase, workspace.id, contactId), loadPortalHost(await createServiceClient(), workspace.id)]);
+  const portal = (
+    <PortalAccountCard
+      contactId={contactId}
+      contactName={c?.display_name ?? "este cliente"}
+      account={account}
+      hasHost={!!host}
+      canAccounts={ctx.can("portal.accounts")}
+      canViewAs={ctx.can("portal.view_as")}
+    />
+  );
   return (
     <ClientDetailView
+      portal={portal}
       today={todayIn((workspace as { timezone?: string }).timezone)}
       canCreate={ctx.can("services.create")}
       newServiceOptions={ctx.can("services.create") ? await loadNewServiceOptions(supabase, workspace.id, team, ctx.can("services.create_off_rule")) : { products: [], members: [], canOffRule: false }}

@@ -7,6 +7,10 @@ import { isModuleEnabled, moduleShows } from "@/lib/services/module";
 import { contactNames, loadService } from "@/lib/services/screens/load-services";
 import { todayIn } from "@/lib/services/screens/today";
 import { ServiceDetailView, type ServiceDetailData } from "@/components/services/clients/service-detail-view";
+import { ServiceAccessesPanel } from "@/components/services/clients/service-accesses-panel";
+import { loadServiceAccesses } from "@/lib/portal-admin/load";
+import { accessViewRows, pendingSections } from "@/lib/portal-admin/accesses-view";
+import { programSections, readVariantPortal } from "@/lib/services/screens/variant-portal-form";
 
 /** La ficha del servicio (F29). Pide `services.view`; un servicio que la persona no ve (RLS) es 404. */
 export default async function ServicePage({ params, searchParams }: { params: Promise<{ serviceId: string }>; searchParams: Promise<{ tab?: string }> }) {
@@ -65,7 +69,22 @@ export default async function ServicePage({ params, searchParams }: { params: Pr
     const { count } = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("sale_id", s.sale_id).eq("status", "overdue");
     data.alerts.overduePayment = (count ?? 0) > 0;
   }
-  const tab = sp.tab === "camino" || sp.tab === "datos" ? sp.tab : "actividad";
+  const tab = sp.tab === "camino" || sp.tab === "datos" || sp.tab === "accesos" ? sp.tab : "actividad";
+  // La pestaña Accesos (F40): las filas salen de una función que vuelve a mirar el permiso y el alcance.
+  const accessRows = await loadServiceAccesses(supabase, s.id);
+  const [{ data: variantRow }, { data: productRow }] = await Promise.all([
+    s.product_variant_id ? supabase.from("product_variants").select("portal_settings").eq("id", s.product_variant_id).maybeSingle() : Promise.resolve({ data: null }),
+    supabase.from("products").select("portal_settings").eq("id", s.product_id).maybeSingle(),
+  ]);
+  const variantPortal = readVariantPortal((variantRow as { portal_settings?: unknown } | null)?.portal_settings);
+  const accesses = (
+    <ServiceAccessesPanel
+      serviceId={s.id}
+      rows={accessViewRows(accessRows, s.product_id, new Date().toISOString(), timeZone)}
+      pending={variantPortal.enabled && s.status === "active" ? pendingSections(variantPortal.sections ?? [], programSections((productRow as { portal_settings?: unknown } | null)?.portal_settings), accessRows, s.product_id) : []}
+      canManage={ctx.can("services.access")}
+    />
+  );
   return (
     <ServiceDetailView
       data={data}
@@ -75,6 +94,7 @@ export default async function ServicePage({ params, searchParams }: { params: Pr
       userNames={Object.fromEntries(memberLabels(team))}
       timeZone={timeZone}
       permissions={ctx.permissions.keys}
+      accesses={accesses}
     />
   );
 }
