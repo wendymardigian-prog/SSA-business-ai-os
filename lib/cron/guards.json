@@ -1,0 +1,22 @@
+[
+  { "path": "agent-bursts", "sqlFunction": "private.cron_work_agent_bursts", "safetyMinutes": 10 },
+  { "path": "send-queue", "sqlFunction": "private.cron_work_send_queue", "safetyMinutes": 10 },
+  { "path": "automation-events", "sqlFunction": "private.cron_work_automation_events", "safetyMinutes": 10 },
+  {
+    "path": "jobs",
+    "sqlFunction": "private.cron_work_jobs",
+    "safetyMinutes": 10,
+    "coveredBySafetyCall": "borrar webhook_events de mas de 48 h (casi siempre hay alguno)"
+  },
+  { "path": "sequences", "sqlFunction": "private.cron_work_sequences", "safetyMinutes": 10 },
+  { "path": "content-upload", "sqlFunction": "private.cron_work_content_upload", "safetyMinutes": 10 },
+  { "path": "whatsapp-health", "sqlFunction": "private.cron_work_whatsapp_health", "safetyMinutes": 60 },
+  { "path": "inactivity", "sqlFunction": "private.cron_work_inactivity", "safetyMinutes": 120 },
+  {
+    "path": "drafts-refresh",
+    "sqlFunction": "private.cron_work_drafts_refresh",
+    "safetyMinutes": 60,
+    "coveredBySafetyCall": "el aviso de salud del refresco (checkRefreshHealth), que avisa a lo sumo una vez por dia"
+  },
+  { "path": "bg-collect", "sqlFunction": "private.cron_work_bg_collect", "safetyMinutes": 1440 }
+]

@@ -51,7 +51,7 @@ NO reescribir (ya existe en ZernFlow, solo verificar/extender):
 - Broadcasts (tablas y UI del fork; desde el 3/11/2026 rehechos con canal, filtros de Contactos y cola de envíos: ver "Broadcasts y la cola de envíos").
 - Webhook event ledger para idempotencia (tabla `webhook_events`).
 - Flow versions (historial al publicar).
-- Realtime en `conversations` y `messages`.
+- Realtime en `conversations` (`messages` salio de la publicacion en la 00327: nadie la escuchaba; ver "Los cron y su guarda").
 - Integracion base con Zernio para Instagram (DMs, comentarios, story replies).
 
 # Stack
@@ -2260,6 +2260,30 @@ Dos cosas que se pisaban: el barrido que cierra las conversaciones inactivas y e
 ## Migracion
 
 `00306_closable_inactive_conversations` (aditiva, una funcion de lectura) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 7/11/2026 UTC (version `20261107060614`), con los permisos comprobados (solo `service_role`) y la funcion devolviendo las mismas 165 conversaciones que un conteo independiente. La `00307` y la `00308` son de Grabaciones (Etapa 5). **La proxima libre es la `00309`** (confirmar con `list_migrations` y las ramas locales).
+
+# Los cron y su guarda (8/11/2026)
+
+El 8/11/2026 la base quedo "Unhealthy": pg_cron llamaba a la app ~16.500 veces por dia aunque no hubiera nada que hacer (`agent-bursts` y `send-queue` cada 15 s, `jobs`, `sequences` y `automation-events` cada minuto). Desde la 00327 cada cron pasa antes por una guarda en SQL. Detalle, la tabla de que mira cada una y la medicion en [docs/crons.md](docs/crons.md).
+
+## Lo que no se puede romper
+
+- **La guarda copia el `WHERE` del handler**: `private.cron_work_<ruta>` mira lo mismo que `app/api/cron/<ruta>`. **Si un handler cambia, cambia su guarda** en una migracion nueva: `lib/cron/guards.test.ts` ata cada umbral a la constante del codigo y tiene una "alarma" con lo que llama cada handler (un barrido nuevo lo hace fallar). Lo que la guarda no mira a proposito lo cubre la llamada de seguridad y se anota en `coveredBySafetyCall` (`lib/cron/guards.json`).
+- **Ante la duda, llama**: un error de la guarda o una ruta sin guarda llaman a la app. Y cada cron llama igual una vez cada tanto (10 min los rapidos; 1 h, 2 h o 1 dia los lentos): si la guarda se equivoca, se pierde ese rato, nunca el trabajo. Mira 5 s hacia adelante en los limites de arriba.
+- **`private.call_app_cron` no se reescribe**: la envuelve `private.call_app_cron_if_work`. Un cron nuevo que llama a la app va con guarda o en `UNGUARDED_CRONS` con el motivo (el test lo exige). `bg-dispatch` y `metrics-sync` quedan sin guarda a proposito (deciden por la hora de cada negocio en TypeScript).
+- **`private.cron_guard_state` es UNLOGGED**: no escribe WAL y vacia es valida (se llama). Tiene los contadores de llamadas y salteadas.
+- **La decision tiene gemelas**: `private.cron_guard_decide` y `shouldCallCron`, con `lib/cron/guard-decide.cases.json`.
+- **Realtime publica exactamente `lib/realtime/tables.ts`** (las tablas que escucha la interfaz; lo compara `lib/realtime/tables.test.ts`). Una tabla publicada que nadie escucha le cuesta a la base en cada cambio.
+- **Purgas**: `scheduled_jobs` completados y cancelados a los 30 dias, fallidos a los 90, pendientes nunca (`purge-scheduled-jobs`); `cron.job_run_details` a 1 dia.
+- En la plantilla de estudiantes, la poda deja `private.cron_work_jobs_extra` en `false` (no tiene webhooks propios).
+
+## Migracion
+
+`00327_cron_guards` (aditiva: el codigo no cambia; puede ir antes o despues de un deploy): **aplicada y registrada** el 8/11/2026 UTC (version `20261108050809`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-cron-guards` en verde. En los primeros 10 minutos todas las corridas salieron bien y, por ejemplo, `agent-bursts` corrio 41 veces y llamo a la app 2. **La proxima libre es la `00328`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-cron-guards.mjs   # despues de aplicar: decision SQL = TS, comandos, permisos, Realtime y cada guarda con y sin el dato justo
+node scripts/measure-cron-load.mjs    # antes y despues (solo lee)
+```
 
 # Buenas practicas de desarrollo
 
