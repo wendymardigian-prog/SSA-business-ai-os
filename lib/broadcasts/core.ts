@@ -249,10 +249,26 @@ export async function cancelBroadcast(service: Client, workspaceId: string, id: 
   return { ok: true };
 }
 
-/** Un borrador se puede borrar (nunca salió nada). Lo que se envió queda como historia. */
-export async function deleteBroadcastDraft(service: Client, workspaceId: string, id: string): Promise<CoreResult> {
-  const { data } = await service.from("broadcasts").delete().eq("id", id).eq("workspace_id", workspaceId).eq("status", "draft").select("id");
-  return data && data.length > 0 ? { ok: true } : fail("Solo se borra un borrador.");
+const DELETE_ERRORS: Record<string, string> = {
+  not_found: "No encontré ese broadcast.",
+  sending: "Se está enviando ahora: pausalo primero y después eliminalo.",
+  has_sends: "Este broadcast ya mandó mensajes: queda como historia y no se puede eliminar.",
+};
+
+/**
+ * Elimina un broadcast que nunca mandó nada (borrador, programado, pausado,
+ * cancelado o terminado con todos salteados), con sus destinatarios. Lo decide
+ * la base en una transacción (`delete_unsent_broadcast`, 00347): lo que se
+ * envió queda como historia.
+ */
+export async function deleteBroadcast(service: Client, workspaceId: string, id: string): Promise<CoreResult> {
+  const { data, error } = await service.rpc("delete_unsent_broadcast", { p_workspace_id: workspaceId, p_broadcast_id: id });
+  if (error) {
+    console.error("[broadcasts] no pude eliminar:", error.message);
+    return fail("No pude eliminar el broadcast. Probá de nuevo.");
+  }
+  if (data === "deleted") return { ok: true };
+  return fail(DELETE_ERRORS[String(data)] ?? "No pude eliminar el broadcast. Probá de nuevo.");
 }
 
 /** Vuelve a habilitar un carril que se pausó solo por fallos seguidos. */

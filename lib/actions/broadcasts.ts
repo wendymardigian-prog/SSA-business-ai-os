@@ -15,7 +15,7 @@ import { broadcastVariables, cleanVariants, pickVariant, renderChatMessage, rend
 import {
   cancelBroadcast,
   createBroadcastDraft,
-  deleteBroadcastDraft,
+  deleteBroadcast,
   pauseBroadcast,
   queueBroadcast,
   resumeBroadcast,
@@ -218,10 +218,12 @@ export async function cancelBroadcastAction(id: string): Promise<Result> {
   return res;
 }
 
-export async function deleteBroadcastDraftAction(id: string): Promise<Result> {
+/** Elimina un broadcast que nunca mandó nada, con sus destinatarios en la cola. */
+export async function deleteBroadcastAction(id: string): Promise<Result> {
   const ctx = await getPermissionAction("broadcasts.manage");
   if (!ctx) return NO_PERMISSION;
-  const res = await deleteBroadcastDraft(await createServiceClient(), ctx.workspace.id, id);
+  if (!UUID.test(id)) return { ok: false, error: "No encontré ese broadcast." };
+  const res = await deleteBroadcast(await createServiceClient(), ctx.workspace.id, id);
   if (res.ok) done();
   return res;
 }
