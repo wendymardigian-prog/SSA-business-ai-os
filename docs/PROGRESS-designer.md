@@ -830,6 +830,56 @@ Auditor Opus de solo lectura, dos pasadas (8/11/2026 UTC). **Veredicto final: to
 - [x] F69 — Plantilla clonable · prueba: `npx vitest run scripts/plantilla` 82/82; `export-template` común limpio (4.507 archivos, sin restos identificables); ningún `@plantilla-quitar` en el módulo; punto de extensión de variables vacío; sin nombres reales. El perfil de estudiantes queda para la sincronización de BAIOS (PENDIENTE, «Cierre (Ola 5)») · auditado: cumple (auditoría final)
 - [x] F70 — Revisión visual y responsive · prueba: parcial (lista, modal Nuevo con sus 3 pasos y el paso Archivo, Ajustes y el 404 del link, a 1440 y 390 px, claro y oscuro; se arregló el título truncado); lo demás anotado en PENDIENTE («Cierre (Ola 5): revisión visual») con motivo y decisión · auditado: anotado (auditoría final)
 
+## Definición de listo: corrida de cierre (8/11/2026 UTC)
+
+- `npx vitest run`: **1413 archivos y 18.774 tests en verde** (con la rama al día con `main`, `09eb4d1`, y la 00326).
+- `npm run build`: compila. `npm run lint`: 0 errores, 37 avisos (los mismos del punto de partida).
+- `render/`: `node --test` 57/57. `npx vitest run scripts/plantilla`: 82/82. `export-template` común: limpio.
+- Huellas de `create_sale`, `find_or_create_contact`, `find_or_link_contact` y `submit_form_response`: **iguales** al punto de partida.
+- `verify-*` de a uno con el candado (las 37 que pasaban al empezar + `verify-designer` entero): **38 de 38 en 0**. La primera corrida dio 5 en rojo (`ads-attribution`, `commissions`, `expenses`, `organic-attribution`, `payment-methods`) por la huella y las reglas de `resolve_meta_match`. Las había cambiado la 00318 (conciliación de anuncios, ya en `main`) y esta rama todavía tenía los scripts viejos. Con la rama al día con `main`, las 5 dan 0. Al poner la rama al día apareció además la regresión del CHECK de `agent_runs.source` (00326).
+- Las 7 que fallaban al empezar (`attribution`, `booking-concurrency`, `broadcasts`, `chat-core`, `eod`, `student-schema`, `webhook`) no se corrieron: son fallas previas que no tocan el módulo.
+
+| Script | Resultado | Duración |
+|---|---|---|
+| `verify-designer` | ✅ 0 (2ª corrida, con la rama al día con `main`) | 222s |
+| `verify-rls` | ✅ 0 | 126s |
+| `verify-roles` | ✅ 0 | 96s |
+| `verify-permissions-matrix` | ✅ 0 | 206s |
+| `verify-content` | ✅ 0 | 22s |
+| `verify-contact-merge` | ✅ 0 | 100s |
+| `verify-forms` | ✅ 0 | 261s |
+| `verify-flow-runs` | ✅ 0 | 16s |
+| `verify-flow-metrics` | ✅ 0 | 7s |
+| `verify-workspace-isolation` | ✅ 0 | 11s |
+| `verify-account` | ✅ 0 | 9s |
+| `verify-ads-attribution` | ✅ 0 (2ª corrida, con la rama al día con `main`) | 172s |
+| `verify-audit-visibility` | ✅ 0 | 17s |
+| `verify-calls` | ✅ 0 | 62s |
+| `verify-chat-awaiting` | ✅ 0 | 33s |
+| `verify-chat-media` | ✅ 0 | 16s |
+| `verify-commissions` | ✅ 0 (2ª corrida, con la rama al día con `main`) | 84s |
+| `verify-contact-pipeline` | ✅ 0 | 14s |
+| `verify-contacts-single-entry` | ✅ 0 | 31s |
+| `verify-crm` | ✅ 0 | 7s |
+| `verify-csv-import` | ✅ 0 | 6s |
+| `verify-dashboards` | ✅ 0 | 13s |
+| `verify-email-subscription` | ✅ 0 | 44s |
+| `verify-enrichment` | ✅ 0 | 6s |
+| `verify-expenses` | ✅ 0 (2ª corrida, con la rama al día con `main`) | 86s |
+| `verify-inbound-webhooks` | ✅ 0 | 42s |
+| `verify-inbox-filters` | ✅ 0 | 11s |
+| `verify-knowledge` | ✅ 0 | 5s |
+| `verify-message-persistence` | ✅ 0 | 5s |
+| `verify-optout` | ✅ 0 | 9s |
+| `verify-organic-attribution` | ✅ 0 (2ª corrida, con la rama al día con `main`) | 72s |
+| `verify-payment-methods` | ✅ 0 (2ª corrida, con la rama al día con `main`) | 22s |
+| `verify-publishing` | ✅ 0 | 38s |
+| `verify-sales` | ✅ 0 | 125s |
+| `verify-scheduling` | ✅ 0 | 41s |
+| `verify-tasks` | ✅ 0 | 162s |
+| `verify-unidentified-contacts` | ✅ 0 | 11s |
+| `verify-whatsapp-groups` | ✅ 0 | 16s |
+
 ## Auditoría final F1–F70 (8/11/2026 UTC)
 
 Auditor Opus nuevo, de solo lectura, dos pasadas sobre `566f58b` y `9b9a59f`. **Veredicto final: F1–F70 sin ningún «falta»** (lo no construido o no revisado está en PENDIENTE con motivo y decisión).
