@@ -38,10 +38,11 @@ export function PublishMenu(props: PublishMenuProps) {
   const [reason, setReason] = useState("");
   const [confirmUnpublish, setConfirmUnpublish] = useState(false);
   const [voidedLocally, setVoidedLocally] = useState(false);
+  const [republished, setRepublished] = useState(false);
 
   // Cuando el servidor manda valores nuevos (después de un `router.refresh()`), se toman.
-  const [seen, setSeen] = useState({ published: props.published, allowDownload: props.allowDownload, allowIndexing: props.allowIndexing, link: props.links?.link ?? null, status: props.verification?.status ?? null });
-  const incoming = { published: props.published, allowDownload: props.allowDownload, allowIndexing: props.allowIndexing, link: props.links?.link ?? null, status: props.verification?.status ?? null };
+  const [seen, setSeen] = useState({ published: props.published, allowDownload: props.allowDownload, allowIndexing: props.allowIndexing, link: props.links?.link ?? null, status: props.verification?.status ?? null, stale: props.stale === true });
+  const incoming = { published: props.published, allowDownload: props.allowDownload, allowIndexing: props.allowIndexing, link: props.links?.link ?? null, status: props.verification?.status ?? null, stale: props.stale === true };
   if (JSON.stringify(seen) !== JSON.stringify(incoming)) {
     setSeen(incoming);
     setPublished(incoming.published);
@@ -49,10 +50,11 @@ export function PublishMenu(props: PublishMenuProps) {
     setAllowIndexing(incoming.allowIndexing);
     setLink(incoming.link);
     setVoidedLocally(false);
+    setRepublished(false);
   }
 
   const verification = props.verification && voidedLocally ? { ...props.verification, status: "void" as const } : props.verification;
-  const view = publishMenuView({ format: props.format, can: props.can, verification }, { published, link });
+  const view = publishMenuView({ format: props.format, can: props.can, verification }, { published, link, stale: props.stale === true && !republished });
   if (!view.visible) return null;
 
   async function run(kind: Busy, work: () => Promise<{ ok: boolean; error?: string }>, onOk: () => void) {
@@ -79,6 +81,7 @@ export function PublishMenu(props: PublishMenuProps) {
       },
       () => {
         setPublished(true);
+        setRepublished(true);
         setNotice({ tone: "ok", text: "Publicado: el link ya funciona." });
         router.refresh();
       },
@@ -153,7 +156,7 @@ export function PublishMenu(props: PublishMenuProps) {
         trigger={
           view.trigger.published ? (
             <>
-              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span aria-hidden="true" className={`h-2 w-2 rounded-full ${view.staleNotice ? "bg-warn" : "bg-emerald-500"}`} />
               Publicado ▾
             </>
           ) : (
@@ -207,6 +210,14 @@ export function PublishMenu(props: PublishMenuProps) {
           <div className="flex flex-col gap-2">
             <h3 className="px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{view.trigger.published ? "Publicado" : "Publicar"}</h3>
             {view.note && <p className="px-2 text-xs text-muted-foreground">{view.note}</p>}
+            {view.staleNotice && (
+              <div className="flex flex-col gap-2 rounded-lg border border-warn/40 bg-warn/10 p-2.5">
+                <p className="text-xs text-foreground">{view.staleNotice.text}: el link todavía muestra la versión anterior.</p>
+                <button type="button" onClick={publishNow} disabled={busy !== null} className="h-8 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                  {busy === "publish" ? "Publicando…" : view.staleNotice.button}
+                </button>
+              </div>
+            )}
 
             {view.link && (
               <input

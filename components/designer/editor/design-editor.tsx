@@ -31,6 +31,7 @@ import { commandForKey } from "@/lib/designer/screens/keyboard";
 import { applyOrder, orderAvailability, toggleLocked } from "@/lib/designer/screens/layers";
 import { aiNoticeText, PANEL_LABELS, panelTabs, parsePanel, type PanelId } from "@/lib/designer/screens/panels";
 import { addPage, deletePage, duplicatePage, followSelected, movePage } from "@/lib/designer/screens/pages";
+import { hasUnpublishedChanges } from "@/lib/designer/screens/stale";
 import { AUTOSAVE_DELAY_MS, hasUnsavedChanges, initialSaveState, isOfflineError, needsSave, saveReducer } from "@/lib/designer/screens/save";
 import { clear, EMPTY_SELECTION, selectAll, selectOnly, soleSelected, startEditing, stopEditing, type SelectionState } from "@/lib/designer/screens/selection";
 import { keyboardNudge } from "@/lib/designer/screens/canvas-session";
@@ -76,7 +77,8 @@ export function DesignEditor(props: DesignEditorProps) {
   const { record, can } = props;
   const router = useRouter();
   const isTemplate = record.kind === "template";
-  const readOnly = !can.edit;
+  // Sin `designer.edit`, o con una pieza emitida (una generación), el editor es de solo lectura: no se dibuja ningún control de edición.
+  const readOnly = !can.edit || !!record.generation;
 
   // ─── El documento, con su historial ─────────────────────────────────────
   const [hist, setHistState] = useState<History<DesignDoc>>(() => createHistory(record.doc));
@@ -115,7 +117,7 @@ export function DesignEditor(props: DesignEditorProps) {
   const [configParam, setConfigParam] = useUrlParam("config");
   const [tabParam] = useUrlParam("tab");
   const [aiParam, setAiParam] = useUrlParam("ia");
-  const panel = parsePanel(panelParam, isTemplate, record.origin);
+  const panel = parsePanel(panelParam, isTemplate, record.origin, !readOnly);
   const [sheet, setSheet] = useState<PanelId | null>(null);
   const [elementTab, setElementTab] = useState<"style" | "order" | "more">("style");
   const [menu, setMenu] = useState<{ mode: "insert" | "swap"; anchor: { left: number; top: number; bottom: number }; target?: { id: string; index: number; key: string } } | null>(null);
@@ -562,6 +564,7 @@ export function DesignEditor(props: DesignEditorProps) {
         links={links}
         can={{ publish: can.publish, generate: can.generate }}
         verification={record.generation?.verify ? { docType: record.generation.docType, docTypeLabel: record.generation.docTypeLabel, status: record.voidInfo?.status ?? "valid" } : null}
+        stale={hasUnpublishedChanges({ published: record.published, isGeneration: !!record.generation, serverDiffers: record.publishedDiffers, loadedRev: record.rev, currentRev: save.rev, dirty: hasUnsavedChanges(save) })}
       />
     ),
   };
@@ -631,7 +634,7 @@ export function DesignEditor(props: DesignEditorProps) {
           {/* Panel izquierdo: IA · Agregar · Capas · Variables (en el celular son hojas desde la barra de abajo). */}
           <aside className="hidden min-h-0 flex-col border-r border-border bg-card sm:flex" aria-label="Panel">
             <div role="tablist" aria-label="Panel del editor" className="flex gap-0.5 border-b border-border px-2.5 py-2">
-              {panelTabs(isTemplate).map((id) => (
+              {panelTabs(isTemplate, !readOnly).map((id) => (
                 <button key={id} type="button" role="tab" aria-selected={panel === id} onClick={() => setPanelParam(id, "replace")} className={cn("rounded-lg px-3 py-1.5 text-[13px] font-medium", panel === id ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")}>
                   {PANEL_LABELS[id]}
                 </button>
@@ -767,7 +770,7 @@ export function DesignEditor(props: DesignEditorProps) {
             </div>
           )}
           <nav aria-label="Paneles" className="fixed inset-x-0 bottom-0 z-40 flex h-14 items-stretch border-t border-border bg-card pb-[env(safe-area-inset-bottom)] sm:hidden">
-            {panelTabs(isTemplate).map((id) => {
+            {panelTabs(isTemplate, !readOnly).map((id) => {
               const Icon = PANEL_ICON[id];
               return (
                 <button key={id} type="button" onClick={() => setSheet(id)} className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground">

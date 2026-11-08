@@ -253,6 +253,8 @@ export interface PublishMenuProps {
   can: Pick<DesignerCan, "publish" | "generate">;
   /** Si es una generación con verificación (anular desde el menú). */
   verification: { docType: DocType | null; docTypeLabel: string | null; status: "valid" | "void" } | null;
+  /** Está publicado y se editó después: el link muestra una versión vieja. El menú ofrece «Publicar cambios». */
+  stale?: boolean;
 }
 
 export interface ExportMenuProps {

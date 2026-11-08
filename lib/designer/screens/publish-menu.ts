@@ -18,7 +18,13 @@ export interface PublishMenuState {
   published: boolean;
   /** El link ya armado con el dominio del negocio (viene del servidor), o null si todavía no se conoce. */
   link: string | null;
+  /** Publicado y editado después de publicar (F48b). */
+  stale?: boolean;
 }
+
+/** Lo que dice el menú cuando el link muestra una versión vieja. */
+export const STALE_TEXT = "Hay cambios sin publicar";
+export const STALE_BUTTON = "Publicar cambios";
 
 export interface PublishMenuView {
   /** Si hay algo para mostrar. */
@@ -33,6 +39,8 @@ export interface PublishMenuView {
   downloadToggle: boolean;
   indexingToggle: boolean;
   publishNow: boolean;
+  /** «Hay cambios sin publicar» con el botón «Publicar cambios»: solo quien puede publicar, y solo si está publicado. */
+  staleNotice: { text: string; button: string } | null;
   unpublish: boolean;
   copy: boolean;
   viewAsPublic: boolean;
@@ -55,6 +63,7 @@ export function publishMenuView(props: Pick<PublishMenuProps, "format" | "can" |
     downloadToggle: can.publish && !web,
     indexingToggle: can.publish && web,
     publishNow: can.publish && !state.published,
+    staleNotice: can.publish && state.published && state.stale === true ? { text: STALE_TEXT, button: STALE_BUTTON } : null,
     unpublish: can.publish && state.published,
     copy: linkLive,
     viewAsPublic: linkLive,
