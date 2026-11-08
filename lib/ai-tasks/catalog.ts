@@ -18,6 +18,7 @@ export const AI_TASK_IDS = [
   "audio_transcription",
   "media_description",
   "ads_analysis",
+  "ads_matching",
   // Llamadas (Fathom + analizador): tres tareas, dos con configuracion propia. // @plantilla-quitar(llamadas)
   "call_classification", // @plantilla-quitar(llamadas)
   "call_analysis", // @plantilla-quitar(llamadas)
@@ -213,6 +214,20 @@ const BASE_TASKS: Record<Exclude<AiTaskId, CallTaskId>, AiTaskDef> = {
     hasModelPicker: true,
     onDemand: true,
     source: "ads_analysis",
+  },
+  ads_matching: {
+    id: "ads_matching",
+    name: "Vincular anuncios",
+    description: "Propone a qué anuncio de Meta corresponde cada grupo de visitas que no se pudo vincular solo. Nunca vincula: vos confirmás.",
+    icon: "Tags",
+    configurable: false,
+    canTurnOff: false,
+    control: { kind: "on_demand", where: "cuando alguien aprieta “Proponer con IA” en Anuncios → Sin vincular" },
+    instructions: { editable: true, variables: [ESTILO] },
+    modelSource: "El que elijas acá; sin elección, el modelo por defecto del negocio.",
+    hasModelPicker: true,
+    onDemand: true,
+    source: "ads_matching",
   },
 };
 

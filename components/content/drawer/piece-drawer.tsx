@@ -30,6 +30,17 @@ import {
   retryFailedNetworks,
   returnPost,
 } from "@/lib/actions/content-review";
+import { designFromPiece, keepPieceFiles, syncToPiece } from "@/lib/actions/designer/content";
+import {
+  DESIGN_BUTTON_TEXT,
+  designChangedNotices,
+  designGroupViews,
+  designerActions,
+  hasPendingSync,
+  mergeSyncedFiles,
+  preparingDesigns,
+  showsDesignerSection,
+} from "@/lib/content/piece-designs";
 import { summarizeNetwork } from "@/lib/content/editor";
 import { validateNetwork } from "@/lib/content/validation";
 import { findScriptKeywords } from "@/lib/content/keywords";
@@ -62,6 +73,7 @@ import { isManualStatus, type BoardColumn } from "@/lib/content/status";
 import { platformLabel } from "@/lib/platforms";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { MediaUploader } from "../media-uploader";
+import { DesignChangedNotices, PieceDesignerBar } from "./piece-designer";
 import { VersionHistory } from "../version-history";
 import { NetworkBadge } from "../network-badge";
 import { NetworkRow } from "../editor/network-row";
@@ -105,6 +117,9 @@ import { useToast } from "./toast";
  */
 
 const COPY_POLL_MS = 4_000;
+/** Mientras el servidor arma los archivos de un diseño, el drawer vuelve a preguntar cada tanto (un par de minutos). */
+const DESIGN_POLL_MS = 8_000;
+const DESIGN_POLL_MAX = 15;
 
 export function PieceDrawer({
   data,
@@ -314,9 +329,14 @@ export function PieceDrawer({
   // Es estado derivado de una prop (se ajusta en el render cuando cambia la
   // fecha de la pieza), no un efecto que lo corrija un render despues.
   const [seenUpdatedAt, setSeenUpdatedAt] = useState(post.updatedAt);
+  // Los archivos que la sincronizacion de un diseno le puso a una red (DS8) entran al borrador aunque haya cambios sin guardar
+  // en otro campo: si no, al guardar se mandarian los de antes y la red quedaria sin ellos.
+  const [seenNetworks, setSeenNetworks] = useState(post.networks);
   if (post.updatedAt !== seenUpdatedAt) {
     setSeenUpdatedAt(post.updatedAt);
+    setSeenNetworks(post.networks);
     if (!dirty) setDraft(draftFromPost(post));
+    else setDraft((d) => ({ ...d, networks: mergeSyncedFiles(d.networks, seenNetworks, post.networks) }));
   }
   useEffect(() => {
     if (!dirtyRef.current) {
@@ -419,6 +439,28 @@ export function PieceDrawer({
     publications,
   });
 
+  // Lo del Diseñador IA (DS8): los archivos de un diseño se agrupan en la biblioteca, el aviso «El diseño cambió» va arriba
+  // de Archivos y los botones salen solo con permiso. Sin diseños ni permisos, no se dibuja nada.
+  const stateByPlatform = Object.fromEntries(draft.networks.map((n, i) => [n.platform, networkStates[i].id]));
+  const designs = data.designer?.designs ?? [];
+  const groupViews = designGroupViews({ media: library, designs, networkStates: stateByPlatform, canView: data.designer?.canView ?? false });
+  const preparing = preparingDesigns({ media: library, designs });
+  const designNotices = designChangedNotices(groupViews);
+  const designActions = designerActions({ designer: data.designer, networks: draft.networks });
+  const syncingDesign = hasPendingSync(groupViews, preparing);
+  const [designing, setDesigning] = useState(false);
+
+  useEffect(() => {
+    if (!syncingDesign) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      if (tries > DESIGN_POLL_MAX) clearInterval(timer);
+      else router.refresh();
+    }, DESIGN_POLL_MS);
+    return () => clearInterval(timer);
+  }, [syncingDesign, router]);
+
   const statuses = statusOptions(
     { create: perms.create, approve: perms.approve, publish: perms.publish, isAuthor: perms.isAuthor },
     post.status,
@@ -462,6 +504,22 @@ export function PieceDrawer({
         }
       }
       router.refresh();
+    });
+  }
+
+  /** «✦ Diseñar con el Diseñador IA»: lo escrito se guarda antes (el pedido a la IA sale del guion y el caption guardados). */
+  function startDesign(platform: string) {
+    setDesigning(true);
+    startTransition(async () => {
+      const result = await saved(() => designFromPiece({ postId: post.id, platform }));
+      setDesigning(false);
+      if (!result.ok || !("data" in result)) {
+        toast.push({ tone: "error", text: result.error ?? "No se pudo crear el diseño" });
+        router.refresh();
+        return;
+      }
+      if (result.data.notice) toast.push({ tone: "warning", text: result.data.notice });
+      router.push(result.data.href);
     });
   }
 
@@ -906,6 +964,17 @@ export function PieceDrawer({
           </section>
         )}
 
+        {/* ── El diseño cambió (DS8, F64): arriba de Archivos, cuando la red está programada y el diseño es más nuevo ── */}
+        <DesignChangedNotices
+          notices={designNotices}
+          pending={pending}
+          canAct={data.designer?.canDesign ?? false}
+          onUpdate={(designId) =>
+            run(() => saved(() => syncToPiece({ designId, force: true })), "Actualizando los archivos con la versión nueva del diseño.")
+          }
+          onKeep={(designId) => run(() => keepPieceFiles({ designId }), "Quedan los archivos que tenía la pieza.")}
+        />
+
         {/* ── Archivos de la pieza (F92) ── */}
         <section aria-labelledby="archivos">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -916,12 +985,21 @@ export function PieceDrawer({
               Se suben una vez. Después cada red elige cuáles publica y en qué orden.
             </p>
           </div>
+          {showsDesignerSection(designActions, groupViews, preparing) && (
+            <PieceDesignerBar
+              actions={designActions}
+              busy={designing}
+              status={preparing.length > 0 ? DESIGN_BUTTON_TEXT.preparing : groupViews.some((v) => v.status === "pending") ? DESIGN_BUTTON_TEXT.updating : null}
+              onDesign={startDesign}
+            />
+          )}
           <div className="mt-1.5">
             <MediaUploader
               postId={post.id}
               media={library}
               usage={usage}
               canEdit={editable}
+              groups={groupViews.map((v) => ({ designId: v.designId, heading: v.heading, openHref: v.openHref, entries: v.entries }))}
               onRemoved={(fileId) =>
                 // El servidor ya lo saco de las redes; el borrador local
                 // tiene que enterarse o lo volveria a mostrar y a guardar.

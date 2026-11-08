@@ -8,6 +8,13 @@
  * Módulo sin imports: `app/robots.ts` lo usa también en un clon sin sitio público.
  */
 
+/**
+ * Lo que puede leer CUALQUIER robot: el link público de un diseño (`/d/<código>`). Cada página lleva su
+ * `noindex`, salvo una página web publicada con "Permitir que aparezca en buscadores" (Diseñador IA): sin
+ * esto, esa opción no haría nada porque el robot ni la leería. Los códigos son al azar y no se pueden listar.
+ */
+export const ALWAYS_CRAWLABLE = ["/d/"];
+
 export const PREVIEW_BOTS = [
   "facebookexternalhit",
   "Facebot",
@@ -22,11 +29,12 @@ export const PREVIEW_BOTS = [
 /**
  * Un robot con grupo propio ignora el de `*`: las páginas del sitio del clon se le repiten
  * acá. `/l/` es el link con seguimiento: el lector lo sigue hasta la página de destino.
+ * `/d/` es el link público de un diseño (Diseñador IA): la tarjeta lleva su imagen.
  */
 export function previewBotRule(sitePaths: string[] = []) {
   return {
     userAgent: PREVIEW_BOTS,
-    allow: ["/calendario/", "/f/", "/l/", ...sitePaths],
+    allow: ["/calendario/", "/f/", "/l/", "/d/", ...sitePaths],
     disallow: ["/calendario/agenda/", "/"],
   };
 }

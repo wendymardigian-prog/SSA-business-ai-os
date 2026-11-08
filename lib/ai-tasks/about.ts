@@ -7,6 +7,7 @@ import { DEFAULT_EMBEDDING_MODEL } from "@/lib/knowledge/voyage";
 import { MAX_AUDIO_BYTES } from "@/lib/ai/transcribe";
 import { MEDIA_DESCRIPTION_MAX_CHARS } from "@/lib/jobs/handlers/describe-media";
 import { MAX_ADS, MAX_ADSETS, MAX_CAMPAIGNS } from "@/lib/meta/ai-analysis";
+import { AI_MATCH_MAX_ADS, AI_MATCH_MAX_GROUPS } from "@/lib/attribution/ai-match";
 import type { AiTaskId } from "./catalog";
 
 /**
@@ -165,6 +166,23 @@ export function taskAbout(id: AiTaskId): TaskAbout {
         writes: ["Nada en la base: el análisis se muestra en el panel del dashboard."],
         limits: [
           `Lee hasta ${n(MAX_CAMPAIGNS)} campañas, ${n(MAX_ADSETS)} conjuntos y ${n(MAX_ADS)} anuncios (los de más gasto).`,
+          "Frena si se llegó a un tope de gasto de IA del negocio.",
+        ],
+        cost: TOKENS,
+      };
+    case "ads_matching":
+      return {
+        trigger: "Cuando alguien aprieta “Proponer con IA” en Anuncios → Sin vincular. Nunca corre sola.",
+        reads: [
+          "Los grupos que las reglas no resolvieron: sus UTMs y cuántas personas trae cada uno (nunca nombres ni datos de contacto).",
+          "El catálogo de campañas, conjuntos y anuncios, y ejemplos de grupos que ya están vinculados.",
+          "Tus instrucciones de la pestaña Instrucciones.",
+        ],
+        decides: ["A qué anuncio, conjunto o campaña corresponde cada grupo, o si no es un anuncio, con una frase de por qué."],
+        writes: ["Nada sola: muestra propuestas. Cada una que confirmás crea una regla que vincula ese grupo y los que lleguen igual."],
+        limits: [
+          `Hasta ${n(AI_MATCH_MAX_GROUPS)} grupos y ${n(AI_MATCH_MAX_ADS)} anuncios por corrida.`,
+          "Un id que no esté en el catálogo se descarta.",
           "Frena si se llegó a un tope de gasto de IA del negocio.",
         ],
         cost: TOKENS,

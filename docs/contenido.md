@@ -393,3 +393,14 @@ compara. Tocar un grupo de la tabla filtra por él.
 - **Leads:** contactos cuyo **primer** contacto fue un comentario en esas
   publicaciones. Solo Instagram y TikTok lo miden; en otra red es un guion, no un
   cero.
+
+## Diseños del Diseñador IA en una pieza (noviembre 2026)
+
+Una pieza puede tener archivos que salen de un diseño del Diseñador IA. Detalle en [designer.md](designer.md).
+
+- **Desde la pieza**: en Archivos, «✦ Diseñar con el Diseñador IA» (con `content.create` y `designer.edit`) crea el diseño con el formato de la red (`lib/designer/content-map.ts`) y le pide a la IA un primer borrador con el guion (en un carrusel, una página por parte), el caption, el pilar, la oferta y la etapa. El editor muestra «← Volver a la pieza».
+- **Desde el diseño**: «Usar en contenido» crea una pieza nueva en Borrador o vincula una existente.
+- **Sincronizar** (`design_content_sync`): los archivos van al bucket de Contenido con id estable (`design-<diseño>-<n>`, o `design-<diseño>-pdf` para el carrusel PDF de LinkedIn), y la red queda con esos archivos en orden. Se encola solo al guardar un diseño vinculado (30 s después, juntando cambios). Según el estado de cada red: borrador, en producción, en revisión o aprobada sin fecha → se actualiza sola; **programada o con la publicación fallida → solo avisa** («El diseño cambió · Actualizar los archivos / Dejar como está»); **publicada (también a mano) → nunca se toca**.
+- **Lo que NO cambió**: publicar, programar, el borrado de media publicada a los 30 días y los permisos de Contenido. Desvincular o archivar un diseño no borra archivos de la pieza. Los tests de caracterización del drawer y de `media-uploader` se escribieron antes de tocarlos y no cambiaron.
+- En la biblioteca, los archivos de un diseño se agrupan bajo «Del diseño <nombre> · N archivos · vinculado»; en el tablero, la tarjeta lleva un destello.
+

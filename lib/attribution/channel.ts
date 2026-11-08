@@ -67,6 +67,23 @@ const lowered = (value: string | null | undefined): string | null => {
 /** Hay un dato: texto no vacio despues de recortar. (Gemela de `nullif(btrim(x), '') is not null`.) */
 const has = (value: string | null | undefined): boolean => typeof value === "string" && value.trim() !== "";
 
+/** Los `medium` que pone el sistema segun de donde llego el toque, no la persona: ahi manda el utm_medium que llego. */
+const ORIGIN_MEDIUMS: readonly string[] = ["form", "booking", "webhook", "import", "manual"];
+
+/**
+ * El medium con el que se calcula el canal (`private.touch_effective_medium`, 00318). Un formulario o una reunion
+ * guardan `medium = 'form'` / `'booking'` y el utm_medium que llego en `raw.utm.utm_medium` (o `raw.utm_medium`):
+ * sin esto, un anuncio pago quedaba «directo». Cualquier otro medium se respeta tal cual.
+ */
+export function effectiveTouchMedium(medium: string | null | undefined, raw: unknown): string | null {
+  const own = lowered(medium);
+  if (own !== null && !ORIGIN_MEDIUMS.includes(own)) return medium ?? null;
+  const r = raw && typeof raw === "object" ? (raw as { utm?: { utm_medium?: unknown } | null; utm_medium?: unknown }) : null;
+  const fromRaw = r ? (r.utm?.utm_medium ?? r.utm_medium) : null;
+  const utm = typeof fromRaw === "string" ? lowered(fromRaw) : null;
+  return utm ?? medium ?? null;
+}
+
 /** El canal de un toque. Nunca lanza: ante cualquier cosa rara, `direct`. */
 export function touchChannel(input: TouchChannelInput | null | undefined): TouchChannel {
   if (!input || typeof input !== "object") return "direct";

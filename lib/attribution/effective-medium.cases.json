@@ -1,0 +1,15 @@
+{
+  "_comment": "Casos compartidos entre private.touch_effective_medium (SQL, 00318) y effectiveTouchMedium (TS). Corren en lib/attribution/channel.test.ts y en scripts/verify-ads-attribution.mjs.",
+  "cases": [
+    { "name": "formulario con utm_medium pago en raw.utm", "medium": "form", "raw": { "utm": { "utm_medium": "paid" } }, "expected": "paid" },
+    { "name": "formulario con utm_medium social: organico", "medium": "form", "raw": { "utm": { "utm_medium": "Social" } }, "expected": "social" },
+    { "name": "reunion con utm_medium en raw.utm", "medium": "booking", "raw": { "utm": { "utm_medium": "cpc" } }, "expected": "cpc" },
+    { "name": "utm_medium plano en raw", "medium": "webhook", "raw": { "utm_medium": "paid_social" }, "expected": "paid_social" },
+    { "name": "formulario sin utm_medium: queda form", "medium": "form", "raw": { "utm": {} }, "expected": "form" },
+    { "name": "formulario sin raw", "medium": "form", "raw": null, "expected": "form" },
+    { "name": "un medium propio no se toca (DM de un anuncio)", "medium": "paid_social", "raw": { "utm": { "utm_medium": "social" } }, "expected": "paid_social" },
+    { "name": "un comentario se queda comentario", "medium": "comment", "raw": null, "expected": "comment" },
+    { "name": "sin medium y con utm_medium", "medium": null, "raw": { "utm": { "utm_medium": "paid" } }, "expected": "paid" },
+    { "name": "utm_medium vacio: el de la columna", "medium": "import", "raw": { "utm": { "utm_medium": "  " } }, "expected": "import" }
+  ]
+}

@@ -12,6 +12,7 @@ import { CreateTaskPanel } from "./CreateTaskPanel"; // @plantilla-quitar(tareas
 import { CompleteTaskPanel } from "./CompleteTaskPanel"; // @plantilla-quitar(tareas)
 import { SendWhatsAppNumberPanel } from "./SendWhatsAppNumberPanel";
 import { SendPollPanel } from "./SendPollPanel";
+import { DesignGeneratePanel } from "./DesignGeneratePanel";
 import { PrivateReplyPanel } from "./PrivateReplyPanel";
 import type { AttributionPanelContext } from "./SendMessagePanel";
 import { SendEmailPanel } from "./SendEmailPanel";
@@ -47,6 +48,8 @@ interface ActionPanelProps {
   availableVariables?: string[];
   /** «Atribución de links» de «Responder por privado» (UTM y contar clics de los botones). */
   attributionContext?: AttributionPanelContext;
+  /** El rótulo de las variables del disparador (el texto de cada pregunta…), por ruta. */
+  variableLabels?: Record<string, string>;
 }
 
 interface ActionSubPanelProps {
@@ -55,7 +58,7 @@ interface ActionSubPanelProps {
   availableVariables?: string[];
 }
 
-export function ActionPanel({ data: rawData, onChange, availableVariables, attributionContext }: ActionPanelProps) {
+export function ActionPanel({ data: rawData, onChange, availableVariables, attributionContext, variableLabels }: ActionPanelProps) {
   const data = rawData as ActionPanelData;
   const actionType = data.actionType || "addTag";
 
@@ -121,6 +124,9 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
       return <CancelBookingPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
     case "set_booking_status" as NodeType:
       return <SetBookingStatusPanel data={rawData} onChange={onChange} />;
+    // Diseñador IA (F57): una pieza desde una plantilla para el contacto del disparador.
+    case "designGenerate" as NodeType:
+      return <DesignGeneratePanel data={rawData} onChange={onChange} availableVariables={availableVariables} variableLabels={variableLabels} />;
     default:
       return (
         <p className="text-sm text-muted-foreground">

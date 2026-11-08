@@ -33,6 +33,18 @@
         "3091"
       ],
       "port": 3091
+    },
+    {
+      "name": "ssa-dev-disenador",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3095"
+      ],
+      "port": 3095
     }
   ]
 }

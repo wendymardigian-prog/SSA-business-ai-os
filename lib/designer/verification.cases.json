@@ -1,0 +1,182 @@
+[
+ {
+  "name": "apagada en un carrusel",
+  "input": {
+   "format": "v45",
+   "verify": false,
+   "doc_type": null,
+   "doc_type_label": null
+  },
+  "valid": true
+ },
+ {
+  "name": "apagada en carta, sin tipo",
+  "input": {
+   "format": "carta_h",
+   "verify": false,
+   "doc_type": null,
+   "doc_type_label": null
+  },
+  "valid": true
+ },
+ {
+  "name": "certificado en carta horizontal",
+  "input": {
+   "format": "carta_h",
+   "verify": true,
+   "doc_type": "certificado",
+   "doc_type_label": null
+  },
+  "valid": true
+ },
+ {
+  "name": "constancia en A4 vertical",
+  "input": {
+   "format": "a4_v",
+   "verify": true,
+   "doc_type": "constancia",
+   "doc_type_label": null
+  },
+  "valid": true
+ },
+ {
+  "name": "diploma en carta vertical",
+  "input": {
+   "format": "carta_v",
+   "verify": true,
+   "doc_type": "diploma",
+   "doc_type_label": null
+  },
+  "valid": true
+ },
+ {
+  "name": "otro con nombre en A4 horizontal",
+  "input": {
+   "format": "a4_h",
+   "verify": true,
+   "doc_type": "otro",
+   "doc_type_label": "Credencial"
+  },
+  "valid": true
+ },
+ {
+  "name": "tipo elegido pero apagada",
+  "input": {
+   "format": "carta_h",
+   "verify": false,
+   "doc_type": "diploma",
+   "doc_type_label": null
+  },
+  "valid": true
+ },
+ {
+  "name": "prendida en cuadrado",
+  "input": {
+   "format": "sq",
+   "verify": true,
+   "doc_type": "certificado",
+   "doc_type_label": null
+  },
+  "valid": false
+ },
+ {
+  "name": "prendida en 4:5",
+  "input": {
+   "format": "v45",
+   "verify": true,
+   "doc_type": "certificado",
+   "doc_type_label": null
+  },
+  "valid": false
+ },
+ {
+  "name": "prendida en historia",
+  "input": {
+   "format": "story",
+   "verify": true,
+   "doc_type": "certificado",
+   "doc_type_label": null
+  },
+  "valid": false
+ },
+ {
+  "name": "prendida en presentación",
+  "input": {
+   "format": "wide",
+   "verify": true,
+   "doc_type": "certificado",
+   "doc_type_label": null
+  },
+  "valid": false
+ },
+ {
+  "name": "prendida en página web",
+  "input": {
+   "format": "web",
+   "verify": true,
+   "doc_type": "certificado",
+   "doc_type_label": null
+  },
+  "valid": false
+ },
+ {
+  "name": "prendida sin tipo",
+  "input": {
+   "format": "carta_h",
+   "verify": true,
+   "doc_type": null,
+   "doc_type_label": null
+  },
+  "valid": false
+ },
+ {
+  "name": "otro sin nombre",
+  "input": {
+   "format": "carta_h",
+   "verify": true,
+   "doc_type": "otro",
+   "doc_type_label": null
+  },
+  "valid": false
+ },
+ {
+  "name": "otro con nombre vacío",
+  "input": {
+   "format": "carta_h",
+   "verify": true,
+   "doc_type": "otro",
+   "doc_type_label": "   "
+  },
+  "valid": false
+ },
+ {
+  "name": "otro con nombre de 41",
+  "input": {
+   "format": "carta_h",
+   "verify": true,
+   "doc_type": "otro",
+   "doc_type_label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "valid": false
+ },
+ {
+  "name": "nombre con un tipo que no es otro",
+  "input": {
+   "format": "carta_h",
+   "verify": true,
+   "doc_type": "certificado",
+   "doc_type_label": "Credencial"
+  },
+  "valid": false
+ },
+ {
+  "name": "tipo desconocido",
+  "input": {
+   "format": "carta_h",
+   "verify": false,
+   "doc_type": "titulo",
+   "doc_type_label": null
+  },
+  "valid": false
+ }
+]

@@ -45,6 +45,8 @@ const CONTACT_FREE_PREFIXES = [
   "eod.", "member.", "metrics.", "channel.", "report.",
   // Webhooks entrantes (Extra L): el envío (`webhook.payload.*`, `webhook.query.*`) viaja en las variables.  @plantilla-quitar(webhooks)
   "webhook.",
+  // Diseñador IA (F58): las salidas de «Generar desde plantilla» viajan en las variables.
+  "design.",
 ];
 const CONTACT_FREE_FIELDS = ["platform", "agent_active"];
 

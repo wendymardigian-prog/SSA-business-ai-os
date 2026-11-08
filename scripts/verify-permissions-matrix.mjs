@@ -219,6 +219,25 @@ try {
     T({ name: "contacts DELETE", table: "contacts", op: "delete", any: ["contacts.delete"], deny: ["contacts.edit", "contacts.merge"], member: false, base: ["contacts.view"],
       seed: () => svc.from("contacts").insert({ workspace_id: ws.id, display_name: `zz-test contacto ${uid()}` }).select("id").single() }),
 
+    // ---- Diseñador IA (00320): solo se LEEN con la sesion (escribe el servidor; que nadie escriba con la sesion, ni el
+    // Owner, lo prueba `verify-designer --bloque ds0`). Leer pide `designer.view`; `designer.edit` sola NO alcanza.
+    T({ name: "design_templates SELECT", table: "design_templates", op: "select", any: ["designer.view"], deny: ["designer.edit", "content.view"], member: true,
+      seed: () => svc.from("design_templates").insert({ workspace_id: ws.id, name: `zz-test plantilla ${uid()}`, format: "sq", doc: { v: 1, format: "sq", pages: [{ id: "pg_test0001", background: { type: "color", color: "#ffffff" }, elements: [] }] }, origin: "blank" }).select("id").single() }),
+    T({ name: "designs SELECT", table: "designs", op: "select", any: ["designer.view"], deny: ["designer.edit", "content.view"], member: true,
+      seed: () => svc.from("designs").insert({ workspace_id: ws.id, name: `zz-test diseño ${uid()}`, format: "sq", doc: { v: 1, format: "sq", pages: [{ id: "pg_test0001", background: { type: "color", color: "#ffffff" }, elements: [] }] }, origin: "blank" }).select("id").single() }),
+    T({ name: "design_versions SELECT", table: "design_versions", op: "select", any: ["designer.view"], deny: ["designer.edit", "content.view"], member: true,
+      seed: async () => {
+        const d = await svc.from("designs").insert({ workspace_id: ws.id, name: `zz-test diseño ${uid()}`, format: "sq", doc: { v: 1, format: "sq", pages: [{ id: "pg_test0001", background: { type: "color", color: "#ffffff" }, elements: [] }] }, origin: "blank" }).select("id").single();
+        return svc.from("design_versions").insert({ workspace_id: ws.id, design_id: d.data.id, doc: { v: 1, format: "sq", pages: [{ id: "pg_test0001", background: { type: "color", color: "#ffffff" }, elements: [] }] }, reason: "manual", author_kind: "user" }).select("id").single();
+      } }),
+    T({ name: "ai_threads SELECT (canal designer)", table: "ai_threads", op: "select", any: ["designer.view"], deny: ["designer.edit", "agents.view"], member: true,
+      seed: () => svc.from("ai_threads").insert({ workspace_id: ws.id, channel: "designer", subject_type: "design", subject_id: randomUUID() }).select("id").single() }),
+    T({ name: "ai_messages SELECT (de un hilo designer)", table: "ai_messages", op: "select", any: ["designer.view"], deny: ["designer.edit", "agents.view"], member: true,
+      seed: async () => {
+        const t = await svc.from("ai_threads").insert({ workspace_id: ws.id, channel: "designer", subject_type: "design", subject_id: randomUUID() }).select("id").single();
+        return svc.from("ai_messages").insert({ workspace_id: ws.id, thread_id: t.data.id, role: "user", content: "zz-test" }).select("id").single();
+      } }),
+
     // @plantilla-desde(comisiones)
     // ---- Comisiones (Extra I, 00231): solo se LEEN con la sesion (escribe el servidor). `commissions.view` con alcance `all`
     // (ALL_SCOPES) ve todas; las reglas las ve tambien quien administra.

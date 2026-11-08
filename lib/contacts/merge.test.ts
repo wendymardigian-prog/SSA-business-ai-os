@@ -79,14 +79,17 @@ describe("mergeErrorMessage", () => {
 });
 
 describe("la guardia de deriva (findMergeDrift)", () => {
+  // Lo que hay en la base: las tablas que mueve la fusión y las excluidas con motivo (Diseñador IA: designs y
+  // ai_threads, que reapunta un trigger). Una exclusión cuenta como cubierta, igual que una tabla de la lista.
+  const ALL = [...CONTACT_MERGE_TABLES, ...Object.keys(CONTACT_MERGE_EXCLUSIONS)];
   it("con exactamente las tablas cubiertas no hay nada que avisar", () => {
-    expect(findMergeDrift(CONTACT_MERGE_TABLES)).toEqual({ missing: [], stale: [] });
+    expect(findMergeDrift(ALL)).toEqual({ missing: [], stale: [] });
   });
   it("una relacion nueva con contacts hace fallar la guardia: dice cual falta", () => {
-    expect(findMergeDrift([...CONTACT_MERGE_TABLES, "invoices", "appointments"])).toEqual({ missing: ["appointments", "invoices"], stale: [] });
+    expect(findMergeDrift([...ALL, "invoices", "appointments"])).toEqual({ missing: ["appointments", "invoices"], stale: [] });
   });
   it("una tabla de la lista que ya no existe tambien se avisa", () => {
-    expect(findMergeDrift(CONTACT_MERGE_TABLES.filter((t) => t !== "tasks"))).toEqual({ missing: [], stale: ["tasks"] }); // @plantilla-quitar(tareas)
-    // @plantilla-sin(tareas): expect(findMergeDrift(CONTACT_MERGE_TABLES.filter((t) => t !== "email_log"))).toEqual({ missing: [], stale: ["email_log"] });
+    expect(findMergeDrift(ALL.filter((t) => t !== "tasks"))).toEqual({ missing: [], stale: ["tasks"] }); // @plantilla-quitar(tareas)
+    // @plantilla-sin(tareas): expect(findMergeDrift(ALL.filter((t) => t !== "email_log"))).toEqual({ missing: [], stale: ["email_log"] });
   });
 });

@@ -83,6 +83,11 @@ export interface BoardPost {
   assignee: { id: string; name: string } | null;
   /** El id del responsable tal cual esta guardado (aunque ya no sea del equipo), para el filtro de Responsable (F43). */
   assignedTo?: string | null;
+  /**
+   * La pieza tiene un diseño del Diseñador IA vinculado (DS8, F65): la tarjeta muestra un destello. Solo lo saben quienes
+   * pueden ver diseños; sin el dato, la tarjeta se ve como siempre.
+   */
+  hasDesign?: boolean;
 }
 
 export type BoardCard = BoardIdea | BoardPost;

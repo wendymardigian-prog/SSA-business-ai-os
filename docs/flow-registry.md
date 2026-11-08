@@ -779,3 +779,17 @@ Cada automatización tiene su pantalla: `/dashboard/flows/[flowId]/ejecuciones`,
 node scripts/verify-flow-runs.mjs   # quién ve qué, variables, el trigger, el motor, la consulta y la limpieza
 ```
 
+## «Generar desde plantilla» (Diseñador IA, noviembre 2026)
+
+Paso del grupo **Diseñador IA** (`type: "designGenerate"`, alias `action/designGenerate`). Genera una pieza de una plantilla del Diseñador IA (un certificado, una constancia…) para el contacto del disparador (`needsContact: true`). Motor en `lib/flow-engine/nodes/design-generate.ts`; reglas puras en `lib/designer/automation/node-config.ts`; panel `components/flow-builder/panels/DesignGeneratePanel.tsx`.
+
+- **Con qué se llena cada variable**: valor de la plantilla (por defecto), una variable del disparador o de pasos anteriores, del contacto, la fecha de hoy, un texto fijo o «Combinar…» (`{{answer.nombre}} {{answer.apellido}}`). Lo que no se resuelve no se pasa y decide «Si falta un dato» (por defecto «No generar y avisarme»).
+- **La generación** la crea `createGeneration` (`lib/designer/generate-core.ts`, sin sesión) con `source: "automation"` y la corrida en `source_ref`. Si el contacto ya tiene una pieza válida de esa plantilla, el flujo sigue con esa.
+- **«Esperar el PDF antes de seguir»** (prendido por defecto): el render corre en el momento. Si el servicio falla de forma pasajera, el paso se deja para después (`deferFlowNode`) y reintenta a 1, 5 y 15 minutos LA MISMA generación (su id queda en `__design_pending`). Si sigue fallando, o si falta un dato con «No generar», el camino termina (`handle:design_stopped`, sin conexión: la ejecución queda «con fallos») con el motivo en el historial. El paso nunca lanza: lanzar haría fallar el evento entero y la cola volvería a correr todos sus flujos.
+- **Salidas** (`variables.design`, se guardan en la sesión): `design.id`, `design.link`, `design.pdf_url`, `design.code`, `design.status`, `design.doc_type`. Los links con el dominio del negocio (`loadDesignLinks`). `design.` está en `FLOW_VARIABLE_PREFIXES` y en `CONTACT_FREE_PREFIXES`: Condiciones las ofrece DESPUÉS del paso.
+- **Al publicar**: sin plantilla no se publica (`configProblems` en `node-requirements.ts`); un flujo que genera diseños con un disparador de formulario SIN formulario elegido tampoco («Falta elegir el formulario.»: vacío = cualquier formulario).
+- **«Enviar email» con el PDF**: `EmailAttachmentRef` admite `{kind: "design", from: "design"}` («Adjuntar el PDF del diseño generado», solo con un «Generar desde plantilla» antes). Al enviar se busca la generación de ESA corrida (`design.id`): sin ella el paso falla con «No hay un diseño generado en esta automatización.»; si todavía se está armando, el email no sale y el paso espera 1, 5 y 15 minutos. Los adjuntos de Recursos no cambiaron (`lib/email/attachments-characterization.test.ts`).
+- **«Automatizar»** desde la plantilla crea el borrador «Formulario enviado → Generar desde plantilla → Enviar email» (`lib/designer/automation/flow-template.ts`).
+
+Pruebas: `design-generate.test.ts`, `send-email-design.test.ts`, `node-config.test.ts`, `flow-template.test.ts`, `node-outputs.test.ts`, `node-requirements.test.ts`; `verify-designer --bloque ds7`.
+

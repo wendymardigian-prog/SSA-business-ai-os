@@ -135,7 +135,8 @@ try {
     const first = await insertTouch(contact, { source: "instagram", medium: "social", origin: FORM_ORIGIN, content_label: code, campaign: "zz-test-camp" });
     check(first.data?.content_post_id === piece.id, "content_label = codigo completa la pieza", first.error?.message);
     check(first.data?.channel === "organic", "el canal es organico");
-    check(first.data?.meta_match_status === "ignored" && first.data?.meta_match_reason === "organic_content", "y el vinculo de Meta queda ignorado (organic_content): no aparece en «Sin vincular»", `${first.data?.meta_match_status} / ${first.data?.meta_match_reason}`);
+    // Desde la 00318 un medium organico ya no cuenta como dato de anuncio: queda `none` (antes `ignored` / organic_content).
+    check(first.data?.meta_match_status === "none" || (first.data?.meta_match_status === "ignored" && first.data?.meta_match_reason === "organic_content"), "y no aparece en «Sin vincular» (medium organico)", `${first.data?.meta_match_status} / ${first.data?.meta_match_reason}`);
     check(first.data?.raw?.content_code_matched === true, "queda anotado en raw.content_code_matched");
     check(first.data?.social_post_id === null, "sin publicacion en esa red, social_post_id queda vacio");
 
@@ -304,7 +305,7 @@ try {
     });
     check(form.data?.inserted === true, "el formulario deja su toque", form.error?.message);
     const t = (await svc.from("contact_touches").select("content_post_id, channel, meta_match_status").eq("workspace_id", ws.id).eq("dedupe_key", `zz-form-${stamp}`).single()).data;
-    check(t?.content_post_id === piece.id && t?.channel === "organic" && t?.meta_match_status === "ignored", "...vinculado a la pieza, organico y fuera de «Sin vincular» de Meta", JSON.stringify(t));
+    check(t?.content_post_id === piece.id && t?.channel === "organic" && ["ignored", "none"].includes(t?.meta_match_status), "...vinculado a la pieza, organico y fuera de «Sin vincular» de Meta", JSON.stringify(t));
 
     // Los clics de un link con seguimiento: UNO por dia, por persona y pieza.
     const click = (key) => svc.rpc("record_contact_touch", {
