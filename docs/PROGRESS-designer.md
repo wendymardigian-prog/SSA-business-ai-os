@@ -829,6 +829,35 @@ Auditor Opus de solo lectura, dos pasadas (8/11/2026 UTC). **Veredicto final: to
 - [x] F69 — Plantilla clonable · prueba: `npx vitest run scripts/plantilla` 82/82; `export-template` común limpio (4.507 archivos, sin restos identificables); ningún `@plantilla-quitar` en el módulo; punto de extensión de variables vacío; sin nombres reales. El perfil de estudiantes queda para la sincronización de BAIOS (PENDIENTE, «Cierre (Ola 5)») · auditado: cumple (auditoría final)
 - [x] F70 — Revisión visual y responsive · prueba: parcial (lista, modal Nuevo con sus 3 pasos y el paso Archivo, Ajustes y el 404 del link, a 1440 y 390 px, claro y oscuro; se arregló el título truncado); lo demás anotado en PENDIENTE («Cierre (Ola 5): revisión visual») con motivo y decisión · auditado: anotado (auditoría final)
 
+## Auditoría final F1–F70 (8/11/2026 UTC)
+
+Auditor Opus nuevo, de solo lectura, dos pasadas sobre `566f58b` y `9b9a59f`. **Veredicto final: F1–F70 sin ningún «falta»** (lo no construido o no revisado está en PENDIENTE con motivo y decisión).
+
+| F | Criterio (resumido) | Prueba | Resultado |
+|---|---|---|---|
+| F1 | Member con view y edit (no publish); sin sesión no se lee `design-renders`; tests de M12 | `verify-ds0`; `member-sql-parity`, `access-matrix` | cumple |
+| F2 (+V1, V2, V5, fusión) | `design_public_get` sin datos del sujeto; 2000 códigos; RLS por rol; CHECK de verificación; `ai_threads` por canal; trigger de fusión | `verify-ds0`; `verification.cases.json` en vitest y en la base; `verify-contact-merge` | cumple |
+| F3 | CHECK de `agent_runs.source` con `designer` | `run-labels.test.ts` | cumple |
+| F4 | Menú y rutas; 404 sin `designer.view`; `/d/` sin sesión | `guards.test.ts`, `middleware-characterization` | cumple |
+| F5 | Firma igual en las dos copias; 401; sin JS; red restringida; topes | `render-client.test.ts`; `render/` 57/57 | cumple |
+| F6 (+limpieza) | 5 jobs; 1/5/15 y `failed` al cuarto; `cleanupPlan` y cron diario | `jobs/render.test.ts`, `cleanup.test.ts`, `verify-ds0` | cumple |
+| F7 | Puesta en marcha (Serverless, 3 variables) | `docs/designer/puesta-en-marcha.md` | cumple |
+| F8–F14 | Documento (31 casos), formatos, render único sin `<script>`, fuentes, color, estilos, `canvas-math` (21) | sus tests | cumple |
+| F15–F30 (+V2, V3) | Editor manual completo | `lib/designer/screens/*.test.ts`, `designs-ops.test.ts`, `verify-ds2` 27/27 | cumple |
+| F31–F38 (+V2) | IA: fusión, esquema y prompt, primera versión, alcance, estilos, revisión (≤ 2 pasadas), estilos propios, tope | `ai/*.test.ts`, `ai-generate.test.ts` | cumple |
+| F39–F42 | Zip, 54 ataques, 6 fixtures, editar un nodo | `import/*.test.ts` | cumple |
+| F43–F47 (+V3, V4) | Link público, descarga, publicar, exportar, anular | `public/*.test.ts`, `publishing`, `export`, `void`; `verify-ds5` 82/82 | cumple |
+| F48, F48b | Guardar no encola renders; un solo juego de archivos | `designs-ops.test.ts`, `render-replace.test.ts`, `verify-ds5` | cumple |
+| F49–F56 (+F47 DS6) | Variables, emitir para uno y para varios, copia congelada, Generaciones, reintentar, si falta un dato, código | `variables/*`, `generate-*`, `generations.test.ts`; `verify-ds6` 53/53 | cumple |
+| F57–F60 (+V4) | Nodo, seis salidas, PDF adjunto, Automatizar | `design-generate.test.ts`, `node-outputs`, `send-email-design`, `flow-template`; `verify-ds7` 21/21 | cumple |
+| F61–F66 | Contenido | `content-*.test.ts`, caracterización intacta; `verify-ds8` 43/43, `verify-content` | cumple |
+| F67 | Docs y sección del CLAUDE.md (las 7 reglas de §9.4) | `docs/designer.md`, `flow-registry`, `contenido`, `roles`, `CLAUDE.md`, `contratos.md` | cumple (2ª pasada) |
+| F68 | `verify-designer` por bloque | corrida de cierre EXIT 0 con los 6 bloques | cumple |
+| F69 | Plantilla clonable | `scripts/plantilla` 82/82; export común limpio; perfil de estudiantes en PENDIENTE (sincronización de BAIOS) | cumple |
+| F70 | Revisión visual | parcial; el resto en PENDIENTE con motivo y decisión | cumple (anotado) |
+
+Observaciones que no bloquean: «Las reglas de la IA» de `docs/designer.md` es un resumen fiel de `rules.ts`, no una copia literal (deja afuera la numeración «N/M», la composición sobria de los impresos y la línea de la página web); la revisión visual de las pantallas con datos sigue pendiente y necesita el OK para crear datos de prueba.
+
 ## Subagentes
 
 | Subagente | Rama | Estado | Informe | Integrado | Auditado |
@@ -840,4 +869,4 @@ Auditor Opus de solo lectura, dos pasadas (8/11/2026 UTC). **Veredicto final: to
 | DS5 | `feat/disenador-ia-ds5` | terminado (`d65b6b2`) | F43–F47, F48b; verify-ds5 75/75 tras la 00324 | sí (`002ec98`; acciones propias en el historial) | sí (Ola 2) |
 | DS6 | `feat/disenador-ia-ds6` | terminado (`28ffb5d`) | F49–F56; verify-ds6 53/53 | sí (`172616a`, `07ca021`) | sí (Ola 3) |
 | DS8 | `feat/disenador-ia-ds8` | terminado (`f9ab062`) | F61–F66; verify-ds8 43/43, verify-content verde | sí (`5f69420`, `311f3a0`) | sí (Ola 3) |
-| Auditor ola 1–5 | — (solo lectura) | sin arrancar | — | — | — |
+| Auditor ola 1–5 | — (solo lectura, Opus) | terminado | Ola 1 (2 pasadas), Ola 2 (3), Ola 3 (2), Ola 4 (2), final F1–F70 (2): todo «cumple» | — | — |
