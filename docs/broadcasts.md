@@ -230,7 +230,8 @@ para el borrador y para «Editar mensaje». Cuándo se ofrece cada botón:
   claro. Aplicada y registrada en producción el 8/11/2026 UTC (versión
   `20261108180049`).
 - `00355_reopen_unsent_broadcast` (aditiva: una función, solo `service_role`).
-  Puede ir antes o después del código; sin ella, «Editar» responde un error claro.
+  Puede ir antes o después del código; sin ella, «Editar» responde un error claro. Aplicada
+  y registrada en producción el 8/11/2026 UTC (versión `20261108194823`).
 
 ```
 node scripts/verify-broadcasts.mjs   # RLS, índice único, claim_lane_slot (10 a la vez = 1), claim_broadcast_recipient, contadores
