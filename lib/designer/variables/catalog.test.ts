@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { CONTACT_VARIABLES, WORKSPACE_VARIABLES } from "@/lib/flow-engine/variable-catalog";
 import { emitDesignGenerated, onDesignGenerated, registerDesignVariables, registeredSubjectSources, resolveRegisteredValues } from "../extensions";
+import { docTypeNoun } from "../verification";
 import { CONTACT_DESIGN_VARIABLES, customVarKey, formatDesignDate, sampleValues, variableGroups, variableInfo, WORKSPACE_DESIGN_VARIABLES } from "./catalog";
+import { resolveValues } from "./resolve";
 
 let undo: (() => void)[] = [];
 afterEach(() => {
@@ -91,5 +93,45 @@ describe("punto de extensión (§9.3): queda vacío y se prueba con uno de prueb
     undo.push(onDesignGenerated((d) => void seen.push(d.code)));
     await emitDesignGenerated({ designId: "d", workspaceId: "w", templateId: "t", code: "ABCD-EFGH-JKMN", subjectContactId: null, subjectRef: null });
     expect(seen).toEqual(["ABCD-EFGH-JKMN"]);
+  });
+});
+
+describe("el catálogo completo de DS6 (F49, F56)", () => {
+  const template = { docKeys: ["design.doc_type", "design.issued_on", "design.today", "prueba.nombre"], customVars: [], dateFormat: "long" as const, verify: true, docType: "constancia", docTypeLabel: null };
+  const now = new Date("2026-11-08T02:00:00Z");
+
+  it("design.doc_type resuelve al nombre del tipo (docTypeNoun)", () => {
+    for (const [type, label] of [["certificado", null], ["constancia", null], ["diploma", null], ["otro", "Credencial"]] as const) {
+      const out = resolveValues({ ...template, docKeys: ["design.doc_type"], docType: type, docTypeLabel: label }, { now, timeZone: "UTC" });
+      expect(out.values["design.doc_type"]).toBe(docTypeNoun(type, label));
+    }
+  });
+
+  it("design.issued_on es la fecha de creación en la zona del NEGOCIO, con el formato de la plantilla", () => {
+    const at = (timeZone: string, dateFormat: "long" | "short" | "en") => resolveValues({ ...template, dateFormat }, { now, timeZone }).values["design.issued_on"];
+    expect(at("America/Argentina/Buenos_Aires", "long")).toBe("7 de noviembre de 2026");
+    expect(at("America/Argentina/Buenos_Aires", "short")).toBe("07/11/2026");
+    expect(at("UTC", "en")).toBe("November 8, 2026");
+  });
+
+  it("«fecha de hoy» y «fecha de emisión» salen de la misma fecha de creación", () => {
+    const out = resolveValues(template, { now, timeZone: "UTC" });
+    expect(out.values["design.today"]).toBe(out.values["design.issued_on"]);
+    expect(variableInfo("design.today").known).toBe(true);
+  });
+
+  it("una variable de un módulo registrado se resuelve con lo que devuelve su `resolve`", async () => {
+    undo.push(
+      registerDesignVariables({
+        group: "prueba",
+        label: "Prueba",
+        source: "Registro de prueba",
+        vars: [{ key: "prueba.nombre", label: "Nombre de prueba", sample: "Muestra" }],
+        resolve: async ({ subject }) => ({ "prueba.nombre": `Valor de ${subject?.label ?? "nadie"}` }),
+      }),
+    );
+    const registered = await resolveRegisteredValues({ workspaceId: "w", subject: { module: "prueba", type: "registro", id: "1", label: "Ana" }, contactId: null });
+    expect(resolveValues(template, { now, timeZone: "UTC", registered }).values["prueba.nombre"]).toBe("Valor de Ana");
+    expect(variableInfo("prueba.nombre")).toMatchObject({ label: "Nombre de prueba", group: "Prueba", known: true });
   });
 });
