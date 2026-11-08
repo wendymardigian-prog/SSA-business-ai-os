@@ -28,6 +28,7 @@ import { registerWhatsappHistoryImportHandler } from "@/lib/jobs/handlers/whatsa
 import { registerBookingJobHandlers } from "@/lib/jobs/handlers/booking-sync";
 import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-relative";
 import { registerFlowWaitTimeoutHandler } from "@/lib/jobs/handlers/flow-wait-timeout";
+import { registerFlowScheduledRunHandler } from "@/lib/jobs/handlers/flow-scheduled-run";
 import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
 import { registerDesignerHandlers } from "@/lib/jobs/handlers/designer";
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
@@ -117,6 +118,8 @@ export function registerPublishing(): void {
   registerBookingRelativeHandler();
   // El vencimiento de un "Esperar respuesta" (auditoria de automatizaciones).
   registerFlowWaitTimeoutHandler();
+  // «En una fecha y hora»: corre cada vez programada y agenda la siguiente.
+  registerFlowScheduledRunHandler();
 
   // Las tareas de IA en segundo plano (F24). Despacha por `payload.task`: una
   // tarea sin implementacion falla con el motivo, no completa en silencio.

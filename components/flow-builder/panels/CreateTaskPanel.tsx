@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { loadTeamMemberOptions } from "@/lib/actions/flow-node-options";
 import { MAX_DUE_DAYS, type CreateTaskNodeData } from "@/lib/flow-engine/nodes/create-task";
 import { PRIORITY_LABELS, TASK_LIMITS, TASK_PRIORITIES } from "@/lib/tasks/types";
+import { BusinessTimeNote } from "@/components/ui/business-time-note";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -111,7 +112,12 @@ export function CreateTaskPanel({ data: raw, onChange, availableVariables }: { d
           <input aria-label="Días desde hoy" type="number" min={0} max={MAX_DUE_DAYS} value={typeof data.dueDays === "number" ? data.dueDays : ""} onChange={(e) => set({ dueDays: e.target.value === "" ? undefined : Number(e.target.value) })} placeholder="2" className={`${inputClass} mt-2`} />
         )}
         {dueMode === "date" && <input aria-label="Fecha de vencimiento" type="date" value={data.dueDate ?? ""} onChange={(e) => set({ dueDate: e.target.value })} className={`${inputClass} mt-2`} />}
-        {dueMode === "days" && <p className="mt-1.5 text-xs text-muted-foreground">Cuenta desde el día en que corre el flujo, en la zona horaria del negocio. 0 es hoy.</p>}
+        {dueMode === "days" && (
+          <>
+            <p className="mt-1.5 text-xs text-muted-foreground">Cuenta desde el día en que corre el flujo. 0 es hoy.</p>
+            <BusinessTimeNote className="mt-1" dateOnly />
+          </>
+        )}
       </div>
 
       <div>

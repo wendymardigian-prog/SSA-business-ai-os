@@ -7,6 +7,7 @@ import { MEDIUMS, MEDIUM_LABELS, SOURCES, SOURCE_LABELS } from "@/lib/contacts/t
 import { ATTRIBUTION_TYPE_LABELS, ATTRIBUTION_TYPES, FINANCING_TYPE_LABELS, FINANCING_TYPES, PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, PAYMENT_TYPE_LABELS, PAYMENT_TYPES, SALE_STATUS_LABELS, SALE_STATUSES } from "@/lib/sales/labels";
 import { describeSalesTrigger } from "@/lib/sales/automation/presets";
 import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers";
+import { BusinessTimeNote } from "@/components/ui/business-time-note";
 
 /**
  * Los filtros de los seis triggers de Ventas dentro del panel del constructor de flujos (F37).
@@ -135,8 +136,9 @@ export function SalesTriggerPanel({ triggerType, data, onChange }: { triggerType
             <label className="mb-1.5 block text-xs font-semibold text-foreground">A las</label>
             <input type="time" className={inputClass} value={(data.at_time as string | undefined) ?? "09:00"} onChange={(e) => set("at_time", e.target.value)} />
           </div>
+          <BusinessTimeNote className="col-span-2" times={[(data.at_time as string | undefined) ?? "09:00"]} />
           <p className="col-span-2 text-[11px] text-muted-foreground">
-            La hora es la de la zona del negocio.{triggerType === "payment_after_due" ? " Solo se avisa si el pago sigue sin cobrarse." : ""} Si cambian la fecha del pago, el recordatorio se vuelve a agendar.
+            {triggerType === "payment_after_due" ? "Solo se avisa si el pago sigue sin cobrarse. " : ""}Si cambian la fecha del pago, el recordatorio se vuelve a agendar.
           </p>
         </div>
       )}

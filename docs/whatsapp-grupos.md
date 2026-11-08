@@ -77,6 +77,14 @@ Variables: `{{group.name}}`, `{{reaction.emoji}}`, `{{message.text}}`, `{{poll.q
 **Paso «Enviar encuesta»**: manda una encuesta a un grupo activado (no necesita contacto). Sus votos se pueden usar
 con «Votó en una encuesta de un grupo» → «Las que manda un paso».
 
+**Programar una encuesta a un grupo**: disparador **«En una fecha y hora»** (una vez, todos los días,
+ciertos días de la semana o un día del mes, en la hora del negocio) + el paso «Enviar encuesta». Mandar **texto** a un grupo desde una automatización todavía no existe (solo
+encuestas; el texto se manda desde la bandeja). Ver
+[flow-registry.md](flow-registry.md) («En una fecha y hora»).
+
+**Fijar un mensaje en el grupo: no se puede.** Ni la bandeja ni las automatizaciones lo ofrecen, y el cliente de
+Evolution del sistema no tiene cómo pedirlo (falta confirmar si Evolution 2.3.7 lo permite).
+
 **Desde la bandeja**: en un mensaje del negocio o una encuesta, «⋯» → Crear automatización. Crea la automatización en
 borrador con el disparador ya armado (ese grupo, ese mensaje, los emojis u opciones elegidos) y la abre.
 

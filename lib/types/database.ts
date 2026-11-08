@@ -973,7 +973,9 @@ export type TriggerType =
   // Grupos de WhatsApp (CHECK de la migracion 00282): alguien se unio, reacciono o voto en un grupo activado.
   | "whatsapp_group_joined"
   | "whatsapp_group_reaction"
-  | "whatsapp_group_poll_vote";
+  | "whatsapp_group_poll_vote"
+  // «En una fecha y hora» (sin contacto): lo corre un trabajo de la cola agendado al publicar.
+  | "scheduled_time";
 export type FlowSessionStatus =
   | "active"
   | "completed"

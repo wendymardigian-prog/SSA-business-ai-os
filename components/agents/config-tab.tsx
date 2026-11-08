@@ -10,6 +10,7 @@ import { ModelPicker } from "./model-picker";
 import { PromptSection } from "./prompt-section";
 import { CopywriterSection } from "./copywriter-section";
 import { Checkbox, Field, Notice, NumberInput, Section, inputClass, linesToList } from "./fields";
+import { BusinessTimeNote, InViewerZone } from "@/components/ui/business-time-note";
 
 /**
  * Pestana Configuracion. Las secciones son las que declara el tipo de agente
@@ -178,8 +179,9 @@ function GuardrailsSection({ form, set }: SectionProps) {
           checked={hours.enabled}
           onChange={(enabled) => patch({ businessHours: { ...hours, enabled } })}
           label="Horario de atención"
-          description="Apagado: atiende 24/7. Los horarios son de Costa Rica."
+          description="Apagado: atiende 24/7."
         />
+        {hours.enabled && <BusinessTimeNote />}
         {hours.enabled && (
           <>
             <ul className="space-y-2">
@@ -200,6 +202,7 @@ function GuardrailsSection({ form, set }: SectionProps) {
                         <input type="time" aria-label={`${name}: desde`} value={slot.start} onChange={(e) => setSlot(day, { ...slot, start: e.target.value })} className={`${inputClass} w-32`} />
                         <span className="text-xs text-muted-foreground">a</span>
                         <input type="time" aria-label={`${name}: hasta`} value={slot.end} onChange={(e) => setSlot(day, { ...slot, end: e.target.value })} className={`${inputClass} w-32`} />
+                        <InViewerZone times={[slot.start, slot.end]} />
                       </>
                     )}
                   </li>

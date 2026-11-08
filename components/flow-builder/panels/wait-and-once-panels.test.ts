@@ -20,7 +20,7 @@ describe("DelayPanel", () => {
   it("muestra la hora guardada tal cual y dice que es la del negocio", () => {
     const html = delay({ waitUntilLocal: "2026-11-07T10:00" });
     expect(html).toContain('value="2026-11-07T10:00"');
-    expect(html).toContain("En la hora del negocio");
+    expect(html).toContain("Se programa en la hora del negocio");
     expect(html).toContain("se saltea el paso siguiente");
     expect(html).toMatch(/Espera hasta el 7 nov.*10:00.*\(hora del negocio\)/);
   });
@@ -28,7 +28,7 @@ describe("DelayPanel", () => {
   it("una espera por duración sigue igual", () => {
     const html = delay({ duration: 2, unit: "hours" });
     expect(html).toContain("Espera 2 horas y sigue");
-    expect(html).not.toContain("En la hora del negocio");
+    expect(html).not.toContain("Se programa en la hora del negocio");
   });
 });
 

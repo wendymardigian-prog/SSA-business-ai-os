@@ -9,6 +9,7 @@ import { updateBackgroundSettings } from "@/lib/actions/workspace";
 import type { BackgroundSettings, BackgroundTask, TaskFrequency, TaskMode } from "@/lib/background/settings";
 import { FREQUENCY_LABELS, MODE_LABELS, formatSpend, lastRunLabel } from "@/lib/background/screen";
 import type { TaskRunInfo } from "@/lib/background/screen";
+import { BusinessTimeNote } from "@/components/ui/business-time-note";
 
 const MODES: TaskMode[] = ["now", "batch", "off"];
 
@@ -117,6 +118,7 @@ export function TaskModeEditor({
             <input type="time" value={hour} onChange={(e) => touch(setHour)(e.target.value)} className="rounded-lg border border-input bg-background px-2 py-1 text-sm" />
           </label>
           {batchWarning && <span className="text-xs text-warn">⚠ {batchWarning}</span>}
+          <BusinessTimeNote className="basis-full" times={[hour]} />
         </div>
       )}
 
