@@ -208,6 +208,13 @@ describe("markCatalogSync (AT2)", () => {
     expect(a.last_error).toBeNull();
   });
 
+  it("la version de los campos avanza solo con un catalogo completo", () => {
+    const [completo] = markCatalogSync(base, "act_1", { at: "2026-10-13T09:00:00Z", complete: true, fieldsVersion: 2 });
+    expect(completo.catalog_fields_version).toBe(2);
+    const [cortado] = markCatalogSync(base, "act_1", { at: "2026-10-13T09:00:00Z", complete: false, fieldsVersion: 2 });
+    expect(cortado.catalog_fields_version).toBeUndefined();
+  });
+
   it("uno incompleto NO avanza la fecha y deja el aviso en last_error", () => {
     const antes = [account({ ad_account_id: "act_1", catalog_synced_at: "2026-10-01T00:00:00Z" })];
     const [a] = markCatalogSync(antes, "act_1", { at: "2026-10-13T09:00:00Z", complete: false, note: "Catálogo incompleto" });

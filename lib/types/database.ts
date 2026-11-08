@@ -714,6 +714,9 @@ export type AuditAction =
   /** Entity meta_ad: una persona vinculo un anuncio con una pieza de Contenido, o lo desvinculo (Tiron 2, A2). */
   | "content_link.linked"
   | "content_link.unlinked"
+  /** Entity meta_ad: una persona escribio, cambio o borro la transcripcion del video del anuncio (00323). */
+  | "transcript.updated"
+  | "transcript.cleared"
   /** Entity eod_report: una correccion de un reporte enviado (con lo que cambio). */
   | "eod.edited" // @plantilla-quitar(formularios)
   /** Entity contract_signature. */
@@ -6177,6 +6180,12 @@ export interface Database {
           social_post_id: string | null;
           content_post_id: string | null;
           content_link_manual: boolean;
+          video_id: string | null;
+          transcript: string | null;
+          transcript_status: string;
+          transcript_source: string | null;
+          transcript_updated_at: string | null;
+          transcript_updated_by: string | null;
           raw: Json;
           synced_at: string;
           created_at: string;
@@ -6204,6 +6213,12 @@ export interface Database {
           social_post_id?: string | null;
           content_post_id?: string | null;
           content_link_manual?: boolean;
+          video_id?: string | null;
+          transcript?: string | null;
+          transcript_status?: string;
+          transcript_source?: string | null;
+          transcript_updated_at?: string | null;
+          transcript_updated_by?: string | null;
           raw?: Json;
           synced_at?: string;
           created_at?: string;

@@ -41,6 +41,8 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "payment_methods.updated": "cambió los métodos de pago", // @plantilla-quitar(ventas)
   "content_link.linked": "vinculó el anuncio con una pieza de contenido",
   "content_link.unlinked": "desvinculó el anuncio de su pieza de contenido",
+  "transcript.updated": "editó la transcripción del video del anuncio",
+  "transcript.cleared": "borró la transcripción del video del anuncio",
   // Pipeline (00245): el cambio de estado se ve con su propia entrada (contact_status_changes);
   // la del agente queda en el audit para poder revertirla.
   // La guardia de entrega (00287): se audita sobre el workspace; no se ve en la ficha de un contacto.

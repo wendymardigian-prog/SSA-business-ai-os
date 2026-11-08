@@ -33,6 +33,8 @@ import { KpiRow } from "./ads/kpi-row";
 import { useAdsNavigation } from "./ads/use-ads-navigation";
 import { LinkContentMenu } from "./ads/link-content-menu";
 import type { AdContentLink } from "@/lib/meta/content-ad-summary";
+import type { AdMedia } from "@/lib/meta/ad-transcript";
+import { AdMediaCard } from "@/components/dashboards/ads/ad-media-card";
 
 /**
  * El detalle de una campaña, un conjunto o un anuncio (F57).
@@ -104,6 +106,8 @@ export interface AdsDetailViewProps {
   contentLink?: AdContentLink | null;
   /** Mostrar el menú «⋯» para vincular el anuncio con una pieza. */
   canLinkContent?: boolean;
+  /** El video, la transcripción y el guion (solo en el nivel anuncio). */
+  adMedia?: AdMedia | null;
   /** Para que optimizan sus AdSets y el objetivo de su campaña: deciden el funnel. */
   funnelSource?: { goals: Array<string | null>; objective: string | null };
   /** Lo que dice el CRM: la tabla de los hijos y el funnel. */
@@ -125,6 +129,7 @@ export function AdsDetailView({
   meta,
   contentLink = null,
   canLinkContent = false,
+  adMedia = null,
   funnelSource = { goals: [], objective: null },
   crm,
 }: AdsDetailViewProps) {
@@ -335,6 +340,14 @@ export function AdsDetailView({
               )}
             </div>
           </section>
+        )}
+
+        {level === "ad" && adMedia && (
+          <AdMediaCard
+            adId={detail.objectId}
+            media={adMedia}
+            piece={contentLink ? { id: contentLink.pieceId, title: contentLink.pieceTitle } : null}
+          />
         )}
 
         {budget && (

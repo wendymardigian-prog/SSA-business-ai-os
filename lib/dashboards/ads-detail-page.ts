@@ -6,6 +6,7 @@
  * arreglar el mismo error.
  */
 
+import type { AdMedia } from "@/lib/meta/ad-transcript";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/guards";
 import { previousPeriod } from "@/lib/dashboards/period";
@@ -76,6 +77,8 @@ export interface DetailPageData {
   funnelSource: { goals: Array<string | null>; objective: string | null };
   /** Quien mira puede vincular el anuncio con una pieza: `content.create` (ya tiene `dashboards.ads.view` para estar acá). */
   canLinkContent: boolean;
+  /** El video, la transcripcion y el guion de la pieza (solo en el nivel anuncio y si el anuncio esta en el catalogo). */
+  adMedia: AdMedia | null;
   /** Lo que dice el CRM (la tabla de los hijos y el funnel). Si falla, se ve lo de Meta y lo avisa. */
   crm: CrmTableData;
 }
@@ -225,22 +228,38 @@ export async function loadDetailPage(params: {
 
   // El vínculo manual con una pieza de Contenido (A2): solo se muestra en el menú del anuncio.
   let contentLink: AdContentLink | null = null;
+  let adMedia: AdMedia | null = null;
   if (level === "ad") {
     const { data: adRow } = await supabase
       .from("meta_ads")
-      .select("content_post_id, content_link_manual")
+      .select("content_post_id, content_link_manual, creative, video_id, instagram_media_id, transcript, transcript_source, transcript_updated_at")
       .eq("workspace_id", workspace.id)
       .eq("ad_id", objectId)
       .limit(1)
       .maybeSingle();
+    let pieceScript: string | null = null;
     if (adRow?.content_post_id) {
       const { data: piece } = await supabase
         .from("content_posts")
-        .select("id, title")
+        .select("id, title, script")
         .eq("id", adRow.content_post_id)
         .eq("workspace_id", workspace.id)
         .maybeSingle();
-      if (piece) contentLink = { pieceId: piece.id, pieceTitle: piece.title, manual: adRow.content_link_manual === true };
+      if (piece) {
+        contentLink = { pieceId: piece.id, pieceTitle: piece.title, manual: adRow.content_link_manual === true };
+        pieceScript = typeof piece.script === "string" && piece.script.trim() !== "" ? piece.script : null;
+      }
+    }
+    if (adRow) {
+      const objectType = (adRow.creative as { object_type?: string } | null)?.object_type ?? liveObjectType(objectMeta);
+      adMedia = {
+        videoKind: adRow.video_id || objectType === "VIDEO" ? "video" : adRow.instagram_media_id ? "instagram_post" : null,
+        transcript: adRow.transcript ?? null,
+        transcriptSource: adRow.transcript_source ?? null,
+        transcriptUpdatedAt: adRow.transcript_updated_at ?? null,
+        pieceScript,
+        canEditTranscript: can("content.create"),
+      };
     }
   }
 
@@ -266,6 +285,12 @@ export async function loadDetailPage(params: {
     contentLink,
     funnelSource,
     canLinkContent: level === "ad" && can("content.create"),
+    adMedia,
     crm,
   };
+}
+
+/** El tipo de creativo que dio Meta en vivo, como respaldo de lo guardado. */
+function liveObjectType(objectMeta: Awaited<ReturnType<typeof fetchObjectMeta>> | null): string | null {
+  return objectMeta?.ok ? (objectMeta.data.creative?.objectType ?? null) : null;
 }

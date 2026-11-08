@@ -16,7 +16,7 @@ import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { getMetaToken } from "@/lib/meta/token";
 import { markCatalogSync, markSync, parseMetaConfig, syncedAccounts, type AdAccount } from "@/lib/meta/accounts";
 import { fetchInsights, syncRange, type InsightRow } from "@/lib/meta/insights";
-import { fetchEntities, MAX_ENTITY_PAGES, updatedSinceFor, type CatalogLevel } from "@/lib/meta/entities";
+import { CATALOG_FIELDS_VERSION, catalogUpdatedSince, fetchEntities, MAX_ENTITY_PAGES, type CatalogLevel } from "@/lib/meta/entities";
 import { loadStatuses, persistAdsets, persistAds, persistCampaigns, type StatusMap } from "@/lib/meta/catalog-store";
 import { linkAdsToContent } from "@/lib/meta/content-link";
 import { scheduleThumbnailJob } from "@/lib/meta/thumbnails";
@@ -125,7 +125,9 @@ export async function syncCatalog(
   supabase: Db,
   params: { token: string; workspaceId: string; adAccountId: string; account: AdAccount; now: Date },
 ): Promise<CatalogSyncResult> {
-  const updatedSince = updatedSinceFor(params.account.catalog_synced_at);
+  // Una cuenta leida con campos viejos se lee entera (CATALOG_FIELDS_VERSION): asi los anuncios que no cambiaron
+  // tambien traen lo nuevo (el id del video, 00323).
+  const updatedSince = catalogUpdatedSince(params.account);
   const result: CatalogSyncResult = { campaigns: 0, adsets: 0, ads: 0, complete: true, note: null };
   const notes: string[] = [];
   const base = { workspaceId: params.workspaceId, adAccountId: params.adAccountId, at: params.now };
@@ -312,7 +314,7 @@ async function handleMetaAdsSync({ supabase, job }: JobContext): Promise<void> {
       firstSync: !account.first_sync_completed_at,
     }),
     payload.adAccountId,
-    { at: now.toISOString(), complete: catalog.complete, note: errors[0] ? null : catalog.note },
+    { at: now.toISOString(), complete: catalog.complete, note: errors[0] ? null : catalog.note, fieldsVersion: CATALOG_FIELDS_VERSION },
   );
 
   await supabase

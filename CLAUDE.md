@@ -2441,3 +2441,14 @@ El modelo de datos y la arquitectura se disenan pensando en todas las etapas, au
 - Arquitectura extensible: el flow builder tiene registro de nodos/triggers para que modulos nuevos (ventas, agendamiento) sumen sus triggers/acciones sin tocar el core. El agente IA usa tool registry para sumar herramientas por etapa.
 - La tabla `channels` abstrae la fuente de conexion (Zernio vs API directa) para que el inbox unificado no dependa de como se conecto cada canal.
 - La tabla `integration_configs` es generica y extensible (canales, IA, email) — sumar un proveedor es un registro, no una tabla nueva.
+
+# Video y transcripción de anuncios (7/11/2026)
+
+`meta_ads.video_id` (lo guarda el sync) y `transcript`, `transcript_status`, `transcript_source`, `transcript_updated_at/by`. Por ahora la transcripción se escribe a mano en el detalle del anuncio; la automática queda para más adelante. Detalle en [docs/dashboards.md](docs/dashboards.md) («Video y transcripción de un anuncio»).
+
+- **El sync nunca manda las columnas `transcript*`**, y la automática nunca va a pisar una `manual`. La forma la cuida el CHECK `meta_ads_transcript_shape` (gemela de `manualTranscriptWrite`).
+- **El video no se copia**: se pide a Meta al verlo (`fetchAdVideoSource`); el link vence.
+- **Sumar un campo al catálogo de Meta es subir `CATALOG_FIELDS_VERSION`**: si no, los anuncios que no cambian nunca lo traen (el sync es incremental).
+
+`00323_meta_ads_video_transcript` (aditiva): **aplicada y registrada** el 7/11/2026 (versión `20261107224824`), después de ensayarla en una transacción que se deshizo sola. La `00324` a la `00329` son de otras sesiones: **la próxima libre es la `00330`** (confirmar con `list_migrations` y las ramas locales).
+
