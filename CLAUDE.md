@@ -2073,7 +2073,7 @@ Diseñar piezas visuales con IA o a mano (carruseles, historias, presentaciones,
 
 ## Migraciones
 
-`00319` (ajustes, permisos del Member M12, buckets privados), `00320` (tablas, RLS, códigos, `design_public_get`, fusión, limpieza diaria), `00321` (CHECK de `agent_runs.source` + `designer`), `00322` (corrige el trigger del documento), `00324` (el bucket `design-renders` acepta `error.json`) y `00325` (`design_public_get` devuelve lo publicado), todas **aplicadas y registradas** el 7 y 8/11/2026 UTC. La `00318` y la `00323` son de otras sesiones. **La próxima libre es la `00326`** (confirmar con `list_migrations` y las ramas locales). En un clon nuevo van ANTES de desplegar el código.
+`00319` (ajustes, permisos del Member M12, buckets privados), `00320` (tablas, RLS, códigos, `design_public_get`, fusión, limpieza diaria), `00321` (CHECK de `agent_runs.source` + `designer`), `00322` (corrige el trigger del documento), `00324` (el bucket `design-renders` acepta `error.json`), `00325` (`design_public_get` devuelve lo publicado) y `00326` (el CHECK de `agent_runs.source` con `ads_matching` Y `designer`: la 00321 había pisado el `ads_matching` de la 00318), todas **aplicadas y registradas** el 7 y 8/11/2026 UTC. La `00318` y la `00323` son de otras sesiones. **Una migración que redefine un CHECK parte del que está EN LA BASE (`pg_get_constraintdef`), no de un archivo viejo**: si no, borra lo que sumó otra sesión en el medio. **La próxima libre es la `00327`** (confirmar con `list_migrations` y las ramas locales). En un clon nuevo van ANTES de desplegar el código.
 
 ## Verificación
 

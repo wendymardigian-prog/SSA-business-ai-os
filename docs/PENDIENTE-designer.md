@@ -29,7 +29,7 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 ### La 00318 la tomó otra sesión: el Diseñador IA usa 00319 a 00322
 - **Qué quedó:** D1 = 00319, D2 = 00320, D3 = 00321 (el plan decía 00318–00320), más la 00322 que corrige la 00320.
 - **Por qué:** a las 21:54 UTC otra sesión (vincular anuncios sin id) registró la `00318_meta_match_rules_similar`. La 00322: el trigger del documento leía `NEW.format` en `design_versions` (no tiene esa columna) y ninguna versión se podía guardar; lo detectó `verify-permissions-matrix` antes de que el código nuevo se usara en producción.
-- **Qué se decidió:** se corrió la numeración y se corrigió con una migración nueva (la 00320 ya estaba aplicada). Al cierre, la próxima libre es la **00326** (la 00323 la usó otra sesión; el Diseñador IA sumó la 00324 y la 00325).
+- **Qué se decidió:** se corrió la numeración y se corrigió con una migración nueva (la 00320 ya estaba aplicada). Al cierre, la próxima libre es la **00327** (la 00323 la usó otra sesión; el Diseñador IA sumó la 00324 y la 00325).
 
 ### La imagen Docker del servicio de render no se probó
 - **Qué quedó:** `render/Dockerfile` (Playwright 1.65.0, `mcr.microsoft.com/playwright:v1.65.0-noble`) sin construir.
@@ -159,3 +159,8 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - **Qué quedó:** la configuración de una plantilla lista las automatizaciones que la usan; no lista piezas de Contenido.
 - **Por qué:** una plantilla no se vincula a Contenido (lo que se vincula es un diseño o una generación).
 - **Qué se decidió:** se deja así.
+
+### La 00321 pisó el `ads_matching` de la 00318 (arreglado con la 00326)
+- **Qué quedó:** entre las 22:11 UTC del 7/11 y las 03:25 UTC del 8/11, el CHECK de `agent_runs.source` en producción no tuvo `ads_matching`: una corrida de IA de la conciliación de anuncios no se podía guardar. En ese lapso no hubo ninguna corrida `ads_matching` (consultado en la base).
+- **Por qué:** la 00321 redefinió el CHECK partiendo del archivo de la 00148 y no del que estaba en la base; la 00318 (otra sesión) había sumado `ads_matching` 17 minutos antes.
+- **Qué se decidió:** la 00326 deja los dos valores. Regla para lo que sigue: una migración que redefine un CHECK parte de `pg_get_constraintdef` de la base (y lo copia en su cabecera), nunca de un archivo viejo.

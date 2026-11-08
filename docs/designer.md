@@ -62,7 +62,7 @@ Fijas en `lib/designer/ai/rules.ts` y en el prompt (con su test): una idea por p
 
 Tablas: `design_templates`, `designs` (diseños propios y generaciones; una generación tiene `template_id`), `design_versions`, `ai_threads`, `ai_messages`. Escribe solo el servidor (sin políticas de escritura para `authenticated`). Buckets privados `design-assets` (imágenes, fuentes, cargas) y `design-renders` (PNG, PDF, ZIP y el `error.json` de una exportación fallida). `workspaces.design_settings` guarda estilos propios y fuentes.
 
-Migraciones: `00319` (ajustes, permisos del Member, buckets), `00320` (tablas, RLS, códigos, `design_public_get`, fusión, limpieza diaria), `00321` (CHECK de `agent_runs.source` con `designer`), `00322` (corrige el trigger del documento en versiones), `00324` (el bucket acepta `error.json`) y `00325` (el link de una web muestra lo publicado). Todas aplicadas y registradas. La `00318` y la `00323` son de otras sesiones.
+Migraciones: `00319` (ajustes, permisos del Member, buckets), `00320` (tablas, RLS, códigos, `design_public_get`, fusión, limpieza diaria), `00321` (CHECK de `agent_runs.source` con `designer`), `00322` (corrige el trigger del documento en versiones), `00324` (el bucket acepta `error.json`), `00325` (el link de una web muestra lo publicado) y `00326` (el CHECK de `agent_runs.source` con `ads_matching` y `designer`: la 00321 había pisado el de la 00318). Todas aplicadas y registradas. La `00318` y la `00323` son de otras sesiones.
 
 ## Jobs
 
