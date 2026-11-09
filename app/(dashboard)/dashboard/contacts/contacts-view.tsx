@@ -61,6 +61,7 @@ import {
   DEFAULT_CONTACT_SORT,
   type ContactSort,
 } from "@/lib/contacts/sort";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 /**
  * Lista de contactos.
@@ -833,16 +834,28 @@ function NewContactDialog({ onClose }: { onClose: () => void }) {
               <label htmlFor={`new-${key}`} className="mb-1 block text-xs font-medium text-muted-foreground">
                 {label}
               </label>
-              <input
-                id={`new-${key}`}
-                type={type}
-                value={values[key]}
-                onChange={(e) => {
-                  setValues((prev) => ({ ...prev, [key]: e.target.value }));
-                  setError(null);
-                }}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
+              {type === "tel" ? (
+                <PhoneInput
+                  id={`new-${key}`}
+                  label={label}
+                  value={values[key]}
+                  onChange={(next) => {
+                    setValues((prev) => ({ ...prev, [key]: next }));
+                    setError(null);
+                  }}
+                />
+              ) : (
+                <input
+                  id={`new-${key}`}
+                  type={type}
+                  value={values[key]}
+                  onChange={(e) => {
+                    setValues((prev) => ({ ...prev, [key]: e.target.value }));
+                    setError(null);
+                  }}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              )}
             </div>
           ))}
         </div>

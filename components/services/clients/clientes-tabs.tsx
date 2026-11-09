@@ -1,13 +1,13 @@
 // @plantilla-quitar(servicios)
-import { HeaderTabs } from "@/components/ui/header-tabs";
+import { TopbarTabs } from "@/components/ui/topbar-tabs";
 
-/** Servicios ⇄ Clientes, en la barra superior de las dos pantallas de Clientes. */
-export function ClientsTabs({ active }: { active: "servicios" | "clientes" }) {
+/** Las dos vistas de Clientes (Servicios · Clientes), en la barra superior. */
+export function ClientesTabs({ active }: { active: "servicios" | "clientes" }) {
   return (
-    <HeaderTabs
+    <TopbarTabs
       label="Vistas de Clientes"
       active={active}
-      items={[
+      tabs={[
         { key: "servicios", label: "Servicios", href: "/dashboard/clientes" },
         { key: "clientes", label: "Clientes", href: "/dashboard/clientes/lista" },
       ]}

@@ -13,6 +13,7 @@ import { eligibleBookings } from "@/lib/sales/booking-link";
 import { formatCallDate } from "@/lib/calls/format";
 import { saleStatusLabel } from "@/lib/sales/labels";
 import type { WizardConfig, WizardMember } from "./types";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 export interface Step1Values {
   contact: { id: string; name: string } | null;
@@ -202,7 +203,7 @@ function QuickCreate({ onCancel, onCreated }: { onCancel: () => void; onCreated:
       <div className="grid gap-2 sm:grid-cols-3">
         <DialogField label="Nombre"><input className={fieldInput} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="off" /></DialogField>
         <DialogField label="Email"><input type="email" className={fieldInput} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} autoComplete="off" /></DialogField>
-        <DialogField label="Teléfono"><input type="tel" className={fieldInput} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} autoComplete="off" /></DialogField>
+        <DialogField label="Teléfono"><PhoneInput label="Teléfono" value={form.phone} onChange={(next) => setForm({ ...form, phone: next })} /></DialogField>
       </div>
       <p className="text-[11px] text-muted-foreground">Hace falta el nombre y al menos un email o un teléfono. Si ya existía, uso ese contacto.</p>
       {notice && <p role="status" className="text-xs">{notice}</p>}

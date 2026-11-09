@@ -69,12 +69,23 @@ export async function loadPortalAccount(supabase: Db, workspaceId: string, conta
   };
 }
 
-/** La dirección del portal del negocio (`workspaces.portal_settings.host`), o null si no está cargada. */
-export async function loadPortalHost(service: Db, workspaceId: string): Promise<{ host: string | null; welcome: { invite_subject?: string; invite_body?: string } }> {
+/**
+ * La dirección del portal del negocio (`workspaces.portal_settings.host`, o null si no está cargada), los textos de la
+ * invitación y «Enviar desde» (`from_email`, null = el remitente del negocio).
+ */
+export async function loadPortalHost(
+  service: Db,
+  workspaceId: string,
+): Promise<{ host: string | null; welcome: { invite_subject?: string; invite_body?: string }; fromEmail: string | null }> {
   const { data } = await service.from("workspaces").select("portal_settings").eq("id", workspaceId).maybeSingle();
-  const ps = ((data as { portal_settings?: Record<string, unknown> } | null)?.portal_settings ?? {}) as { host?: string; welcome?: { invite_subject?: string; invite_body?: string } };
+  const ps = ((data as { portal_settings?: Record<string, unknown> } | null)?.portal_settings ?? {}) as {
+    host?: string;
+    welcome?: { invite_subject?: string; invite_body?: string };
+    from_email?: string | null;
+  };
   const host = typeof ps.host === "string" && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(ps.host) ? ps.host.toLowerCase() : null;
-  return { host, welcome: ps.welcome ?? {} };
+  const fromEmail = typeof ps.from_email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ps.from_email) ? ps.from_email.trim() : null;
+  return { host, welcome: ps.welcome ?? {}, fromEmail };
 }
 
 /** Los links del portal salen SIEMPRE de su dirección cargada (decisión 437), nunca del dominio de la app. */

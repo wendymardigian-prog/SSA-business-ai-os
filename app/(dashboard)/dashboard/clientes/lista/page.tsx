@@ -8,7 +8,7 @@ import { contactNames } from "@/lib/services/screens/load-services";
 import { clientRows, paidByContact } from "@/lib/services/screens/clients";
 import { formatPriceUsd } from "@/lib/content/taxonomy";
 import { PageHeader } from "@/components/page-header";
-import { ClientsTabs } from "@/components/services/clients/clients-tabs";
+import { ClientesTabs } from "@/components/services/clients/clientes-tabs";
 
 /** Clientes › Clientes (F27): una fila por contacto con al menos un servicio que la persona ve (la RLS lo decide). */
 export default async function ClientesListaPage() {
@@ -29,7 +29,7 @@ export default async function ClientesListaPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader route="/dashboard/clientes/lista" tabs={<ClientsTabs active="clientes" />} />
+      <PageHeader route="/dashboard/clientes/lista" tabs={<ClientesTabs active="clientes" />} />
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="space-y-4 p-4 md:p-6">
           {sorted.length === 0 ? (

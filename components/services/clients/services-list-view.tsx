@@ -21,7 +21,7 @@ import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 import { ViewToggle } from "@/components/ui/view-toggle";
-import { ClientsTabs } from "./clients-tabs";
+import { ClientesTabs } from "./clientes-tabs";
 import { cn } from "@/lib/utils";
 import { NewServiceDialog, type NewServiceOptions } from "./new-service-dialog";
 
@@ -70,7 +70,7 @@ export function ServicesListView({
       <PageHeader
         route="/dashboard/clientes"
         filtersBreakpoint="wide"
-        tabs={<ClientsTabs active="servicios" />}
+        tabs={<ClientesTabs active="servicios" />}
         filters={
           <>
             <ViewToggle

@@ -7,6 +7,7 @@ import type { SendWhatsAppNumberData } from "@/lib/flow-engine/nodes/send-whatsa
 import { WhatsappBanRiskNotice } from "@/components/channels/whatsapp-ban-risk-notice";
 import { FieldEmojiButton } from "@/components/ui/emoji-picker";
 import { resolveWhatsAppTarget } from "@/lib/flow-engine/whatsapp-target";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -68,7 +69,7 @@ export function SendWhatsAppNumberPanel({
         </select>
         {mode === "fixed" ? (
           <>
-            <input aria-label="Número de WhatsApp" type="tel" value={data.fixedPhone ?? ""} onChange={(e) => set({ fixedPhone: e.target.value })} placeholder="+54 9 11 2233 4455" className={`${inputClass} mt-2`} />
+            <PhoneInput className="mt-2" label="Número de WhatsApp" value={data.fixedPhone ?? ""} onChange={(next) => set({ fixedPhone: next })} />
             {fixedCheck && !fixedCheck.ok && <p role="alert" className="mt-1.5 text-xs text-destructive">{fixedCheck.reason}</p>}
             {fixedCheck?.ok && <p className="mt-1.5 text-xs text-muted-foreground">Se va a mandar a {fixedCheck.phone}.</p>}
           </>
