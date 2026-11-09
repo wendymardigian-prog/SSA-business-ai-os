@@ -5,7 +5,10 @@
  * Reglas:
  *  - Sin nada guardado, como se veia antes de que todas se colapsaran: Herramientas cerrada y las demas
  *    abiertas (`SECTION_DEFAULT_OPEN`). Asi nadie del equipo encuentra el menu cambiado de golpe.
- *  - Si la pantalla activa esta adentro, se ve abierta aunque la persona la haya cerrado.
+ *  - Al entrar a una pantalla, su seccion se abre y queda guardada abierta (components/sidebar.tsx); se
+ *    cierra solo con su flechita. Hasta que hidrata la pagina, la de la pantalla activa se dibuja abierta
+ *    (`sectionOpen`) para que no parpadee.
+ *  - Son independientes: abrir una nunca cierra otra, y pueden quedar todas abiertas.
  *  - Lo ultimo que eligio la persona se recuerda en el navegador (`localStorage`, `"1"` o `"0"`), una
  *    clave por seccion. Es comodidad del navegador; la favorita de cada seccion si va a la base.
  *
