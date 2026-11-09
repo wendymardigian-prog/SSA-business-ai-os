@@ -132,3 +132,25 @@ describe("configProblems: lo que le falta a la configuración de un paso (Diseñ
     expect(configProblems([t, sinPlantilla], [])).toEqual([]);
   });
 });
+
+describe("configProblems: el horario de envío del WhatsApp a un número", () => {
+  const t = { id: "t", type: "trigger" };
+  const wa = (data: Record<string, unknown>) => ({ id: "w", type: "action", data: { actionType: "send_whatsapp_number", ...data } });
+  const edges = [{ source: "t", target: "w" }];
+
+  it("un horario válido, o apagado, no frena", () => {
+    expect(configProblems([t, wa({ windowEnabled: true, windowFrom: "08:00", windowTo: "21:00" })], edges)).toEqual([]);
+    expect(configProblems([t, wa({ windowEnabled: false, windowFrom: "21:00", windowTo: "08:00" })], edges)).toEqual([]);
+    expect(configProblems([t, wa({})], edges)).toEqual([]);
+  });
+
+  it("de 21:00 a 08:00 (al revés) no se publica", () => {
+    expect(configProblems([t, wa({ windowEnabled: true, windowFrom: "21:00", windowTo: "08:00" })], edges)).toEqual([
+      "El horario de envío no es válido: la hora de inicio tiene que ser anterior a la de fin.",
+    ]);
+  });
+
+  it("un horario mal armado en un paso al que no se llega no frena", () => {
+    expect(configProblems([t, wa({ windowEnabled: true, windowFrom: "21:00", windowTo: "08:00" })], [])).toEqual([]);
+  });
+});

@@ -2485,3 +2485,9 @@ El modelo de datos y la arquitectura se disenan pensando en todas las etapas, au
 
 `00323_meta_ads_video_transcript` (aditiva): **aplicada y registrada** el 7/11/2026 (versión `20261107224824`), después de ensayarla en una transacción que se deshizo sola. La `00324` a la `00329` son de otras sesiones: **la próxima libre es la `00330`** (confirmar con `list_migrations` y las ramas locales).
 
+# Horario de envío del WhatsApp y vigencia de una reunión (9/11/2026, sin migración)
+
+«Enviar WhatsApp a un número» tiene «Mandar solo en este horario» (hora del negocio) y las reuniones tienen `{{booking.days_since_end}}`. Detalle en [docs/flow-registry.md](docs/flow-registry.md) («Horario de envío del WhatsApp y vigencia de una reunión»).
+
+- **Fuera del horario el paso se deja para después, no falla** (`deferFlowNode`, `reason: "send_window"`), antes de la reserva `flow_send_claims` y del tope por hora. Reglas puras en `lib/flow-engine/send-window.ts`. Un horario al revés (21:00 a 08:00) no se publica; un paso sin horario prendido sale igual que siempre.
+- **`booking.days_since_end` es el único dato de la reunión que se compara como número**, y se cuenta al armar el contexto del evento (no cambia mientras el flujo espera).

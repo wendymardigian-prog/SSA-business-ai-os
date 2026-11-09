@@ -8,6 +8,8 @@ import { WhatsappBanRiskNotice } from "@/components/channels/whatsapp-ban-risk-n
 import { FieldEmojiButton } from "@/components/ui/emoji-picker";
 import { resolveWhatsAppTarget } from "@/lib/flow-engine/whatsapp-target";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { BusinessTimeNote } from "@/components/ui/business-time-note";
+import { DEFAULT_SEND_WINDOW, sendWindowProblem } from "@/lib/flow-engine/send-window";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -117,6 +119,35 @@ export function SendWhatsAppNumberPanel({
             <option value="audio">Audio</option>
             <option value="document">Documento</option>
           </select>
+        )}
+      </div>
+
+      <div>
+        <label className="flex items-center gap-2 text-xs font-semibold text-foreground">
+          <input
+            type="checkbox"
+            checked={data.windowEnabled === true}
+            onChange={(e) => set({ windowEnabled: e.target.checked, windowFrom: data.windowFrom ?? DEFAULT_SEND_WINDOW.from, windowTo: data.windowTo ?? DEFAULT_SEND_WINDOW.to })}
+          />
+          Mandar solo en este horario
+        </label>
+        {data.windowEnabled === true ? (
+          <div className="mt-2 space-y-2">
+            <div className="flex items-center gap-2 text-xs text-foreground">
+              <label htmlFor="wa-window-from">De</label>
+              <input id="wa-window-from" type="time" value={data.windowFrom ?? DEFAULT_SEND_WINDOW.from} onChange={(e) => set({ windowFrom: e.target.value })} className={`${inputClass} w-auto`} />
+              <label htmlFor="wa-window-to">a</label>
+              <input id="wa-window-to" type="time" value={data.windowTo ?? DEFAULT_SEND_WINDOW.to} onChange={(e) => set({ windowTo: e.target.value })} className={`${inputClass} w-auto`} />
+            </div>
+            {sendWindowProblem(data) ? (
+              <p role="alert" className="text-xs text-destructive">{sendWindowProblem(data)}</p>
+            ) : (
+              <BusinessTimeNote times={[data.windowFrom ?? DEFAULT_SEND_WINDOW.from, data.windowTo ?? DEFAULT_SEND_WINDOW.to]} />
+            )}
+            <p className="text-xs text-muted-foreground">Si el mensaje le toca fuera de este horario, no se pierde: queda esperando y sale cuando abre.</p>
+          </div>
+        ) : (
+          <p className="mt-1.5 text-xs text-muted-foreground">Apagado, el mensaje sale a la hora que le toca, de día o de noche.</p>
         )}
       </div>
 

@@ -57,6 +57,18 @@ describe("bookingVariables (F47)", () => {
     });
   });
 
+  it("days_since_end: días enteros desde que terminó la reunión (0 si no terminó o la fecha no se lee)", () => {
+    const at = (iso: string) => bookingVariables(booking, eventType, host, { ...opts, now: new Date(iso) }).days_since_end;
+    // La reunión termina el 6/10 a las 20:30Z.
+    expect(at("2026-10-06T19:00:00Z")).toBe("0"); // todavía no empezó
+    expect(at("2026-10-06T21:00:00Z")).toBe("0"); // terminó hace 30 min
+    expect(at("2026-10-07T20:29:00Z")).toBe("0"); // falta 1 min para el día 1
+    expect(at("2026-10-07T20:30:00Z")).toBe("1");
+    expect(at("2026-10-09T00:00:00Z")).toBe("2");
+    expect(at("2026-11-09T00:00:00Z")).toBe("33");
+    expect(bookingVariables({ ...booking, end_at: "no es una fecha" }, eventType, host, opts).days_since_end).toBe("0");
+  });
+
   it("se interpolan con el flow engine", () => {
     const text = interpolateVariables("Hola {{booking.answers.name}}, tu {{booking.event_title}} es el {{booking.start_invitee}}. Reagendar: {{booking.reschedule_url}}", { booking: v });
     expect(text).toBe(

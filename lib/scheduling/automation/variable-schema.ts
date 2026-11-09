@@ -3,7 +3,7 @@
  * ("Condiciones"). PURO.
  *
  * Son las mismas variables que `{{booking.*}}` (`BOOKING_VARIABLE_KEYS`) y todas
- * se comparan como TEXTO: ya vienen formateadas para leerse ("12 de octubre de
+ * se comparan como TEXTO (salvo `days_since_end`, que es un número): ya vienen formateadas para leerse ("12 de octubre de
  * 2026", "30 minutos"), asi que un "mayor que" sobre ellas no tendria sentido.
  * Las respuestas de la reserva (`booking.answers.<clave>`) no se
  * ofrecen: cambian por tipo de evento y hoy no hay una lista confiable.
@@ -31,8 +31,18 @@ const LABELS: Record<(typeof BOOKING_VARIABLE_KEYS)[number], string> = {
   cancel_url: "Link para cancelar",
   cancellation_reason: "Motivo de la cancelación",
   status: "Estado de la reunión",
+  days_since_end: "Días desde que terminó la reunión",
 };
 
+/** Los días desde que terminó la reunión son un NÚMERO (se compara con «mayor que», «menor que»…); el resto, texto. */
+const NUMBER_KEYS: ReadonlyArray<(typeof BOOKING_VARIABLE_KEYS)[number]> = ["days_since_end"];
+
 export function bookingVariableSchema(): ConditionFieldSpec[] {
-  return BOOKING_VARIABLE_KEYS.map((key) => ({ path: `booking.${key}`, label: LABELS[key], type: "text" as const, group: BOOKING_GROUP }));
+  return BOOKING_VARIABLE_KEYS.map((key) => ({
+    path: `booking.${key}`,
+    label: LABELS[key],
+    type: NUMBER_KEYS.includes(key) ? ("number" as const) : ("text" as const),
+    group: BOOKING_GROUP,
+    ...(key === "days_since_end" ? { hint: "0 si la reunión todavía no terminó. Se cuenta al momento en que arranca la automatización." } : {}),
+  }));
 }
