@@ -5,6 +5,7 @@ import { getPermissionContext } from "@/lib/auth/guards";
 import { countUnreadNotifications } from "@/lib/actions/notifications";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
 import { getSavedViewerTimezone, resolveViewerTimezone } from "@/lib/user-timezone";
+import { getNavFavorites } from "@/lib/nav/favorites";
 import { Sidebar } from "@/components/sidebar";
 import { DashboardChromeProvider } from "@/components/dashboard-chrome";
 import { TimezoneBootstrap } from "@/components/timezone-bootstrap";
@@ -24,7 +25,7 @@ export default async function DashboardLayout({
 
   // El conteo se calcula en el servidor para que la campana no arranque en cero
   // y salte a su valor real un instante despues.
-  const [{ data: memberships }, unreadNotifications, draftCounts, permissionContext, savedTimezone, hasEod, myProfile, members] = await Promise.all([
+  const [{ data: memberships }, unreadNotifications, draftCounts, permissionContext, savedTimezone, hasEod, myProfile, members, navFavorites] = await Promise.all([
     supabase
       .from("workspace_members")
       .select("role, workspaces(id, name, slug, brand_name, brand_logo_path, brand_color)")
@@ -44,6 +45,8 @@ export default async function DashboardLayout({
     getMyProfile(),
     // Las fotos del equipo, para los circulos de cada persona en todo el panel (solo id → URL viaja al navegador).
     getWorkspaceMembers(workspace.id),
+    // La pantalla favorita de cada seccion del menu (00357). Nunca lanza: sin ella, {}.
+    getNavFavorites(),
   ]);
   const memberAvatars: Record<string, string> = {};
   for (const m of members) if (m.avatarUrl) memberAvatars[m.userId] = m.avatarUrl;
@@ -80,7 +83,7 @@ export default async function DashboardLayout({
   // desaparece, y con h-screen el pie de la pantalla queda tapado.
   return (
     <DashboardChromeProvider
-      value={{ workspace, user: profileUser, workspaces, role, permissionKeys, navFlags, unreadNotifications, draftCounts, viewerTimezone }}
+      value={{ workspace, user: profileUser, workspaces, role, permissionKeys, navFlags, navFavorites, unreadNotifications, draftCounts, viewerTimezone }}
     >
       <MemberAvatarsProvider avatars={memberAvatars}>
       <TimezoneBootstrap hasSaved={savedTimezone !== null} />
@@ -96,6 +99,7 @@ export default async function DashboardLayout({
           unreadNotifications={unreadNotifications}
           draftCounts={draftCounts}
           navFlags={navFlags}
+          navFavorites={navFavorites}
         />
         {/*
           `relative` no es decoracion. Los textos solo para lectores de

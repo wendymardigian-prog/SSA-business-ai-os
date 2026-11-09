@@ -3387,6 +3387,8 @@ export interface Database {
           timezone_source: string;
           /** 00274: { evento: { bell, email, whatsapp } }; lo que falta usa el default del catalogo. */
           notification_prefs: Json;
+          /** 00357: { grupo: href } con la pantalla favorita de cada seccion del menu. */
+          nav_favorites: Json;
           created_at: string;
           updated_at: string;
         };
@@ -3395,6 +3397,7 @@ export interface Database {
           timezone: string;
           timezone_source?: string;
           notification_prefs?: Json;
+          nav_favorites?: Json;
           created_at?: string;
           updated_at?: string;
         };
@@ -3402,6 +3405,7 @@ export interface Database {
           timezone?: string;
           timezone_source?: string;
           notification_prefs?: Json;
+          nav_favorites?: Json;
           updated_at?: string;
         };
         Relationships: [];

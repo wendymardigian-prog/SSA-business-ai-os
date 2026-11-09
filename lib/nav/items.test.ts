@@ -261,16 +261,21 @@ describe("grupos del menu (bloque N, N1)", () => {
     expect(vacios.map((g) => g.id), "estos grupos no tienen ni un item").toEqual([]);
   });
 
-  it("el orden de los grupos es: inicio, adquisicion, ventas, herramientas (plano formularios-ui, D1)", () => {
-    expect(NAV_GROUPS.map((g) => g.id)).toEqual(["inicio", "adquisicion", "ventas", "herramientas"]);
+  // Cambio aprobado (9/11/2026): se suma «Servicio al cliente» entre Ventas y Herramientas.
+  it("el orden de los grupos es: inicio, adquisicion, ventas, servicio, herramientas", () => {
+    expect(NAV_GROUPS.map((g) => g.id)).toEqual(["inicio", "adquisicion", "ventas", "servicio", "herramientas"]); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): expect(NAV_GROUPS.map((g) => g.id)).toEqual(["inicio", "adquisicion", "ventas", "herramientas"]);
   });
 
-  it("inicio no tiene titulo; los demas si, y Herramientas es la unica colapsable (plano formularios-ui, D1)", () => {
+  // Cambio aprobado (9/11/2026): todas las secciones con titulo se abren y cierran (antes solo Herramientas).
+  it("inicio no tiene titulo; los demas si, y todos los que tienen titulo son colapsables", () => {
     expect(NAV_GROUPS.find((g) => g.id === "inicio")?.title).toBeNull();
     expect(NAV_GROUPS.find((g) => g.id === "adquisicion")?.title).toBe("Adquisición");
     expect(NAV_GROUPS.find((g) => g.id === "ventas")?.title).toBe("Ventas");
+    expect(NAV_GROUPS.find((g) => g.id === "servicio")?.title).toBe("Servicio al cliente"); // @plantilla-quitar(ventas)
     expect(NAV_GROUPS.find((g) => g.id === "herramientas")?.title).toBe("Herramientas");
-    expect(NAV_GROUPS.filter((g) => g.collapsible).map((g) => g.id)).toEqual(["herramientas"]);
+    expect(NAV_GROUPS.filter((g) => g.collapsible).map((g) => g.id)).toEqual(NAV_GROUPS.filter((g) => g.title).map((g) => g.id));
+    expect(NAV_GROUPS.find((g) => g.id === "inicio")?.collapsible).toBeFalsy();
   });
 
   it("Dashboards, Bandeja y Mi reporte del día son los sueltos de arriba, antes del primer titulo", () => {
@@ -285,9 +290,10 @@ describe("grupos del menu (bloque N, N1)", () => {
       ["inicio", ["Dashboards", "Bandeja", "Mi reporte del día"]], // @plantilla-quitar(formularios)
       // @plantilla-sin(formularios): ["inicio", ["Dashboards", "Bandeja"]],
       ["adquisicion", ["Contenido", "Social", "Anuncios"]],
-      // Servicios A1: Clientes al final del grupo (se ve solo con el modulo prendido) y despues Afiliados (F105).
-      ["ventas", ["Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas", "Clientes", "Portal", "Afiliados"]], // Extra I: Finanzas al final del grupo // @plantilla-quitar(llamadas,ventas,finanzas,comisiones,servicios)
-      // @plantilla-sin(llamadas,ventas,finanzas,comisiones,servicios): ["ventas", ["Contactos", "Agenda"]],
+      ["ventas", ["Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas"]], // Extra I: Finanzas al final del grupo // @plantilla-quitar(llamadas,ventas,finanzas,comisiones)
+      // @plantilla-sin(llamadas,ventas,finanzas,comisiones): ["ventas", ["Contactos", "Agenda"]],
+      // Cambio aprobado (9/11/2026): Clientes, Portal y Afiliados pasan de Ventas a «Servicio al cliente».
+      ["servicio", ["Clientes", "Portal", "Afiliados"]], // @plantilla-quitar(ventas,servicios)
       // Diseñador IA: después de Formularios.
       ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA", "Ajustes"]], // @plantilla-quitar(tareas,formularios)
       // @plantilla-sin(tareas,formularios): ["herramientas", ["Automatizaciones", "Diseñador IA", "Agentes IA", "Ajustes"]],
@@ -337,7 +343,8 @@ describe("grupos del menu (bloque N, N1)", () => {
 describe("navSections: agrupa items ya filtrados (bloque N, N1)", () => {
   it("devuelve los grupos en orden, con sus items", () => {
     const secciones = navSections(NAV_ITEMS);
-    expect(secciones.map((s) => s.group)).toEqual(["inicio", "adquisicion", "ventas", "herramientas"]);
+    expect(secciones.map((s) => s.group)).toEqual(["inicio", "adquisicion", "ventas", "servicio", "herramientas"]); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): expect(secciones.map((s) => s.group)).toEqual(["inicio", "adquisicion", "ventas", "herramientas"]);
   });
 
   it("un grupo sin ningun item visible no aparece, y con el su titulo", () => {
@@ -354,11 +361,12 @@ describe("navSections: agrupa items ya filtrados (bloque N, N1)", () => {
     expect(secciones.some((s) => s.group === "herramientas")).toBe(false);
   });
 
-  it("Herramientas es la unica seccion con el titulo colapsable", () => {
+  it("todas las secciones con titulo son colapsables; los sueltos de arriba no", () => {
     expect(navSections(NAV_ITEMS).map((s) => [s.group, s.collapsible])).toEqual([
       ["inicio", false],
-      ["adquisicion", false],
-      ["ventas", false],
+      ["adquisicion", true],
+      ["ventas", true],
+      ["servicio", true], // @plantilla-quitar(ventas)
       ["herramientas", true],
     ]);
   });
@@ -372,7 +380,8 @@ describe("navSections: agrupa items ya filtrados (bloque N, N1)", () => {
 describe("navSections: separatorBefore, para el colapsado (bloque N, N3)", () => {
   it("la primera seccion visible nunca lleva separador, y las demas si", () => {
     const secciones = navSections(NAV_ITEMS);
-    expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true, true]);
+    expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true, true, true]); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true, true]);
   });
 
   it("Herramientas tambien lleva separador: con el menu angosto es la linea que la separa de Ventas (plano formularios-ui, F2)", () => {
@@ -384,8 +393,10 @@ describe("navSections: separatorBefore, para el colapsado (bloque N, N3)", () =>
     // Sin ningun item de "adquisicion" (sin Contenido ni Social), quedan 3 secciones con 2 separadores, no 3.
     const sinAdquisicion = NAV_ITEMS.filter((i) => i.group !== "adquisicion");
     const secciones = navSections(sinAdquisicion);
-    expect(secciones.map((s) => s.group)).toEqual(["inicio", "ventas", "herramientas"]);
-    expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true]);
+    expect(secciones.map((s) => s.group)).toEqual(["inicio", "ventas", "servicio", "herramientas"]); // @plantilla-quitar(ventas)
+    expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true, true]); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): expect(secciones.map((s) => s.group)).toEqual(["inicio", "ventas", "herramientas"]);
+    // @plantilla-sin(ventas): expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true]);
   });
 
   it("con una sola seccion visible, no hay ningun separador", () => {

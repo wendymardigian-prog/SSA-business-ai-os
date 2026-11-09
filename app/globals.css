@@ -390,12 +390,16 @@
 @custom-variant collapsed (html.sidebar-collapsed &:where([data-sidebar="desktop"], [data-sidebar="desktop"] *));
 
 /*
- * La seccion "Herramientas" del menu abierta (plano formularios-ui, F2). La clase
- * `nav-tools-open` la pone el script del <head> (app/layout.tsx) leyendo localStorage,
- * y la cambia el titulo de la seccion (components/sidebar.tsx). Sirve igual en el menu
- * de escritorio y en el panel del telefono.
+ * Cada seccion del menu abierta (plano formularios-ui F2; todas desde el 9/11/2026). La clase
+ * `nav-open-<grupo>` la pone el script del <head> (app/layout.tsx, `sectionsOpenHeadScript`)
+ * leyendo localStorage, y la cambia el titulo de la seccion (components/sidebar.tsx). Sirve
+ * igual en el menu de escritorio y en el panel del telefono. Una seccion nueva suma su linea
+ * aca y en `SECTION_HIDDEN_CLASS` (lib/nav/sections-open.ts); un test lo controla.
  */
-@custom-variant tools-open (html.nav-tools-open &);
+@custom-variant open-adquisicion (html.nav-open-adquisicion &);
+@custom-variant open-ventas (html.nav-open-ventas &);
+@custom-variant open-servicio (html.nav-open-servicio &); /* @plantilla-quitar(ventas) */
+@custom-variant open-herramientas (html.nav-open-herramientas &);
 
 /*
  * `dark:` sigue a la clase `.dark`, que es la que pone el conmutador del perfil.
