@@ -537,7 +537,9 @@ export const PAGES_WITHOUT_HEADER: Record<string, string> = {
   "/dashboard/agenda/configuracion":
     "Solo redirige a la seccion por defecto (Eventos); nunca se dibuja.",
   "/dashboard":
-    "Redirige al dashboard de chat: no llega a dibujarse.",
+    "Redirige a /dashboard/dashboards: no llega a dibujarse.",
+  "/dashboard/dashboards":
+    "Solo redirige al dashboard por defecto (Meta Ads si esta conectado, si no Chat); nunca se dibuja.",
   "/dashboard/flows/[flowId]":
     "El editor de automatizaciones es un lienzo a pantalla completa con su propia barra.",
   "/dashboard/disenos/d/[id]":

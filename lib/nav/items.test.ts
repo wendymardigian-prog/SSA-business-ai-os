@@ -7,7 +7,8 @@ import { NAV_ITEMS, NAV_GROUPS, navSections, navItemTooltip, navItemHref, visibl
 describe("orden del menú (F13)", () => {
   it("Dashboards es el primer ítem, con ícono de grilla", () => {
     expect(NAV_ITEMS[0].name).toBe("Dashboards");
-    expect(NAV_ITEMS[0].href).toBe("/dashboard/dashboards/chat");
+    // Lleva a la entrada de Dashboards, que redirige al de Meta Ads (si esta conectado) o al de Chat.
+    expect(NAV_ITEMS[0].href).toBe("/dashboard/dashboards");
     expect(NAV_ITEMS[0].icon).toBe("LayoutGrid");
   });
   it("Analytics ya no existe", () => {

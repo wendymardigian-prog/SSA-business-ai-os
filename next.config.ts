@@ -31,7 +31,7 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       // Analytics se renombró a Dashboards (F13). El link viejo redirige permanente.
-      { source: "/dashboard/analytics", destination: "/dashboard/dashboards/chat", permanent: true },
+      { source: "/dashboard/analytics", destination: "/dashboard/dashboards", permanent: true },
     ];
   },
 };
