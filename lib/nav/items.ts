@@ -19,23 +19,28 @@
  */
 import { settingsEntryHref } from "@/lib/settings/tabs";
 
-export type NavGroupId = "inicio" | "adquisicion" | "ventas" | "herramientas";
+export type NavGroupId = "inicio" | "adquisicion" | "ventas" | "servicio" | "herramientas";
 
 export interface NavGroupMeta {
   id: NavGroupId;
   /** null = sin titulo: son los items sueltos de arriba (`inicio`). */
   title: string | null;
-  /** El titulo es un boton que abre y cierra el grupo (solo Herramientas). */
+  /**
+   * El titulo es un boton que abre y cierra el grupo. Desde el 9/11/2026 lo son todos los que tienen
+   * titulo, y cada uno puede tener una pantalla favorita (`user_preferences.nav_favorites`).
+   */
   collapsible?: boolean;
 }
 
 /** El orden de los grupos, tal cual se renderizan. */
 export const NAV_GROUPS: NavGroupMeta[] = [
   { id: "inicio", title: null },
-  { id: "adquisicion", title: "Adquisición" },
+  { id: "adquisicion", title: "Adquisición", collapsible: true },
   // Contactos, Agenda, Llamadas y Ventas (Etapa 5).  @plantilla-quitar(llamadas,ventas)
   // @plantilla-sin(llamadas,ventas): // Contactos y Agenda.
-  { id: "ventas", title: "Ventas" },
+  { id: "ventas", title: "Ventas", collapsible: true },
+  // Servicio al cliente (9/11/2026): lo que pasa despues de la venta (Clientes, Portal y Afiliados).  @plantilla-quitar(ventas)
+  { id: "servicio", title: "Servicio al cliente", collapsible: true }, // @plantilla-quitar(ventas)
   { id: "herramientas", title: "Herramientas", collapsible: true },
 ];
 
@@ -125,17 +130,17 @@ export const NAV_ITEMS: NavItemMeta[] = [
   { name: "Finanzas", href: "/dashboard/finanzas", icon: "Wallet", permissions: ["expenses.view", "commissions.view"], group: "ventas", alsoActiveOn: ["/dashboard/finanzas"] },
   // @plantilla-hasta(finanzas,comisiones)
   // @plantilla-desde(servicios)
-  // Servicios (F26): solo con el modulo prendido en el negocio (bandera `services` = workspaces.services_enabled). Va en el
-  // grupo Ventas, despues de Ventas y Finanzas: un grupo nuevo cambiaria el menu de todos aunque quede vacio (ver PENDIENTE).
-  { name: "Clientes", href: "/dashboard/clientes", icon: "GraduationCap", permissions: ["services.view"], requires: "services", group: "ventas" },
+  // Servicio al cliente (9/11/2026, antes en Ventas). Clientes (F26): solo con el modulo prendido en el negocio
+  // (bandera `services` = workspaces.services_enabled).
+  { name: "Clientes", href: "/dashboard/clientes", icon: "GraduationCap", permissions: ["services.view"], requires: "services", group: "servicio" },
   // Portal (F35, F43): los programas del portal y sus ajustes, con el modulo prendido.
-  { name: "Portal", href: "/dashboard/portal", icon: "AppWindow", permissions: ["portal.view", "portal.sections", "portal.access_rules", "portal.settings"], requires: "services", group: "ventas" },
+  { name: "Portal", href: "/dashboard/portal", icon: "AppWindow", permissions: ["portal.view", "portal.sections", "portal.access_rules", "portal.settings"], requires: "services", group: "servicio" },
   // @plantilla-hasta(servicios)
-  // Afiliados (Servicios A1, F105): al final del grupo Ventas para no mover el orden de los demas. Lo ve quien tiene el
-  // resumen o las reglas; «Mis links» (affiliates.use) va en el menu de usuario, no aca.
-  { name: "Afiliados", href: "/dashboard/afiliados", icon: "Handshake", permissions: ["affiliates.view_all", "affiliates.settings"], group: "ventas" }, // @plantilla-quitar(ventas)
+  // Afiliados (Servicios A1, F105): no depende del modulo de Servicios, asi que la seccion aparece aunque este apagado.
+  // Lo ve quien tiene el resumen o las reglas; «Mis links» (affiliates.use) va en el menu de usuario, no aca.
+  { name: "Afiliados", href: "/dashboard/afiliados", icon: "Handshake", permissions: ["affiliates.view_all", "affiliates.settings"], group: "servicio" }, // @plantilla-quitar(ventas)
 
-  // Herramientas (plano formularios-ui, D1): la unica seccion colapsable. Orden fijo:
+  // Herramientas (plano formularios-ui, D1). Orden fijo:
   // Tareas, Automatizaciones, Formularios, Diseñador IA, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.  @plantilla-quitar(tareas,formularios)
   // @plantilla-sin(tareas,formularios): // Automatizaciones, Diseñador IA, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.
   // @plantilla-desde(tareas)
@@ -184,7 +189,7 @@ export function visibleNavItems<T extends Pick<NavItemMeta, "permissions" | "req
 export interface NavSection<T> {
   group: NavGroupId;
   title: string | null;
-  /** El titulo es un boton que abre y cierra el grupo (Herramientas, plano formularios-ui F2). */
+  /** El titulo es un boton que abre y cierra el grupo (plano formularios-ui F2; todas desde el 9/11/2026). */
   collapsible: boolean;
   items: T[];
   /**
@@ -231,4 +236,43 @@ export function navItemTooltip(item: Pick<NavItemMeta, "name" | "group">): strin
  */
 export function navItemHref(item: Pick<NavItemMeta, "href" | "requires">, viewer: { permissionKeys: string[] }): string {
   return item.requires === "settings" ? settingsEntryHref((key) => viewer.permissionKeys.includes(key)) : item.href;
+}
+
+/** Las pantallas favoritas de cada seccion: grupo -> href de un item de ese grupo. */
+export type NavFavorites = Partial<Record<NavGroupId, string>>;
+
+/** Los grupos que se abren y cierran (y por eso pueden tener favorita), en orden. */
+export const COLLAPSIBLE_GROUPS: NavGroupId[] = NAV_GROUPS.filter((g) => g.collapsible).map((g) => g.id);
+
+/** El href es un item de ESE grupo (lista blanca: una favorita nunca es una URL libre). */
+export function isFavoriteCandidate(group: string, href: unknown): href is string {
+  if (typeof href !== "string") return false;
+  if (!COLLAPSIBLE_GROUPS.includes(group as NavGroupId)) return false;
+  return NAV_ITEMS.some((item) => item.group === group && item.href === href);
+}
+
+/** Lee lo guardado y descarta lo que no sea un grupo colapsable con un item suyo. Nunca lanza. */
+export function parseNavFavorites(raw: unknown): NavFavorites {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: NavFavorites = {};
+  for (const [group, href] of Object.entries(raw as Record<string, unknown>)) {
+    if (isFavoriteCandidate(group, href)) out[group as NavGroupId] = href;
+  }
+  return out;
+}
+
+/**
+ * A donde lleva el click en el titulo de una seccion CERRADA: su favorita, si la persona la ve en esa seccion.
+ * Sin favorita (o con una que ya no ve), `null`: el click solo la abre.
+ */
+export function sectionTitleTarget<T extends Pick<NavItemMeta, "href" | "requires">>(
+  section: Pick<NavSection<T>, "group" | "collapsible" | "items">,
+  favorites: NavFavorites,
+  viewer: { permissionKeys: string[] },
+): string | null {
+  if (!section.collapsible) return null;
+  const favorite = favorites[section.group];
+  if (!favorite) return null;
+  const item = section.items.find((i) => i.href === favorite);
+  return item ? navItemHref(item, viewer) : null;
 }

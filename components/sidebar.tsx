@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { LinkPending } from "@/components/ui/link-pending";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Clapperboard,
@@ -26,11 +27,23 @@ import {
   AppWindow, // @plantilla-quitar(servicios)
   Handshake, // @plantilla-quitar(ventas)
   ChevronDown,
+  Pin,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { NAV_ITEMS, visibleNavItems, navSections, navItemTooltip, navItemHref, type NavFlag } from "@/lib/nav/items";
-import { TOOLS_OPEN_KEY, activeInsideTools, toolsOpen } from "@/lib/nav/tools-open";
+import {
+  NAV_ITEMS,
+  visibleNavItems,
+  navSections,
+  navItemTooltip,
+  navItemHref,
+  sectionTitleTarget,
+  type NavFavorites,
+  type NavFlag,
+  type NavGroupId,
+} from "@/lib/nav/items";
+import { SECTION_HIDDEN_CLASS, SECTION_OPEN_PREFIX, activeSectionGroup, sectionOpen, sectionOpenKey } from "@/lib/nav/sections-open";
+import { setNavFavorite } from "@/lib/actions/nav-favorites";
 
 export type NavFlags = Partial<Record<NavFlag, boolean>>;
 import { activeNavHref } from "@/lib/nav/active";
@@ -38,7 +51,8 @@ import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher, type WorkspaceItem } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
-import { useHtmlClass } from "@/components/use-html-class";
+import { useHtmlClass, useHtmlClassesWithPrefix } from "@/components/use-html-class";
+import { setSharedNavFavorites, useNavFavorites } from "@/components/nav-favorites-store";
 import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 import { useDraftCounts } from "@/components/drafts/use-draft-counts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
@@ -87,6 +101,7 @@ export function Sidebar({
   unreadNotifications = 0,
   draftCounts,
   navFlags,
+  navFavorites,
 }: {
   workspace: Workspace;
   user: ProfileUser;
@@ -100,6 +115,8 @@ export function Sidebar({
   draftCounts?: PendingDraftCounts;
   /** Condiciones del menú calculadas en el servidor. */
   navFlags?: NavFlags;
+  /** La pantalla favorita de cada seccion (00357), leida en el servidor: el pin se dibuja sin parpadeo. */
+  navFavorites?: NavFavorites;
 }) {
   const drafts = useDraftCounts(workspace.id, draftCounts, "sidebar-drafts");
   const collapsed = useHtmlClass("sidebar-collapsed");
@@ -160,7 +177,7 @@ export function Sidebar({
         pantalla baja scrollea en vez de cortarse.
       */}
       <nav className="flex flex-1 flex-col space-y-1 overflow-y-auto p-3 collapsed:px-2">
-        <NavLinks role={role} permissionKeys={permissionKeys} navFlags={navFlags} drafts={drafts} collapsed={collapsed} />
+        <NavLinks role={role} permissionKeys={permissionKeys} navFlags={navFlags} navFavorites={navFavorites} drafts={drafts} collapsed={collapsed} />
       </nav>
 
       <div className="space-y-1 border-t border-sidebar-border p-3 collapsed:px-2">
@@ -189,6 +206,7 @@ export function NavLinks({
   role,
   permissionKeys = [],
   navFlags,
+  navFavorites,
   drafts,
   onNavigate,
   collapsed = false,
@@ -198,6 +216,8 @@ export function NavLinks({
   permissionKeys?: string[];
   /** Condiciones calculadas en el servidor (`requires` en lib/nav/items.ts). */
   navFlags?: NavFlags;
+  /** La pantalla favorita de cada seccion (00357), leida en el servidor. */
+  navFavorites?: NavFavorites;
   drafts: PendingDraftCounts | undefined;
   /** El panel del telefono se cierra al elegir. */
   onNavigate?: () => void;
@@ -210,7 +230,9 @@ export function NavLinks({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
-  const navItems = visibleNavItems(navigation, { permissionKeys: permissionKeys ?? [], flags: navFlags });
+  const router = useRouter();
+  const viewer = { permissionKeys: permissionKeys ?? [] };
+  const navItems = visibleNavItems(navigation, { permissionKeys: viewer.permissionKeys, flags: navFlags });
   // El agrupamiento se calcula sobre los items YA filtrados: un grupo sin
   // nada visible no aparece, y con el su titulo (N1).
   const sections = navSections(navItems);
@@ -218,26 +240,65 @@ export function NavLinks({
   // matchean (Ajustes y sus subrutas), gana el mas especifico en vez de
   // marcar los dos (N4).
   const activeHref = activeNavHref(pathname, navItems);
-  // Herramientas (plano formularios-ui, F2): la preferencia vive como clase en el <html>, igual que el
-  // colapso del menu (un script del <head> la aplica antes de pintar, sin parpadeo).
-  const storedOpen = useHtmlClass(TOOLS_OPEN_KEY);
-  const open = toolsOpen(storedOpen ? "1" : "0", activeHref);
-  const activeInside = activeInsideTools(activeHref);
+  const activeGroup = activeSectionGroup(activeHref);
+  // Que secciones estan abiertas: la preferencia vive como clase en el <html> (`nav-open-<grupo>`), igual
+  // que el colapso del menu (un script del <head> la aplica antes de pintar, sin parpadeo).
+  const openClasses = useHtmlClassesWithPrefix(SECTION_OPEN_PREFIX).split(" ");
+  const favorites = useNavFavorites(navFavorites ?? {});
+  const [pinError, setPinError] = useState<{ group: NavGroupId; message: string } | null>(null);
+  // Los cambios de favorita se guardan de a uno y en orden: dos clicks rapidos no se pisan.
+  const saveChain = useRef<Promise<void>>(Promise.resolve());
 
-  function toggleTools() {
-    const next = !storedOpen;
-    document.documentElement.classList.toggle(TOOLS_OPEN_KEY, next);
+  /**
+   * Click en el titulo de una seccion. Cerrada: se abre y, si tiene favorita que la persona ve, lleva
+   * ahi. Abierta: se cierra, sin navegar.
+   */
+  function toggleSection(group: NavGroupId, isOpen: boolean, target: string | null) {
+    const key = sectionOpenKey(group);
+    const next = !isOpen;
+    document.documentElement.classList.toggle(key, next);
     try {
-      localStorage.setItem(TOOLS_OPEN_KEY, next ? "1" : "0");
+      localStorage.setItem(key, next ? "1" : "0");
     } catch {
       // Sin almacenamiento (ventana privada): la preferencia dura hasta recargar y nada mas.
     }
+    if (next && target && target !== activeHref) {
+      router.push(target);
+      onNavigate?.();
+    }
+  }
+
+  function togglePin(group: NavGroupId, href: string) {
+    const previous = favorites;
+    const isFavorite = previous[group] === href;
+    const next: NavFavorites = { ...previous };
+    if (isFavorite) delete next[group];
+    else next[group] = href;
+    // Optimista: se ve enseguida; si falla, vuelve a lo anterior y lo dice debajo del titulo.
+    setSharedNavFavorites(next);
+    setPinError(null);
+    saveChain.current = saveChain.current.then(async () => {
+      try {
+        const result = await setNavFavorite({ group, href: isFavorite ? null : href, browserTimezone: browserTimezone() });
+        if (result.ok) return;
+        setSharedNavFavorites(previous);
+        setPinError({ group, message: result.error });
+      } catch {
+        setSharedNavFavorites(previous);
+        setPinError({ group, message: "No pude guardar la favorita. Probá de nuevo." });
+      }
+    });
   }
 
   return (
     <>
       {sections.map((section) => {
         const itemsId = `nav-items-${section.group}`;
+        const activeInside = activeGroup === section.group;
+        const isOpen = section.collapsible && sectionOpen(section.group, openClasses.includes(sectionOpenKey(section.group)) ? "1" : "0", activeHref);
+        const target = sectionTitleTarget(section, favorites, viewer);
+        const favorite = favorites[section.group];
+        const favoriteName = target ? section.items.find((i) => i.href === favorite)?.name : undefined;
         return (
           <div key={section.group} className="mt-4 space-y-1 first:mt-0">
             {section.title && !section.collapsible && (
@@ -245,20 +306,24 @@ export function NavLinks({
                 {section.title}
               </div>
             )}
-            {/* El titulo de una seccion colapsable es un boton: Tab llega, Enter o Espacio abren y cierran. */}
+            {/*
+              El titulo de una seccion colapsable es un boton: Tab llega, Enter o Espacio abren y cierran.
+              Cerrada y con favorita, abrirla tambien lleva a la favorita (lo dice el title).
+            */}
             {section.title && section.collapsible && (
               <button
                 type="button"
-                onClick={toggleTools}
-                aria-expanded={open}
+                onClick={() => toggleSection(section.group, isOpen, target)}
+                aria-expanded={isOpen}
                 aria-controls={itemsId}
+                title={!isOpen && favoriteName ? `Abrir ${section.title} e ir a ${favoriteName}` : undefined}
                 className={cn(
                   "flex w-full items-center justify-between rounded-md px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide transition-colors hover:text-sidebar-foreground/70 collapsed:hidden",
                   activeInside ? "text-sidebar-foreground/70" : "text-sidebar-foreground/40",
                 )}
               >
                 {section.title}
-                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} aria-hidden />
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-180")} aria-hidden />
               </button>
             )}
             {/*
@@ -268,33 +333,36 @@ export function NavLinks({
             {section.separatorBefore && (
               <div className="hidden border-t border-sidebar-border pt-2 collapsed:-mt-1 collapsed:block" aria-hidden="true" />
             )}
+            {pinError?.group === section.group && (
+              <p role="status" className="px-3 text-xs text-destructive collapsed:hidden">
+                {pinError.message}
+              </p>
+            )}
             <div
               id={itemsId}
               // Una seccion colapsable se esconde con CSS (no con el estado de React) para que no parpadee al
-              // cargar: abierta si la pantalla activa esta adentro, o si el <html> trae `nav-tools-open`. Con el
-              // menu angosto (`collapsed:`) se ven todos los iconos.
-              className={cn(
-                "space-y-1",
-                section.collapsible && !activeInside && "hidden tools-open:block collapsed:block",
-              )}
+              // cargar: abierta si la pantalla activa esta adentro, o si el <html> trae `nav-open-<grupo>`. Con
+              // el menu angosto (`collapsed:`) se ven todos los iconos.
+              className={cn("space-y-1", section.collapsible && !activeInside && SECTION_HIDDEN_CLASS[section.group])}
             >
               {section.items.map((item) => {
                 const isActive = item.href === activeHref;
                 const badge = item.href === "/dashboard/inbox" && drafts ? drafts : null;
+                const isFavorite = section.collapsible && favorite === item.href;
                 return (
-                  // El badge de borradores es un link propio y no puede vivir
-                  // adentro del link de Inbox (anidar <a> es invalido y llevaria
-                  // a la bandeja en vez de a la cola). Por eso la fila es un
+                  // El badge de borradores y el pin son botones o links propios y no pueden vivir adentro
+                  // del link del item (anidar <a> o <button> en <a> es invalido). Por eso la fila es un
                   // contenedor relativo.
-                  <div key={item.name} className="relative">
+                  <div key={item.name} className="group/nav relative">
                     <Link
-                      href={navItemHref(item, { permissionKeys: permissionKeys ?? [] })}
+                      href={navItemHref(item, viewer)}
                       onClick={onNavigate}
                       aria-current={isActive ? "page" : undefined}
                       title={collapsed ? navItemTooltip(item) : undefined}
                       className={cn(
                         "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0",
                         badge && "pr-14 collapsed:pr-0",
+                        section.collapsible && "pr-10 collapsed:pr-0",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-accent-foreground"
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -305,6 +373,14 @@ export function NavLinks({
                       <LinkPending className="ml-auto collapsed:hidden" />
                     </Link>
                     {badge && <DraftBadge counts={badge} onNavigate={onNavigate} />}
+                    {section.collapsible && section.title && (
+                      <PinButton
+                        itemName={item.name}
+                        sectionTitle={section.title}
+                        pinned={isFavorite}
+                        onToggle={() => togglePin(section.group, item.href)}
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -313,6 +389,50 @@ export function NavLinks({
         );
       })}
     </>
+  );
+}
+
+function browserTimezone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * La chincheta de un item: lo marca (o desmarca) como la pantalla favorita de su seccion. En la
+ * computadora aparece al pasar el mouse o con el teclado; la favorita se ve siempre. En el panel del
+ * telefono (sin mouse) se ve tenue siempre. Con el menu angosto no se muestra.
+ */
+function PinButton({
+  itemName,
+  sectionTitle,
+  pinned,
+  onToggle,
+}: {
+  itemName: string;
+  sectionTitle: string;
+  pinned: boolean;
+  onToggle: () => void;
+}) {
+  const label = pinned ? `Quitar ${itemName} como favorita de ${sectionTitle}` : `Marcar ${itemName} como favorita de ${sectionTitle}`;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={pinned}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md transition-opacity hover:bg-sidebar-border/60 focus-visible:opacity-100 collapsed:hidden",
+        pinned
+          ? "text-sidebar-foreground/80 opacity-100"
+          : "text-sidebar-foreground/50 opacity-40 md:opacity-0 md:group-hover/nav:opacity-100",
+      )}
+    >
+      <Pin className={cn("h-3.5 w-3.5", pinned && "fill-current")} aria-hidden />
+    </button>
   );
 }
 

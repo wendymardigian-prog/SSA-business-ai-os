@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { brandName, brandColorHex, brandColorCss } from "@/lib/brand";
 import { appUrl } from "@/lib/app-url";
+import { sectionsOpenHeadScript } from "@/lib/nav/sections-open";
 import { DatePickerOpener } from "@/components/ui/date-picker-opener";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -39,7 +40,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `try{if(localStorage.getItem("theme")==="dark"||(!localStorage.getItem("theme")&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.classList.add("dark")}catch(e){}
 try{if(localStorage.getItem("sidebar-collapsed")==="1")document.documentElement.classList.add("sidebar-collapsed")}catch(e){}
-try{if(localStorage.getItem("nav-tools-open")==="1")document.documentElement.classList.add("nav-tools-open")}catch(e){}`,
+${sectionsOpenHeadScript()}`,
           }}
         />
         {/*

@@ -31,3 +31,20 @@ export function useHtmlClass(name: string) {
     () => false,
   );
 }
+
+/**
+ * Las clases del <html> que empiezan con `prefix`, ordenadas y unidas por espacio (un string: asi el
+ * resultado es estable y `useSyncExternalStore` no re-renderiza de mas). Lo usa el menu para saber que
+ * secciones estan abiertas (`nav-open-<grupo>`) sin un hook por seccion.
+ */
+export function useHtmlClassesWithPrefix(prefix: string) {
+  return useSyncExternalStore(
+    subscribe,
+    () =>
+      Array.from(document.documentElement.classList)
+        .filter((c) => c.startsWith(prefix))
+        .sort()
+        .join(" "),
+    () => "",
+  );
+}
