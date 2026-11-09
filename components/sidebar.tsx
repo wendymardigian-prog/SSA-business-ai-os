@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { LinkPending } from "@/components/ui/link-pending";
-import { usePathname, useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Clapperboard,
@@ -230,7 +230,6 @@ export function NavLinks({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const viewer = { permissionKeys: permissionKeys ?? [] };
   const navItems = visibleNavItems(navigation, { permissionKeys: viewer.permissionKeys, flags: navFlags });
   // El agrupamiento se calcula sobre los items YA filtrados: un grupo sin
@@ -249,24 +248,19 @@ export function NavLinks({
   // Los cambios de favorita se guardan de a uno y en orden: dos clicks rapidos no se pisan.
   const saveChain = useRef<Promise<void>>(Promise.resolve());
 
+  // Ya hidrato: antes de esto (el HTML del servidor y el primer render del navegador) la seccion de la pantalla
+  // activa se dibuja abierta aunque el <html> no traiga su clase, para que no parpadee.
+  const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
+
   /**
-   * Click en el titulo de una seccion. Cerrada: se abre y, si tiene favorita que la persona ve, lleva
-   * ahi. Abierta: se cierra, sin navegar.
+   * Entrar a una pantalla deja su seccion abierta Y guardada (9/11/2026). Antes se veia abierta solo mientras la
+   * pantalla estaba adentro: al pasar a otra seccion, la anterior se cerraba sola y parecia que abrir una cerraba
+   * otra. Ahora cada seccion se cierra solo con su flechita, tambien la de la pantalla activa. useLayoutEffect:
+   * la clase se pone antes de pintar.
    */
-  function toggleSection(group: NavGroupId, isOpen: boolean, target: string | null) {
-    const key = sectionOpenKey(group);
-    const next = !isOpen;
-    document.documentElement.classList.toggle(key, next);
-    try {
-      localStorage.setItem(key, next ? "1" : "0");
-    } catch {
-      // Sin almacenamiento (ventana privada): la preferencia dura hasta recargar y nada mas.
-    }
-    if (next && target && target !== activeHref) {
-      router.push(target);
-      onNavigate?.();
-    }
-  }
+  useLayoutEffect(() => {
+    if (activeGroup) setSectionOpen(activeGroup, true);
+  }, [activeGroup]);
 
   function togglePin(group: NavGroupId, href: string) {
     const previous = favorites;
@@ -295,7 +289,9 @@ export function NavLinks({
       {sections.map((section) => {
         const itemsId = `nav-items-${section.group}`;
         const activeInside = activeGroup === section.group;
-        const isOpen = section.collapsible && sectionOpen(section.group, openClasses.includes(sectionOpenKey(section.group)) ? "1" : "0", activeHref);
+        // Abierta = su clase en el <html>. Antes de hidratar vale tambien la regla de la pantalla activa (`sectionOpen`).
+        const classOpen = openClasses.includes(sectionOpenKey(section.group));
+        const isOpen = section.collapsible && (hydrated ? classOpen : sectionOpen(section.group, classOpen ? "1" : "0", activeHref));
         const target = sectionTitleTarget(section, favorites, viewer);
         const favorite = favorites[section.group];
         const favoriteName = target ? section.items.find((i) => i.href === favorite)?.name : undefined;
@@ -307,24 +303,53 @@ export function NavLinks({
               </div>
             )}
             {/*
-              El titulo de una seccion colapsable es un boton: Tab llega, Enter o Espacio abren y cierran.
-              Cerrada y con favorita, abrirla tambien lleva a la favorita (lo dice el title).
+              El encabezado de una seccion colapsable tiene dos zonas (9/11/2026):
+              - La flechita SOLO abre o cierra (nunca navega).
+              - El resto: con favorita, es un link a ella (y deja la seccion abierta); sin favorita, abre o cierra.
+              Son dos controles separados (no uno adentro del otro): Tab llega a cada uno.
             */}
             {section.title && section.collapsible && (
-              <button
-                type="button"
-                onClick={() => toggleSection(section.group, isOpen, target)}
-                aria-expanded={isOpen}
-                aria-controls={itemsId}
-                title={!isOpen && favoriteName ? `Abrir ${section.title} e ir a ${favoriteName}` : undefined}
+              <div
                 className={cn(
-                  "flex w-full items-center justify-between rounded-md px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide transition-colors hover:text-sidebar-foreground/70 collapsed:hidden",
+                  "flex items-center rounded-md text-[11px] font-semibold uppercase tracking-wide collapsed:hidden",
                   activeInside ? "text-sidebar-foreground/70" : "text-sidebar-foreground/40",
                 )}
               >
-                {section.title}
-                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-180")} aria-hidden />
-              </button>
+                {target ? (
+                  <Link
+                    href={target}
+                    onClick={() => {
+                      setSectionOpen(section.group, true);
+                      onNavigate?.();
+                    }}
+                    title={`Ir a ${favoriteName ?? "la favorita"}`}
+                    className="min-w-0 flex-1 truncate rounded-md px-3 pb-1 pt-0.5 transition-colors hover:text-sidebar-foreground/70"
+                  >
+                    {section.title}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSectionOpen(section.group, !isOpen)}
+                    aria-expanded={isOpen}
+                    aria-controls={itemsId}
+                    className="min-w-0 flex-1 truncate rounded-md px-3 pb-1 pt-0.5 text-left transition-colors hover:text-sidebar-foreground/70"
+                  >
+                    {section.title}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSectionOpen(section.group, !isOpen)}
+                  aria-expanded={isOpen}
+                  aria-controls={itemsId}
+                  aria-label={isOpen ? `Cerrar ${section.title}` : `Abrir ${section.title}`}
+                  title={isOpen ? `Cerrar ${section.title}` : `Abrir ${section.title}`}
+                  className="mr-1.5 flex h-6 w-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-sidebar-border/60 hover:text-sidebar-foreground/70"
+                >
+                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-180")} aria-hidden />
+                </button>
+              </div>
             )}
             {/*
               Colapsado (N3), los titulos de grupo no entran: se esconden
@@ -341,9 +366,10 @@ export function NavLinks({
             <div
               id={itemsId}
               // Una seccion colapsable se esconde con CSS (no con el estado de React) para que no parpadee al
-              // cargar: abierta si la pantalla activa esta adentro, o si el <html> trae `nav-open-<grupo>`. Con
-              // el menu angosto (`collapsed:`) se ven todos los iconos.
-              className={cn("space-y-1", section.collapsible && !activeInside && SECTION_HIDDEN_CLASS[section.group])}
+              // cargar: abierta si el <html> trae `nav-open-<grupo>` (y, hasta hidratar, si la pantalla activa esta
+              // adentro). Las secciones son independientes: abrir una nunca cierra otra. Con el menu angosto
+              // (`collapsed:`) se ven todos los iconos.
+              className={cn("space-y-1", section.collapsible && !(activeInside && !hydrated) && SECTION_HIDDEN_CLASS[section.group])}
             >
               {section.items.map((item) => {
                 const isActive = item.href === activeHref;
@@ -390,6 +416,21 @@ export function NavLinks({
       })}
     </>
   );
+}
+
+/** Guarda si una seccion se ve abierta: clase del <html> + localStorage (sin parpadeo al recargar). */
+function setSectionOpen(group: NavGroupId, open: boolean) {
+  const key = sectionOpenKey(group);
+  document.documentElement.classList.toggle(key, open);
+  try {
+    localStorage.setItem(key, open ? "1" : "0");
+  } catch {
+    // Sin almacenamiento (ventana privada): la preferencia dura hasta recargar y nada mas.
+  }
+}
+
+function noopSubscribe() {
+  return () => {};
 }
 
 function browserTimezone(): string | undefined {

@@ -263,8 +263,9 @@ export function parseNavFavorites(raw: unknown): NavFavorites {
 }
 
 /**
- * A donde lleva el click en el titulo de una seccion CERRADA: su favorita, si la persona la ve en esa seccion.
- * Sin favorita (o con una que ya no ve), `null`: el click solo la abre.
+ * A donde lleva el click en el titulo de una seccion: su favorita, si la persona la ve en esa seccion (y la
+ * seccion queda abierta). Sin favorita (o con una que ya no ve), `null`: el titulo solo abre o cierra.
+ * La flechita del encabezado nunca navega: solo abre o cierra (9/11/2026).
  */
 export function sectionTitleTarget<T extends Pick<NavItemMeta, "href" | "requires">>(
   section: Pick<NavSection<T>, "group" | "collapsible" | "items">,
