@@ -1,0 +1,224 @@
+{
+  "_comment": "Casos de pickOwner (F96). Corren contra la gemela TS (lib/services/engine-rules.ts) y contra app_servicio.svc_owner_pick_plan (verify-services). Plata en centimos; fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "reparto al que tiene menos",
+      "input": {
+        "mode": "round_robin",
+        "userId": null,
+        "members": [
+          "u-ana",
+          "u-beto"
+        ],
+        "activeCounts": {
+          "u-ana": 3,
+          "u-beto": 2
+        },
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ]
+      },
+      "expected": {
+        "userId": "u-beto",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "empate al que hace mas que no recibe",
+      "input": {
+        "mode": "round_robin",
+        "userId": null,
+        "members": [
+          "u-ana",
+          "u-beto"
+        ],
+        "activeCounts": {
+          "u-ana": 2,
+          "u-beto": 2
+        },
+        "lastAssignedAt": {
+          "u-ana": "2026-11-01T00:00:00Z",
+          "u-beto": "2026-10-01T00:00:00Z"
+        },
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ]
+      },
+      "expected": {
+        "userId": "u-beto",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "empate y uno nunca recibio",
+      "input": {
+        "mode": "round_robin",
+        "userId": null,
+        "members": [
+          "u-ana",
+          "u-beto"
+        ],
+        "activeCounts": {},
+        "lastAssignedAt": {
+          "u-ana": "2026-11-01T00:00:00Z"
+        },
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ]
+      },
+      "expected": {
+        "userId": "u-beto",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "el unico del reparto se fue",
+      "input": {
+        "mode": "round_robin",
+        "userId": null,
+        "members": [
+          "u-ana"
+        ],
+        "activeCounts": {},
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-resp"
+        ]
+      },
+      "expected": {
+        "userId": "u-resp",
+        "usedFallback": true
+      }
+    },
+    {
+      "name": "fija",
+      "input": {
+        "mode": "fixed",
+        "userId": "u-ana",
+        "members": [],
+        "activeCounts": {},
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-resp"
+        ]
+      },
+      "expected": {
+        "userId": "u-ana",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "condicion elige a Beto",
+      "input": {
+        "mode": "conditions",
+        "userId": null,
+        "members": [],
+        "activeCounts": {},
+        "lastAssignedAt": {},
+        "conditionUserId": "u-beto",
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-beto",
+          "u-resp"
+        ]
+      },
+      "expected": {
+        "userId": "u-beto",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "sin condicion al respaldo",
+      "input": {
+        "mode": "conditions",
+        "userId": null,
+        "members": [],
+        "activeCounts": {},
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-beto",
+          "u-resp"
+        ]
+      },
+      "expected": {
+        "userId": "u-resp",
+        "usedFallback": true
+      }
+    },
+    {
+      "name": "la del servicio anterior",
+      "input": {
+        "mode": "previous",
+        "userId": null,
+        "members": [],
+        "activeCounts": {},
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": "u-ana",
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-resp"
+        ]
+      },
+      "expected": {
+        "userId": "u-ana",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "nadie y el respaldo se fue",
+      "input": {
+        "mode": "fixed",
+        "userId": "u-ana",
+        "members": [],
+        "activeCounts": {},
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": []
+      },
+      "expected": {
+        "userId": null,
+        "usedFallback": true
+      }
+    }
+  ]
+}

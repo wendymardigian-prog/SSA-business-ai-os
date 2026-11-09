@@ -1,0 +1,112 @@
+{
+  "_comment": "Casos de la validacion de product_variants.journey_template (F13, F24). Corren contra validateJourneyTemplate (lib/services/journey-template.ts) y contra app_servicio.validate_journey_template (verify-services --bloque sv2). Sin contexto de la base. Los ids de formularios y tipos de reunion son de ejemplo.",
+  "cases": [
+    { "name": "vacio", "template": { "v": 1, "phases": [] }, "expected": [] },
+    {
+      "name": "camino valido con plazo y semaforo",
+      "template": { "v": 1, "phases": [
+        { "key": "ph_aaaaa1", "name": "Onboarding", "duration_days": 14, "yellow_day": 10, "red_day": 14, "advance": "auto", "items": [
+          { "key": "it_aaaaa1", "kind": "form", "name": "Diagnóstico", "ref": { "form_id": "11111111-1111-4111-8111-111111111111" }, "due_rule": { "from": "phase_start", "days": 5 }, "light": { "yellow_after_days": 0, "red_after_days": 2 } },
+          { "key": "it_aaaaa2", "kind": "checkbox", "name": "Llamada de bienvenida", "assignee": "owner", "due_rule": { "from": "item_completed", "item_key": "it_aaaaa1", "days": 3 } }
+        ] }
+      ] },
+      "expected": []
+    },
+    {
+      "name": "depende de un paso posterior",
+      "template": { "v": 1, "phases": [
+        { "key": "ph_aaaaa1", "name": "Fase", "items": [
+          { "key": "it_bbbbb1", "kind": "checkbox", "name": "B", "due_rule": { "from": "item_completed", "item_key": "it_ccccc1", "days": 1 } },
+          { "key": "it_ccccc1", "kind": "checkbox", "name": "C" }
+        ] }
+      ] },
+      "expected": ["un paso solo puede depender de uno anterior"]
+    },
+    {
+      "name": "clave repetida",
+      "template": { "v": 1, "phases": [
+        { "key": "ph_aaaaa1", "name": "Fase", "items": [
+          { "key": "it_bbbbb1", "kind": "checkbox", "name": "B" },
+          { "key": "it_bbbbb1", "kind": "checkbox", "name": "C" }
+        ] }
+      ] },
+      "expected": ["la clave it_bbbbb1 está repetida"]
+    },
+    {
+      "name": "clave de fase invalida",
+      "template": { "v": 1, "phases": [ { "key": "fase1", "name": "Fase", "items": [] } ] },
+      "expected": ["hay una fase con una clave inválida"]
+    },
+    {
+      "name": "amarillo despues del rojo",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Fase", "duration_days": 14, "yellow_day": 14, "red_day": 10, "items": [] } ] },
+      "expected": ["«Fase»: el amarillo tiene que ser antes que el rojo"]
+    },
+    {
+      "name": "rojo despues de la duracion",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Fase", "duration_days": 14, "yellow_day": 10, "red_day": 20, "items": [] } ] },
+      "expected": ["«Fase»: el rojo no puede pasar la duración de la fase"]
+    },
+    {
+      "name": "semaforo del paso sin plazo",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Fase", "items": [
+        { "key": "it_aaaaa1", "kind": "checkbox", "name": "Firmar el acuerdo", "light": { "yellow_after_days": 0, "red_after_days": 2 } }
+      ] } ] },
+      "expected": ["«Firmar el acuerdo»: el semáforo del paso necesita un plazo o que se repita"]
+    },
+    {
+      "name": "semaforo del paso rojo antes que amarillo",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Fase", "items": [
+        { "key": "it_aaaaa1", "kind": "checkbox", "name": "Firmar el acuerdo", "due_rule": { "from": "phase_start", "days": 3 }, "light": { "yellow_after_days": 3, "red_after_days": 1 } }
+      ] } ] },
+      "expected": ["«Firmar el acuerdo»: el rojo tiene que ser igual o mayor que el amarillo"]
+    },
+    {
+      "name": "semaforo del paso con repeticion es valido",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Reto", "items": [
+        { "key": "it_aaaaa1", "kind": "student_task", "name": "Entrega semanal", "recurrence": { "every": "week", "until": "n_times", "n_until": 4, "from": { "from": "phase_start", "days": 0 } }, "light": { "red_after_days": 2 } }
+      ] } ] },
+      "expected": []
+    },
+    {
+      "name": "formulario sin formulario",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Fase", "items": [ { "key": "it_aaaaa1", "kind": "form", "name": "Diagnóstico", "ref": {} } ] } ] },
+      "expected": ["«Diagnóstico»: elegí el formulario"]
+    },
+    {
+      "name": "agenda sin tipo de reunion y complete_on raro",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Fase", "items": [ { "key": "it_aaaaa1", "kind": "booking", "name": "Kickoff", "ref": { "complete_on": "nunca" } } ] } ] },
+      "expected": ["«Kickoff»: elegí el tipo de reunión", "«Kickoff»: elegí cuándo se completa"]
+    },
+    {
+      "name": "clave desconocida en la fase",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Fase", "color": "rojo", "items": [] } ] },
+      "expected": ["clave desconocida: color"]
+    },
+    {
+      "name": "tipo de paso desconocido",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Fase", "items": [ { "key": "it_aaaaa1", "kind": "llamada", "name": "X" } ] } ] },
+      "expected": ["«X»: tipo de paso desconocido"]
+    },
+    {
+      "name": "a cargo de una persona sin persona",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Fase", "items": [ { "key": "it_aaaaa1", "kind": "team_task", "name": "Armar el plan", "assignee": "user" } ] } ] },
+      "expected": ["«Armar el plan»: elegí la persona a cargo"]
+    },
+    {
+      "name": "reto con fecha fija sin fecha",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Implementación", "challenge": { "enabled": true, "name": "Reto", "start": "fixed_date" }, "items": [] } ] },
+      "expected": ["«Implementación»: elegí la fecha del Reto"]
+    },
+    {
+      "name": "certificado sin plantilla",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Cierre", "items": [ { "key": "it_aaaaa1", "kind": "certificate", "name": "Certificado", "ref": { "auto_issue": true } } ] } ] },
+      "expected": ["Elegí la plantilla del certificado"]
+    },
+    {
+      "name": "se abre una seccion que no existe",
+      "template": { "v": 1, "phases": [ { "key": "ph_aaaaa1", "name": "Fase", "items": [ { "key": "it_aaaaa1", "kind": "open_section", "name": "Se abre", "ref": { "section": "fame" } } ] } ] },
+      "expected": ["«Se abre»: elegí la sección"]
+    }
+  ]
+}

@@ -251,6 +251,7 @@ const SCOPE_GATES: Record<ScopedModule, { keys: string[]; label: string; hint: s
   sales: { keys: ["sales.view"], label: "Qué ventas ve", hint: "Activá «Ver las ventas» para elegir el alcance", hintSelector: "sales.view" }, // @plantilla-quitar(ventas)
   commissions: { keys: ["commissions.view"], label: "Qué comisiones ve", hint: "Activá «Ver comisiones» para elegir el alcance", hintSelector: "commissions.view" }, // @plantilla-quitar(comisiones)
   tasks: { keys: ["tasks.view"], label: "Qué tareas ve", hint: "Activá «Ver las tareas» para elegir el alcance", hintSelector: "tasks.view" }, // @plantilla-quitar(tareas)
+  services: { keys: ["services.view"], label: "Qué servicios ve", hint: "Activá «Ver los servicios» para elegir el alcance", hintSelector: "services.view" }, // @plantilla-quitar(servicios)
 };
 
 /** En qué grupo de la pantalla va el selector de cada alcance. */
@@ -261,6 +262,7 @@ export const SCOPE_GROUP: Record<ScopedModule, string> = {
   sales: "sales", // @plantilla-quitar(ventas)
   commissions: "commissions", // @plantilla-quitar(comisiones)
   tasks: "tasks", // @plantilla-quitar(tareas)
+  services: "services", // @plantilla-quitar(servicios)
 };
 
 export interface ScopeFieldState {

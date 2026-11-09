@@ -1595,7 +1595,10 @@ try {
     check((await sees(member, "ai_threads", byChannel.designer)).seen, "el Member ve el hilo del Diseñador IA");
     check(!(await sees(member, "ai_threads", byChannel.assistant)).seen, "el Member NO ve el hilo del asistente de otra persona");
     check((await sees(admin, "ai_threads", byChannel.assistant)).seen, "la persona dueña ve su hilo del asistente");
-    check(!(await sees(admin, "ai_threads", byChannel.portal)).seen, "nadie ve un hilo del portal todavia (sin politica)");
+    // Servicios A1 (00352, F87): un hilo del portal lo ve quien ve el contacto (ai_threads_select_portal).
+    check((await sees(admin, "ai_threads", byChannel.portal)).seen, "el Admin ve el hilo del portal (ve el contacto)");
+    const memberSeesContact = (await sees(member, "contacts", contact.id)).seen;
+    check((await sees(member, "ai_threads", byChannel.portal)).seen === memberSeesContact, "el Member ve el hilo del portal solo si ve el contacto");
     check(!!(await admin.client.from("ai_messages").insert({ workspace_id: ws.id, thread_id: byChannel.designer, role: "user", content: "zz-test" })).error, "nadie escribe mensajes de IA con su sesion");
     const otroDis = await makeUser("otro-disenador");
     const { data: wsOtroDis } = await svc.from("workspaces").insert({ name: "zz-test-disenador-ws", slug: `zz-test-disenador-${Date.now()}` }).select("id").single();

@@ -4,9 +4,9 @@
 --
 -- Se corre sobre una base que tiene TODAS las migraciones del proyecto y la deja
 -- como tiene que quedar la plantilla: sin Llamadas (Fathom), Formularios (con el
--- reporte de fin de dia y los contratos), Ventas (ventas y pagos), Tareas,
--- Finanzas (gastos, gastos que se repiten y proveedores), Comisiones ni Webhooks
--- entrantes.
+-- reporte de fin de dia y los contratos), Ventas (ventas y pagos, con Afiliados),
+-- Tareas, Finanzas (gastos, gastos que se repiten y proveedores), Comisiones,
+-- Webhooks entrantes ni Servicios (servicios, portal y tutor: seccion 7).
 --
 -- Se QUEDAN, aunque nacieron junto con esos modulos:
 --   - El catalogo de productos (products y product_variants) y su historial.
@@ -987,5 +987,86 @@ DROP FUNCTION private.cm_sale_person(p_payee text, p_facts jsonb);
 
 -- Webhooks entrantes.
 DROP FUNCTION public.receive_inbound_webhook(p_row jsonb, p_duplicate_window_seconds integer);
+
+-- ============================================================================
+-- 7. Servicios (Corrida A1) y Afiliados (siguen a Ventas)
+-- ============================================================================
+-- Sin probar contra una base todavia: correr check-residue en una base de prueba
+-- antes de usarla (ver docs/PENDIENTE-servicios.md).
+
+-- 7.1 Los disparadores del modulo que viven en tablas que se quedan, y los de
+-- afiliados. Se buscan por nombre en el catalogo (asi no se olvida ninguno).
+DO $poda$
+DECLARE
+  t record;
+BEGIN
+  FOR t IN SELECT tg.tgname, c.oid::regclass::text AS tbl
+             FROM pg_trigger tg JOIN pg_class c ON c.oid = tg.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE NOT tg.tgisinternal AND n.nspname = 'public'
+              AND (tg.tgname LIKE 'trg\_app\_servicio\_%' OR tg.tgname LIKE 'trg\_affiliate\_%' OR tg.tgname = 'trg_product_links_guard') LOOP
+    EXECUTE format('DROP TRIGGER %I ON %s', t.tgname, t.tbl);
+  END LOOP;
+END $poda$;
+
+-- 7.2 Cron, storage y politicas.
+SELECT cron.unschedule(jobname) FROM cron.job WHERE jobname IN ('svc-daily', 'affiliates-daily');
+SET LOCAL storage.allow_delete_query = 'true';
+DELETE FROM storage.buckets WHERE id IN ('portal-avatars', 'program-resources', 'community-media');
+DROP POLICY IF EXISTS ai_threads_select_portal ON public.ai_threads;
+DROP POLICY IF EXISTS audit_log_select_services ON public.audit_log;
+
+-- 7.3 La lista de origenes de una corrida con agente: sin el tutor del portal.
+ALTER TABLE public.agent_runs DROP CONSTRAINT agent_runs_agent_only_for_agent_sources;
+ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_agent_only_for_agent_sources
+  CHECK (agent_id IS NULL OR source = ANY (ARRAY['agent', 'conversation_summary', 'content_copy']::text[]));
+
+-- 7.4 Columnas del modulo y de afiliados en tablas que se quedan.
+ALTER TABLE public.workspaces DROP COLUMN services_enabled;
+ALTER TABLE public.workspaces DROP COLUMN portal_settings;
+ALTER TABLE public.workspaces DROP COLUMN portal_settings_rev;
+ALTER TABLE public.workspaces DROP COLUMN affiliate_settings;
+ALTER TABLE public.workspaces DROP COLUMN affiliate_settings_rev;
+ALTER TABLE public.products DROP COLUMN portal_enabled;
+ALTER TABLE public.products DROP COLUMN portal_settings;
+ALTER TABLE public.products DROP COLUMN portal_settings_rev;
+ALTER TABLE public.products DROP COLUMN tutor_agent_id;
+ALTER TABLE public.products DROP COLUMN links;
+ALTER TABLE public.products DROP COLUMN links_rev;
+ALTER TABLE public.product_variants DROP COLUMN journey_template;
+ALTER TABLE public.product_variants DROP COLUMN journey_template_rev;
+ALTER TABLE public.product_variants DROP COLUMN service_settings;
+ALTER TABLE public.product_variants DROP COLUMN service_settings_rev;
+ALTER TABLE public.product_variants DROP COLUMN portal_settings;
+ALTER TABLE public.product_variants DROP COLUMN portal_settings_rev;
+ALTER TABLE public.contact_notes DROP COLUMN service_id;
+ALTER TABLE public.knowledge_base DROP COLUMN program_item_id;
+ALTER TABLE public.knowledge_chunks DROP COLUMN start_second;
+ALTER TABLE public.workspace_members DROP COLUMN affiliate_code;
+ALTER TABLE public.contacts DROP COLUMN affiliate_code;
+ALTER TABLE public.contacts DROP COLUMN affiliate_user_id;
+ALTER TABLE public.contacts DROP COLUMN affiliate_contact_id;
+ALTER TABLE public.contacts DROP COLUMN affiliate_kind;
+ALTER TABLE public.contacts DROP COLUMN affiliate_assigned_at;
+ALTER TABLE public.contacts DROP COLUMN affiliate_expires_at;
+ALTER TABLE public.contacts DROP COLUMN affiliate_last_ref_at;
+ALTER TABLE public.contacts DROP COLUMN affiliate_source;
+
+-- 7.5 Las funciones de afiliados (public y private) y la del cron del modulo.
+DO $poda$
+DECLARE
+  f record;
+BEGIN
+  FOR f IN SELECT p.oid::regprocedure AS sig FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE (n.nspname IN ('public', 'private') AND (p.proname LIKE 'affiliate%' OR p.proname IN ('validate_product_links', 'validate_affiliate_settings',
+                     'product_links_guard', 'product_links_save', 'commission_apply_max', 'commission_edit', 'commission_failed_dimension', 'commission_payee')))
+               OR (n.nspname = 'private' AND p.proname = 'enqueue_svc_daily') LOOP
+    EXECUTE format('DROP FUNCTION %s', f.sig);
+  END LOOP;
+END $poda$;
+
+-- 7.6 Los esquemas del modulo, enteros (F90: con CASCADE a proposito; no tienen nada que se quede).
+DROP SCHEMA IF EXISTS app_servicio_proyectos CASCADE;
+DROP SCHEMA IF EXISTS app_servicio_portal CASCADE;
+DROP SCHEMA IF EXISTS app_servicio CASCADE;
 
 COMMIT;

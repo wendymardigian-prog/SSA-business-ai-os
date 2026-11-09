@@ -12,6 +12,12 @@ import { loadWizardConfig } from "@/lib/sales/wizard/load";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { snapshotText } from "@/lib/sales/sale-text";
+import { loadAffiliateOf } from "@/lib/affiliates/load";
+import { AffiliateField } from "@/components/affiliates/affiliate-field";
+import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
+import { loadContactServices } from "@/lib/services/screens/load-services"; // @plantilla-quitar(servicios)
+import { loadNewServiceOptions } from "@/lib/services/screens/load-new-service"; // @plantilla-quitar(servicios)
+import { ServicesSection } from "@/components/services/clients/services-section"; // @plantilla-quitar(servicios)
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +27,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * La ficha de una venta (F26). Se lee con el cliente del usuario: si la RLS (`can_see_sale`)
  * no deja ver la venta, es un 404 (no se confirma que exista).
  */
-export default async function VentaPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function VentaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<{ crearServicio?: string }> }) {
   const ctx = await requirePermission("sales.view");
   const { id } = await params;
   if (!UUID.test(id)) notFound();
@@ -82,10 +88,34 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
   };
 
   const closed = ["cancelled", "refunded", "subscription_cancelled"].includes(sale.status);
+  // @plantilla-desde(servicios)
+  // F33: la seccion «Servicio» de la venta, solo con el modulo prendido y services.view.
+  let servicesSection: React.ReactNode = undefined;
+  if (isModuleEnabled(workspace as { services_enabled?: boolean | null }) && ctx.can("services.view")) {
+    const svc = (await loadContactServices(supabase, workspace.id, sale.contact_id)).filter((s) => s.sale_id === sale.id || false);
+    const team = await getWorkspaceMembers(workspace.id);
+    servicesSection = (
+      <ServicesSection
+        title="Servicio"
+        services={svc.map((s) => ({ id: s.id, label: `${s.product_snapshot?.product_name ?? ""}${s.product_snapshot?.variant_name ? ` · ${s.product_snapshot.variant_name}` : ""}`, status: s.status, light: s.light, phaseName: s.phase_name }))}
+        canCreate={ctx.can("services.create")}
+        options={ctx.can("services.create") ? await loadNewServiceOptions(supabase, workspace.id, team, ctx.can("services.create_off_rule")) : { products: [], members: [], canOffRule: false }}
+        preset={{ contactId: sale.contact_id, contactName: contact?.display_name ?? "", saleId: sale.id, variantId: sale.product_variant_id }}
+        openOnMount={(await searchParams)?.crearServicio === "1"}
+      />
+    );
+  }
+  // @plantilla-hasta(servicios)
+  // El afiliado de la venta (Servicios A1, F74/F104): la venta ya se comprobó con la sesión; el nombre se resuelve con el
+  // cliente de servicio, del negocio de la sesión.
+  const affiliateRecord = await loadAffiliateOf(service, workspace.id, "sale", sale.id, members.map((m) => ({ userId: m.userId, name: m.name })));
+  const affiliate = affiliateRecord.affiliate || ctx.can("affiliates.assign") ? <AffiliateField target="sale" id={sale.id} record={affiliateRecord} canAssign={ctx.can("affiliates.assign")} /> : undefined;
   return (
     <SaleDetail
       data={data}
       wizard={wizard}
+      affiliate={affiliate}
+      services={servicesSection} // @plantilla-quitar(servicios)
       commissions={
         // Quien ve solo las suyas y no tiene ninguna en esta venta no ve la sección: "no se generó ninguna" sería engañoso.
         saleCommissions && !(ctx.scope("commissions") !== "all" && saleCommissions.items.length === 0) ? (

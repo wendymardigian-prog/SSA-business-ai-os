@@ -1,0 +1,35 @@
+{
+  "_comment": "Casos de pickEffective (F37): de varios accesos a la misma sección y programa, el vigente con el fin más lejano (sin fin gana). Corren contra lib/portal-admin/access.ts y contra app_servicio.portal_access_pick (verify-services --bloque ac).",
+  "cases": [
+    { "name": "ninguno", "rows": [], "now": "2026-11-08T12:00:00Z", "expected": null },
+    { "name": "dos servicios: gana el fin más lejano (31/3 sobre 31/12)", "rows": [
+      { "id": "a", "starts_at": "2026-01-01T00:00:00Z", "ends_at": "2026-12-31T23:59:59Z", "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": null },
+      { "id": "b", "starts_at": "2026-06-01T00:00:00Z", "ends_at": "2027-03-31T23:59:59Z", "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": null }
+    ], "now": "2026-11-08T12:00:00Z", "expected": "b" },
+    { "name": "sin fin gana", "rows": [
+      { "id": "a", "starts_at": "2026-01-01T00:00:00Z", "ends_at": null, "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": null },
+      { "id": "b", "starts_at": "2026-06-01T00:00:00Z", "ends_at": "2027-03-31T23:59:59Z", "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": null }
+    ], "now": "2026-11-08T12:00:00Z", "expected": "a" },
+    { "name": "una revocada no cuenta", "rows": [
+      { "id": "a", "starts_at": "2026-01-01T00:00:00Z", "ends_at": null, "revoked_at": "2026-10-01T00:00:00Z", "suspended_overdue_at": null, "suspended_pause_at": null },
+      { "id": "b", "starts_at": "2026-06-01T00:00:00Z", "ends_at": "2026-12-31T23:59:59Z", "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": null }
+    ], "now": "2026-11-08T12:00:00Z", "expected": "b" },
+    { "name": "suspendida por mora no cuenta", "rows": [
+      { "id": "a", "starts_at": "2026-01-01T00:00:00Z", "ends_at": null, "revoked_at": null, "suspended_overdue_at": "2026-11-01T00:00:00Z", "suspended_pause_at": null }
+    ], "now": "2026-11-08T12:00:00Z", "expected": null },
+    { "name": "suspendida por pausa no cuenta", "rows": [
+      { "id": "a", "starts_at": "2026-01-01T00:00:00Z", "ends_at": null, "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": "2026-11-01T00:00:00Z" },
+      { "id": "b", "starts_at": "2026-01-01T00:00:00Z", "ends_at": "2026-11-30T23:59:59Z", "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": null }
+    ], "now": "2026-11-08T12:00:00Z", "expected": "b" },
+    { "name": "vencida no cuenta", "rows": [
+      { "id": "a", "starts_at": "2026-01-01T00:00:00Z", "ends_at": "2026-11-07T23:59:59Z", "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": null }
+    ], "now": "2026-11-08T12:00:00Z", "expected": null },
+    { "name": "todavía no empezó", "rows": [
+      { "id": "a", "starts_at": "2026-12-01T00:00:00Z", "ends_at": null, "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": null }
+    ], "now": "2026-11-08T12:00:00Z", "expected": null },
+    { "name": "empate en el fin: el id menor", "rows": [
+      { "id": "b", "starts_at": "2026-01-01T00:00:00Z", "ends_at": "2026-12-31T23:59:59Z", "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": null },
+      { "id": "a", "starts_at": "2026-01-01T00:00:00Z", "ends_at": "2026-12-31T23:59:59Z", "revoked_at": null, "suspended_overdue_at": null, "suspended_pause_at": null }
+    ], "now": "2026-11-08T12:00:00Z", "expected": "a" }
+  ]
+}

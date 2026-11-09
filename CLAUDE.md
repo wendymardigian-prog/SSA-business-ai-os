@@ -2189,6 +2189,37 @@ node scripts/verify-designer.mjs --bloque ds5    # uno solo
 
 Mismas reglas que los demás: crean y limpian sus datos (`zz-test-`), de a uno y con el candado `/private/tmp/ssa-verify.lock`.
 
+# Servicios, portal y afiliados (Corrida A1, construido el 8/11/2026)
+
+Lo que pasa con cada cliente **después** de la venta (servicio, camino, semáforo, accesos al portal), todo lo del portal configurado desde SSA (programa, evaluaciones, calendario, certificados, comunidad, tutor) y los afiliados con los links de cada producto. El módulo de Servicios **se prende por negocio** (`app_servicio.set_module_enabled`, solo servidor; nace apagado) y vive en sus esquemas `app_servicio` (expuesto en la API, RLS de solo lectura) y `app_servicio_portal` (cerrado). Afiliados es de BAIOS y sigue a Ventas. Resumen en [docs/servicios.md](docs/servicios.md), [docs/portal-admin.md](docs/portal-admin.md) y [docs/afiliados.md](docs/afiliados.md); plano en `claude/v12/requerimientos-v12-servicios.md`; avance y decisiones en `docs/PROGRESS-servicios.md` y `docs/PENDIENTE-servicios.md`.
+
+## Lo que no se puede romper
+
+- **`svc_create_service` es la única entrada a `services`.** Una venta, un servicio; una fase en curso por servicio; el avance de fase con candado. Completar un paso es por **id**, nunca por nombre. `progress_pct` y el semáforo los calcula la base. Los cambios de plantilla (el camino de la variante) no tocan servicios que ya existen.
+- **Los triggers del módulo sobre tablas de BAIOS** (`payments`, `sales`, `form_submissions`, `contract_signatures`, `bookings`, `tasks`, `workspace_members`, `contact_touches`, `booking_categories`, `service_phases`) **nunca hacen fallar lo que los dispara** (`EXCEPTION WHEN OTHERS` + `svc.hook_failed`) y **con el módulo apagado no hacen nada** (`module_on`). `verify-servicios-migracion` lo comprueba trigger por trigger. Excepciones a propósito: las guardias SV003 (configuración y tutor), que frenan a la sesión.
+- **`public` es BAIOS: ninguna tabla nueva.** Los datos del módulo viven en sus esquemas; su configuración, en columnas de `workspaces`, `products` y `product_variants` que **solo escriben sus funciones** (guardia `SV003`). `app_servicio_portal` no se expone nunca: SSA lee por funciones de `app_servicio`.
+- **La pantalla no decide:** cada regla vive en la base con su gemela en TypeScript y un `*.cases.json` que corre contra las dos. Si se cambia una, se cambian las dos y se suma el caso.
+- **Las funciones protegidas no se tocan** y `get_public_form` no se reescribe: cada `verify-*` del módulo llama a `checkProtectedFunctions`. `merge_contacts` cambió **una sola vez** (00353, copiada de la base): al final llama a `app_servicio.merge_contacts_hook` si existe. Una tabla nueva del módulo con una columna que apunta a `contacts` se suma al gancho y a las exclusiones de `lib/contacts/merge.ts` en el mismo cambio.
+- **Un estudiante no es un usuario de SSA** (cuenta del portal propia). Las funciones del contrato con el portal **solo se agregan**.
+- **Apagar el portal de una variante o sacarle una sección no corta a los servicios que ya existen.**
+- **Lo automático de tiempo lo hace el barrido diario** (`svc_daily_run`, job `svc_daily`, cron `svc-daily` por SQL directo, no `call_app_cron`): cada paso en su bloque, y dos veces el mismo día no duplica nada.
+- **Certificados = Diseñador IA:** una generación con el servicio como sujeto (`subjectRef.module = "service"`, el grupo registrado). El módulo se engancha por `registerDesignVariables` y `onDesignGenerated`, cargados en los puntos de entrada del servidor (`lib/designer/module-extensions.ts`), nunca al importar el Diseñador.
+- **El tutor:** un agente `student_tutor` por programa (`products.tutor_agent_id`, único, SV003); para un estudiante busca solo en las clases que tiene abiertas; nunca evaluaciones, documentos internos ni lo excluido. Los montos de gasto, solo con `ai_costs.view`.
+- **Afiliados:** la asignación sale **solo del link** (`?ref=`, trigger sobre el toque que nunca lo tumba) o de un administrador con permiso; el comprador nunca es su propio afiliado. La comisión se genera **por pago cobrado** y lo ya cobrado no cambia por una baja ni por una regla nueva. Una comisión editada a mano no la pisa ningún recálculo.
+- **Permisos:** 34 claves `services`/portal y las de afiliados, en las tres capas. Cambio aprobado **M11**: el Member suma `services.view`, `services.items`, `portal.view_as` (alcance `own`) y `affiliates.use`.
+
+## Migraciones (`00330` a `00346` y `00351` a `00353`, todas aplicadas y registradas el 8/11/2026)
+
+`00330` (esquema, `services`, permisos, interruptor), `00331` (fases y pasos; sin claves foráneas en `form_submissions`/`contract_signatures`, el trigger valida), `00332` (configuración y validadores), `00333` (motor), `00334` (cobros y ventas), `00335` (completado automático), `00336` (historial y CHECK de `triggers.type`), `00340` y `00341` (cuentas y accesos del portal), `00342` (programa), `00343` (afiliados, BAIOS), `00345` (evaluaciones y actividades), `00346` (calendario y asistencia), `00351` (comunidad), `00352` (tutor) y `00353` (fusión, barrido diario, emisión automática del certificado, límite propio del asistente y métricas de las cards). La `00337`, `00338`, `00339`, `00344`, `00347` a `00350` y `00354` son de otras sesiones. **La próxima libre es la `00355`** (confirmar con `list_migrations` y las ramas locales). En un clon nuevo van en orden numérico y **antes** de desplegar el código.
+
+```
+node scripts/verify-servicios-migracion.mjs --todas
+node scripts/verify-services.mjs          # sv1, sv2, prd, ac
+node scripts/verify-program.mjs           # pr, ev, ca, ce, co, ia, x
+node scripts/verify-affiliates.mjs
+node scripts/verify-portal-schema.mjs
+```
+
 # Seguridad
 
 ## Autenticacion y sesiones

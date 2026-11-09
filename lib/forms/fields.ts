@@ -66,6 +66,18 @@ export function isPublicFormType(type: string): type is PublicFormType {
   return type === "custom" || type === "survey" || type === "contract";
 }
 
+// @plantilla-desde(servicios)
+/**
+ * Los formularios del portal (Servicios A1, F52, F113): términos al entrar, evaluaciones y actividades. Son de un
+ * programa (`forms.product_id`), se editan desde el editor de la clase y no aparecen en Formularios ni tienen página
+ * pública (tampoco son `PublicFormType`).
+ */
+export const PORTAL_FORM_TYPES = ["terms", "quiz", "activity"] as const;
+export function isPortalFormType(type: string): boolean {
+  return (PORTAL_FORM_TYPES as readonly string[]).includes(type);
+}
+// @plantilla-hasta(servicios)
+
 /** Los tipos de pregunta de un reporte de fin de día: los demás no aplican (no hay contacto ni página pública). */
 export const EOD_FIELD_TYPES = ["short_text", "long_text", "number", "single_select", "multi_select"] as const satisfies readonly FormFieldType[];
 

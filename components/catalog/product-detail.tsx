@@ -22,7 +22,7 @@ import { VariantPriceTab } from "./variant-price-tab";
 
 type VariantTab = "precio" | "historial";
 
-function formFrom(v: CatalogVariant, productType: string): VariantFormValues {
+export function formFrom(v: CatalogVariant, productType: string): VariantFormValues {
   // Un evento no dura «de por vida»: si el producto cambió de tipo después, se arranca en días.
   const lifetimeEvent = variantTiming(productType) === "event" && v.duration_type === "lifetime";
   return {
@@ -46,10 +46,13 @@ export function ProductDetail({
   product,
   userNames,
   timeZone,
+  linksCard,
 }: {
   product: ProductDetailData;
   userNames: Record<string, string>;
   timeZone: string;
+  /** La tarjeta Links (afiliados, F70), si la persona puede editarla. Sin la prop, la ficha es la de siempre. */
+  linksCard?: React.ReactNode;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -280,6 +283,8 @@ export function ProductDetail({
             </ul>
           )}
         </section>
+
+        {linksCard}
 
         {/* Historial del producto */}
         <section aria-label="Historial del producto" className="rounded-lg border border-border p-4">

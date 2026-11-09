@@ -60,7 +60,7 @@ function actor(kind: "owner" | "admin" | RolePermissions = "owner") {
 
 const custom = (keys: string[], scopes: Partial<RolePermissions["scopes"]> = {}): RolePermissions => ({
   keys,
-  scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", ...scopes },
+  scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own", ...scopes },
   channels: { mode: "custom", byChannel: {} },
 });
 

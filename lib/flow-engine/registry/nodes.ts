@@ -31,6 +31,7 @@ import { createTaskNode } from "../nodes/create-task"; // @plantilla-quitar(tare
 import { completeTaskNode } from "../nodes/complete-task"; // @plantilla-quitar(tareas)
 import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
 import { sendMetaEventNode } from "../nodes/send-meta-event";
+import { serviceActionNodes } from "../nodes/service-actions"; // @plantilla-quitar(servicios)
 import { sendPollNode } from "../nodes/send-poll";
 import { sendToGroupNode } from "../nodes/send-to-group";
 import { inviteToGroupNode } from "../nodes/invite-to-group";
@@ -94,5 +95,7 @@ registerNode(sendToGroupNode);
 registerNode(inviteToGroupNode);
 // Diseñador IA (DS7, F57): genera un certificado, una constancia o cualquier pieza desde una plantilla.
 registerNode(designGenerateNode);
+// Servicios (F25, SV2): completar un paso, cambiar de fase, empezar el Reto, extender y pausar.
+for (const node of serviceActionNodes) registerNode(node); // @plantilla-quitar(servicios)
 // Calificación del lead (00329): fija, suma, resta o calcula con reglas el nivel 1-5.
 registerNode(qualifyLeadNode);

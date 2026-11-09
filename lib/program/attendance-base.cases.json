@@ -1,0 +1,164 @@
+{
+  "_comment": "Casos de inAttendanceBase (F61). Corren contra la gemela TS y contra app_servicio.attendance_base_plan.",
+  "cases": [
+    {
+      "name": "activos: con acceso entra",
+      "base": {
+        "type": "active"
+      },
+      "sessionVariantIds": null,
+      "member": {
+        "calendarAccess": true,
+        "variantId": "v1",
+        "serviceStartsOn": "2026-10-01",
+        "phaseKeyOnDate": "ph_impl01"
+      },
+      "occursOn": "2026-11-10",
+      "expected": true
+    },
+    {
+      "name": "sin acceso no",
+      "base": {
+        "type": "active"
+      },
+      "sessionVariantIds": null,
+      "member": {
+        "calendarAccess": false,
+        "variantId": "v1",
+        "serviceStartsOn": "2026-10-01",
+        "phaseKeyOnDate": "ph_impl01"
+      },
+      "occursOn": "2026-11-10",
+      "expected": false
+    },
+    {
+      "name": "la sesión es de otra variante",
+      "base": {
+        "type": "active"
+      },
+      "sessionVariantIds": [
+        "v2"
+      ],
+      "member": {
+        "calendarAccess": true,
+        "variantId": "v1",
+        "serviceStartsOn": "2026-10-01",
+        "phaseKeyOnDate": "ph_impl01"
+      },
+      "occursOn": "2026-11-10",
+      "expected": false
+    },
+    {
+      "name": "empezó hace 30 días con 30",
+      "base": {
+        "type": "started_within",
+        "days": 30
+      },
+      "sessionVariantIds": null,
+      "member": {
+        "calendarAccess": true,
+        "variantId": "v1",
+        "serviceStartsOn": "2026-10-11",
+        "phaseKeyOnDate": "ph_impl01"
+      },
+      "occursOn": "2026-11-10",
+      "expected": true
+    },
+    {
+      "name": "empezó hace 31 días con 30",
+      "base": {
+        "type": "started_within",
+        "days": 30
+      },
+      "sessionVariantIds": null,
+      "member": {
+        "calendarAccess": true,
+        "variantId": "v1",
+        "serviceStartsOn": "2026-10-10",
+        "phaseKeyOnDate": "ph_impl01"
+      },
+      "occursOn": "2026-11-10",
+      "expected": false
+    },
+    {
+      "name": "en la fase",
+      "base": {
+        "type": "phase",
+        "phase_key": "ph_impl01"
+      },
+      "sessionVariantIds": null,
+      "member": {
+        "calendarAccess": true,
+        "variantId": "v1",
+        "serviceStartsOn": "2026-10-01",
+        "phaseKeyOnDate": "ph_impl01"
+      },
+      "occursOn": "2026-11-10",
+      "expected": true
+    },
+    {
+      "name": "cambió de fase antes de esa fecha",
+      "base": {
+        "type": "phase",
+        "phase_key": "ph_impl01"
+      },
+      "sessionVariantIds": null,
+      "member": {
+        "calendarAccess": true,
+        "variantId": "v1",
+        "serviceStartsOn": "2026-10-01",
+        "phaseKeyOnDate": "ph_onbrd1"
+      },
+      "occursOn": "2026-11-10",
+      "expected": false
+    },
+    {
+      "name": "por variante",
+      "base": {
+        "type": "variant",
+        "variant_id": "v1"
+      },
+      "sessionVariantIds": null,
+      "member": {
+        "calendarAccess": true,
+        "variantId": "v1",
+        "serviceStartsOn": "2026-10-01",
+        "phaseKeyOnDate": "ph_impl01"
+      },
+      "occursOn": "2026-11-10",
+      "expected": true
+    },
+    {
+      "name": "por otra variante",
+      "base": {
+        "type": "variant",
+        "variant_id": "v2"
+      },
+      "sessionVariantIds": null,
+      "member": {
+        "calendarAccess": true,
+        "variantId": "v1",
+        "serviceStartsOn": "2026-10-01",
+        "phaseKeyOnDate": "ph_impl01"
+      },
+      "occursOn": "2026-11-10",
+      "expected": false
+    },
+    {
+      "name": "todavía no empezó",
+      "base": {
+        "type": "started_within",
+        "days": 30
+      },
+      "sessionVariantIds": null,
+      "member": {
+        "calendarAccess": true,
+        "variantId": "v1",
+        "serviceStartsOn": "2026-11-15",
+        "phaseKeyOnDate": "ph_impl01"
+      },
+      "occursOn": "2026-11-10",
+      "expected": false
+    }
+  ]
+}

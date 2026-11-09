@@ -1,0 +1,157 @@
+{
+  "_comment": "Casos de occurrenceDates (F21). Corren contra la gemela TS (lib/services/engine-rules.ts) y contra app_servicio.svc_occurrence_dates (verify-services). Plata en centimos; fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "semanal 30 dias el primer dia",
+      "recurrence": {
+        "every": "week",
+        "until": "n_days",
+        "n_until": 30
+      },
+      "start": "2026-11-02",
+      "phaseEnd": null,
+      "serviceEnd": null,
+      "upTo": "2026-11-02",
+      "expected": [
+        {
+          "index": 1,
+          "occursOn": "2026-11-02",
+          "dueOn": "2026-11-08"
+        }
+      ]
+    },
+    {
+      "name": "semanal la segunda recien el dia 8",
+      "recurrence": {
+        "every": "week",
+        "until": "n_days",
+        "n_until": 30
+      },
+      "start": "2026-11-02",
+      "phaseEnd": null,
+      "serviceEnd": null,
+      "upTo": "2026-11-09",
+      "expected": [
+        {
+          "index": 1,
+          "occursOn": "2026-11-02",
+          "dueOn": "2026-11-08"
+        },
+        {
+          "index": 2,
+          "occursOn": "2026-11-09",
+          "dueOn": "2026-11-15"
+        }
+      ]
+    },
+    {
+      "name": "semanal termina a los 30 dias",
+      "recurrence": {
+        "every": "week",
+        "until": "n_days",
+        "n_until": 30
+      },
+      "start": "2026-11-02",
+      "phaseEnd": null,
+      "serviceEnd": null,
+      "upTo": "2027-01-01",
+      "expected": [
+        {
+          "index": 1,
+          "occursOn": "2026-11-02",
+          "dueOn": "2026-11-08"
+        },
+        {
+          "index": 2,
+          "occursOn": "2026-11-09",
+          "dueOn": "2026-11-15"
+        },
+        {
+          "index": 3,
+          "occursOn": "2026-11-16",
+          "dueOn": "2026-11-22"
+        },
+        {
+          "index": 4,
+          "occursOn": "2026-11-23",
+          "dueOn": "2026-11-29"
+        },
+        {
+          "index": 5,
+          "occursOn": "2026-11-30",
+          "dueOn": "2026-12-06"
+        }
+      ]
+    },
+    {
+      "name": "diaria tres veces",
+      "recurrence": {
+        "every": "day",
+        "until": "n_times",
+        "n_until": 3
+      },
+      "start": "2026-11-02",
+      "phaseEnd": null,
+      "serviceEnd": null,
+      "upTo": "2026-12-01",
+      "expected": [
+        {
+          "index": 1,
+          "occursOn": "2026-11-02",
+          "dueOn": "2026-11-02"
+        },
+        {
+          "index": 2,
+          "occursOn": "2026-11-03",
+          "dueOn": "2026-11-03"
+        },
+        {
+          "index": 3,
+          "occursOn": "2026-11-04",
+          "dueOn": "2026-11-04"
+        }
+      ]
+    },
+    {
+      "name": "cada tres dias hasta el fin de fase",
+      "recurrence": {
+        "every": "n_days",
+        "n": 3,
+        "until": "phase_end"
+      },
+      "start": "2026-11-02",
+      "phaseEnd": "2026-11-08",
+      "serviceEnd": null,
+      "upTo": "2026-12-01",
+      "expected": [
+        {
+          "index": 1,
+          "occursOn": "2026-11-02",
+          "dueOn": "2026-11-04"
+        },
+        {
+          "index": 2,
+          "occursOn": "2026-11-05",
+          "dueOn": "2026-11-07"
+        },
+        {
+          "index": 3,
+          "occursOn": "2026-11-08",
+          "dueOn": "2026-11-10"
+        }
+      ]
+    },
+    {
+      "name": "todavia no llego",
+      "recurrence": {
+        "every": "week",
+        "until": "service_end"
+      },
+      "start": "2026-11-09",
+      "phaseEnd": null,
+      "serviceEnd": "2027-01-01",
+      "upTo": "2026-11-08",
+      "expected": []
+    }
+  ]
+}

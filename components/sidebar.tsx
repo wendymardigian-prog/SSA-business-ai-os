@@ -22,6 +22,9 @@ import {
   ClipboardList,
   ListChecks,
   ListTodo,
+  GraduationCap, // @plantilla-quitar(servicios)
+  AppWindow, // @plantilla-quitar(servicios)
+  Handshake, // @plantilla-quitar(ventas)
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
@@ -60,6 +63,9 @@ type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
 const ICONS: Record<string, LucideIcon> = {
   LayoutGrid, GitBranch, MessageSquare, Users, Bot, Settings,
   Clapperboard, Grid3x3, Megaphone, CalendarDays, PhoneCall, ClipboardList, CircleDollarSign, Wallet, ListChecks, ListTodo, Sparkles,
+  GraduationCap, // @plantilla-quitar(servicios)
+  AppWindow, // @plantilla-quitar(servicios)
+  Handshake, // @plantilla-quitar(ventas)
 };
 
 export const navigation = NAV_ITEMS.map((item) => ({
@@ -169,7 +175,7 @@ export function Sidebar({
           variant="row"
           placement="up"
         />
-        <ProfileMenu user={user} collapsed={collapsed} />
+        <ProfileMenu user={user} collapsed={collapsed} showMyLinks={(permissionKeys ?? []).includes("affiliates.use")} />
       </div>
     </div>
   );

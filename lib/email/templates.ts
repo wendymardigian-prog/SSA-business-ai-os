@@ -206,6 +206,41 @@ export function teamInviteEmail(params: {
   };
 }
 
+// @plantilla-desde(servicios)
+/**
+ * La invitación al portal (Servicios A1, F41): el asunto y el texto salen de Ajustes del portal (si están vacíos, los
+ * de siempre). El texto de la persona se escapa: nunca entra HTML de afuera. `{nombre}` se cambia por el nombre del
+ * estudiante. El link vence en 7 días y se canjea recién al tocar el botón.
+ */
+export function portalInviteEmail(params: { workspaceName: string; inviteUrl: string; studentName?: string | null; subject?: string | null; body?: string | null; brand?: Brand | null }): EmailContent {
+  const brand = params.brand ?? resolveBrand(null);
+  const theme = emailTheme(brand);
+  const name = params.studentName?.trim().split(/\s+/)[0] ?? "";
+  const fill = (t: string) => t.replace(/\{nombre\}/g, name).replace(/\s+,/g, ",");
+  const subject = fill(params.subject?.trim() || `Tu acceso al portal de ${params.workspaceName}`);
+  const bodyText = fill(params.body?.trim() || `Hola${name ? ` ${name}` : ""}, ya tenés tu acceso al portal de ${params.workspaceName}. Entrá con el botón para activar tu cuenta.`);
+  const paragraphs = bodyText
+    .split(/\n{2,}/)
+    .map((p) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#374151;">${escapeHtml(p).replace(/\n/g, "<br />")}</p>`)
+    .join("");
+  return {
+    subject,
+    html: brandedEmailHtml({
+      brand,
+      preheader: `Tu acceso al portal de ${params.workspaceName}. El link vence en 7 días.`,
+      body: `
+                ${eyebrow("Portal", theme)}
+                ${heading(escapeHtml(subject))}
+                ${paragraphs}
+                ${button(params.inviteUrl, "Entrar al portal", theme)}
+                <p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#6b7280;">
+                  El link vence en 7 días. Si no esperabas este email, podés ignorarlo.
+                </p>`,
+    }),
+  };
+}
+// @plantilla-hasta(servicios)
+
 /**
  * Un aviso de la campana que la persona eligio recibir tambien por email
  * (Mi cuenta → Notificaciones). Siempre dice de que negocio es (arriba, con su

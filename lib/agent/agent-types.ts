@@ -80,6 +80,28 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
     ],
     conversational: false,
   },
+
+  // @plantilla-desde(servicios)
+  /**
+   * El tutor de un programa del portal (Servicios A1, F83). Uno por programa, atado para siempre
+   * (`products.tutor_agent_id` y `config.program_id`, de solo lectura): lo crea `program_ensure_tutor` al prender el
+   * Asistente IA del programa. Busca solo en los materiales de su programa y, de las clases, solo las que ese
+   * estudiante tiene abiertas. Lo usa el portal (Parte 2); acá se configura.
+   */
+  student_tutor: {
+    type: "student_tutor",
+    label: "Tutor de programa",
+    description: "Responde las dudas de los estudiantes de un programa con sus clases y materiales.",
+    configSections: ["identity", "prompt", "model", "knowledge"],
+    tabs: [
+      { key: "config", label: "Configuracion", available: true, permission: "agents.edit" },
+      { key: "knowledge", label: "Conocimiento", available: true, permission: "agents.edit" },
+      { key: "runs", label: "Runs", available: true },
+      { key: "costs", label: "Costos", available: true, permission: "ai_costs.view" },
+    ],
+    conversational: false,
+  },
+  // @plantilla-hasta(servicios)
 };
 
 export function getAgentType(type: string): AgentTypeDefinition | null {

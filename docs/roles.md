@@ -367,3 +367,24 @@ El alcance de grabaciones suma una tercera opción: «Los suyos + los de ciertas
 
 Cinco claves: `designer.view` (ver la lista, el editor y las generaciones), `designer.edit` (crear y editar diseños y plantillas, pedirle a la IA, exportar), `designer.publish` (publicar, despublicar, las opciones del link y «Permitir descargar» de una plantilla), `designer.generate` (emitir, generar para varios, reintentar, volver a generar y anular) y `designer.manage` (estilos propios, fuentes y borrar diseños sin uso). Las tres capas: la página (`requireDesigner`, 404 sin la clave), la acción (`getPermissionAction`) y la política (`has_permission`, lectura; escribe solo el servidor). El Member de sistema tiene `view` y `edit` (M12). Detalle en [designer.md](designer.md).
 
+
+## Servicios, portal y afiliados (Corrida A1, noviembre 2026)
+
+34 claves nuevas del módulo `services` (solo se ven con el módulo prendido) y las de afiliados (módulo `sales`).
+Owner y Admin las tienen todas. Detalle en [servicios.md](servicios.md), [portal-admin.md](portal-admin.md) y
+[afiliados.md](afiliados.md).
+
+- **Servicios:** `services.view` (con el alcance `services`: `own` o `all`), `services.create`, `services.create_off_rule`,
+  `services.confirm`, `services.items`, `services.change_phase`, `services.pause`, `services.extend`, `services.complete`,
+  `services.cancel`, `services.change_owner`, `services.import`, `services.access`, `services.configure`.
+- **Programa y portal:** `program.manage`, `program.activate`, `submissions.review`, `live_sessions.manage`,
+  `attendance.manage`, `recordings.to_portal`, `certificates.issue`, `certificates.void`, `community.view`,
+  `community.reply`, `community.moderate`, `community.spaces`, `tutor.manage`, `tutor.knowledge`, `portal.view`,
+  `portal.sections`, `portal.access_rules`, `portal.settings`, `portal.accounts`, `portal.view_as`.
+- **Afiliados:** `affiliates.use`, `affiliates.view_all`, `affiliates.assign`, `affiliates.settings`.
+- **Cambio aprobado M11:** el Member de sistema suma `services.view` y `services.items` (alcance `own`: donde es
+  responsable, setter o vendedor del contacto), `portal.view_as` (mismo alcance) y `affiliates.use`. No crea, confirma,
+  pausa ni cancela servicios, ni configura nada del portal. Está en `MEMBER_PERMISSION_KEYS` y en
+  `private.member_permission_keys()` (00330 y 00343); `member-sql-parity` las compara.
+- `tutor.manage` es aparte de todo lo demás del portal: configura el asistente IA del programa y sus límites; los montos
+  de gasto siguen pidiendo `ai_costs.view`.

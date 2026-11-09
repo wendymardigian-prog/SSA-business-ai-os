@@ -10,6 +10,7 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import type { CallAnalysisStatus } from "@/lib/types/database";
+import { loadCallsPortalState } from "@/lib/program/calls-portal"; // @plantilla-quitar(servicios)
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,7 @@ export default async function LlamadasPage({
     contactFilterName = filtered?.display_name || filtered?.email || null;
   }
 
+  const portal = await loadCallsPortalState(ctx, rows.map((r) => r.id)); // @plantilla-quitar(servicios)
   const hasApp = secretNames.includes(SECRET_NAMES.fathomClientId) && secretNames.includes(SECRET_NAMES.fathomClientSecret);
   const myConnection = pickConnection(mine ?? []);
   const hasLiveConnection = !!myConnection && (myConnection.status === "active" || myConnection.status === "attention");
@@ -134,6 +136,7 @@ export default async function LlamadasPage({
       unclassifiedCount={unclassifiedCount ?? 0}
       hasLiveConnection={hasLiveConnection}
       nudgeConnect={shouldNudgeToConnect({ hasLiveConnection, hasApp })}
+      portal={portal} // @plantilla-quitar(servicios)
     />
   );
 }

@@ -1,0 +1,71 @@
+{
+  "_comment": "Casos de phaseShouldAdvance (F16). Corren contra la gemela TS (lib/services/engine-rules.ts) y contra app_servicio.svc_phase_should_advance (verify-services). Plata en centimos; fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "auto con todos los obligatorios",
+      "input": [
+        "auto",
+        3,
+        3,
+        5,
+        3
+      ],
+      "expected": true
+    },
+    {
+      "name": "auto sin todos",
+      "input": [
+        "auto",
+        3,
+        2,
+        5,
+        2
+      ],
+      "expected": false
+    },
+    {
+      "name": "auto_all con un opcional pendiente",
+      "input": [
+        "auto_all",
+        3,
+        3,
+        5,
+        4
+      ],
+      "expected": false
+    },
+    {
+      "name": "auto_all completo",
+      "input": [
+        "auto_all",
+        3,
+        3,
+        5,
+        5
+      ],
+      "expected": true
+    },
+    {
+      "name": "manual nunca",
+      "input": [
+        "manual",
+        3,
+        3,
+        5,
+        5
+      ],
+      "expected": false
+    },
+    {
+      "name": "auto sin obligatorios",
+      "input": [
+        "auto",
+        0,
+        0,
+        2,
+        0
+      ],
+      "expected": true
+    }
+  ]
+}

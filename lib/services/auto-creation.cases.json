@@ -1,0 +1,113 @@
+{
+  "_comment": "Casos de ruleMet (F6, F95). Corren contra la gemela TS (lib/services/engine-rules.ts) y contra app_servicio.svc_rule_met (verify-services). Plata en centimos; fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "cualquier pago con un pago",
+      "input": {
+        "rule": "any_payment",
+        "value": null,
+        "collectedCents": 10000,
+        "totalCents": 100000,
+        "hasNonReservationPaid": false,
+        "hasAnyPaid": true
+      },
+      "expected": true
+    },
+    {
+      "name": "cualquier pago sin pagos",
+      "input": {
+        "rule": "any_payment",
+        "value": null,
+        "collectedCents": 0,
+        "totalCents": 100000,
+        "hasNonReservationPaid": false,
+        "hasAnyPaid": false
+      },
+      "expected": false
+    },
+    {
+      "name": "solo la reserva no es saldo",
+      "input": {
+        "rule": "non_reservation",
+        "value": null,
+        "collectedCents": 10000,
+        "totalCents": 100000,
+        "hasNonReservationPaid": false,
+        "hasAnyPaid": true
+      },
+      "expected": false
+    },
+    {
+      "name": "reserva y saldo",
+      "input": {
+        "rule": "non_reservation",
+        "value": null,
+        "collectedCents": 60000,
+        "totalCents": 100000,
+        "hasNonReservationPaid": true,
+        "hasAnyPaid": true
+      },
+      "expected": true
+    },
+    {
+      "name": "40 por ciento de 50",
+      "input": {
+        "rule": "percent",
+        "value": 50,
+        "collectedCents": 40000,
+        "totalCents": 100000,
+        "hasNonReservationPaid": true,
+        "hasAnyPaid": true
+      },
+      "expected": false
+    },
+    {
+      "name": "50 por ciento de 50",
+      "input": {
+        "rule": "percent",
+        "value": 50,
+        "collectedCents": 50000,
+        "totalCents": 100000,
+        "hasNonReservationPaid": true,
+        "hasAnyPaid": true
+      },
+      "expected": true
+    },
+    {
+      "name": "porcentaje con total cero",
+      "input": {
+        "rule": "percent",
+        "value": 50,
+        "collectedCents": 50000,
+        "totalCents": 0,
+        "hasNonReservationPaid": true,
+        "hasAnyPaid": true
+      },
+      "expected": false
+    },
+    {
+      "name": "monto con reembolso",
+      "input": {
+        "rule": "amount",
+        "value": 30000,
+        "collectedCents": 25000,
+        "totalCents": 100000,
+        "hasNonReservationPaid": true,
+        "hasAnyPaid": true
+      },
+      "expected": false
+    },
+    {
+      "name": "monto alcanzado",
+      "input": {
+        "rule": "amount",
+        "value": 30000,
+        "collectedCents": 30000,
+        "totalCents": 100000,
+        "hasNonReservationPaid": true,
+        "hasAnyPaid": true
+      },
+      "expected": true
+    }
+  ]
+}

@@ -882,7 +882,9 @@ export type AgentRunSource =
   | "call_analysis" // @plantilla-quitar(llamadas)
   | "call_correction" // @plantilla-quitar(llamadas)
   | "call_summary" // @plantilla-quitar(llamadas)
-  | "call_prompt_test"; // @plantilla-quitar(llamadas)
+  | "call_prompt_test" // @plantilla-quitar(llamadas)
+  /** El tutor del programa en el portal (Servicios A1, 00352). Lo escribe el portal (Parte 2). */ // @plantilla-quitar(servicios)
+  | "portal_tutor"; // @plantilla-quitar(servicios)
 export type AgentRunTrigger =
   | "inbound_message"
   | "cron_close"
@@ -977,6 +979,36 @@ export type TriggerType =
   | "whatsapp_group_joined"
   | "whatsapp_group_reaction"
   | "whatsapp_group_poll_vote"
+  // Servicios (CHECK de la migracion 00336): los 26 disparadores del modulo.  @plantilla-quitar(servicios)
+  | "service_created" // @plantilla-quitar(servicios)
+  | "service_started" // @plantilla-quitar(servicios)
+  | "service_ending_soon" // @plantilla-quitar(servicios)
+  | "service_status_changed" // @plantilla-quitar(servicios)
+  | "service_extended" // @plantilla-quitar(servicios)
+  | "service_paused" // @plantilla-quitar(servicios)
+  | "service_resumed" // @plantilla-quitar(servicios)
+  | "service_phase_started" // @plantilla-quitar(servicios)
+  | "service_phase_completed" // @plantilla-quitar(servicios)
+  | "service_item_completed" // @plantilla-quitar(servicios)
+  | "service_item_overdue" // @plantilla-quitar(servicios)
+  | "service_light_changed" // @plantilla-quitar(servicios)
+  | "program_lesson_completed" // @plantilla-quitar(servicios)
+  | "program_module_completed" // @plantilla-quitar(servicios)
+  | "quiz_passed" // @plantilla-quitar(servicios)
+  | "quiz_failed" // @plantilla-quitar(servicios)
+  | "task_submission_received" // @plantilla-quitar(servicios)
+  | "task_submission_reviewed" // @plantilla-quitar(servicios)
+  | "live_session_missed" // @plantilla-quitar(servicios)
+  | "challenge_started" // @plantilla-quitar(servicios)
+  | "challenge_occurrence_due_soon" // @plantilla-quitar(servicios)
+  | "challenge_occurrence_overdue" // @plantilla-quitar(servicios)
+  | "challenge_completed" // @plantilla-quitar(servicios)
+  | "certificate_issued" // @plantilla-quitar(servicios)
+  | "portal_access_expiring" // @plantilla-quitar(servicios)
+  | "portal_access_expired" // @plantilla-quitar(servicios)
+  | "affiliate_lead_created" // @plantilla-quitar(ventas)
+  | "affiliate_sale_created" // @plantilla-quitar(ventas)
+  | "affiliate_assignment_expired" // @plantilla-quitar(ventas)
   // «En una fecha y hora» (sin contacto): lo corre un trabajo de la cola agendado al publicar.
   | "scheduled_time";
 export type FlowSessionStatus =
@@ -3821,6 +3853,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
           deleted_at: string | null;
+          service_id: string | null; // @plantilla-quitar(servicios)
         };
         Insert: {
           id?: string;
@@ -3831,6 +3864,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
           deleted_at?: string | null;
+          service_id?: string | null; // @plantilla-quitar(servicios)
         };
         Update: {
           /** Se reasigna al unir un contacto duplicado con el principal. */
@@ -3838,6 +3872,7 @@ export interface Database {
           content?: string;
           updated_at?: string;
           deleted_at?: string | null;
+          service_id?: string | null; // @plantilla-quitar(servicios)
         };
         Relationships: [
           {

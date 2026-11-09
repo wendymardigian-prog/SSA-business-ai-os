@@ -1,0 +1,146 @@
+{
+  "_comment": "Casos de extendPlan (F93). Corren contra la gemela TS (lib/services/engine-rules.ts) y contra app_servicio.svc_extend_plan (verify-services). Plata en centimos; fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "completado hace 30 dias mas 90 desde el fin",
+      "input": {
+        "status": "completed",
+        "endsOn": "2026-10-09",
+        "today": "2026-11-08",
+        "mode": "period",
+        "n": 90,
+        "unit": "days",
+        "from": "current_end"
+      },
+      "expected": {
+        "ok": true,
+        "newEnd": "2027-01-07",
+        "reactivate": true
+      }
+    },
+    {
+      "name": "completado mas 90 desde hoy",
+      "input": {
+        "status": "completed",
+        "endsOn": "2026-10-09",
+        "today": "2026-11-08",
+        "mode": "period",
+        "n": 90,
+        "unit": "days",
+        "from": "today"
+      },
+      "expected": {
+        "ok": true,
+        "newEnd": "2027-02-06",
+        "reactivate": true
+      }
+    },
+    {
+      "name": "completado por defecto desde hoy",
+      "input": {
+        "status": "completed",
+        "endsOn": "2026-10-09",
+        "today": "2026-11-08",
+        "mode": "period",
+        "n": 90,
+        "unit": "days"
+      },
+      "expected": {
+        "ok": true,
+        "newEnd": "2027-02-06",
+        "reactivate": true
+      }
+    },
+    {
+      "name": "activo tres meses desde el fin",
+      "input": {
+        "status": "active",
+        "endsOn": "2026-12-31",
+        "today": "2026-12-15",
+        "mode": "period",
+        "n": 3,
+        "unit": "months"
+      },
+      "expected": {
+        "ok": true,
+        "newEnd": "2027-03-31",
+        "reactivate": false
+      }
+    },
+    {
+      "name": "cancelado no se extiende",
+      "input": {
+        "status": "cancelled",
+        "endsOn": "2026-12-31",
+        "today": "2026-12-15",
+        "mode": "period",
+        "n": 3,
+        "unit": "months"
+      },
+      "expected": {
+        "ok": false,
+        "error": "SV030"
+      }
+    },
+    {
+      "name": "fecha anterior a hoy",
+      "input": {
+        "status": "active",
+        "endsOn": "2026-12-31",
+        "today": "2026-12-15",
+        "mode": "end_date",
+        "endOn": "2026-12-10"
+      },
+      "expected": {
+        "ok": false,
+        "error": "SV031"
+      }
+    },
+    {
+      "name": "fecha puesta",
+      "input": {
+        "status": "paused",
+        "endsOn": "2026-12-31",
+        "today": "2026-12-15",
+        "mode": "end_date",
+        "endOn": "2027-01-29"
+      },
+      "expected": {
+        "ok": true,
+        "newEnd": "2027-01-29",
+        "reactivate": false
+      }
+    },
+    {
+      "name": "por confirmar no",
+      "input": {
+        "status": "pending_confirmation",
+        "endsOn": null,
+        "today": "2026-12-15",
+        "mode": "period",
+        "n": 1,
+        "unit": "months"
+      },
+      "expected": {
+        "ok": false,
+        "error": "SV030"
+      }
+    },
+    {
+      "name": "dos semanas",
+      "input": {
+        "status": "active",
+        "endsOn": "2026-12-31",
+        "today": "2026-12-15",
+        "mode": "period",
+        "n": 2,
+        "unit": "weeks"
+      },
+      "expected": {
+        "ok": true,
+        "newEnd": "2027-01-14",
+        "reactivate": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "_comment": "Casos del arbol de condiciones de la asignacion (formato de assignment_rules.condition_rules). Corren contra evaluateConditions de lib/assignment/conditions.ts (que el responsable del servicio reusa, F96) y contra su gemela app_servicio.svc_conditions_match (verify-services).",
+  "cases": [
+    { "name": "pais es MX", "tree": { "rootConjunction": "and", "conditions": [ { "field": "country", "operator": "is", "value": "MX" } ], "groups": [] }, "context": { "country": "mx" }, "expected": true },
+    { "name": "pais no es MX", "tree": { "rootConjunction": "and", "conditions": [ { "field": "country", "operator": "is", "value": "MX" } ], "groups": [] }, "context": { "country": "CR" }, "expected": false },
+    { "name": "campo que no existe es vacio", "tree": { "rootConjunction": "and", "conditions": [ { "field": "first_source", "operator": "is_empty", "value": "" } ], "groups": [] }, "context": {}, "expected": true },
+    { "name": "contiene con valor vacio no", "tree": { "rootConjunction": "and", "conditions": [ { "field": "country", "operator": "contains", "value": "" } ], "groups": [] }, "context": { "country": "MX" }, "expected": false },
+    { "name": "empieza con", "tree": { "rootConjunction": "and", "conditions": [ { "field": "last_campaign", "operator": "starts_with", "value": "bsl" } ], "groups": [] }, "context": { "last_campaign": "BSL-noviembre" }, "expected": true },
+    { "name": "no contiene", "tree": { "rootConjunction": "and", "conditions": [ { "field": "last_campaign", "operator": "not_contains", "value": "bsl" } ], "groups": [] }, "context": { "last_campaign": "webinar" }, "expected": true },
+    { "name": "o en la raiz", "tree": { "rootConjunction": "or", "conditions": [ { "field": "country", "operator": "is", "value": "MX" }, { "field": "country", "operator": "is", "value": "CO" } ], "groups": [] }, "context": { "country": "CO" }, "expected": true },
+    { "name": "grupo y raiz", "tree": { "rootConjunction": "and", "conditions": [ { "field": "has_email", "operator": "is", "value": "true" } ], "groups": [ { "conjunction": "or", "conditions": [ { "field": "country", "operator": "is", "value": "MX" }, { "field": "country", "operator": "is", "value": "CO" } ] } ] }, "context": { "has_email": "true", "country": "AR" }, "expected": false },
+    { "name": "arbol vacio no coincide", "tree": { "rootConjunction": "and", "conditions": [], "groups": [] }, "context": { "country": "MX" }, "expected": false },
+    { "name": "grupo vacio no cuenta", "tree": { "rootConjunction": "and", "conditions": [ { "field": "country", "operator": "is_not_empty", "value": "" } ], "groups": [ { "conjunction": "and", "conditions": [] } ] }, "context": { "country": "MX" }, "expected": true }
+  ]
+}

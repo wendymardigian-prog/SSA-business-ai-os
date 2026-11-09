@@ -1,7 +1,7 @@
 [api]
 enabled = true
 port = 54321
-schemas = ["public"]
+schemas = ["public", "app_servicio"]
 
 [db]
 port = 54322

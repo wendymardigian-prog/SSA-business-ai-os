@@ -10,7 +10,7 @@
  */
 
 /** A quién se le paga un rol (F50). */
-export const COMMISSION_PAYEES = ["sale_vendedor", "sale_setter", "content_assignee", "fixed"] as const;
+export const COMMISSION_PAYEES = ["sale_vendedor", "sale_setter", "content_assignee", "fixed", "sale_affiliate"] as const;
 export type CommissionPayee = (typeof COMMISSION_PAYEES)[number];
 
 export interface CommissionRole {
@@ -56,6 +56,10 @@ export interface CommissionFacts {
     setter_id: string | null;
     vendedor_id: string | null;
     contact_id: string | null;
+    /** El afiliado de la venta (Servicios A1, F74): del equipo o un contacto, y el tipo de asignación. */
+    affiliate_user_id?: string | null;
+    affiliate_contact_id?: string | null;
+    affiliate_kind?: "originated" | "influenced" | null;
   };
   touch: {
     id: string;
@@ -94,6 +98,8 @@ export interface RuleConditions {
   vendedor_ids?: string[];
   /** El setter de la venta, para cualquier rol. */
   setter_ids?: string[];
+  /** El tipo de asignación del afiliado de la venta (lo trajo / influyó). Sin afiliado, no se cumple. */
+  affiliate_kinds?: Array<"originated" | "influenced">;
   product_ids?: string[];
   variant_ids?: string[];
   financing_types?: string[];
@@ -134,4 +140,8 @@ export interface CommissionRule {
   valid_until: string | null;
   is_active: boolean;
   archived_at: string | null;
+  /** Si la persona ya no está en el equipo cuando se cobra (F105). Sin dato = `keep`. */
+  on_departure?: "keep" | "stop" | "reassign";
+  /** Rol Afiliado: si también es vendedor o setter, pagar las dos o solo la mayor (F75). Sin dato = `both`. */
+  when_also_seller?: "both" | "max";
 }

@@ -42,6 +42,7 @@ export const PERMISSION_MODULES = [
   "finance", // @plantilla-quitar(finanzas)
   "commissions", // @plantilla-quitar(comisiones)
   "tasks", // @plantilla-quitar(tareas)
+  "services", // @plantilla-quitar(servicios)
   "integrations",
   "team",
   "settings",
@@ -69,6 +70,7 @@ export const MODULE_LABELS: Record<PermissionModule, string> = {
   finance: "Finanzas", // @plantilla-quitar(finanzas)
   commissions: "Comisiones", // @plantilla-quitar(comisiones)
   tasks: "Tareas", // @plantilla-quitar(tareas)
+  services: "Servicios y portal", // @plantilla-quitar(servicios)
   integrations: "Integraciones",
   team: "Equipo",
   settings: "Configuración",
@@ -190,6 +192,13 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "payments.manage", module: "sales", label: "Gestionar los pagos", description: "Cobrar, revertir un cobro, agregar una cuota, reprogramar, marcar incobrable y reembolsar." }, // @plantilla-quitar(ventas)
   { key: "products.manage", module: "sales", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." }, // @plantilla-quitar(ventas)
   // @plantilla-sin(ventas): { key: "products.manage", module: "catalogo", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." },
+  // Afiliados y links de producto (Servicios A1, bloque AF): son de BAIOS y viajan con Ventas.
+  { key: "product_links.manage", module: "sales", label: "Administrar los links de los productos", description: "La tarjeta Links de cada producto: agregar, editar, activar y elegir los dos principales." }, // @plantilla-quitar(ventas)
+  { key: "affiliates.use", module: "sales", label: "Usar mis links de afiliado", description: "Mis links: su código y los links de los productos para compartir, y sus referidos." }, // @plantilla-quitar(ventas)
+  { key: "affiliates.assign", module: "sales", label: "Asignar afiliados a mano", description: "Asignar, cambiar o quitar el afiliado de un contacto o de una venta, con motivo." }, // @plantilla-quitar(ventas)
+  { key: "affiliates.external", module: "sales", label: "Dar de alta afiliados externos", description: "Convertir un contacto en afiliado (con su código)." }, // @plantilla-quitar(ventas)
+  { key: "affiliates.view_all", module: "sales", label: "Ver el resumen de afiliados", description: "Afiliados: el resumen por afiliado y producto, y la lista de afiliados." }, // @plantilla-quitar(ventas)
+  { key: "affiliates.settings", module: "sales", label: "Reglas de afiliados", description: "Cuánto dura una asignación y qué pasa si entra otro afiliado." }, // @plantilla-quitar(ventas)
   { key: "sales.settings", module: "sales", label: "Configurar ventas y cobranza", description: "Métodos de pago, tope de descuento, días de gracia y los flujos de cobranza." }, // @plantilla-quitar(ventas)
 
   // ── Finanzas (Extra I) ────────────────────────────────────────────────── // @plantilla-quitar(finanzas)
@@ -199,11 +208,48 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   // ── Comisiones (Extra I) ──────────────────────────────────────────────── // @plantilla-quitar(comisiones)
   { key: "commissions.view", module: "commissions", label: "Ver comisiones", description: "La lista de Comisiones y el detalle de cada una. El alcance decide si ve todas o solo las que tiene a su nombre." }, // @plantilla-quitar(comisiones)
   { key: "commissions.manage", module: "commissions", label: "Administrar comisiones", description: "Crear y editar reglas y roles de comisión, generar gastos de liquidación, asignar persona, anular y crear ajustes." }, // @plantilla-quitar(comisiones)
+  { key: "commissions.edit", module: "commissions", label: "Editar una comisión a mano", description: "Cambiar el monto, la persona o el rol de una comisión pendiente y sin gasto, o anularla, con motivo." }, // @plantilla-quitar(comisiones)
 
   // ── Tareas (Extra A) ──────────────────────────────────────────────────── // @plantilla-quitar(tareas)
   { key: "tasks.view", module: "tasks", label: "Ver las tareas", description: "La tabla y el tablero de Tareas. El alcance decide si ve todas o solo las que creó, tiene a cargo o sigue." }, // @plantilla-quitar(tareas)
   { key: "tasks.edit", module: "tasks", label: "Crear y editar tareas", description: "Crear tareas, editarlas, completarlas, reasignarlas y agregar seguidores. Mismo alcance que ver." }, // @plantilla-quitar(tareas)
   { key: "tasks.delete", module: "tasks", label: "Borrar tareas", description: "Borrar tareas. Se borran de forma lógica: dejan de verse pero quedan en el historial." }, // @plantilla-quitar(tareas)
+
+  // ── Servicios y portal (Servicios v12, Corrida A1) ───────────────────── // @plantilla-quitar(servicios)
+  { key: "services.view", module: "services", label: "Ver los servicios", description: "Clientes, sus fichas y sus servicios. El alcance decide si ve todos o solo donde es responsable, setter o vendedor del contacto." }, // @plantilla-quitar(servicios)
+  { key: "services.create", module: "services", label: "Crear servicios", description: "«+ Servicio» y «Crear servicio» desde Ventas, cuando la venta cumple la regla de su variante." }, // @plantilla-quitar(servicios)
+  { key: "services.create_off_rule", module: "services", label: "Crear servicios fuera de la regla", description: "Crear un servicio desde una venta que no cumple la regla, con motivo." }, // @plantilla-quitar(servicios)
+  { key: "services.confirm", module: "services", label: "Confirmar servicios", description: "Confirmar o descartar un servicio «Por confirmar»." }, // @plantilla-quitar(servicios)
+  { key: "services.items", module: "services", label: "Tildar pasos del camino", description: "Completar y destildar pasos. El alcance decide si son todos o solo los que tiene a cargo." }, // @plantilla-quitar(servicios)
+  { key: "services.change_phase", module: "services", label: "Cambiar de fase a mano", description: "Mover un servicio a otra fase y empezar el Reto desde la ficha." }, // @plantilla-quitar(servicios)
+  { key: "services.pause", module: "services", label: "Pausar servicios", description: "Pausar y reanudar un servicio." }, // @plantilla-quitar(servicios)
+  { key: "services.extend", module: "services", label: "Extender servicios", description: "Extender un servicio y revertir una extensión." }, // @plantilla-quitar(servicios)
+  { key: "services.complete", module: "services", label: "Completar servicios", description: "Dar por completado un servicio a mano, con motivo." }, // @plantilla-quitar(servicios)
+  { key: "services.cancel", module: "services", label: "Cancelar servicios", description: "Cancelar un servicio, con motivo. No se puede deshacer." }, // @plantilla-quitar(servicios)
+  { key: "services.change_owner", module: "services", label: "Cambiar el responsable", description: "Cambiar el responsable de un servicio y reasignar en bloque." }, // @plantilla-quitar(servicios)
+  { key: "services.import", module: "services", label: "Importar servicios", description: "Cargar servicios por CSV." }, // @plantilla-quitar(servicios)
+  { key: "services.access", module: "services", label: "Accesos al portal de un servicio", description: "En la ficha del servicio: dar un acceso extra, extenderlo, quitarlo o darlo ahora, con motivo." }, // @plantilla-quitar(servicios)
+  { key: "services.configure", module: "services", label: "Configurar el servicio de cada variante", description: "En Productos › variante: el camino del cliente, cuándo se crea o extiende el servicio, el responsable y la mora." }, // @plantilla-quitar(servicios)
+  { key: "program.manage", module: "services", label: "Editar el contenido del programa", description: "Módulos, clases, actividades y evaluaciones, recursos, portadas, vistas previas, transcripciones, desbloqueo y cómo se ve; copiar a otro programa." }, // @plantilla-quitar(servicios)
+  { key: "program.activate", module: "services", label: "Prender y apagar el contenido", description: "Activo / Inactivo de módulos, submódulos y clases, y archivarlos." }, // @plantilla-quitar(servicios)
+  { key: "submissions.review", module: "services", label: "Revisar entregas", description: "Portal › Por revisar: revisar y calificar actividades. El alcance de los servicios decide si son todas o las de sus servicios." }, // @plantilla-quitar(servicios)
+  { key: "live_sessions.manage", module: "services", label: "Sesiones en vivo del programa", description: "Portal › programa › Calendario: las sesiones, sus fechas (cancelar, mover) y sus grabaciones." }, // @plantilla-quitar(servicios)
+  { key: "attendance.manage", module: "services", label: "Marcar asistencias", description: "Marcar y quitar asistencias a una sesión en vivo, con motivo." }, // @plantilla-quitar(servicios)
+  { key: "recordings.to_portal", module: "services", label: "Grabaciones al portal", description: "En Grabaciones: «Agregar al portal» una grabación como grabación de una sesión en vivo." }, // @plantilla-quitar(servicios)
+  { key: "certificates.issue", module: "services", label: "Emitir certificados", description: "Emitir y volver a emitir el certificado de un servicio (un diseño del Diseñador IA)." }, // @plantilla-quitar(servicios)
+  { key: "certificates.void", module: "services", label: "Anular certificados", description: "Anular el certificado de un servicio, con motivo: su link pasa a decir «Anulado»." }, // @plantilla-quitar(servicios)
+  { key: "community.view", module: "services", label: "Ver la comunidad", description: "La comunidad de cada programa y los comentarios de las clases." }, // @plantilla-quitar(servicios)
+  { key: "community.reply", module: "services", label: "Responder en la comunidad", description: "Responder, comentar y publicar como el negocio o con la etiqueta «Equipo»; marcar como visto." }, // @plantilla-quitar(servicios)
+  { key: "community.moderate", module: "services", label: "Moderar la comunidad", description: "Ocultar con motivo, fijar, silenciar a un estudiante y resolver reportes." }, // @plantilla-quitar(servicios)
+  { key: "community.spaces", module: "services", label: "Espacios de la comunidad", description: "Ordenar, renombrar y archivar los espacios, quién publica en cada uno y los comentarios en las clases." }, // @plantilla-quitar(servicios)
+  { key: "tutor.manage", module: "services", label: "Configurar el tutor del programa", description: "El asistente IA del programa: prenderlo, duplicarlo, sus límites y créditos, y el límite propio de un estudiante." }, // @plantilla-quitar(servicios)
+  { key: "tutor.knowledge", module: "services", label: "Base de conocimiento del tutor", description: "Ver, agregar y quitar los materiales que usa el tutor del programa." }, // @plantilla-quitar(servicios)
+  { key: "portal.view", module: "services", label: "Ver el Portal", description: "Ver Portal, sus programas y Por revisar, sin cambiar nada." }, // @plantilla-quitar(servicios)
+  { key: "portal.sections", module: "services", label: "Prender el portal y sus secciones", description: "El acceso al portal de una variante, las secciones del programa y los términos al entrar." }, // @plantilla-quitar(servicios)
+  { key: "portal.access_rules", module: "services", label: "Reglas de las secciones del portal", description: "Cuándo se abre cada sección en una variante, cómo se ve cerrada, hasta cuándo dura y sus límites." }, // @plantilla-quitar(servicios)
+  { key: "portal.settings", module: "services", label: "Ajustes del portal", description: "La dirección del portal, el remitente, la bienvenida, cómo se entra y el soporte." }, // @plantilla-quitar(servicios)
+  { key: "portal.accounts", module: "services", label: "Cuentas del portal", description: "Invitar al portal, reenviar la invitación y suspender o reactivar la cuenta de un estudiante." }, // @plantilla-quitar(servicios)
+  { key: "portal.view_as", module: "services", label: "Ver como estudiante", description: "Abrir el portal de un estudiante en solo lectura por 30 minutos. Mismo alcance que ver los servicios." }, // @plantilla-quitar(servicios)
 
   // ── Integraciones ───────────────────────────────────────────────────────
   { key: "integrations.view", module: "integrations", label: "Ver las integraciones", description: "El estado de cada integración, sin las claves ni botones de cambio." },
@@ -257,6 +303,7 @@ export const SCOPED_MODULES = [
   "sales", // @plantilla-quitar(ventas)
   "commissions", // @plantilla-quitar(comisiones)
   "tasks", // @plantilla-quitar(tareas)
+  "services", // @plantilla-quitar(servicios)
 ] as const;
 export type ScopedModule = (typeof SCOPED_MODULES)[number];
 
@@ -360,6 +407,15 @@ const MEMBER_KEYS = [
   // topes del negocio). NO publica, no genera desde plantillas, no anula ni administra estilos y fuentes.
   "designer.view",
   "designer.edit",
+  // Servicios (cambio aprobado M11): un Member ve los servicios donde es responsable o setter o // @plantilla-quitar(servicios)
+  // vendedor del contacto, tilda los pasos a su cargo y abre "Ver como estudiante" a esos clientes // @plantilla-quitar(servicios)
+  // (alcance `own` del modulo services). NO crea, confirma, pausa ni cancela servicios. // @plantilla-quitar(servicios)
+  "services.view", // @plantilla-quitar(servicios)
+  "services.items", // @plantilla-quitar(servicios)
+  "portal.view_as", // @plantilla-quitar(servicios)
+  // Afiliados (cambio aprobado M11): un Member usa Mis links (su código y los links de los productos) y ve sus
+  // referidos. NO asigna afiliados, no da de alta externos ni ve el resumen. // @plantilla-quitar(ventas)
+  "affiliates.use", // @plantilla-quitar(ventas)
 ] as const;
 
 /**
@@ -371,20 +427,20 @@ export const MEMBER_PERMISSION_KEYS: readonly string[] = MEMBER_KEYS;
 export const SYSTEM_ROLE_PERMISSIONS: Record<"owner" | "admin" | "member", RolePermissions> = {
   owner: {
     keys: [...ALL_PERMISSION_KEYS],
-    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all", services: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas,servicios)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "all", bookings: "all" },
     channels: ALL_CHANNELS,
   },
   admin: {
     // Todo salvo lo solo-Owner (transferir la propiedad, quitar personas).
     keys: ALL_PERMISSION_KEYS.filter((key) => !OWNER_ONLY_KEYS.includes(key)),
-    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all", services: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas,servicios)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "all", bookings: "all" },
     channels: ALL_CHANNELS,
   },
   member: {
     keys: [...MEMBER_KEYS],
-    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas,servicios)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "own", bookings: "own" },
     channels: MEMBER_CHANNELS,
   },
@@ -448,7 +504,7 @@ export function parsePermissions(value: unknown): RolePermissions {
     keys: Array.isArray(record.keys)
       ? record.keys.filter((key): key is string => typeof key === "string" && ALL_PERMISSION_KEYS.includes(key))
       : [],
-    scopes: { leads: scope("leads"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), commissions: scope("commissions"), tasks: scope("tasks") }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    scopes: { leads: scope("leads"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), commissions: scope("commissions"), tasks: scope("tasks"), services: scope("services") }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas,servicios)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: scope("leads"), bookings: scope("bookings") },
     channels: parseChannels(record.channels),
     ...(scopes.calls === "areas" ? { call_areas: parseCallAreas(record.call_areas) } : {}), // @plantilla-quitar(llamadas)

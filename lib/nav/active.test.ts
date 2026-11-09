@@ -119,7 +119,8 @@ describe("exactamente un item activo en cualquier ruta real del dashboard (N4)",
   const rutaDeEjemplo = (patron: string) => patron.replace(/\[[^\]]+\]/g, "muestra");
 
   // Un admin con todas las banderas: ve el menú entero.
-  const admin = visibleNavItems(NAV_ITEMS, { permissionKeys: ALL_PERMISSION_KEYS, flags: { eod: true, settings: true, inbox: true } });
+  // Servicios A1: la bandera `services` (modulo prendido) para que Clientes cuente como el item activo de /dashboard/clientes.
+  const admin = visibleNavItems(NAV_ITEMS, { permissionKeys: ALL_PERMISSION_KEYS, flags: { eod: true, settings: true, inbox: true, services: true } });
   const member = visibleNavItems(NAV_ITEMS, { permissionKeys: [], flags: { settings: true } });
 
   it("las pantallas del menu de usuario no marcan ningun item del menu lateral", () => {

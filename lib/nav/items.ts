@@ -40,7 +40,7 @@ export const NAV_GROUPS: NavGroupMeta[] = [
 ];
 
 /** Condiciones del menú que se calculan en el servidor (no son un permiso). */
-export type NavFlag = "eod" | "settings" | "inbox";
+export type NavFlag = "eod" | "settings" | "inbox" | "services";
 
 export interface NavItemMeta {
   name: string;
@@ -73,7 +73,10 @@ export interface NavItemMeta {
  * del pie (Mi cuenta, 00273). En ellas ningun item del menu queda marcado, y
  * esta bien: es lo de la persona, no una seccion del negocio.
  */
-export const PROFILE_MENU_ROUTES: readonly string[] = ["/dashboard/cuenta"];
+export const PROFILE_MENU_ROUTES: readonly string[] = [
+  "/dashboard/cuenta",
+  "/dashboard/mis-links", // Servicios A1 (F103): se abre desde el menu de usuario. @plantilla-quitar(ventas)
+];
 
 export const NAV_ITEMS: NavItemMeta[] = [
   // alsoActiveOn: "/dashboard/dashboards" (sin el /chat) para que las otras
@@ -121,6 +124,16 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // de sistema ve sus propias comisiones); adentro, cada pestana pide su clave.
   { name: "Finanzas", href: "/dashboard/finanzas", icon: "Wallet", permissions: ["expenses.view", "commissions.view"], group: "ventas", alsoActiveOn: ["/dashboard/finanzas"] },
   // @plantilla-hasta(finanzas,comisiones)
+  // @plantilla-desde(servicios)
+  // Servicios (F26): solo con el modulo prendido en el negocio (bandera `services` = workspaces.services_enabled). Va en el
+  // grupo Ventas, despues de Ventas y Finanzas: un grupo nuevo cambiaria el menu de todos aunque quede vacio (ver PENDIENTE).
+  { name: "Clientes", href: "/dashboard/clientes", icon: "GraduationCap", permissions: ["services.view"], requires: "services", group: "ventas" },
+  // Portal (F35, F43): los programas del portal y sus ajustes, con el modulo prendido.
+  { name: "Portal", href: "/dashboard/portal", icon: "AppWindow", permissions: ["portal.view", "portal.sections", "portal.access_rules", "portal.settings"], requires: "services", group: "ventas" },
+  // @plantilla-hasta(servicios)
+  // Afiliados (Servicios A1, F105): al final del grupo Ventas para no mover el orden de los demas. Lo ve quien tiene el
+  // resumen o las reglas; «Mis links» (affiliates.use) va en el menu de usuario, no aca.
+  { name: "Afiliados", href: "/dashboard/afiliados", icon: "Handshake", permissions: ["affiliates.view_all", "affiliates.settings"], group: "ventas" }, // @plantilla-quitar(ventas)
 
   // Herramientas (plano formularios-ui, D1): la unica seccion colapsable. Orden fijo:
   // Tareas, Automatizaciones, Formularios, Diseñador IA, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.  @plantilla-quitar(tareas,formularios)

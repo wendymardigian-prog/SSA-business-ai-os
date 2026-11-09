@@ -8,7 +8,8 @@
  */
 import { triggerEntry } from "./trigger-catalog";
 
-const EVENT_GROUPS: readonly string[] = ["contactos", "agenda", "formularios", "ventas", "tareas", "llamadas", "grupos_whatsapp"]; // @plantilla-quitar(formularios,ventas,tareas,llamadas)
+// Servicios: sus disparadores tambien corren por eventos sobre un contacto (el cliente del servicio).
+const EVENT_GROUPS: readonly string[] = ["contactos", "agenda", "formularios", "ventas", "tareas", "llamadas", "grupos_whatsapp", "servicios"]; // @plantilla-quitar(formularios,ventas,tareas,llamadas,servicios)
 // @plantilla-sin(formularios,ventas,tareas,llamadas): const EVENT_GROUPS: readonly string[] = ["contactos", "agenda", "grupos_whatsapp"];
 
 export function supportsOncePerContact(triggerType: string | null | undefined): boolean {

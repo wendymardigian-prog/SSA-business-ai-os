@@ -76,7 +76,7 @@ function formatDate(date: string | null): string {
  * La ficha de una venta (F26): cabecera con los números, datos, plan de pagos (solo lectura en
  * este bloque), contratos e historial. Las acciones solo aparecen con `sales.manage`.
  */
-export function SaleDetail({ data, wizard, contracts, commissions }: { data: SaleDetailData; wizard: WizardConfig; contracts?: React.ReactNode; commissions?: React.ReactNode }) {
+export function SaleDetail({ data, wizard, contracts, commissions, services, affiliate }: { data: SaleDetailData; wizard: WizardConfig; contracts?: React.ReactNode; commissions?: React.ReactNode; services?: React.ReactNode; affiliate?: React.ReactNode }) {
   const { sale, payments, numbers, contact } = data;
   const [dialog, setDialog] = useState<"edit" | "cancel" | "subscription" | "rebuild" | null>(null);
   // «Cambiar» en «De dónde vino» abre la edicion con la atribucion ya desplegada.
@@ -209,6 +209,10 @@ export function SaleDetail({ data, wizard, contracts, commissions }: { data: Sal
             names={data.names}
             canAdjustCommissions={data.canAdjustCommissions}
           />
+
+          {services /* Servicios A1 (F33): la seccion del modulo, si esta prendido */}
+
+          {affiliate /* Servicios A1 (F74, F104): el afiliado de la venta */}
 
           {contracts}
 

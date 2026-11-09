@@ -338,7 +338,9 @@ describe("caracterizacion: el menu (F68)", () => {
   const memberMenu = () =>
     visibleNavItems(NAV_ITEMS, {
       permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys,
-      flags: { eod: true, settings: true, inbox: true },
+      // Cambio aprobado M11 (Servicios A1): con el modulo prendido (bandera `services`) el Member ve Clientes, porque
+      // tiene services.view con alcance own. Apagado, Clientes no aparece para nadie.
+      flags: { eod: true, settings: true, inbox: true, services: true },
     })
       .map((item) => item.name)
       .sort();
@@ -356,7 +358,10 @@ describe("caracterizacion: el menu (F68)", () => {
     // propias comisiones). Sigue sin Social.  @plantilla-quitar(comisiones)
     // @plantilla-sin(comisiones): // El Member de sistema no ve Social.
     // Anuncios no le saca nada al Member: es un item nuevo, con un permiso que nunca tuvo.
-    expect(ocultas).toEqual(["Anuncios", "Social"]);
+    // Afiliados (Servicios A1, F105) tampoco: item nuevo con claves que el Member no tiene (su «Mis links» va en el
+    // menu de usuario, con affiliates.use).
+    // Portal (Servicios A1, F35/F43): pide claves del portal que el Member no tiene (solo portal.view_as).
+    expect(ocultas).toEqual(["Afiliados", "Anuncios", "Portal", "Social"]);
   });
 
   it("las demas las ve un Member", () => {
@@ -369,6 +374,11 @@ describe("caracterizacion: el menu (F68)", () => {
       "Ajustes",
       "Automatizaciones",
       "Bandeja",
+      // @plantilla-desde(servicios)
+      // Clientes (Servicios A1, cambio aprobado M11): el Member de sistema tiene services.view (alcance own); se ve
+      // solo con el modulo prendido (bandera `services`).
+      "Clientes",
+      // @plantilla-hasta(servicios)
       "Contactos",
       "Contenido",
       "Dashboards",

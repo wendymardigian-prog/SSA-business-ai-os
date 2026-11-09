@@ -20,6 +20,10 @@ import type { ActionResult, GenerateManyInput, GenerateOneInput, GenerationPrevi
 import { countGenerationAudienceCore, generateManyCore, type AudienceCount } from "@/lib/designer/bulk-core";
 import { generateOneCore, previewGenerationCore, regenerateCore, retryFailedGenerationsCore, retryGenerationCore, type GeneratedPiece } from "@/lib/designer/generate-ops";
 import { sendGenerationEmailCore } from "@/lib/designer/generation-email";
+import { loadModuleDesignExtensions } from "@/lib/designer/module-extensions";
+
+// Las variables y orígenes de los módulos (Servicios, …) para generar y para la vista previa.
+loadModuleDesignExtensions();
 
 const NO_PERMISSION = "No tenés permiso para generar piezas.";
 const BAD_REQUEST = "El pedido no es válido.";

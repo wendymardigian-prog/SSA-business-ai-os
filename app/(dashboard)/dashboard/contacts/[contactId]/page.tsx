@@ -77,6 +77,12 @@ import { getPermissionContext } from "@/lib/auth/guards";
 import { loadContactCalls } from "@/lib/calls/contact-section"; // @plantilla-quitar(llamadas)
 import { PageHeader } from "@/components/page-header";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
+import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
+import { loadContactServices } from "@/lib/services/screens/load-services"; // @plantilla-quitar(servicios)
+import { loadNewServiceOptions } from "@/lib/services/screens/load-new-service"; // @plantilla-quitar(servicios)
+import { ServicesSection } from "@/components/services/clients/services-section"; // @plantilla-quitar(servicios)
+import { loadAffiliateOf } from "@/lib/affiliates/load"; // @plantilla-quitar(ventas)
+import { AffiliateField } from "@/components/affiliates/affiliate-field"; // @plantilla-quitar(ventas)
 
 /**
  * Ficha de contacto (F14).
@@ -294,6 +300,10 @@ export default async function ContactDetailPage({
         .limit(10)
     : null;
   const salesWizard = canViewSales && permissionCtx.can("sales.manage") ? await loadWizardConfig(permissionCtx) : null;
+  // El afiliado del contacto (Servicios A1, F104): quien lo ve es quien ve la ficha (la RLS ya decidió); se muestra si
+  // tiene uno, si es afiliado o si la persona puede asignar.
+  const affiliateRecord = await loadAffiliateOf(await createServiceClient(), workspace.id, "contact", contactId, (await getWorkspaceMembers(workspace.id)).map((m) => ({ userId: m.userId, name: m.name })));
+  const showAffiliate = !!affiliateRecord.affiliate || !!affiliateRecord.ownCode || permissionCtx.can("affiliates.assign");
   // @plantilla-hasta(ventas)
 
   // @plantilla-desde(formularios)
@@ -461,6 +471,23 @@ export default async function ContactDetailPage({
   // de baja). Se calcula con la misma funcion que la puerta de envio, con el cliente de servicio.
   const secondaryEmailStatus = await secondaryAddressStatus(workspace.id, contact.email, contact.secondary_email, contact.email_status);
 
+  // @plantilla-desde(servicios)
+  // F33: la seccion «Servicios» del contacto, solo con el modulo prendido y services.view.
+  let servicesSection: React.ReactNode = null;
+  if (isModuleEnabled(workspace as { services_enabled?: boolean | null }) && permissionCtx.can("services.view")) {
+    const svcList = await loadContactServices(supabase, workspace.id, contact.id);
+    const svcTeam = await getWorkspaceMembers(workspace.id);
+    servicesSection = (
+      <ServicesSection
+        title="Servicios"
+        services={svcList.map((s) => ({ id: s.id, label: `${s.product_snapshot?.product_name ?? ""}${s.product_snapshot?.variant_name ? ` · ${s.product_snapshot.variant_name}` : ""}`, status: s.status, light: s.light, phaseName: s.phase_name }))}
+        canCreate={permissionCtx.can("services.create")}
+        options={permissionCtx.can("services.create") ? await loadNewServiceOptions(supabase, workspace.id, svcTeam, permissionCtx.can("services.create_off_rule")) : { products: [], members: [], canOffRule: false }}
+        preset={{ contactId: contact.id, contactName: contact.display_name || contact.email || "Contacto" }}
+      />
+    );
+  }
+  // @plantilla-hasta(servicios)
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -664,7 +691,12 @@ export default async function ContactDetailPage({
                 interest={{ productId: contact.interest_product_id, variantId: contact.interest_variant_id }}
               />
             )}
+            {showAffiliate && <AffiliateField target="contact" id={contact.id} record={affiliateRecord} canAssign={permissionCtx.can("affiliates.assign")} />}
             {/* @plantilla-hasta(ventas) */}
+
+            {/* @plantilla-desde(servicios) */}
+            {servicesSection}
+            {/* @plantilla-hasta(servicios) */}
 
             {/* @plantilla-desde(formularios) */}
             {contactForms && <ContactFormsSection rows={contactForms.rows} total={contactForms.total} contactId={contact.id} timeZone={viewerTimezone} />}

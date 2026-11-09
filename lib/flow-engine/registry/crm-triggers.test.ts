@@ -201,7 +201,38 @@ describe("los tres tipos nuevos estan registrados", () => {
       "whatsapp_group_joined",
       "whatsapp_group_poll_vote",
       "whatsapp_group_reaction",
-    ]);
+      // Servicios (00336): los 26 disparadores del modulo, de evento sobre el contacto. // @plantilla-quitar(servicios)
+      "service_created", // @plantilla-quitar(servicios)
+      "service_started", // @plantilla-quitar(servicios)
+      "service_ending_soon", // @plantilla-quitar(servicios)
+      "service_status_changed", // @plantilla-quitar(servicios)
+      "service_extended", // @plantilla-quitar(servicios)
+      "service_paused", // @plantilla-quitar(servicios)
+      "service_resumed", // @plantilla-quitar(servicios)
+      "service_phase_started", // @plantilla-quitar(servicios)
+      "service_phase_completed", // @plantilla-quitar(servicios)
+      "service_item_completed", // @plantilla-quitar(servicios)
+      "service_item_overdue", // @plantilla-quitar(servicios)
+      "service_light_changed", // @plantilla-quitar(servicios)
+      "program_lesson_completed", // @plantilla-quitar(servicios)
+      "program_module_completed", // @plantilla-quitar(servicios)
+      "quiz_passed", // @plantilla-quitar(servicios)
+      "quiz_failed", // @plantilla-quitar(servicios)
+      "task_submission_received", // @plantilla-quitar(servicios)
+      "task_submission_reviewed", // @plantilla-quitar(servicios)
+      "live_session_missed", // @plantilla-quitar(servicios)
+      "challenge_started", // @plantilla-quitar(servicios)
+      "challenge_occurrence_due_soon", // @plantilla-quitar(servicios)
+      "challenge_occurrence_overdue", // @plantilla-quitar(servicios)
+      "challenge_completed", // @plantilla-quitar(servicios)
+      "certificate_issued", // @plantilla-quitar(servicios)
+      "portal_access_expiring", // @plantilla-quitar(servicios)
+      "portal_access_expired", // @plantilla-quitar(servicios)
+      // Afiliados (Servicios A1, 00343): los tres de evento sobre el contacto. // @plantilla-quitar(ventas)
+      "affiliate_lead_created", // @plantilla-quitar(ventas)
+      "affiliate_sale_created", // @plantilla-quitar(ventas)
+      "affiliate_assignment_expired", // @plantilla-quitar(ventas)
+    ].sort());
     // Los tres relativos de agenda los agenda un job, igual que inactividad.
     // Tambien los dos de pagos (antes y despues del vencimiento).  @plantilla-quitar(ventas)
     expect(listTriggers("scheduled").map((t) => t.type).sort()).toEqual([

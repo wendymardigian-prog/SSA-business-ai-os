@@ -9,6 +9,9 @@ import { sanitizeSearch } from "@/lib/url-params";
 import { ensureSalesTemplateFlows } from "@/lib/sales/automation/templates-run";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
+import type { ModuleColumn } from "@/lib/sales/module-columns"; // @plantilla-quitar(servicios)
+import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
+import { servicesSalesColumn } from "@/lib/services/screens/sales-column"; // @plantilla-quitar(servicios)
 
 export const dynamic = "force-dynamic";
 
@@ -138,5 +141,14 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     pieceTitle,
   };
 
-  return <SalesList data={props} wizard={config} />;
+  // @plantilla-desde(servicios)
+  // F95: con el modulo de Servicios prendido, la columna Servicio por el punto de extension de Ventas.
+  const moduleColumns: ModuleColumn[] = [];
+  if (isModuleEnabled(workspace as { services_enabled?: boolean | null })) {
+    const col = await servicesSalesColumn(supabase, workspace.id, rows.map((r) => r.id), ctx.can);
+    if (col) moduleColumns.push(col);
+  }
+  return <SalesList data={props} wizard={config} moduleColumns={moduleColumns} />;
+  // @plantilla-hasta(servicios)
+  // @plantilla-sin(servicios): return <SalesList data={props} wizard={config} />;
 }

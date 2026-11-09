@@ -1,3 +1,4 @@
+import { isPortalFormType } from "@/lib/forms/fields"; // @plantilla-quitar(servicios)
 import { requirePermission } from "@/lib/auth/guards";
 import { publicBaseUrl } from "@/lib/public-url";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
@@ -29,11 +30,13 @@ export default async function FormulariosPage({ searchParams }: { searchParams: 
   const initialQuery = parseListQuery({ q: sp.q, estado: sp.estado, tipo: sp.tipo });
   const timeZone = await resolveViewerTimezone(workspace.timezone);
 
-  const { data: forms, error } = await supabase
+  const { data: allForms, error } = await supabase
     .from("forms")
     .select("id, name, type, status, slug, updated_at, created_at, design, draft_definition, survey_config")
     .eq("workspace_id", workspace.id)
     .order("updated_at", { ascending: false });
+  const forms = (allForms ?? []).filter((f) => !isPortalFormType(f.type)); // Servicios A1 (F52): los del portal no se listan acá. @plantilla-quitar(servicios)
+  // @plantilla-sin(servicios): const forms = allForms;
 
   // Un tope razonable: la lista no necesita contar millones de filas, solo dar una idea.
   const { data: submissions } = await supabase

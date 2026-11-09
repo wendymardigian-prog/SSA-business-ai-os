@@ -155,6 +155,15 @@ export const MODULES = {
       "lib/flow-engine/nodes/sales-actions.test.ts",
       "scripts/verify-sales.mjs",
       "scripts/verify-payment-methods.mjs",
+      // Afiliados y links (Servicios A1, bloque AF): siguen a Ventas.
+      `${D}/afiliados`,
+      `${D}/mis-links`,
+      "app/r",
+      "lib/affiliates",
+      "components/affiliates",
+      "lib/actions/affiliates.ts",
+      "lib/flow-engine/registry/affiliate-triggers.ts",
+      "scripts/verify-affiliates.mjs",
     ],
   },
   tareas: {
@@ -225,6 +234,7 @@ export const MODULES = {
       "lib/actions/commissions.ts",
       "lib/actions/commissions.test.ts",
       "lib/actions/commissions-ui.ts",
+      "lib/actions/commission-edit.ts",
       "lib/jobs/handlers/commissions-payment.ts",
       "lib/jobs/handlers/commissions-payment.test.ts",
       "scripts/verify-commissions.mjs",
@@ -247,6 +257,42 @@ export const MODULES = {
       "lib/flow-engine/registry/webhook-triggers.ts",
       "lib/flow-engine/nodes/upsert-contact.ts",
       "scripts/verify-inbound-webhooks.mjs",
+    ],
+  },
+  // Servicios, portal y afiliados (Servicios A1). Los esquemas `app_servicio` y `app_servicio_portal`, sus triggers y
+  // sus columnas no viajan: la plantilla arranca con sus propias migraciones.
+  servicios: {
+    label: "Servicios y portal (camino del cliente, accesos, programa)",
+    paths: [
+      `${D}/settings/productos/[id]/variantes`,
+      `${D}/clientes`,
+      `${D}/portal`,
+      "lib/services",
+      "lib/portal-admin",
+      "lib/program",
+      "components/services",
+      "lib/actions/services.ts",
+      "lib/actions/portal-admin.ts",
+      "lib/actions/program.ts",
+      "lib/actions/live-sessions.ts",
+      "lib/actions/service-certificates.ts",
+      "lib/actions/community.ts",
+      "lib/actions/tutor.ts",
+      "lib/jobs/handlers/svc-certificate.ts",
+      "lib/jobs/handlers/svc-daily.ts",
+      "lib/flow-engine/nodes/service-actions.ts",
+      "lib/flow-engine/nodes/service-action-detail.ts",
+      "lib/flow-engine/nodes/service-action-detail.test.ts",
+      "lib/flow-engine/registry/service-triggers.ts",
+      "components/flow-builder/panels/ServiceActionPanel.tsx",
+      "scripts/verify-services.mjs",
+      "scripts/verify-portal-schema.mjs",
+      "scripts/verify-program/verify-ce.ts",
+      "scripts/verify-program.mjs",
+      "scripts/verify-servicios-migracion.mjs",
+      "scripts/verify-servicios-migracion.spec.mjs",
+      "scripts/servicios-api-schema.mjs",
+      "scripts/verify-api-schemas.mjs",
     ],
   },
   // No es un modulo de la app: lo que solo tiene sentido en el proyecto y no viaja a
@@ -276,7 +322,7 @@ export const EXCLUDED = Object.keys(MODULES);
  * modulos. Es una lista provisoria (F2): la F3 decide cuales se adaptan a la plantilla.
  * Formato: { path, modules: [...], why }.
  */
-const SCOPES = ["llamadas", "ventas", "comisiones", "tareas"];
+const SCOPES = ["llamadas", "ventas", "comisiones", "tareas", "servicios"];
 export const excludeTests = [
   { path: "components/automations/step-tree-render.test.ts", modules: ["formularios"], why: "arma el editor de pasos con el «Solo si…» de Formularios" },
   { path: "lib/automations/condition-builder-model.test.ts", modules: ["formularios"], why: "usa las preguntas de un formulario" },

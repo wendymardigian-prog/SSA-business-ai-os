@@ -862,3 +862,18 @@ rechaza, como en los demás flujos sin contacto.
   («09:00»), en la hora del negocio. También se comparan en Condiciones (`schedule.*`).
 - Despublicar no anula la vez pendiente: el trabajo la descarta al ver que la automatización no está publicada.
 
+## Servicios (Corrida A1, noviembre 2026)
+
+- **26 disparadores de contacto** (`lib/flow-engine/registry/service-triggers.ts`, reglas en `lib/services/automation.ts`):
+  servicio creado, empezó, está por terminar (N días), cambió de estado, se extendió, se pausó, se reanudó; fase que
+  empieza y termina; paso completado y vencido; semáforo; clase y módulo completados; evaluación aprobada y no
+  aprobada; actividad entregada y revisada; faltó a una clase en vivo; Reto empezado, repetición por vencer y vencida,
+  Reto terminado; certificado emitido; acceso por vencer y vencido. Los emite la base (`app_servicio.emit` /
+  `emit_service`), viajan por `automation_events` con solo escalares (nunca `booking_id`) y con el módulo apagado no
+  se emiten. Los de tiempo los emite el barrido diario (`svc_daily_run`) una sola vez.
+- **6 acciones** (`lib/flow-engine/nodes/service-actions.ts`, panel `ServiceActionPanel`): «Completar un paso del
+  servicio», «Cambiar de fase», «Empezar la fase Reto», «Extender servicio», «Pausar servicio» y «Emitir certificado»
+  (con la plantilla del paso Certificado; uno vigente por servicio). Actúan sobre el servicio del evento o, si no trae
+  uno, el activo más reciente del contacto. Nunca frenan el flujo: un problema se anota en el paso.
+- **Afiliados:** `affiliate_lead_created`, `affiliate_sale_created`, `affiliate_assignment_expired` (ver
+  [afiliados.md](afiliados.md)).

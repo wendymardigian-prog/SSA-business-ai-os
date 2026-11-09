@@ -11,6 +11,7 @@ import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "./branch-paths";
 import { resolveWhatsAppTarget } from "./whatsapp-target";
 import { pickSplitIndex, splitHandle } from "./nodes/ab-split";
 import { fallbackText, needsFallback } from "@/lib/templates/fallback";
+import { SERVICE_ACTION_TYPES, serviceActionDetail, type ServiceActionData, type ServiceActionType } from "./nodes/service-action-detail"; // @plantilla-quitar(servicios)
 
 /** Los mismos alias de salida que el motor (`engine.ts`): las condiciones viejas dibujaban `yes`/`no`. */
 const SIM_HANDLE_ALIASES: Record<string, string> = { yes: "true", no: "false" };
@@ -408,6 +409,7 @@ export function simulateFlow(
         else if (actionType === "removeTag") detail = `Quita la etiqueta: ${tagName}`;
         else if (actionType === "setCustomField")
           detail = `Guarda ${fieldSlug} = ${fieldValue}`;
+        else if ((SERVICE_ACTION_TYPES as readonly string[]).includes(actionType)) detail = serviceActionDetail(actionType as ServiceActionType, data as ServiceActionData); // @plantilla-quitar(servicios)
         steps.push({
           nodeId: node.id,
           nodeType: "action",
@@ -618,6 +620,23 @@ export function simulateFlow(
         break;
       }
 
+      // @plantilla-desde(servicios)
+      // Servicios (F25): en la simulación no se toca ningún servicio.
+      case "svc_complete_step":
+      case "svc_change_phase":
+      case "svc_start_challenge":
+      case "svc_extend_service":
+      case "svc_pause_service":
+      case "svc_issue_certificate": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: switchType,
+          nodeLabel: label,
+          result: { type: "action", actionType: switchType, detail: serviceActionDetail(switchType as ServiceActionType, data as ServiceActionData) },
+        });
+        break;
+      }
+      // @plantilla-hasta(servicios)
       // Calificación del lead (00329): en la simulación no se cambia nada.
       case "qualify_lead": {
         steps.push({

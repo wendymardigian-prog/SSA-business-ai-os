@@ -34,7 +34,7 @@ import { newPathId, pathsOf } from "@/lib/flow-engine/branch-paths";
 import { pruneBranchEdges } from "@/lib/automations/branch-edit";
 
 import { NodePalette, type PaletteItem } from "./node-palette";
-import { FlowCapabilitiesProvider, FlowConnectionBanner, useFlowCapabilities } from "./capabilities-context";
+import { FlowCapabilitiesProvider, FlowConnectionBanner, FlowModulesProvider, useFlowCapabilities } from "./capabilities-context";
 import { FlowMetricsError, FlowMetricsProvider, FlowMetricsToggle } from "./metrics-context";
 import {
   ALL_CONNECTED,
@@ -81,6 +81,8 @@ interface FlowCanvasProps {
   capabilities?: Capabilities;
   /** Los valores por defecto de atribución del negocio (Ajustes → Atribución). Sin esto, los nodos nuevos nacen sin atribución. */
   attributionDefaults?: AttributionDefaults;
+  /** Si el modulo de Servicios esta prendido en el negocio: sin esto, el editor no ofrece sus disparadores ni sus pasos. */
+  servicesEnabled?: boolean; // @plantilla-quitar(servicios)
 }
 
 const NO_ATTRIBUTION_DEFAULTS: AttributionDefaults = { append: false, trackClicks: true };
@@ -768,13 +770,15 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
   );
 }
 
-export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNECTED }: FlowCanvasProps) {
+export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNECTED, servicesEnabled = false }: FlowCanvasProps) {
   return (
     <ReactFlowProvider>
       <FlowCapabilitiesProvider capabilities={capabilities}>
-        <FlowMetricsProvider flowId={flow.id}>
-          <FlowCanvasInner flow={flow} attributionDefaults={attributionDefaults} />
-        </FlowMetricsProvider>
+        <FlowModulesProvider modules={{ services: servicesEnabled }}>
+          <FlowMetricsProvider flowId={flow.id}>
+            <FlowCanvasInner flow={flow} attributionDefaults={attributionDefaults} />
+          </FlowMetricsProvider>
+        </FlowModulesProvider>
       </FlowCapabilitiesProvider>
     </ReactFlowProvider>
   );

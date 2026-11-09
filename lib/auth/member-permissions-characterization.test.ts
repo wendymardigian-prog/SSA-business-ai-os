@@ -62,6 +62,15 @@ describe("Member de sistema", () => {
         // Diseñador IA (cambio aprobado M12): ve y edita diseños y plantillas. SIN publicar, generar,
         // anular ni administrar (`designer.publish`, `designer.generate`, `designer.manage`).
         "designer.view", "designer.edit",
+        // @plantilla-desde(servicios)
+        // Servicios (cambio aprobado M11): ve los servicios donde es responsable o setter o vendedor del
+        // contacto, tilda los pasos a su cargo y usa "Ver como estudiante" con esos clientes. Alcance `own`.
+        "services.view", "services.items", "portal.view_as",
+        // @plantilla-hasta(servicios)
+        // @plantilla-desde(ventas)
+        // Afiliados (cambio aprobado M11, bloque AF): usa Mis links. No asigna, no da de alta ni ve el resumen.
+        "affiliates.use",
+        // @plantilla-hasta(ventas)
       ].sort(),
     );
   });
@@ -71,7 +80,7 @@ describe("Member de sistema", () => {
   });
 
   it("tiene alcance 'own' en todo lo que tiene alcance", () => {
-    expect(SYSTEM_ROLE_PERMISSIONS.member.scopes).toEqual({ leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }); // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    expect(SYSTEM_ROLE_PERMISSIONS.member.scopes).toEqual({ leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", services: "own" }); // @plantilla-quitar(llamadas,ventas,comisiones,tareas,servicios) — services: cambio aprobado M11
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): expect(SYSTEM_ROLE_PERMISSIONS.member.scopes).toEqual({ leads: "own", bookings: "own" });
   });
 });
@@ -79,7 +88,7 @@ describe("Member de sistema", () => {
 describe("Owner y Admin", () => {
   it("el Owner tiene todas las claves y el alcance 'all'", () => {
     expect(SYSTEM_ROLE_PERMISSIONS.owner.keys).toEqual(ALL_PERMISSION_KEYS);
-    expect(SYSTEM_ROLE_PERMISSIONS.owner.scopes).toEqual({ leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" }); // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    expect(SYSTEM_ROLE_PERMISSIONS.owner.scopes).toEqual({ leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all", services: "all" }); // @plantilla-quitar(llamadas,ventas,comisiones,tareas,servicios)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): expect(SYSTEM_ROLE_PERMISSIONS.owner.scopes).toEqual({ leads: "all", bookings: "all" });
   });
 

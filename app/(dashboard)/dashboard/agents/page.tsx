@@ -105,6 +105,14 @@ export default async function AgentsPage({
 
   const settings = canManageTasks ? resolveBackgroundSettings((workspace as { ai_background_settings?: unknown }).ai_background_settings) : null;
 
+  // @plantilla-desde(servicios)
+  // El tutor de un programa se ve con «Programa: X» (F83).
+  const tutorIds = agents.filter((a) => a.type === "student_tutor").map((a) => a.id);
+  const { data: tutorPrograms } = tutorIds.length ? await service.from("products").select("name, tutor_agent_id" as never).eq("workspace_id", workspace.id).in("tutor_agent_id" as never, tutorIds as never) : { data: [] };
+  // @plantilla-hasta(servicios)
+  // @plantilla-sin(servicios): const tutorPrograms: unknown[] = [];
+  const programOfTutor = new Map(((tutorPrograms ?? []) as unknown as Array<{ name: string; tutor_agent_id: string }>).map((t) => [t.tutor_agent_id, t.name]));
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -140,6 +148,7 @@ export default async function AgentsPage({
                 <li key={agent.id}>
                   <AgentCard
                     agent={agent}
+                    detail={programOfTutor.get(agent.id) ? `Programa: ${programOfTutor.get(agent.id)}` : null} // @plantilla-quitar(servicios)
                     availability={agentAvailability({
                       isEnabled: agent.isEnabled,
                       provider: agent.provider,

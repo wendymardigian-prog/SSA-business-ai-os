@@ -15,6 +15,10 @@ import { BarChart3,
   Bell,
   ListPlus,
   ListChecks,
+  Flag,
+  CalendarPlus,
+  CirclePause,
+  Award,
   Shuffle,
   Hourglass,
   Sparkles,
@@ -38,7 +42,7 @@ import { Search } from "lucide-react";
 import { matchesQuery } from "@/lib/flows/search";
 import { isContactFreeNodeType } from "@/lib/flow-engine/contact-free";
 import { requirementsOfType } from "@/lib/flow-engine/node-requirements";
-import { PaletteBlockedNote, useMissingFor } from "./capabilities-context";
+import { PaletteBlockedNote, useFlowModules, useMissingFor } from "./capabilities-context";
 
 export interface PaletteItem {
   type: string;
@@ -390,6 +394,69 @@ const categories: PaletteCategory[] = [
       // @plantilla-hasta(ventas)
     ],
   },
+  // @plantilla-desde(servicios)
+  // Servicios (F25): actuan sobre el servicio del evento o, si no lo trae, el activo mas reciente del contacto.
+  // Solo se ofrecen con el modulo prendido en el negocio (`SERVICES_CATEGORY`).
+  {
+    name: "Servicios",
+    items: [
+      {
+        type: "action",
+        nodeType: "svc_complete_step",
+        label: "Completar un paso del servicio",
+        icon: ListChecks,
+        description: "Marca como hecho un paso del camino del cliente",
+        synonyms: ["camino", "servicio", "paso", "cliente", "estudiante"],
+        actionType: "svc_complete_step",
+      },
+      {
+        type: "action",
+        nodeType: "svc_change_phase",
+        label: "Cambiar de fase",
+        icon: ArrowRightLeft,
+        description: "Mueve el servicio a otra fase del camino",
+        synonyms: ["camino", "servicio", "fase", "etapa"],
+        actionType: "svc_change_phase",
+      },
+      {
+        type: "action",
+        nodeType: "svc_start_challenge",
+        label: "Empezar la fase Reto",
+        icon: Flag,
+        description: "Abre la fase Reto del servicio",
+        synonyms: ["reto", "desafio", "fase"],
+        actionType: "svc_start_challenge",
+      },
+      {
+        type: "action",
+        nodeType: "svc_extend_service",
+        label: "Extender servicio",
+        icon: CalendarPlus,
+        description: "Corre la fecha de fin del servicio",
+        synonyms: ["extender", "bonus", "dias", "meses", "servicio"],
+        actionType: "svc_extend_service",
+      },
+      {
+        type: "action",
+        nodeType: "svc_pause_service",
+        label: "Pausar servicio",
+        icon: CirclePause,
+        description: "Pausa el servicio y, si querés, sus accesos",
+        synonyms: ["pausa", "congelar", "servicio"],
+        actionType: "svc_pause_service",
+      },
+      {
+        type: "action",
+        nodeType: "svc_issue_certificate",
+        label: "Emitir certificado",
+        icon: Award,
+        description: "Genera el certificado del servicio con la plantilla de su paso Certificado",
+        synonyms: ["certificado", "diploma", "constancia", "servicio"],
+        actionType: "svc_issue_certificate",
+      },
+    ],
+  },
+  // @plantilla-hasta(servicios)
   // Diseñador IA (F57): una pieza desde una plantilla (un certificado, una constancia...) para el contacto.
   {
     name: "Diseñador IA",
@@ -406,6 +473,9 @@ const categories: PaletteCategory[] = [
     ],
   },
 ];
+
+/** El grupo del panel que solo se ofrece con el modulo de Servicios prendido. */
+const SERVICES_CATEGORY = "Servicios"; // @plantilla-quitar(servicios)
 
 function onDragStart(event: DragEvent, item: PaletteItem) {
   const data = JSON.stringify({
@@ -474,11 +544,14 @@ function PaletteEntry({ item, locked, onAdd }: { item: PaletteItem; locked: bool
 export function NodePalette({ memberFlow = false, locked = false, onAdd }: { memberFlow?: boolean; locked?: boolean; onAdd?: (item: PaletteItem) => void }) {
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const modules = useFlowModules(); // @plantilla-quitar(servicios)
+  const available = categories.filter((c) => modules.services || c.name !== SERVICES_CATEGORY); // @plantilla-quitar(servicios)
+  // @plantilla-sin(servicios): const available = categories;
   const base = memberFlow
-    ? categories
+    ? available
         .map((c) => ({ ...c, items: c.items.filter((item) => isContactFreeNodeType(item.actionType ?? item.nodeType) && item.nodeType !== "upsert_contact") }))
         .filter((c) => c.items.length > 0)
-    : categories;
+    : available;
   const shown = filterPalette(base, query);
 
   // "/" enfoca el buscador (si no se esta escribiendo en otro lado).

@@ -16,6 +16,7 @@ import { formatMoney } from "@/lib/shared/format";
 import { ATTRIBUTION_TYPE_LABELS, SALE_STATUS_LABELS, SALE_STATUSES, type SaleStatus } from "@/lib/sales/labels";
 import { PILLS, PILL_LABELS, countActiveSalesFilters, salesFiltersToParams, scopeChip, type Pill, type SaleListRow, type SalesFilters } from "@/lib/sales/list";
 import { saleStatusClasses } from "@/lib/sales/status-colors";
+import { MODULE_CELL_TONE_CLASS, type ModuleColumn } from "@/lib/sales/module-columns";
 
 export type SalesListRowView = SaleListRow & { contactName: string; vendedorName: string | null };
 
@@ -72,7 +73,7 @@ function useOriginColumn(): [boolean, (visible: boolean) => void] {
 const selectClass = "h-8 w-full rounded-lg border border-input bg-background px-2 text-sm";
 
 /** La lista de ventas (F25). Qué se ve lo decide la base (RLS); los filtros viven en la URL. */
-export function SalesList({ data, wizard }: { data: SalesListData; wizard: WizardConfig }) {
+export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesListData; wizard: WizardConfig; moduleColumns?: ModuleColumn[] }) {
   const { rows, total, page, pageSize, filters } = data;
   const router = useRouter();
   const pathname = usePathname();
@@ -257,7 +258,7 @@ export function SalesList({ data, wizard }: { data: SalesListData; wizard: Wizar
                   <table className={`w-full text-sm ${showOrigin ? "min-w-[1180px]" : "min-w-[960px]"}`}>
                     <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
                       <tr>
-                        {["Fecha", "Contacto", "Producto", "Monto", "Cobrado", "Pendiente", "Estado", "Vendedor", "Atribución", ...(showOrigin ? ["Origen"] : [])].map((h, i) => (
+                        {["Fecha", "Contacto", "Producto", "Monto", "Cobrado", "Pendiente", "Estado", "Vendedor", "Atribución", ...(showOrigin ? ["Origen"] : []), ...moduleColumns.map((c) => c.header)].map((h, i) => (
                           <th key={h} scope="col" className={`whitespace-nowrap px-3 py-2 font-medium ${i >= 3 && i <= 5 ? "text-right" : ""}`}>{h}</th>
                         ))}
                       </tr>
@@ -282,6 +283,14 @@ export function SalesList({ data, wizard }: { data: SalesListData; wizard: Wizar
                               </div>
                             </td>
                           )}
+                          {moduleColumns.map((c) => {
+                            const cell = c.cells[r.id];
+                            return (
+                              <td key={c.key} className={`max-w-[240px] truncate px-3 py-2 text-xs ${cell?.tone ? MODULE_CELL_TONE_CLASS[cell.tone] : "text-muted-foreground"}`}>
+                                {cell?.href ? <Link href={cell.href} className="underline-offset-2 hover:underline">{cell.label}</Link> : cell?.label ?? "—"}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>

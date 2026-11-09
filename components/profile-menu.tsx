@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bell, ChevronUp, Clock, LogOut, Moon, Sun, UserRound } from "lucide-react";
+import { Bell, ChevronUp, Clock, Link2, LogOut, Moon, Sun, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useHtmlClass } from "@/components/use-html-class";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
@@ -57,8 +57,11 @@ function inicialesDe(nombre: string | null, email: string | undefined) {
 export function ProfileMenu({
   user,
   collapsed = false,
+  showMyLinks = false,
 }: {
   user: ProfileUser;
+  /** «Mis links» (F103): solo con `affiliates.use`. Sin la prop, el menú es el de siempre. */
+  showMyLinks?: boolean;
   /**
    * Menu lateral colapsado. El texto lo esconde la variante CSS `collapsed:`
    * (asi no parpadea al cargar); esto es para el title, que es lo unico que le
@@ -177,6 +180,16 @@ export function ProfileMenu({
             <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
             Notificaciones
           </Link>
+          {showMyLinks && (
+            <Link
+              href="/dashboard/mis-links"
+              onClick={() => setOpen(false)}
+              className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:min-h-0"
+            >
+              <Link2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Mis links
+            </Link>
+          )}
 
           <div className="my-1 border-t border-border" />
 

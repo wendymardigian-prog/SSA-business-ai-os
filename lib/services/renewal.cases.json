@@ -1,0 +1,161 @@
+{
+  "_comment": "Casos de renewalPlan (F9, F115). Corren contra la gemela TS (lib/services/engine-rules.ts) y contra app_servicio.svc_renewal_plan (verify-services). Plata en centimos; fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "sin servicio previo",
+      "input": {
+        "renewal": "new_linked",
+        "prev": null,
+        "today": "2026-12-15"
+      },
+      "expected": {
+        "action": "new",
+        "startsOn": null
+      }
+    },
+    {
+      "name": "activo enlazado empieza al dia siguiente",
+      "input": {
+        "renewal": "new_linked",
+        "prev": {
+          "status": "active",
+          "endsOn": "2026-12-31",
+          "endedOn": null
+        },
+        "today": "2026-12-15"
+      },
+      "expected": {
+        "action": "new_linked",
+        "startsOn": "2027-01-01"
+      }
+    },
+    {
+      "name": "activo con extender",
+      "input": {
+        "renewal": "extend",
+        "prev": {
+          "status": "active",
+          "endsOn": "2026-12-31",
+          "endedOn": null
+        },
+        "today": "2026-12-15"
+      },
+      "expected": {
+        "action": "extend",
+        "startsOn": null
+      }
+    },
+    {
+      "name": "activo preguntar",
+      "input": {
+        "renewal": "ask",
+        "prev": {
+          "status": "active",
+          "endsOn": "2026-12-31",
+          "endedOn": null
+        },
+        "today": "2026-12-15"
+      },
+      "expected": {
+        "action": "ask",
+        "startsOn": null
+      }
+    },
+    {
+      "name": "termino hace 30 dias sigue enlazado",
+      "input": {
+        "renewal": "new_linked",
+        "prev": {
+          "status": "completed",
+          "endsOn": "2026-11-15",
+          "endedOn": "2026-11-15"
+        },
+        "today": "2026-12-15"
+      },
+      "expected": {
+        "action": "new_linked",
+        "startsOn": null
+      }
+    },
+    {
+      "name": "termino hace 60 dias justo",
+      "input": {
+        "renewal": "new_linked",
+        "prev": {
+          "status": "completed",
+          "endsOn": "2026-10-16",
+          "endedOn": "2026-10-16"
+        },
+        "today": "2026-12-15"
+      },
+      "expected": {
+        "action": "new_linked",
+        "startsOn": null
+      }
+    },
+    {
+      "name": "termino hace 90 dias es recuperacion",
+      "input": {
+        "renewal": "new_linked",
+        "prev": {
+          "status": "completed",
+          "endsOn": "2026-09-16",
+          "endedOn": "2026-09-16"
+        },
+        "today": "2026-12-15"
+      },
+      "expected": {
+        "action": "recovery",
+        "startsOn": null
+      }
+    },
+    {
+      "name": "cancelado no cuenta",
+      "input": {
+        "renewal": "new_linked",
+        "prev": {
+          "status": "cancelled",
+          "endsOn": "2026-12-31",
+          "endedOn": null
+        },
+        "today": "2026-12-15"
+      },
+      "expected": {
+        "action": "new",
+        "startsOn": null
+      }
+    },
+    {
+      "name": "pausado enlazado",
+      "input": {
+        "renewal": "new_linked",
+        "prev": {
+          "status": "paused",
+          "endsOn": "2027-02-28",
+          "endedOn": null
+        },
+        "today": "2026-12-15"
+      },
+      "expected": {
+        "action": "new_linked",
+        "startsOn": "2027-03-01"
+      }
+    },
+    {
+      "name": "de por vida activo",
+      "input": {
+        "renewal": "new_linked",
+        "prev": {
+          "status": "active",
+          "endsOn": null,
+          "endedOn": null
+        },
+        "today": "2026-12-15"
+      },
+      "expected": {
+        "action": "new_linked",
+        "startsOn": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "_comment": "Gemela de app_servicio.assistant_credits_plan (00352): verify-program --bloque ia los corre contra la base.",
+  "cases": [
+    { "name": "sin nada: 10 USD y 100 créditos por dólar", "input": { "own": null, "variant": null, "program": null, "spentUsd": 0, "creditsPerUsd": null }, "expected": { "limitUsd": 10, "credits": 1000, "reached": false } },
+    { "name": "el del programa", "input": { "own": null, "variant": null, "program": 5, "spentUsd": 1.25, "creditsPerUsd": 100 }, "expected": { "limitUsd": 5, "credits": 375, "reached": false } },
+    { "name": "la variante le gana al programa", "input": { "own": null, "variant": 3, "program": 5, "spentUsd": 0, "creditsPerUsd": 100 }, "expected": { "limitUsd": 3, "credits": 300, "reached": false } },
+    { "name": "el propio le gana a todo", "input": { "own": 20, "variant": 3, "program": 5, "spentUsd": 0, "creditsPerUsd": 100 }, "expected": { "limitUsd": 20, "credits": 2000, "reached": false } },
+    { "name": "un propio de 0 corta el asistente", "input": { "own": 0, "variant": 3, "program": 5, "spentUsd": 0, "creditsPerUsd": 100 }, "expected": { "limitUsd": 0, "credits": 0, "reached": true } },
+    { "name": "redondea para abajo", "input": { "own": null, "variant": null, "program": 10, "spentUsd": 9.9951, "creditsPerUsd": 100 }, "expected": { "limitUsd": 10, "credits": 0, "reached": false } },
+    { "name": "redondeo sin perder un crédito por coma flotante", "input": { "own": null, "variant": null, "program": 0.3, "spentUsd": 0.1, "creditsPerUsd": 10 }, "expected": { "limitUsd": 0.3, "credits": 2, "reached": false } },
+    { "name": "pasado del límite: 0, nunca negativo", "input": { "own": null, "variant": null, "program": 10, "spentUsd": 12, "creditsPerUsd": 100 }, "expected": { "limitUsd": 10, "credits": 0, "reached": true } },
+    { "name": "justo en el límite", "input": { "own": null, "variant": null, "program": 10, "spentUsd": 10, "creditsPerUsd": 100 }, "expected": { "limitUsd": 10, "credits": 0, "reached": true } },
+    { "name": "otra moneda de créditos", "input": { "own": null, "variant": null, "program": 2, "spentUsd": 0.5, "creditsPerUsd": 1 }, "expected": { "limitUsd": 2, "credits": 1, "reached": false } }
+  ]
+}

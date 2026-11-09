@@ -1,0 +1,152 @@
+{
+  "_comment": "Casos de normalizeVideoUrl (F46). Cada caso fija lo que esperamos (las claves que se nombran).",
+  "cases": [
+    {
+      "name": "YouTube watch",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "expected": {
+        "ok": true,
+        "provider": "youtube",
+        "embedUrl": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"
+      }
+    },
+    {
+      "name": "YouTube corto",
+      "url": "https://youtu.be/dQw4w9WgXcQ?t=42",
+      "expected": {
+        "ok": true,
+        "provider": "youtube",
+        "embedUrl": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"
+      }
+    },
+    {
+      "name": "YouTube shorts",
+      "url": "https://youtube.com/shorts/dQw4w9WgXcQ",
+      "expected": {
+        "ok": true,
+        "provider": "youtube",
+        "embedUrl": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"
+      }
+    },
+    {
+      "name": "YouTube embed",
+      "url": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "expected": {
+        "ok": true,
+        "provider": "youtube",
+        "embedUrl": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"
+      }
+    },
+    {
+      "name": "YouTube móvil",
+      "url": "https://m.youtube.com/watch?v=dQw4w9WgXcQ&feature=share",
+      "expected": {
+        "ok": true,
+        "provider": "youtube",
+        "embedUrl": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"
+      }
+    },
+    {
+      "name": "YouTube sin id",
+      "url": "https://www.youtube.com/channel/abc",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "name": "Vimeo",
+      "url": "https://vimeo.com/123456789",
+      "expected": {
+        "ok": true,
+        "provider": "vimeo",
+        "embedUrl": "https://player.vimeo.com/video/123456789"
+      }
+    },
+    {
+      "name": "Vimeo no listado",
+      "url": "https://vimeo.com/123456789/abcdef1234",
+      "expected": {
+        "ok": true,
+        "provider": "vimeo",
+        "embedUrl": "https://player.vimeo.com/video/123456789?h=abcdef1234"
+      }
+    },
+    {
+      "name": "Vimeo player",
+      "url": "https://player.vimeo.com/video/123456789",
+      "expected": {
+        "ok": true,
+        "provider": "vimeo",
+        "embedUrl": "https://player.vimeo.com/video/123456789"
+      }
+    },
+    {
+      "name": "Loom share",
+      "url": "https://www.loom.com/share/0123456789abcdef0123456789abcdef",
+      "expected": {
+        "ok": true,
+        "provider": "loom",
+        "embedUrl": "https://www.loom.com/embed/0123456789abcdef0123456789abcdef"
+      }
+    },
+    {
+      "name": "Drive view → preview",
+      "url": "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing",
+      "expected": {
+        "ok": true,
+        "provider": "drive",
+        "embedUrl": "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/preview"
+      }
+    },
+    {
+      "name": "Drive open?id",
+      "url": "https://drive.google.com/open?id=1AbCdEfGhIjKlMnOp",
+      "expected": {
+        "ok": true,
+        "provider": "drive",
+        "embedUrl": "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/preview"
+      }
+    },
+    {
+      "name": "Carpeta de Drive",
+      "url": "https://drive.google.com/drive/folders/1AbCdEfGh",
+      "expected": {
+        "ok": false,
+        "error": "Esto es una carpeta de Drive: pegá el link de un archivo de video"
+      }
+    },
+    {
+      "name": "Fathom: se avisa",
+      "url": "https://fathom.video/share/AbCdEf123",
+      "expected": {
+        "ok": true,
+        "provider": "fathom",
+        "embedUrl": null
+      }
+    },
+    {
+      "name": "http sin s",
+      "url": "http://youtu.be/dQw4w9WgXcQ",
+      "expected": {
+        "ok": false,
+        "error": "El link tiene que empezar con https://"
+      }
+    },
+    {
+      "name": "otro sitio",
+      "url": "https://ejemplo.test/video.mp4",
+      "expected": {
+        "ok": false,
+        "error": "Ese link no es de YouTube, Vimeo, Loom, Drive ni Fathom"
+      }
+    },
+    {
+      "name": "no es un link",
+      "url": "video de la clase",
+      "expected": {
+        "ok": false,
+        "error": "Pegá el link completo del video (empieza con https://)"
+      }
+    }
+  ]
+}

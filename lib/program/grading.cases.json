@@ -1,0 +1,138 @@
+{
+  "_comment": "Casos de passedFor (F55). Corren contra lib/program/grading.ts y contra app_servicio.grading_passed (verify-program --bloque ev). null = fuera de la escala.",
+  "cases": [
+    {
+      "name": "pass aprobada",
+      "scale": "pass",
+      "value": "approved",
+      "passAt": null,
+      "expected": true
+    },
+    {
+      "name": "pass no aprobada",
+      "scale": "pass",
+      "value": "not_approved",
+      "passAt": null,
+      "expected": false
+    },
+    {
+      "name": "pass valor raro",
+      "scale": "pass",
+      "value": "si",
+      "passAt": null,
+      "expected": null
+    },
+    {
+      "name": "estrellas 3 por defecto aprueba",
+      "scale": "stars",
+      "value": 3,
+      "passAt": null,
+      "expected": true
+    },
+    {
+      "name": "estrellas 2 no",
+      "scale": "stars",
+      "value": 2,
+      "passAt": null,
+      "expected": false
+    },
+    {
+      "name": "estrellas 6 fuera",
+      "scale": "stars",
+      "value": 6,
+      "passAt": null,
+      "expected": null
+    },
+    {
+      "name": "estrellas con aprueba desde 4",
+      "scale": "stars",
+      "value": 3,
+      "passAt": 4,
+      "expected": false
+    },
+    {
+      "name": "n10 6 aprueba",
+      "scale": "n10",
+      "value": 6,
+      "passAt": null,
+      "expected": true
+    },
+    {
+      "name": "n10 5 no",
+      "scale": "n10",
+      "value": 5,
+      "passAt": null,
+      "expected": false
+    },
+    {
+      "name": "n10 0 fuera",
+      "scale": "n10",
+      "value": 0,
+      "passAt": null,
+      "expected": null
+    },
+    {
+      "name": "n100 70 aprueba",
+      "scale": "n100",
+      "value": 70,
+      "passAt": null,
+      "expected": true
+    },
+    {
+      "name": "n100 69 no",
+      "scale": "n100",
+      "value": 69,
+      "passAt": null,
+      "expected": false
+    },
+    {
+      "name": "n100 con 80",
+      "scale": "n100",
+      "value": 79,
+      "passAt": 80,
+      "expected": false
+    },
+    {
+      "name": "n100 decimal fuera",
+      "scale": "n100",
+      "value": 70.5,
+      "passAt": null,
+      "expected": null
+    },
+    {
+      "name": "palabras bueno aprueba",
+      "scale": "words",
+      "value": "bueno",
+      "passAt": null,
+      "expected": true
+    },
+    {
+      "name": "palabras regular no",
+      "scale": "words",
+      "value": "regular",
+      "passAt": null,
+      "expected": false
+    },
+    {
+      "name": "palabras excelente con muy_bueno",
+      "scale": "words",
+      "value": "excelente",
+      "passAt": "muy_bueno",
+      "expected": true
+    },
+    {
+      "name": "palabras desconocida",
+      "scale": "words",
+      "value": "genial",
+      "passAt": null,
+      "expected": null
+    },
+    {
+      "name": "escala desconocida",
+      "scale": "otra",
+      "value": 5,
+      "passAt": null,
+      "expected": null
+    }
+  ]
+}

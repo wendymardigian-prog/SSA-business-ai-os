@@ -22,6 +22,9 @@ import { generationDetailCore, listGenerationsCore, loadGenerateContextCore, loa
 import { designLinksFor } from "@/lib/designer/public-links";
 import { parseGenerationFilters } from "@/lib/designer/screens/generations";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
+import { loadModuleDesignExtensions } from "@/lib/designer/module-extensions";
+
+loadModuleDesignExtensions();
 
 const NO_PERMISSION = "No tenés permiso para ver esto.";
 const BAD_REQUEST = "El pedido no es válido.";

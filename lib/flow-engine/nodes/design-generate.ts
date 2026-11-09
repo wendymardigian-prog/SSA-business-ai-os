@@ -38,6 +38,7 @@ import { runDesignRender } from "@/lib/designer/jobs/render";
 import { loadDesignLinks } from "@/lib/designer/public-links";
 import { formatDesignDate, type DateFormat } from "@/lib/designer/variables/catalog";
 import { docTypeNoun, isDocType } from "@/lib/designer/verification";
+import { loadModuleDesignExtensions } from "@/lib/designer/module-extensions";
 
 /** La generación que este paso está esperando (por paso), en las variables de la sesión. */
 export const DESIGN_PENDING_VAR = "__design_pending";
@@ -311,5 +312,8 @@ export const designGenerateNode: NodeDefinition<DesignGenerateNodeData> = {
   // Deja `design.*` (y la generación pendiente) para los pasos siguientes: tienen que sobrevivir a una pausa.
   persistsVariables: true,
   outputs: () => designGenerateOutputs(),
-  execute: (args) => runDesignGenerate(args),
+  execute: (args) => {
+    loadModuleDesignExtensions();
+    return runDesignGenerate(args);
+  },
 };
