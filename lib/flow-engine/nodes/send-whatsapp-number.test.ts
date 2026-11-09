@@ -254,3 +254,86 @@ describe("Enviar WhatsApp a un número", () => {
     expect(modes).toEqual(["find_only"]);
   });
 });
+
+describe("horario de envío", () => {
+  // Costa Rica es UTC-6 y no tiene horario de verano.
+  const worldWithZone = () => {
+    db = world({ workspaces: [{ id: WS, timezone: "America/Costa_Rica" }], scheduled_jobs: [], flow_sessions: [{ id: "sess-1" }] });
+  };
+  const withWindow = { to: "fixed" as const, fixedPhone: "+5491177770000", channelId: CH, text: "Hola", windowEnabled: true, windowFrom: "08:00", windowTo: "21:00" };
+
+  it("fuera del horario no manda: deja el paso para cuando abre, sin reservar ni gastar el tope", async () => {
+    worldWithZone();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-10T05:00:00Z")); // 23:00 en Costa Rica
+    try {
+      await run(withWindow);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sendText).not.toHaveBeenCalled();
+    // Vuelve a correr ESTE paso mañana a las 08:00 (14:00 UTC).
+    const jobs = db.rows("scheduled_jobs");
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({ type: "resume_flow", run_at: "2026-11-10T14:00:00.000Z" });
+    expect((jobs[0].payload as { rerunNode?: boolean }).rerunNode).toBe(true);
+    // No reservó el envío ni pidió lugar en el tope por hora: al volver puede mandar.
+    expect(db.rows("flow_send_claims")).toHaveLength(0);
+    expect(db.rpcCalls.filter((c) => c.name === "claim_automated_send")).toHaveLength(0);
+    expect(events("node_deferred")).toHaveLength(1);
+    expect(events("node_skipped")).toHaveLength(0);
+  });
+
+  it("dentro del horario manda como siempre", async () => {
+    worldWithZone();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-09T21:00:00Z")); // 15:00 en Costa Rica
+    try {
+      await run(withWindow);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(db.rows("scheduled_jobs")).toHaveLength(0);
+  });
+
+  it("al volver (rerun) dentro del horario manda una sola vez", async () => {
+    worldWithZone();
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-11-10T05:00:00Z"));
+      await run(withWindow);
+      vi.setSystemTime(new Date("2026-11-10T14:00:00Z")); // abre la ventana
+      await run(withWindow);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(db.rows("flow_send_claims")).toHaveLength(1);
+  });
+
+  it("sin el horario prendido, sale a cualquier hora (igual que antes)", async () => {
+    worldWithZone();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-10T09:00:00Z")); // 03:00 en Costa Rica
+    try {
+      await run({ to: "fixed", fixedPhone: "+5491177770000", channelId: CH, text: "Hola" });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(db.rows("scheduled_jobs")).toHaveLength(0);
+  });
+
+  it("un horario mal armado no frena el envío: sale como siempre", async () => {
+    worldWithZone();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-10T09:00:00Z"));
+    try {
+      await run({ ...withWindow, windowFrom: "21:00", windowTo: "08:00" });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sendText).toHaveBeenCalledTimes(1);
+  });
+});

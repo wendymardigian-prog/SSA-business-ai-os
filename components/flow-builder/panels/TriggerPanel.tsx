@@ -104,6 +104,7 @@ const RELATIVE_TRIGGERS = ["booking_before_start", "booking_after_end", "booking
 
 /** Cuanto antes o cuanto despues (F44). */
 const OFFSETS = [
+  { minutes: 10, label: "10 minutos" },
   { minutes: 15, label: "15 minutos" },
   { minutes: 30, label: "30 minutos" },
   { minutes: 60, label: "1 hora" },

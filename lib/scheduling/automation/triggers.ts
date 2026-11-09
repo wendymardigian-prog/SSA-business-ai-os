@@ -247,6 +247,7 @@ export function planRelativeJobs(
 
 /** Las opciones de "cuánto antes / cuánto después" del editor (F44). */
 export const OFFSET_OPTIONS: Array<{ minutes: number; label: string }> = [
+  { minutes: 10, label: "10 minutos" },
   { minutes: 15, label: "15 minutos" },
   { minutes: 30, label: "30 minutos" },
   { minutes: 60, label: "1 hora" },

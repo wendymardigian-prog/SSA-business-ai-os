@@ -25,6 +25,9 @@ import { recordSend, sendChannelMessage, sendEvolutionDirect } from "../send";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { findContact } from "@/lib/contacts/find-or-create";
 import { WHATSAPP_HOURLY_LIMIT } from "@/lib/channels/whatsapp-limits";
+import { deferFlowNode } from "../defer-node";
+import { sendWindowOf, windowOpening } from "../send-window";
+import { businessTimeZone } from "@/lib/scheduled-flows/jobs";
 
 export interface SendWhatsAppNumberData {
   to?: "fixed" | "variable";
@@ -38,6 +41,10 @@ export interface SendWhatsAppNumberData {
   /** Un archivo por URL pública, como «Enviar mensaje». */
   mediaUrl?: string;
   mediaType?: string;
+  /** «Mandar solo en este horario» (hora del negocio). Apagado = sale a la hora que le toca. Ver `send-window.ts`. */
+  windowEnabled?: boolean;
+  windowFrom?: string;
+  windowTo?: string;
 }
 
 export const SEND_WHATSAPP_NUMBER_TYPE = "send_whatsapp_number";
@@ -94,6 +101,27 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   const text = interpolateVariables(data.text ?? "", context.variables ?? {}).trim();
   const mediaUrl = data.mediaUrl?.trim() || undefined;
   if (!text && !mediaUrl) return skip("El mensaje está vacío.");
+
+  // 3b. El horario de envío: fuera de la ventana el paso no falla ni se pierde, queda para cuando abre y se vuelve a
+  //     correr ENTONCES (`deferFlowNode`). Va antes de la reserva (5) y del tope por hora (6): lo que queda para después
+  //     no gasta ninguna de las dos. La zona es la del negocio; si no se puede leer, se lanza (adivinarla mandaría el
+  //     mensaje a otra hora).
+  const sendWindow = sendWindowOf(data);
+  if (sendWindow) {
+    const tz = await businessTimeZone(supabase, context.workspaceId);
+    const opensAt = windowOpening(new Date(), tz, sendWindow);
+    if (opensAt) {
+      return deferFlowNode(supabase, {
+        nodeId: node.id,
+        nodeType: SEND_WHATSAPP_NUMBER_TYPE,
+        sessionId,
+        context,
+        retryAt: opensAt,
+        reason: "send_window",
+        message: `Fuera del horario de envío (${sendWindow.from} a ${sendWindow.to}): el WhatsApp sale a las ${sendWindow.from}.`,
+      });
+    }
+  }
 
   // 4. ¿Es de un contacto? Solo se busca, nunca se crea. Un error de la base NO se toma como «no es de nadie»:
   //    mandarle a alguien marcado «no contactar» por no haber podido mirar sería peor que no mandar.

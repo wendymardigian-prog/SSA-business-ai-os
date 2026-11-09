@@ -25,8 +25,11 @@ export async function deferFlowNode(
     sessionId: string;
     context: FlowExecutionContext;
     retryAt: Date;
-    /** `provider_retry`: un problema pasajero de Instagram o Zernio (`provider-retry.ts`). Lleva su `message`. */
-    reason: DeferReason | "provider_retry";
+    /**
+     * `provider_retry`: un problema pasajero de Instagram o Zernio (`provider-retry.ts`). Lleva su `message`.
+     * `send_window`: el paso de WhatsApp tiene un horario de envío y ahora está cerrado (`send-window.ts`). Lleva su `message`.
+     */
+    reason: DeferReason | "provider_retry" | "send_window";
     /** El motivo que queda en el historial. Sin esto, el de la guardia de entrega. */
     message?: string;
     /** Direcciones a las que el paso YA mando en esta corrida: al volver no se les manda de nuevo. */

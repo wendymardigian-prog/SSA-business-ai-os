@@ -30,6 +30,12 @@ export interface BookingVariables {
   cancel_url: string;
   cancellation_reason: string;
   status: string;
+  /**
+   * Días enteros que pasaron desde que terminó la reunión, al momento de armar las variables (un número como texto). Una
+   * reunión que todavía no terminó es "0". Sirve para la VIGENCIA de una serie de recuperación: «si el no show se marcó
+   * más de 2 días después de la llamada, no arranques» (`{{booking.days_since_end}}` mayor que 2).
+   */
+  days_since_end: string;
   answers: Record<string, string>;
 }
 
@@ -51,6 +57,7 @@ export const BOOKING_VARIABLE_KEYS: (keyof Omit<BookingVariables, "answers">)[] 
   "cancel_url",
   "cancellation_reason",
   "status",
+  "days_since_end",
 ];
 
 export function emptyBookingVariables(): BookingVariables {
@@ -66,6 +73,8 @@ export interface HostInfo {
 export interface VariablesOptions {
   /** URL pública base (dominio propio o NEXT_PUBLIC_APP_URL), sin barra final. */
   baseUrl: string;
+  /** El «ahora» con el que se cuentan los días desde que terminó la reunión. Solo lo usan los tests. */
+  now?: Date;
 }
 
 /** Una respuesta de la reserva como texto: las de selección múltiple, unidas por comas. */
@@ -121,8 +130,16 @@ export function bookingVariables(
     cancel_url: bookingManageUrl(options.baseUrl, booking.uid),
     cancellation_reason: booking.cancellation_reason ?? "",
     status: booking.status,
+    days_since_end: String(daysSinceEnd(booking.end_at, options.now ?? new Date())),
     answers,
   };
+}
+
+/** Días enteros desde `endAt` hasta `now`; 0 si la reunión todavía no terminó o la fecha no se puede leer. */
+export function daysSinceEnd(endAt: string, now: Date): number {
+  const end = Date.parse(endAt);
+  if (!Number.isFinite(end)) return 0;
+  return Math.max(0, Math.floor((now.getTime() - end) / 86_400_000));
 }
 
 /**

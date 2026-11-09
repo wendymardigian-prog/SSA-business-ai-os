@@ -877,3 +877,17 @@ rechaza, como en los demás flujos sin contacto.
   uno, el activo más reciente del contacto. Nunca frenan el flujo: un problema se anota en el paso.
 - **Afiliados:** `affiliate_lead_created`, `affiliate_sale_created`, `affiliate_assignment_expired` (ver
   [afiliados.md](afiliados.md)).
+
+## Horario de envío del WhatsApp y vigencia de una reunión (9/11/2026)
+
+Dos cosas que hicieron falta para las series de Admisión (confirmación, recordatorios, no show y cancelada).
+
+**Horario de envío en «Enviar WhatsApp a un número».** El paso tiene «Mandar solo en este horario» (`windowEnabled`, `windowFrom`, `windowTo`, `HH:mm`, hora del NEGOCIO: `workspaces.timezone`). Fuera de la ventana el paso no falla ni se pierde: queda para cuando abre (`deferFlowNode`, `reason: "send_window"`, el mismo mecanismo de la guardia de entrega de los emails) y vuelve a correr ESE paso entonces. Las reglas son puras y están en `lib/flow-engine/send-window.ts`:
+- La hora de inicio es anterior a la de fin. No hay ventanas que crucen la medianoche (se arma el horario en que SÍ se puede mandar); el fin no se incluye.
+- Va **antes** de la reserva del envío (`flow_send_claims`) y del tope por hora, así que lo que queda para después no gasta ninguno de los dos.
+- Un horario mal armado no frena el envío (sale como siempre), pero **no se puede publicar** (`configProblems`).
+- Sin `windowEnabled` el paso sale a la hora que le toca, igual que antes. «Enviar mensaje» (el paso común) no tiene horario todavía.
+
+**`{{booking.days_since_end}}`.** Días enteros desde que terminó la reunión, contados al momento en que se arma el contexto del evento (un número como texto; «0» si todavía no terminó). Es el único dato de la reunión que se compara como NÚMERO (`bookingVariableSchema`): sirve en un camino de «Condiciones» («mayor que 2») para la vigencia de una serie de recuperación: si el no show se marcó o la cancelación se registró más de 2 días después de la llamada, la serie no arranca. Como las demás variables de agenda, se guarda en la sesión y no cambia al esperar.
+
+El selector «Cuánto antes / después de la reunión» suma **10 minutos**.

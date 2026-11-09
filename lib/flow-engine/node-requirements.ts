@@ -20,6 +20,7 @@
  * que `requires` de cada nodo del registro.
  */
 
+import { sendWindowProblem, type SendWindowData } from "./send-window";
 import { canonicalNodeType } from "./node-outputs";
 import { designGenerateProblem, hasDesignStepBefore, isDesignGenerateNode, type DesignGenerateNodeData } from "@/lib/designer/automation/node-config";
 import { isDesignAttachment, parseEmailAttachments } from "@/lib/email/attachment-limits";
@@ -185,6 +186,11 @@ export function configProblems(nodes: GraphNodeLike[], edges: GraphEdgeLike[]): 
       const problem = designGenerateProblem(node.data as DesignGenerateNodeData | undefined);
       if (problem) problems.add(problem);
       continue;
+    }
+    // «Enviar WhatsApp a un número» con un horario de envío mal armado (de 21:00 a 08:00, o horas que no son horas).
+    if ((node.data as { actionType?: string } | undefined)?.actionType === "send_whatsapp_number" || node.type === "send_whatsapp_number") {
+      const windowProblem = sendWindowProblem(node.data as SendWindowData | undefined);
+      if (windowProblem) problems.add(windowProblem);
     }
     // «Adjuntar el PDF del diseño generado» (F59) sin un «Generar desde plantilla» antes: nunca habría PDF que adjuntar.
     const attachments = (node.data as { attachments?: unknown } | undefined)?.attachments;
