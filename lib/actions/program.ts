@@ -21,7 +21,7 @@ import { gradingIssues, type GradingDef } from "@/lib/program/grading";
 const NOT_ALLOWED = { ok: false as const, error: { code: "SV004", message: "No tenés permiso para hacer esto", detail: null } };
 const fail = (message: string) => ({ ok: false as const, error: { code: "PR002", message, detail: null } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const refresh = (productId: string) => revalidatePath(`/dashboard/portal/${productId}`);
+const refresh = (productId: string) => revalidatePath(`/dashboard/portal/${productId}`, "layout"); // también sus ajustes
 
 export async function createProgramItem(productId: string, input: { kind: "module" | "submodule" | "lesson"; parentId?: string | null; lessonType?: string | null; title: string }): Promise<SvcResult<string>> {
   const ctx = await getPermissionAction("program.manage");

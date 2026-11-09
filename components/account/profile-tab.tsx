@@ -13,6 +13,7 @@ import { useHtmlClass } from "@/components/use-html-class";
 import { AccountCard, SaveStatus, inputClass, primaryButtonClass, secondaryButtonClass } from "./account-card";
 import { UserAvatar } from "./user-avatar";
 import { cn } from "@/lib/utils";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 export interface ProfileTabProps {
   email: string;
@@ -274,20 +275,15 @@ function ContactCard({
           <label htmlFor="account-phone" className="mb-1 block text-xs font-medium">
             Teléfono
           </label>
-          <input
+          <PhoneInput
             id="account-phone"
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            placeholder="+54 9 11 2233 4455"
+            label="Teléfono"
             value={phone}
-            onChange={(e) => {
-              setPhone(e.target.value);
+            onChange={(next) => {
+              setPhone(next);
               setSaved(false);
             }}
-            className={inputClass}
           />
-          <p className="mt-1 text-xs text-muted-foreground">Con el código de país adelante.</p>
         </div>
 
         <label className="flex items-center gap-2 text-sm">
@@ -308,17 +304,14 @@ function ContactCard({
             <label htmlFor="account-whatsapp" className="mb-1 block text-xs font-medium">
               WhatsApp
             </label>
-            <input
+            <PhoneInput
               id="account-whatsapp"
-              type="tel"
-              inputMode="tel"
-              placeholder="+54 9 11 2233 4455"
+              label="WhatsApp"
               value={whatsapp}
-              onChange={(e) => {
-                setWhatsapp(e.target.value);
+              onChange={(next) => {
+                setWhatsapp(next);
                 setSaved(false);
               }}
-              className={inputClass}
             />
           </div>
         )}

@@ -1,14 +1,13 @@
 // @plantilla-quitar(servicios)
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { notFound, redirect } from "next/navigation";
 import { requireAnyPermission } from "@/lib/auth/guards";
 import { isModuleEnabled, moduleShows } from "@/lib/services/module";
-import { opensLabel, readVariantPortal } from "@/lib/services/screens/variant-portal-form";
-import { SECTION_LABELS } from "@/lib/services/availability";
+import { PROGRAM_PAGE_PERMISSIONS, loadPortalProgram } from "@/lib/portal-admin/load-program";
 import { PageHeader } from "@/components/page-header";
+import { BackLink } from "@/components/ui/back-link";
+import { TopbarTabs } from "@/components/ui/topbar-tabs";
+import { SettingsLinkButton } from "@/components/ui/settings-link-button";
 import { ProgramSettingsPanel } from "@/components/services/portal/program-settings-panel";
-import { ProgramTermsPanel } from "@/components/services/portal/program-terms-panel";
 import { ProgramContentEditor, type ContentRow } from "@/components/services/portal/program-content-editor";
 import { ProgramCalendar } from "@/components/services/portal/program-calendar";
 import { loadCalendar } from "@/lib/program/load-calendar";
@@ -21,44 +20,37 @@ import { ProgramAssistant, type AssistantUsage, type TutorKnowledge } from "@/co
 import { svcSchema } from "@/lib/services/db";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { PortalFormInitial } from "@/components/services/portal/portal-form-editor";
-import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const PROGRAM_TABS = [
+  { key: "contenido", label: "Contenido" },
+  { key: "calendario", label: "Calendario" },
+  { key: "comunidad", label: "Comunidad" },
+  { key: "asistente", label: "Asistente IA" },
+  { key: "afiliados", label: "Afiliados" },
+] as const;
+
 /**
- * Portal › un programa: Ajustes del programa (secciones prendidas y el resumen de variantes) y Afiliados (qué links ven
- * los estudiantes, F106). El contenido, las evaluaciones, el calendario y la comunidad se suman con sus bloques.
+ * Portal › un programa: Contenido, Calendario, Comunidad, Asistente IA y Afiliados (qué links ven los estudiantes,
+ * F106), como pestañas en la barra superior. Los ajustes del programa (secciones, términos, variantes) son el
+ * engranaje de la barra (`/dashboard/portal/<id>/ajustes`); el link viejo `?tab=ajustes` lleva ahí.
  */
 export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string; filtro?: string; espacio?: string; clase?: string }> }) {
   const [{ productId }, sp] = await Promise.all([params, searchParams]);
   if (!UUID.test(productId)) notFound();
-  const ctx = await requireAnyPermission(["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "program.manage", "program.activate", "live_sessions.manage", "attendance.manage", "community.view", "community.spaces", "tutor.manage", "tutor.knowledge"]);
+  if (sp.tab === "ajustes") redirect(`/dashboard/portal/${productId}/ajustes`);
+  const ctx = await requireAnyPermission(PROGRAM_PAGE_PERMISSIONS);
   const { workspace, supabase } = ctx;
   if (!moduleShows("route.portal", { servicesEnabled: isModuleEnabled(workspace as { services_enabled?: boolean | null }) })) notFound();
-  const [{ data: product }, { data: variants }] = await Promise.all([
-    supabase.from("products").select("id, name, portal_enabled, portal_settings, portal_settings_rev, links").eq("workspace_id", workspace.id).eq("id", productId).maybeSingle(),
-    supabase.from("product_variants").select("id, name, portal_settings").eq("product_id", productId).is("archived_at", null).order("display_order"),
-  ]);
-  const p = product as unknown as { id: string; name: string; portal_enabled: boolean; portal_settings: Record<string, unknown> | null; portal_settings_rev: number; links: { items?: Array<{ key: string; name: string; active: boolean }> } | null } | null;
-  if (!p || !p.portal_enabled) notFound();
-  const tab = sp.tab === "afiliados" ? "afiliados" : sp.tab === "ajustes" ? "ajustes" : sp.tab === "calendario" ? "calendario" : sp.tab === "comunidad" ? "comunidad" : sp.tab === "asistente" ? "asistente" : "contenido";
+  const loaded = await loadPortalProgram(supabase, workspace.id, productId);
+  if (!loaded) notFound();
+  const { program: p, variants: vs } = loaded;
+  const tab = PROGRAM_TABS.find((t) => t.key === sp.tab)?.key ?? "contenido";
   const ps = (p.portal_settings ?? {}) as { sections?: Record<string, boolean>; affiliates?: { visible_link_keys?: string[] } };
-  const vs = ((variants ?? []) as unknown as Array<{ id: string; name: string; portal_settings: unknown }>).map((v) => ({ id: v.id, name: v.name, portal: readVariantPortal(v.portal_settings) }));
   const canEdit = ctx.can("portal.sections");
-
-  // Términos al entrar (F113): el formulario del producto se lee con el cliente de servicio, del negocio de la sesión.
-  async function termsPanel() {
-    const terms = ((ps as { terms?: { enabled?: boolean; form_id?: string | null; ask_again_on_change?: boolean } }).terms ?? {}) as { enabled?: boolean; form_id?: string | null; ask_again_on_change?: boolean };
-    let form: PortalFormInitial | null = null;
-    if (terms.form_id) {
-      const { data } = await (await createServiceClient()).from("forms").select("name, draft_definition").eq("id", terms.form_id).eq("workspace_id", workspace.id).maybeSingle();
-      const f = data as { name: string; draft_definition: { intro?: string; fields?: PortalFormInitial["fields"] } } | null;
-      if (f) form = { name: f.name, intro: f.draft_definition?.intro ?? "", fields: f.draft_definition?.fields ?? [], quiz: {}, grading: { enabled: false } };
-    }
-    return <ProgramTermsPanel productId={p!.id} terms={terms} rev={p!.portal_settings_rev ?? 0} form={form} canEdit={canEdit} />;
-  }
 
   // Contenido (F45): el árbol se lee con la sesión (la RLS de program_items); las transcripciones, con su clase.
   async function contentTab() {
@@ -164,38 +156,33 @@ export default async function PortalProgramPage({ params, searchParams }: { para
     );
   }
 
+  // Lo sin contestar de la comunidad es el contador de su pestaña (lo mismo que cuenta «Por revisar»).
+  const unanswered = ctx.can("community.view") ? await svcRpc<{ unanswered?: number }>(supabase, "community_item_counts", { p_product_id: productId }) : null;
+  const unansweredCount = unanswered?.ok ? Number(unanswered.data?.unanswered ?? 0) || 0 : 0;
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         title={p.name}
-        tooltip="El programa en el portal: qué secciones tiene, qué variantes dan acceso y qué links ven los estudiantes."
-        backHref={
-          <Link href="/dashboard/portal" aria-label="Volver a Portal" className="-ml-1 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+        route="/dashboard/portal/[productId]"
+        backHref={<BackLink href="/dashboard/portal" label="Volver a Portal" />}
+        tabs={
+          <TopbarTabs
+            label="Secciones del programa"
+            active={tab}
+            tabs={PROGRAM_TABS.map((t) => ({
+              key: t.key,
+              label: t.label,
+              href: `/dashboard/portal/${p.id}?tab=${t.key}`,
+              count: t.key === "comunidad" ? unansweredCount : null,
+              countLabel: "sin contestar",
+            }))}
+          />
         }
+        right={<SettingsLinkButton href={`/dashboard/portal/${p.id}/ajustes`} label="Ajustes del programa" />}
       />
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-6 md:px-8">
-          <nav className="flex gap-1 border-b border-border" aria-label="Secciones del programa">
-            {[
-              { key: "contenido", label: "Contenido" },
-              { key: "calendario", label: "Calendario" },
-              { key: "comunidad", label: "Comunidad" },
-              { key: "asistente", label: "Asistente IA" },
-              { key: "ajustes", label: "Ajustes del programa" },
-              { key: "afiliados", label: "Afiliados" },
-            ].map((t) => (
-              <Link
-                key={t.key}
-                href={`/dashboard/portal/${p.id}?tab=${t.key}`}
-                aria-current={t.key === tab ? "page" : undefined}
-                className={cn("-mb-px border-b-2 px-3 py-2 text-sm", t.key === tab ? "border-primary-edge text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
-              >
-                {t.label}
-              </Link>
-            ))}
-          </nav>
           {tab === "contenido" ? (
             await contentTab()
           ) : tab === "calendario" ? (
@@ -204,44 +191,6 @@ export default async function PortalProgramPage({ params, searchParams }: { para
             await communityTab()
           ) : tab === "asistente" ? (
             await assistantTab()
-          ) : tab === "ajustes" ? (
-            <div className="space-y-6">
-              <section aria-labelledby="secciones" className="space-y-2">
-                <h2 id="secciones" className="text-sm font-semibold">
-                  Secciones del programa
-                </h2>
-                <ProgramSettingsPanel productId={p.id} mode="sections" sections={ps.sections ?? {}} links={[]} visibleLinkKeys={[]} rev={p.portal_settings_rev ?? 0} canEdit={canEdit} />
-              </section>
-              <section aria-labelledby="terminos" className="space-y-2">
-                <h2 id="terminos" className="text-sm font-semibold">
-                  Términos al entrar
-                </h2>
-                {await termsPanel()}
-              </section>
-              <section aria-labelledby="variantes" className="space-y-2">
-                <h2 id="variantes" className="text-sm font-semibold">
-                  Variantes
-                </h2>
-                <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-                  {vs.map((v) => (
-                    <li key={v.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
-                      <span className="text-foreground">{v.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {v.portal.enabled
-                          ? (v.portal.sections ?? [])
-                              .filter((s) => s.included !== false)
-                              .map((s) => `${SECTION_LABELS[s.section as keyof typeof SECTION_LABELS] ?? s.section}: ${opensLabel(s).toLowerCase()}`)
-                              .join(" · ") || "Con acceso, sin secciones"
-                          : "Sin acceso al portal"}
-                      </span>
-                      <Link href={`/dashboard/settings/productos/${p.id}/variantes/${v.id}?tab=portal`} className="text-xs text-primary-ink hover:underline">
-                        Editar en Productos
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            </div>
           ) : (
             <ProgramSettingsPanel
               productId={p.id}

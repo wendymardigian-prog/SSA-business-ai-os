@@ -43,7 +43,7 @@ export async function saveAffiliateSettings(settings: AffiliateSettings, rev: nu
   const ctx = await getPermissionAction("affiliates.settings");
   if (!ctx) return NOT_ALLOWED;
   const res = await affRpc<SaveStatus<AffiliateSettings>>(ctx.supabase, "affiliate_settings_save", { p_workspace_id: ctx.workspace.id, p_settings: settings, p_rev: rev });
-  if (res.ok && res.data.status === "ok") revalidatePath("/dashboard/afiliados");
+  if (res.ok && res.data.status === "ok") revalidatePath("/dashboard/afiliados", "layout"); // también las Reglas
   return res;
 }
 
@@ -63,7 +63,7 @@ export async function makeContactAffiliate(contactId: string): Promise<AffResult
   const res = await affRpc<string>(ctx.supabase, "affiliate_ensure_code", { p_workspace_id: ctx.workspace.id, p_kind: "contact", p_id: contactId });
   if (res.ok) {
     revalidatePath(`/dashboard/contacts/${contactId}`);
-    revalidatePath("/dashboard/afiliados");
+    revalidatePath("/dashboard/afiliados", "layout"); // también las Reglas
   }
   return res;
 }

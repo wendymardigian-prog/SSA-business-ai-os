@@ -37,9 +37,10 @@ export function AddProgramDialog({ products }: { products: Array<{ id: string; n
         onClick={() => setOpen(true)}
         disabled={products.length === 0}
         title={products.length === 0 ? "Todos los productos activos ya tienen portal" : undefined}
-        className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+        aria-label="Agregar programa"
+        className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
       >
-        <Plus className="h-4 w-4" aria-hidden /> Agregar programa
+        <Plus className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Agregar programa</span>
       </button>
       {open && (
         <div role="dialog" aria-modal="true" aria-label="Agregar programa" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

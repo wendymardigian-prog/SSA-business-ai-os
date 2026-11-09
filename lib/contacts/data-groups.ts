@@ -43,7 +43,7 @@ export const CONTACT_DATA_GROUPS: ContactDataGroup[] = [
     fields: [
       { key: "email", label: "Email" },
       { key: "secondary_email", label: "Email secundario" },
-      { key: "phone", label: "Teléfono", hint: "Con código de país, ej: +54 9 11 2233 4455" },
+      { key: "phone", label: "Teléfono" },
       { key: "whatsapp_phone", label: "WhatsApp", hint: "Solo si es distinto al teléfono principal" },
       { key: "country", label: "País" },
       { key: "timezone", label: "Zona horaria", hint: "Con esta le llegan los emails de sus reuniones.", timezonePicker: true },

@@ -8,6 +8,10 @@ import { planInlineCommit } from "@/lib/contacts/inline-edit";
 import type { ContactFieldKey } from "@/lib/contacts/fields";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
+import { PhoneInput } from "@/components/ui/phone-input";
+
+/** Los datos que son un teléfono: se editan con país + número (`PhoneInput`). */
+const PHONE_FIELDS: ReadonlySet<ContactFieldKey> = new Set(["phone", "whatsapp_phone"]);
 
 /**
  * Un dato de la ficha que se edita DONDE SE LEE.
@@ -151,7 +155,35 @@ export function InlineField({
     return (
       <div className={cn("min-w-0", title && "max-w-xl")}>
         <div className="flex items-start gap-1.5">
-          {timezonePicker ? (
+          {PHONE_FIELDS.has(field) ? (
+            <div
+              className="min-w-0 flex-1"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancel();
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  commit();
+                }
+              }}
+            >
+              <PhoneInput
+                label={label}
+                value={draft}
+                onChange={(next) => {
+                  setDraft(next);
+                  if (error) setError(null);
+                }}
+                onBlur={commit}
+                disabled={pending}
+                invalid={Boolean(error)}
+                describedBy={error ? errorId : undefined}
+                autoFocus
+                size="sm"
+              />
+            </div>
+          ) : timezonePicker ? (
             <TimezoneSelect
               value={draft}
               onChange={(next) => {

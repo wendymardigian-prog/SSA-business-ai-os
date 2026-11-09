@@ -9,6 +9,8 @@ import { loadPortalHost, portalUrl } from "@/lib/portal-admin/load";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { portalInviteEmail } from "@/lib/email/templates";
 import { resolveBrand } from "@/lib/brand";
+import { workspaceResendDomains } from "@/lib/email/resend-domains";
+import { portalSenderProblem, verifiedSenderDomains } from "@/lib/portal-admin/sender";
 
 /**
  * Las acciones del portal desde SSA (bloque AC). Cada una pide su clave acá y la función de la base la vuelve a pedir
@@ -76,7 +78,7 @@ export async function inviteToPortal(contactId: string): Promise<SvcResult<{ out
   const ctx = await getPermissionAction("portal.accounts");
   if (!ctx || !UUID.test(contactId)) return NOT_ALLOWED;
   const service = await createServiceClient();
-  const { host, welcome } = await loadPortalHost(service, ctx.workspace.id);
+  const { host, welcome, fromEmail } = await loadPortalHost(service, ctx.workspace.id);
   if (!host) return { ok: true, data: { outcome: "no_host" } };
   const res = await svcRpc<{ status: string; token?: string; email?: string; account_id?: string; retry_after_seconds?: number }>(ctx.supabase, "portal_admin_invite", {
     p_workspace_id: ctx.workspace.id,
@@ -107,6 +109,8 @@ export async function inviteToPortal(contactId: string): Promise<SvcResult<{ out
     contactId,
     createdBy: ctx.user.id,
     category: "transactional",
+    // «Enviar desde» de Ajustes del portal: su dominio se comprobó verificado al guardarlo.
+    fromOverride: fromEmail,
   });
   revalidatePath(`/dashboard/clientes/c/${contactId}`);
   if (!sent.ok) return { ok: true, data: { outcome: sent.reason === "not_configured" ? "email_not_configured" : "email_failed" } };
@@ -156,9 +160,41 @@ export async function savePortalSettings(patch: Record<string, unknown>, rev: nu
   if (!ctx) return NOT_ALLOWED;
   const clean = { ...patch };
   delete clean.extensions;
+  // «Enviar desde»: solo un dominio verificado del Resend del negocio (lo que ya estaba guardado se respeta).
+  if (Object.prototype.hasOwnProperty.call(clean, "from_email")) {
+    const next = typeof clean.from_email === "string" && clean.from_email.trim() ? clean.from_email.trim().toLowerCase() : null;
+    clean.from_email = next;
+    const service = await createServiceClient();
+    const { fromEmail: previous } = await loadPortalHost(service, ctx.workspace.id);
+    let verified: string[] | null = null;
+    if (next !== null && next !== previous?.toLowerCase()) {
+      const list = await workspaceResendDomains(service as never, ctx.workspace.id);
+      verified = list.ok ? verifiedSenderDomains(list.domains) : null;
+    }
+    const problem = portalSenderProblem(next, previous, verified);
+    if (problem) return { ok: true, data: { status: "invalid", problems: [problem] } };
+  }
   const res = await svcRpc<SaveStatus>(ctx.supabase, "portal_admin_save_settings", { p_workspace_id: ctx.workspace.id, p_patch: clean, p_rev: rev });
-  if (res.ok) revalidatePath("/dashboard/portal");
+  if (res.ok) revalidatePath("/dashboard/portal", "layout"); // también /dashboard/portal/ajustes
   return res;
+}
+
+const SENDER_DOMAIN_MESSAGES = {
+  no_key: "Conectá Resend (Ajustes → Integraciones → Resend) para elegir un dominio propio.",
+  forbidden: "Tu API key de Resend no deja ver los dominios. Usá una key con acceso completo para elegir uno.",
+  failed: "No pude traer tus dominios de Resend ahora. Probá «Actualizar» en un rato.",
+} as const;
+
+/**
+ * Los dominios verificados del Resend del negocio, para «Enviar desde» (`portal.settings`). La key nunca sale del
+ * servidor: vuelven solo los nombres.
+ */
+export async function loadPortalSenderDomains(input: { refresh?: boolean } = {}): Promise<{ ok: true; domains: string[] } | { ok: false; message: string }> {
+  const ctx = await getPermissionAction("portal.settings");
+  if (!ctx) return { ok: false, message: NOT_ALLOWED.error.message };
+  const list = await workspaceResendDomains((await createServiceClient()) as never, ctx.workspace.id, { refresh: input.refresh === true });
+  if (!list.ok) return { ok: false, message: SENDER_DOMAIN_MESSAGES[list.reason] };
+  return { ok: true, domains: verifiedSenderDomains(list.domains) };
 }
 
 /**

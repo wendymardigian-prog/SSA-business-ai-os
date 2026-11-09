@@ -22,7 +22,9 @@
  * del negocio), y el nombre va escrito abajo igual.
  */
 
-import { preheaderHtml } from "./html";
+import { dropDanglingComma, finalizeEmailHtml, interpolateHtml, isHtmlTemplate, preheaderHtml } from "./html";
+import { interpolateVariables } from "@/lib/flow-engine/interpolate";
+import { legacyNameToVariable, portalTextValues } from "@/lib/portal-admin/invite-variables"; // @plantilla-quitar(servicios)
 import { mixHex, readableInkOnWhite, readableTextOn, resolveBrand, safeBrandColor, contrastRatio, type Brand } from "@/lib/brand";
 
 interface EmailContent {
@@ -216,13 +218,26 @@ export function portalInviteEmail(params: { workspaceName: string; inviteUrl: st
   const brand = params.brand ?? resolveBrand(null);
   const theme = emailTheme(brand);
   const name = params.studentName?.trim().split(/\s+/)[0] ?? "";
-  const fill = (t: string) => t.replace(/\{nombre\}/g, name).replace(/\s+,/g, ",");
+  const values = portalTextValues({ workspaceName: params.workspaceName, studentName: params.studentName });
+  // `{nombre}` (la forma vieja) sale igual que siempre; las variables `{{…}}`, por la misma regla que los flujos.
+  const fill = (t: string) => {
+    const legacy = t.replace(/\{nombre\}/g, name);
+    return (legacy.includes("{{") ? interpolateVariables(legacy, values) : legacy).replace(/\s+,/g, ",");
+  };
   const subject = fill(params.subject?.trim() || `Tu acceso al portal de ${params.workspaceName}`);
-  const bodyText = fill(params.body?.trim() || `Hola${name ? ` ${name}` : ""}, ya tenés tu acceso al portal de ${params.workspaceName}. Entrá con el botón para activar tu cuenta.`);
-  const paragraphs = bodyText
-    .split(/\n{2,}/)
-    .map((p) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#374151;">${escapeHtml(p).replace(/\n/g, "<br />")}</p>`)
-    .join("");
+  const rawBody = params.body?.trim() ?? "";
+  let bodyHtml: string;
+  if (rawBody && isHtmlTemplate(rawBody)) {
+    // Con formato (el editor de Ajustes del portal): los valores van escapados y lo que sale pasa por la lista blanca.
+    const template = legacyNameToVariable(rawBody);
+    bodyHtml = dropDanglingComma(template, finalizeEmailHtml(interpolateHtml(template, values), true));
+  } else {
+    const bodyText = fill(rawBody || `Hola${name ? ` ${name}` : ""}, ya tenés tu acceso al portal de ${params.workspaceName}. Entrá con el botón para activar tu cuenta.`);
+    bodyHtml = bodyText
+      .split(/\n{2,}/)
+      .map((p) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#374151;">${escapeHtml(p).replace(/\n/g, "<br />")}</p>`)
+      .join("");
+  }
   return {
     subject,
     html: brandedEmailHtml({
@@ -231,7 +246,7 @@ export function portalInviteEmail(params: { workspaceName: string; inviteUrl: st
       body: `
                 ${eyebrow("Portal", theme)}
                 ${heading(escapeHtml(subject))}
-                ${paragraphs}
+                ${bodyHtml}
                 ${button(params.inviteUrl, "Entrar al portal", theme)}
                 <p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#6b7280;">
                   El link vence en 7 días. Si no esperabas este email, podés ignorarlo.
