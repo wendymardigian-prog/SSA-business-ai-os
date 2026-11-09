@@ -84,11 +84,12 @@ export const PROFILE_MENU_ROUTES: readonly string[] = [
 ];
 
 export const NAV_ITEMS: NavItemMeta[] = [
-  // alsoActiveOn: "/dashboard/dashboards" (sin el /chat) para que las otras
-  // pantallas de dashboards (ads, content, unified y sus detalles) tambien
-  // dejen marcado este item. Antes del bloque N ninguna lo hacia (N4).
-  { name: "Dashboards", href: "/dashboard/dashboards/chat", icon: "LayoutGrid", permissions: ["dashboards.chat.view", "dashboards.content.view", "dashboards.agenda.view", "dashboards.ads.view", "dashboards.unified.view", "calls.view"], group: "inicio", alsoActiveOn: ["/dashboard/dashboards"] }, // @plantilla-quitar(llamadas)
-  // @plantilla-sin(llamadas): { name: "Dashboards", href: "/dashboard/dashboards/chat", icon: "LayoutGrid", permissions: ["dashboards.chat.view", "dashboards.content.view", "dashboards.agenda.view", "dashboards.ads.view", "dashboards.unified.view"], group: "inicio", alsoActiveOn: ["/dashboard/dashboards"] },
+  // El item lleva a `/dashboard/dashboards`, que redirige al dashboard por defecto
+  // (Meta Ads si esta conectado, si no Chat: `lib/dashboards/default.ts`).
+  // alsoActiveOn: el mismo prefijo, para que las pantallas de dashboards (chat, ads,
+  // content, unified y sus detalles) dejen marcado este item (N4).
+  { name: "Dashboards", href: "/dashboard/dashboards", icon: "LayoutGrid", permissions: ["dashboards.chat.view", "dashboards.content.view", "dashboards.agenda.view", "dashboards.ads.view", "dashboards.unified.view", "calls.view"], group: "inicio", alsoActiveOn: ["/dashboard/dashboards"] }, // @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): { name: "Dashboards", href: "/dashboard/dashboards", icon: "LayoutGrid", permissions: ["dashboards.chat.view", "dashboards.content.view", "dashboards.agenda.view", "dashboards.ads.view", "dashboards.unified.view"], group: "inicio", alsoActiveOn: ["/dashboard/dashboards"] },
   // La cola de borradores y las sub-pestañas de la bandeja (broadcasts,
   // sequences, growth) son la misma seccion: dejan Bandeja marcada (N4).
   // La bandeja no tiene claves: aparece si el rol ve al menos una cuenta conectada (`canUseInbox`, 00249).

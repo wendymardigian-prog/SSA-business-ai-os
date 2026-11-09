@@ -98,13 +98,13 @@ describe("activeNavHref: gana el candidato mas largo (N4)", () => {
       "/dashboard/dashboards/llamadas",
       "/dashboard/dashboards/ads/campaigns/abc",
     ]) {
-      expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/dashboards/chat");
+      expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/dashboards");
     }
   });
 
   it("Anuncios marca su propio item, y el detalle de una fila sigue marcando Dashboards", () => {
     expect(activeNavHref("/dashboard/anuncios", NAV_ITEMS)).toBe("/dashboard/anuncios");
-    expect(activeNavHref("/dashboard/dashboards/ads/ads/123", NAV_ITEMS)).toBe("/dashboard/dashboards/chat");
+    expect(activeNavHref("/dashboard/dashboards/ads/ads/123", NAV_ITEMS)).toBe("/dashboard/dashboards");
   });
 
   it("sin ningun match, no hay item activo", () => {
