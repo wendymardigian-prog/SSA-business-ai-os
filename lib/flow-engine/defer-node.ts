@@ -82,7 +82,7 @@ export async function deferFlowNode(
     metadata: { nodeId, nodeType: args.nodeType, reason: args.reason, retryAt: runAt },
   });
 
-  const message = args.message ?? (args.reason === "provider_retry" ? "Se vuelve a intentar más tarde." : DEFER_MESSAGES[args.reason]);
+  const message = args.message ?? (args.reason === "provider_retry" || args.reason === "send_window" ? "Se vuelve a intentar más tarde." : DEFER_MESSAGES[args.reason]);
   context.noteStep?.({ status: "deferred", reason: message, resumesAt: runAt });
 
   return "pause";

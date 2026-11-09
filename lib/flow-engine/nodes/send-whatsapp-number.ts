@@ -18,7 +18,7 @@
  */
 
 import type { FlowExecutionContext } from "../types";
-import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
+import type { NodeDefinition, NodeExecutionArgs, NodeResult } from "../registry/types";
 import { interpolateVariables } from "../interpolate";
 import { resolveWhatsAppTarget } from "../whatsapp-target";
 import { recordSend, sendChannelMessage, sendEvolutionDirect } from "../send";
@@ -53,7 +53,7 @@ const MAX_TEXT_IN_HISTORY = 500;
 
 export { resolveWhatsAppTarget, hasUnresolvedVariable, type TargetResolution } from "../whatsapp-target";
 
-async function execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<SendWhatsAppNumberData, FlowExecutionContext>): Promise<void> {
+async function execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<SendWhatsAppNumberData, FlowExecutionContext>): Promise<NodeResult | void> {
   const label = typeof (node.data as { label?: unknown } | undefined)?.label === "string" && String((node.data as { label?: string }).label).trim()
     ? String((node.data as { label?: string }).label).trim()
     : "Enviar WhatsApp a un número";
