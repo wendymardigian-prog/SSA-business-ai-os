@@ -4,9 +4,11 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  AlertTriangle, ChevronLeft, ChevronRight, CreditCard, Download, Filter, Megaphone, Paperclip, Plus, Repeat, Search, SlidersHorizontal, Users, X, type LucideIcon,
+  AlertTriangle, ChevronLeft, ChevronRight, CreditCard, Download, ListFilter, Megaphone, Paperclip, Plus, Repeat, Rows3, SlidersHorizontal, Users, X, type LucideIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
+import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 import { ChipMultiSelect } from "@/components/finance/chip-multi-select";
 import { PayExpenseDialog } from "@/components/finance/expense-dialogs";
 import { ExpenseForm } from "@/components/finance/expense-form";
@@ -48,7 +50,6 @@ export function ExpensesList({ data }: { data: ExpenseListData }) {
   const [paying, setPaying] = useState<ExpenseListRow | null>(null);
   const active = countActiveExpenseFilters(filters);
   const moreActive = filters.statuses.length + filters.origins.length + (filters.group ? 1 : 0) + (filters.responsibleId ? 1 : 0) + (filters.from || filters.to ? 1 : 0);
-  const [panelOpen, setPanelOpen] = useState(moreActive > 0);
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const anyFilter = active > 0 || filters.groupBy !== null;
   const warning = exportWarning(total);
@@ -77,12 +78,109 @@ export function ExpensesList({ data }: { data: ExpenseListData }) {
     </button>
   ) : undefined;
 
+  // Los filtros de la barra superior. La barra los dibuja dos veces (computadora y celular): cada copia tiene su
+  // propio menú abierto y todo lo elegido sale de la URL, así las dos muestran lo mismo.
+  const menuFilters = (filters.categories.length ? 1 : 0) + (filters.vendors.length ? 1 : 0) + moreActive;
+  const barFilters = (
+    <>
+      <ExpandableSearch value={filters.q} onCommit={(q) => go({ q: q.slice(0, 60) })} label="Buscar gastos por concepto" placeholder="Buscar por concepto" pending={navPending} />
+      <FilterMenu
+        label="Filtros"
+        compact
+        active={menuFilters > 0}
+        badge={menuFilters}
+        icon={<ListFilter className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+        menuClassName="topbar:w-[440px]"
+      >
+        <div className="space-y-3 p-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold">Filtros</p>
+            {anyFilter && (
+              <button type="button" onClick={clear} className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground">
+                <X className="h-3.5 w-3.5" aria-hidden /> Limpiar
+              </button>
+            )}
+          </div>
+          <ChipMultiSelect label="Categoría" groups={categoryGroups} selected={filters.categories} labelOf={(k) => categoryName(categories, k)} onChange={(categories) => go({ categories })} />
+          <ChipMultiSelect label="Proveedor" groups={vendorGroups} selected={filters.vendors} labelOf={(id) => vendorLabel(vendors, id)} onChange={(vendors) => go({ vendors })} />
+          <div className="space-y-3">
+            <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
+              <legend className="mb-1 text-xs font-medium">Estado</legend>
+              {EXPENSE_STATUS_KEYS.map((s) => (
+                <label key={s} className="flex items-center gap-1.5 text-sm">
+                  <input type="checkbox" checked={filters.statuses.includes(s)} onChange={() => go({ statuses: filters.statuses.includes(s) ? filters.statuses.filter((x) => x !== s) : [...filters.statuses, s] })} />
+                  {EXPENSE_STATUSES[s].label}
+                </label>
+              ))}
+            </fieldset>
+            <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
+              <legend className="mb-1 text-xs font-medium">Origen</legend>
+              {EXPENSE_ORIGINS.map((o) => (
+                <label key={o} className="flex items-center gap-1.5 text-sm">
+                  <input type="checkbox" checked={filters.origins.includes(o)} onChange={() => go({ origins: filters.origins.includes(o) ? filters.origins.filter((x) => x !== o) : [...filters.origins, o] })} />
+                  {EXPENSE_ORIGIN_LABELS[o]}
+                </label>
+              ))}
+            </fieldset>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Grupo de la categoría">
+              <select className={selectClass} value={filters.group ?? ""} onChange={(e) => go({ group: (e.target.value || null) as ExpenseFilters["group"] })}>
+                <option value="">Todos</option>
+                {CATEGORY_GROUPS.map((g) => <option key={g} value={g}>{CATEGORY_GROUP_LABELS[g]}</option>)}
+              </select>
+            </Field>
+            <Field label="Responsable">
+              <select className={selectClass} value={filters.responsibleId ?? ""} onChange={(e) => go({ responsibleId: e.target.value || null })}>
+                <option value="">Todos</option>
+                {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Rango sobre la fecha…">
+              <select className={selectClass} value={filters.dateField} onChange={(e) => go({ dateField: e.target.value as ExpenseFilters["dateField"] })}>
+                {DATE_FIELDS.map((f) => <option key={f} value={f}>{f === "pago" ? "de pago" : "programada"}</option>)}
+              </select>
+            </Field>
+            <Field label="Entre">
+              <div className="flex gap-1">
+                <input type="date" aria-label="Desde" className={selectClass} value={filters.from ?? ""} onChange={(e) => go({ from: e.target.value || null })} />
+                <input type="date" aria-label="Hasta" className={selectClass} value={filters.to ?? ""} onChange={(e) => go({ to: e.target.value || null })} />
+              </div>
+            </Field>
+          </div>
+        </div>
+      </FilterMenu>
+      <FilterMenu
+        label={`Agrupar por: ${filters.groupBy === "categoria" ? "Categoría" : filters.groupBy === "proveedor" ? "Proveedor" : "Sin agrupar"}`}
+        compact
+        active={filters.groupBy !== null}
+        icon={<Rows3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+        menuClassName="topbar:w-[220px]"
+      >
+        <MenuGroupLabel>Agrupar por</MenuGroupLabel>
+        <MenuOption checked={filters.groupBy === null} onSelect={() => go({ groupBy: null })} title="Sin agrupar" />
+        {GROUP_BY_OPTIONS.map((g) => (
+          <MenuOption key={g} checked={filters.groupBy === g} onSelect={() => go({ groupBy: g })} title={g === "categoria" ? "Categoría" : "Proveedor"} />
+        ))}
+      </FilterMenu>
+    </>
+  );
+  const headerRight = (
+    <>
+      <a href={exportHref(filters)} download aria-label="Exportar CSV" className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-2.5 text-sm hover:bg-accent sm:px-3">
+        <Download className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Exportar CSV</span>
+      </a>
+      {addButton}
+    </>
+  );
+
   const emptyAll = !data.loadError && total === 0 && !anyFilter;
   const emptyFiltered = !data.loadError && total === 0 && anyFilter;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader route="/dashboard/finanzas/gastos" tabs={<FinanceTabs />} right={addButton} />
+      <PageHeader
+        filtersBreakpoint="wide" route="/dashboard/finanzas/gastos" tabs={<FinanceTabs />} filters={barFilters} right={headerRight} />
 
       <div className={`min-h-0 flex-1 overflow-y-auto p-4 transition-opacity md:p-6 ${navPending ? "opacity-60" : ""}`} aria-busy={navPending}>
         <div className="space-y-4">
@@ -106,92 +204,7 @@ export function ExpensesList({ data }: { data: ExpenseListData }) {
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <form
-              key={filters.q}
-              className="relative min-w-[200px] flex-1 sm:max-w-xs"
-              role="search"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const q = String(new FormData(e.currentTarget).get("q") ?? "").trim();
-                go({ q });
-              }}
-            >
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-              <input name="q" defaultValue={filters.q} placeholder="Buscar por concepto" aria-label="Buscar gastos por concepto" maxLength={60} className="h-9 w-full rounded-lg border border-border bg-background pl-8 pr-2 text-sm" />
-            </form>
-            <ChipMultiSelect label="Categoría" groups={categoryGroups} selected={filters.categories} labelOf={(k) => categoryName(categories, k)} onChange={(categories) => go({ categories })} />
-            <ChipMultiSelect label="Proveedor" groups={vendorGroups} selected={filters.vendors} labelOf={(id) => vendorLabel(vendors, id)} onChange={(vendors) => go({ vendors })} />
-            <label className="flex items-center gap-1.5 text-sm">
-              <span className="sr-only sm:not-sr-only text-muted-foreground">Agrupar por</span>
-              <select aria-label="Agrupar por" className="h-9 rounded-lg border border-border bg-background px-2 text-sm" value={filters.groupBy ?? ""} onChange={(e) => go({ groupBy: (e.target.value || null) as ExpenseFilters["groupBy"] })}>
-                <option value="">Sin agrupar</option>
-                {GROUP_BY_OPTIONS.map((g) => <option key={g} value={g}>{g === "categoria" ? "Categoría" : "Proveedor"}</option>)}
-              </select>
-            </label>
-            <button type="button" onClick={() => setPanelOpen((v) => !v)} aria-expanded={panelOpen} aria-controls="more-expense-filters" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent">
-              <Filter className="h-4 w-4" aria-hidden /> Más filtros{moreActive > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{moreActive}</span>}
-            </button>
-            {anyFilter && (
-              <button type="button" onClick={clear} className="inline-flex h-9 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" aria-hidden /> Limpiar
-              </button>
-            )}
-            <a href={exportHref(filters)} download className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent">
-              <Download className="h-4 w-4" aria-hidden /> Exportar CSV
-            </a>
-          </div>
           {warning && <p role="status" className="text-[11px] text-amber-700 dark:text-amber-300">{warning}</p>}
-
-          {panelOpen && (
-            <div id="more-expense-filters" className="space-y-3 rounded-xl border border-border bg-card p-3">
-              <div className="grid gap-4 md:grid-cols-2">
-                <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
-                  <legend className="mb-1 text-xs font-medium">Estado</legend>
-                  {EXPENSE_STATUS_KEYS.map((s) => (
-                    <label key={s} className="flex items-center gap-1.5 text-sm">
-                      <input type="checkbox" checked={filters.statuses.includes(s)} onChange={() => go({ statuses: filters.statuses.includes(s) ? filters.statuses.filter((x) => x !== s) : [...filters.statuses, s] })} />
-                      {EXPENSE_STATUSES[s].label}
-                    </label>
-                  ))}
-                </fieldset>
-                <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
-                  <legend className="mb-1 text-xs font-medium">Origen</legend>
-                  {EXPENSE_ORIGINS.map((o) => (
-                    <label key={o} className="flex items-center gap-1.5 text-sm">
-                      <input type="checkbox" checked={filters.origins.includes(o)} onChange={() => go({ origins: filters.origins.includes(o) ? filters.origins.filter((x) => x !== o) : [...filters.origins, o] })} />
-                      {EXPENSE_ORIGIN_LABELS[o]}
-                    </label>
-                  ))}
-                </fieldset>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Grupo de la categoría">
-                  <select className={selectClass} value={filters.group ?? ""} onChange={(e) => go({ group: (e.target.value || null) as ExpenseFilters["group"] })}>
-                    <option value="">Todos</option>
-                    {CATEGORY_GROUPS.map((g) => <option key={g} value={g}>{CATEGORY_GROUP_LABELS[g]}</option>)}
-                  </select>
-                </Field>
-                <Field label="Responsable">
-                  <select className={selectClass} value={filters.responsibleId ?? ""} onChange={(e) => go({ responsibleId: e.target.value || null })}>
-                    <option value="">Todos</option>
-                    {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                </Field>
-                <Field label="Rango sobre la fecha…">
-                  <select className={selectClass} value={filters.dateField} onChange={(e) => go({ dateField: e.target.value as ExpenseFilters["dateField"] })}>
-                    {DATE_FIELDS.map((f) => <option key={f} value={f}>{f === "pago" ? "de pago" : "programada"}</option>)}
-                  </select>
-                </Field>
-                <Field label="Entre">
-                  <div className="flex gap-1">
-                    <input type="date" aria-label="Desde" className={selectClass} value={filters.from ?? ""} onChange={(e) => go({ from: e.target.value || null })} />
-                    <input type="date" aria-label="Hasta" className={selectClass} value={filters.to ?? ""} onChange={(e) => go({ to: e.target.value || null })} />
-                  </div>
-                </Field>
-              </div>
-            </div>
-          )}
 
           {!data.loadError && total > 0 && (
             <>

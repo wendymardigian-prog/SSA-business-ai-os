@@ -56,6 +56,7 @@ export function StatusesView({
   return (
     <div className="flex h-full flex-col overflow-auto">
       <PageHeader
+        tabs={<SettingsTabs />}
         route="/dashboard/settings/estados"
         backHref={
           <Link
@@ -67,7 +68,6 @@ export function StatusesView({
           </Link>
         }
       />
-      <SettingsTabs />
       <div className="space-y-8 px-4 py-6 md:px-8">
         <p className="max-w-2xl text-sm text-muted-foreground">
           Cada contacto tiene un estado de setter y uno de vendedor. En la ficha y en la lista se ve siempre el{" "}

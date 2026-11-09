@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, Filter, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, SlidersHorizontal, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
+import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
 import { MarkPaidDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
 import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
 import { DELAY_TONE_CLASSES } from "@/lib/sales/delay";
@@ -12,7 +14,7 @@ import { formatMoney } from "@/lib/shared/format";
 import { PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, type PaymentStatus } from "@/lib/sales/labels";
 import type { PaymentMethodDef } from "@/lib/sales/payment-methods";
 import {
-  PAYMENT_PILLS, PAYMENT_PILL_LABELS, countActivePaymentFilters, paymentsFiltersToParams,
+  PAYMENT_PILLS, PAYMENT_PILL_LABELS, countActivePaymentFilters, parsePaymentsFilters, paymentsFiltersToParams,
   type PaymentListRow, type PaymentPill, type PaymentsFilters, type PaymentsTotals,
 } from "@/lib/sales/payments-list";
 import { paymentStatusClasses } from "@/lib/sales/status-colors";
@@ -50,8 +52,6 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
   const { rows, total, page, pageSize, filters, totals } = data;
   const router = useRouter();
   const pathname = usePathname();
-  const [panelOpen, setPanelOpen] = useState(countActivePaymentFilters(filters) > 0);
-  const [search, setSearch] = useState(filters.q ?? "");
   const [action, setAction] = useState<{ kind: "paid" | "reschedule"; row: PaymentListRowView } | null>(null);
   const active = countActivePaymentFilters(filters);
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -63,82 +63,108 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
   }
   const toggleStatus = (s: string) => go({ status: filters.status.includes(s) ? filters.status.filter((x) => x !== s) : [...filters.status, s], pill: null });
   const payable = action ? { id: action.row.id, amount: action.row.amount, due: action.row.dueDate } : null;
+  // El estado del pago (las pastillas) tambien vive adentro de «Filtros»: cuenta para el globito.
+  const menuActive = active + (filters.pill ? 1 : 0);
+
+  // Buscar y Filtros van en la barra de arriba (nunca una barra adentro de la pagina).
+  const barFilters = (
+    <>
+      <ExpandableSearch
+        value={filters.q ?? ""}
+        onCommit={(q) => go({ q: q || null })}
+        label="Buscar pagos por contacto"
+        placeholder="Buscar por contacto…"
+      />
+      <FilterMenu
+        label="Filtros"
+        compact
+        badge={menuActive}
+        active={menuActive > 0}
+        icon={<SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+        menuClassName="topbar:w-[440px]"
+      >
+        <div className="space-y-3 px-2.5 pb-2 pt-1">
+          <p className="text-xs text-muted-foreground">{data.scopeAll ? "Todos los pagos del equipo" : "Solo los pagos de tus ventas"}</p>
+
+          <div>
+            <MenuGroupLabel>Estado del pago</MenuGroupLabel>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Estado del pago">
+              {PAYMENT_PILLS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={filters.pill === p}
+                  onClick={() => go({ pill: filters.pill === p ? null : p, status: [] })}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.pill === p ? "border-primary-edge bg-primary/10 font-medium text-primary-ink" : "border-border hover:bg-accent"}`}
+                >
+                  {PAYMENT_PILL_LABELS[p]}
+                  <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{data.pills[p]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
+            <legend className="mb-1 text-xs font-medium">Estado</legend>
+            {PAYMENT_STATUSES.filter((s) => s !== "refunded").map((s) => (
+              <label key={s} className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={filters.status.includes(s)} onChange={() => toggleStatus(s)} /> {PAYMENT_STATUS_LABELS[s as PaymentStatus]}</label>
+            ))}
+          </fieldset>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Método">
+              <select className={selectClass} value={filters.method ?? ""} onChange={(e) => go({ method: e.target.value || null })}>
+                <option value="">Todos</option>
+                {data.methods.map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Vendedor">
+              <select className={selectClass} value={filters.vendedorId ?? ""} onChange={(e) => go({ vendedorId: e.target.value || null })}>
+                <option value="">Todos</option>
+                {data.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Vence entre">
+              <div className="flex gap-1">
+                <input type="date" aria-label="Vence desde" className={selectClass} value={filters.dueFrom ?? ""} onChange={(e) => go({ dueFrom: e.target.value || null })} />
+                <input type="date" aria-label="Vence hasta" className={selectClass} value={filters.dueTo ?? ""} onChange={(e) => go({ dueTo: e.target.value || null })} />
+              </div>
+            </Field>
+            <Field label="Cobrado entre">
+              <div className="flex gap-1">
+                <input type="date" aria-label="Cobrado desde" className={selectClass} value={filters.paidFrom ?? ""} onChange={(e) => go({ paidFrom: e.target.value || null })} />
+                <input type="date" aria-label="Cobrado hasta" className={selectClass} value={filters.paidTo ?? ""} onChange={(e) => go({ paidTo: e.target.value || null })} />
+              </div>
+            </Field>
+            <Field label="Cobrados con atraso mayor a (días)">
+              <input type="number" min={0} className={selectClass} value={filters.delayOver ?? ""} onChange={(e) => go({ delayOver: e.target.value === "" ? null : Number(e.target.value) })} />
+            </Field>
+          </div>
+
+          {menuActive > 0 && (
+            <div className="flex items-center justify-between border-t border-border pt-2">
+              <span className="text-xs text-muted-foreground">{menuActive === 1 ? "1 filtro activo" : `${menuActive} filtros activos`}</span>
+              <button
+                type="button"
+                onClick={() => go({ ...parsePaymentsFilters({}), q: filters.q })}
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-3 w-3" aria-hidden />
+                Limpiar filtros
+              </button>
+            </div>
+          )}
+        </div>
+      </FilterMenu>
+    </>
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader route="/dashboard/ventas/pagos" left={<SalesViewToggle active="pagos" />} />
+      <PageHeader route="/dashboard/ventas/pagos" left={<SalesViewToggle active="pagos" />} filters={barFilters} />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Estado del pago">
-          {PAYMENT_PILLS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              aria-pressed={filters.pill === p}
-              onClick={() => go({ pill: filters.pill === p ? null : p, status: [] })}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm ${filters.pill === p ? "border-primary-edge bg-primary/10 font-medium text-primary-ink" : "border-border hover:bg-accent"}`}
-            >
-              {PAYMENT_PILL_LABELS[p]}
-              <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{data.pills[p]}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <form className="relative min-w-[200px] flex-1 sm:max-w-sm" role="search" onSubmit={(e) => { e.preventDefault(); go({ q: search.trim() || null }); }}>
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por contacto" aria-label="Buscar pagos por contacto" className="h-9 w-full rounded-lg border border-input bg-background pl-8 pr-2 text-sm" />
-          </form>
-          <button type="button" onClick={() => setPanelOpen((v) => !v)} aria-expanded={panelOpen} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent">
-            <Filter className="h-4 w-4" aria-hidden /> Filtros{active > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{active}</span>}
-          </button>
-          {(active > 0 || filters.q || filters.pill) && (
-            <button type="button" onClick={() => router.push(pathname)} className="inline-flex h-9 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground"><X className="h-4 w-4" aria-hidden /> Limpiar</button>
-          )}
-          <span className="ml-auto rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">{data.scopeAll ? "Todos los pagos del equipo" : "Solo los pagos de tus ventas"}</span>
-        </div>
-
-        {panelOpen && (
-          <div className="mt-3 space-y-3 rounded-xl border border-border bg-card p-3">
-            <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
-              <legend className="mb-1 text-xs font-medium">Estado</legend>
-              {PAYMENT_STATUSES.filter((s) => s !== "refunded").map((s) => (
-                <label key={s} className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={filters.status.includes(s)} onChange={() => toggleStatus(s)} /> {PAYMENT_STATUS_LABELS[s as PaymentStatus]}</label>
-              ))}
-            </fieldset>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Método">
-                <select className={selectClass} value={filters.method ?? ""} onChange={(e) => go({ method: e.target.value || null })}>
-                  <option value="">Todos</option>
-                  {data.methods.map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
-                </select>
-              </Field>
-              <Field label="Vendedor">
-                <select className={selectClass} value={filters.vendedorId ?? ""} onChange={(e) => go({ vendedorId: e.target.value || null })}>
-                  <option value="">Todos</option>
-                  {data.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
-              </Field>
-              <Field label="Vence entre">
-                <div className="flex gap-1">
-                  <input type="date" aria-label="Vence desde" className={selectClass} value={filters.dueFrom ?? ""} onChange={(e) => go({ dueFrom: e.target.value || null })} />
-                  <input type="date" aria-label="Vence hasta" className={selectClass} value={filters.dueTo ?? ""} onChange={(e) => go({ dueTo: e.target.value || null })} />
-                </div>
-              </Field>
-              <Field label="Cobrado entre">
-                <div className="flex gap-1">
-                  <input type="date" aria-label="Cobrado desde" className={selectClass} value={filters.paidFrom ?? ""} onChange={(e) => go({ paidFrom: e.target.value || null })} />
-                  <input type="date" aria-label="Cobrado hasta" className={selectClass} value={filters.paidTo ?? ""} onChange={(e) => go({ paidTo: e.target.value || null })} />
-                </div>
-              </Field>
-              <Field label="Cobrados con atraso mayor a (días)">
-                <input type="number" min={0} className={selectClass} value={filters.delayOver ?? ""} onChange={(e) => go({ delayOver: e.target.value === "" ? null : Number(e.target.value) })} />
-              </Field>
-            </div>
-          </div>
-        )}
-
-        <dl className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-border bg-card p-3 text-center sm:grid-cols-5">
+        <dl className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card p-3 text-center sm:grid-cols-5">
           <Total label="Pagos" value={String(totals.count)} />
           <Total label="Monto" value={formatMoney(totals.amount)} />
           <Total label="Cobrado bruto" value={formatMoney(totals.paid.gross)} />

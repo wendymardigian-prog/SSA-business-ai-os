@@ -90,6 +90,7 @@ export function ProductDetail({
   return (
     <div className="flex h-full flex-col">
       <PageHeader
+        tabs={<SettingsTabs />}
         title={product.name}
         tooltip="Las variantes del producto y, en cada una, su precio vigente y el historial de precios."
         backHref={
@@ -102,7 +103,6 @@ export function ProductDetail({
           </Link>
         }
       />
-      <SettingsTabs />
 
       <div className="min-h-0 flex-1 overflow-auto">
       <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 md:px-8">

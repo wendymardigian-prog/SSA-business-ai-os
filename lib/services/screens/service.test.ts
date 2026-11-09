@@ -1,6 +1,6 @@
 // @plantilla-quitar(servicios)
 import { describe, expect, it } from "vitest";
-import { clientTimelineFilter, newServiceFormIssues, salesServiceCell, serviceActions, serviceAlerts } from "./service";
+import { clientTimelineFilter, defaultServiceStartsOn, newServiceFormIssues, salesServiceCell, serviceActions, serviceAlerts, serviceStartsOnHint } from "./service";
 
 describe("las alertas de la ficha", () => {
   it("salen en orden de gravedad", () => {
@@ -71,5 +71,19 @@ describe("la actividad del cliente", () => {
     expect(clientTimelineFilter(ev, { kind: "all" }).map((e) => e.id)).toEqual(["3", "2", "1"]);
     expect(clientTimelineFilter(ev, { kind: "service", serviceId: "s1" }).map((e) => e.id)).toEqual(["2"]);
     expect(clientTimelineFilter(ev, { kind: "before_sale", firstSaleAt: "2026-11-01T00:00:00Z" }).map((e) => e.id)).toEqual(["1"]);
+  });
+});
+
+describe("fecha de inicio por defecto de «+ Servicio»", () => {
+  it("sin evento, hoy en la zona del negocio", () => {
+    expect(defaultServiceStartsOn("2026-11-08", null)).toBe("2026-11-08");
+    expect(serviceStartsOnHint(null)).toMatch(/hoy/);
+  });
+  it("con evento, la fecha del evento", () => {
+    expect(defaultServiceStartsOn("2026-11-08", "2026-12-01")).toBe("2026-12-01");
+    expect(serviceStartsOnHint("2026-12-01")).toMatch(/evento/);
+  });
+  it("una fecha de evento mal formada no se usa", () => {
+    expect(defaultServiceStartsOn("2026-11-08", "01/12/2026")).toBe("2026-11-08");
   });
 });

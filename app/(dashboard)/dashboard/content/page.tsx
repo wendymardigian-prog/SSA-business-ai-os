@@ -2,7 +2,7 @@ import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { PageHeader } from "@/components/page-header";
 import { ContentKanban, NewContentButtons } from "@/components/content/kanban";
 import { ContentCalendar } from "@/components/content/calendar-view";
-import { ContentList, type ListRow } from "@/components/content/list-view";
+import { ContentList, ContentListFilters, type ListRow } from "@/components/content/list-view";
 import { ContentViewSwitcher, CountModeSwitcher, PlatformFilter } from "@/components/content/view-switcher";
 import { ContentShell } from "@/components/content/drawer/content-shell";
 import { ContentSettingsButton } from "@/components/content/content-settings-button";
@@ -360,9 +360,11 @@ export default async function ContentPage({
       aiReason={copywriter.reason}
     >
       {/* La barra superior concentra todo lo de la pantalla (F98): las vistas,
-          el conteo, el filtro de Red, el ⓘ con lo que puede hacer el rol y las
-          dos altas. El cuerpo queda limpio: solo el tablero. */}
+          el conteo, el filtro de Red (y en la lista, buscar y sus filtros), el ⓘ
+          con lo que puede hacer el rol y las dos altas. El cuerpo queda limpio:
+          solo el tablero. */}
       <PageHeader
+        filtersBreakpoint="wide"
         route="/dashboard/content"
         tooltip={contentTooltip(
           { approve: canApprove, publish: canPublish, ai: canUseAi },
@@ -373,6 +375,14 @@ export default async function ContentPage({
           <>
             <PlatformFilter current={filters.platform} platforms={filterPlatforms} />
             {filters.view === "calendar" && <CountModeSwitcher current={filters.count} />}
+            {filters.view === "list" && (
+              <ContentListFilters
+                filters={filters}
+                authors={[...authorNames.entries()].map(([id, name]) => ({ id, name }))}
+                months={listMonths}
+                showPaid={canSeePaid}
+              />
+            )}
           </>
         }
         right={
@@ -417,8 +427,6 @@ export default async function ContentPage({
         <ContentList
           rows={listRows}
           filters={filters}
-          authors={[...authorNames.entries()].map(([id, name]) => ({ id, name }))}
-          months={listMonths}
           timeZone={timeZone}
           showPaid={canSeePaid}
         />

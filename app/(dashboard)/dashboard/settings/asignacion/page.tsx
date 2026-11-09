@@ -56,6 +56,7 @@ export default async function AsignacionSettingsPage() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
+        tabs={<SettingsTabs />}
         route="/dashboard/settings/asignacion"
         backHref={
           <Link href="/dashboard/settings" aria-label="Volver a Ajustes" className="-ml-1 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
@@ -63,7 +64,6 @@ export default async function AsignacionSettingsPage() {
           </Link>
         }
       />
-      <SettingsTabs />
       <div className="min-h-0 flex-1 overflow-auto">
       <section aria-label="Reglas de asignación" className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 md:px-8">
         <div>

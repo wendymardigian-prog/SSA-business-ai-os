@@ -76,9 +76,8 @@ export function ActivityScreen({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader route="/dashboard/settings/actividad" />
+      <PageHeader route="/dashboard/settings/actividad" tabs={<SettingsTabs />} />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <SettingsTabs />
         <div className="p-4 md:p-6">
           <div className="grid gap-3 rounded-xl border border-border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Tipo de entidad">

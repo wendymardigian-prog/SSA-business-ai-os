@@ -31,7 +31,7 @@ export default async function ClientesListaPage() {
     <div className="flex h-full flex-col">
       <PageHeader route="/dashboard/clientes/lista" tabs={<ClientesTabs active="clientes" />} />
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 md:px-8">
+        <div className="space-y-4 p-4 md:p-6">
           {sorted.length === 0 ? (
             <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">Todavía no hay clientes con servicios.</p>
           ) : (

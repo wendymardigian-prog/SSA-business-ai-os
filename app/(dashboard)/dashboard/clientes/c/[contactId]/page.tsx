@@ -55,7 +55,7 @@ export default async function ClientPage({ params }: { params: Promise<{ contact
       portal={portal}
       today={todayIn((workspace as { timezone?: string }).timezone)}
       canCreate={ctx.can("services.create")}
-      newServiceOptions={ctx.can("services.create") ? await loadNewServiceOptions(supabase, workspace.id, team, ctx.can("services.create_off_rule")) : { products: [], members: [], canOffRule: false }}
+      newServiceOptions={ctx.can("services.create") ? await loadNewServiceOptions(supabase, workspace.id, team, ctx.can("services.create_off_rule"), (workspace as { timezone?: string | null }).timezone) : { products: [], members: [], canOffRule: false }}
       data={{
         contactId,
         name: c?.display_name ?? "Sin nombre",

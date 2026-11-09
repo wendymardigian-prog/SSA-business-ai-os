@@ -7,3 +7,14 @@ export function tabCountLabel(count: number | null | undefined): string | null {
   const n = Math.floor(count);
   return n > 99 ? "99+" : String(n);
 }
+
+/** Las clases de UNA pestaña de la barra (el control segmentado: la activa en blanco sobre el gris). */
+export function headerTabClass(active: boolean): string {
+  return [
+    "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-sm transition-colors",
+    active ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+  ].join(" ");
+}
+
+/** Las clases del contenedor de las pestañas de la barra. */
+export const HEADER_TABS_CONTAINER = "flex shrink-0 items-center rounded-lg bg-muted/60 p-0.5";

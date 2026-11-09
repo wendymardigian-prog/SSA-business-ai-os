@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { ListFilter, Search, X } from "lucide-react";
+import { ListFilter, X } from "lucide-react";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
 import type { MineSummary } from "@/lib/tasks/mine";
 import type { ProjectSummary } from "@/lib/tasks/project";
 import type { MemberLite } from "@/lib/tasks/table-model";
@@ -83,34 +84,56 @@ function SummaryChip({ n, text, hot }: { n: number; text: string; hot?: boolean 
   );
 }
 
+/** Lo que se busca en el título: el mismo recorte que hace la URL (espacios juntos, 100 caracteres). */
+function cleanQuery(raw: string): string {
+  return raw.replace(/\s+/g, " ").trim().slice(0, 100);
+}
+
 /**
- * La barra de arriba de la lista, en UNA sola linea: buscador, boton «Filtros» (todos los filtros adentro),
- * «Mis tareas» y, en pantallas anchas, los contadores de lo mio (vencidas, vencen hoy, proximos 7 dias).
- * En el celular quedan solo el buscador y los dos botones.
+ * El buscador de la barra superior. La barra lo dibuja dos veces (computadora y celular): cada copia tiene su
+ * propio texto a medio escribir y solo manda la busqueda la que se esta usando (Enter o al salir del campo).
  */
-export function FiltersBar({
+export function TasksSearch({ state, onChange }: { state: TasksViewState; onChange: (next: TasksViewState) => void }) {
+  return (
+    <ExpandableSearch
+      value={state.q}
+      onCommit={(next) => {
+        const q = cleanQuery(next);
+        if (q !== state.q) onChange({ ...state, q });
+      }}
+      label="Buscar tareas por título"
+      placeholder="Buscar en el título"
+    />
+  );
+}
+
+/** «Mis tareas», en la barra superior: lo que tengo a cargo. */
+export function MineToggle({ pressed, onToggle }: { pressed: boolean; onToggle: () => void }) {
+  return (
+    <Toggle pressed={pressed} onClick={onToggle} className="shrink-0 px-3">
+      Mis tareas
+    </Toggle>
+  );
+}
+
+/**
+ * El boton «Filtros» de la barra superior, con todos los filtros (y «Agrupar») en un panel que se abre abajo.
+ * En el celular el panel ocupa el ancho de la pantalla, como los menus de la barra.
+ */
+export function TasksFiltersButton({
   state,
   onChange,
   members,
   projects,
-  mine,
-  onToggleMine,
   showGroup = true,
-  total,
-  shown,
 }: {
   state: TasksViewState;
   onChange: (next: TasksViewState) => void;
   members: MemberLite[];
   projects: ProjectSummary[];
-  mine: MineSummary;
-  onToggleMine: () => void;
   showGroup?: boolean;
-  total: number;
-  shown: number;
 }) {
   const panelFilters = countPanelFilters(state);
-  const anyFilter = panelFilters > 0 || state.q !== "" || state.mine;
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -135,68 +158,30 @@ export function FiltersBar({
     };
   }, [open]);
 
-  // La busqueda se escribe sin esperar a la URL y se manda a los 250 ms.
-  const [q, setQ] = useState(state.q);
-  const [seenQ, setSeenQ] = useState(state.q);
-  if (state.q !== seenQ) {
-    setSeenQ(state.q);
-    setQ(state.q);
-  }
-  useEffect(() => {
-    if (q.trim() === state.q) return;
-    const t = setTimeout(() => onChange({ ...state, q: q.replace(/\s+/g, " ").trim().slice(0, 100) }), 250);
-    return () => clearTimeout(t);
-  }, [q, state, onChange]);
-
   const set = <K extends keyof TasksViewState>(key: K, value: TasksViewState[K]) => onChange({ ...state, [key]: value });
   const peopleOptions: Option[] = [{ value: ME, label: "Yo" }, ...members.map((m) => ({ value: m.id, label: m.name }))];
 
   return (
-    <div ref={rootRef} className="relative">
-      <div className="flex items-center gap-2" role="search">
-        <div className="relative min-w-0 flex-1 sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar en el título"
-            aria-label="Buscar tareas por título"
-            className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-2 text-sm"
-          />
-        </div>
-
-        <button
-          ref={buttonRef}
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-controls={open ? panelId : undefined}
-          aria-haspopup="dialog"
-          className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors", panelFilters > 0 || open ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60")}
-        >
-          <ListFilter className="h-3.5 w-3.5" aria-hidden /> Filtros
-          {panelFilters > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{panelFilters}</span>}
-        </button>
-
-        <Toggle pressed={state.mine} onClick={onToggleMine} className="shrink-0 px-3">Mis tareas</Toggle>
-
-        <div className="hidden min-w-0 items-center gap-2 lg:flex" aria-label="Mis tareas, resumen">
-          <SummaryChip n={mine.overdue} text={mine.overdue === 1 ? "vencida" : "vencidas"} hot />
-          <SummaryChip n={mine.today} text={mine.today === 1 ? "vence hoy" : "vencen hoy"} />
-          <SummaryChip n={mine.next7} text="en los próximos 7 días" />
-        </div>
-
-        <p className="ml-auto hidden shrink-0 whitespace-nowrap text-xs text-muted-foreground sm:block" aria-live="polite">
-          {anyFilter ? `${shown} de ${total} tareas` : total === 1 ? "1 tarea" : `${total} tareas`}
-        </p>
-      </div>
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        aria-haspopup="dialog"
+        className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-medium transition-colors", panelFilters > 0 || open ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60")}
+      >
+        <ListFilter className="h-3.5 w-3.5" aria-hidden /> Filtros
+        {panelFilters > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{panelFilters}</span>}
+      </button>
 
       {open && (
         <div
           id={panelId}
           role="dialog"
           aria-label="Filtros"
-          className="absolute left-0 top-full z-30 mt-1.5 max-h-[70vh] w-full space-y-4 overflow-y-auto rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-lg sm:w-[26rem]"
+          className="fixed inset-x-4 top-28 z-50 max-h-[70vh] space-y-4 overflow-y-auto rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-lg topbar:absolute topbar:inset-x-auto topbar:right-0 topbar:top-full topbar:mt-2 topbar:w-[26rem]"
         >
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold">Filtros</h3>
@@ -247,6 +232,26 @@ export function FiltersBar({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * La linea fina de arriba de la lista: los contadores de lo mio (vencidas, vencen hoy, proximos 7 dias) y cuantas
+ * tareas se ven. Es informacion, no controles: los filtros estan en la barra superior.
+ */
+export function TasksSummaryLine({ state, mine, total, shown }: { state: TasksViewState; mine: MineSummary; total: number; shown: number }) {
+  const anyFilter = countPanelFilters(state) > 0 || state.q !== "" || state.mine;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Mis tareas, resumen">
+        <SummaryChip n={mine.overdue} text={mine.overdue === 1 ? "vencida" : "vencidas"} hot />
+        <SummaryChip n={mine.today} text={mine.today === 1 ? "vence hoy" : "vencen hoy"} />
+        <SummaryChip n={mine.next7} text="en los próximos 7 días" />
+      </div>
+      <p className="ml-auto shrink-0 whitespace-nowrap text-xs text-muted-foreground" aria-live="polite">
+        {anyFilter ? `${shown} de ${total} tareas` : total === 1 ? "1 tarea" : `${total} tareas`}
+      </p>
     </div>
   );
 }

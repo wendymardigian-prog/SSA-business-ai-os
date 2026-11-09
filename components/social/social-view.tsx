@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { AlertTriangle, BarChart3, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { headerTabClass } from "@/components/ui/header-tabs";
 import { PostAnalysisPanel } from "@/components/dashboards/post-analysis-panel";
 import { refreshMetricsNow } from "@/lib/actions/metrics";
 import { platformLabel } from "@/lib/platforms";
@@ -153,6 +154,30 @@ export function SocialView({
           icono en pantallas chicas. */}
       <PageHeader
         route="/dashboard/social"
+        tabs={
+          // El tipo de contenido (YouTube: Videos / Shorts) es estado de la pantalla, no de la URL: botones con el mismo
+          // aspecto que las pestañas de la barra (`headerTabClass`).
+          connected && platform !== "linkedin" && tabs.length > 0 ? (
+            <div role="tablist" aria-label="Tipo de contenido" className="flex shrink-0 items-center rounded-lg bg-muted/60 p-0.5">
+              {tabs.map((t) => {
+                const selected = t.value === activeTab;
+                const count = ofPlatform.filter((tile) => inContentTab(platform, t.value, tile.mediaType)).length;
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setTab(t.value)}
+                    className={headerTabClass(selected)}
+                  >
+                    {t.label} <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : undefined
+        }
         filters={
           <div className="flex shrink-0 items-center gap-2">
             <select
@@ -404,31 +429,6 @@ export function SocialView({
           <>
             {next.length > 0 && visible.length > 0 && tabs.length === 0 && (
               <h2 className="mb-2 text-sm font-semibold">Publicadas</h2>
-            )}
-            {tabs.length > 0 && (
-              <div role="tablist" aria-label="Tipo de contenido" className="mb-3 flex gap-1 border-b border-border">
-                {tabs.map((t) => {
-                  const selected = t.value === activeTab;
-                  const count = ofPlatform.filter((tile) => inContentTab(platform, t.value, tile.mediaType)).length;
-                  return (
-                    <button
-                      key={t.value}
-                      type="button"
-                      role="tab"
-                      aria-selected={selected}
-                      onClick={() => setTab(t.value)}
-                      className={cn(
-                        "-mb-px border-b-2 px-3 py-1.5 text-sm",
-                        selected
-                          ? "border-foreground font-medium text-foreground"
-                          : "border-transparent text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {t.label} <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
-                    </button>
-                  );
-                })}
-              </div>
             )}
             {visible.length === 0 ? (
               <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">

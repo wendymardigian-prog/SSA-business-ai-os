@@ -1,9 +1,8 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { HeaderTabs } from "@/components/ui/header-tabs";
 import { activeFinanceTab } from "@/lib/finance/tabs";
 
 /**
@@ -11,7 +10,7 @@ import { activeFinanceTab } from "@/lib/finance/tabs";
  * (`visibleFinanceTabs`) y las pasa por contexto; cada pantalla las pone en la barra superior con
  * `<PageHeader tabs={<FinanceTabs />} />`. Son links, no botones: cambian de pantalla, y la activa se anuncia con
  * `aria-current="page"`. En el celular la barra baja a su fila y se desplaza ADENTRO (la página no hace scroll
- * horizontal). Mismo look que `components/comunicacion/section-tabs.tsx`.
+ * horizontal). Usa `HeaderTabs`, las pestañas de la barra de todas las pantallas.
  */
 export interface FinanceTabItem {
   id: string;
@@ -28,28 +27,8 @@ export function FinanceTabsProvider({ tabs, children }: { tabs: readonly Finance
 export function FinanceTabs() {
   const tabs = useContext(TabsContext);
   const pathname = usePathname() ?? "";
-  const active = activeFinanceTab(pathname);
-  if (tabs.length === 0) return null;
-  return (
-    <nav aria-label="Secciones de Finanzas" className="flex shrink-0 items-center rounded-lg border border-border p-0.5">
-      {tabs.map((tab) => {
-        const isActive = tab.id === active;
-        return (
-          <Link
-            key={tab.id}
-            href={tab.href}
-            aria-current={isActive ? "page" : undefined}
-            className={cn(
-              "inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-md px-2.5 text-sm transition-colors",
-              isActive ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-            )}
-          >
-            {tab.name}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  const active = activeFinanceTab(pathname) ?? "";
+  return <HeaderTabs label="Secciones de Finanzas" active={active} items={tabs.map((t) => ({ key: t.id, label: t.name, href: t.href }))} />;
 }
 
 /** La línea de arriba de quien tiene `expenses.view` sin `expenses.manage`. */

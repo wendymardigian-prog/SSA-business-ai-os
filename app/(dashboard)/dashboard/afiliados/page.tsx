@@ -210,7 +210,7 @@ export default async function AfiliadosPage({
         }
       />
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-6 md:px-8">{body}</div>
+        <div className="space-y-4 p-4 md:p-6">{body}</div>
       </div>
     </div>
   );

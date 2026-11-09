@@ -146,8 +146,7 @@ export function SettingsView({
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader route="/dashboard/settings" />
-      <SettingsTabs />
+      <PageHeader route="/dashboard/settings" tabs={<SettingsTabs />} />
 
       <div className="flex-1 overflow-auto">
         <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-8 sm:px-8 md:flex-row md:items-start md:gap-10">

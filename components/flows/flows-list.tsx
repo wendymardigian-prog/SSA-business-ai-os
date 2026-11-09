@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { GitBranch, Search, Sparkles, Tags, X } from "lucide-react";
+import { GitBranch, Sparkles, Tags, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { FilterMenu, MenuOption } from "@/components/ui/filter-menu";
 import { CreateFlowButton } from "@/components/create-flow-button";
 import { DeleteFlowButton, ExportFlowButton, ImportFlowButton } from "@/components/flow-actions";
@@ -76,24 +77,7 @@ export function FlowsList({
 
   const filters = (
     <>
-      <label className="relative flex h-8 shrink-0 items-center">
-        <span className="sr-only">Buscar automatizaciones</span>
-        <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        <input
-          type="search"
-          value={query.q}
-          onChange={(e) => setQuery({ q: e.target.value })}
-          onKeyDown={(e) => {
-            if (e.key === "Escape" && query.q !== "") {
-              e.preventDefault();
-              setQuery({ q: "" });
-            }
-          }}
-          placeholder="Buscar automatizaciones"
-          autoComplete="off"
-          className="h-8 w-[170px] rounded-lg border border-input bg-background pl-8 pr-2 text-[13px] placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none topbar:w-[210px] [&::-webkit-search-cancel-button]:hidden"
-        />
-      </label>
+      <ExpandableSearch value={query.q} onCommit={(q) => setQuery({ q })} label="Buscar automatizaciones" />
       <FilterMenu
         label="Categoría"
         value={query.categories.length === 0 ? "Todas" : query.categories.length === 1 ? query.categories[0] : `${query.categories.length} elegidas`}

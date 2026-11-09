@@ -99,7 +99,7 @@ export default async function VentaPage({ params, searchParams }: { params: Prom
         title="Servicio"
         services={svc.map((s) => ({ id: s.id, label: `${s.product_snapshot?.product_name ?? ""}${s.product_snapshot?.variant_name ? ` · ${s.product_snapshot.variant_name}` : ""}`, status: s.status, light: s.light, phaseName: s.phase_name }))}
         canCreate={ctx.can("services.create")}
-        options={ctx.can("services.create") ? await loadNewServiceOptions(supabase, workspace.id, team, ctx.can("services.create_off_rule")) : { products: [], members: [], canOffRule: false }}
+        options={ctx.can("services.create") ? await loadNewServiceOptions(supabase, workspace.id, team, ctx.can("services.create_off_rule"), (workspace as { timezone?: string | null }).timezone) : { products: [], members: [], canOffRule: false }}
         preset={{ contactId: sale.contact_id, contactName: contact?.display_name ?? "", saleId: sale.id, variantId: sale.product_variant_id }}
         openOnMount={(await searchParams)?.crearServicio === "1"}
       />

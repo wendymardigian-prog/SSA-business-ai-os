@@ -79,6 +79,7 @@ export function VariantPage({
   return (
     <div className="flex h-full flex-col">
       <PageHeader
+        tabs={<SettingsTabs />}
         title={variant.name}
         tooltip="La configuración de esta variante: su camino, qué pasa al cobrarse, su portal y su precio."
         backHref={
@@ -87,7 +88,6 @@ export function VariantPage({
           </Link>
         }
       />
-      <SettingsTabs />
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-5xl space-y-5 px-4 py-6 md:px-8">
           <nav aria-label="Migas" className="text-sm text-muted-foreground">

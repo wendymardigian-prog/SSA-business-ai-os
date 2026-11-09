@@ -27,8 +27,7 @@ export function ProductCardsView({ products }: { products: ServiceProduct[] }) {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Productos" tooltip="Lo que vende el negocio. Cada variante decide si crea un servicio, su camino y su portal." />
-      <SettingsTabs />
+      <PageHeader title="Productos" tooltip="Lo que vende el negocio. Cada variante decide si crea un servicio, su camino y su portal." tabs={<SettingsTabs />} />
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

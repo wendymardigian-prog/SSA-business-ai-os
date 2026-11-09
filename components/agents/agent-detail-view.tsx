@@ -108,9 +108,22 @@ export function AgentDetailView({
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Link>
         }
+        tabs={
+          // Una pestaña marcada como no disponible en el tipo se ve apagada, al final.
+          <DetailTabs
+            label="Secciones del agente"
+            active={tab}
+            tabs={[
+              ...tabs.filter((t) => t.available).map((t) => ({ key: t.key, label: t.label, href: `/dashboard/agents/${agent.id}?tab=${t.key}` })),
+              ...tabs
+                .filter((t) => !t.available)
+                .map((t) => ({ key: t.key, label: t.label, href: `/dashboard/agents/${agent.id}?tab=${t.key}`, unavailable: "Llega en el Bloque 2b" })),
+            ]}
+          />
+        }
         filters={tab === "runs" ? <AiPeriodControl timezone={timeZone} /> : undefined}
       />
-      <div className="border-b border-border px-4 pt-4 md:px-8">
+      <div className="border-b border-border px-4 py-4 md:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="sr-only">{agent.name}</h2>
@@ -170,26 +183,6 @@ export function AgentDetailView({
             <HeaderKpiRow kpis={data.kpis} conversational={typeDef.conversational} />
           </Suspense>
         )}
-
-        {/* Una pestaña marcada como no disponible en el tipo se ve apagada, al final. */}
-        <div className="mt-5 flex items-end gap-1 overflow-x-auto">
-          <DetailTabs
-            label="Secciones del agente"
-            active={tab}
-            tabs={tabs.filter((t) => t.available).map((t) => ({ key: t.key, label: t.label, href: `/dashboard/agents/${agent.id}?tab=${t.key}` }))}
-          />
-          {tabs
-            .filter((t) => !t.available)
-            .map((t) => (
-              <span
-                key={t.key}
-                title="Llega en el Bloque 2b"
-                className="cursor-not-allowed whitespace-nowrap border-b-2 border-transparent px-3 pb-3 text-sm text-muted-foreground/50"
-              >
-                {t.label} <span className="text-[10px]">· próximamente</span>
-              </span>
-            ))}
-        </div>
       </div>
 
       <div className="flex-1 overflow-auto px-8 py-6">

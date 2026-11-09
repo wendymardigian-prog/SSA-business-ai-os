@@ -94,6 +94,7 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
+        tabs={<SettingsTabs />}
         route="/dashboard/settings/productos"
         backHref={
           <Link
@@ -105,7 +106,6 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
           </Link>
         }
       />
-      <SettingsTabs />
 
       <div className="min-h-0 flex-1 overflow-auto">
       <section aria-labelledby="productos-title" className="mx-auto w-full max-w-3xl px-4 py-6 md:px-8">

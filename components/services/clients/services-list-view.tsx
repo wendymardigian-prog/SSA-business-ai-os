@@ -4,7 +4,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutGrid, Loader2, Plus, Table2, Upload } from "lucide-react";
+import { KanbanSquare, ListFilter, Plus, Rows3, Table2, Upload } from "lucide-react";
 import {
   GROUP_BY,
   PAGE_SIZE,
@@ -19,6 +19,8 @@ import {
 } from "@/lib/services/screens/list";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
+import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
+import { ViewToggle } from "@/components/ui/view-toggle";
 import { ClientesTabs } from "./clientes-tabs";
 import { cn } from "@/lib/utils";
 import { NewServiceDialog, type NewServiceOptions } from "./new-service-dialog";
@@ -67,51 +69,62 @@ export function ServicesListView({
     <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/clientes"
-        tabs={<ClientesTabs active="servicios" />}
-        // Pestañas + buscador + «Agrupar por» + vista + dos botones no entran a 900 px: los filtros bajan a su fila.
         filtersBreakpoint="wide"
+        tabs={<ClientesTabs active="servicios" />}
         filters={
           <>
-            <ExpandableSearch value={filters.q} onCommit={(next) => go({ q: next })} label="Buscar un cliente" placeholder="Buscar un cliente" pending={pending} />
-            <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs text-muted-foreground">
-              Agrupar por
-              <select value={filters.groupBy} onChange={(e) => go({ groupBy: e.target.value as GroupBy })} className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground">
+            <ViewToggle
+              label="Tabla o tablero"
+              value={filters.view}
+              onChange={(view) => go({ view })}
+              options={[
+                { value: "table", label: "Tabla", icon: Table2 },
+                { value: "board", label: "Tablero", icon: KanbanSquare },
+              ]}
+            />
+            <ExpandableSearch value={filters.q} onCommit={(q) => go({ q })} label="Buscar un cliente" placeholder="Buscar un cliente…" pending={pending} />
+            <FilterMenu label="Mostrar" value={QUICK_FILTER_LABELS[filters.quick]} active={filters.quick !== "all"} icon={<ListFilter className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />} menuClassName="topbar:w-[240px]">
+              {QUICK_FILTERS.map((k) => (
+                <MenuOption key={k} checked={filters.quick === k} onSelect={() => go({ quick: k, departedOnly: false })} title={QUICK_FILTER_LABELS[k]} />
+              ))}
+            </FilterMenu>
+            {filters.view === "table" && (
+              <FilterMenu
+                label={`Agrupar por: ${GROUP_LABELS[filters.groupBy]}`}
+                compact
+                active={filters.groupBy !== "none"}
+                icon={<Rows3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+                menuClassName="topbar:w-[220px]"
+              >
+                <MenuGroupLabel>Agrupar por</MenuGroupLabel>
                 {GROUP_BY.map((g) => (
-                  <option key={g} value={g}>
-                    {GROUP_LABELS[g]}
-                  </option>
+                  <MenuOption key={g} checked={filters.groupBy === g} onSelect={() => go({ groupBy: g })} title={GROUP_LABELS[g]} />
                 ))}
-              </select>
-            </label>
-            <div className="flex shrink-0 rounded-lg border border-border p-0.5" role="group" aria-label="Tabla o tablero">
-              <button type="button" aria-pressed={filters.view === "table"} onClick={() => go({ view: "table" })} className={cn("rounded-md p-1.5", filters.view === "table" ? "bg-accent text-foreground" : "text-muted-foreground")} aria-label="Tabla">
-                <Table2 className="h-4 w-4" aria-hidden />
-              </button>
-              <button type="button" aria-pressed={filters.view === "board"} onClick={() => go({ view: "board" })} className={cn("rounded-md p-1.5", filters.view === "board" ? "bg-accent text-foreground" : "text-muted-foreground")} aria-label="Tablero">
-                <LayoutGrid className="h-4 w-4" aria-hidden />
-              </button>
-            </div>
+              </FilterMenu>
+            )}
           </>
         }
         right={
-          <>
-            {canImport && (
-              <Link href="/dashboard/clientes/importar" aria-label="Importar servicios" className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 text-sm hover:bg-accent">
-                <Upload className="h-4 w-4" aria-hidden />
-                <span className="hidden sm:inline">Importar servicios</span>
-              </Link>
-            )}
-            {canCreate && (
-              <button type="button" onClick={() => setCreating(true)} aria-label="Nuevo servicio" className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90">
-                <Plus className="h-4 w-4" aria-hidden />
-                <span className="hidden sm:inline">Servicio</span>
-              </button>
-            )}
-          </>
+          canImport || canCreate ? (
+            <div className="flex shrink-0 gap-2">
+              {canImport && (
+                <Link href="/dashboard/clientes/importar" className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent" aria-label="Importar servicios">
+                  <Upload className="h-4 w-4" aria-hidden />
+                  <span className="hidden sm:inline">Importar</span>
+                </Link>
+              )}
+              {canCreate && (
+                <button type="button" onClick={() => setCreating(true)} className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90" aria-label="Nuevo servicio">
+                  <Plus className="h-4 w-4" aria-hidden />
+                  <span className="hidden sm:inline">Servicio</span>
+                </button>
+              )}
+            </div>
+          ) : undefined
         }
       />
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 md:px-8">
+        <div className="space-y-4 p-4 md:p-6">
           {departed > 0 && (
             <div role="status" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-sm">
               <span>
@@ -122,21 +135,6 @@ export function ServicesListView({
               </button>
             </div>
           )}
-
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtros rápidos">
-            {QUICK_FILTERS.map((k) => (
-              <button
-                key={k}
-                type="button"
-                aria-pressed={filters.quick === k}
-                onClick={() => go({ quick: k, departedOnly: false })}
-                className={cn("rounded-full border px-3 py-1 text-xs", filters.quick === k ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border text-muted-foreground hover:text-foreground")}
-              >
-                {QUICK_FILTER_LABELS[k]}
-              </button>
-            ))}
-            {pending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden />}
-          </div>
 
           {rows.length === 0 ? (
             <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
