@@ -4,7 +4,10 @@ import { notFound } from "next/navigation";
 import { requireAnyPermission } from "@/lib/auth/guards";
 import { isModuleEnabled, moduleShows } from "@/lib/services/module";
 import { addableProducts, programCards, type ProgramProductRow, type ProgramVariantRow } from "@/lib/portal-admin/programs";
+import { CalendarDays } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { HeaderTabs } from "@/components/ui/header-tabs";
+import { LinkFilterMenu } from "@/components/ui/link-filter-menu";
 import { EmptyHint } from "@/components/contacts/ui";
 import { AddProgramDialog } from "@/components/services/portal/add-program-dialog";
 import { PortalSettingsForm } from "@/components/services/portal/portal-settings-form";
@@ -37,6 +40,7 @@ export default async function PortalPage({ searchParams }: { searchParams: Promi
 
   let body: React.ReactNode;
   let right: React.ReactNode = null;
+  let filters: React.ReactNode = null;
   if (tab.key === "revisar") {
     // Por revisar (F57): las entregas de todos los programas, leídas con el cliente de servicio después del permiso.
     const items = await loadReviewItems(await createServiceClient(), workspace.id, { contactId: sp.estudiante && /^[0-9a-f-]{36}$/i.test(sp.estudiante) ? sp.estudiante : null, productId: sp.programa && /^[0-9a-f-]{36}$/i.test(sp.programa) ? sp.programa : null });
@@ -94,20 +98,22 @@ export default async function PortalPage({ searchParams }: { searchParams: Promi
     const canMetrics = ctx.can("services.view") || ctx.can("program.manage");
     const metrics = canMetrics && cards.length ? await svcRpc<Record<string, CardMetrics>>(supabase, "program_card_metrics", { p_product_ids: cards.map((c) => c.id), p_days: days }) : null;
     const byProduct = metrics?.ok ? metrics.data ?? {} : {};
+    if (canMetrics && cards.length > 0) {
+      filters = (
+        <LinkFilterMenu
+          label="Período"
+          current={String(days)}
+          defaultKey="7"
+          icon={<CalendarDays className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+          options={([7, 30] as const).map((d) => ({ key: String(d), label: `Últimos ${d} días`, href: `/dashboard/portal?tab=programas&dias=${d}` }))}
+        />
+      );
+    }
     body =
       cards.length === 0 ? (
         <EmptyHint>Todavía no hay programas en el portal. Agregá uno: elegís el producto y qué variantes tienen acceso.</EmptyHint>
       ) : (
         <div className="space-y-3">
-          {canMetrics && (
-            <nav className="flex gap-1 text-xs" aria-label="Período de las métricas">
-              {([7, 30] as const).map((d) => (
-                <Link key={d} href={`/dashboard/portal?tab=programas&dias=${d}`} aria-current={d === days ? "page" : undefined} className={cn("rounded-full border px-3 py-1", d === days ? "border-primary-edge bg-primary/10" : "border-border hover:bg-accent")}>
-                  Últimos {d} días
-                </Link>
-              ))}
-            </nav>
-          )}
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {cards.map((c) => (
               <li key={c.id} className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
@@ -137,21 +143,14 @@ export default async function PortalPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader route="/dashboard/portal" right={right} />
+      <PageHeader
+        route="/dashboard/portal"
+        tabs={<HeaderTabs label="Secciones del Portal" active={tab.key} items={tabs.map((t) => ({ key: t.key, label: t.label, href: `/dashboard/portal?tab=${t.key}` }))} />}
+        filters={filters}
+        right={right}
+      />
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 md:px-8">
-          <nav className="flex gap-1 border-b border-border" aria-label="Secciones del Portal">
-            {tabs.map((t) => (
-              <Link
-                key={t.key}
-                href={`/dashboard/portal?tab=${t.key}`}
-                aria-current={t.key === tab.key ? "page" : undefined}
-                className={cn("-mb-px border-b-2 px-3 py-2 text-sm", t.key === tab.key ? "border-primary-edge text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
-              >
-                {t.label}
-              </Link>
-            ))}
-          </nav>
+        <div className="space-y-4 p-4 md:p-6">
           {body}
         </div>
       </div>

@@ -22,7 +22,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const names = new Map(team.map((m) => [m.userId, m.name]));
   const [page, options] = await Promise.all([
     loadServicesPage(supabase, workspace.id, filters, names),
-    ctx.can("services.create") ? loadNewServiceOptions(supabase, workspace.id, team, ctx.can("services.create_off_rule")) : Promise.resolve({ products: [], members: [], canOffRule: false }),
+    ctx.can("services.create") ? loadNewServiceOptions(supabase, workspace.id, team, ctx.can("services.create_off_rule"), (workspace as { timezone?: string | null }).timezone) : Promise.resolve({ products: [], members: [], canOffRule: false }),
   ]);
   return (
     <ServicesListView

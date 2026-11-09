@@ -5,15 +5,18 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { checkSaleRule, contactSalesWithoutService, createService, searchContactsForService } from "@/lib/actions/services";
-import { RULE_REASON_LABELS, newServiceFormIssues, type NewServiceForm } from "@/lib/services/screens/service";
+import { RULE_REASON_LABELS, defaultServiceStartsOn, newServiceFormIssues, serviceStartsOnHint, type NewServiceForm } from "@/lib/services/screens/service";
+import { todayIn } from "@/lib/services/screens/today";
 import { ActionError } from "@/components/contacts/ui";
 import { ContentDialog, DialogField, fieldInput } from "@/components/content/dialog";
 
 export interface NewServiceOptions {
   /** Productos con sus variantes que crean servicios. */
-  products: Array<{ id: string; name: string; variants: Array<{ id: string; name: string }> }>;
+  products: Array<{ id: string; name: string; variants: Array<{ id: string; name: string; eventDate?: string | null }> }>;
   members: Array<{ id: string; name: string }>;
   canOffRule: boolean;
+  /** Hoy (AAAA-MM-DD) en la zona del negocio: la fecha de inicio por defecto. */
+  today?: string;
 }
 
 /**
@@ -31,12 +34,16 @@ export function NewServiceDialog({
   preset?: { contactId?: string; contactName?: string; saleId?: string; variantId?: string };
 }) {
   const router = useRouter();
+  const today = options.today ?? todayIn(null);
+  const eventDateOf = (variantId: string) => options.products.flatMap((p) => p.variants).find((v) => v.id === variantId)?.eventDate ?? null;
+  // La fecha propuesta sigue a la variante (un Evento empieza en su fecha) hasta que la persona la cambia a mano.
+  const [startsTouched, setStartsTouched] = useState(false);
   const [form, setForm] = useState<NewServiceForm>({
     origin: preset?.saleId ? "sale" : "manual",
     saleId: preset?.saleId ?? "",
     contactId: preset?.contactId ?? "",
     variantId: preset?.variantId ?? "",
-    startsOn: "",
+    startsOn: defaultServiceStartsOn(today, eventDateOf(preset?.variantId ?? "")),
     ownerId: "",
     reason: "",
   });
@@ -47,7 +54,12 @@ export function NewServiceDialog({
   const [rule, setRule] = useState<{ met: boolean; reason: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const set = (patch: Partial<NewServiceForm>) => setForm((f) => ({ ...f, ...patch }));
+  const set = (patch: Partial<NewServiceForm>) =>
+    setForm((f) => {
+      const next = { ...f, ...patch };
+      if (patch.variantId !== undefined && patch.variantId !== f.variantId && !startsTouched) next.startsOn = defaultServiceStartsOn(today, eventDateOf(next.variantId));
+      return next;
+    });
 
   useEffect(() => {
     if (form.contactId) return;
@@ -201,8 +213,16 @@ export function NewServiceDialog({
           </select>
         </DialogField>
         <div className="grid grid-cols-2 gap-3">
-          <DialogField label="Fecha de inicio" hint="Vacía: la de la regla de la variante.">
-            <input type="date" value={form.startsOn} onChange={(e) => set({ startsOn: e.target.value })} className={fieldInput} />
+          <DialogField label="Fecha de inicio" hint={serviceStartsOnHint(eventDateOf(form.variantId))}>
+            <input
+              type="date"
+              value={form.startsOn}
+              onChange={(e) => {
+                setStartsTouched(true);
+                set({ startsOn: e.target.value });
+              }}
+              className={fieldInput}
+            />
           </DialogField>
           <DialogField label="Responsable" hint="Vacío: el que da la variante.">
             <select value={form.ownerId} onChange={(e) => set({ ownerId: e.target.value })} className={fieldInput}>

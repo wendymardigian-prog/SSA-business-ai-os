@@ -22,6 +22,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BULK_TAG_LIMIT, describeEffect, hasEffect, sortEffectFirst } from "@/lib/tags/effects";
 import type { LeadTemperature } from "@/lib/types/database";
 import { PageHeader } from "@/components/page-header";
+import { ViewToggle } from "@/components/ui/view-toggle";
 import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { LastStatusBadge } from "@/components/contacts/status-fields";
@@ -284,24 +285,14 @@ export function ContactsView({
         route="/dashboard/contacts"
         left={
           <span className="flex shrink-0 items-center gap-2">
-          <nav aria-label="Vista" className="flex shrink-0 rounded-lg bg-muted/60 p-0.5">
-            {([["tabla", "Tabla", Table2], ["kanban", "Kanban", KanbanSquare]] as const).map(([option, label, Icon]) => (
-              <button
-                key={option}
-                type="button"
-                aria-pressed={view === option}
-                onClick={() => view !== option && changeView(option)}
-                className={cn(
-                  "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm",
-                  view === option ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="h-4 w-4" aria-hidden />
-                <span className="hidden sm:inline">{label}</span>
-                <span className="sr-only sm:hidden">{label}</span>
-              </button>
-            ))}
-          </nav>
+          <ViewToggle
+            value={view}
+            onChange={changeView}
+            options={[
+              { value: "tabla", label: "Tabla", icon: Table2 },
+              { value: "kanban", label: "Kanban", icon: KanbanSquare },
+            ]}
+          />
           {/* El total solo con espacio de sobra: con el selector de vista al lado, a
               1024 px empujaba el titulo hasta desaparecer. */}
           <span className="hidden truncate text-xs text-muted-foreground xl:inline">

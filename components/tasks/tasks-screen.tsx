@@ -6,6 +6,7 @@ import { KanbanSquare, ListChecks, Plus, Table2 } from "lucide-react";
 import { ToastProvider } from "@/components/content/drawer/toast";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { PageHeader } from "@/components/page-header";
+import { ViewToggle } from "@/components/ui/view-toggle";
 import type { CellPatch } from "@/lib/tasks/cell-edit";
 import type { CompletionPlan } from "@/lib/tasks/core";
 import type { DraftDefaults } from "@/lib/tasks/draft";
@@ -185,21 +186,14 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
       <PageHeader
         route="/dashboard/tareas"
         left={
-          <nav aria-label="Vista" className="ml-1 flex rounded-lg bg-muted/60 p-0.5">
-            {([["table", "Tabla", Table2], ["board", "Tablero", KanbanSquare]] as const).map(([view, label, Icon]) => (
-              <button
-                key={view}
-                type="button"
-                aria-pressed={state.view === view}
-                onClick={() => change({ ...state, view })}
-                className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm", state.view === view ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}
-              >
-                <Icon className="h-4 w-4" aria-hidden />
-                <span className="hidden sm:inline">{label}</span>
-                <span className="sr-only sm:hidden">{label}</span>
-              </button>
-            ))}
-          </nav>
+          <ViewToggle
+            value={state.view}
+            onChange={(view) => change({ ...state, view })}
+            options={[
+              { value: "table", label: "Tabla", icon: Table2 },
+              { value: "board", label: "Tablero", icon: KanbanSquare },
+            ]}
+          />
         }
         right={
           canEdit ? (

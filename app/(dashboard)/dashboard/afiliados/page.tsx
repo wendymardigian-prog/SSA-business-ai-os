@@ -9,7 +9,7 @@ import { AffiliateSettingsForm } from "@/components/affiliates/affiliate-setting
 import { AddExternalAffiliate } from "@/components/affiliates/add-external-affiliate";
 import { EmptyHint } from "@/components/contacts/ui";
 import { PageHeader } from "@/components/page-header";
-import { cn } from "@/lib/utils";
+import { HeaderTabs } from "@/components/ui/header-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -66,8 +66,8 @@ export default async function AfiliadosPage({
         rows.length === 0 ? (
           <EmptyHint>
             Todavía no hay afiliados. Cada persona del equipo tiene su código en
-            «Mis links», y podés sumar afiliados externos en la pestaña
-            Afiliados.
+            «Mis links», y podés sumar afiliados externos con «+ Afiliado» en la
+            pestaña Afiliados.
           </EmptyHint>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-border bg-card">
@@ -170,7 +170,6 @@ export default async function AfiliadosPage({
     } else {
       body = (
         <div className="space-y-4">
-          {ctx.can("affiliates.external") && <AddExternalAffiliate />}
           {rows.length === 0 ? (
             <EmptyHint>Todavía no hay afiliados con código.</EmptyHint>
           ) : (
@@ -204,29 +203,13 @@ export default async function AfiliadosPage({
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader route="/dashboard/afiliados" />
+      <PageHeader
+        route="/dashboard/afiliados"
+        tabs={<HeaderTabs label="Secciones de Afiliados" active={tab.key} items={tabs.map((t) => ({ key: t.key, label: t.label, href: `/dashboard/afiliados?tab=${t.key}` }))} />}
+        right={tab.key === "afiliados" && ctx.can("affiliates.external") ? <AddExternalAffiliate /> : undefined}
+      />
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-6 md:px-8">
-          <nav
-            className="flex gap-1 border-b border-border"
-            aria-label="Secciones de Afiliados"
-          >
-            {tabs.map((t) => (
-              <Link
-                key={t.key}
-                href={`/dashboard/afiliados?tab=${t.key}`}
-                aria-current={t.key === tab.key ? "page" : undefined}
-                className={cn(
-                  "-mb-px border-b-2 px-3 py-2 text-sm",
-                  t.key === tab.key
-                    ? "border-primary-edge text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {t.label}
-              </Link>
-            ))}
-          </nav>
+        <div className="space-y-4 p-4 md:p-6">
           {body}
         </div>
       </div>

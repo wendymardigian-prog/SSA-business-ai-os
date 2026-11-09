@@ -7,6 +7,7 @@ import { isModuleEnabled, moduleShows } from "@/lib/services/module";
 import { opensLabel, readVariantPortal } from "@/lib/services/screens/variant-portal-form";
 import { SECTION_LABELS } from "@/lib/services/availability";
 import { PageHeader } from "@/components/page-header";
+import { HeaderTabs } from "@/components/ui/header-tabs";
 import { ProgramSettingsPanel } from "@/components/services/portal/program-settings-panel";
 import { ProgramTermsPanel } from "@/components/services/portal/program-terms-panel";
 import { ProgramContentEditor, type ContentRow } from "@/components/services/portal/program-content-editor";
@@ -174,28 +175,23 @@ export default async function PortalProgramPage({ params, searchParams }: { para
             <ArrowLeft className="h-4 w-4" />
           </Link>
         }
-      />
-      <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-6 md:px-8">
-          <nav className="flex gap-1 border-b border-border" aria-label="Secciones del programa">
-            {[
+        tabs={
+          <HeaderTabs
+            label="Secciones del programa"
+            active={tab}
+            items={[
               { key: "contenido", label: "Contenido" },
               { key: "calendario", label: "Calendario" },
               { key: "comunidad", label: "Comunidad" },
               { key: "asistente", label: "Asistente IA" },
               { key: "ajustes", label: "Ajustes del programa" },
               { key: "afiliados", label: "Afiliados" },
-            ].map((t) => (
-              <Link
-                key={t.key}
-                href={`/dashboard/portal/${p.id}?tab=${t.key}`}
-                aria-current={t.key === tab ? "page" : undefined}
-                className={cn("-mb-px border-b-2 px-3 py-2 text-sm", t.key === tab ? "border-primary-edge text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
-              >
-                {t.label}
-              </Link>
-            ))}
-          </nav>
+            ].map((t) => ({ ...t, href: `/dashboard/portal/${p.id}?tab=${t.key}` }))}
+          />
+        }
+      />
+      <div className="min-h-0 flex-1 overflow-auto">
+        <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-6 md:px-8">
           {tab === "contenido" ? (
             await contentTab()
           ) : tab === "calendario" ? (
