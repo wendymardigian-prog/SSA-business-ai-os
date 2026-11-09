@@ -2,7 +2,7 @@
 
 import { SlidersHorizontal, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
+import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 import { useAgendaUrl } from "./use-agenda-url";
 import {
   ORIGIN_LABELS,
@@ -19,6 +19,10 @@ import { statusLabel } from "@/lib/scheduling/booking-status";
  * `InboxFiltersMenu`: un botón con contador y un popover de grupos de chips
  * multi-selección. Cada chip prende o apaga un valor (`toggle`); no cierra el
  * menú, así se marcan varios de una pasada.
+ *
+ * Arriba de todo van los atajos («Todas», «Próximas»…, `?filtro=`) con cuántas
+ * reuniones hay en cada uno: antes eran una fila de chips adentro de la página.
+ * Elegir un atajo sí cierra el menú (es una sola opción).
  */
 export function AgendaFiltersMenu({
   filters,
@@ -26,6 +30,7 @@ export function AgendaFiltersMenu({
   events,
   hosts,
   utmOptions,
+  quick,
 }: {
   filters: AgendaFilters;
   categories: CategoryRow[];
@@ -33,9 +38,11 @@ export function AgendaFiltersMenu({
   /** Solo con alcance total: sin esto, filtrar por anfitrión no tiene sentido (es uno solo). */
   hosts: Array<{ userId: string; label: string }> | null;
   utmOptions: { sources: string[]; mediums: string[]; campaigns: string[] };
+  /** Los atajos de `?filtro=`: el elegido y cada opción con su cantidad. `all` es «Todas» (sin filtro). */
+  quick: { value: string; options: ReadonlyArray<{ key: string; label: string; count: number }> };
 }) {
-  const { pending, toggle, clearAll } = useAgendaUrl();
-  const count = countActiveAgendaFilters(filters);
+  const { pending, toggle, setParam, clearAll } = useAgendaUrl();
+  const count = countActiveAgendaFilters(filters) + (quick.value !== "all" ? 1 : 0);
 
   return (
     // Solo icono, con un globito con la cantidad de filtros puestos (Agenda v2): ocupa
@@ -55,6 +62,17 @@ export function AgendaFiltersMenu({
       menuClassName="topbar:w-[340px]"
     >
       <div className="space-y-1 pb-1.5">
+        <MenuGroupLabel>Mostrar</MenuGroupLabel>
+        {quick.options.map((o) => (
+          <MenuOption
+            key={o.key}
+            checked={quick.value === o.key}
+            onSelect={() => setParam("filtro", o.key === "all" ? null : o.key)}
+            title={o.label}
+            trailing={o.count}
+          />
+        ))}
+
         <FilterGroup label="Estado">
           <div className="space-y-2">
             {statusGroupsForFilter().map((g) => (

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2, Search, X } from "lucide-react";
 import { sanitizeSearch } from "@/lib/url-params";
 import { useInboxUrl } from "@/components/inbox/use-inbox-url";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
 
 /**
  * El buscador de la barra superior de las pantallas de comunicacion (Bloque I, I4).
@@ -90,4 +91,13 @@ export function SectionSearch({
       )}
     </form>
   );
+}
+
+/**
+ * El mismo buscador en la barra de Broadcasts y Secuencias, con el control de todas las pantallas: una lupa que se
+ * despliega (`ExpandableSearch`). Mismo commit a `?q=` con `sanitizeSearch`.
+ */
+export function SectionHeaderSearch({ value, placeholder, label }: { value: string; placeholder: string; label: string }) {
+  const { pending, setParam } = useInboxUrl();
+  return <ExpandableSearch value={value} onCommit={(next) => setParam("q", sanitizeSearch(next))} label={label} placeholder={placeholder} pending={pending} />;
 }

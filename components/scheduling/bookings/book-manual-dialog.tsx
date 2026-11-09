@@ -32,6 +32,7 @@ import type { BookingTriggerConfig } from "@/lib/scheduling/automation/triggers"
 import { formatDateTimeWithZone, gmtOffsetLabel, timezoneCityLabel } from "@/lib/scheduling/booker/format";
 import { dateInTz, minutesOfDayInTz, minutesToWallTime, wallClockToUtc } from "@/lib/scheduling/time/tz";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 export interface ManualEventOption {
   id: string;
@@ -427,7 +428,7 @@ export function BookManualDialog({
                   <label htmlFor={`${titleId}-phone`} className={labelClass}>
                     Teléfono (opcional)
                   </label>
-                  <input id={`${titleId}-phone`} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
+                  <PhoneInput id={`${titleId}-phone`} label="Teléfono" value={phone} onChange={setPhone} />
                 </div>
                 <button
                   type="button"

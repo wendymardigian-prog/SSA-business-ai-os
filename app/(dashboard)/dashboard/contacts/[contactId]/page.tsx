@@ -482,7 +482,7 @@ export default async function ContactDetailPage({
         title="Servicios"
         services={svcList.map((s) => ({ id: s.id, label: `${s.product_snapshot?.product_name ?? ""}${s.product_snapshot?.variant_name ? ` · ${s.product_snapshot.variant_name}` : ""}`, status: s.status, light: s.light, phaseName: s.phase_name }))}
         canCreate={permissionCtx.can("services.create")}
-        options={permissionCtx.can("services.create") ? await loadNewServiceOptions(supabase, workspace.id, svcTeam, permissionCtx.can("services.create_off_rule")) : { products: [], members: [], canOffRule: false }}
+        options={permissionCtx.can("services.create") ? await loadNewServiceOptions(supabase, workspace.id, svcTeam, permissionCtx.can("services.create_off_rule"), (workspace as { timezone?: string | null }).timezone) : { products: [], members: [], canOffRule: false }}
         preset={{ contactId: contact.id, contactName: contact.display_name || contact.email || "Contacto" }}
       />
     );

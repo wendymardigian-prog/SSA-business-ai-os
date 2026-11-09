@@ -15,7 +15,8 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Plus, Settings } from "lucide-react";
+import { CalendarDays, KanbanSquare, List, Plus, Settings } from "lucide-react";
+import { ViewToggle } from "@/components/ui/view-toggle";
 import { PageHeader } from "@/components/page-header";
 import { ReconnectBanner } from "../reconnect-banner";
 import type { MetaLink } from "@/lib/attribution/meta-link";
@@ -56,10 +57,10 @@ export type QuickPick = QuickFilter | "all";
 const QUICK_PICK_LABELS: Record<QuickPick, string> = { all: "Todas", ...QUICK_FILTER_LABELS };
 const QUICK_PICK_ORDER: QuickPick[] = ["all", "upcoming", "needs_outcome", "with_outcome", "cancelled"];
 
-const VIEWS: Array<{ key: "list" | "kanban" | "calendar"; label: string }> = [
-  { key: "list", label: "Lista" },
-  { key: "kanban", label: "Kanban" },
-  { key: "calendar", label: "Calendario" },
+const VIEWS: Array<{ value: "list" | "kanban" | "calendar"; label: string; icon: typeof List }> = [
+  { value: "list", label: "Lista", icon: List },
+  { value: "kanban", label: "Kanban", icon: KanbanSquare },
+  { value: "calendar", label: "Calendario", icon: CalendarDays },
 ];
 
 // @plantilla-desde(tareas)
@@ -266,6 +267,16 @@ export function BookingsScreen({
       <PageHeader
         route="/dashboard/agenda"
         filtersBreakpoint="wide"
+        left={
+          <ViewToggle
+            value={shownView}
+            options={VIEWS}
+            onChange={(next) => {
+              setClicked(next);
+              setParam("vista", next === "list" ? null : next);
+            }}
+          />
+        }
         right={
           <div className="flex shrink-0 items-center gap-2">
             <ShareLinksMenu events={shareableEvents} />
@@ -295,23 +306,6 @@ export function BookingsScreen({
         }
         filters={
           <>
-            <div className="flex shrink-0 rounded-lg border border-border p-0.5" role="group" aria-label="Vista">
-              {VIEWS.map((v) => (
-                <button
-                  key={v.key}
-                  type="button"
-                  aria-pressed={shownView === v.key}
-                  onClick={() => {
-                    if (v.key === shownView) return;
-                    setClicked(v.key);
-                    setParam("vista", v.key === "list" ? null : v.key);
-                  }}
-                  className={shownView === v.key ? "rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground" : "rounded-md px-3 py-1 text-xs text-muted-foreground hover:bg-muted"}
-                >
-                  {v.label}
-                </button>
-              ))}
-            </div>
 
             {view !== "calendar" && (
               <PeriodPopover
@@ -326,7 +320,14 @@ export function BookingsScreen({
               />
             )}
 
-            <AgendaFiltersMenu filters={filters} categories={categories} events={eventOptions} hosts={scopeAll ? hostOptions : null} utmOptions={utmOptions} />
+            <AgendaFiltersMenu
+              filters={filters}
+              categories={categories}
+              events={eventOptions}
+              hosts={scopeAll ? hostOptions : null}
+              utmOptions={utmOptions}
+              quick={{ value: quick, options: QUICK_PICK_ORDER.map((key) => ({ key, label: QUICK_PICK_LABELS[key], count: counts[key] })) }}
+            />
 
             <ExpandableSearch
               value={search}
@@ -363,24 +364,6 @@ export function BookingsScreen({
             {error}
           </p>
         )}
-
-        <div className="flex flex-wrap gap-1.5">
-          {QUICK_PICK_ORDER.map((key) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={quick === key}
-              onClick={() => setParam("filtro", key === "all" ? null : key)}
-              className={
-                quick === key
-                  ? "rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
-                  : "rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:bg-muted"
-              }
-            >
-              {QUICK_PICK_LABELS[key]} · <span className="tabular-nums">{counts[key]}</span>
-            </button>
-          ))}
-        </div>
 
         {isEmptyWorkspace ? (
           <AgendaEmptyWorkspace events={shareableEvents} hasCalendar={hasCalendar} canManage={canManage} onBookManually={() => setManualOpen(true)} />

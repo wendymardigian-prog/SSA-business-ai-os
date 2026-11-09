@@ -80,6 +80,9 @@ export function RolesView({
   return (
     <div className="flex h-full flex-col">
       <PageHeader
+        filtersBreakpoint="wide"
+        tabs={<SettingsTabs />}
+        filters={<TeamRolesSwitch canSeeMembers={canSeeMembers} />}
         route="/dashboard/settings/roles"
         right={
           canManage ? (
@@ -90,8 +93,6 @@ export function RolesView({
           ) : undefined
         }
       />
-      <SettingsTabs />
-      <TeamRolesSwitch canSeeMembers={canSeeMembers} />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <p className="mb-4 text-sm text-muted-foreground">

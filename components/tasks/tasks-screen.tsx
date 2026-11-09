@@ -6,6 +6,7 @@ import { KanbanSquare, ListChecks, Plus, Table2 } from "lucide-react";
 import { ToastProvider } from "@/components/content/drawer/toast";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { PageHeader } from "@/components/page-header";
+import { ViewToggle } from "@/components/ui/view-toggle";
 import type { CellPatch } from "@/lib/tasks/cell-edit";
 import type { CompletionPlan } from "@/lib/tasks/core";
 import type { DraftDefaults } from "@/lib/tasks/draft";
@@ -19,7 +20,7 @@ import { listProjects } from "@/lib/tasks/project";
 import { buildRows, groupRows, nextSort, remainingToLoad, sortRows, visibleLimit, type MemberLite } from "@/lib/tasks/table-model";
 import type { TaskRow, TaskStatus } from "@/lib/tasks/types";
 import { clearFilters, countActiveFilters, parseViewState, serializeViewState, toggleMine, type SortColumn, type TasksViewState } from "@/lib/tasks/view-state";
-import { FiltersBar } from "./filters-bar";
+import { MineToggle, TasksFiltersButton, TasksSearch, TasksSummaryLine } from "./filters-bar";
 import { ShiftDialog } from "./shift-dialog";
 import type { CellEnv } from "./task-cells";
 import { TaskDrawer } from "./task-drawer";
@@ -183,23 +184,26 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
+        filtersBreakpoint="wide"
         route="/dashboard/tareas"
         left={
-          <nav aria-label="Vista" className="ml-1 flex rounded-lg bg-muted/60 p-0.5">
-            {([["table", "Tabla", Table2], ["board", "Tablero", KanbanSquare]] as const).map(([view, label, Icon]) => (
-              <button
-                key={view}
-                type="button"
-                aria-pressed={state.view === view}
-                onClick={() => change({ ...state, view })}
-                className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm", state.view === view ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}
-              >
-                <Icon className="h-4 w-4" aria-hidden />
-                <span className="hidden sm:inline">{label}</span>
-                <span className="sr-only sm:hidden">{label}</span>
-              </button>
-            ))}
-          </nav>
+          <ViewToggle
+            value={state.view}
+            onChange={(view) => change({ ...state, view })}
+            options={[
+              { value: "table", label: "Tabla", icon: Table2 },
+              { value: "board", label: "Tablero", icon: KanbanSquare },
+            ]}
+          />
+        }
+        filters={
+          hasAny && !loadError ? (
+            <>
+              <TasksSearch state={state} onChange={change} />
+              <TasksFiltersButton state={state} onChange={change} members={members} projects={projects} showGroup={state.view === "table"} />
+              <MineToggle pressed={state.mine} onToggle={() => change(toggleMine(state))} />
+            </>
+          ) : undefined
         }
         right={
           canEdit ? (
@@ -226,7 +230,7 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
           <EmptyState canEdit={canEdit} onCreate={() => startCreate()} />
         ) : (
           <div className="space-y-3">
-            <FiltersBar state={state} onChange={change} members={members} projects={projects} mine={mine} onToggleMine={() => change(toggleMine(state))} showGroup={state.view === "table"} total={tasks.length} shown={sorted.length} />
+            <TasksSummaryLine state={state} mine={mine} total={tasks.length} shown={sorted.length} />
             {sorted.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-8 text-center">
                 <p className="text-sm font-medium">{state.mine && !filtersOnBeyondMine ? "No tenés tareas abiertas a tu cargo." : "No hay tareas con estos filtros."}</p>

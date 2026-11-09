@@ -3,9 +3,11 @@
 import Link from "next/link";
 import type { CategoryGroup } from "@/lib/calls/catalog";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
-import { ChevronLeft, ChevronRight, Filter, Link2, Loader2, Phone, Plus, RefreshCw, Search, Settings, Sparkles, Star, X } from "lucide-react";
+import { useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { ChevronLeft, ChevronRight, Link2, Loader2, Phone, Plus, RefreshCw, Settings, SlidersHorizontal, Sparkles, Star, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
+import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { ImportCallModal } from "@/components/calls/import-call-modal";
 import { AlertsChip, OutcomeChip, QualificationChip, ScoreCell, StatusChip, TypeChip } from "@/components/calls/call-chips";
@@ -15,6 +17,7 @@ import { Popover } from "@/components/ui/popover";
 import { formatCallDate, formatDuration, humanize } from "@/lib/calls/format";
 import {
   ANALYSIS_STATUSES,
+  EMPTY_FILTERS,
   UNCLASSIFIED_AREA, callFiltersToParams,
   countActiveCallFilters,
   isNonSaleRow,
@@ -121,8 +124,6 @@ export function CallsList(props: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const timeZone = useViewerTimezone();
-  const [panelOpen, setPanelOpen] = useState(countActiveCallFilters(filters) > 0);
-  const [search, setSearch] = useState(filters.q);
   const [importOpen, setImportOpen] = useState(false);
   const [syncMessage, setSyncMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [syncing, startSync] = useTransition();
@@ -131,6 +132,8 @@ export function CallsList(props: Props) {
   const [viewName, setViewName] = useState("");
 
   const active = countActiveCallFilters(filters);
+  // La busqueda tiene su propio campo en la barra: el globito de «Filtros» cuenta lo que esta adentro del menu.
+  const menuActive = active - (filters.q ? 1 : 0);
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const storageKey = savedViewsKey(props.workspaceId, props.currentUserId);
 
@@ -201,10 +204,134 @@ export function CallsList(props: Props) {
 
   const noCallsYet = !props.hasAnyCall && active === 0;
 
+  // Buscar y Filtros van en la barra de arriba (nunca una barra adentro de la pagina). Sin ninguna
+  // grabacion todavia no hay nada que filtrar.
+  const barFilters = noCallsYet ? undefined : (
+    <>
+      <ExpandableSearch
+        value={filters.q}
+        onCommit={(q) => go({ q })}
+        label="Buscar llamadas por título o contacto"
+        placeholder="Título o contacto…"
+      />
+      <FilterMenu
+        label="Filtros"
+        compact
+        badge={menuActive}
+        active={menuActive > 0}
+        icon={<SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+        menuClassName="topbar:w-[440px]"
+      >
+        <div className="space-y-3 px-2.5 pb-2 pt-1">
+          <p className="text-xs text-muted-foreground">{props.scopeLabel}</p>
+
+          {views.length > 0 && (
+            <div>
+              <MenuGroupLabel>Vistas guardadas</MenuGroupLabel>
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Vistas guardadas">
+                {views.map((v) => (
+                  <span key={v.id} className="inline-flex items-center rounded-full border border-border text-xs">
+                    <button type="button" className="rounded-l-full px-2.5 py-1 hover:bg-accent" onClick={() => router.push(v.params ? `${pathname}?${v.params}` : pathname)}>{v.name}</button>
+                    <button type="button" aria-label={`Borrar la vista ${v.name}`} className="rounded-r-full px-1.5 py-1 text-muted-foreground hover:text-foreground" onClick={() => persistViews(views.filter((x) => x.id !== v.id))}>
+                      <X className="h-3 w-3" aria-hidden />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Quien grabó">
+              <select className={selectClass} value={filters.closer} onChange={(e) => go({ closer: e.target.value })}>
+                <option value="">Todos</option>
+                {closers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Área">
+              <select className={selectClass} value={filters.area} onChange={(e) => go({ area: e.target.value, tipo: "" })}>
+                <option value="">Todas</option>
+                <option value={UNCLASSIFIED_AREA}>Sin clasificar</option>
+                {props.categoryGroups.map((g) => <option key={g.areaId} value={g.areaId}>{g.areaName}</option>)}
+              </select>
+            </Field>
+            <Field label="Tipo">
+              <select className={selectClass} value={filters.tipo} onChange={(e) => go({ tipo: e.target.value })}>
+                <option value="">Todos</option>
+                {props.categoryGroups.filter((g) => !filters.area || g.areaId === filters.area).map((g) => (
+                  <optgroup key={g.areaId} label={g.areaName}>
+                    {g.types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </Field>
+            <Field label="Resultado">
+              <select className={selectClass} value={filters.resultado} onChange={(e) => go({ resultado: e.target.value })}>
+                <option value="">Todos</option>
+                {outcomes.map((o) => <option key={o} value={o}>{humanize(o)}</option>)}
+              </select>
+            </Field>
+            <Field label="Estado del análisis">
+              <select className={selectClass} value={filters.estado} onChange={(e) => go({ estado: e.target.value as CallFilters["estado"] })}>
+                <option value="">Todos</option>
+                {ANALYSIS_STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+              </select>
+            </Field>
+            <Field label="Vinculación">
+              <select className={selectClass} value={filters.vinculo} onChange={(e) => go({ vinculo: e.target.value as CallFilters["vinculo"] })}>
+                <option value="">Todas</option>
+                <option value="vinculada">Con contacto</option>
+                <option value="sin_vincular">Sin vincular</option>
+              </select>
+            </Field>
+            <Field label="Puntaje del closer">
+              <RangeInputs min={filters.closerMin} max={filters.closerMax} onMin={(v) => go({ closerMin: v })} onMax={(v) => go({ closerMax: v })} label="del closer" />
+            </Field>
+            <Field label="Puntaje del lead">
+              <RangeInputs min={filters.leadMin} max={filters.leadMax} onMin={(v) => go({ leadMin: v })} onMax={(v) => go({ leadMax: v })} label="del lead" />
+            </Field>
+            <Field label="Fechas">
+              <div className="flex gap-1">
+                <input type="date" aria-label="Desde" className={selectClass} value={filters.desde} onChange={(e) => go({ desde: e.target.value })} />
+                <input type="date" aria-label="Hasta" className={selectClass} value={filters.hasta} onChange={(e) => go({ hasta: e.target.value })} />
+              </div>
+            </Field>
+          </div>
+
+          {active > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
+              {naming ? (
+                <form onSubmit={(e) => { e.preventDefault(); saveView(); }} className="flex items-center gap-1">
+                  <input autoFocus value={viewName} onChange={(e) => setViewName(e.target.value)} placeholder="Nombre de la vista" aria-label="Nombre de la vista" maxLength={40} className="h-8 w-40 rounded-lg border border-input bg-background px-2 text-sm" />
+                  <button type="submit" className="h-8 rounded-lg bg-primary px-3 text-sm text-primary-foreground">Guardar</button>
+                </form>
+              ) : (
+                <button type="button" onClick={() => setNaming(true)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs hover:bg-accent">
+                  <Star className="h-3.5 w-3.5" aria-hidden /> Guardar vista
+                </button>
+              )}
+              {menuActive > 0 && (
+                <button
+                  type="button"
+                  onClick={() => go({ ...EMPTY_FILTERS, q: filters.q })}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <X className="h-3 w-3" aria-hidden />
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </FilterMenu>
+    </>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         route="/dashboard/llamadas"
+        filters={barFilters}
         right={
           <div className="flex shrink-0 items-center gap-2">
             {props.hasLiveConnection && (
@@ -273,139 +400,19 @@ export function CallsList(props: Props) {
           <EmptyState {...props} onImport={() => setImportOpen(true)} />
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-2">
-              <form
-                className="relative min-w-[200px] flex-1 sm:max-w-sm"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  go({ q: search.trim() });
-                }}
-                role="search"
-              >
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar por título o contacto"
-                  aria-label="Buscar llamadas por título o contacto"
-                  className="h-9 w-full rounded-lg border border-input bg-background pl-8 pr-2 text-sm"
-                />
-              </form>
-              <button
-                type="button"
-                onClick={() => setPanelOpen((v) => !v)}
-                aria-expanded={panelOpen}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent"
-              >
-                <Filter className="h-4 w-4" aria-hidden /> Filtros{active > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{active}</span>}
-              </button>
-              {active > 0 && (
-                <>
-                  <button type="button" onClick={() => router.push(pathname)} className="inline-flex h-9 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground">
-                    <X className="h-4 w-4" aria-hidden /> Limpiar
-                  </button>
-                  {naming ? (
-                    <form onSubmit={(e) => { e.preventDefault(); saveView(); }} className="flex items-center gap-1">
-                      <input autoFocus value={viewName} onChange={(e) => setViewName(e.target.value)} placeholder="Nombre de la vista" aria-label="Nombre de la vista" maxLength={40} className="h-9 w-40 rounded-lg border border-input bg-background px-2 text-sm" />
-                      <button type="submit" className="h-9 rounded-lg bg-primary px-3 text-sm text-primary-foreground">Guardar</button>
-                    </form>
-                  ) : (
-                    <button type="button" onClick={() => setNaming(true)} className="inline-flex h-9 items-center gap-1 rounded-lg border border-border px-2.5 text-sm hover:bg-accent">
-                      <Star className="h-4 w-4" aria-hidden /> Guardar vista
-                    </button>
-                  )}
-                </>
-              )}
-              <span className="ml-auto rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                {props.scopeLabel}
-              </span>
-            </div>
-
-            {views.length > 0 && (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Vistas guardadas">
-                {views.map((v) => (
-                  <span key={v.id} className="inline-flex items-center rounded-full border border-border text-xs">
-                    <button type="button" className="rounded-l-full px-2.5 py-1 hover:bg-accent" onClick={() => router.push(v.params ? `${pathname}?${v.params}` : pathname)}>{v.name}</button>
-                    <button type="button" aria-label={`Borrar la vista ${v.name}`} className="rounded-r-full px-1.5 py-1 text-muted-foreground hover:text-foreground" onClick={() => persistViews(views.filter((x) => x.id !== v.id))}>
-                      <X className="h-3 w-3" aria-hidden />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {panelOpen && (
-              <div className="mt-3 grid gap-3 rounded-xl border border-border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Quien grabó">
-                  <select className={selectClass} value={filters.closer} onChange={(e) => go({ closer: e.target.value })}>
-                    <option value="">Todos</option>
-                    {closers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </Field>
-                <Field label="Área">
-                  <select className={selectClass} value={filters.area} onChange={(e) => go({ area: e.target.value, tipo: "" })}>
-                    <option value="">Todas</option>
-                    <option value={UNCLASSIFIED_AREA}>Sin clasificar</option>
-                    {props.categoryGroups.map((g) => <option key={g.areaId} value={g.areaId}>{g.areaName}</option>)}
-                  </select>
-                </Field>
-                <Field label="Tipo">
-                  <select className={selectClass} value={filters.tipo} onChange={(e) => go({ tipo: e.target.value })}>
-                    <option value="">Todos</option>
-                    {props.categoryGroups.filter((g) => !filters.area || g.areaId === filters.area).map((g) => (
-                      <optgroup key={g.areaId} label={g.areaName}>
-                        {g.types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                      </optgroup>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Resultado">
-                  <select className={selectClass} value={filters.resultado} onChange={(e) => go({ resultado: e.target.value })}>
-                    <option value="">Todos</option>
-                    {outcomes.map((o) => <option key={o} value={o}>{humanize(o)}</option>)}
-                  </select>
-                </Field>
-                <Field label="Estado del análisis">
-                  <select className={selectClass} value={filters.estado} onChange={(e) => go({ estado: e.target.value as CallFilters["estado"] })}>
-                    <option value="">Todos</option>
-                    {ANALYSIS_STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
-                  </select>
-                </Field>
-                <Field label="Vinculación">
-                  <select className={selectClass} value={filters.vinculo} onChange={(e) => go({ vinculo: e.target.value as CallFilters["vinculo"] })}>
-                    <option value="">Todas</option>
-                    <option value="vinculada">Con contacto</option>
-                    <option value="sin_vincular">Sin vincular</option>
-                  </select>
-                </Field>
-                <Field label="Puntaje del closer">
-                  <RangeInputs min={filters.closerMin} max={filters.closerMax} onChange={(min, max) => go({ closerMin: min, closerMax: max })} label="del closer" />
-                </Field>
-                <Field label="Puntaje del lead">
-                  <RangeInputs min={filters.leadMin} max={filters.leadMax} onChange={(min, max) => go({ leadMin: min, leadMax: max })} label="del lead" />
-                </Field>
-                <Field label="Fechas">
-                  <div className="flex gap-1">
-                    <input type="date" aria-label="Desde" className={selectClass} value={filters.desde} onChange={(e) => go({ desde: e.target.value })} />
-                    <input type="date" aria-label="Hasta" className={selectClass} value={filters.hasta} onChange={(e) => go({ hasta: e.target.value })} />
-                  </div>
-                </Field>
-              </div>
-            )}
-
             {props.loadError ? (
-              <div role="alert" className="mt-6 rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-center text-sm">
+              <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-center text-sm">
                 <p className="text-red-700 dark:text-red-300">No se pudieron cargar las llamadas.</p>
                 <button type="button" onClick={() => router.refresh()} className="mt-3 h-8 rounded-lg border border-border px-3 hover:bg-accent">Reintentar</button>
               </div>
             ) : rows.length === 0 ? (
-              <div className="mt-6 rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">
+              <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">
                 <p>No hay llamadas con estos filtros.</p>
                 <button type="button" onClick={() => router.push(pathname)} className="mt-3 h-8 rounded-lg border border-border px-3 text-foreground hover:bg-accent">Limpiar filtros</button>
               </div>
             ) : (
               <>
-                <div className="mt-4 hidden overflow-x-auto rounded-xl border border-border md:block">
+                <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
                   <table className="w-full min-w-[960px] text-sm">
                     <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
                       <tr>
@@ -475,7 +482,7 @@ export function CallsList(props: Props) {
                   </table>
                 </div>
 
-                <ul className="mt-4 space-y-2 md:hidden">
+                <ul className="space-y-2 md:hidden">
                   {rows.map((r) => (
                     <li key={r.id}>
                       <Link href={`/dashboard/llamadas/${r.id}`} className="block rounded-xl border border-border bg-card p-3 hover:bg-muted/30">
@@ -529,13 +536,61 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function RangeInputs({ min, max, onChange, label }: { min: number | null; max: number | null; onChange: (min: number | null, max: number | null) => void; label: string }) {
-  const parse = (v: string) => (v === "" ? null : Math.min(100, Math.max(0, Number(v))));
+function RangeInputs({ min, max, onMin, onMax, label }: { min: number | null; max: number | null; onMin: (v: number | null) => void; onMax: (v: number | null) => void; label: string }) {
   return (
     <div className="flex items-center gap-1">
-      <input type="number" min={0} max={100} placeholder="Desde" aria-label={`Puntaje ${label}, desde`} className={selectClass} defaultValue={min ?? ""} onBlur={(e) => onChange(parse(e.target.value), max)} />
-      <input type="number" min={0} max={100} placeholder="Hasta" aria-label={`Puntaje ${label}, hasta`} className={selectClass} defaultValue={max ?? ""} onBlur={(e) => onChange(min, parse(e.target.value))} />
+      <ScoreInput value={min} onCommit={onMin} placeholder="Desde" label={`Puntaje ${label}, desde`} />
+      <ScoreInput value={max} onCommit={onMax} placeholder="Hasta" label={`Puntaje ${label}, hasta`} />
     </div>
+  );
+}
+
+/**
+ * Un puntaje del 0 al 100 que se aplica al apretar Enter, al salir del campo o
+ * un rato despues de dejar de escribir. Lo ultimo importa porque esta adentro de
+ * un menu: un clic afuera lo cierra y el campo desaparece sin llegar a perder el
+ * foco. El temporizador no se cancela al desmontar, asi lo escrito no se pierde.
+ */
+function ScoreInput({ value, onCommit, placeholder, label }: { value: number | null; onCommit: (v: number | null) => void; placeholder: string; label: string }) {
+  const applied = value === null ? "" : String(value);
+  const [draft, setDraft] = useState(applied);
+  const [seen, setSeen] = useState(applied);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Si lo aplicado cambia desde afuera (limpiar filtros, una vista guardada), el campo lo sigue.
+  if (applied !== seen) {
+    setSeen(applied);
+    setDraft(applied);
+  }
+  const parse = (v: string) => (v.trim() === "" ? null : Math.min(100, Math.max(0, Number(v))));
+  function commit(next: string) {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    const parsed = parse(next);
+    if (parsed !== value && (parsed === null || Number.isFinite(parsed))) onCommit(parsed);
+  }
+  return (
+    <input
+      type="number"
+      min={0}
+      max={100}
+      placeholder={placeholder}
+      aria-label={label}
+      className={selectClass}
+      value={draft}
+      onChange={(e) => {
+        const next = e.target.value;
+        setDraft(next);
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => commit(next), 800);
+      }}
+      onBlur={() => commit(draft)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit(draft);
+        }
+      }}
+    />
   );
 }
 

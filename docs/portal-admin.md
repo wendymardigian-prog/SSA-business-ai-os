@@ -29,7 +29,24 @@ estudiante) es la Parte 2 (Corrida B): acá están las reglas, las tablas y las 
 `portal_accounts` (una por contacto y negocio), invitación con huella y 7 días, una por minuto y cinco por día, por el
 Resend del negocio (email transaccional). «Ver como estudiante» crea un pase de 60 segundos (`portal.view_as`).
 
+**Ajustes del portal** (el engranaje de la barra de Portal, `/dashboard/portal/ajustes`, `portal.settings`):
+- **Remitente de las invitaciones**: el del negocio, o una dirección propia con lo de antes del @ y un dominio
+  **verificado** del Resend del negocio (nunca escrito a mano: `lib/portal-admin/sender.ts`, y el servidor lo vuelve a
+  comprobar al guardar). La invitación sale desde ahí (`fromOverride` de `sendTransactionalEmail`).
+- **Email de invitación**: asunto y mensaje con formato y el botón «{ } Variable» (`contact.first_name`,
+  `contact.name`, `workspace.name`, las claves del catálogo de Automatizaciones), con vista previa. `{nombre}`, la
+  forma vieja, se sigue entendiendo. Con formato, los valores van escapados y el HTML pasa por la lista blanca de
+  `lib/email/html.ts` (`portalInviteEmail`).
+- **Pantalla de inicio**, **También con contraseña** y **WhatsApp de soporte** se guardan, pero el portal todavía no
+  los lee: la pantalla lo dice.
+
 ## Programa, evaluaciones, calendario, comunidad y tutor
+
+Las pestañas van en la barra superior (`TopbarTabs`, igual en Portal, cada programa, Clientes y Afiliados); los ajustes
+de cada sección son el engranaje de la barra (`SettingsLinkButton`) y abren su propia pantalla. Los links viejos
+`?tab=ajustes` / `?tab=reglas` llevan ahí. «Por revisar» y «Comunidad» llevan el contador de lo que espera una persona
+(`lib/portal-admin/review-count.ts`: actividades sin revisar, la misma regla que el filtro «Pendientes», y comentarios
+sin contestar).
 
 | Pestaña de Portal › programa | Qué hace | Claves |
 |---|---|---|
@@ -37,8 +54,8 @@ Resend del negocio (email transaccional). «Ver como estudiante» crea un pase d
 | Calendario | Sesiones en vivo (semanales o sueltas, en su zona), mover y cancelar una fecha, asistencia y su base, grabaciones | `live_sessions.manage`, `attendance.manage` |
 | Comunidad | El muro, los comentarios de las clases, Sin contestar · 30 días, Reportados, los espacios | `community.view`, `.reply`, `.moderate`, `.spaces` |
 | Asistente IA | El tutor del programa, sus límites y créditos, el uso del mes y su base de conocimiento | `tutor.manage`, `tutor.knowledge` |
-| Ajustes del programa | Secciones y términos al entrar | `portal.sections` |
 | Afiliados | Qué links ven los estudiantes | `portal.sections` |
+| ⚙ Ajustes del programa (`/dashboard/portal/<id>/ajustes`) | Secciones, términos al entrar y el resumen de las variantes | `portal.sections` |
 
 - **Evaluaciones y actividades** son formularios de tipo `quiz` / `activity` atados al programa (no aparecen en
   Formularios ni tienen página pública). La nota la calcula la base; las respuestas correctas nunca salen. Portal ›

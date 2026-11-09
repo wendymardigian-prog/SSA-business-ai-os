@@ -9,7 +9,7 @@ import { listOpenCollisions } from "@/lib/sequences/collisions";
 import { AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
-import { SectionSearch } from "@/components/comunicacion/section-search";
+import { SectionHeaderSearch } from "@/components/comunicacion/section-search";
 import { NoSearchResults } from "@/components/comunicacion/no-search-results";
 import { matchesSearch } from "@/lib/comunicacion/search";
 import { firstParam, sanitizeSearch, type SearchParams } from "@/lib/url-params";
@@ -62,7 +62,7 @@ export default async function SequencesPage({ searchParams }: { searchParams: Pr
       <PageHeader
         route="/dashboard/sequences"
         left={<SectionTabs />}
-        filters={<SectionSearch value={query} placeholder="Buscar una secuencia" label="Buscar secuencias" />}
+        filters={<SectionHeaderSearch value={query} placeholder="Buscar una secuencia" label="Buscar secuencias" />}
         right={canEdit ? <CreateSequenceButton /> : null}
       />
 

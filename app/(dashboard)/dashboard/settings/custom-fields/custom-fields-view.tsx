@@ -54,6 +54,7 @@ export function CustomFieldsView({ fields }: { fields: FieldRow[] }) {
   return (
     <div className="flex h-full flex-col overflow-auto">
       <PageHeader
+        tabs={<SettingsTabs />}
         route="/dashboard/settings/custom-fields"
         backHref={
           <Link
@@ -74,7 +75,6 @@ export function CustomFieldsView({ fields }: { fields: FieldRow[] }) {
           </button>
         }
       />
-      <SettingsTabs />
       {error && <div className="px-4 pt-4 md:px-8"><ActionError message={error} /></div>}
 
       <div className="flex-1">

@@ -140,6 +140,8 @@ export function RecursosView({
     <div className="flex h-full flex-col overflow-auto">
       <PageHeader
         route="/dashboard/settings/recursos"
+        // Las pestañas llevan a pantallas de Admin: a quien no lo es, lo rebotarian.
+        tabs={showSettingsTabs ? <SettingsTabs /> : undefined}
         backHref={
           showSettingsTabs ? (
             <Link
@@ -164,8 +166,6 @@ export function RecursosView({
           )
         }
       />
-      {/* Las pestañas llevan a pantallas de Admin: a quien no lo es, lo rebotarian. */}
-      {showSettingsTabs && <SettingsTabs />}
 
       {error && (
         <div className="px-4 pt-4 md:px-8">

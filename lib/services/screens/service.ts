@@ -84,6 +84,19 @@ export function newServiceFormIssues(f: NewServiceForm): string[] {
   return p;
 }
 
+/**
+ * La fecha de inicio con la que abre «+ Servicio»: la del evento si la variante es de un Evento, si no hoy en la zona
+ * del NEGOCIO. Es lo mismo que hace la base con el campo vacío (`svc_create_service`, 00333), ahora a la vista.
+ */
+export function defaultServiceStartsOn(today: string, eventDate: string | null | undefined): string {
+  return eventDate && /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : today;
+}
+
+/** La explicación del campo según de dónde salió la fecha propuesta. */
+export function serviceStartsOnHint(eventDate: string | null | undefined): string {
+  return eventDate ? "Por defecto, la fecha del evento." : "Por defecto, hoy (zona horaria del negocio).";
+}
+
 // ── La celda de Ventas (F95) ────────────────────────────────────────────────
 export interface SaleServiceInfo {
   serviceId: string | null;

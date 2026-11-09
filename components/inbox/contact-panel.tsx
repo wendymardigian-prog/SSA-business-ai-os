@@ -442,7 +442,7 @@ function TemperatureSelect({ contactId, value, onSaved }: { contactId: string; v
  */
 const BASIC_FIELDS: { key: ContactFieldKey; label: string; prefix?: string; hint?: string; timezonePicker?: boolean }[] = [
   { key: "email", label: "Email" },
-  { key: "phone", label: "Teléfono", hint: "Con código de país, ej: +54 9 11 2233 4455" },
+  { key: "phone", label: "Teléfono" },
   { key: "whatsapp_phone", label: "WhatsApp", hint: "Solo si es distinto al teléfono" },
   { key: "instagram_username", label: "Instagram", prefix: "@", hint: "Sin la arroba" },
   { key: "country", label: "País" },

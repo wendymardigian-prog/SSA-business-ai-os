@@ -8,6 +8,7 @@ import { contactNames } from "@/lib/services/screens/load-services";
 import { clientRows, paidByContact } from "@/lib/services/screens/clients";
 import { formatPriceUsd } from "@/lib/content/taxonomy";
 import { PageHeader } from "@/components/page-header";
+import { ClientesTabs } from "@/components/services/clients/clientes-tabs";
 
 /** Clientes › Clientes (F27): una fila por contacto con al menos un servicio que la persona ve (la RLS lo decide). */
 export default async function ClientesListaPage() {
@@ -28,15 +29,9 @@ export default async function ClientesListaPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Clientes" tooltip="Una fila por cliente con al menos un servicio." />
+      <PageHeader route="/dashboard/clientes/lista" tabs={<ClientesTabs active="clientes" />} />
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 md:px-8">
-          <nav aria-label="Vistas de Clientes" className="flex gap-1 border-b border-border text-sm">
-            <Link href="/dashboard/clientes" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted-foreground hover:text-foreground">
-              Servicios
-            </Link>
-            <span className="-mb-px border-b-2 border-primary-edge px-3 py-2 font-medium">Clientes</span>
-          </nav>
+        <div className="space-y-4 p-4 md:p-6">
           {sorted.length === 0 ? (
             <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">Todavía no hay clientes con servicios.</p>
           ) : (

@@ -246,10 +246,9 @@ export function TeamView({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Sin flecha de "volver a Ajustes": las pestañas de abajo ya cumplen esa función (S3). */}
-      <PageHeader route="/dashboard/settings/team" />
-      <SettingsTabs />
-      <TeamRolesSwitch />
+      {/* Sin flecha de "volver a Ajustes": las pestañas de la barra ya cumplen esa función (S3). */}
+      <PageHeader
+        filtersBreakpoint="wide" route="/dashboard/settings/team" tabs={<SettingsTabs />} filters={<TeamRolesSwitch />} />
 
       <div className="flex-1 overflow-auto">
         <div className="mx-auto max-w-2xl space-y-8 px-4 py-8 sm:px-8">

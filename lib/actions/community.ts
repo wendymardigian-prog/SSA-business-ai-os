@@ -13,7 +13,7 @@ import { svcRpc, type SvcResult } from "@/lib/services/db";
 
 const NOT_ALLOWED = { ok: false as const, error: { code: "SV004", message: "No tenés permiso para hacer esto", detail: null } };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const refresh = (productId: string) => revalidatePath(`/dashboard/portal/${productId}`);
+const refresh = (productId: string) => revalidatePath(`/dashboard/portal/${productId}`, "layout"); // también sus ajustes
 
 export async function communityTeamPost(productId: string, input: { body: string; spaceKey?: string | null; parentId?: string | null; programItemId?: string | null; asBusiness?: boolean }): Promise<SvcResult<string>> {
   const ctx = await getPermissionAction("community.reply");
