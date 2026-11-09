@@ -69,10 +69,17 @@ export function TaskDetailView({
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Link>
         }
+        tabs={
+          <DetailTabs
+            label="Secciones de la tarea"
+            active={activeTab}
+            tabs={TASK_TABS.map((t) => ({ key: t.key, label: t.label, href: `/dashboard/agents/tareas/${task.id}?tab=${t.key}` }))}
+          />
+        }
         filters={activeTab === "runs" ? <AiPeriodControl timezone={timeZone} /> : undefined}
       />
 
-      <div className="border-b border-border px-4 pt-4 md:px-8">
+      <div className="border-b border-border px-4 py-4 md:px-8">
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
             <TaskIcon icon={task.icon} className="h-4.5 w-4.5" />
@@ -88,14 +95,6 @@ export function TaskDetailView({
               </Suspense>
             </p>
           </div>
-        </div>
-
-        <div className="mt-5">
-          <DetailTabs
-            label="Secciones de la tarea"
-            active={activeTab}
-            tabs={TASK_TABS.map((t) => ({ key: t.key, label: t.label, href: `/dashboard/agents/tareas/${task.id}?tab=${t.key}` }))}
-          />
         </div>
       </div>
 

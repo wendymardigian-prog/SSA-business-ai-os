@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, Columns3, List } from "lucide-react";
 import type { ContentView } from "@/lib/content/filters";
 import { platformLabel } from "@/lib/platforms";
+import { ViewToggle } from "@/components/ui/view-toggle";
 
 /**
  * Kanban / Calendario / Lista, en la barra superior (F7, F21).
@@ -32,25 +33,7 @@ export function ContentViewSwitcher({ current }: { current: ContentView }) {
     router.push(query ? `${pathname}?${query}` : pathname);
   }
 
-  return (
-    <div className="flex items-center rounded-lg border border-border p-0.5" role="group" aria-label="Vista">
-      {VIEWS.map(({ value, label, Icon }) => (
-        <button
-          key={value}
-          type="button"
-          onClick={() => go(value)}
-          aria-pressed={current === value}
-          title={label}
-          className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm ${
-            current === value ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent/50"
-          }`}
-        >
-          <Icon className="h-4 w-4" aria-hidden />
-          <span className="hidden lg:inline">{label}</span>
-        </button>
-      ))}
-    </div>
-  );
+  return <ViewToggle value={current} onChange={go} options={VIEWS.map(({ value, label, Icon }) => ({ value, label, icon: Icon }))} />;
 }
 
 /** Contar piezas o publicaciones. Solo tiene sentido en el calendario. */

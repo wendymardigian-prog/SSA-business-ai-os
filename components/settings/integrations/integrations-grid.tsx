@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { FilterMenu, MenuOption } from "@/components/ui/filter-menu";
 import {
   providersBySection,
   CHIP_ORDER,
@@ -105,8 +106,27 @@ export function IntegrationsGrid({
   return (
     <div className="flex h-full flex-col">
       <PageHeader
+        tabs={<SettingsTabs />}
         title="Integraciones"
         tooltip="Todo lo que este sistema conecta con afuera: canales, redes, email e IA. Las claves se guardan encriptadas y nunca se muestran."
+        filters={
+          hasShared ? (
+            // El tipo (antes una fila de chips debajo de la barra): un tipo sin integraciones se ve apagado.
+            <FilterMenu label="Tipo" value={chip ? CHIP_LABELS[chip] : "Todos"} active={chip !== null} align="right" menuClassName="topbar:w-[220px]">
+              <MenuOption checked={chip === null} onSelect={() => updateParams({ tipo: null })} title="Todos" />
+              {CHIP_ORDER.map((c) => (
+                <MenuOption
+                  key={c}
+                  checked={chip === c}
+                  disabled={(CHIP_COUNTS[c] ?? 0) === 0}
+                  onSelect={() => updateParams({ tipo: c })}
+                  title={CHIP_LABELS[c]}
+                  trailing={CHIP_COUNTS[c] ?? 0}
+                />
+              ))}
+            </FilterMenu>
+          ) : undefined
+        }
         right={
           hasShared ? (
             <button
@@ -124,25 +144,6 @@ export function IntegrationsGrid({
           ) : undefined
         }
       />
-      <SettingsTabs />
-
-      {hasShared && (
-        <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3 md:px-6">
-          <ChipButton active={chip === null} label="Todos" onClick={() => updateParams({ tipo: null })} />
-          {CHIP_ORDER.map((c) => {
-            const count = CHIP_COUNTS[c] ?? 0;
-            return (
-              <ChipButton
-                key={c}
-                active={chip === c}
-                disabled={count === 0}
-                label={CHIP_LABELS[c]}
-                onClick={() => updateParams({ tipo: chip === c ? null : c })}
-              />
-            );
-          })}
-        </div>
-      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         <div className="mx-auto max-w-6xl space-y-10">
@@ -219,30 +220,4 @@ export function IntegrationsGrid({
 
 function ReadOnlyBadge() {
   return <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Solo lectura</span>;
-}
-
-function ChipButton({
-  label,
-  active,
-  disabled = false,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={active}
-      className={`h-7 rounded-full border px-3 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
-        active ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border hover:bg-accent"
-      }`}
-    >
-      {label}
-    </button>
-  );
 }

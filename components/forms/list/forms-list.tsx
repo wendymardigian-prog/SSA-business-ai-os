@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ClipboardList, Copy, ExternalLink, Link2, Loader2, MoreHorizontal, Pause, Play, Plus, RotateCcw, Search, X } from "lucide-react";
+import { Archive, ClipboardList, Copy, ExternalLink, Link2, Loader2, MoreHorizontal, Pause, Play, Plus, RotateCcw, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { Popover } from "@/components/ui/popover";
 import { FilterMenu, MenuOption } from "@/components/ui/filter-menu";
 import { Notice } from "@/components/agents/fields";
@@ -116,7 +117,7 @@ export function FormsList({
   // primeros bajan a la segunda fila de la barra, como en el resto de la app.
   const filters = (
     <>
-      <SearchBox value={query.q} onChange={(q) => setQuery({ q })} />
+      <ExpandableSearch value={query.q} onCommit={(q) => setQuery({ q })} label="Buscar formularios" />
       <FilterMenu label="Estado" value={statusLabel} active={query.status !== "all"} align="right" menuClassName="topbar:w-[250px]">
         {LIST_FILTERS.map((f) => (
           <MenuOption
@@ -289,30 +290,6 @@ export function FormsList({
         }}
       />
     </div>
-  );
-}
-
-/** El buscador de la barra: filtra mientras se escribe. Esc lo vacia. */
-function SearchBox({ value, onChange }: { value: string; onChange: (next: string) => void }) {
-  return (
-    <label className="relative flex h-8 shrink-0 items-center">
-      <span className="sr-only">Buscar formularios</span>
-      <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-      <input
-        type="search"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && value !== "") {
-            e.preventDefault();
-            onChange("");
-          }
-        }}
-        placeholder="Buscar formularios"
-        autoComplete="off"
-        className="h-8 w-[150px] rounded-lg border border-input bg-background pl-8 pr-2 text-[13px] placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none topbar:w-[170px] [&::-webkit-search-cancel-button]:hidden"
-      />
-    </label>
   );
 }
 

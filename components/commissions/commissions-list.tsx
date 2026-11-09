@@ -3,13 +3,14 @@
 import { useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Download, Filter, ListChecks, Loader2, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, ListChecks, ListFilter, Loader2, Plus, Rows3, X } from "lucide-react";
 import { AdjustmentDialog } from "@/components/commissions/adjustment-dialog";
 import { CommissionStatusChip, RoleChip } from "@/components/commissions/commission-chips";
 import { PayoutDialog } from "@/components/commissions/payout-dialog";
 import { ChipMultiSelect } from "@/components/finance/chip-multi-select";
 import { FinanceTabs } from "@/components/finance/finance-tabs";
 import { PageHeader } from "@/components/page-header";
+import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 import { selectAllCommissionsOfFilter } from "@/lib/actions/commissions-ui";
 import type { RefundSuggestionResult } from "@/lib/commissions/action-types";
 import {
@@ -71,8 +72,6 @@ export function CommissionsList({ data, extras, mine, canViewExpenses, canViewSa
   const own = scope === "own";
   const selectionEnabled = canPayout && !own;
   const active = countActiveCommissionFilters(filters);
-  const moreActive = filters.statuses.length + (filters.from || filters.to ? 1 : 0) + (filters.saleId ? 1 : 0) + (filters.contactId ? 1 : 0) + (filters.expenseId ? 1 : 0) + (filters.ruleId ? 1 : 0);
-  const [panelOpen, setPanelOpen] = useState(moreActive > 0);
   const anyFilter = active > 0 || filters.groupBy !== null;
   const warning = exportWarning(total);
   const colSpan = 10 + (selectionEnabled ? 1 : 0) + (own ? 0 : 1);
@@ -107,6 +106,9 @@ export function CommissionsList({ data, extras, mine, canViewExpenses, canViewSa
 
   const headerActions = (
     <>
+      <a href={exportHref(filters)} download aria-label="Exportar CSV" className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-2.5 text-sm hover:bg-accent sm:px-3">
+        <Download className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Exportar CSV</span>
+      </a>
       {canManage && (
         <Link href="/dashboard/finanzas/comisiones/reglas" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent" aria-label="Reglas de comisión">
           <ListChecks className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Reglas</span>
@@ -129,13 +131,88 @@ export function CommissionsList({ data, extras, mine, canViewExpenses, canViewSa
 
   const rowProps = { extras, own, selection, selectionEnabled, canViewExpenses, canViewSales };
 
+  // Los filtros de la barra superior. La barra los dibuja dos veces (computadora y celular): cada copia tiene su
+  // propio menú abierto y todo lo elegido sale de la URL, así las dos muestran lo mismo.
+  const menuFilters =
+    (filters.users.length ? 1 : 0) + (filters.roles.length ? 1 : 0) + (filters.products.length ? 1 : 0) + (filters.month ? 1 : 0) +
+    filters.statuses.length + (filters.from || filters.to ? 1 : 0);
+  const groupOptions = COMMISSION_GROUP_BY.filter((g) => !(own && (g === "persona" || g === "producto")));
+  const barFilters = (
+    <>
+      <FilterMenu
+        label="Filtros"
+        compact
+        active={menuFilters > 0}
+        badge={menuFilters}
+        icon={<ListFilter className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+        menuClassName="topbar:w-[400px]"
+      >
+        <div className="space-y-3 p-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold">Filtros</p>
+            {anyFilter && (
+              <button type="button" onClick={clear} className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground">
+                <X className="h-3.5 w-3.5" aria-hidden /> Limpiar
+              </button>
+            )}
+          </div>
+          {!own && <ChipMultiSelect label="Persona" groups={memberOptions} selected={filters.users} labelOf={(id) => data.members.find((m) => m.id === id)?.name ?? "Otra persona"} onChange={(users) => go({ users })} />}
+          <ChipMultiSelect label="Rol" groups={roleOptions} selected={filters.roles} labelOf={(k) => data.roles.find((r) => r.key === k)?.name ?? k} onChange={(roles) => go({ roles })} />
+          {!own && <ChipMultiSelect label="Producto" groups={productOptions} selected={filters.products} labelOf={(id) => data.products.find((p) => p.id === id)?.name ?? "Otro producto"} onChange={(products) => go({ products })} />}
+          <Field label="Mes del cobro">
+            <input
+              type="month"
+              className={selectClass}
+              value={filters.month ?? ""}
+              onChange={(e) => go({ month: e.target.value || null, from: null, to: null })}
+            />
+          </Field>
+          <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
+            <legend className="mb-1 text-xs font-medium">Estado</legend>
+            {COMMISSION_STATUS_KEYS.filter((s) => !(own && s === "sin_persona")).map((s) => (
+              <label key={s} className="flex items-center gap-1.5 text-sm">
+                <input type="checkbox" checked={filters.statuses.includes(s)} onChange={() => go({ statuses: filters.statuses.includes(s) ? filters.statuses.filter((x) => x !== s) : [...filters.statuses, s] })} />
+                {COMMISSION_STATUSES[s].label}
+              </label>
+            ))}
+          </fieldset>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Cobradas desde">
+              <input type="date" className={selectClass} value={filters.from ?? ""} disabled={!!filters.month} onChange={(e) => go({ from: e.target.value || null, month: null })} />
+            </Field>
+            <Field label="Cobradas hasta">
+              <input type="date" className={selectClass} value={filters.to ?? ""} disabled={!!filters.month} onChange={(e) => go({ to: e.target.value || null, month: null })} />
+            </Field>
+          </div>
+          {filters.month && <p className="text-[11px] text-muted-foreground">Hay un mes elegido: para usar un rango de fechas, sacá el mes.</p>}
+        </div>
+      </FilterMenu>
+      <FilterMenu
+        label={`Agrupar por: ${filters.groupBy ? COMMISSION_GROUP_BY_LABELS[filters.groupBy] : "Sin agrupar"}`}
+        compact
+        active={filters.groupBy !== null}
+        icon={<Rows3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+        menuClassName="topbar:w-[220px]"
+      >
+        <MenuGroupLabel>Agrupar por</MenuGroupLabel>
+        <MenuOption checked={filters.groupBy === null} onSelect={() => go({ groupBy: null })} title="Sin agrupar" />
+        {groupOptions.map((g) => (
+          <MenuOption key={g} checked={filters.groupBy === g} onSelect={() => go({ groupBy: g })} title={COMMISSION_GROUP_BY_LABELS[g]} />
+        ))}
+      </FilterMenu>
+    </>
+  );
+
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
+        filtersBreakpoint="wide"
         route="/dashboard/finanzas/comisiones"
         title={own ? "Mis comisiones" : undefined}
         tooltip={own ? "Lo que te toca cobrar por cada pago cobrado de tus ventas: cuánto es, de qué regla sale y cuándo se te paga." : undefined}
         tabs={<FinanceTabs />}
+        filters={barFilters}
         right={headerActions}
       />
 
@@ -174,39 +251,6 @@ export function CommissionsList({ data, extras, mine, canViewExpenses, canViewSa
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {!own && <ChipMultiSelect label="Persona" groups={memberOptions} selected={filters.users} labelOf={(id) => data.members.find((m) => m.id === id)?.name ?? "Otra persona"} onChange={(users) => go({ users })} />}
-            <ChipMultiSelect label="Rol" groups={roleOptions} selected={filters.roles} labelOf={(k) => data.roles.find((r) => r.key === k)?.name ?? k} onChange={(roles) => go({ roles })} />
-            {!own && <ChipMultiSelect label="Producto" groups={productOptions} selected={filters.products} labelOf={(id) => data.products.find((p) => p.id === id)?.name ?? "Otro producto"} onChange={(products) => go({ products })} />}
-            <label className="flex items-center gap-1.5 text-sm">
-              <span className="sr-only sm:not-sr-only text-muted-foreground">Mes del cobro</span>
-              <input
-                type="month"
-                aria-label="Mes del cobro"
-                className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
-                value={filters.month ?? ""}
-                onChange={(e) => go({ month: e.target.value || null, from: null, to: null })}
-              />
-            </label>
-            <label className="flex items-center gap-1.5 text-sm">
-              <span className="sr-only sm:not-sr-only text-muted-foreground">Agrupar por</span>
-              <select aria-label="Agrupar por" className="h-9 rounded-lg border border-border bg-background px-2 text-sm" value={filters.groupBy ?? ""} onChange={(e) => go({ groupBy: (e.target.value || null) as CommissionFilters["groupBy"] })}>
-                <option value="">Sin agrupar</option>
-                {COMMISSION_GROUP_BY.filter((g) => !(own && (g === "persona" || g === "producto"))).map((g) => <option key={g} value={g}>{COMMISSION_GROUP_BY_LABELS[g]}</option>)}
-              </select>
-            </label>
-            <button type="button" onClick={() => setPanelOpen((v) => !v)} aria-expanded={panelOpen} aria-controls="more-commission-filters" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent">
-              <Filter className="h-4 w-4" aria-hidden /> Más filtros{moreActive > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{moreActive}</span>}
-            </button>
-            {anyFilter && (
-              <button type="button" onClick={clear} className="inline-flex h-9 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" aria-hidden /> Limpiar
-              </button>
-            )}
-            <a href={exportHref(filters)} download className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent">
-              <Download className="h-4 w-4" aria-hidden /> Exportar CSV
-            </a>
-          </div>
           {warning && <p role="status" className="text-[11px] text-amber-700 dark:text-amber-300">{warning}</p>}
 
           {(filters.saleId || filters.contactId || filters.expenseId || filters.ruleId) && (
@@ -215,29 +259,6 @@ export function CommissionsList({ data, extras, mine, canViewExpenses, canViewSa
               {filters.contactId && <RemovableChip label="Solo un contacto" onRemove={() => go({ contactId: null })} />}
               {filters.expenseId && <RemovableChip label="Solo un gasto" onRemove={() => go({ expenseId: null })} />}
               {filters.ruleId && <RemovableChip label="Solo una regla" onRemove={() => go({ ruleId: null })} />}
-            </div>
-          )}
-
-          {panelOpen && (
-            <div id="more-commission-filters" className="space-y-3 rounded-xl border border-border bg-card p-3">
-              <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
-                <legend className="mb-1 text-xs font-medium">Estado</legend>
-                {COMMISSION_STATUS_KEYS.filter((s) => !(own && s === "sin_persona")).map((s) => (
-                  <label key={s} className="flex items-center gap-1.5 text-sm">
-                    <input type="checkbox" checked={filters.statuses.includes(s)} onChange={() => go({ statuses: filters.statuses.includes(s) ? filters.statuses.filter((x) => x !== s) : [...filters.statuses, s] })} />
-                    {COMMISSION_STATUSES[s].label}
-                  </label>
-                ))}
-              </fieldset>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Cobradas desde">
-                  <input type="date" className={selectClass} value={filters.from ?? ""} disabled={!!filters.month} onChange={(e) => go({ from: e.target.value || null, month: null })} />
-                </Field>
-                <Field label="Cobradas hasta">
-                  <input type="date" className={selectClass} value={filters.to ?? ""} disabled={!!filters.month} onChange={(e) => go({ to: e.target.value || null, month: null })} />
-                </Field>
-              </div>
-              {filters.month && <p className="text-[11px] text-muted-foreground">Hay un mes elegido arriba: para usar un rango de fechas, sacá el mes.</p>}
             </div>
           )}
 

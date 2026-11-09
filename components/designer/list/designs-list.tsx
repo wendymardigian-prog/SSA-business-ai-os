@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Loader2, Plus, Search, Settings, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Settings, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
+import { headerTabClass } from "@/components/ui/header-tabs";
 import { InfoTooltip } from "@/components/ui/tooltip";
 import { PAGE_META } from "@/lib/nav/page-actions";
 import { FilterMenu, MenuOption } from "@/components/ui/filter-menu";
@@ -63,25 +65,12 @@ export function DesignsList({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [creating, setCreating] = useState(false);
-  const [search, setSearch] = useState(filters.q);
-  const lastQuery = useRef(filters.q);
 
   const hrefFor = (next: ListFilters) => {
     const qs = listFiltersToQuery(next);
     return qs ? `/dashboard/disenos?${qs}` : "/dashboard/disenos";
   };
   const go = (next: ListFilters) => startTransition(() => router.replace(hrefFor(next), { scroll: false }));
-
-  // El buscador filtra mientras se escribe, con una espera corta para no pedirle al servidor cada letra.
-  useEffect(() => {
-    if (search.trim() === lastQuery.current.trim()) return;
-    const timer = setTimeout(() => {
-      lastQuery.current = search;
-      go(withFilter(filters, { q: search }));
-    }, 350);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo cuando cambia lo escrito
-  }, [search]);
 
   const now = useMemo(() => new Date(nowIso), [nowIso]);
   const cards = useMemo(() => data.items.map((item) => ({ item, view: cardView(item.card, { now, timeZone }) })), [data.items, now, timeZone]);
@@ -91,7 +80,7 @@ export function DesignsList({
   const empty = emptyState(filters.tab, filtered);
 
   const tabs = (
-    <div role="tablist" aria-label="Diseños y plantillas" className="flex items-center gap-1">
+    <div role="tablist" aria-label="Diseños y plantillas" className="flex shrink-0 items-center rounded-lg bg-muted/60 p-0.5">
       {LIST_TABS.map((tab) => {
         const selected = filters.tab === tab;
         const next = withFilter(filters, { tab, format: tab === "plantillas" && filters.format === "web" ? "all" : filters.format });
@@ -103,10 +92,10 @@ export function DesignsList({
             href={hrefFor(next)}
             replace
             scroll={false}
-            className={cn("inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[13px] font-medium", selected ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground")}
+            className={headerTabClass(selected)}
           >
             {TAB_LABELS[tab]}
-            <span className="rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">{tabCount(tab)}</span>
+            <span className="text-xs tabular-nums text-muted-foreground">{tabCount(tab)}</span>
           </Link>
         );
       })}
@@ -115,24 +104,8 @@ export function DesignsList({
 
   const filterBar = (
     <>
-      <label className="relative flex h-8 shrink-0 items-center">
-        <span className="sr-only">Buscar</span>
-        <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape" && search !== "") {
-              e.preventDefault();
-              setSearch("");
-            }
-          }}
-          placeholder="Buscar"
-          autoComplete="off"
-          className="h-8 w-[150px] rounded-lg border border-input bg-background pl-8 pr-2 text-[13px] placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none topbar:w-[170px] [&::-webkit-search-cancel-button]:hidden"
-        />
-      </label>
+      {/* Busca al apretar Enter o al salir del campo (como en el resto de la app), no con cada letra. */}
+      <ExpandableSearch value={filters.q} onCommit={(q) => go(withFilter(filters, { q }))} label="Buscar diseños" placeholder="Buscar" pending={pending} />
       <FilterMenu label="Formato" value={filters.format === "all" ? "Todos" : FORMATS[filters.format].label} active={filters.format !== "all"} align="right" menuClassName="topbar:w-[260px]">
         <MenuOption checked={filters.format === "all"} onSelect={() => go(withFilter(filters, { format: "all" }))} title="Todos los formatos" />
         {formatFilterOptions(filters.tab).map((key) => (
@@ -152,8 +125,6 @@ export function DesignsList({
   );
 
   const clearAll = () => {
-    setSearch("");
-    lastQuery.current = "";
     go({ ...filters, q: "", format: "all", origin: "all", archived: false, page: 1 });
   };
 

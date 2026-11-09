@@ -3,12 +3,13 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Plus, Radio, Trash2 } from "lucide-react";
+import { ListFilter, Loader2, Plus, Radio, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BroadcastStatus } from "@/lib/types/database";
 import { PageHeader } from "@/components/page-header";
+import { FilterMenu, MenuOption } from "@/components/ui/filter-menu";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
-import { SectionSearch } from "@/components/comunicacion/section-search";
+import { SectionHeaderSearch } from "@/components/comunicacion/section-search";
 import { NoSearchResults } from "@/components/comunicacion/no-search-results";
 import { matchesSearch } from "@/lib/comunicacion/search";
 import { BROADCAST_STATUS, TONE_CLASS } from "@/lib/broadcasts/status";
@@ -41,7 +42,7 @@ export function BroadcastsView({
   timeZone,
 }: {
   items: BroadcastListItem[];
-  /** Cuántos hay en cada estado (para las píldoras del filtro). */
+  /** Cuántos hay en cada estado (para el desplegable «Estado»). */
   counts: Record<BroadcastStatus, number>;
   /** El estado de `?estado=`, o null para "Todos". */
   statusFilter: BroadcastStatus | null;
@@ -82,9 +83,41 @@ export function BroadcastsView({
   return (
     <div className="flex h-full flex-col">
       <PageHeader
+        filtersBreakpoint="wide"
         route="/dashboard/broadcasts"
         left={<SectionTabs />}
-        filters={<SectionSearch value={query} placeholder="Buscar un broadcast" label="Buscar broadcasts" />}
+        filters={
+          <>
+            {totalAll > 0 && (
+              // Antes era una fila de píldoras abajo de la barra; sin botón «Filtros», va como desplegable (`?estado=`).
+              <FilterMenu
+                label="Estado"
+                value={statusFilter ? BROADCAST_STATUS[statusFilter].label : "Todos"}
+                active={statusFilter !== null}
+                icon={
+                  url.pending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />
+                  ) : (
+                    <ListFilter className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                  )
+                }
+                menuClassName="topbar:w-[240px]"
+              >
+                <MenuOption checked={statusFilter === null} onSelect={() => url.setParam("estado", "")} title="Todos" trailing={totalAll} />
+                {STATUS_FILTERS.filter((f) => (counts[f.status] ?? 0) > 0 || statusFilter === f.status).map((f) => (
+                  <MenuOption
+                    key={f.param}
+                    checked={statusFilter === f.status}
+                    onSelect={() => url.setParam("estado", f.param)}
+                    title={BROADCAST_STATUS[f.status].label}
+                    trailing={counts[f.status] ?? 0}
+                  />
+                ))}
+              </FilterMenu>
+            )}
+            <SectionHeaderSearch value={query} placeholder="Buscar un broadcast" label="Buscar broadcasts" />
+          </>
+        }
         right={
           <button
             type="button"
@@ -112,22 +145,6 @@ export function BroadcastsView({
             Ir a Canales
           </Link>
         </p>
-      )}
-
-      {totalAll > 0 && (
-        <nav aria-label="Filtrar por estado" className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-2.5 md:px-8">
-          <StatusPill label="Todos" count={totalAll} active={statusFilter === null} onClick={() => url.setParam("estado", "")} />
-          {STATUS_FILTERS.filter((f) => (counts[f.status] ?? 0) > 0 || statusFilter === f.status).map((f) => (
-            <StatusPill
-              key={f.param}
-              label={BROADCAST_STATUS[f.status].label}
-              count={counts[f.status] ?? 0}
-              active={statusFilter === f.status}
-              onClick={() => url.setParam("estado", f.param)}
-            />
-          ))}
-          {url.pending && <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />}
-        </nav>
       )}
 
       <div className="flex-1 overflow-auto">
@@ -198,23 +215,6 @@ export function BroadcastsView({
         )}
       </div>
     </div>
-  );
-}
-
-function StatusPill({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium",
-        active ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
-      )}
-    >
-      {label}
-      <span className="tabular-nums opacity-70">{count}</span>
-    </button>
   );
 }
 

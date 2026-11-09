@@ -20,7 +20,7 @@ import { listProjects } from "@/lib/tasks/project";
 import { buildRows, groupRows, nextSort, remainingToLoad, sortRows, visibleLimit, type MemberLite } from "@/lib/tasks/table-model";
 import type { TaskRow, TaskStatus } from "@/lib/tasks/types";
 import { clearFilters, countActiveFilters, parseViewState, serializeViewState, toggleMine, type SortColumn, type TasksViewState } from "@/lib/tasks/view-state";
-import { FiltersBar } from "./filters-bar";
+import { MineToggle, TasksFiltersButton, TasksSearch, TasksSummaryLine } from "./filters-bar";
 import { ShiftDialog } from "./shift-dialog";
 import type { CellEnv } from "./task-cells";
 import { TaskDrawer } from "./task-drawer";
@@ -184,6 +184,7 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
+        filtersBreakpoint="wide"
         route="/dashboard/tareas"
         left={
           <ViewToggle
@@ -194,6 +195,15 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
               { value: "board", label: "Tablero", icon: KanbanSquare },
             ]}
           />
+        }
+        filters={
+          hasAny && !loadError ? (
+            <>
+              <TasksSearch state={state} onChange={change} />
+              <TasksFiltersButton state={state} onChange={change} members={members} projects={projects} showGroup={state.view === "table"} />
+              <MineToggle pressed={state.mine} onToggle={() => change(toggleMine(state))} />
+            </>
+          ) : undefined
         }
         right={
           canEdit ? (
@@ -220,7 +230,7 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
           <EmptyState canEdit={canEdit} onCreate={() => startCreate()} />
         ) : (
           <div className="space-y-3">
-            <FiltersBar state={state} onChange={change} members={members} projects={projects} mine={mine} onToggleMine={() => change(toggleMine(state))} showGroup={state.view === "table"} total={tasks.length} shown={sorted.length} />
+            <TasksSummaryLine state={state} mine={mine} total={tasks.length} shown={sorted.length} />
             {sorted.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-8 text-center">
                 <p className="text-sm font-medium">{state.mine && !filtersOnBeyondMine ? "No tenés tareas abiertas a tu cargo." : "No hay tareas con estos filtros."}</p>

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { InfoTooltip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { PAGE_META } from "@/lib/nav/page-actions";
 import {
   MobileChromeActions,
@@ -89,7 +90,10 @@ export function PageHeader({
         {backHref}
         {titleSlot ?? (
           <>
-            <h1 className="truncate text-base font-semibold">{shownTitle}</h1>
+            {/* El titulo de una pantalla (el de `route`, siempre corto) no se achica: antes se desplazan las pestañas.
+                Sin esto, con pestañas y filtros quedaba en cero a 900 px. Un titulo propio (una ficha de detalle, que
+                puede ser largo) se achica ultimo y se corta con "…". */}
+            <h1 className={cn("truncate text-base font-semibold", title === undefined && meta ? "shrink-0" : "[flex-shrink:0.01]")}>{shownTitle}</h1>
             {shownTooltip && <InfoTooltip text={shownTooltip} />}
           </>
         )}

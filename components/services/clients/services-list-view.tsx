@@ -69,6 +69,7 @@ export function ServicesListView({
     <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/clientes"
+        filtersBreakpoint="wide"
         tabs={<ClientsTabs active="servicios" />}
         filters={
           <>
