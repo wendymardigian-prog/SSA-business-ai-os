@@ -1045,7 +1045,7 @@ Menu con la seccion **Herramientas** colapsable, Formularios rediseñado (lista 
 
 ## Migraciones
 
-`00215` (`contact_touches.entry_url` y `record_contact_touch`), **aplicada y registrada** (14/10/2026 UTC). `00357_user_nav_favorites` (aditiva: `user_preferences.nav_favorites`, las favoritas del menú) puede ir antes o después del deploy: sin ella el menú anda igual, sin favoritas (la lectura cae a `{}`). **Escrita y SIN aplicar todavía** (9/11/2026). **La próxima libre es la `00358`** (confirmar con `list_migrations` y las ramas locales). **La proxima libre es la `00216`** (confirmar con `list_migrations`: la sesion de Equipo y roles uso la `00208` a la `00214`).
+`00215` (`contact_touches.entry_url` y `record_contact_touch`), **aplicada y registrada** (14/10/2026 UTC). `00357_user_nav_favorites` (aditiva: `user_preferences.nav_favorites`, las favoritas del menú) puede ir antes o después del deploy: sin ella el menú anda igual, sin favoritas (la lectura cae a `{}`). **Aplicada y registrada** el 9/11/2026 UTC (versión `20261109074540`), después de ensayarla en una transacción que se deshizo sola. **La próxima libre es la `00358`** (confirmar con `list_migrations` y las ramas locales). **La proxima libre es la `00216`** (confirmar con `list_migrations`: la sesion de Equipo y roles uso la `00208` a la `00214`).
 
 # Ventas Fase 1 (construido)
 
