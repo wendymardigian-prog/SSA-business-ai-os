@@ -421,11 +421,19 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/portal": {
     title: "Portal",
-    tooltip: "Los programas del portal de tus clientes y los ajustes del portal: la dirección, la bienvenida y cómo entran.",
+    tooltip: "Los programas del portal de tus clientes y lo que espera revisión. Los ajustes del portal están en el engranaje.",
+  },
+  "/dashboard/portal/ajustes": {
+    title: "Ajustes del portal",
+    tooltip: "La dirección del portal, desde qué email salen las invitaciones, qué dicen y cómo entran tus clientes.",
   },
   "/dashboard/portal/[productId]": {
     title: "Programa",
-    tooltip: "El programa en el portal: qué secciones tiene, qué variantes dan acceso y qué links ven los estudiantes.",
+    tooltip: "El programa en el portal: su contenido, el calendario, la comunidad, el asistente y qué links ven los estudiantes.",
+  },
+  "/dashboard/portal/[productId]/ajustes": {
+    title: "Ajustes del programa",
+    tooltip: "Qué secciones tiene el programa en el portal, si pide aceptar términos al entrar y qué variantes dan acceso.",
   },
   "/dashboard/settings/productos/[id]/variantes/[variantId]": {
     title: "Variante",
@@ -435,7 +443,11 @@ export const PAGE_META: Record<string, PageMeta> = {
   // @plantilla-desde(ventas)
   "/dashboard/afiliados": {
     title: "Afiliados",
-    tooltip: "Quién trae a quién: referidos, ventas y comisiones de cada afiliado, y las reglas de asignación.",
+    tooltip: "Quién trae a quién: referidos, ventas y comisiones de cada afiliado. Las reglas de asignación están en el engranaje.",
+  },
+  "/dashboard/afiliados/reglas": {
+    title: "Reglas de afiliados",
+    tooltip: "Cuándo un contacto queda asignado a un afiliado (si lo trajo o si influyó), si otro afiliado lo puede reemplazar y qué cuenta como venta y referido.",
   },
   "/dashboard/mis-links": {
     title: "Mis links",

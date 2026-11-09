@@ -5,6 +5,7 @@ import { EditorContent, Node, mergeAttributes, useEditor, type Editor, type JSON
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Heading1, Heading2, Heading3, Italic, Link2, List, ListOrdered, Underline as UnderlineIcon, Unlink } from "lucide-react";
 import { EmojiButton } from "@/components/ui/emoji-picker";
+import { VariableMenu, type VariableOption } from "./variable-menu";
 import { bodyToEditorHtml, editorHtmlToBody, normalizeLink } from "@/lib/editor/email-body";
 
 /**
@@ -79,8 +80,8 @@ export function RichTextEditor({
   onChange: (body: string) => void;
   /** El nombre accesible del campo. */
   label: string;
-  /** Las variables que se pueden insertar como ficha. */
-  variables?: string[];
+  /** Las variables que se pueden insertar como ficha (la clave sola, o la clave con su nombre para la persona). */
+  variables?: readonly VariableOption[];
   disabled?: boolean;
   minHeight?: number;
   extraToolbar?: (api: RichTextEditorApi) => ReactNode;
@@ -202,7 +203,7 @@ function Toolbar({
   emoji,
 }: {
   editor: Editor;
-  variables?: string[];
+  variables?: readonly VariableOption[];
   disabled: boolean;
   extra?: ReactNode;
   underline: boolean;
@@ -296,21 +297,9 @@ function Toolbar({
           />
         )}
         {variables && variables.length > 0 && (
-          <select
-            aria-label="Insertar variable"
-            disabled={disabled}
-            value=""
-            onChange={(event) => {
-              const name = event.target.value;
-              if (name) editor.chain().focus().insertContent({ type: "variable", attrs: { name } }).run();
-            }}
-            className="ml-1 h-8 max-w-[10rem] rounded-md border border-input bg-background px-1.5 text-xs"
-          >
-            <option value="">Variable…</option>
-            {variables.map((name) => (
-              <option key={name} value={name}>{`{{${name}}}`}</option>
-            ))}
-          </select>
+          <div className="ml-1">
+            <VariableMenu variables={variables} disabled={disabled} onPick={(name) => editor.chain().focus().insertContent({ type: "variable", attrs: { name } }).run()} />
+          </div>
         )}
         {extra}
       </div>

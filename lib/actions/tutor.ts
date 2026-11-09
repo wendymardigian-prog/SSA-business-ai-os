@@ -18,7 +18,7 @@ import { svcRpc, type SvcResult } from "@/lib/services/db";
 
 const NOT_ALLOWED = { ok: false as const, error: { code: "SV004", message: "No tenés permiso para hacer esto", detail: null } };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const refresh = (productId: string) => revalidatePath(`/dashboard/portal/${productId}`);
+const refresh = (productId: string) => revalidatePath(`/dashboard/portal/${productId}`, "layout"); // también sus ajustes
 /** Lo que el tutor lee: PDF, Word y texto (el resto de lo que acepta Conocimiento no va acá). */
 const TUTOR_MIMES = new Set(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain", "text/markdown"]);
 

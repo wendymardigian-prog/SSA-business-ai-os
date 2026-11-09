@@ -71,6 +71,12 @@ export interface SendEmailParams {
   flowNodeId?: string | null;
   /** El disparo programado del que sale (00287, Fase 1b): agrupa los resultados por disparo. */
   automationRunId?: string | null;
+  /**
+   * Otra direccion de remitente para ESTE email (por ejemplo, «Enviar desde» de Ajustes del portal). Conserva el
+   * nombre del remitente del negocio. Quien la pasa ya comprobo que su dominio esta verificado en Resend. Omitido =
+   * el remitente de siempre.
+   */
+  fromOverride?: string | null;
   /** Inyeccion para tests. En produccion no se pasa. */
   deps?: {
     supabase?: SupabaseClient;
@@ -194,7 +200,7 @@ export async function sendTransactionalEmail(
 
   // El remitente segun la categoria (E8): marketing sale del suyo si esta configurado; si no, del de importantes.
   const sender = senderFor((integration.config ?? {}) as ResendSenderConfig, params.category);
-  const fromEmail = sender.email;
+  const fromEmail = params.fromOverride?.trim() || sender.email;
   if (!fromEmail) {
     return notConfigured("Falta configurar el remitente de Resend");
   }

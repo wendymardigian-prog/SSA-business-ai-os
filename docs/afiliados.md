@@ -42,7 +42,8 @@ El trigger sobre `contact_touches` (`trg_affiliate_touch`) toma el `ref` del toq
 
 ## Pantallas
 
-- **Afiliados** (grupo Ventas): Resumen, Afiliados (con el alta de uno externo) y Reglas.
+- **Afiliados** (grupo Ventas): pestañas Resumen y Afiliados en la barra, «+ Agregar afiliado» (uno externo) como botón
+  principal y las Reglas en el engranaje (`/dashboard/afiliados/reglas`, `affiliates.settings`).
 - **Mis links** (menú de usuario).
 - La tarjeta **Links** del producto, el campo Afiliado en las fichas del contacto y de la venta, «Editar» en la ficha
   de una comisión. Tres disparadores: `affiliate_lead_created`, `affiliate_sale_created`, `affiliate_assignment_expired`.

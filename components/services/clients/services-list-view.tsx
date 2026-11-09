@@ -4,7 +4,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutGrid, Loader2, Plus, Search, Table2, Upload } from "lucide-react";
+import { LayoutGrid, Loader2, Plus, Table2, Upload } from "lucide-react";
 import {
   GROUP_BY,
   PAGE_SIZE,
@@ -18,6 +18,8 @@ import {
   type ServiceListItem,
 } from "@/lib/services/screens/list";
 import { PageHeader } from "@/components/page-header";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
+import { ClientesTabs } from "./clientes-tabs";
 import { cn } from "@/lib/utils";
 import { NewServiceDialog, type NewServiceOptions } from "./new-service-dialog";
 
@@ -53,7 +55,6 @@ export function ServicesListView({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [q, setQ] = useState(filters.q);
   const [creating, setCreating] = useState(false);
   const go = (patch: Partial<ServiceFilters>) => {
     const next = serializeServiceFilters({ ...filters, page: 1, ...patch });
@@ -64,16 +65,53 @@ export function ServicesListView({
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Clientes" tooltip="Los servicios de tus clientes: en qué fase están, su semáforo y su avance." />
+      <PageHeader
+        route="/dashboard/clientes"
+        tabs={<ClientesTabs active="servicios" />}
+        // Pestañas + buscador + «Agrupar por» + vista + dos botones no entran a 900 px: los filtros bajan a su fila.
+        filtersBreakpoint="wide"
+        filters={
+          <>
+            <ExpandableSearch value={filters.q} onCommit={(next) => go({ q: next })} label="Buscar un cliente" placeholder="Buscar un cliente" pending={pending} />
+            <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs text-muted-foreground">
+              Agrupar por
+              <select value={filters.groupBy} onChange={(e) => go({ groupBy: e.target.value as GroupBy })} className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground">
+                {GROUP_BY.map((g) => (
+                  <option key={g} value={g}>
+                    {GROUP_LABELS[g]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex shrink-0 rounded-lg border border-border p-0.5" role="group" aria-label="Tabla o tablero">
+              <button type="button" aria-pressed={filters.view === "table"} onClick={() => go({ view: "table" })} className={cn("rounded-md p-1.5", filters.view === "table" ? "bg-accent text-foreground" : "text-muted-foreground")} aria-label="Tabla">
+                <Table2 className="h-4 w-4" aria-hidden />
+              </button>
+              <button type="button" aria-pressed={filters.view === "board"} onClick={() => go({ view: "board" })} className={cn("rounded-md p-1.5", filters.view === "board" ? "bg-accent text-foreground" : "text-muted-foreground")} aria-label="Tablero">
+                <LayoutGrid className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          </>
+        }
+        right={
+          <>
+            {canImport && (
+              <Link href="/dashboard/clientes/importar" aria-label="Importar servicios" className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 text-sm hover:bg-accent">
+                <Upload className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline">Importar servicios</span>
+              </Link>
+            )}
+            {canCreate && (
+              <button type="button" onClick={() => setCreating(true)} aria-label="Nuevo servicio" className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90">
+                <Plus className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline">Servicio</span>
+              </button>
+            )}
+          </>
+        }
+      />
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 md:px-8">
-          <nav aria-label="Vistas de Clientes" className="flex gap-1 border-b border-border text-sm">
-            <span className="-mb-px border-b-2 border-primary-edge px-3 py-2 font-medium">Servicios</span>
-            <Link href="/dashboard/clientes/lista" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted-foreground hover:text-foreground">
-              Clientes
-            </Link>
-          </nav>
-
           {departed > 0 && (
             <div role="status" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-sm">
               <span>
@@ -84,54 +122,6 @@ export function ServicesListView({
               </button>
             </div>
           )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                go({ q });
-              }}
-              className="relative min-w-48 flex-1 sm:max-w-xs"
-            >
-              <label htmlFor="svc-search" className="sr-only">
-                Buscar un cliente
-              </label>
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-              <input id="svc-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar un cliente" className="h-9 w-full rounded-lg border border-border bg-background pl-8 pr-3 text-sm" />
-            </form>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              Agrupar por
-              <select value={filters.groupBy} onChange={(e) => go({ groupBy: e.target.value as GroupBy })} className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground">
-                {GROUP_BY.map((g) => (
-                  <option key={g} value={g}>
-                    {GROUP_LABELS[g]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="flex rounded-lg border border-border p-0.5" role="group" aria-label="Tabla o tablero">
-              <button type="button" aria-pressed={filters.view === "table"} onClick={() => go({ view: "table" })} className={cn("rounded-md p-1.5", filters.view === "table" ? "bg-accent text-foreground" : "text-muted-foreground")} aria-label="Tabla">
-                <Table2 className="h-4 w-4" aria-hidden />
-              </button>
-              <button type="button" aria-pressed={filters.view === "board"} onClick={() => go({ view: "board" })} className={cn("rounded-md p-1.5", filters.view === "board" ? "bg-accent text-foreground" : "text-muted-foreground")} aria-label="Tablero">
-                <LayoutGrid className="h-4 w-4" aria-hidden />
-              </button>
-            </div>
-            <div className="ml-auto flex gap-2">
-              {canImport && (
-                <Link href="/dashboard/clientes/importar" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent">
-                  <Upload className="h-4 w-4" aria-hidden />
-                  Importar servicios
-                </Link>
-              )}
-              {canCreate && (
-                <button type="button" onClick={() => setCreating(true)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90">
-                  <Plus className="h-4 w-4" aria-hidden />
-                  Servicio
-                </button>
-              )}
-            </div>
-          </div>
 
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtros rápidos">
             {QUICK_FILTERS.map((k) => (

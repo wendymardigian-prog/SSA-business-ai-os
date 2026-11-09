@@ -4,7 +4,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckSquare, Loader2, Square } from "lucide-react";
+import { CheckSquare, Loader2, Square } from "lucide-react";
 import {
   cancelService,
   completeService,
@@ -25,6 +25,8 @@ import { ActionError } from "@/components/contacts/ui";
 import { ContentDialog, DialogField, fieldInput } from "@/components/content/dialog";
 import { Historial } from "@/components/historial/historial";
 import { PageHeader } from "@/components/page-header";
+import { BackLink } from "@/components/ui/back-link";
+import { TopbarTabs } from "@/components/ui/topbar-tabs";
 import { cn } from "@/lib/utils";
 import { LightDot } from "./services-list-view";
 
@@ -127,10 +129,14 @@ export function ServiceDetailView({
       <PageHeader
         title={data.contactName}
         tooltip="El servicio del cliente: su camino, su semáforo y lo que se puede hacer."
-        backHref={
-          <Link href="/dashboard/clientes" aria-label="Volver a Clientes" className="-ml-1 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+        backHref={<BackLink href="/dashboard/clientes" label="Volver a Clientes" />}
+        tabs={
+          <TopbarTabs
+            label="Ficha del servicio"
+            active={tab}
+            onSelect={(key) => go(key as Tab)}
+            tabs={TABS.map((t) => ({ key: t.key, label: t.label, href: `/dashboard/clientes/s/${data.id}?tab=${t.key}` }))}
+          />
         }
       />
       <div className="min-h-0 flex-1 overflow-auto">
@@ -215,22 +221,7 @@ export function ServiceDetailView({
           )}
           {error && <ActionError message={error} />}
 
-          <div role="tablist" aria-label="Ficha del servicio" className="flex gap-1 overflow-x-auto border-b border-border">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                role="tab"
-                aria-selected={tab === t.key}
-                onClick={() => go(t.key)}
-                className={cn("-mb-px shrink-0 border-b-2 px-3 py-2 text-sm", tab === t.key ? "border-primary-edge font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          <div role="tabpanel">
+          <div>
             {tab === "actividad" && <Historial entityType="service" entityId={data.id} names={{ users: userNames }} timeZone={timeZone} />}
             {tab === "camino" && (
               <ol className="space-y-3">

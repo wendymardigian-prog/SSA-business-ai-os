@@ -22,7 +22,7 @@ const NOT_ALLOWED = { ok: false as const, error: { code: "SV004", message: "No t
 const fail = (message: string) => ({ ok: false as const, error: { code: "CA001", message, detail: null } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const refresh = (productId: string) => revalidatePath(`/dashboard/portal/${productId}`);
+const refresh = (productId: string) => revalidatePath(`/dashboard/portal/${productId}`, "layout"); // también sus ajustes
 
 /** «2026-11-20T19:00» en la zona `tz` → ISO en UTC. */
 function localToUtc(local: string, tz: string): string {
