@@ -175,6 +175,11 @@ El modo, la firma del negocio y las copias viven en `forms.contract_config` (`li
 - **«Descargar contrato»** (Después de enviar → Mostrar un mensaje; prendido por defecto en los contratos nuevos): el envío devuelve un link firmado (`lib/forms/contract/copy-link.ts`, la clave de Vault de los formularios, **24 horas**, una respuesta de un formulario) a `/api/public/forms/<slug>/copy`; si el PDF todavía no está, se arma en el momento.
 - Ver el PDF desde el panel es un link firmado de 60 segundos, solo para quien ve la respuesta (la RLS de `contract_signatures`).
 
+## Teléfonos con país y datos prellenados desde el link (10/11/2026)
+
+- **Todo campo de teléfono de un formulario público lleva el selector de país** (`PhoneField` → `components/ui/phone-input.tsx`): el desplegable trae TODOS los países con su prefijo y la persona escribe el número sin prefijo. Lo que viaja y se guarda sigue siendo `+<dígitos>`. El selector es angosto a propósito (muestra la bandera y el prefijo; el nombre del país queda cortado) para dejar lugar al número en el celular. Arranca en el país de la zona horaria del navegador (Costa Rica si no se sabe). La lista (`lib/scheduling/phone-countries.ts`) es FIJA, con los nombres en español escritos a mano: con `Intl.DisplayNames` el servidor y el navegador no coincidían y el formulario fallaba al hidratar. Un test la compara con la tabla de prefijos de `lib/phone-country.ts` (mismos países y prefijos) y comprueba el orden.
+- **Un link firmado (`?c=`) abre el formulario con el nombre, el email y el teléfono de la persona ya puestos** (`loadLinkPrefill`, `lib/forms/link-prefill.ts`), editables. Qué campo recibe qué dato lo dice el mapeo al contacto del formulario; sin mapeo, el primer email y el primer teléfono. Solo viajan esos tres datos. Un nombre de relleno ("Instagram User", un id) no se prellena, y lo que la URL ya trae gana sobre el link. Un link roto o vencido deja el formulario vacío: nunca rompe la página. Solo en la página `/f/<slug>` (no en la vista previa ni en el embed).
+
 ## Embed y sitio
 
 El mismo `embed.js` de la Agenda con el link `f/<slug>`, el modo botón flotante y el seguimiento. Para páginas del propio proyecto: `<Formulario slug="…" />` ([sitio.md](sitio.md)).

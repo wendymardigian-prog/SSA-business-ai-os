@@ -5,7 +5,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getAuthUser } from "@/lib/supabase/auth-user";
 import { PublicForm } from "@/components/forms/public/public-form";
 import { AttributionTracker } from "@/components/attribution/attribution-tracker";
-import { isAlreadyAnswered, loadPreviewFormData, loadPublicContractContext, loadPublicFormData } from "@/lib/forms/public-load";
+import { isAlreadyAnswered, loadLinkPrefill, loadPreviewFormData, loadPublicContractContext, loadPublicFormData } from "@/lib/forms/public-load";
+import { withoutUrlOverrides } from "@/lib/forms/link-prefill";
 import { isAvailable } from "@/lib/forms/public-client";
 import { loadFormShare } from "@/lib/forms/share-preview";
 import { shareMetadata } from "@/lib/og/share";
@@ -74,6 +75,10 @@ export default async function PublicFormPage({
   // Modo Contrato con un link firmado: los datos del contacto y la venta para mostrar las variables del paso 2.
   const contractContext = !preview && isAvailable(form) && form.contract?.mode === "contract" ? await loadPublicContractContext(service, slug, query.c) : null;
 
+  // Con un link firmado (el que se manda por email o WhatsApp), el formulario abre con el nombre, el email y el teléfono de
+  // la persona ya puestos: los revisa y los corrige. Lo que la URL ya trae gana sobre el link.
+  const linkPrefill = !preview && isAvailable(form) && query.c ? withoutUrlOverrides(await loadLinkPrefill(service, slug, query.c, form.fields), query) : {};
+
   if (!isAvailable(form)) {
     return (
       <main className="flex min-h-dvh items-center justify-center px-4">
@@ -100,7 +105,7 @@ export default async function PublicFormPage({
     <main className={embed ? "px-1 py-1" : "px-4 py-8"}>
       {/* Fuera de un iframe, la página anota de dónde vino la persona (cookie `ssa_attr`). */}
       {!embed && !preview && <AttributionTracker />}
-      <PublicForm form={form} params={query} mode={embed ? "embed" : "public_page"} preview={preview} linkToken={query.c} contractContext={contractContext} />
+      <PublicForm form={form} params={query} mode={embed ? "embed" : "public_page"} preview={preview} linkToken={query.c} contractContext={contractContext} explicitPrefill={linkPrefill} />
     </main>
   );
 }

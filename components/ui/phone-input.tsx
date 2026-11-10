@@ -27,6 +27,7 @@ export function PhoneInput({
   className,
   size = "md",
   label = "Teléfono",
+  selectClassName,
 }: {
   id?: string;
   value: string;
@@ -43,6 +44,8 @@ export function PhoneInput({
   size?: "sm" | "md";
   /** Nombre accesible del número (el del país es «País de …»). */
   label?: string;
+  /** Para darle otro ancho al selector de país (por defecto, angosto). */
+  selectClassName?: string;
 }) {
   const [parts, setParts] = useState(() => splitPhone(value, defaultCountry));
   const [seen, setSeen] = useState(value);
@@ -72,7 +75,7 @@ export function PhoneInput({
         value={parts.country}
         disabled={disabled}
         onChange={(e) => update({ country: e.target.value, number: parts.number })}
-        className={cn("w-32 shrink-0 rounded-lg border border-border bg-background px-2 text-sm text-foreground", height)}
+        className={cn("w-32 shrink-0 rounded-lg border border-border bg-background px-2 text-sm text-foreground", height, selectClassName)}
       >
         {PHONE_COUNTRIES.map((c) => (
           <option key={c.code} value={c.code}>
