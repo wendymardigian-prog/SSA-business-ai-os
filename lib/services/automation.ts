@@ -141,3 +141,24 @@ export function serviceVariables(s: ServiceForVariables | null): Record<string, 
     "service.phase": s.phase_name ?? "",
   };
 }
+
+/**
+ * Lo que un flujo de servicio recibe de verdad: las claves planas de siempre MAS el mismo dato anidado
+ * (`service: { id, variant… }`) y la venta del servicio (`sale: { id }`).
+ *
+ * Por que anidado: el interpolador y el firmador de `{{form_link.*}}` siguen el camino `service` → `id`
+ * adentro de un objeto; una clave plana `"service.id"` no la lee ninguno de los dos. Sin `sale.id`, el link
+ * firmado de un contrato sale sin la venta y `{{venta.variante}}` / `{{venta.monto}}` quedan en «—».
+ * Las claves planas se conservan para no cambiar nada de lo que ya las lea.
+ */
+export function serviceFlowVariables(s: ServiceForVariables | null, saleId: string | null | undefined): Record<string, unknown> {
+  if (!s) return {};
+  const flat = serviceVariables(s);
+  const nested: Record<string, string> = {};
+  for (const [path, value] of Object.entries(flat)) nested[path.slice("service.".length)] = value;
+  return {
+    ...flat,
+    service: nested,
+    ...(typeof saleId === "string" && saleId ? { sale: { id: saleId } } : {}),
+  };
+}

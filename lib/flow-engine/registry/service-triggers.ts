@@ -17,7 +17,7 @@ import {
   SERVICE_VARIABLE_FIELDS,
   serviceDedupeKey,
   serviceEventMatches,
-  serviceVariables,
+  serviceFlowVariables,
   type ServiceForVariables,
 } from "@/lib/services/automation";
 
@@ -43,7 +43,7 @@ for (const type of SERVICE_TRIGGER_TYPES) {
       try {
         const { data } = await svcSchema(args.supabase)
           .from("services")
-          .select("id, status, product_snapshot, starts_on, ends_on, light")
+          .select("id, status, product_snapshot, starts_on, ends_on, light, sale_id")
           .eq("id", serviceId)
           .maybeSingle();
         if (!data) return {};
@@ -53,7 +53,9 @@ for (const type of SERVICE_TRIGGER_TYPES) {
           .eq("service_id", serviceId)
           .eq("status", "in_progress")
           .maybeSingle();
-        return serviceVariables({ ...(data as ServiceForVariables), phase_name: (phase as { name?: string } | null)?.name ?? null });
+        const row = data as ServiceForVariables & { sale_id?: string | null };
+        // Anidado y con la venta: asi `{{form_link.*}}` firma el link con el servicio y la venta (contrato con variante y monto).
+        return serviceFlowVariables({ ...row, phase_name: (phase as { name?: string } | null)?.name ?? null }, row.sale_id);
       } catch (error) {
         console.error("[servicios] no pude leer el servicio para las variables:", error instanceof Error ? error.message : "error");
         return {};
