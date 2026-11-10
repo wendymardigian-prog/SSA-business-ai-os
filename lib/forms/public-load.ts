@@ -15,6 +15,7 @@ import { toPublicFields } from "./public-definition";
 import { verifyFormLink } from "./signed-link";
 import { CONTRACTS_BUCKET } from "./contract/storage";
 import { loadContractLinkContext } from "./contract/link-context";
+import { linkPrefillValues, type LinkPrefillField, type LinkPrefillMapEntry } from "./link-prefill";
 import type { PublicFormData, PublicFormResult } from "./public-client";
 
 type Db = SupabaseClient<Database>;
@@ -81,6 +82,39 @@ export async function loadPublicContractContext(service: Db, slug: string, token
     return await loadContractLinkContext(service, form.workspace_id, link);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Los datos de la persona del link firmado para prellenar el formulario (nombre, email y teléfono; nada más). Solo con un
+ * link válido de ESTE formulario: uno roto, vencido o de otro formulario no da nada, y un error nunca rompe la página
+ * (el formulario se ve vacío, como antes). El mapeo al contacto es interno: acá se lee, pero no sale.
+ */
+export async function loadLinkPrefill(
+  service: Db,
+  slug: string,
+  token: string | null | undefined,
+  fields: ReadonlyArray<LinkPrefillField>,
+  verify: typeof verifyFormLink = verifyFormLink,
+): Promise<Record<string, string>> {
+  if (!token || !SLUG_PATTERN.test(slug)) return {};
+  try {
+    const { data: form } = await service.from("forms").select("id, workspace_id, type, contact_config").ilike("slug", slug).eq("status", "published").maybeSingle();
+    if (!form || form.type === "eod") return {};
+    const link = await verify(service, token, { workspaceId: form.workspace_id, formId: form.id });
+    if (!link.ok) return {};
+    const { data: contact } = await service
+      .from("contacts")
+      .select("display_name, email, phone, whatsapp_phone")
+      .eq("id", link.contactId)
+      .eq("workspace_id", form.workspace_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (!contact) return {};
+    const map = (form.contact_config as { map?: LinkPrefillMapEntry[] } | null)?.map;
+    return linkPrefillValues(contact, fields, Array.isArray(map) ? map : []);
+  } catch {
+    return {};
   }
 }
 

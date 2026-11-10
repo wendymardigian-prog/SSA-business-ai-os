@@ -1,5 +1,8 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
 import { SOCIAL_PREFIX } from "@/lib/contacts/social";
 import { FieldShell, publicInputClass, type FieldProps } from "./shared";
 
@@ -75,25 +78,44 @@ export function EmailField({ field, value, onChange, error, locked, onInteract }
   );
 }
 
+// El país por la zona horaria del navegador. `useSyncExternalStore` da el del servidor (ninguno) al hidratar y el del
+// navegador enseguida: así el HTML no cambia entre servidor y navegador.
+const subscribeNothing = () => () => {};
+const serverPhoneCountry = (): string | undefined => undefined;
+function browserPhoneCountry(): string | undefined {
+  try {
+    return countryFromTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Un teléfono con país: el desplegable lleva todos los países con su prefijo y la persona escribe el número SIN
+ * prefijo (`PhoneInput`). Lo que se guarda es `+<dígitos>`. El país con el que arranca sale de la zona horaria del
+ * navegador.
+ */
 export function PhoneField({ field, value, onChange, error, locked, onInteract }: FieldProps) {
+  const country = useSyncExternalStore(subscribeNothing, browserPhoneCountry, serverPhoneCountry);
   return (
     <FieldShell field={field} error={error} locked={locked}>
       {({ id, describedBy }) => (
-        <input
-          id={id}
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          className={publicInputClass}
-          value={text(value)}
-          placeholder={field.placeholder || "+506 8888 1234"}
-          disabled={locked}
-          required={field.required}
-          aria-invalid={!!error}
-          aria-describedby={describedBy}
-          onFocus={onInteract}
-          onChange={(e) => onChange(e.target.value)}
-        />
+        <div onFocusCapture={onInteract}>
+          {/* `key`: al resolverse el país, el campo (todavía vacío) vuelve a arrancar con él. */}
+          <PhoneInput
+            key={country ?? "auto"}
+            id={id}
+            value={text(value)}
+            onChange={onChange}
+            defaultCountry={country}
+            disabled={locked}
+            invalid={!!error}
+            describedBy={describedBy}
+            label={field.label}
+            selectClassName="w-[6.75rem]"
+            placeholder={field.placeholder || "8888 1234"}
+          />
+        </div>
       )}
     </FieldShell>
   );

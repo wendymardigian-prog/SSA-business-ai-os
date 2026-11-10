@@ -3,7 +3,7 @@
  * y los vuelve a juntar. Lo que se guarda es siempre `+<dígitos>` (E.164); quien usa el campo sigue validando como
  * antes (`isE164`, `normalizePhone`).
  *
- * El país sale del prefijo (`countryFromPhone`). Si es de un país que no está en la lista corta del selector
+ * El país sale del prefijo (`countryFromPhone`). Si es de un país que no está en la lista del selector
  * (`PHONE_COUNTRIES`), el campo queda en «Otro» con el número entero, con su +: nunca se pierde ni se cambia.
  */
 import { countryFromPhone } from "@/lib/phone-country";

@@ -10,7 +10,7 @@
  *   el resto es Estados Unidos.
  * - **+7**: Kazajistán empieza con 76 o 77; el resto es Rusia.
  *
- * No confundir con `lib/scheduling/phone-countries.ts`: esa es la lista corta del selector de país
+ * No confundir con `lib/scheduling/phone-countries.ts`: esa es la lista del selector de país (que sale de esta tabla)
  * de los inputs de teléfono.
  */
 import { normalizePhone } from "@/lib/phone";
@@ -87,6 +87,19 @@ const NANP_AREAS: Record<string, string> = {
 };
 
 const MAX_DIAL_LENGTH = 3;
+
+/**
+ * Todos los países que esta tabla conoce, con su prefijo y su nombre en español (sin repetir). Es lo que usa el selector
+ * de país de los teléfonos para ofrecer la lista completa: un solo lugar para los prefijos. Los países de +1 y Kazajistán
+ * (+7) comparten prefijo con otro y se separan por lo que sigue (código de área / 76-77), como en `countryFromPhone`.
+ */
+export function callingCountries(): Array<{ code: string; dial: string; label: string }> {
+  const dials = new Map<string, string>();
+  for (const [dial, code] of Object.entries(CALLING_CODES)) dials.set(code, dial);
+  for (const code of Object.values(NANP_AREAS)) dials.set(code, "1");
+  dials.set("KZ", "7");
+  return [...dials.entries()].map(([code, dial]) => ({ code, dial, label: countryLabel(code) }));
+}
 
 /** La bandera de un código ISO: dos letras regionales ("PE" → 🇵🇪). */
 export function flagOf(code: string): string {

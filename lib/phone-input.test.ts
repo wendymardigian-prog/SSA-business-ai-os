@@ -11,8 +11,11 @@ describe("splitPhone", () => {
     expect(splitPhone("", "MX")).toEqual({ country: "MX", number: "" });
     expect(splitPhone(null, "XX")).toEqual({ country: "CR", number: "" });
   });
-  it("un país fuera de la lista queda en «Otro» con el número entero", () => {
-    expect(splitPhone("+819012345678")).toEqual({ country: OTHER_COUNTRY, number: "+819012345678" });
+  it("Japón (que antes quedaba en «Otro») ahora es un país de la lista, con el número sin prefijo", () => {
+    expect(splitPhone("+819012345678")).toEqual({ country: "JP", number: "9012345678" });
+  });
+  it("un prefijo que no es de ningún país conocido queda en «Otro» con el número entero", () => {
+    expect(splitPhone("+999123456789")).toEqual({ country: OTHER_COUNTRY, number: "+999123456789" });
   });
   it("un número viejo sin prefijo se muestra tal cual con el país por defecto", () => {
     expect(splitPhone("8888-7777", "CR")).toEqual({ country: "CR", number: "8888-7777" });
