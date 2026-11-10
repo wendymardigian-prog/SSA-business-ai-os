@@ -141,3 +141,20 @@ export function serviceVariables(s: ServiceForVariables | null): Record<string, 
     "service.phase": s.phase_name ?? "",
   };
 }
+
+/**
+ * Las variables como las lee el motor: `resolveVariablePath` recorre `{{service.product}}` por partes
+ * (`variables.service.product`), asi que una clave plana "service.product" no se resuelve nunca. Tambien suma
+ * `sale.id` (la venta de la que nacio el servicio): con eso el link firmado de un formulario
+ * (`{{form_link.*}}`) lleva la venta y un contrato muestra `{{venta.*}}`.
+ */
+export function nestServiceVariables(flat: Record<string, string>, saleId: string | null): Record<string, Record<string, string>> {
+  const service: Record<string, string> = {};
+  for (const [k, v] of Object.entries(flat)) {
+    if (k.startsWith("service.")) service[k.slice("service.".length)] = v;
+  }
+  const out: Record<string, Record<string, string>> = {};
+  if (Object.keys(service).length > 0) out.service = service;
+  if (saleId) out.sale = { id: saleId };
+  return out;
+}
