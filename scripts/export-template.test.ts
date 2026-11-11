@@ -46,7 +46,7 @@ describe("export-template: qué se copia y qué no", () => {
   });
 
   it("no copia docs internos, material del proyecto, .env ni .git original", () => {
-    for (const p of ["docs", "claude", "BITACORA.md", ".claude/settings.json", ".claude/hooks", "scripts/sync-template.mjs", "scripts/plantilla", "plantilla-estudiantes", "scripts/verify-student-schema.mjs", "scripts/template-files/estudiantes", ".env", ".env.local", ".claude/worktrees", "node_modules", ".next"]) {
+    for (const p of ["docs", "claude", "BITACORA.md", ".claude/hooks/baios-reminder.mjs", "scripts/sync-template.mjs", "scripts/plantilla", "plantilla-estudiantes", "scripts/verify-student-schema.mjs", "scripts/template-files/estudiantes", ".env", ".env.local", ".claude/worktrees", "node_modules", ".next"]) {
       expect(existsSync(join(dest, p)), p).toBe(false);
     }
   });
@@ -64,6 +64,28 @@ describe("export-template: qué se copia y qué no", () => {
   it("la home de la copia es una página que existe", () => {
     const home = ["app/(sitio)/page.tsx", "app/page.tsx"].some((p) => existsSync(join(dest, p)));
     expect(home).toBe(true);
+  });
+});
+
+describe("export-template: el protocolo de trabajo viaja a cada clon", () => {
+  it("copia el protocolo, el comando /planificar y el recordatorio", () => {
+    for (const p of [
+      ".claude/rules/00-protocolo-de-trabajo.md",
+      ".claude/skills/planificar/SKILL.md",
+      ".claude/hooks/plan-reminder.mjs",
+    ]) {
+      expect(existsSync(join(dest, p)), p).toBe(true);
+    }
+  });
+
+  it("el .claude/settings.json del clon es el de clientes: modo plan y recordatorio, sin el aviso de la plantilla", () => {
+    const copied = readFileSync(join(dest, ".claude/settings.json"), "utf8");
+    const template = readFileSync(join(process.cwd(), "scripts/template-files/clientes/settings.json"), "utf8");
+    expect(copied).toBe(template);
+    const settings = JSON.parse(copied);
+    expect(settings.permissions.defaultMode).toBe("plan");
+    expect(copied).toContain("plan-reminder.mjs");
+    expect(copied).not.toContain("baios-reminder");
   });
 });
 
@@ -153,7 +175,7 @@ describe("export-template: solo copia lo que git sigue", () => {
     repo = join(tmp, "repo");
     copia = join(tmp, "copia");
     mkdirSync(repo);
-    for (const rel of ["scripts/export-template.mjs", "scripts/template-files/sitio/layout.tsx", "scripts/template-files/sitio/page.tsx"]) {
+    for (const rel of ["scripts/export-template.mjs", "scripts/template-files/sitio/layout.tsx", "scripts/template-files/sitio/page.tsx", "scripts/template-files/clientes/settings.json"]) {
       mkdirSync(dirname(join(repo, rel)), { recursive: true });
       copyFileSync(join(process.cwd(), rel), join(repo, rel));
     }
