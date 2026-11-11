@@ -3,9 +3,9 @@ import { manualTranscriptWrite, MAX_TRANSCRIPT_CHARS } from "./ad-transcript";
 
 describe("manualTranscriptWrite", () => {
   it("un texto queda lista y manual, sin los espacios de las puntas", () => {
-    expect(manualTranscriptWrite("  Hola, soy Wendy.\r\nHoy te cuento...  ")).toEqual({
+    expect(manualTranscriptWrite("  Hola, soy Ana.\r\nHoy te cuento...  ")).toEqual({
       ok: true,
-      value: { transcript: "Hola, soy Wendy.\nHoy te cuento...", transcript_status: "ready", transcript_source: "manual" },
+      value: { transcript: "Hola, soy Ana.\nHoy te cuento...", transcript_status: "ready", transcript_source: "manual" },
     });
   });
 
