@@ -1,5 +1,28 @@
 {
+  "model": "opusplan",
+  "permissions": {
+    "defaultMode": "plan",
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(npx tsc --noEmit*)",
+      "Bash(npm run lint*)",
+      "Bash(npx vitest run*)"
+    ]
+  },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/plan-reminder.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash",

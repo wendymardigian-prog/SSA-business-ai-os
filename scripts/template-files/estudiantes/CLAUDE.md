@@ -1,3 +1,7 @@
+# Cómo se trabaja acá (obligatorio)
+
+Quien usa este proyecto puede no ser técnico. **Antes de modificar archivos, la base de datos o la configuración, hace falta un plan aprobado**: primero preguntas (una sola ronda, con tu recomendación), después un plan en dos partes (un resumen para la persona en lenguaje simple y el plan para Claude, con modelo y esfuerzo recomendados) y recién con el sí se ejecuta, de corrido y sin interrumpir. Las preguntas y explicaciones se contestan directo. Cada pedido nuevo vuelve a empezar en modo plan. El protocolo completo, con la tabla de modelos, cuándo SÍ frenar y la definición de terminado, está en `.claude/rules/00-protocolo-de-trabajo.md`; la plantilla del plan y los casos borde, en `/planificar`.
+
 # Comunicación
 
 - Explicá todo en lenguaje simple. Si usás un término técnico, agregá una explicación breve entre paréntesis.
