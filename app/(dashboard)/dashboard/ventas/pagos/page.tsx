@@ -2,7 +2,10 @@ import { PaymentsList, type PaymentsListData } from "@/components/sales/payments
 import { requirePermission } from "@/lib/auth/guards";
 import { localToday } from "@/lib/shared/dates";
 import { monthRange, paymentListRow, parsePaymentsFilters, PAYMENTS_PAGE_SIZE, paymentsQueryFilters, paymentsTotals, weekRange, type QueryFilter } from "@/lib/sales/payments-list";
-import { snapshotText } from "@/lib/sales/sale-text";
+import { snapshotProductName, snapshotVariantName } from "@/lib/sales/sale-text";
+import { PAYMENTS_TABLE_KEY } from "@/lib/sales/payments-columns";
+import { loadTableViews } from "@/lib/ui/data-table/views-load";
+import { fetchAllPages, type PageResult } from "@/lib/shared/paginate";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { hasSalesAllScope } from "@/lib/sales/wizard/load";
 import { sanitizeSearch } from "@/lib/url-params";
@@ -12,7 +15,6 @@ export const dynamic = "force-dynamic";
 
 const COLUMNS = "id, sale_id, type, status, amount, due_date, paid_on, delay_days, payment_method, provider_fee_amount";
 const NONE = ["00000000-0000-0000-0000-000000000000"];
-const TOTALS_LIMIT = 5000;
 
 type Row = { id: string; sale_id: string; type: string; status: string; amount: number; due_date: string | null; paid_on: string | null; delay_days: number | null; payment_method: string | null; provider_fee_amount: number | null };
 
@@ -24,7 +26,11 @@ type Row = { id: string; sale_id: string; type: string; status: string; amount: 
 export default async function PagosPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const ctx = await requirePermission("sales.view");
   const { supabase, workspace } = ctx;
-  const filters = parsePaymentsFilters(await searchParams);
+  const sp = await searchParams;
+  // Las vistas guardadas de esta persona: si la URL llegó pelada, los filtros de su vista predeterminada se aplican acá.
+  const viewsData = await loadTableViews(ctx, PAYMENTS_TABLE_KEY, sp);
+  const inherited = viewsData.resolved.inheritedFilters;
+  const filters = parsePaymentsFilters(inherited ? { ...Object.fromEntries(new URLSearchParams(inherited)), pagina: sp.pagina } : sp);
   const w = workspace as unknown as { timezone?: string };
   const methods = workspaceMethods(workspace);
   const today = localToday(new Date(), w.timezone ?? "UTC");
@@ -69,7 +75,13 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
       .order("due_date", { ascending: true })
       .order("created_at", { ascending: true })
       .range(from, from + PAYMENTS_PAGE_SIZE - 1),
-    filtered(supabase.from("payments").select("status, amount, provider_fee_amount").eq("workspace_id", workspace.id) as never as ReturnType<typeof head>).limit(TOTALS_LIMIT),
+    // Los totales del pie son de TODAS las filas del filtro, brutos. PostgREST corta cada respuesta en 1.000 filas: se lee de a páginas.
+    fetchAllPages(
+      (a, b) =>
+        filtered(supabase.from("payments").select("status, amount, provider_fee_amount").eq("workspace_id", workspace.id) as never as ReturnType<typeof head>)
+          .order("id")
+          .range(a, b) as unknown as PromiseLike<PageResult<{ status: string; amount: number; provider_fee_amount: number | null }>>,
+    ),
     head().eq("status", "scheduled").gte("due_date", week.from).lte("due_date", week.to),
     head().eq("status", "overdue"),
     head().eq("status", "paid").neq("type", "refund").gte("paid_on", month.from).lte("paid_on", month.to),
@@ -85,7 +97,7 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
   const contactName = new Map((contacts ?? []).map((c) => [c.id, c.display_name || c.email || "Sin nombre"]));
 
   const canManage = ctx.can("payments.manage");
-  const totalsRows = (totalsRes.data ?? []) as unknown as Array<{ status: string; amount: number; provider_fee_amount: number | null }>;
+  const totalsRows = totalsRes.rows;
   const data: PaymentsListData = {
     rows: payments.map((p) => {
       const sale = saleById.get(p.sale_id);
@@ -93,7 +105,8 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
         ...paymentListRow(p, canManage, methods.defs),
         contactName: sale ? contactName.get(sale.contact_id) ?? "Sin nombre" : "—",
         contactId: sale?.contact_id ?? null,
-        product: sale ? snapshotText(sale.product_snapshot) : "—",
+        product: sale ? snapshotProductName(sale.product_snapshot) : "—",
+        variant: sale ? snapshotVariantName(sale.product_snapshot) : null,
         saleDate: sale?.sale_date ?? "",
       };
     }),
@@ -104,12 +117,22 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
     loadError: !!page.error,
     pills: { esta_semana: thisWeek.count ?? 0, morosos: overdue.count ?? 0, cobrados_mes: paidMonth.count ?? 0, incobrables: uncollectible.count ?? 0 },
     totals: paymentsTotals(totalsRows),
-    totalsTruncated: totalsRows.length >= TOTALS_LIMIT,
+    totalsTruncated: totalsRes.truncated,
+    totalsFailed: !!totalsRes.error,
     scopeAll: hasSalesAllScope(ctx),
     members: members.map((m) => ({ id: m.userId, name: m.name })),
     enabledMethods: methods.enabledKeys,
     methods: methods.defs,
     today,
+    views: {
+      items: viewsData.views,
+      defaultViewId: viewsData.defaultViewId,
+      activeId: viewsData.resolved.active?.id ?? null,
+      viewParam: viewsData.resolved.viewParam,
+      activeBase: viewsData.resolved.active?.config.columns ?? null,
+      userId: viewsData.userId,
+      isAdmin: viewsData.isAdmin,
+    },
   };
   return <PaymentsList data={data} />;
 }

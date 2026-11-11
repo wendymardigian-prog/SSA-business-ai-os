@@ -24,7 +24,8 @@ import { needsOutcome } from "@/lib/scheduling/bookings-view";
 import { needsCancelModal } from "@/lib/scheduling/kanban";
 import { ORIGIN_LABELS } from "@/lib/scheduling/agenda-filters";
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
-import { BASE_COLUMN_KEYS, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, clampWidth, columnWidth, totalWidth, type BaseColumnKey, type ColumnWidths } from "@/lib/scheduling/list-columns";
+import { BASE_COLUMN_KEYS, columnWidth, totalWidth, type BaseColumnKey, type ColumnWidths } from "@/lib/scheduling/list-columns";
+import { ResizeHandle } from "@/components/ui/data-table/resize-handle";
 import { NeedsOutcomeChip, SlotReleasedChip, StatusChip } from "./status-chip";
 import { StatusMenu } from "./status-menu";
 import { MeetJoinLink } from "./meet-join-link";
@@ -53,72 +54,6 @@ export interface AgendaListColumns {
   widths: ColumnWidths;
   setWidth: (key: string, px: number) => void;
   resetWidth: (key: string) => void;
-}
-
-/** El borde del encabezado que se arrastra para cambiar el ancho de la columna. */
-function ResizeHandle({
-  label,
-  width,
-  onLive,
-  onCommit,
-  onReset,
-}: {
-  label: string;
-  width: number;
-  /** Mientras se arrastra (null = se cancelo). */
-  onLive: (px: number | null) => void;
-  onCommit: (px: number) => void;
-  onReset: () => void;
-}) {
-  const drag = useRef<{ x: number; width: number } | null>(null);
-
-  function end(event: React.PointerEvent<HTMLSpanElement>, commit: boolean) {
-    const start = drag.current;
-    if (!start) return;
-    drag.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    if (commit) onCommit(clampWidth(start.width + event.clientX - start.x));
-    else onLive(null);
-  }
-
-  return (
-    <span
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={`Ajustar el ancho de ${label}`}
-      aria-valuenow={width}
-      aria-valuemin={MIN_COLUMN_WIDTH}
-      aria-valuemax={MAX_COLUMN_WIDTH}
-      tabIndex={0}
-      title="Arrastrá para ajustar el ancho. Doble clic: ancho normal."
-      onClick={(event) => event.stopPropagation()}
-      onDoubleClick={onReset}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        event.currentTarget.setPointerCapture(event.pointerId);
-        drag.current = { x: event.clientX, width };
-      }}
-      onPointerMove={(event) => {
-        const start = drag.current;
-        if (start) onLive(clampWidth(start.width + event.clientX - start.x));
-      }}
-      onPointerUp={(event) => end(event, true)}
-      onPointerCancel={(event) => end(event, false)}
-      onKeyDown={(event) => {
-        const step = event.shiftKey ? 48 : 16;
-        if (event.key === "ArrowRight") onCommit(clampWidth(width + step));
-        else if (event.key === "ArrowLeft") onCommit(clampWidth(width - step));
-        else if (event.key === "Home") onReset();
-        else return;
-        event.preventDefault();
-      }}
-      className="group/resize absolute inset-y-0 -right-1 z-20 flex w-2 cursor-col-resize touch-none select-none justify-center focus-visible:outline-none"
-    >
-      <span className="h-full w-px bg-transparent group-hover/resize:bg-primary-edge group-focus-visible/resize:bg-primary-edge group-active/resize:w-0.5 group-active/resize:bg-primary-edge" />
-    </span>
-  );
 }
 
 export function BookingsList({

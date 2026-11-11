@@ -154,11 +154,16 @@ export interface PaymentListRow {
   paidOn: string | null;
   delay: DelayChip;
   method: string | null;
+  /** Comisión del procesador y neto: solo de los cobrados que tienen comisión guardada (null = «—»). */
+  fee: number | null;
+  net: number | null;
   canAct: { markPaid: boolean; reschedule: boolean };
 }
 
 export function paymentListRow(p: PaymentListInput, canManage: boolean, catalog?: readonly PaymentMethodDef[] | null): PaymentListRow {
   const open = p.status === "scheduled" || p.status === "overdue";
+  const hasFee = p.status === "paid" && p.provider_fee_amount !== null && p.provider_fee_amount !== undefined;
+  const feeCents = hasFee ? toCents(p.provider_fee_amount) : 0;
   return {
     id: p.id,
     saleId: p.sale_id,
@@ -170,6 +175,8 @@ export function paymentListRow(p: PaymentListInput, canManage: boolean, catalog?
     paidOn: p.paid_on,
     delay: p.status === "paid" ? delayChip(p.delay_days) : { label: "—", tone: "none" },
     method: p.payment_method ? paymentMethodName(p.payment_method, catalog) : null,
+    fee: hasFee ? fromCents(feeCents) : null,
+    net: hasFee ? fromCents(toCents(p.amount) - feeCents) : null,
     canAct: { markPaid: canManage && open && p.type !== "refund", reschedule: canManage && open && p.type !== "refund" },
   };
 }
@@ -180,19 +187,24 @@ export interface PaymentsTotals {
   amount: number;
   /** De los cobrados: bruto, comisión y neto. */
   paid: { count: number; gross: number; fee: number; net: number };
+  /** Lo que falta cobrar, BRUTO: lo programado (todavía no venció) y lo moroso (venció sin cobrar). */
+  scheduled: number;
+  overdue: number;
 }
 
 /** Los totales del filtro, en céntimos: coinciden con la suma de las filas. */
 export function paymentsTotals(rows: ReadonlyArray<Pick<PaymentListInput, "status" | "amount" | "provider_fee_amount">>): PaymentsTotals {
-  let amount = 0, gross = 0, fee = 0, paidCount = 0;
+  let amount = 0, gross = 0, fee = 0, paidCount = 0, scheduled = 0, overdue = 0;
   for (const r of rows) {
     const cents = toCents(r.amount);
     amount += cents;
+    if (r.status === "scheduled") scheduled += cents;
+    if (r.status === "overdue") overdue += cents;
     if (r.status === "paid") {
       paidCount++;
       gross += cents;
       fee += toCents(r.provider_fee_amount);
     }
   }
-  return { count: rows.length, amount: fromCents(amount), paid: { count: paidCount, gross: fromCents(gross), fee: fromCents(fee), net: fromCents(gross - fee) } };
+  return { count: rows.length, amount: fromCents(amount), paid: { count: paidCount, gross: fromCents(gross), fee: fromCents(fee), net: fromCents(gross - fee) }, scheduled: fromCents(scheduled), overdue: fromCents(overdue) };
 }

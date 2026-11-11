@@ -49,6 +49,26 @@ describe("filas y totales", () => {
     expect(t.amount).toBe(330.3);
     expect(t.paid).toEqual({ count: 3, gross: 280.3, fee: 8.7, net: 271.6 });
   });
+  it("el pie: cobrado, programado y moroso, brutos y por separado", () => {
+    const rows = [
+      row({ amount: 400, provider_fee_amount: 12 }),
+      row({ type: "refund", amount: -100, provider_fee_amount: null }),
+      row({ status: "scheduled", amount: 800 }),
+      row({ status: "scheduled", amount: 0.1 }),
+      row({ status: "scheduled", amount: 0.2 }),
+      row({ status: "overdue", amount: 250 }),
+      row({ status: "uncollectible", amount: 999 }),
+    ];
+    const t = paymentsTotals(rows);
+    expect(t.paid.gross).toBe(300);
+    expect(t.scheduled).toBe(800.3);
+    expect(t.overdue).toBe(250);
+  });
+  it("la comisión y el neto de una fila: solo si está cobrada y tiene comisión guardada", () => {
+    expect(paymentListRow(row({ amount: 100, provider_fee_amount: 2.9 }) as never, false)).toMatchObject({ fee: 2.9, net: 97.1 });
+    expect(paymentListRow(row({ amount: 100, provider_fee_amount: null }) as never, false)).toMatchObject({ fee: null, net: null });
+    expect(paymentListRow(row({ status: "scheduled", amount: 100, provider_fee_amount: 2.9 }) as never, false)).toMatchObject({ fee: null, net: null });
+  });
   it("las acciones en línea solo con permiso y sobre pagos abiertos", () => {
     expect(paymentListRow(row({ status: "scheduled" }) as never, true).canAct).toEqual({ markPaid: true, reschedule: true });
     expect(paymentListRow(row({ status: "scheduled" }) as never, false).canAct).toEqual({ markPaid: false, reschedule: false });

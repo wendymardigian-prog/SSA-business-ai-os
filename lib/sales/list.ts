@@ -8,7 +8,7 @@ import { ATTRIBUTION_TYPES, SALE_STATUSES } from "./labels";
 import { saleBalance, salePaid } from "./sale-math";
 import { describeAttribution, type SaleAttribution } from "@/lib/attribution/attribution";
 import { CHANNELS, type TouchChannelKey } from "@/lib/contacts/taxonomy";
-import { snapshotText } from "./sale-text";
+import { snapshotProductName, snapshotText, snapshotVariantName } from "./sale-text";
 
 export const SALES_PAGE_SIZE = 50;
 
@@ -148,7 +148,11 @@ export interface SaleListRow {
   id: string;
   contactId: string;
   saleDate: string;
+  /** «Producto · Variante»: para las tarjetas del celular. */
   product: string;
+  /** Solo el producto y solo la variante: cada uno tiene su columna en la tabla. */
+  productName: string;
+  variantName: string | null;
   finalAmount: number;
   /** Cobrado neto y pendiente en dólares, calculados en céntimos (nunca sumas en flotante). */
   paid: number;
@@ -173,6 +177,8 @@ export function saleListRow(
     contactId: sale.contact_id,
     saleDate: sale.sale_date,
     product: snapshotText(sale.product_snapshot),
+    productName: snapshotProductName(sale.product_snapshot),
+    variantName: snapshotVariantName(sale.product_snapshot),
     finalAmount: Number(sale.final_amount) || 0,
     paid: salePaid(payments),
     pending: saleBalance(sale.final_amount, payments),
