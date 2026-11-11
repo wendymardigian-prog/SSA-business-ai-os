@@ -223,9 +223,9 @@ describe("export-template: solo copia lo que git sigue", () => {
     expect(existsSync(join(copia, "docs"))).toBe(false);
   });
 
-  it("la copia entera es lo seguido + el sitio por defecto, nada más", () => {
+  it("la copia entera es lo seguido + el sitio y la configuración de Claude Code por defecto, nada más", () => {
     expect(walk(copia).sort()).toEqual(
-      [".gitignore", "app/(sitio)/layout.tsx", "app/(sitio)/page.tsx", "lib/seguido.ts", "public/sitio/.gitkeep", "scripts/export-template.mjs", "scripts/template-files/sitio/layout.tsx", "scripts/template-files/sitio/page.tsx"].sort(),
+      [".claude/settings.json", ".gitignore", "app/(sitio)/layout.tsx", "app/(sitio)/page.tsx", "lib/seguido.ts", "public/sitio/.gitkeep", "scripts/export-template.mjs", "scripts/template-files/clientes/settings.json", "scripts/template-files/sitio/layout.tsx", "scripts/template-files/sitio/page.tsx"].sort(),
     );
   });
 });
