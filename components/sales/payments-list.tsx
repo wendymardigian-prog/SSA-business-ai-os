@@ -2,11 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { ChevronLeft, ChevronRight, SlidersHorizontal, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
+import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
+import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
+import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
+import { ViewsMenu } from "@/components/ui/data-table/views-menu";
 import { MarkPaidDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
 import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
 import { DELAY_TONE_CLASSES } from "@/lib/sales/delay";
@@ -18,8 +22,11 @@ import {
   type PaymentListRow, type PaymentPill, type PaymentsFilters, type PaymentsTotals,
 } from "@/lib/sales/payments-list";
 import { paymentStatusClasses } from "@/lib/sales/status-colors";
+import { PAYMENTS_COLUMN_METAS, PAYMENTS_TABLE_KEY } from "@/lib/sales/payments-columns";
+import type { TablePrefs } from "@/lib/ui/data-table/prefs";
+import { viewFilterString, withViewParam, type TableViewItem } from "@/lib/ui/data-table/views";
 
-export type PaymentListRowView = PaymentListRow & { contactName: string; contactId: string | null; product: string; saleDate: string };
+export type PaymentListRowView = PaymentListRow & { contactName: string; contactId: string | null; product: string; variant: string | null; saleDate: string };
 
 export interface PaymentsListData {
   rows: PaymentListRowView[];
@@ -32,11 +39,23 @@ export interface PaymentsListData {
   totals: PaymentsTotals;
   /** Había más filas que el tope: los totales miran las primeras. */
   totalsTruncated: boolean;
+  /** No se pudieron calcular los totales. */
+  totalsFailed: boolean;
   scopeAll: boolean;
   members: Array<{ id: string; name: string }>;
   enabledMethods: string[];
   methods: PaymentMethodDef[];
   today: string;
+  /** Las vistas guardadas de esta persona para la tabla. */
+  views: {
+    items: TableViewItem[];
+    defaultViewId: string | null;
+    activeId: string | null;
+    viewParam: string | null;
+    activeBase: TablePrefs | null;
+    userId: string;
+    isAdmin: boolean;
+  };
 }
 
 const selectClass = "h-8 w-full rounded-lg border border-input bg-background px-2 text-sm";
@@ -56,9 +75,13 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
   const active = countActivePaymentFilters(filters);
   const pages = Math.max(1, Math.ceil(total / pageSize));
 
+  const columns = useMemo<DataColumn<PaymentListRowView>[]>(() => buildColumns(setAction), []);
+  const state = useTablePrefs(PAYMENTS_TABLE_KEY, data.views.activeId ?? "base", columns, data.views.activeBase);
+  const basePath = data.views.viewParam ? `${pathname}?vista=${data.views.viewParam}` : pathname;
+
   function go(next: Partial<PaymentsFilters>) {
     const merged: PaymentsFilters = { ...filters, ...next, page: next.page ?? 1 };
-    const qs = paymentsFiltersToParams(merged).toString();
+    const qs = withViewParam(paymentsFiltersToParams(merged), data.views.viewParam).toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
   const toggleStatus = (s: string) => go({ status: filters.status.includes(s) ? filters.status.filter((x) => x !== s) : [...filters.status, s], pill: null });
@@ -156,6 +179,18 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
           )}
         </div>
       </FilterMenu>
+      <ViewsMenu
+        tableKey={PAYMENTS_TABLE_KEY}
+        views={data.views.items}
+        defaultViewId={data.views.defaultViewId}
+        activeId={data.views.activeId}
+        userId={data.views.userId}
+        isAdmin={data.views.isAdmin}
+        members={data.members}
+        state={state}
+        currentFilters={viewFilterString(paymentsFiltersToParams(filters))}
+      />
+      <ColumnsMenu state={state} />
     </>
   );
 
@@ -164,54 +199,27 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
       <PageHeader route="/dashboard/ventas/pagos" left={<SalesViewToggle active="pagos" />} filters={barFilters} />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-        <dl className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card p-3 text-center sm:grid-cols-5">
-          <Total label="Pagos" value={String(totals.count)} />
-          <Total label="Monto" value={formatMoney(totals.amount)} />
-          <Total label="Cobrado bruto" value={formatMoney(totals.paid.gross)} />
-          <Total label="Comisión" value={formatMoney(totals.paid.fee)} />
-          <Total label="Cobrado neto" value={formatMoney(totals.paid.net)} tone="text-emerald-700 dark:text-emerald-400" />
-        </dl>
-        {data.totalsTruncated && <p className="mt-1 text-[11px] text-muted-foreground">Hay más de 5.000 pagos con este filtro: los totales cuentan los primeros 5.000. Acotá el filtro para ver el total exacto.</p>}
-
         {data.loadError ? (
-          <div role="alert" className="mt-6 rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-center text-sm">
+          <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-center text-sm">
             <p className="text-red-700 dark:text-red-300">No se pudieron cargar los pagos.</p>
             <button type="button" onClick={() => router.refresh()} className="mt-3 h-8 rounded-lg border border-border px-3 hover:bg-accent">Reintentar</button>
           </div>
         ) : rows.length === 0 ? (
-          <div className="mt-6 rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">
+          <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">
             <p>{active > 0 || filters.q || filters.pill ? "No hay pagos con estos filtros." : "Todavía no hay pagos: aparecen cuando cargues una venta."}</p>
-            {(active > 0 || filters.q || filters.pill) && <button type="button" onClick={() => router.push(pathname)} className="mt-3 h-8 rounded-lg border border-border px-3 text-foreground hover:bg-accent">Limpiar filtros</button>}
+            {(active > 0 || filters.q || filters.pill) && <button type="button" onClick={() => router.push(basePath)} className="mt-3 h-8 rounded-lg border border-border px-3 text-foreground hover:bg-accent">Limpiar filtros</button>}
           </div>
         ) : (
           <>
-            <div className="mt-4 hidden overflow-x-auto rounded-xl border border-border md:block">
-              <table className="w-full min-w-[900px] text-sm">
-                <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
-                  <tr>{["Vence", "Contacto", "Producto", "Monto", "Estado", "Desfase", "Método", "Cobrado el", ""].map((h, i) => <th key={i} scope="col" className={`whitespace-nowrap px-3 py-2 font-medium ${i === 3 ? "text-right" : ""}`}>{h}</th>)}</tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {rows.map((r) => (
-                    <tr key={r.id} className="hover:bg-muted/30">
-                      <td className="whitespace-nowrap px-3 py-2">{formatDate(r.dueDate)}</td>
-                      <td className="max-w-[180px] truncate px-3 py-2">{r.contactId ? <Link href={`/dashboard/contacts/${r.contactId}`} className="font-medium underline-offset-2 hover:underline">{r.contactName}</Link> : r.contactName}</td>
-                      <td className="max-w-[220px] truncate px-3 py-2"><Link href={`/dashboard/ventas/${r.saleId}`} className="underline-offset-2 hover:underline" title="Ver la venta">{r.product}</Link></td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(r.amount)}</td>
-                      <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusClasses(r.status)}`}>{r.statusLabel}</span></td>
-                      <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${DELAY_TONE_CLASSES[r.delay.tone]}`}>{r.delay.label}</span></td>
-                      <td className="px-3 py-2">{r.method ?? "—"}</td>
-                      <td className="whitespace-nowrap px-3 py-2">{formatDate(r.paidOn)}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex justify-end gap-1 whitespace-nowrap">
-                          {r.canAct.markPaid && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "paid", row: r })}>Cobrar</button>}
-                          {r.canAct.reschedule && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "reschedule", row: r })}>Reprogramar</button>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              className="hidden md:block"
+              columns={columns}
+              rows={rows}
+              rowKey={(r) => r.id}
+              state={state}
+              caption="Pagos"
+              totals={totalCells(totals)}
+            />
 
             <ul className="mt-4 space-y-2 md:hidden">
               {rows.map((r) => (
@@ -249,6 +257,24 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
         )}
       </div>
 
+      {!data.loadError && rows.length > 0 && (
+        <footer className="shrink-0 border-t border-border bg-card px-4 py-2.5 md:px-6" aria-label="Totales de los pagos">
+          {data.totalsFailed ? (
+            <p className="text-xs text-muted-foreground">No pude calcular los totales. Recargá la página para intentarlo de nuevo.</p>
+          ) : (
+            <>
+              <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                <FooterTotal label="Total cobrado" value={formatMoney(totals.paid.gross)} tone="text-emerald-700 dark:text-emerald-400" />
+                <FooterTotal label="Total programado" value={formatMoney(totals.scheduled)} />
+                <FooterTotal label="Total moroso" value={formatMoney(totals.overdue)} tone="text-red-700 dark:text-red-400" />
+                <p className="ml-auto text-[11px] text-muted-foreground">Montos brutos de los {totals.count} {totals.count === 1 ? "pago" : "pagos"} con este filtro.</p>
+              </dl>
+              {data.totalsTruncated && <p className="mt-1 text-[11px] text-muted-foreground">Hay más de 20.000 pagos con este filtro: los totales cuentan los primeros 20.000. Acotá el filtro para ver el total exacto.</p>}
+            </>
+          )}
+        </footer>
+      )}
+
       {action?.kind === "paid" && payable && <MarkPaidDialog saleId={action.row.saleId} payment={payable} saleDate={action.row.saleDate} today={data.today} enabledMethods={data.enabledMethods} methods={data.methods} onClose={() => setAction(null)} />}
       {action?.kind === "reschedule" && payable && <RescheduleDialog payment={payable} onClose={() => setAction(null)} />}
     </div>
@@ -264,11 +290,45 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Total({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function FooterTotal({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div>
+    <div className="flex items-baseline gap-2">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className={`text-base font-semibold tabular-nums ${tone ?? ""}`}>{value}</dd>
     </div>
   );
+}
+
+const LINK = "underline-offset-2 hover:underline";
+
+/** Las celdas de cada columna. El orden, la visibilidad y los anchos no se deciden acá. */
+function buildColumns(setAction: Dispatch<SetStateAction<{ kind: "paid" | "reschedule"; row: PaymentListRowView } | null>>): DataColumn<PaymentListRowView>[] {
+  const money = (value: number | null) => (value === null ? "—" : formatMoney(value));
+  const cells: Record<string, Pick<DataColumn<PaymentListRowView>, "render" | "align" | "cellClassName">> = {
+    due: { render: (r) => formatDate(r.dueDate) },
+    contact: { render: (r) => (r.contactId ? <Link href={`/dashboard/contacts/${r.contactId}`} className={`font-medium ${LINK}`}>{r.contactName}</Link> : r.contactName) },
+    product: { render: (r) => <Link href={`/dashboard/ventas/${r.saleId}`} className={LINK} title="Ver la venta">{r.product}</Link> },
+    variant: { render: (r) => r.variant ?? "—", cellClassName: "text-muted-foreground" },
+    amount: { align: "right", render: (r) => formatMoney(r.amount) },
+    status: { render: (r) => <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusClasses(r.status)}`}>{r.statusLabel}</span> },
+    delay: { render: (r) => <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${DELAY_TONE_CLASSES[r.delay.tone]}`}>{r.delay.label}</span> },
+    method: { render: (r) => r.method ?? "—" },
+    paidOn: { render: (r) => formatDate(r.paidOn) },
+    fee: { align: "right", render: (r) => money(r.fee) },
+    net: { align: "right", render: (r) => money(r.net) },
+    actions: {
+      render: (r) => (
+        <div className="flex justify-end gap-1 whitespace-nowrap">
+          {r.canAct.markPaid && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "paid", row: r })}>Cobrar</button>}
+          {r.canAct.reschedule && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "reschedule", row: r })}>Reprogramar</button>}
+        </div>
+      ),
+    },
+  };
+  return PAYMENTS_COLUMN_METAS.map((meta) => ({ ...meta, ...cells[meta.key] }) as DataColumn<PaymentListRowView>);
+}
+
+/** El pie de la tabla: lo que suman las columnas de plata, sobre TODAS las filas del filtro. */
+function totalCells(totals: PaymentsTotals) {
+  return { amount: formatMoney(totals.amount), fee: formatMoney(totals.paid.fee), net: formatMoney(totals.paid.net) };
 }

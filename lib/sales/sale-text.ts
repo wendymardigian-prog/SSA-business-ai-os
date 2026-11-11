@@ -12,3 +12,15 @@ export function snapshotProductId(snapshot: unknown): string | null {
   const id = (snapshot as { product_id?: unknown } | null)?.product_id;
   return typeof id === "string" ? id : null;
 }
+
+/** Solo el nombre del producto (la columna «Producto» de las tablas; la variante tiene la suya). */
+export function snapshotProductName(snapshot: unknown): string {
+  const product = (snapshot as { product_name?: unknown } | null)?.product_name;
+  return typeof product === "string" && product ? product : "Producto";
+}
+
+/** El nombre de la variante tal como se guardó (null si la venta no la tiene). */
+export function snapshotVariantName(snapshot: unknown): string | null {
+  const variant = (snapshot as { variant_name?: unknown } | null)?.variant_name;
+  return typeof variant === "string" && variant.trim() ? variant : null;
+}

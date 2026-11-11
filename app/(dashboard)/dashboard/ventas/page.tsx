@@ -6,6 +6,10 @@ import { buildOriginViews, loadOriginParts } from "@/lib/sales/attribution-load"
 import { loadWizardConfig, hasSalesAllScope } from "@/lib/sales/wizard/load";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { sanitizeSearch } from "@/lib/url-params";
+import { SALES_TABLE_KEY } from "@/lib/sales/columns";
+import { computeSalesTotals } from "@/lib/sales/sales-totals";
+import { loadTableViews } from "@/lib/ui/data-table/views-load";
+import type { PageResult } from "@/lib/shared/paginate";
 import { ensureSalesTemplateFlows } from "@/lib/sales/automation/templates-run";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
@@ -41,7 +45,10 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   const ctx = await requirePermission("sales.view");
   const { supabase, workspace } = ctx;
   const sp = await searchParams;
-  const filters = parseSalesFilters(sp);
+  // Las vistas guardadas de esta persona: si la URL llegó pelada, los filtros de su vista predeterminada se aplican acá.
+  const viewsData = await loadTableViews(ctx, SALES_TABLE_KEY, sp);
+  const inherited = viewsData.resolved.inheritedFilters;
+  const filters = parseSalesFilters(inherited ? { ...Object.fromEntries(new URLSearchParams(inherited)), pagina: sp.pagina } : sp);
   const timeZone = await resolveViewerTimezone(workspace.timezone);
   const today = localToday(new Date(), workspace.timezone);
 
@@ -69,18 +76,31 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   }
 
   const from = (filters.page - 1) * SALES_PAGE_SIZE;
-  // Con un filtro por canal o por pieza se suma el toque como `inner` (las ventas cuyo toque no cumple quedan afuera).
-  let query = supabase.from("sales").select(`${COLUMNS}${touchEmbed(filters)}`, { count: "exact" }).eq("workspace_id", workspace.id);
-  for (const f of salesQueryFilters(filters) as QueryFilter[]) {
-    if (f.op === "eq") query = query.eq(f.column, f.value as string);
-    else if (f.op === "in") query = query.in(f.column, f.value as string[]);
-    else if (f.op === "gte") query = query.gte(f.column, f.value as string);
-    else if (f.op === "lte") query = query.lte(f.column, f.value as string);
-    else query = query.ilike(f.column, f.value as string);
+  /** Los filtros aplicados a una consulta de `sales`: la de la página y la de los totales cuentan EXACTAMENTE lo mismo. */
+  function filteredSales(select: string, options?: { count: "exact" }) {
+    let query = supabase.from("sales").select(select, options).eq("workspace_id", workspace.id);
+    for (const f of salesQueryFilters(filters) as QueryFilter[]) {
+      if (f.op === "eq") query = query.eq(f.column, f.value as string);
+      else if (f.op === "in") query = query.in(f.column, f.value as string[]);
+      else if (f.op === "gte") query = query.gte(f.column, f.value as string);
+      else if (f.op === "lte") query = query.lte(f.column, f.value as string);
+      else query = query.ilike(f.column, f.value as string);
+    }
+    if (filters.pill === "esta_semana") query = query.in("id", dueSoonIds.length ? dueSoonIds : ["00000000-0000-0000-0000-000000000000"]);
+    if (contactIds) query = query.in("contact_id", contactIds.length ? contactIds : ["00000000-0000-0000-0000-000000000000"]);
+    return query;
   }
-  if (filters.pill === "esta_semana") query = query.in("id", dueSoonIds.length ? dueSoonIds : ["00000000-0000-0000-0000-000000000000"]);
-  if (contactIds) query = query.in("contact_id", contactIds.length ? contactIds : ["00000000-0000-0000-0000-000000000000"]);
-  const { data, count, error } = await query.order("sale_date", { ascending: false }).order("created_at", { ascending: false }).range(from, from + SALES_PAGE_SIZE - 1);
+  // Con un filtro por canal o por pieza se suma el toque como `inner` (las ventas cuyo toque no cumple quedan afuera).
+  const embed = touchEmbed(filters);
+  const [pageRes, totals] = await Promise.all([
+    filteredSales(`${COLUMNS}${embed}`, { count: "exact" }).order("sale_date", { ascending: false }).order("created_at", { ascending: false }).range(from, from + SALES_PAGE_SIZE - 1),
+    // Los totales del pie son de TODAS las ventas del filtro (no solo de esta página), brutos.
+    computeSalesTotals(
+      (a, b) => filteredSales(`id, final_amount${embed}`).order("id").range(a, b) as unknown as PromiseLike<PageResult<{ id: string; final_amount: unknown }>>,
+      (ids, a, b) => supabase.from("payments").select("sale_id, amount, status").in("sale_id", ids).order("id").range(a, b) as unknown as PromiseLike<PageResult<{ sale_id: string; amount: unknown; status: string }>>,
+    ),
+  ]);
+  const { data, count, error } = pageRes;
 
   const sales = (data ?? []) as unknown as SaleDbRow[];
   const saleIds = sales.map((s) => s.id);
@@ -139,6 +159,16 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     members: members.map((m) => ({ id: m.userId, name: m.name })),
     timeZone,
     pieceTitle,
+    totals,
+    views: {
+      items: viewsData.views,
+      defaultViewId: viewsData.defaultViewId,
+      activeId: viewsData.resolved.active?.id ?? null,
+      viewParam: viewsData.resolved.viewParam,
+      activeBase: viewsData.resolved.active?.config.columns ?? null,
+      userId: viewsData.userId,
+      isAdmin: viewsData.isAdmin,
+    },
   };
 
   // @plantilla-desde(servicios)

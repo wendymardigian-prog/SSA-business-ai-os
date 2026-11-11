@@ -2,11 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useRef, useState, useSyncExternalStore } from "react";
-import { ChevronLeft, ChevronRight, Columns3, Plus, SlidersHorizontal, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Plus, SlidersHorizontal, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
-import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
+import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
+import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
+import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
+import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
+import { ViewsMenu } from "@/components/ui/data-table/views-menu";
 import { ChannelChip } from "@/components/shared/channel-chip";
 import { SearchPicker } from "@/components/sales/search-picker";
 import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
@@ -19,6 +23,10 @@ import { ATTRIBUTION_TYPE_LABELS, SALE_STATUS_LABELS, SALE_STATUSES, type SaleSt
 import { PILLS, PILL_LABELS, countActiveSalesFilters, parseSalesFilters, salesFiltersToParams, scopeChip, type Pill, type SaleListRow, type SalesFilters } from "@/lib/sales/list";
 import { saleStatusClasses } from "@/lib/sales/status-colors";
 import { MODULE_CELL_TONE_CLASS, type ModuleColumn } from "@/lib/sales/module-columns";
+import { SALES_COLUMN_METAS, SALES_TABLE_KEY, moduleColumnMeta } from "@/lib/sales/columns";
+import type { SalesTotals } from "@/lib/sales/sales-totals";
+import { isColumnVisible, type TablePrefs } from "@/lib/ui/data-table/prefs";
+import { viewFilterString, withViewParam, type TableViewItem } from "@/lib/ui/data-table/views";
 
 export type SalesListRowView = SaleListRow & { contactName: string; vendedorName: string | null };
 
@@ -39,37 +47,20 @@ export interface SalesListData {
   timeZone: string;
   /** El titulo de la pieza del filtro `?pieza=` (null si no hay filtro o la pieza no se ve). */
   pieceTitle: string | null;
-}
-
-const ORIGIN_COLUMN_KEY = "ventas-columna-origen";
-
-/** La columna «Origen» se puede ocultar; la eleccion vive en este navegador (puede no haber `localStorage`). */
-function readOriginColumn(): boolean {
-  try {
-    return window.localStorage.getItem(ORIGIN_COLUMN_KEY) !== "oculta";
-  } catch {
-    return true;
-  }
-}
-const originListeners = new Set<() => void>();
-function writeOriginColumn(visible: boolean) {
-  try {
-    window.localStorage.setItem(ORIGIN_COLUMN_KEY, visible ? "visible" : "oculta");
-  } catch {
-    // Sin almacenamiento, la eleccion vale hasta recargar.
-  }
-  originListeners.forEach((l) => l());
-}
-function useOriginColumn(): [boolean, (visible: boolean) => void] {
-  const visible = useSyncExternalStore(
-    (listener) => {
-      originListeners.add(listener);
-      return () => originListeners.delete(listener);
-    },
-    readOriginColumn,
-    () => true,
-  );
-  return [visible, writeOriginColumn];
+  /** Monto, Cobrado y Pendiente de TODAS las ventas del filtro (null si no se pudieron calcular). */
+  totals: SalesTotals | null;
+  /** Las vistas guardadas de esta persona para la tabla. */
+  views: {
+    items: TableViewItem[];
+    defaultViewId: string | null;
+    activeId: string | null;
+    /** Lo que va en `?vista=` al armar un link de esta pantalla. */
+    viewParam: string | null;
+    /** Las columnas guardadas en la vista activa (null = las normales). */
+    activeBase: TablePrefs | null;
+    userId: string;
+    isAdmin: boolean;
+  };
 }
 
 const selectClass = "h-8 w-full rounded-lg border border-input bg-background px-2 text-sm";
@@ -80,15 +71,21 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
   const router = useRouter();
   const pathname = usePathname();
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [showOrigin, setShowOrigin] = useOriginColumn();
 
   const active = countActiveSalesFilters(filters);
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const hasProducts = wizard.catalog.length > 0;
 
+  // Las columnas: las de BAIOS más las de los módulos. Lo que se ve, el orden, las fijas y los anchos salen de las preferencias
+  // de la persona (la vista activa más sus cambios sin guardar).
+  const columns = useMemo<DataColumn<SalesListRowView>[]>(() => buildColumns(moduleColumns), [moduleColumns]);
+  const state = useTablePrefs(SALES_TABLE_KEY, data.views.activeId ?? "base", columns, data.views.activeBase);
+  const showOrigin = isColumnVisible(columns.find((c) => c.key === "origin")!, state.prefs);
+  const basePath = data.views.viewParam ? `${pathname}?vista=${data.views.viewParam}` : pathname;
+
   function go(next: Partial<SalesFilters>) {
     const merged: SalesFilters = { ...filters, ...next, page: next.page ?? 1 };
-    const qs = salesFiltersToParams(merged).toString();
+    const qs = withViewParam(salesFiltersToParams(merged), data.views.viewParam).toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 
@@ -237,16 +234,18 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
           )}
         </div>
       </FilterMenu>
-      <FilterMenu
-        label="Columnas"
-        compact
-        active={false}
-        icon={<Columns3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
-        menuClassName="topbar:w-[260px]"
-      >
-        <MenuGroupLabel>Columnas de la tabla</MenuGroupLabel>
-        <MenuOption checked={showOrigin} onSelect={() => setShowOrigin(!showOrigin)} title="Origen" description="Canal y fuente de cada venta" />
-      </FilterMenu>
+      <ViewsMenu
+        tableKey={SALES_TABLE_KEY}
+        views={data.views.items}
+        defaultViewId={data.views.defaultViewId}
+        activeId={data.views.activeId}
+        userId={data.views.userId}
+        isAdmin={data.views.isAdmin}
+        members={data.members}
+        state={state}
+        currentFilters={viewFilterString(salesFiltersToParams(filters))}
+      />
+      <ColumnsMenu state={state} />
     </>
   );
 
@@ -279,52 +278,21 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
             ) : rows.length === 0 ? (
               <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">
                 <p>No hay ventas con estos filtros.</p>
-                <button type="button" onClick={() => router.push(pathname)} className="mt-3 h-8 rounded-lg border border-border px-3 text-foreground hover:bg-accent">Limpiar filtros</button>
+                <button type="button" onClick={() => router.push(basePath)} className="mt-3 h-8 rounded-lg border border-border px-3 text-foreground hover:bg-accent">Limpiar filtros</button>
               </div>
             ) : (
               <>
-                <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
-                  <table className={`w-full text-sm ${showOrigin ? "min-w-[1180px]" : "min-w-[960px]"}`}>
-                    <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
-                      <tr>
-                        {["Fecha", "Contacto", "Producto", "Monto", "Cobrado", "Pendiente", "Estado", "Vendedor", "Atribución", ...(showOrigin ? ["Origen"] : []), ...moduleColumns.map((c) => c.header)].map((h, i) => (
-                          <th key={h} scope="col" className={`whitespace-nowrap px-3 py-2 font-medium ${i >= 3 && i <= 5 ? "text-right" : ""}`}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {rows.map((r) => (
-                        <tr key={r.id} className="hover:bg-muted/30">
-                          <td className="whitespace-nowrap px-3 py-2"><Link href={`/dashboard/ventas/${r.id}`} className="underline-offset-2 hover:underline">{formatDate(r.saleDate)}</Link></td>
-                          <td className="max-w-[200px] truncate px-3 py-2"><Link href={`/dashboard/contacts/${r.contactId}`} className="font-medium underline-offset-2 hover:underline">{r.contactName}</Link></td>
-                          <td className="max-w-[220px] truncate px-3 py-2">{r.product}</td>
-                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(r.finalAmount)}</td>
-                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{formatMoney(r.paid)}</td>
-                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(r.pending)}</td>
-                          <td className="px-3 py-2"><StatusChip status={r.status} /></td>
-                          <td className="whitespace-nowrap px-3 py-2">{r.vendedorName ?? "—"}</td>
-                          <td className="max-w-[220px] truncate px-3 py-2 text-xs text-muted-foreground" title={r.attribution}>{r.attribution}</td>
-                          {showOrigin && (
-                            <td className="max-w-[260px] px-3 py-2">
-                              <div className="flex items-center gap-1.5">
-                                <ChannelChip channel={r.origin.channel} />
-                                <span className="min-w-0 truncate text-xs" title={r.origin.summary}>{r.origin.channel === "direct" || r.origin.channel === null ? <span className="text-muted-foreground">{r.origin.summary}</span> : r.origin.summary}</span>
-                              </div>
-                            </td>
-                          )}
-                          {moduleColumns.map((c) => {
-                            const cell = c.cells[r.id];
-                            return (
-                              <td key={c.key} className={`max-w-[240px] truncate px-3 py-2 text-xs ${cell?.tone ? MODULE_CELL_TONE_CLASS[cell.tone] : "text-muted-foreground"}`}>
-                                {cell?.href ? <Link href={cell.href} className="underline-offset-2 hover:underline">{cell.label}</Link> : cell?.label ?? "—"}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  className="hidden md:block"
+                  columns={columns}
+                  rows={rows}
+                  rowKey={(r) => r.id}
+                  state={state}
+                  caption="Ventas"
+                  totals={totalCells(data.totals)}
+                />
+                {data.totals?.truncated && <p className="mt-1 hidden text-[11px] text-muted-foreground md:block">Hay más de 20.000 ventas con este filtro: los totales cuentan las primeras 20.000. Acotá el filtro para ver el total exacto.</p>}
+                {!data.totals && <p className="mt-1 hidden text-[11px] text-muted-foreground md:block">No pude calcular los totales. Recargá la página para intentarlo de nuevo.</p>}
 
                 <ul className="space-y-2 md:hidden">
                   {rows.map((r) => (
@@ -371,6 +339,59 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
       {wizardOpen && <SaleWizard config={wizard} onClose={() => setWizardOpen(false)} />}
     </div>
   );
+}
+
+const DATE_LINK = "underline-offset-2 hover:underline";
+
+/** Las celdas de cada columna de BAIOS y de cada módulo. El orden, la visibilidad y los anchos no se deciden acá. */
+function buildColumns(moduleColumns: ModuleColumn[]): DataColumn<SalesListRowView>[] {
+  const cells: Record<string, Pick<DataColumn<SalesListRowView>, "render" | "align" | "cellClassName">> = {
+    date: { render: (r) => <Link href={`/dashboard/ventas/${r.id}`} className={DATE_LINK}>{formatDate(r.saleDate)}</Link> },
+    contact: { render: (r) => <Link href={`/dashboard/contacts/${r.contactId}`} className={`font-medium ${DATE_LINK}`}>{r.contactName}</Link> },
+    product: { render: (r) => r.productName },
+    variant: { render: (r) => r.variantName ?? "—", cellClassName: "text-muted-foreground" },
+    amount: { align: "right", render: (r) => formatMoney(r.finalAmount) },
+    paid: { align: "right", cellClassName: "text-emerald-700 dark:text-emerald-400", render: (r) => formatMoney(r.paid) },
+    pending: { align: "right", render: (r) => formatMoney(r.pending) },
+    status: { render: (r) => <StatusChip status={r.status} /> },
+    seller: { render: (r) => r.vendedorName ?? "—" },
+    attribution: { cellClassName: "text-xs text-muted-foreground", render: (r) => <span title={r.attribution}>{r.attribution}</span> },
+    origin: {
+      render: (r) => (
+        <div className="flex items-center gap-1.5">
+          <ChannelChip channel={r.origin.channel} />
+          <span className="min-w-0 truncate text-xs" title={r.origin.summary}>{r.origin.channel === "direct" || r.origin.channel === null ? <span className="text-muted-foreground">{r.origin.summary}</span> : r.origin.summary}</span>
+        </div>
+      ),
+    },
+  };
+  const base = SALES_COLUMN_METAS.map((meta) => ({ ...meta, ...cells[meta.key] }) as DataColumn<SalesListRowView>);
+  const modules = moduleColumns.map(
+    (c): DataColumn<SalesListRowView> => ({
+      ...moduleColumnMeta(c),
+      cellClassName: "text-xs",
+      render: (r) => {
+        const cell = c.cells[r.id];
+        return (
+          <span className={cell?.tone ? MODULE_CELL_TONE_CLASS[cell.tone] : "text-muted-foreground"}>
+            {cell?.href ? <Link href={cell.href} className={DATE_LINK}>{cell.label}</Link> : (cell?.label ?? "—")}
+          </span>
+        );
+      },
+    }),
+  );
+  return [...base, ...modules];
+}
+
+/** El pie de la tabla: la plata bruta de TODAS las ventas del filtro. */
+function totalCells(totals: SalesTotals | null) {
+  if (!totals) return undefined;
+  const money = (value: number | null) => (value === null ? "—" : formatMoney(value));
+  return {
+    amount: money(totals.amount),
+    paid: <span className="text-emerald-700 dark:text-emerald-400">{money(totals.paid)}</span>,
+    pending: money(totals.pending),
+  };
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

@@ -1233,6 +1233,23 @@ node scripts/verify-contact-merge.mjs   # fusion real, atomicidad, guardia de de
 
 Mismas reglas que los demas: crean y limpian sus datos (prefijo `zz-test-`) y no se corren dos en simultaneo.
 
+# Tablas del sistema: DataTable y vistas guardadas (10/11/2026)
+
+Toda tabla con columnas se arma con `DataTable` (`components/ui/data-table/`): columnas que se prenden, apagan, reordenan, fijan y ensanchan, totales al pie sobre todo el filtro y **vistas guardadas** por persona (privadas, para el equipo o para personas elegidas; una predeterminada, que Owner y Admin pueden dejar a otras personas). Estrenado en Ventas y Pagos; el resto se migra por tandas. Cómo armar una: [docs/tablas.md](docs/tablas.md).
+
+## Lo que no se puede romper
+
+- **Una tabla nueva no se arma con `<table>` a mano**: `lib/ui/data-table/no-raw-table.test.ts` falla si aparece (la lista `LEGACY` son las que faltan migrar; al migrar una, se saca).
+- **Las preferencias de columnas se guardan como diferencia con lo normal** (`lib/ui/data-table/prefs.ts`): una columna nueva aparece sola, lo desconocido se ignora y **nunca se renombra la `key` de una columna**.
+- **Los totales son de TODO el filtro, no de la página**, en céntimos, brutos, y un dato que no existe es «—». PostgREST corta cada respuesta en 1.000 filas: siempre `fetchAllPages`.
+- **Las vistas las escribe SOLO la base por funciones** (`save_table_view`, `delete_table_view`, `set_table_view_default`, migración 00360, SECURITY DEFINER): compartir y asignar predeterminadas a otras personas es de Owner y Admin **por su rol** (sin clave en el catálogo de permisos). La app lee con la RLS: un Admin no ve las privadas de otra persona. `scripts/verify-table-views.mjs` lo prueba.
+- **La vista activa vive en la URL** (`?vista=<id>`, `?vista=base` = la del sistema); sus filtros se aplican al elegirla o cuando la URL llega pelada. Todo link de la pantalla preserva `?vista=` (`withViewParam`).
+- **Lo que se ajusta sin guardar** vive en `localStorage` (`ssa:table:<tabla>:<vista>`, siempre en `try/catch`) hasta que la persona lo guarda en una vista.
+
+## Migración
+
+`00360_table_views` (aditiva: tres tablas y tres funciones) va **ANTES** de desplegar el código (las pantallas leen las tablas; sin ellas la tabla anda con las columnas del sistema y guardar una vista falla): **aplicada y registrada** el 11/11/2026 (versión `20261111185016`), después de ensayarla en una transacción que se deshizo sola, con `verify-table-views` en verde. **La próxima libre es la `00361`** (confirmar con `list_migrations` y las ramas locales).
+
 # Sitio publico
 
 Las paginas publicas del propio proyecto viven en `app/(sitio)/` y se arman **a pedido con

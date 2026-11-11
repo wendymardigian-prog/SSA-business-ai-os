@@ -3417,6 +3417,34 @@ export interface Database {
         Relationships: [];
       };
       /** 00273: datos personales de cada persona del equipo (solo su propia fila). */
+      table_views: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          table_key: string;
+          name: string;
+          config: Json;
+          owner_id: string;
+          visibility: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      table_view_members: {
+        Row: { view_id: string; user_id: string; created_at: string };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      table_view_defaults: {
+        Row: { workspace_id: string; user_id: string; table_key: string; view_id: string; assigned_by: string | null; updated_at: string };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
       user_profiles: {
         Row: {
           user_id: string;
@@ -7066,6 +7094,15 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
+      /** Vistas de tablas (00360): crea o edita una vista. Compartir es de Owner/Admin. */
+      save_table_view: {
+        Args: { p_id: string | null; p_workspace: string; p_table_key: string; p_name: string; p_config: Json; p_visibility?: string; p_member_ids?: string[] | null };
+        Returns: string;
+      };
+      /** Vistas de tablas (00360): borra una vista (la dueña, o Owner/Admin si no es privada). */
+      delete_table_view: { Args: { p_id: string }; Returns: undefined };
+      /** Vistas de tablas (00360): deja una vista como predeterminada de la persona o, siendo Owner/Admin, de otras. */
+      set_table_view_default: { Args: { p_workspace: string; p_table_key: string; p_view: string | null; p_user_ids?: string[] | null }; Returns: undefined };
       /** El grafico diario de un numero de WhatsApp (00348; `broadcast` desde la 00349). Solo service_role. */
       whatsapp_channel_daily_messages: {
         Args: { p_workspace_id: string; p_channel_id: string; p_since: string; p_time_zone: string };
