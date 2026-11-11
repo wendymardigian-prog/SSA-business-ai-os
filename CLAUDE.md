@@ -497,6 +497,9 @@ sus automatizaciones y la habilidad del agente. El detalle en
   5/11/2026 UTC (version `20261105002339`), con `verify-scheduling --despues-de-00290`
   en verde. La `00289` es de otra rama, tambien aplicada. (Para la proxima libre, ver la ultima seccion que la nombra y confirmar con `list_migrations` y las ramas locales.)
 
+- **La agenda reescribe el nombre del contacto, salvo que una persona lo haya editado a mano (00358, 10/11/2026)**: una reserva publica (`public_page` o `embed`, sin contacto dado) reemplaza `contacts.display_name` por el nombre que escribio la persona, a menos que `display_name_source = 'manual'` (lo escribe `updateContact` cuando alguien del equipo edita el nombre; `applyPatch` lo guarda sin que cuente como cambio del historial). Agendar a mano y el agente nunca lo pisan. `create_booking` cambio a proposito (huella nueva en `scripts/protected-functions.mjs`, diff fijado en `c2-migrations-diff.snapshot.json`). El nombre se edita desde el panel de la reunion (`InlineField`, `contacts.edit`); `bookings.booker_name` sigue siendo lo que escribio la persona. **La 00358 va ANTES de desplegar el codigo**: sin la columna, editar un nombre falla.
+- **«Ultimo click» en la lista y el panel de Agenda (00359)**: los ultimos 3 toques del contacto, de cualquier canal, anteriores o iguales a la creacion de la reunion (`booking_last_touches`, solo `service_role`, mismo orden que `ads_crm_items`). El toque de la propia reunion cuenta si trae algo. Puro en `lib/attribution/last-touches.ts`, carga en `last-touches-load.ts` (nombres y miniaturas con la SESION: sin `dashboards.ads.view` no hay miniatura); un fallo deja «—». Kanban y calendario no cambian.
+
 ## Google Calendar
 
 La conexion es **por persona**, no por negocio, y por eso `oauth_connections`

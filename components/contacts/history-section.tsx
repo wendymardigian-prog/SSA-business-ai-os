@@ -1,9 +1,37 @@
 "use client";
 
 import { useViewerTimezone } from "@/components/dashboard-chrome";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import {
+  Bot,
+  CalendarDays,
+  CircleDollarSign,
+  CircleDot,
+  Flag,
+  FileText,
+  Mail,
+  Palette,
+  Phone,
+  Repeat,
+  SquareCheckBig,
+  Star,
+  Tag,
+  Upload,
+  User,
+  UserCheck,
+  Workflow,
+  Circle,
+  type LucideIcon,
+} from "lucide-react";
 import { CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { describeHistoryItem, type AuditHistoryItem, type HistoryItem } from "@/lib/contacts/history";
+import {
+  deliveryTone,
+  historyVisual,
+  type DeliveryTone,
+  type HistoryCategory,
+  type HistoryTone,
+} from "@/lib/contacts/history-visual";
 import type { AuditAction, Json } from "@/lib/types/database";
 import { EMAIL_STATUS_LABELS, emailStatusSourceLabel, isEmailStatus } from "@/lib/email/subscription";
 import {
@@ -174,9 +202,10 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
       ) : (
         <>
           <ol className="space-y-2">
-            {shown.map((item) =>
-              item.source === "audit" ? (
-                <li key={item.id} className="rounded-lg border border-border p-3">
+            {shown.map((item) => {
+              const visual = historyVisual(item);
+              return item.source === "audit" ? (
+                <HistoryCard key={item.id} category={visual.category} tone={visual.tone}>
                   <p className="text-sm">
                     <span className="font-medium">{item.actorLabel}</span> {auditText(item)}
                   </p>
@@ -186,22 +215,26 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
                   {renderImportNote(item)}
                   {renderTagEffectNote(item)}
                   {renderEmailStatusNote(item)}
-                </li>
+                </HistoryCard>
               ) : (
-                <li key={item.id} className="rounded-lg border border-border p-3">
+                <HistoryCard key={item.id} category={visual.category} tone={visual.tone}>
                   <p className="text-sm">
                     <span className="font-medium">{describeHistoryItem(item).actor}</span> {describeHistoryItem(item).text}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at, timeZone)}</p>
                   {item.source === "email" && item.delivery.length > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">{item.delivery.join(" · ")}</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {item.delivery.map((label) => (
+                        <DeliveryBadge key={label} label={label} />
+                      ))}
+                    </div>
                   )}
                   {(item.source === "status" || item.source === "qualification") && item.reason && (
                     <p className="mt-1 text-xs text-muted-foreground">Motivo: {item.reason}</p>
                   )}
-                </li>
-              ),
-            )}
+                </HistoryCard>
+              );
+            })}
           </ol>
           {hidden > 0 && (
             <button
@@ -215,6 +248,80 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
         </>
       )}
     </Section>
+  );
+}
+
+const CATEGORY_ICONS: Record<HistoryCategory, LucideIcon> = {
+  email: Mail,
+  flow: Workflow,
+  sequence: Repeat,
+  booking: CalendarDays,
+  sale: CircleDollarSign,
+  call: Phone,
+  form: FileText,
+  task: SquareCheckBig,
+  tag: Tag,
+  status: CircleDot,
+  qualification: Star,
+  assign: UserCheck,
+  agent: Bot,
+  contact: User,
+  flag: Flag,
+  import: Upload,
+  design: Palette,
+  other: Circle,
+};
+
+/** Colores suaves: un fondo al 10 % y la letra del mismo tono, claro y oscuro. */
+const TONE_CLASSES: Record<HistoryTone, string> = {
+  sky: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  orange: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+  green: "bg-green-500/10 text-green-600 dark:text-green-400",
+  violet: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+  emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  cyan: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
+  amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  pink: "bg-pink-500/10 text-pink-600 dark:text-pink-400",
+  slate: "bg-muted text-muted-foreground",
+};
+
+const DELIVERY_CLASSES: Record<DeliveryTone, string> = {
+  good: "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400",
+  bad: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400",
+  warn: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  neutral: "border-border bg-muted text-muted-foreground",
+};
+
+function HistoryCard({
+  category,
+  tone,
+  children,
+}: {
+  category: HistoryCategory;
+  tone: HistoryTone;
+  children: ReactNode;
+}) {
+  const Icon = CATEGORY_ICONS[category];
+  return (
+    <li className="flex gap-3 rounded-lg border border-border p-3">
+      <span
+        aria-hidden
+        className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full ${TONE_CLASSES[tone]}`}
+      >
+        <Icon className="size-3.5" />
+      </span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </li>
+  );
+}
+
+function DeliveryBadge({ label }: { label: string }) {
+  return (
+    <span
+      className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${DELIVERY_CLASSES[deliveryTone(label)]}`}
+    >
+      {label}
+    </span>
   );
 }
 

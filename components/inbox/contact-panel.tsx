@@ -99,6 +99,7 @@ export function ContactPanel({
   currentUserId = "",
   isAdmin = false,
   canEdit = false,
+  canAssign = false,
   accounts,
 }: {
   contactId: string | null;
@@ -110,6 +111,8 @@ export function ContactPanel({
   isAdmin?: boolean;
   /** `contacts.edit`: el nombre y los datos se editan en el lugar (el servidor lo repite). */
   canEdit?: boolean;
+  /** `contacts.assign`: el selector de setter y vendedor de «Estado del lead» abre su menú (sin la clave, solo la foto). */
+  canAssign?: boolean;
   /** Las cuentas por canal: "Canales" dice por cual cuenta nuestra se habla cuando una red tiene varias. */
   accounts?: InboxAccountsInfo;
 }) {
@@ -233,6 +236,14 @@ export function ContactPanel({
               values={details.contact}
               canEdit
               onSaved={reload}
+              assignment={{
+                members,
+                setterId: details.contact.setter_id,
+                vendedorId: details.contact.vendedor_id,
+                currentUserId,
+                isAdmin,
+                canAssign,
+              }}
             />
             <div>
               <p className="mb-1.5 text-xs text-muted-foreground">Calificación</p>

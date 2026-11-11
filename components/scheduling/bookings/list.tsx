@@ -14,8 +14,10 @@
 
 import { useRef, useState } from "react";
 import { ColumnCell } from "@/components/attribution/column-cell";
-import { originSummary, type AttributionCellSource, type ColumnDef } from "@/lib/attribution/columns";
+import { LAST_CLICK_COLUMN_KEY, originSummary, type AttributionCellSource, type ColumnDef } from "@/lib/attribution/columns";
+import { LastClickCell } from "@/components/attribution/last-click";
 import { metaLinkLine, type MetaLink } from "@/lib/attribution/meta-link";
+import { lastClickLine, type BookingTouchView } from "@/lib/attribution/last-touches";
 import type { BookingListItem } from "@/lib/scheduling/data/bookings";
 import type { BookingStatus } from "@/lib/scheduling/types";
 import { needsOutcome } from "@/lib/scheduling/bookings-view";
@@ -126,6 +128,7 @@ export function BookingsList({
   timeFormat,
   now,
   metaLinks,
+  lastTouches,
   columns,
   canManage,
   busy = false,
@@ -140,6 +143,7 @@ export function BookingsList({
   now: Date;
   /** El vínculo con Meta de cada reunión de la página. */
   metaLinks: Record<string, MetaLink>;
+  lastTouches: Record<string, BookingTouchView[]>;
   columns: AgendaListColumns;
   /** Quien puede cambiar estados: el chip de estado abre su menu. */
   canManage: boolean;
@@ -156,7 +160,7 @@ export function BookingsList({
 
   const cellSource = (item: BookingListItem): AttributionCellSource => {
     const link = metaLinks[item.id];
-    return { attribution: item.attribution, metaNames: link?.names ?? NO_NAMES, metaStatus: link ? (link.inherited ? `${link.statusLabel} · toque anterior` : link.statusLabel) : "" };
+    return { attribution: item.attribution, lastClick: lastTouches[item.id], metaNames: link?.names ?? NO_NAMES, metaStatus: link ? (link.inherited ? `${link.statusLabel} · toque anterior` : link.statusLabel) : "" };
   };
 
   const widthOf = (key: string) => (live?.key === key ? live.width : columnWidth(key, widths));
@@ -267,9 +271,13 @@ export function BookingsList({
                   </span>
                 </td>
                 <td className="truncate px-4 py-2.5 text-muted-foreground">{ORIGIN_LABELS[item.origin as keyof typeof ORIGIN_LABELS] ?? item.origin}</td>
-                {visible.map((def) => (
-                  <ColumnCell key={def.key} def={def} row={cellSource(item)} />
-                ))}
+                {visible.map((def) =>
+                  def.key === LAST_CLICK_COLUMN_KEY ? (
+                    <LastClickCell key={def.key} touches={lastTouches[item.id]} />
+                  ) : (
+                    <ColumnCell key={def.key} def={def} row={cellSource(item)} />
+                  ),
+                )}
                 <td aria-hidden className="p-0" />
               </tr>
             ))}
@@ -293,6 +301,11 @@ export function BookingsList({
                 {needsOutcome({ status: item.status, end_at: item.endAt }, now) && <NeedsOutcomeChip />}
                 {item.slotReleasedAt && <SlotReleasedChip />}
               </span>
+              {lastClickLine(lastTouches[item.id]) && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Último click:</span> {lastClickLine(lastTouches[item.id])}
+                </p>
+              )}
               {(metaLinkLine(metaLinks[item.id]) || originSummary(item.attribution)) && (
                 <span className="truncate text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">Origen:</span> {metaLinkLine(metaLinks[item.id]) || originSummary(item.attribution)}

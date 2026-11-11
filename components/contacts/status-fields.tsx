@@ -5,6 +5,10 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Loader2 } from "lucide-react";
 import { setContactStatus } from "@/lib/actions/contact-status";
+import { assignContact } from "@/lib/actions/contacts";
+import { SELF_REMOVAL_MESSAGE, needsSelfRemovalConfirm } from "@/lib/contacts/assignment-confirm";
+import type { TeamMember } from "@/lib/inbox/assignee";
+import { MemberPicker } from "./member-picker";
 import {
   STATUS_ROLES,
   STATUS_ROLE_LABELS,
@@ -65,6 +69,21 @@ export function LastStatusBadge({
 }
 
 /**
+ * Quien tiene el lead en cada rol, para el selector chico que va a la par de cada estado. El setter
+ * es quien contacta y califica; el vendedor, quien cierra (`closer`, en los estados).
+ */
+export interface StatusAssignment {
+  members: TeamMember[];
+  setterId: string | null;
+  vendedorId: string | null;
+  currentUserId: string;
+  /** Para el aviso al sacarse a uno mismo de un lead (como en «Asignación»). */
+  isAdmin: boolean;
+  /** `contacts.assign`: sin ella se ve la foto, sin menu. */
+  canAssign: boolean;
+}
+
+/**
  * Los dos selectores: estado de setter y estado de vendedor. Se guardan al
  * cambiar el desplegable (como la asignación). Un estado archivado que el
  * contacto ya tiene se sigue viendo, pero no se ofrece para elegir.
@@ -75,6 +94,7 @@ export function StatusFields({
   values,
   canEdit,
   onSaved,
+  assignment,
 }: {
   contactId: string;
   settings: ContactStatusSettings;
@@ -82,12 +102,52 @@ export function StatusFields({
   canEdit: boolean;
   /** Después de guardar (el panel de la bandeja carga sus datos en el navegador). */
   onSaved?: () => void;
+  /** Con esto, a la par de cada estado va quien tiene el lead (foto sola; el menu dice el nombre). */
+  assignment?: StatusAssignment;
 }) {
   const timeZone = useViewerTimezone();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [savingRole, setSavingRole] = useState<StatusRole | null>(null);
   const [pending, start] = useTransition();
+  const [assigning, startAssign] = useTransition();
+  const [assigningRole, setAssigningRole] = useState<StatusRole | null>(null);
+  // Optimista: la foto cambia al elegir y vuelve atras si falla (como el responsable del chat).
+  const [shownAssign, setShownAssign] = useState<{ setter: string | null; closer: string | null } | null>(null);
+
+  // Cuando llegan los datos nuevos (la ficha o el panel recargaron), el valor optimista ya no hace falta.
+  const assignKey = `${assignment?.setterId ?? ""}|${assignment?.vendedorId ?? ""}`;
+  const [lastAssignKey, setLastAssignKey] = useState(assignKey);
+  if (assignKey !== lastAssignKey) {
+    setLastAssignKey(assignKey);
+    setShownAssign(null);
+  }
+
+  function assign(role: StatusRole, next: string | null) {
+    if (!assignment) return;
+    const current = role === "setter" ? assignment.setterId : assignment.vendedorId;
+    const other = role === "setter" ? assignment.vendedorId : assignment.setterId;
+    if (
+      needsSelfRemovalConfirm({ isAdmin: assignment.isAdmin, currentUserId: assignment.currentUserId, next, current, other }) &&
+      !window.confirm(SELF_REMOVAL_MESSAGE)
+    ) {
+      return;
+    }
+    setAssigningRole(role);
+    setShownAssign({ setter: assignment.setterId, closer: assignment.vendedorId, [role]: next });
+    startAssign(async () => {
+      const result = await assignContact(contactId, { [role === "setter" ? "setter_id" : "vendedor_id"]: next });
+      setAssigningRole(null);
+      if (!result.ok) {
+        setShownAssign(null);
+        setError(result.error);
+        return;
+      }
+      setError(null);
+      router.refresh();
+      onSaved?.();
+    });
+  }
 
   function change(role: StatusRole, value: string) {
     setSavingRole(role);
@@ -138,6 +198,22 @@ export function StatusFields({
                 ))}
                 {!currentIsOffered && current && <option value={current}>{statusName(list, current)}</option>}
               </select>
+              {assignment && (
+                <MemberPicker
+                  value={
+                    shownAssign
+                      ? role === "setter" ? shownAssign.setter : shownAssign.closer
+                      : role === "setter" ? assignment.setterId : assignment.vendedorId
+                  }
+                  members={assignment.members}
+                  currentUserId={assignment.currentUserId}
+                  canAssign={assignment.canAssign}
+                  pending={assigning && assigningRole === role}
+                  label={role === "setter" ? "Setter" : "Vendedor"}
+                  groupLabel={role === "setter" ? "Setter · quien contacta y califica" : "Vendedor · quien cierra"}
+                  onChange={(next) => assign(role, next)}
+                />
+              )}
             </div>
             {current && at && (
               <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/70">

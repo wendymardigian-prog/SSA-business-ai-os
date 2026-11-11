@@ -72237,3 +72237,507 @@ END $$;
 
 COMMENT ON COLUMN public.user_preferences.nav_favorites IS
   'Pantalla favorita de cada seccion del menu: { grupo: href }. La valida el codigo (lib/nav/items.ts).';
+
+-- ============================================================
+-- MIGRATION 358: AGENDA REWRITES CONTACT NAME
+-- ============================================================
+-- ============================================================================
+-- 00358 — La agenda reescribe el nombre del contacto (salvo que alguien lo haya editado a mano)
+-- ============================================================================
+-- El caso UNIKE (10/11/2026): un formulario previo guardo «Unike» (el nombre del negocio de la persona)
+-- y la reserva del mismo email trajo «Cristin». `create_booking` v3 (00203) solo completa un nombre
+-- VACIO, asi que «Unike» quedo para siempre y la persona se veia con el nombre equivocado en la agenda.
+--
+-- 1. `contacts.display_name_source` ('manual' o NULL): lo escribe la app cuando una PERSONA edita el nombre
+--    (`updateContact`). Los nombres que pusieron los caminos automaticos (formularios, mensajes, agenda,
+--    importaciones) quedan en NULL. Backfill: los contactos con un `update` de `display_name` en el
+--    `audit_log` hecho por una persona (`performed_by`) pasan a 'manual'.
+-- 2. `create_booking` v4: misma firma (25 parametros). Cambia SOLO el nombre en el UPDATE de «completa lo
+--    vacio» (la definicion vieja completa esta abajo, copiada de la 00203):
+--      reserva publica (origin public_page o embed) + sin contacto dado + nombre no vacio + el nombre
+--      actual NO es manual  =>  se reemplaza por el de la reserva.
+--    Agendar a mano y el agente conservan el comportamiento de siempre. `bookings.booker_name` sigue
+--    guardando lo que escribio la persona.
+-- Como volver atras: pegar la definicion vieja (CREATE OR REPLACE). La columna puede quedar.
+--
+-- FUNCION PROTEGIDA: la huella cambia a proposito (scripts/protected-functions.mjs, las dos variantes).
+-- Se aplica ANTES de desplegar el codigo (la app escribe display_name_source al editar un nombre).
+--
+-- DEFINICION VIGENTE ANTES DE ESTA MIGRACION (la de la 00203):
+--
+-- ==== create_booking (md5 dc462c28e99c353bbc9ca26198eddd64) ====
+-- CREATE OR REPLACE FUNCTION public.create_booking(p_workspace_id uuid, p_event_type_id uuid, p_host_user_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_title text, p_name text, p_email text, p_phone text, p_timezone text, p_host_timezone text, p_location_type text, p_location_text text, p_responses jsonb, p_origin text, p_utm jsonb, p_referrer_url text, p_uid text, p_category_id uuid, p_category_snapshot jsonb, p_contact_assignment text, p_created_by uuid DEFAULT NULL::uuid, p_contact_id uuid DEFAULT NULL::uuid, p_metadata jsonb DEFAULT '{}'::jsonb, p_landing_page text DEFAULT NULL::text)
+--  RETURNS jsonb
+--  LANGUAGE plpgsql
+--  SECURITY DEFINER
+--  SET search_path TO ''
+-- AS $function$
+-- DECLARE
+--   v_contact_id   uuid := p_contact_id;
+--   v_created      boolean := false;
+--   v_booking_id   uuid;
+--   v_email        text := public.normalize_email(p_email);
+--   v_phone        text := nullif(btrim(p_phone), '');
+--   v_nphone       text := public.normalize_phone(p_phone);
+--   v_central      jsonb;
+--   v_dnc          boolean := false;
+--   v_setter       uuid;
+--   v_vendedor     uuid;
+--   v_assigned     boolean := false;
+-- BEGIN
+--   -- Serializa los pedidos del mismo anfitrion dentro de la transaccion.
+--   PERFORM pg_advisory_xact_lock(hashtextextended(p_host_user_id::text, 0));
+--
+--   -- a. El contacto. Si viene dado (agendar manual, agente), se usa tal cual. Si no, la regla central
+--   -- (C2, 00200): busca por telefono y email y, si no esta, lo crea, con bloqueo por dato (dos reservas
+--   -- simultaneas de la misma persona dan UN contacto). Sin email ni telefono NO se crea nada: la reserva
+--   -- se rechaza con el codigo CB001 (createBooking lo traduce a "Necesitamos un email o un telefono").
+--   IF v_contact_id IS NULL THEN
+--     v_central := public.find_or_create_contact(
+--       p_workspace_id,
+--       jsonb_build_object('phone', p_phone, 'email', p_email),
+--       jsonb_strip_nulls(jsonb_build_object(
+--         'display_name', nullif(btrim(p_name), ''),
+--         'timezone', nullif(p_timezone, ''),
+--         'attribution', coalesce(p_utm, '{}'::jsonb) || jsonb_build_object('source', 'scheduling', 'referrer', p_referrer_url),
+--         'last_interaction_at', now()
+--       )),
+--       'create'
+--     );
+--     IF v_central ->> 'status' = 'no_identity' THEN
+--       RAISE EXCEPTION 'Necesitamos un email o un telefono para agendar' USING ERRCODE = 'CB001';
+--     END IF;
+--     v_contact_id := (v_central ->> 'contact_id')::uuid;
+--     v_created := (v_central ->> 'created')::boolean;
+--   END IF;
+--
+--   -- Completa SOLO los campos vacios: nunca pisa lo que ya hay. Un telefono o email que ya es de OTRO
+--   -- contacto no se escribe en este.
+--   IF NOT v_created THEN
+--     UPDATE public.contacts
+--     SET display_name = coalesce(display_name, nullif(btrim(p_name), '')),
+--         email        = CASE WHEN private.contact_value_taken(p_workspace_id, v_contact_id, 'email', v_email) THEN email ELSE coalesce(email, v_email) END,
+--         phone        = CASE WHEN private.contact_value_taken(p_workspace_id, v_contact_id, 'phone', v_nphone) THEN phone ELSE coalesce(phone, v_nphone) END,
+--         timezone     = coalesce(timezone, nullif(p_timezone, '')),
+--         last_interaction_at = now()
+--     WHERE id = v_contact_id;
+--   END IF;
+--
+--   SELECT do_not_contact, setter_id, vendedor_id INTO v_dnc, v_setter, v_vendedor
+--   FROM public.contacts WHERE id = v_contact_id;
+--
+--   -- b. La asignacion (F22): solo si el campo esta vacio. El UPDATE dispara el
+--   -- trigger de la 00039, que emite assignment_changed en automation_events.
+--   IF p_contact_assignment = 'setter_if_empty' AND v_setter IS NULL THEN
+--     UPDATE public.contacts SET setter_id = p_host_user_id WHERE id = v_contact_id;
+--     v_assigned := true;
+--   ELSIF p_contact_assignment = 'vendedor_if_empty' AND v_vendedor IS NULL THEN
+--     UPDATE public.contacts SET vendedor_id = p_host_user_id WHERE id = v_contact_id;
+--     v_assigned := true;
+--   END IF;
+--
+--   -- c. La agenda.
+--   INSERT INTO public.bookings (
+--     workspace_id, uid, event_type_id, category_id, category_snapshot, metadata,
+--     host_user_id, contact_id, title, start_at, end_at, status,
+--     booker_name, booker_email, booker_phone, booker_timezone, host_timezone,
+--     location_type, location_text, responses, origin, utm, referrer_url,
+--     created_by, is_do_not_contact_at_booking, google_sync_status
+--   ) VALUES (
+--     p_workspace_id, p_uid, p_event_type_id, p_category_id, p_category_snapshot, coalesce(p_metadata, '{}'::jsonb),
+--     p_host_user_id, v_contact_id, p_title, p_start_at, p_end_at, 'scheduled',
+--     nullif(btrim(p_name), ''), v_email, v_phone, nullif(p_timezone, ''), nullif(p_host_timezone, ''),
+--     p_location_type, p_location_text, coalesce(p_responses, '{}'::jsonb), p_origin,
+--     coalesce(p_utm, '{}'::jsonb), p_referrer_url,
+--     p_created_by, coalesce(v_dnc, false), 'pending'
+--   )
+--   RETURNING id INTO v_booking_id;
+--
+--   -- c2. El toque de atribucion (Contenido v3, F87; Agenda v2). Vale para el
+--   -- contacto nuevo Y para el que ya existia: una reserva es una interaccion
+--   -- mas de esa persona. NO se registra para 'manual' ni 'agent': ahi no hay
+--   -- forma de saber de donde vino el lead, y un toque `web/booking` inventado
+--   -- pisaria el toque real (el DM o el comentario que lo trajo).
+--   -- Va protegido: una falla de atribucion NUNCA puede impedir una reserva.
+--   IF p_origin NOT IN ('manual', 'agent') THEN
+--     BEGIN
+--       PERFORM public.record_contact_touch(
+--         p_workspace_id,
+--         v_contact_id,
+--         jsonb_build_object(
+--           'occurred_at',  now(),
+--           'source',       coalesce(nullif(lower(btrim(p_utm->>'utm_source')), ''), 'web'),
+--           'medium',       'booking',
+--           'campaign',     nullif(btrim(p_utm->>'utm_campaign'), ''),
+--           'content',      nullif(btrim(p_utm->>'utm_content'), ''),
+--           'term',         nullif(btrim(p_utm->>'utm_term'), ''),
+--           'fbclid',       nullif(btrim(p_utm->>'fbclid'), ''),
+--           'gclid',        nullif(btrim(p_utm->>'gclid'), ''),
+--           'ttclid',       nullif(btrim(p_utm->>'ttclid'), ''),
+--           'li_fat_id',    nullif(btrim(p_utm->>'li_fat_id'), ''),
+--           'ad_id',        nullif(btrim(p_utm->>'ad_id'), ''),
+--           'adset_id',     nullif(btrim(p_utm->>'adset_id'), ''),
+--           'campaign_id',  nullif(btrim(p_utm->>'campaign_id'), ''),
+--           'referrer_url', nullif(btrim(p_referrer_url), ''),
+--           'landing_page', nullif(btrim(p_landing_page), ''),
+--           'origin',       'booking',
+--           'dedupe_key',   'booking:' || v_booking_id::text,
+--           'raw',          jsonb_build_object('utm', coalesce(p_utm, '{}'::jsonb), 'booking_origin', p_origin)
+--                           || jsonb_strip_nulls(jsonb_build_object(
+--                                'utm_id',       nullif(btrim(p_utm->>'utm_id'), ''),
+--                                'placement',    nullif(btrim(p_utm->>'placement'), ''),
+--                                'fbp',          nullif(btrim(p_utm->>'fbp'), ''),
+--                                'fbc',          nullif(btrim(p_utm->>'fbc'), ''),
+--                                'ga_client_id', nullif(btrim(p_utm->>'ga_client_id'), ''),
+--                                'first_visit',  CASE WHEN jsonb_typeof(p_utm->'first_visit') = 'object' THEN p_utm->'first_visit' END))
+--         )
+--       );
+--     EXCEPTION WHEN OTHERS THEN
+--       RAISE WARNING 'create_booking: no pude registrar el toque de atribucion: %', SQLERRM;
+--     END;
+--   END IF;
+--
+--   -- d. El historial.
+--   INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+--   VALUES (
+--     p_workspace_id, 'booking', v_booking_id, 'booking.created',
+--     jsonb_build_object('start_at', p_start_at, 'end_at', p_end_at),
+--     jsonb_build_object('origin', p_origin, 'actor_type', CASE WHEN p_created_by IS NULL THEN 'invitee' ELSE 'user' END),
+--     p_created_by
+--   );
+--
+--   -- e. El evento de automatizacion.
+--   INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+--   VALUES (
+--     p_workspace_id, 'booking_created', v_contact_id,
+--     jsonb_build_object(
+--       'booking_id', v_booking_id,
+--       'event_type_id', p_event_type_id,
+--       'host_user_id', p_host_user_id,
+--       'origin', p_origin
+--     )
+--   );
+--
+--   -- f. Los jobs: crear el evento en Google y avisar cuando la agenda termine.
+--   INSERT INTO public.scheduled_jobs (type, payload, run_at, status)
+--   VALUES (
+--     'booking_google_sync',
+--     jsonb_build_object('booking_id', v_booking_id, 'action', 'create', 'attempt', 0),
+--     now(), 'pending'
+--   );
+--   INSERT INTO public.scheduled_jobs (type, payload, run_at, status, dedupe_key)
+--   VALUES (
+--     'booking_ended',
+--     jsonb_build_object('booking_id', v_booking_id),
+--     p_end_at, 'pending', 'ended:' || v_booking_id::text || ':0'
+--   );
+--
+--   RETURN jsonb_build_object(
+--     'booking_id', v_booking_id,
+--     'contact_id', v_contact_id,
+--     'created_contact', v_created,
+--     'assignment_changed', v_assigned,
+--     'do_not_contact', coalesce(v_dnc, false)
+--   );
+-- END;
+-- $function$;
+--
+-- ============================================================================
+
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS display_name_source text;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contacts_display_name_source_check') THEN
+    ALTER TABLE public.contacts ADD CONSTRAINT contacts_display_name_source_check
+      CHECK (display_name_source IS NULL OR display_name_source = 'manual');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.contacts.display_name_source IS
+  'manual = una persona del equipo edito el nombre; NULL = lo puso un camino automatico (puede reescribirlo la agenda).';
+
+-- Backfill: quienes ya tienen el nombre editado a mano. Idempotente (solo toca los que siguen en NULL).
+UPDATE public.contacts c
+SET display_name_source = 'manual'
+WHERE c.display_name_source IS NULL
+  AND EXISTS (
+    SELECT 1 FROM public.audit_log a
+    WHERE a.entity_type = 'contact'
+      AND a.entity_id = c.id
+      AND a.action = 'update'
+      AND a.performed_by IS NOT NULL
+      AND a.changes ? 'display_name'
+  );
+
+CREATE OR REPLACE FUNCTION public.create_booking(p_workspace_id uuid, p_event_type_id uuid, p_host_user_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_title text, p_name text, p_email text, p_phone text, p_timezone text, p_host_timezone text, p_location_type text, p_location_text text, p_responses jsonb, p_origin text, p_utm jsonb, p_referrer_url text, p_uid text, p_category_id uuid, p_category_snapshot jsonb, p_contact_assignment text, p_created_by uuid DEFAULT NULL::uuid, p_contact_id uuid DEFAULT NULL::uuid, p_metadata jsonb DEFAULT '{}'::jsonb, p_landing_page text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_contact_id   uuid := p_contact_id;
+  v_created      boolean := false;
+  v_booking_id   uuid;
+  v_email        text := public.normalize_email(p_email);
+  v_phone        text := nullif(btrim(p_phone), '');
+  v_nphone       text := public.normalize_phone(p_phone);
+  v_central      jsonb;
+  v_dnc          boolean := false;
+  v_setter       uuid;
+  v_vendedor     uuid;
+  v_assigned     boolean := false;
+BEGIN
+  -- Serializa los pedidos del mismo anfitrion dentro de la transaccion.
+  PERFORM pg_advisory_xact_lock(hashtextextended(p_host_user_id::text, 0));
+
+  -- a. El contacto. Si viene dado (agendar manual, agente), se usa tal cual. Si no, la regla central
+  -- (C2, 00200): busca por telefono y email y, si no esta, lo crea, con bloqueo por dato (dos reservas
+  -- simultaneas de la misma persona dan UN contacto). Sin email ni telefono NO se crea nada: la reserva
+  -- se rechaza con el codigo CB001 (createBooking lo traduce a "Necesitamos un email o un telefono").
+  IF v_contact_id IS NULL THEN
+    v_central := public.find_or_create_contact(
+      p_workspace_id,
+      jsonb_build_object('phone', p_phone, 'email', p_email),
+      jsonb_strip_nulls(jsonb_build_object(
+        'display_name', nullif(btrim(p_name), ''),
+        'timezone', nullif(p_timezone, ''),
+        'attribution', coalesce(p_utm, '{}'::jsonb) || jsonb_build_object('source', 'scheduling', 'referrer', p_referrer_url),
+        'last_interaction_at', now()
+      )),
+      'create'
+    );
+    IF v_central ->> 'status' = 'no_identity' THEN
+      RAISE EXCEPTION 'Necesitamos un email o un telefono para agendar' USING ERRCODE = 'CB001';
+    END IF;
+    v_contact_id := (v_central ->> 'contact_id')::uuid;
+    v_created := (v_central ->> 'created')::boolean;
+  END IF;
+
+  -- Completa SOLO los campos vacios: nunca pisa lo que ya hay. Un telefono o email que ya es de OTRO
+  -- contacto no se escribe en este.
+  IF NOT v_created THEN
+    UPDATE public.contacts
+    SET display_name = CASE
+          -- 00358: una reserva PUBLICA (la persona escribio su propio nombre en el formulario de la agenda)
+          -- reemplaza el nombre que dejo otro camino automatico (un formulario previo, el nombre de su
+          -- negocio, un relleno), salvo que alguien del equipo lo haya editado a mano
+          -- (display_name_source = 'manual'). Agendar a mano o el agente (p_contact_id dado) nunca lo pisan.
+          WHEN p_contact_id IS NULL
+           AND p_origin IN ('public_page', 'embed')
+           AND nullif(btrim(p_name), '') IS NOT NULL
+           AND display_name_source IS DISTINCT FROM 'manual'
+            THEN btrim(p_name)
+          ELSE coalesce(display_name, nullif(btrim(p_name), ''))
+        END,
+        email        = CASE WHEN private.contact_value_taken(p_workspace_id, v_contact_id, 'email', v_email) THEN email ELSE coalesce(email, v_email) END,
+        phone        = CASE WHEN private.contact_value_taken(p_workspace_id, v_contact_id, 'phone', v_nphone) THEN phone ELSE coalesce(phone, v_nphone) END,
+        timezone     = coalesce(timezone, nullif(p_timezone, '')),
+        last_interaction_at = now()
+    WHERE id = v_contact_id;
+  END IF;
+
+  SELECT do_not_contact, setter_id, vendedor_id INTO v_dnc, v_setter, v_vendedor
+  FROM public.contacts WHERE id = v_contact_id;
+
+  -- b. La asignacion (F22): solo si el campo esta vacio. El UPDATE dispara el
+  -- trigger de la 00039, que emite assignment_changed en automation_events.
+  IF p_contact_assignment = 'setter_if_empty' AND v_setter IS NULL THEN
+    UPDATE public.contacts SET setter_id = p_host_user_id WHERE id = v_contact_id;
+    v_assigned := true;
+  ELSIF p_contact_assignment = 'vendedor_if_empty' AND v_vendedor IS NULL THEN
+    UPDATE public.contacts SET vendedor_id = p_host_user_id WHERE id = v_contact_id;
+    v_assigned := true;
+  END IF;
+
+  -- c. La agenda.
+  INSERT INTO public.bookings (
+    workspace_id, uid, event_type_id, category_id, category_snapshot, metadata,
+    host_user_id, contact_id, title, start_at, end_at, status,
+    booker_name, booker_email, booker_phone, booker_timezone, host_timezone,
+    location_type, location_text, responses, origin, utm, referrer_url,
+    created_by, is_do_not_contact_at_booking, google_sync_status
+  ) VALUES (
+    p_workspace_id, p_uid, p_event_type_id, p_category_id, p_category_snapshot, coalesce(p_metadata, '{}'::jsonb),
+    p_host_user_id, v_contact_id, p_title, p_start_at, p_end_at, 'scheduled',
+    nullif(btrim(p_name), ''), v_email, v_phone, nullif(p_timezone, ''), nullif(p_host_timezone, ''),
+    p_location_type, p_location_text, coalesce(p_responses, '{}'::jsonb), p_origin,
+    coalesce(p_utm, '{}'::jsonb), p_referrer_url,
+    p_created_by, coalesce(v_dnc, false), 'pending'
+  )
+  RETURNING id INTO v_booking_id;
+
+  -- c2. El toque de atribucion (Contenido v3, F87; Agenda v2). Vale para el
+  -- contacto nuevo Y para el que ya existia: una reserva es una interaccion
+  -- mas de esa persona. NO se registra para 'manual' ni 'agent': ahi no hay
+  -- forma de saber de donde vino el lead, y un toque `web/booking` inventado
+  -- pisaria el toque real (el DM o el comentario que lo trajo).
+  -- Va protegido: una falla de atribucion NUNCA puede impedir una reserva.
+  IF p_origin NOT IN ('manual', 'agent') THEN
+    BEGIN
+      PERFORM public.record_contact_touch(
+        p_workspace_id,
+        v_contact_id,
+        jsonb_build_object(
+          'occurred_at',  now(),
+          'source',       coalesce(nullif(lower(btrim(p_utm->>'utm_source')), ''), 'web'),
+          'medium',       'booking',
+          'campaign',     nullif(btrim(p_utm->>'utm_campaign'), ''),
+          'content',      nullif(btrim(p_utm->>'utm_content'), ''),
+          'term',         nullif(btrim(p_utm->>'utm_term'), ''),
+          'fbclid',       nullif(btrim(p_utm->>'fbclid'), ''),
+          'gclid',        nullif(btrim(p_utm->>'gclid'), ''),
+          'ttclid',       nullif(btrim(p_utm->>'ttclid'), ''),
+          'li_fat_id',    nullif(btrim(p_utm->>'li_fat_id'), ''),
+          'ad_id',        nullif(btrim(p_utm->>'ad_id'), ''),
+          'adset_id',     nullif(btrim(p_utm->>'adset_id'), ''),
+          'campaign_id',  nullif(btrim(p_utm->>'campaign_id'), ''),
+          'referrer_url', nullif(btrim(p_referrer_url), ''),
+          'landing_page', nullif(btrim(p_landing_page), ''),
+          'origin',       'booking',
+          'dedupe_key',   'booking:' || v_booking_id::text,
+          'raw',          jsonb_build_object('utm', coalesce(p_utm, '{}'::jsonb), 'booking_origin', p_origin)
+                          || jsonb_strip_nulls(jsonb_build_object(
+                               'utm_id',       nullif(btrim(p_utm->>'utm_id'), ''),
+                               'placement',    nullif(btrim(p_utm->>'placement'), ''),
+                               'fbp',          nullif(btrim(p_utm->>'fbp'), ''),
+                               'fbc',          nullif(btrim(p_utm->>'fbc'), ''),
+                               'ga_client_id', nullif(btrim(p_utm->>'ga_client_id'), ''),
+                               'first_visit',  CASE WHEN jsonb_typeof(p_utm->'first_visit') = 'object' THEN p_utm->'first_visit' END))
+        )
+      );
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'create_booking: no pude registrar el toque de atribucion: %', SQLERRM;
+    END;
+  END IF;
+
+  -- d. El historial.
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+  VALUES (
+    p_workspace_id, 'booking', v_booking_id, 'booking.created',
+    jsonb_build_object('start_at', p_start_at, 'end_at', p_end_at),
+    jsonb_build_object('origin', p_origin, 'actor_type', CASE WHEN p_created_by IS NULL THEN 'invitee' ELSE 'user' END),
+    p_created_by
+  );
+
+  -- e. El evento de automatizacion.
+  INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+  VALUES (
+    p_workspace_id, 'booking_created', v_contact_id,
+    jsonb_build_object(
+      'booking_id', v_booking_id,
+      'event_type_id', p_event_type_id,
+      'host_user_id', p_host_user_id,
+      'origin', p_origin
+    )
+  );
+
+  -- f. Los jobs: crear el evento en Google y avisar cuando la agenda termine.
+  INSERT INTO public.scheduled_jobs (type, payload, run_at, status)
+  VALUES (
+    'booking_google_sync',
+    jsonb_build_object('booking_id', v_booking_id, 'action', 'create', 'attempt', 0),
+    now(), 'pending'
+  );
+  INSERT INTO public.scheduled_jobs (type, payload, run_at, status, dedupe_key)
+  VALUES (
+    'booking_ended',
+    jsonb_build_object('booking_id', v_booking_id),
+    p_end_at, 'pending', 'ended:' || v_booking_id::text || ':0'
+  );
+
+  RETURN jsonb_build_object(
+    'booking_id', v_booking_id,
+    'contact_id', v_contact_id,
+    'created_contact', v_created,
+    'assignment_changed', v_assigned,
+    'do_not_contact', coalesce(v_dnc, false)
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.create_booking(uuid, uuid, uuid, timestamp with time zone, timestamp with time zone, text, text, text, text, text, text, text, text, jsonb, text, jsonb, text, text, uuid, jsonb, text, uuid, uuid, jsonb, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_booking(uuid, uuid, uuid, timestamp with time zone, timestamp with time zone, text, text, text, text, text, text, text, text, jsonb, text, jsonb, text, text, uuid, jsonb, text, uuid, uuid, jsonb, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 359: BOOKING LAST TOUCHES
+-- ============================================================
+-- ============================================================================
+-- 00359 — booking_last_touches: los ultimos toques de cada reunion (Agenda: «Ultimo click»)
+-- ============================================================================
+-- Aditiva (una funcion de lectura, sin tablas). Puede ir antes o despues del deploy: sin ella, la columna
+-- «Ultimo click» de la lista de Agenda y el bloque del panel quedan vacios («—»), nada se rompe
+-- (`loadBookingLastTouches` captura el error).
+--
+-- Para cada reunion de la lista: los ultimos `p_limit` (3 por defecto, hasta 10) toques del contacto
+-- ANTERIORES O IGUALES a cuando se creo la reunion, de cualquier canal (organico, pauta, referido,
+-- directo). Mismo orden y mismo corte que «A que anuncio cuenta una venta» (`ads_crm_items`, 00302):
+-- `occurred_at <= bookings.created_at`, `occurred_at desc, created_at desc, id desc`. A diferencia de
+-- aquella, NO se limita a toques con anuncio de Meta.
+-- El toque de la propia reunion (`origin = 'booking'`) cuenta cuando trae algo (una fuente, una campana,
+-- un id de anuncio o de clic): es el rastro de la visita que termino en la reunion. Si no trae nada
+-- (fuente 'web' y todo lo demas vacio) es ruido y se saltea.
+-- Solo `service_role`: la app la llama con el cliente de servicio, con ids de reuniones que la persona ya
+-- leyo con su sesion (quien atiende una reunion puede no ver el contacto). Nunca devuelve datos del contacto.
+CREATE OR REPLACE FUNCTION public.booking_last_touches(
+  p_workspace_id uuid,
+  p_booking_ids uuid[],
+  p_limit integer DEFAULT 3
+)
+RETURNS TABLE (
+  booking_id uuid,
+  touch_rank integer,
+  touch_id uuid,
+  occurred_at timestamptz,
+  source text,
+  medium text,
+  campaign text,
+  content_label text,
+  term text,
+  origin text,
+  channel text,
+  social_post_id uuid,
+  content_post_id uuid,
+  ad_id text,
+  adset_id text,
+  campaign_id text,
+  meta_campaign_id text,
+  meta_adset_id text,
+  meta_ad_id text,
+  meta_match_status text,
+  entry_url text
+)
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+  SELECT
+    b.id,
+    (row_number() OVER (PARTITION BY b.id ORDER BY t.occurred_at DESC, t.created_at DESC, t.id DESC))::integer,
+    t.id, t.occurred_at, t.source, t.medium, t.campaign, t.content_label, t.term, t.origin, t.channel,
+    t.social_post_id, t.content_post_id, t.ad_id, t.adset_id, t.campaign_id,
+    t.meta_campaign_id, t.meta_adset_id, t.meta_ad_id, t.meta_match_status, t.entry_url
+  FROM public.bookings b
+  CROSS JOIN LATERAL (
+    SELECT ct.*
+    FROM public.contact_touches ct
+    WHERE ct.workspace_id = b.workspace_id
+      AND ct.contact_id = b.contact_id
+      AND ct.occurred_at <= b.created_at
+      AND NOT (
+        ct.origin = 'booking' AND ct.source = 'web'
+        AND ct.campaign IS NULL AND ct.content_label IS NULL AND ct.term IS NULL
+        AND ct.ad_id IS NULL AND ct.adset_id IS NULL AND ct.campaign_id IS NULL
+        AND ct.fbclid IS NULL AND ct.gclid IS NULL AND ct.ttclid IS NULL AND ct.li_fat_id IS NULL
+      )
+    ORDER BY ct.occurred_at DESC, ct.created_at DESC, ct.id DESC
+    LIMIT greatest(1, least(coalesce(p_limit, 3), 10))
+  ) t
+  WHERE b.workspace_id = p_workspace_id
+    AND b.id = ANY (p_booking_ids)
+  ORDER BY b.id, 2;
+$$;
+
+REVOKE ALL ON FUNCTION public.booking_last_touches(uuid, uuid[], integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.booking_last_touches(uuid, uuid[], integer) TO service_role;

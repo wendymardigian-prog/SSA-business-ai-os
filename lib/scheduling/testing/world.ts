@@ -180,6 +180,15 @@ export function schedulingWorld(over: WorldOverrides = {}): MemoryDb {
               (email ? d.rows("contacts").find((c) => c.email === email) : null);
             if (found) {
               contactId = found.id as string;
+              // 00358: una reserva publica reescribe el nombre, salvo que una persona lo haya editado a mano.
+              const typed = typeof args.p_name === "string" ? args.p_name.trim() : "";
+              if (
+                (args.p_origin === "public_page" || args.p_origin === "embed") &&
+                typed &&
+                found.display_name_source !== "manual"
+              ) {
+                found.name = typed;
+              }
             } else {
               contactId = `contact-${++seq}`;
               created = true;

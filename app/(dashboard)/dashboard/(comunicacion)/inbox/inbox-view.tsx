@@ -437,6 +437,7 @@ export function InboxView({
             currentUserId={currentUserId}
             isAdmin={isAdmin}
             canEdit={canEditContacts}
+            canAssign={canAssignConversations}
             accounts={accounts}
           />
         </div>

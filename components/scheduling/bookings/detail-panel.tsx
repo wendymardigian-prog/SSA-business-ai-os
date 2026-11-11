@@ -12,8 +12,10 @@
 
 import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
 import { MetaMatchControl } from "@/components/attribution/meta-match-control";
+import { LastClicksBlock } from "@/components/attribution/last-click";
 import { attributionSections, bestEntryUrl } from "@/lib/attribution/attribution-view";
 import type { MetaLink } from "@/lib/attribution/meta-link";
+import type { BookingTouchView } from "@/lib/attribution/last-touches";
 import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -23,6 +25,7 @@ import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { useAutosave, type AutosaveStatus } from "./use-autosave";
 import { PortalMenu, PortalMenuItem, PortalMenuLabel } from "@/components/ui/portal-menu";
 import { getDmLink } from "@/lib/contacts/links";
+import { InlineField } from "@/components/contacts/inline-field";
 import type { BookingAnswer } from "@/lib/scheduling/booking-detail-view";
 import type { BookingStatus } from "@/lib/scheduling/types";
 import { BOOKING_STATUSES, evaluateTransition, groupOf, isActive, statusDef, TRANSITION_REASON_TEXT } from "@/lib/scheduling/booking-status";
@@ -72,6 +75,8 @@ export interface BookingDetailData {
   attribution: Record<string, string>;
   /** El vínculo con Meta de su toque o, si no tiene, de un toque anterior del contacto. */
   metaLink: MetaLink | null;
+  /** Los últimos toques del contacto antes de agendar (el primero es el «último click»), de cualquier canal. */
+  lastTouches: BookingTouchView[];
   /** Agenda v2: su horario dejó de contar como ocupado. null = nunca se liberó. */
   slotReleasedAt: string | null;
   /** Las llamadas vinculadas a esta agenda que quien mira puede ver (vacio si no tiene `calls.view` o no hay ninguna). */ // @plantilla-quitar(llamadas)
@@ -191,6 +196,7 @@ export function BookingDetailPanel({
   timeFormat,
   canManage,
   canLinkMeta,
+  canEditContact,
   canReassign,
   hostOptions,
   onClose,
@@ -202,6 +208,8 @@ export function BookingDetailPanel({
   canManage: boolean;
   /** `settings.general`: vincular, ignorar o quitar el vínculo con Meta. */
   canLinkMeta: boolean;
+  /** `contacts.edit`: el nombre del contacto se edita en el lugar (la base repite el permiso y ve si lo puede ver). */
+  canEditContact: boolean;
   /** Owner/Admin con alcance total (Agenda v2): solo ellos pueden reasignar. */
   canReassign: boolean;
   /** Quién tiene perfil de agenda, para elegir a quién reasignar. Sin el anfitrión actual. */
@@ -303,7 +311,20 @@ export function BookingDetailPanel({
       <aside role="dialog" aria-label="Detalle de la agenda" className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-card shadow-xl">
         <header className="flex items-start gap-2 border-b border-border p-4">
           <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold">{booking.contactName || "Sin nombre"}</p>
+            {booking.contactId && canEditContact ? (
+              // El nombre es el del CONTACTO: se edita acá y se actualiza en toda la ficha (la reserva guarda aparte lo que escribió la persona).
+              <InlineField
+                contactId={booking.contactId}
+                field="display_name"
+                value={booking.contactName ?? ""}
+                label="Nombre del contacto"
+                placeholder="Sin nombre"
+                variant="name"
+                onSaved={() => router.refresh()}
+              />
+            ) : (
+              <p className="truncate font-semibold">{booking.contactName || "Sin nombre"}</p>
+            )}
             <p className="truncate text-xs text-muted-foreground">{booking.title}</p>
           </div>
           <div className="relative">
@@ -689,6 +710,9 @@ export function BookingDetailPanel({
 
           <section className="rounded-lg border border-border p-3">
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Atribución</h3>
+            <div className="mb-3 rounded-md border border-border p-2.5">
+              <LastClicksBlock touches={booking.lastTouches} contactId={booking.contactId} />
+            </div>
             <div className="mb-3 rounded-md border border-border p-2.5">
               <h4 className="mb-1 text-xs font-medium text-muted-foreground">Vínculo con Meta</h4>
               <MetaMatchControl

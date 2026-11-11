@@ -12,6 +12,7 @@ import { bookingUtmOptions, hostNames, listBookingStatuses, listBookings } from 
 import { metaLinkFromTouch, touchMetaIds, type MetaLink } from "@/lib/attribution/meta-link";
 import { EMPTY_META_NAMES, loadMetaNamesByIds } from "@/lib/attribution/meta-names";
 import { loadBookingMatches } from "@/lib/attribution/source-touches";
+import { loadBookingLastTouches } from "@/lib/attribution/last-touches-load";
 import { listCategories, listEventTypes, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { expandCategoryFilter, categoryLabel } from "@/lib/scheduling/categories";
 import { quickFilterCounts } from "@/lib/scheduling/bookings-view";
@@ -228,6 +229,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const bookingMatches = linkTargets.length ? await loadBookingMatches(service, ctx.workspace.id, linkTargets) : new Map();
   const matchedTouches = [...bookingMatches.values()].flatMap((m) => (m.touch ? [m.touch] : []));
   const metaNames = ctx.can("dashboards.ads.view") && matchedTouches.length ? await loadMetaNamesByIds(ctx.supabase, ctx.workspace.id, matchedTouches.map(touchMetaIds)) : EMPTY_META_NAMES;
+  // El «último click» de cada reunión (los últimos 3 toques de cualquier canal antes de agendar): solo en la lista.
+  const lastTouches = linkTargets.length ? await loadBookingLastTouches(service, ctx.supabase, ctx.workspace.id, linkTargets.map((t) => t.id)) : {};
   const metaLinks: Record<string, MetaLink> = {};
   for (const [id, match] of bookingMatches) {
     if (match.touch) metaLinks[id] = metaLinkFromTouch(match.touch, metaNames, { ownTouchId: match.ownTouchId, inherited: match.inherited });
@@ -337,7 +340,9 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         .filter((userId) => usernameByUser.has(userId))
         .map((userId) => ({ userId, label: names.get(userId) ?? "Sin nombre", hasGoogle: hasGoogleByUser.has(userId) }))}
       metaLinks={metaLinks}
+      lastTouches={lastTouches}
       canLinkMeta={ctx.can("settings.general")}
+      canEditContact={ctx.can("contacts.edit")}
       view={view}
       quick={quick}
       calendarView={calendarView}
