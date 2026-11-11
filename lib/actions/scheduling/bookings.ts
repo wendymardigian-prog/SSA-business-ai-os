@@ -21,6 +21,7 @@ import { getPublicSlots } from "@/lib/scheduling/slots-service";
 import { notifyBooking } from "@/lib/scheduling/notifications";
 import { BOOKING_GOOGLE_SYNC_JOB } from "@/lib/jobs/handlers/booking-sync";
 import { categorySnapshot } from "@/lib/scheduling/categories";
+import { bookingDetailsPatch } from "@/lib/scheduling/booking-detail-view";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { sanitizeSearch } from "@/lib/url-params";
 
@@ -225,9 +226,8 @@ export async function updateBookingDetails(input: {
   if (found.error !== undefined) return { ok: false, error: found.error };
   const { ctx, booking } = found;
 
-  const patch: Record<string, unknown> = {};
-  if (input.locationText !== undefined) patch.location_text = input.locationText?.trim() || null;
-  if (input.internalNotes !== undefined) patch.internal_notes = input.internalNotes?.trim() || null;
+  // Solo lo que cambió: la pantalla autoguarda y puede mandar lo mismo varias veces.
+  const patch: Record<string, unknown> = bookingDetailsPatch(booking, input);
   if (Object.keys(patch).length === 0) return { ok: true };
 
   // Escribir es del servidor: `bookings` no tiene policy de UPDATE para el
@@ -244,8 +244,8 @@ export async function updateBookingDetails(input: {
     entityId: booking.id,
     action: "booking.updated",
     changes: {
-      ...(input.locationText !== undefined ? { location_text: { old: booking.location_text, new: patch.location_text as Json } } : {}),
-      ...(input.internalNotes !== undefined ? { internal_notes: { old: null, new: null } } : {}),
+      ...("location_text" in patch ? { location_text: { old: booking.location_text, new: patch.location_text as Json } } : {}),
+      ...("internal_notes" in patch ? { internal_notes: { old: null, new: null } } : {}),
     },
     performedBy: ctx.user.id,
   });
@@ -258,7 +258,7 @@ export async function updateBookingDetails(input: {
   });
 
   // Si cambió dónde es, el evento de Google tiene que enterarse.
-  if (input.locationText !== undefined && booking.google_event_id) {
+  if ("location_text" in patch && booking.google_event_id) {
     await service.from("scheduled_jobs").insert({
       type: BOOKING_GOOGLE_SYNC_JOB,
       payload: { booking_id: booking.id, action: "update", attempt: 0 } as unknown as Json,

@@ -73,3 +73,24 @@ export function historyText(entry: { action: string; metadata: unknown; changes:
       return entry.action;
   }
 }
+
+/**
+ * Lo que de verdad cambia al guardar «Dónde» y las notas. Lo que queda igual a lo que ya está guardado se descarta:
+ * con el autoguardado el mismo texto puede llegar varias veces y cada guardado real deja una entrada en el historial,
+ * dispara «Se editó una reunión» y, si cambió el lugar, vuelve a sincronizar con Google. Puro.
+ */
+export function bookingDetailsPatch(
+  current: { location_text: string | null; internal_notes: string | null },
+  input: { locationText?: string | null; internalNotes?: string | null },
+): { location_text?: string | null; internal_notes?: string | null } {
+  const patch: { location_text?: string | null; internal_notes?: string | null } = {};
+  if (input.locationText !== undefined) {
+    const next = input.locationText?.trim() || null;
+    if (next !== (current.location_text ?? null)) patch.location_text = next;
+  }
+  if (input.internalNotes !== undefined) {
+    const next = input.internalNotes?.trim() || null;
+    if (next !== (current.internal_notes ?? null)) patch.internal_notes = next;
+  }
+  return patch;
+}

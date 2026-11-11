@@ -19,6 +19,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Mail, MessageCircle, Video, X } from "lucide-react";
 import { Tip } from "@/components/ui/tooltip";
+import { AutoTextarea } from "@/components/ui/auto-textarea";
+import { useAutosave, type AutosaveStatus } from "./use-autosave";
 import { PortalMenu, PortalMenuItem, PortalMenuLabel } from "@/components/ui/portal-menu";
 import { getDmLink } from "@/lib/contacts/links";
 import type { BookingAnswer } from "@/lib/scheduling/booking-detail-view";
@@ -161,6 +163,25 @@ function AnswerActions({ answer, whatsappConversationId }: { answer: BookingAnsw
   return null;
 }
 
+/** El texto que reemplaza al botón de guardar: dice qué pasa con lo que se escribió. */
+function AutosaveNote({ status, error, onRetry }: { status: AutosaveStatus; error: string | null; onRetry: () => void }) {
+  return (
+    <p role="status" aria-live="polite" className={`mt-1.5 min-h-4 text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
+      {status === "idle" && "Se guarda solo mientras escribís."}
+      {(status === "pending" || status === "saving") && "Guardando…"}
+      {status === "saved" && "Guardado automáticamente"}
+      {status === "error" && (
+        <>
+          {error ?? "No se pudo guardar."}{" "}
+          <button type="button" onClick={onRetry} className="underline">
+            Reintentar
+          </button>
+        </>
+      )}
+    </p>
+  );
+}
+
 const OUTCOME_SHORTCUTS: BookingStatus[] = ["no_show", "followup_warm", "followup_cold", "sale", "not_qualified"];
 
 export function BookingDetailPanel({
@@ -196,8 +217,15 @@ export function BookingDetailPanel({
   const reassignRef = useRef<HTMLDivElement>(null);
   const [transferAssignment, setTransferAssignment] = useState(true);
   const [reason, setReason] = useState("");
-  const [notes, setNotes] = useState(booking.internalNotes ?? "");
-  const [location, setLocation] = useState(booking.locationText ?? "");
+  const [details, setDetails] = useState({ notes: booking.internalNotes ?? "", location: booking.locationText ?? "" });
+  const isMeet = booking.locationType === "google_meet";
+  // «Dónde» y las notas se guardan solas al dejar de escribir; no hay botón de guardar.
+  const autosave = useAutosave({
+    value: details,
+    initial: { notes: booking.internalNotes ?? "", location: booking.locationText ?? "" },
+    equals: (a, b) => a.notes === b.notes && (isMeet || a.location === b.location),
+    save: (v) => updateBookingDetails({ bookingId: booking.id, internalNotes: v.notes, ...(isMeet ? {} : { locationText: v.location }) }),
+  });
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -629,15 +657,16 @@ export function BookingDetailPanel({
           {canManage && (
             <section className="rounded-lg border border-border p-3">
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Ubicación y notas</h3>
-              {booking.locationType !== "google_meet" && (
+              {!isMeet && (
                 <>
                   <label htmlFor="bk-location" className="text-xs text-muted-foreground">
                     Dónde
                   </label>
                   <input
                     id="bk-location"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                    value={details.location}
+                    onChange={(e) => setDetails((d) => ({ ...d, location: e.target.value }))}
+                    onBlur={() => void autosave.flush()}
                     className="mb-2 mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
                   />
                 </>
@@ -645,31 +674,16 @@ export function BookingDetailPanel({
               <label htmlFor="bk-notes" className="text-xs text-muted-foreground">
                 Notas internas (solo las ve el equipo)
               </label>
-              <textarea
+              {/* La caja crece con el texto. */}
+              <AutoTextarea
                 id="bk-notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={3}
+                value={details.notes}
+                onChange={(e) => setDetails((d) => ({ ...d, notes: e.target.value }))}
+                onBlur={() => void autosave.flush()}
+                minRows={3}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
               />
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() =>
-                  run(
-                    () =>
-                      updateBookingDetails({
-                        bookingId: booking.id,
-                        internalNotes: notes,
-                        ...(booking.locationType !== "google_meet" ? { locationText: location } : {}),
-                      }),
-                    "Guardado",
-                  )
-                }
-                className="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-60"
-              >
-                Guardar
-              </button>
+              <AutosaveNote status={autosave.status} error={autosave.error} onRetry={() => void autosave.flush()} />
             </section>
           )}
 
