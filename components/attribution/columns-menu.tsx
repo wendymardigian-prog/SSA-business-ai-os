@@ -68,6 +68,7 @@ export function ColumnsMenu<Row>({
   onToggle,
   onShowAll,
   onReset,
+  onResetWidths,
 }: {
   defs: readonly ColumnDef<Row>[];
   groups: readonly ColumnGroup[];
@@ -75,6 +76,8 @@ export function ColumnsMenu<Row>({
   onToggle: (def: ColumnDef<Row>) => void;
   onShowAll: () => void;
   onReset: () => void;
+  /** Solo en las tablas con columnas ajustables (Agenda): vuelve todos los anchos al normal. Sin esto, el botón no se dibuja. */
+  onResetWidths?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const shown = new Set(visible.map((def) => def.key));
@@ -127,6 +130,11 @@ export function ColumnsMenu<Row>({
             Restablecer
           </button>
         </div>
+        {onResetWidths && (
+          <button type="button" onClick={onResetWidths} className="h-8 w-full rounded-lg border border-border text-xs font-medium hover:bg-accent">
+            Restablecer anchos
+          </button>
+        )}
       </div>
     </FilterMenu>
   );

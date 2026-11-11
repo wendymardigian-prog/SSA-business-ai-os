@@ -7,6 +7,7 @@
  * CSS final).
  */
 
+import { ChevronDown } from "lucide-react";
 import type { BookingStatus } from "@/lib/scheduling/types";
 import { statusDef } from "@/lib/scheduling/booking-status";
 
@@ -42,21 +43,29 @@ export function statusDotClass(status: BookingStatus): string {
   return DOT[statusDef(status).color] ?? DOT.zinc;
 }
 
-export function StatusChip({ status }: { status: BookingStatus }) {
+/**
+ * `small` es la versión del calendario (tarjetas de 26 px); `withChevron` la
+ * flechita que avisa que al hacer clic se abre el menú para cambiar el estado.
+ */
+export function StatusChip({ status, small = false, withChevron = false }: { status: BookingStatus; small?: boolean; withChevron?: boolean }) {
   const def = statusDef(status);
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusChipClass(status)}`}>
-      <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${statusDotClass(status)}`} />
-      {def.label}
+    <span
+      className={`inline-flex max-w-full items-center rounded-full font-medium ${small ? "gap-1 px-1.5 py-px text-[10px] leading-4" : "gap-1.5 px-2.5 py-0.5 text-xs"} ${statusChipClass(status)}`}
+    >
+      <span aria-hidden className={`shrink-0 rounded-full ${small ? "h-1 w-1" : "h-1.5 w-1.5"} ${statusDotClass(status)}`} />
+      <span className="truncate">{def.label}</span>
+      {withChevron && <ChevronDown className="-mr-0.5 h-3 w-3 shrink-0 opacity-60" aria-hidden />}
     </span>
   );
 }
 
 /** "Sin resultado": la llamada pasó y nadie dijo cómo salió (F33). */
-export function NeedsOutcomeChip() {
+export function NeedsOutcomeChip({ withChevron = false }: { withChevron?: boolean }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-300">
+    <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-300">
       Sin resultado
+      {withChevron && <ChevronDown className="-mr-0.5 h-3 w-3 shrink-0 opacity-60" aria-hidden />}
     </span>
   );
 }

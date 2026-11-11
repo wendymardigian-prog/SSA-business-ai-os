@@ -12,17 +12,32 @@ export function snapshotLabel(snapshot: unknown): string {
   return snap.type_name ? `${snap.area_name} · ${snap.type_name}` : snap.area_name;
 }
 
+export interface BookingAnswer {
+  label: string;
+  value: string;
+  /** Si la pregunta es de teléfono o de email (por su tipo, no por como se ve el texto). */
+  kind?: "phone" | "email";
+  /** Es el teléfono o el email PROPIO del invitado (los campos del sistema), no una pregunta extra del formulario. */
+  own?: boolean;
+}
+
 /**
  * Las respuestas con la etiqueta del formulario. Si el evento cambió de
  * preguntas, la clave se muestra tal cual: es preferible a esconder una
  * respuesta que la persona sí escribió.
  */
-export function answersOf(responses: unknown, fields: BookingField[] | null | undefined): Array<{ label: string; value: string }> {
-  const byId = new Map((fields ?? []).map((f) => [f.identifier, f.label]));
-  const out: Array<{ label: string; value: string }> = [];
+export function answersOf(responses: unknown, fields: BookingField[] | null | undefined): BookingAnswer[] {
+  const byId = new Map((fields ?? []).map((f) => [f.identifier, f]));
+  const out: BookingAnswer[] = [];
   for (const [key, value] of Object.entries((responses as Record<string, unknown>) ?? {})) {
     if (value === null || value === undefined || value === "") continue;
-    out.push({ label: byId.get(key) ?? key, value: Array.isArray(value) ? value.join(", ") : String(value) });
+    const field = byId.get(key);
+    const answer: BookingAnswer = { label: field?.label ?? key, value: Array.isArray(value) ? value.join(", ") : String(value) };
+    if (field?.type === "phone" || field?.type === "email") {
+      answer.kind = field.type;
+      answer.own = field.system;
+    }
+    out.push(answer);
   }
   return out;
 }
@@ -57,4 +72,25 @@ export function historyText(entry: { action: string; metadata: unknown; changes:
     default:
       return entry.action;
   }
+}
+
+/**
+ * Lo que de verdad cambia al guardar «Dónde» y las notas. Lo que queda igual a lo que ya está guardado se descarta:
+ * con el autoguardado el mismo texto puede llegar varias veces y cada guardado real deja una entrada en el historial,
+ * dispara «Se editó una reunión» y, si cambió el lugar, vuelve a sincronizar con Google. Puro.
+ */
+export function bookingDetailsPatch(
+  current: { location_text: string | null; internal_notes: string | null },
+  input: { locationText?: string | null; internalNotes?: string | null },
+): { location_text?: string | null; internal_notes?: string | null } {
+  const patch: { location_text?: string | null; internal_notes?: string | null } = {};
+  if (input.locationText !== undefined) {
+    const next = input.locationText?.trim() || null;
+    if (next !== (current.location_text ?? null)) patch.location_text = next;
+  }
+  if (input.internalNotes !== undefined) {
+    const next = input.internalNotes?.trim() || null;
+    if (next !== (current.internal_notes ?? null)) patch.internal_notes = next;
+  }
+  return patch;
 }

@@ -21,6 +21,9 @@ import { PageHeader } from "@/components/page-header";
 import { ReconnectBanner } from "../reconnect-banner";
 import type { MetaLink } from "@/lib/attribution/meta-link";
 import { BookingsList } from "./list";
+import { ColumnsMenu } from "@/components/attribution/columns-menu";
+import { ATTRIBUTION_COLUMN_GROUPS } from "@/lib/attribution/columns";
+import { useAgendaColumns } from "./use-agenda-columns";
 import { BookingsKanban } from "./kanban-board";
 import { BookingsCalendar } from "./calendar-grid";
 import { useRescheduleDrag } from "./reschedule-dialog";
@@ -179,6 +182,8 @@ export function BookingsScreen({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const reschedule = useRescheduleDrag({ items, timezone, timeFormat });
+  // Las columnas de la lista viven acá porque su botón está en la barra de arriba, al lado de los filtros.
+  const columns = useAgendaColumns();
 
   const now = useMemo(() => new Date(), []);
   const hostOptions = useMemo(() => Object.entries(hostNames).map(([userId, label]) => ({ userId, label })).sort((a, b) => a.label.localeCompare(b.label)), [hostNames]);
@@ -329,6 +334,21 @@ export function BookingsScreen({
               quick={{ value: quick, options: QUICK_PICK_ORDER.map((key) => ({ key, label: QUICK_PICK_LABELS[key], count: counts[key] })) }}
             />
 
+            {view === "list" && (
+              // En el celular la lista son tarjetas: no hay columnas que elegir.
+              <div className="hidden md:block">
+                <ColumnsMenu
+                  defs={columns.defs}
+                  groups={ATTRIBUTION_COLUMN_GROUPS}
+                  visible={columns.visible}
+                  onToggle={columns.toggle}
+                  onShowAll={columns.showAll}
+                  onReset={columns.reset}
+                  onResetWidths={columns.hasCustomWidths ? columns.resetAllWidths : undefined}
+                />
+              </div>
+            )}
+
             <ExpandableSearch
               value={search}
               onCommit={(next) => setParam("q", next || null)}
@@ -371,7 +391,20 @@ export function BookingsScreen({
           <AgendaEmptyFiltered onClearFilters={clearAll} onShowAll={() => setPeriod({ preset: "todo", from: null, to: null })} />
         ) : view === "list" ? (
           <>
-            <BookingsList items={items} hostNames={hostNames} timezone={timezone} timeFormat={timeFormat} now={now} metaLinks={metaLinks} onOpen={openDetail} />
+            <BookingsList
+              items={items}
+              hostNames={hostNames}
+              timezone={timezone}
+              timeFormat={timeFormat}
+              now={now}
+              metaLinks={metaLinks}
+              columns={columns}
+              canManage={canManage}
+              busy={pending}
+              onOpen={openDetail}
+              onMove={move}
+              onCancelDrop={(id, status) => setCancelDrop({ id, status })}
+            />
             {pages > 1 && (
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>
@@ -405,6 +438,7 @@ export function BookingsScreen({
             timeFormat={timeFormat}
             now={now}
             canManage={canManage}
+            busy={pending}
             onOpen={openDetail}
             onMove={move}
             onCancelDrop={(id, status) => setCancelDrop({ id, status })}
@@ -415,6 +449,7 @@ export function BookingsScreen({
             calendar={
               <BookingsCalendar
                 items={items}
+                hostNames={hostNames}
                 timezone={timezone}
                 timeFormat={timeFormat}
                 view={calendarView}
