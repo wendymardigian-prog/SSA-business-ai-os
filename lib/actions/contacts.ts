@@ -187,6 +187,8 @@ export async function updateContact(
   return applyPatch({
     supabase, workspaceId: workspace.id, userId: user.id,
     contactId, patch: validated.patch, action: "update",
+    // Un nombre que edita una persona queda marcado: la agenda ya no lo reescribe (00358).
+    silentPatch: "display_name" in validated.patch ? { display_name_source: "manual" } : undefined,
   });
 }
 
@@ -1053,7 +1055,7 @@ export async function dismissLinkSuggestion(
  * edito el contacto" sin decir que cambio, que es justo el dato util.
  */
 async function applyPatch({
-  supabase, workspaceId, userId, contactId, patch, action,
+  supabase, workspaceId, userId, contactId, patch, action, silentPatch,
 }: {
   supabase: Awaited<ReturnType<typeof getWorkspace>>["supabase"];
   workspaceId: string;
@@ -1061,6 +1063,8 @@ async function applyPatch({
   contactId: string;
   patch: ContactPatch | Record<string, unknown>;
   action: "update" | "assign" | "do_not_contact";
+  /** Columnas de control que se escriben junto con el patch pero NO son un cambio para el historial. */
+  silentPatch?: Record<string, unknown>;
 }): Promise<ContactActionResult> {
   // Se lee la fila entera y no una lista de columnas: diffFields solo mira las
   // claves del patch, asi que las de mas no molestan y la consulta queda tipada.
@@ -1079,7 +1083,7 @@ async function applyPatch({
 
   const { error } = await supabase
     .from("contacts")
-    .update(patch)
+    .update(silentPatch ? { ...patch, ...silentPatch } : patch)
     .eq("id", contactId)
     .eq("workspace_id", workspaceId);
 

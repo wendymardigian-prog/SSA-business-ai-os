@@ -1647,6 +1647,8 @@ export interface Database {
           id: string;
           workspace_id: string;
           display_name: string | null;
+          /** manual = una persona edito el nombre (00358); NULL = lo puso un camino automatico. */
+          display_name_source: "manual" | null;
           email: string | null;
           avatar_url: string | null;
           /** De donde sale avatar_url (migracion 00104, F16). Default 'external'. */
@@ -1744,6 +1746,8 @@ export interface Database {
           id?: string;
           workspace_id: string;
           display_name?: string | null;
+          /** manual = una persona edito el nombre (00358); NULL = lo puso un camino automatico. */
+          display_name_source?: "manual" | null;
           email?: string | null;
           avatar_url?: string | null;
           avatar_source?: AvatarSource;
@@ -1793,6 +1797,8 @@ export interface Database {
         };
         Update: {
           display_name?: string | null;
+          /** manual = una persona edito el nombre (00358); NULL = lo puso un camino automatico. */
+          display_name_source?: "manual" | null;
           email?: string | null;
           avatar_url?: string | null;
           avatar_source?: AvatarSource;
@@ -7217,6 +7223,33 @@ export interface Database {
           p_fbclid: string | null;
         };
         Returns: Json;
+      };
+      /** Los ultimos N toques de cada reunion anteriores a su creacion, de cualquier canal (00358). Solo service_role. */
+      booking_last_touches: {
+        Args: { p_workspace_id: string; p_booking_ids: string[]; p_limit?: number };
+        Returns: Array<{
+          booking_id: string;
+          touch_rank: number;
+          touch_id: string;
+          occurred_at: string;
+          source: string;
+          medium: string | null;
+          campaign: string | null;
+          content_label: string | null;
+          term: string | null;
+          origin: string;
+          channel: string | null;
+          social_post_id: string | null;
+          content_post_id: string | null;
+          ad_id: string | null;
+          adset_id: string | null;
+          campaign_id: string | null;
+          meta_campaign_id: string | null;
+          meta_adset_id: string | null;
+          meta_ad_id: string | null;
+          meta_match_status: string;
+          entry_url: string | null;
+        }>;
       };
       /** Vuelve a resolver los toques sin vincular de los ultimos dias; devuelve cuantos cambiaron (00192, 00194). Solo service_role. */
       rematch_meta_touches: {

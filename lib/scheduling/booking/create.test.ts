@@ -54,6 +54,30 @@ describe("createBooking", () => {
     expect(db.rows("audit_log").map((a) => a.action)).toEqual(["booking.created"]);
   });
 
+  describe("el nombre del contacto que ya existia (00358)", () => {
+    const existing = { id: "c-unike", workspace_id: "ws-1", name: "Unike", email: "juan@ejemplo.com", phone: null };
+
+    it("una reserva publica reemplaza el nombre que dejo otro camino", async () => {
+      const db = schedulingWorld({ contacts: [{ ...existing }] });
+      const result = await createBooking(db.client, base);
+      expect(result.ok).toBe(true);
+      expect(db.rows("contacts")).toHaveLength(1);
+      expect(db.rows("contacts")[0].name).toBe("Juan Pérez");
+    });
+
+    it("no pisa un nombre que alguien del equipo edito a mano", async () => {
+      const db = schedulingWorld({ contacts: [{ ...existing, display_name_source: "manual" }] });
+      await createBooking(db.client, base);
+      expect(db.rows("contacts")[0].name).toBe("Unike");
+    });
+
+    it("agendar a mano no toca el nombre", async () => {
+      const db = schedulingWorld({ contacts: [{ ...existing }] });
+      await createBooking(db.client, { ...base, origin: "manual" as never });
+      expect(db.rows("contacts")[0].name).toBe("Unike");
+    });
+  });
+
   it("un evento inexistente da 404 sin escribir nada", async () => {
     const db = schedulingWorld();
     const result = await createBooking(db.client, { ...base, slug: "no-existe" });

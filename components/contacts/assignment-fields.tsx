@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { assignContact } from "@/lib/actions/contacts";
+import { SELF_REMOVAL_MESSAGE, needsSelfRemovalConfirm } from "@/lib/contacts/assignment-confirm";
 import { ActionError } from "./ui";
 
 /**
@@ -50,17 +51,16 @@ export function AssignmentFields({
     // Un Member que se saca a si mismo del lead deja de verlo (RLS): conviene
     // que lo sepa antes y no que la pantalla "desaparezca".
     if (
-      !isAdmin &&
-      next !== currentUserId &&
-      (field === "setter_id" ? setterId : vendedorId) === currentUserId
+      needsSelfRemovalConfirm({
+        isAdmin,
+        currentUserId,
+        next,
+        current: field === "setter_id" ? setterId : vendedorId,
+        other: field === "setter_id" ? vendedorId : setterId,
+      }) &&
+      !window.confirm(SELF_REMOVAL_MESSAGE)
     ) {
-      const otro = field === "setter_id" ? vendedorId : setterId;
-      if (otro !== currentUserId) {
-        const ok = window.confirm(
-          "Si te sacás de este lead vas a dejar de verlo. ¿Seguro?",
-        );
-        if (!ok) return;
-      }
+      return;
     }
 
     start(async () => {

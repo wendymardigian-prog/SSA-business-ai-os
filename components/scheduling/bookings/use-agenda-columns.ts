@@ -19,7 +19,7 @@ const WIDTHS_STORAGE_KEY = "agenda-list-widths";
 const WIDTHS_EVENT = "agenda:column-widths-changed";
 
 /** Lo que se ve al abrir la lista: es mas angosta que la de respuestas, el resto se prende desde «Columnas». */
-const DEFAULT_COLUMNS: ReadonlySet<string> = new Set(["attr:utm_source", "attr:utm_campaign", "meta:campaign", "meta:adset", "meta:ad", "meta:status"]);
+const DEFAULT_COLUMNS: ReadonlySet<string> = new Set(["touch:last", "attr:utm_source", "attr:utm_campaign", "meta:campaign", "meta:adset", "meta:ad", "meta:status"]);
 
 function subscribe(onChange: () => void): () => void {
   window.addEventListener("storage", onChange);
@@ -39,7 +39,7 @@ function readWidths(): string | null {
 }
 
 export function useAgendaColumns() {
-  const defs = useMemo(() => attributionColumnDefs(DEFAULT_COLUMNS), []);
+  const defs = useMemo(() => attributionColumnDefs(DEFAULT_COLUMNS, { lastClick: true }), []);
   const prefs = useColumnPrefs<AttributionCellSource>(COLUMNS_STORAGE_KEY, defs);
 
   const raw = useSyncExternalStore(subscribe, readWidths, () => null);

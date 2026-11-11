@@ -295,5 +295,26 @@
       "REVOKE ALL ON FUNCTION public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb) FROM PUBLIC, anon, authenticated;",
       "GRANT EXECUTE ON FUNCTION public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb) TO service_role;"
     ]
+  },
+  "00358_agenda_rewrites_contact_name.sql": {
+    "removed": [
+      "SET display_name = coalesce(display_name, nullif(btrim(p_name), '')),"
+    ],
+    "added": [
+      "SET display_name = CASE",
+      "-- 00358: una reserva PUBLICA (la persona escribio su propio nombre en el formulario de la agenda)",
+      "-- reemplaza el nombre que dejo otro camino automatico (un formulario previo, el nombre de su",
+      "-- negocio, un relleno), salvo que alguien del equipo lo haya editado a mano",
+      "-- (display_name_source = 'manual'). Agendar a mano o el agente (p_contact_id dado) nunca lo pisan.",
+      "WHEN p_contact_id IS NULL",
+      "AND p_origin IN ('public_page', 'embed')",
+      "AND nullif(btrim(p_name), '') IS NOT NULL",
+      "AND display_name_source IS DISTINCT FROM 'manual'",
+      "THEN btrim(p_name)",
+      "ELSE coalesce(display_name, nullif(btrim(p_name), ''))",
+      "END,",
+      "REVOKE ALL ON FUNCTION public.create_booking(uuid, uuid, uuid, timestamp with time zone, timestamp with time zone, text, text, text, text, text, text, text, text, jsonb, text, jsonb, text, text, uuid, jsonb, text, uuid, uuid, jsonb, text) FROM PUBLIC, anon, authenticated;",
+      "GRANT EXECUTE ON FUNCTION public.create_booking(uuid, uuid, uuid, timestamp with time zone, timestamp with time zone, text, text, text, text, text, text, text, text, jsonb, text, jsonb, text, text, uuid, jsonb, text, uuid, uuid, jsonb, text) TO service_role;"
+    ]
   }
 }

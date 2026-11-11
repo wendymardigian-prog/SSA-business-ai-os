@@ -6,6 +6,7 @@ import { getBookingDetail, bookingAttributionOf, hostNames } from "@/lib/schedul
 import { metaLinkFromTouch, touchMetaIds } from "@/lib/attribution/meta-link";
 import { EMPTY_META_NAMES, loadMetaNamesByIds } from "@/lib/attribution/meta-names";
 import { loadBookingMatches } from "@/lib/attribution/source-touches";
+import { loadBookingLastTouches } from "@/lib/attribution/last-touches-load";
 import { loadBookingCalls } from "@/lib/calls/contact-section"; // @plantilla-quitar(llamadas)
 import { canLoadSaleFromBooking, prefillFromBooking } from "@/lib/sales/booking-link"; // @plantilla-quitar(ventas)
 import { snapshotText } from "@/lib/sales/sale-text"; // @plantilla-quitar(ventas)
@@ -87,6 +88,8 @@ export async function loadBookingDetail(bookingId: string): Promise<BookingDetai
   const sales = await salesPromise; // @plantilla-quitar(ventas)
   const whatsappChat = await whatsappChatPromise;
 
+  const lastTouches = (await loadBookingLastTouches(service, ctx.supabase, ctx.workspace.id, [booking.id]))[booking.id] ?? [];
+
   const match = matches.get(booking.id);
   let metaLink: BookingDetailData["metaLink"] = null;
   if (match?.touch) {
@@ -139,6 +142,7 @@ export async function loadBookingDetail(bookingId: string): Promise<BookingDetai
     history: detail.history.map((h) => ({ id: h.id, at: h.performed_at, text: historyText(h, names) })),
     attribution: bookingAttributionOf(booking.utm, booking.referrer_url),
     metaLink,
+    lastTouches,
     slotReleasedAt: booking.slot_released_at,
     calls, // @plantilla-quitar(llamadas)
     sales: sales.map((x) => ({ id: x.id, status: x.status, finalAmount: Number(x.final_amount) || 0, product: snapshotText(x.product_snapshot) })), // @plantilla-quitar(ventas)

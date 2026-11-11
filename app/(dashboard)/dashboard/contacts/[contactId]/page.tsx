@@ -716,6 +716,14 @@ export default async function ContactDetailPage({
                 settings={statusSettings}
                 values={contact}
                 canEdit={perms.can("contacts.edit")}
+                assignment={{
+                  members: members.map((m) => ({ userId: m.userId, label: m.name })),
+                  setterId: contact.setter_id,
+                  vendedorId: contact.vendedor_id,
+                  currentUserId: user.id,
+                  isAdmin,
+                  canAssign: perms.can("contacts.assign"),
+                }}
               />
             </Section>
 

@@ -22,7 +22,8 @@ import { ReconnectBanner } from "../reconnect-banner";
 import type { MetaLink } from "@/lib/attribution/meta-link";
 import { BookingsList } from "./list";
 import { ColumnsMenu } from "@/components/attribution/columns-menu";
-import { ATTRIBUTION_COLUMN_GROUPS } from "@/lib/attribution/columns";
+import { AGENDA_COLUMN_GROUPS } from "@/lib/attribution/columns";
+import type { BookingTouchView } from "@/lib/attribution/last-touches";
 import { useAgendaColumns } from "./use-agenda-columns";
 import { BookingsKanban } from "./kanban-board";
 import { BookingsCalendar } from "./calendar-grid";
@@ -103,7 +104,9 @@ export function BookingsScreen({
   canReassign,
   reassignHostOptions,
   metaLinks,
+  lastTouches,
   canLinkMeta,
+  canEditContact,
   view,
   quick,
   calendarView,
@@ -149,8 +152,12 @@ export function BookingsScreen({
   reassignHostOptions: Array<{ userId: string; label: string; hasGoogle: boolean }>;
   /** El vínculo con Meta de cada reunión de la lista. */
   metaLinks: Record<string, MetaLink>;
+  /** El «último click» de cada reunión de la lista: los últimos toques antes de agendar. */
+  lastTouches: Record<string, BookingTouchView[]>;
   /** `settings.general`: vincular, ignorar o quitar el vínculo con Meta. */
   canLinkMeta: boolean;
+  /** `contacts.edit`: editar el nombre del contacto desde el panel de la reunión. */
+  canEditContact: boolean;
   view: "list" | "kanban" | "calendar";
   quick: QuickPick;
   calendarView: CalendarView;
@@ -339,7 +346,7 @@ export function BookingsScreen({
               <div className="hidden md:block">
                 <ColumnsMenu
                   defs={columns.defs}
-                  groups={ATTRIBUTION_COLUMN_GROUPS}
+                  groups={AGENDA_COLUMN_GROUPS}
                   visible={columns.visible}
                   onToggle={columns.toggle}
                   onShowAll={columns.showAll}
@@ -398,6 +405,7 @@ export function BookingsScreen({
               timeFormat={timeFormat}
               now={now}
               metaLinks={metaLinks}
+              lastTouches={lastTouches}
               columns={columns}
               canManage={canManage}
               busy={pending}
@@ -498,6 +506,7 @@ export function BookingsScreen({
           key={detail.id}
           booking={detail}
           canLinkMeta={canLinkMeta}
+          canEditContact={canEditContact}
           categories={categories}
           timezone={timezone}
           timeFormat={timeFormat}

@@ -7,6 +7,7 @@
  */
 import { bestEntryUrl, ATTRIBUTION_LABELS } from "./attribution-view";
 import { AD_KEYS, CLICK_ID_KEYS, COOKIE_VALUE_KEYS } from "./keys";
+import { lastClickLine, type BookingTouchView } from "./last-touches";
 import type { MetaRowNames } from "./meta-names";
 
 export interface ColumnGroup {
@@ -21,8 +22,16 @@ export const ATTRIBUTION_COLUMN_GROUPS: readonly ColumnGroup[] = [
   { key: "clicks", label: "Clics y navegador" },
 ];
 
+/** La columna «Último click» de la Agenda: el toque más reciente del contacto antes de agendar, de cualquier canal. */
+export const LAST_CLICK_COLUMN_KEY = "touch:last";
+
+/** Los grupos del menú «Columnas» de la Agenda: «Último click» primero. */
+export const AGENDA_COLUMN_GROUPS: readonly ColumnGroup[] = [{ key: "lastclick", label: "Último click" }, ...ATTRIBUTION_COLUMN_GROUPS];
+
 export interface AttributionCellSource {
   attribution: Record<string, string>;
+  /** Los últimos toques antes de agendar (el primero es el «último click»). Solo la Agenda los trae. */
+  lastClick?: readonly BookingTouchView[];
   metaNames: MetaRowNames;
   /** «Vinculado», «A mano», «Sin vincular», «Ignorado». Vacío si no hay nada que decir. */
   metaStatus?: string;
@@ -45,7 +54,7 @@ export interface ColumnDef<Row> {
 const REFERRER_HINT = "Los navegadores y las apps solo dejan ver el dominio de la página anterior, no la dirección completa.";
 
 /** El catálogo, en el orden de la tabla. `defaults` dice cuáles se ven de entrada. */
-export function attributionColumnDefs(defaults: ReadonlySet<string>): ColumnDef<AttributionCellSource>[] {
+export function attributionColumnDefs(defaults: ReadonlySet<string>, options: { lastClick?: boolean } = {}): ColumnDef<AttributionCellSource>[] {
   const column = (key: string, group: string, label?: string, hint?: string): ColumnDef<AttributionCellSource> => ({
     key: `attr:${key}`,
     label: label ?? ATTRIBUTION_LABELS[key] ?? key,
@@ -61,7 +70,20 @@ export function attributionColumnDefs(defaults: ReadonlySet<string>): ColumnDef<
     defaultVisible: defaults.has(`meta:${key}`),
     value: (row) => row.metaNames[key] ?? "",
   });
+  const lastClick: ColumnDef<AttributionCellSource>[] = options.lastClick
+    ? [
+        {
+          key: LAST_CLICK_COLUMN_KEY,
+          label: "Último click",
+          group: "lastclick",
+          defaultVisible: defaults.has(LAST_CLICK_COLUMN_KEY),
+          hint: "El último toque del contacto antes de agendar (pauta u orgánico). Pasá el mouse para ver los últimos 3.",
+          value: (row) => lastClickLine(row.lastClick),
+        },
+      ]
+    : [];
   return [
+    ...lastClick,
     column("utm_source", "campaign"),
     column("utm_medium", "campaign"),
     column("utm_campaign", "campaign"),

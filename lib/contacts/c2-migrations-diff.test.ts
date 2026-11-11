@@ -16,6 +16,8 @@ const files = [
   { name: "00202_find_or_link_contact_v3.sql", fn: "find_or_link_contact" },
   { name: "00203_create_booking_v3.sql", fn: "create_booking" },
   { name: "00204_submit_form_response_v6.sql", fn: "submit_form_response" },
+  // 00358: la agenda reescribe el nombre del contacto (salvo que lo haya editado una persona).
+  { name: "00358_agenda_rewrites_contact_name.sql", fn: "create_booking" },
 ];
 
 function parse(name: string): { before: string[]; after: string[] } {
