@@ -28,8 +28,10 @@ import { isDraggableTask, tasksModeParam, type TasksMode } from "@/lib/tasks/cal
 import { layoutOverlaps, type Span } from "@/lib/calendar/layoutOverlaps";
 import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
 import { TaskCard, TaskMonthChip, TasksToggle, UndatedPanel } from "./calendar-tasks"; // @plantilla-quitar(tareas)
-import { MeetJoinLink } from "./meet-join-link";
-import { canJoinMeet } from "@/lib/scheduling/meet-link";
+import { Avatar } from "@/components/ui/filter-menu";
+import { colorOf, initialsOf } from "@/lib/shared/people";
+import { statusLabel } from "@/lib/scheduling/booking-status";
+import { StatusChip, statusDotClass } from "./status-chip";
 import { useIsDesktop } from "./use-desktop";
 
 const VIEWS: Array<{ key: CalendarView; label: string }> = [
@@ -61,9 +63,22 @@ export interface BookingGhost {
 
 /** Alto minimo de una tarjeta, en pixeles: lo que ocupa aunque dure poco. */
 const MIN_CARD_PX = 26;
+/** Desde este alto la tarjeta tiene lugar para el estado como chip; mas baja, solo un punto de color. */
+const CHIP_CARD_PX = 40;
+
+/** El circulo de quien atiende la reunion: su foto o, si no tiene, sus iniciales. Decorativo: el nombre va en el tooltip. */
+function HostAvatar({ item, hostNames }: { item: BookingListItem; hostNames: Record<string, string> }) {
+  const name = hostNames[item.hostUserId] ?? item.hostName ?? "";
+  return (
+    <span title={name ? `Anfitrión: ${name}` : "Sin anfitrión"} className="shrink-0">
+      <Avatar initials={initialsOf(name)} color={colorOf(item.hostUserId)} size="sm" userId={item.hostUserId} />
+    </span>
+  );
+}
 
 export function BookingsCalendar({
   items,
+  hostNames = {},
   timezone,
   timeFormat,
   view,
@@ -77,6 +92,8 @@ export function BookingsCalendar({
   ghost = null,
 }: {
   items: BookingListItem[];
+  /** Nombre de cada anfitrión por su id, para el círculo de la tarjeta. */
+  hostNames?: Record<string, string>;
   timezone: string;
   timeFormat: "12h" | "24h";
   view: CalendarView;
@@ -256,10 +273,14 @@ export function BookingsCalendar({
                     onDragStart={canDrag ? (e) => startBooking(item, e) : undefined}
                     onDragEnd={canDrag ? endDrag : undefined}
                     style={{ borderLeftColor: it.eventColor ?? "var(--primary)" }}
-                    title={item.slotReleasedAt ? "Espacio liberado: se puede agendar encima" : undefined}
-                    className={`truncate rounded border-l-2 bg-muted/60 px-1.5 py-0.5 text-left text-[11px] hover:bg-muted${item.slotReleasedAt ? " border-dashed opacity-60" : ""}`}
+                    title={`${statusLabel(item.status)}${item.slotReleasedAt ? " · Espacio liberado: se puede agendar encima" : ""}`}
+                    className={`flex w-full items-center gap-1 rounded border-l-2 bg-muted/60 px-1.5 py-0.5 text-left text-[11px] hover:bg-muted${item.slotReleasedAt ? " border-dashed opacity-60" : ""}`}
                   >
-                    {formatSlotLabel(item.startAt, timezone, timeFormat)} {item.contactName || item.bookerName || ""}
+                    <HostAvatar item={item} hostNames={hostNames} />
+                    <span className="min-w-0 flex-1 truncate">
+                      {formatSlotLabel(item.startAt, timezone, timeFormat)} {item.contactName || item.bookerName || ""}
+                    </span>
+                    <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(item.status)}`} />
                   </button>
                 );
               })}
@@ -322,15 +343,13 @@ export function BookingsCalendar({
                   const canDrag = bookingDraggable(item);
                   // Con tareas, lo que se superpone va lado a lado; sin ellas, ancho completo como siempre.
                   const lane = columnsByDate.get(date)?.get(`b:${item.id}`);
-                  // Con Meet, el iconito para entrar va al lado de la tarjeta (nunca adentro de su boton) y los dos van en
-                  // una caja con la posicion. Sin Meet, la tarjeta es exactamente la de siempre.
-                  const join = canJoinMeet(item);
-                  const box = { top, height, ...(lane ? laneStyle(lane) : null) };
-                  // Un espacio liberado se ve punteado; el resto, exactamente como siempre (lo fija la caracterización).
+                  // Un espacio liberado se ve punteado; el resto, con el borde de siempre.
                   const cardClass = item.slotReleasedAt
                     ? "overflow-hidden rounded-md border border-dashed border-violet-400 border-l-2 bg-card px-1.5 py-1 text-left text-[11px] opacity-70 hover:border-ring"
                     : "overflow-hidden rounded-md border border-border border-l-2 bg-card px-1.5 py-1 text-left text-[11px] hover:border-ring";
-                  const card = (
+                  // Con lugar, el estado va como chip de color debajo del nombre; en una tarjeta baja, como un punto de color.
+                  const roomy = height >= CHIP_CARD_PX;
+                  return (
                     <button
                       key={item.id}
                       type="button"
@@ -338,21 +357,24 @@ export function BookingsCalendar({
                       draggable={canDrag || undefined}
                       onDragStart={canDrag ? (e) => startBooking(item, e) : undefined}
                       onDragEnd={canDrag ? endDrag : undefined}
-                      style={join ? { borderLeftColor: it.eventColor ?? "var(--primary)" } : { top, height, borderLeftColor: it.eventColor ?? "var(--primary)", ...(lane ? laneStyle(lane) : null) }}
-                      className={join ? `h-full w-full ${cardClass}` : lane ? `absolute ${cardClass}` : `absolute inset-x-1 ${cardClass}`}
+                      title={`${statusLabel(item.status)}${item.slotReleasedAt ? " · Espacio liberado" : ""}`}
+                      style={{ top, height, borderLeftColor: it.eventColor ?? "var(--primary)", ...(lane ? laneStyle(lane) : null) }}
+                      className={lane ? `absolute ${cardClass}` : `absolute inset-x-1 ${cardClass}`}
                     >
-                      <span className={join ? "block truncate pr-6 font-medium tabular-nums" : "block truncate font-medium tabular-nums"}>
-                        {formatSlotLabel(item.startAt, timezone, timeFormat)} {item.contactName || item.bookerName || ""}
+                      <span className="flex items-center gap-1">
+                        <span className="min-w-0 flex-1 truncate font-medium tabular-nums">
+                          {formatSlotLabel(item.startAt, timezone, timeFormat)} {item.contactName || item.bookerName || ""}
+                        </span>
+                        {!roomy && <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(item.status)}`} />}
+                        <HostAvatar item={item} hostNames={hostNames} />
                       </span>
-                      <span className="block truncate text-muted-foreground">{item.slotReleasedAt ? `${it.statusLabel} · Espacio liberado` : it.statusLabel}</span>
+                      {roomy && (
+                        <span className="mt-0.5 flex items-center gap-1">
+                          <StatusChip status={item.status} small />
+                          {item.slotReleasedAt && <span className="truncate text-[10px] text-violet-600 dark:text-violet-300">liberado</span>}
+                        </span>
+                      )}
                     </button>
-                  );
-                  if (!join) return card;
-                  return (
-                    <div key={item.id} style={box} className={lane ? "absolute" : "absolute inset-x-1"}>
-                      {card}
-                      <MeetJoinLink meetUrl={item.meetUrl} status={item.status} className="absolute right-0.5 top-0.5 h-5 w-5" />
-                    </div>
                   );
                 })}
                 {/* @plantilla-desde(tareas) */}
@@ -405,26 +427,24 @@ export function BookingsCalendar({
               <div className="flex flex-col gap-1.5">
                 {(placement.byDate[date] ?? []).map((it) => {
                   const item = it.booking as unknown as BookingListItem;
-                  const card = (
+                  return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => onOpen(item.id)}
                       style={{ borderLeftColor: it.eventColor ?? "var(--primary)" }}
-                      className="rounded-md border border-border border-l-2 p-2 text-left text-sm hover:bg-muted"
+                      className="flex items-start gap-2 rounded-md border border-border border-l-2 p-2 text-left text-sm hover:bg-muted"
                     >
-                      <span className="block tabular-nums">{formatSlotLabel(item.startAt, timezone, timeFormat)}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {item.contactName || item.bookerName || "Sin nombre"} · {item.slotReleasedAt ? `${it.statusLabel} · Espacio liberado` : it.statusLabel}
+                      <span className="min-w-0 flex-1">
+                        <span className="block tabular-nums">{formatSlotLabel(item.startAt, timezone, timeFormat)}</span>
+                        <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          {item.contactName || item.bookerName || "Sin nombre"}
+                          <StatusChip status={item.status} small />
+                          {item.slotReleasedAt && <span className="text-[10px] text-violet-600 dark:text-violet-300">Espacio liberado</span>}
+                        </span>
                       </span>
+                      <HostAvatar item={item} hostNames={hostNames} />
                     </button>
-                  );
-                  if (!canJoinMeet(item)) return card;
-                  return (
-                    <div key={item.id} className="relative flex flex-col">
-                      {card}
-                      <MeetJoinLink meetUrl={item.meetUrl} status={item.status} className="absolute right-2 top-2 h-7 w-7" />
-                    </div>
                   );
                 })}
                 {/* @plantilla-desde(tareas) */}

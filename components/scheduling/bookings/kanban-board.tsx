@@ -21,8 +21,8 @@ import { BOOKING_STATUSES, statusDef } from "@/lib/scheduling/booking-status";
 import { groupForKanban, needsOutcome } from "@/lib/scheduling/bookings-view";
 import { evaluateDrop, needsCancelModal, isDraggable, DEFAULT_COLLAPSED_COLUMNS } from "@/lib/scheduling/kanban";
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
-import { NeedsOutcomeChip, SlotReleasedChip } from "./status-chip";
-import { statusDotClass } from "./status-chip";
+import { SlotReleasedChip, statusDotClass } from "./status-chip";
+import { StatusMenu } from "./status-menu";
 import { MeetJoinLink } from "./meet-join-link";
 
 export function BookingsKanban({
@@ -31,6 +31,7 @@ export function BookingsKanban({
   timeFormat,
   now,
   canManage,
+  busy = false,
   onOpen,
   onMove,
   onCancelDrop,
@@ -40,6 +41,8 @@ export function BookingsKanban({
   timeFormat: "12h" | "24h";
   now: Date;
   canManage: boolean;
+  /** Se esta guardando un cambio de estado. */
+  busy?: boolean;
   onOpen: (id: string) => void;
   onMove: (id: string, status: BookingStatus) => void;
   /** Soltar en una cancelación pide el motivo antes de hacer nada. */
@@ -128,16 +131,22 @@ export function BookingsKanban({
               {bookings.map((b) => {
                 const item = b as unknown as BookingListItem;
                 const draggable = canManage && isDraggable({ status: item.status });
+                const pendingOutcome = needsOutcome({ status: item.status, end_at: item.endAt }, now);
                 return (
-                  <div key={item.id} className="relative">
+                  // Toda la tarjeta abre el detalle, salvo «Sin resultado», que abre el menu de estado.
+                  // El clic llega aca desde el boton de adentro (que es el que se enfoca con el teclado).
+                  <div
+                    key={item.id}
+                    onClick={() => onOpen(item.id)}
+                    className={`relative flex cursor-pointer flex-col rounded-lg border bg-card text-sm hover:border-ring ${item.slotReleasedAt ? "border-dashed border-violet-400" : "border-border"}`}
+                  >
                     <MeetJoinLink meetUrl={item.meetUrl} status={item.status} className="absolute right-2 top-2 z-10" />
                     <button
                       type="button"
                       draggable={draggable}
                       onDragStart={() => setDragging(item)}
                       onDragEnd={() => setDragging(null)}
-                      onClick={() => onOpen(item.id)}
-                      className={`flex w-full flex-col gap-1.5 rounded-lg border bg-card p-2.5 text-left text-sm hover:border-ring ${item.slotReleasedAt ? "border-dashed border-violet-400" : "border-border"}`}
+                      className="flex w-full flex-col gap-1.5 rounded-lg p-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <span className={`flex items-center gap-1.5 text-xs text-muted-foreground${item.meetUrl ? " pr-7" : ""}`}>
                         <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: item.eventColor ?? "currentColor" }} />
@@ -147,9 +156,23 @@ export function BookingsKanban({
                       <span className="text-xs tabular-nums text-muted-foreground">
                         {capitalize(formatDateTimeWithZone(item.startAt, timezone, timeFormat))}
                       </span>
-                      {needsOutcome({ status: item.status, end_at: item.endAt }, now) && <NeedsOutcomeChip />}
-                      {item.slotReleasedAt && <SlotReleasedChip />}
                     </button>
+                    {(pendingOutcome || item.slotReleasedAt) && (
+                      <div className="-mt-1 flex flex-wrap items-center gap-1.5 px-2.5 pb-2.5">
+                        {pendingOutcome && (
+                          <StatusMenu
+                            status={item.status}
+                            startAt={item.startAt}
+                            now={now}
+                            canChange={canManage}
+                            busy={busy}
+                            variant="needs_outcome"
+                            onSelect={(to) => (needsCancelModal(to) ? onCancelDrop(item.id, to) : onMove(item.id, to))}
+                          />
+                        )}
+                        {item.slotReleasedAt && <SlotReleasedChip />}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -159,7 +182,7 @@ export function BookingsKanban({
       </div>
 
       <p className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
-        Arrastrá una tarjeta para cambiar su estado. No-show y los resultados se cargan <strong>después de la hora de inicio</strong>; soltar en una
+        Arrastrá una tarjeta para cambiar su estado, o tocá «Sin resultado» para elegirlo desde un menú. No-show y los resultados se cargan <strong>después de la hora de inicio</strong>; soltar en una
         cancelación pide confirmación. Las columnas se contraen con ‹ y las de cancelación empiezan contraídas.
       </p>
       <span className="sr-only">{BOOKING_STATUSES.length} columnas</span>

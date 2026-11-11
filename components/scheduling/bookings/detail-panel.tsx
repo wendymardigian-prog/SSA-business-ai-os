@@ -14,10 +14,14 @@ import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
 import { MetaMatchControl } from "@/components/attribution/meta-match-control";
 import { attributionSections, bestEntryUrl } from "@/lib/attribution/attribution-view";
 import type { MetaLink } from "@/lib/attribution/meta-link";
-import { useEffect, useState, useTransition } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Video, X } from "lucide-react";
+import { ChevronDown, Mail, MessageCircle, Video, X } from "lucide-react";
+import { Tip } from "@/components/ui/tooltip";
+import { PortalMenu, PortalMenuItem, PortalMenuLabel } from "@/components/ui/portal-menu";
+import { getDmLink } from "@/lib/contacts/links";
+import type { BookingAnswer } from "@/lib/scheduling/booking-detail-view";
 import type { BookingStatus } from "@/lib/scheduling/types";
 import { BOOKING_STATUSES, evaluateTransition, groupOf, isActive, statusDef, TRANSITION_REASON_TEXT } from "@/lib/scheduling/booking-status";
 import { needsOutcome } from "@/lib/scheduling/bookings-view";
@@ -48,7 +52,9 @@ export interface BookingDetailData {
   contactName: string | null;
   bookerEmail: string | null;
   bookerPhone: string | null;
-  responses: Array<{ label: string; value: string }>;
+  responses: BookingAnswer[];
+  /** El chat de WhatsApp de este contacto en la bandeja (el más reciente), si hay uno y quien mira puede verlo. */
+  whatsappConversationId: string | null;
   internalNotes: string | null;
   locationType: string | null;
   locationText: string | null;
@@ -111,6 +117,50 @@ export function BookingDetailSkeleton({ missing, onClose }: { missing: boolean; 
   );
 }
 
+/** El boton cuadrado de iconos de las respuestas (WhatsApp, email). */
+const ICON_BUTTON = "inline-grid h-6 w-6 shrink-0 place-items-center rounded-md border border-border text-primary-ink hover:bg-accent";
+/** Un valor que se toca para elegir otro (categoria, anfitrion): se lee como texto, con una flechita. */
+const VALUE_TRIGGER = "-mx-1.5 max-w-full gap-1 px-1.5 py-0.5 text-left hover:bg-muted";
+
+/**
+ * Lo que se puede hacer con una respuesta de teléfono o de email: ir al chat de WhatsApp de esa persona (en la misma
+ * app, si ya hay uno) o escribirle un email. Se decide por el TIPO de la pregunta, nunca por cómo se ve el texto.
+ */
+function AnswerActions({ answer, whatsappConversationId }: { answer: BookingAnswer; whatsappConversationId: string | null }) {
+  if (answer.kind === "email") {
+    if (!/^[^\s@]+@[^\s@]+$/.test(answer.value.trim())) return null;
+    return (
+      <Tip content="Abre tu programa de correo para escribirle a este email.">
+        <a href={`mailto:${answer.value.trim()}`} aria-label={`Escribir un email a ${answer.value}`} className={ICON_BUTTON}>
+          <Mail className="h-3.5 w-3.5" aria-hidden />
+        </a>
+      </Tip>
+    );
+  }
+  if (answer.kind === "phone") {
+    // El chat de la bandeja es del contacto: solo corresponde al teléfono propio del invitado, no a otro número que escribió.
+    if (answer.own && whatsappConversationId) {
+      return (
+        <Tip content="Abre en la bandeja el chat de WhatsApp con este contacto.">
+          <Link href={`/dashboard/inbox?c=${whatsappConversationId}`} aria-label="Abrir el chat de WhatsApp" className={ICON_BUTTON}>
+            <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+          </Link>
+        </Tip>
+      );
+    }
+    const url = getDmLink("whatsapp", answer.value).url;
+    if (!url || answer.value.replace(/\D/g, "").length < 7) return null;
+    return (
+      <Tip content={answer.own ? "Todavía no hay un chat de WhatsApp con este contacto en el sistema. Abre WhatsApp con este número en otra pestaña." : "Abre WhatsApp con este número en otra pestaña."}>
+        <a href={url} target="_blank" rel="noopener noreferrer" aria-label="Abrir WhatsApp con este número" className={ICON_BUTTON}>
+          <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+        </a>
+      </Tip>
+    );
+  }
+  return null;
+}
+
 const OUTCOME_SHORTCUTS: BookingStatus[] = ["no_show", "followup_warm", "followup_cold", "sale", "not_qualified"];
 
 export function BookingDetailPanel({
@@ -143,6 +193,7 @@ export function BookingDetailPanel({
   const [reassignOpen, setReassignOpen] = useState(false);
   const [saleOpen, setSaleOpen] = useState(false); // @plantilla-quitar(ventas)
   const [newHostId, setNewHostId] = useState("");
+  const reassignRef = useRef<HTMLDivElement>(null);
   const [transferAssignment, setTransferAssignment] = useState(true);
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState(booking.internalNotes ?? "");
@@ -181,6 +232,10 @@ export function BookingDetailPanel({
       clearInterval(id);
     };
   }, [waiting, booking.id, router]);
+  // Al elegir un anfitrión nuevo, el cartel de confirmación puede quedar fuera de la vista: se lo trae.
+  useEffect(() => {
+    if (reassignOpen) reassignRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [reassignOpen, newHostId]);
   const joinHref = meetJoinHref(booking.meetUrl);
   const attributionSectionsOf = attributionSections(booking.attribution);
   const entryUrl = bestEntryUrl(booking.attribution);
@@ -301,25 +356,12 @@ export function BookingDetailPanel({
           )}
 
           {reassignOpen && (
-            <div className="rounded-lg border border-border p-3">
+            <div ref={reassignRef} className="rounded-lg border border-border p-3">
               <p className="font-medium">Reasignar anfitrión</p>
-              <label htmlFor="reassign-host" className="mt-2 block text-xs text-muted-foreground">
-                Nueva persona
-              </label>
-              <select
-                id="reassign-host"
-                value={newHostId}
-                onChange={(e) => setNewHostId(e.target.value)}
-                className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
-              >
-                <option value="">Elegir…</option>
-                {hostOptions.map((h) => (
-                  <option key={h.userId} value={h.userId}>
-                    {h.label}
-                    {h.hasGoogle ? "" : " (sin Google Calendar conectado)"}
-                  </option>
-                ))}
-              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {booking.hostName} → <span className="font-medium text-foreground">{hostOptions.find((h) => h.userId === newHostId)?.label ?? "elegí a quién en «Anfitrión»"}</span>
+                {hostOptions.find((h) => h.userId === newHostId)?.hasGoogle === false && " (sin Google Calendar conectado)"}
+              </p>
               <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                 <input type="checkbox" checked={transferAssignment} onChange={(e) => setTransferAssignment(e.target.checked)} />
                 También pasarle los leads asignados (si el closer o el setter era {booking.hostName})
@@ -328,7 +370,14 @@ export function BookingDetailPanel({
                 El invitado no se entera: sigue viendo el mismo link de Meet. La nueva persona aparece confirmada en su calendario.
               </p>
               <div className="mt-2 flex gap-2">
-                <button type="button" onClick={() => setReassignOpen(false)} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReassignOpen(false);
+                    setNewHostId("");
+                  }}
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
+                >
                   Volver
                 </button>
                 <button
@@ -369,37 +418,78 @@ export function BookingDetailPanel({
               <span className="block text-xs text-muted-foreground">Hora del invitado: {formatDateTimeWithZone(booking.startAt, booking.inviteeTimezone, timeFormat)}</span>
             </dd>
             <dt className="text-muted-foreground">Categoría</dt>
-            <dd className="flex flex-wrap items-center gap-2">
-              {booking.categoryLabel || "—"}
-              {canManage && (
-                <select
-                  aria-label="Corregir la categoría"
-                  defaultValue=""
+            <dd>
+              {canManage && categories.length > 0 ? (
+                // El nombre de la categoría ES el desplegable: un clic y se elige otra.
+                <PortalMenu
+                  label="Corregir la categoría"
+                  title="Corregir la categoría"
                   disabled={pending}
-                  onChange={(e) => e.target.value && run(() => fixBookingCategory({ bookingId: booking.id, categoryId: e.target.value }), "Categoría corregida")}
-                  className="rounded-md border border-input bg-background px-1.5 py-0.5 text-xs"
+                  width={290}
+                  triggerClassName={VALUE_TRIGGER}
+                  trigger={
+                    <>
+                      <span className="min-w-0 truncate">{booking.categoryLabel || "Sin categoría"}</span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    </>
+                  }
                 >
-                  <option value="">Corregir…</option>
                   {categoryTree(categories).map(({ area, types }) => (
-                    <optgroup key={area.id} label={area.name}>
-                      <option value={area.id}>{area.name} (solo el área)</option>
+                    <Fragment key={area.id}>
+                      <PortalMenuLabel>{area.name}</PortalMenuLabel>
+                      <PortalMenuItem selected={booking.categoryId === area.id} onSelect={() => run(() => fixBookingCategory({ bookingId: booking.id, categoryId: area.id }), "Categoría corregida")}>
+                        <span className="truncate">{area.name} (solo el área)</span>
+                      </PortalMenuItem>
                       {types.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.name}
-                        </option>
+                        <PortalMenuItem
+                          key={type.id}
+                          selected={booking.categoryId === type.id}
+                          onSelect={() => run(() => fixBookingCategory({ bookingId: booking.id, categoryId: type.id }), "Categoría corregida")}
+                        >
+                          <span className="truncate pl-3">{type.name}</span>
+                        </PortalMenuItem>
                       ))}
-                    </optgroup>
+                    </Fragment>
                   ))}
-                </select>
+                </PortalMenu>
+              ) : (
+                booking.categoryLabel || "—"
               )}
             </dd>
             <dt className="text-muted-foreground">Anfitrión</dt>
-            <dd className="flex flex-wrap items-center gap-2">
-              {booking.hostName}
-              {canReassign && isActive(booking.status) && hostOptions.length > 0 && !reassignOpen && (
-                <button type="button" onClick={() => setReassignOpen(true)} className="text-xs text-primary-ink underline">
-                  Reasignar
-                </button>
+            <dd>
+              {canReassign && isActive(booking.status) && hostOptions.length > 0 ? (
+                // Igual que la categoría: el nombre es el desplegable. Elegir a alguien abre el cartel para confirmar (el cambio toca Google Calendar).
+                <PortalMenu
+                  label="Reasignar el anfitrión"
+                  title="Reasignar el anfitrión"
+                  disabled={pending}
+                  width={290}
+                  triggerClassName={VALUE_TRIGGER}
+                  trigger={
+                    <>
+                      <span className="min-w-0 truncate">{booking.hostName}</span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    </>
+                  }
+                >
+                  <PortalMenuLabel>Reasignar a…</PortalMenuLabel>
+                  {hostOptions.map((h) => (
+                    <PortalMenuItem
+                      key={h.userId}
+                      selected={reassignOpen && newHostId === h.userId}
+                      onSelect={() => {
+                        setNewHostId(h.userId);
+                        setReassignOpen(true);
+                      }}
+                    >
+                      <span className="truncate">{h.label}</span>
+                      {!h.hasGoogle && <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">sin Google</span>}
+                    </PortalMenuItem>
+                  ))}
+                </PortalMenu>
+              ) : (
+                booking.hostName
               )}
             </dd>
             <dt className="text-muted-foreground">Dónde</dt>
@@ -429,14 +519,16 @@ export function BookingDetailPanel({
                 <span className="flex flex-col gap-1">
                   <span className="text-destructive">No se pudo sincronizar{booking.syncError ? `: ${booking.syncError}` : ""}</span>
                   {canManage && (
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => run(() => retryBookingSync({ bookingId: booking.id }), "Lo vuelvo a intentar")}
-                      className="self-start rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted"
-                    >
-                      Reintentar sincronización
-                    </button>
+                    <Tip content="Vuelve a intentar copiar esta reunión a Google Calendar." className="self-start">
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => run(() => retryBookingSync({ bookingId: booking.id }), "Lo vuelvo a intentar")}
+                        className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted"
+                      >
+                        Reintentar sincronización
+                      </button>
+                    </Tip>
                   )}
                 </span>
               )}
@@ -445,54 +537,70 @@ export function BookingDetailPanel({
 
           <div className="flex flex-wrap gap-2">
             {joinHref && isActive(booking.status) && (
-              <a
-                href={joinHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
-              >
-                <Video className="h-3.5 w-3.5" aria-hidden />
-                Unirse a Meet
-              </a>
+              <Tip content="Abre la videollamada de Google Meet de esta reunión en una pestaña nueva.">
+                <a
+                  href={joinHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+                >
+                  <Video className="h-3.5 w-3.5" aria-hidden />
+                  Unirse a Meet
+                </a>
+              </Tip>
             )}
-            <Link href={`/dashboard/contacts/${booking.contactId}`} className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted">
-              Ver contacto
-            </Link>
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard?.writeText(booking.rescheduleUrl);
-                setToast("Link para reagendar copiado");
-              }}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted"
-            >
-              Copiar link de reagendar
-            </button>
-            {joinHref && (
+            <Tip content="Abre la ficha del contacto: sus datos, notas, conversaciones e historial.">
+              <Link href={`/dashboard/contacts/${booking.contactId}`} className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted">
+                Ver contacto
+              </Link>
+            </Tip>
+            <Tip content="Copia el link con el que el invitado puede cambiar el horario o cancelar por su cuenta. Pegalo en un mensaje para mandárselo.">
               <button
                 type="button"
                 onClick={() => {
-                  void navigator.clipboard?.writeText(joinHref);
-                  setToast("Link de Meet copiado");
+                  void navigator.clipboard?.writeText(booking.rescheduleUrl);
+                  setToast("Link para reagendar copiado");
                 }}
                 className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted"
               >
-                Copiar Meet
+                Copiar link de reagendar
               </button>
+            </Tip>
+            {joinHref && (
+              <Tip content="Copia el link de la videollamada de Google Meet para mandárselo al invitado (por WhatsApp, por ejemplo).">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(joinHref);
+                    setToast("Link de Meet copiado");
+                  }}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                >
+                  Copiar Meet
+                </button>
+              </Tip>
             )}
             {canManage && isActive(booking.status) && (
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() =>
+              <Tip
+                content={
                   booking.slotReleasedAt
-                    ? run(() => occupyBookingSlotAsHost({ bookingId: booking.id }), "El espacio vuelve a estar ocupado")
-                    : run(() => releaseBookingSlotAsHost({ bookingId: booking.id }), "El espacio quedó libre para otra agenda")
+                    ? "Vuelve a bloquear este horario: ya no se va a poder agendar a otro lead encima de esta reunión."
+                    : "Deja este horario libre para que otro lead pueda agendar a la misma hora. La reunión no se cancela ni cambia de estado."
                 }
-                className="rounded-lg border border-dashed border-violet-400 px-3 py-1.5 text-xs text-violet-600 hover:bg-violet-500/10 disabled:opacity-60 dark:text-violet-300"
               >
-                {booking.slotReleasedAt ? "Volver a ocupar el espacio" : "Liberar espacio"}
-              </button>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() =>
+                    booking.slotReleasedAt
+                      ? run(() => occupyBookingSlotAsHost({ bookingId: booking.id }), "El espacio vuelve a estar ocupado")
+                      : run(() => releaseBookingSlotAsHost({ bookingId: booking.id }), "El espacio quedó libre para otra agenda")
+                  }
+                  className="rounded-lg border border-dashed border-violet-400 px-3 py-1.5 text-xs text-violet-600 hover:bg-violet-500/10 disabled:opacity-60 dark:text-violet-300"
+                >
+                  {booking.slotReleasedAt ? "Volver a ocupar el espacio" : "Liberar espacio"}
+                </button>
+              </Tip>
             )}
           </div>
           {booking.slotReleasedAt && (
@@ -508,48 +616,15 @@ export function BookingDetailPanel({
                 {booking.responses.map((r) => (
                   <div key={r.label}>
                     <dt className="text-xs font-medium">{r.label}</dt>
-                    <dd className="text-muted-foreground">{r.value}</dd>
+                    <dd className="flex items-start gap-2 text-muted-foreground">
+                      <span className="min-w-0 flex-1 break-words">{r.value}</span>
+                      <AnswerActions answer={r} whatsappConversationId={booking.whatsappConversationId} />
+                    </dd>
                   </div>
                 ))}
               </dl>
             </section>
           )}
-
-          <section className="rounded-lg border border-border p-3">
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Atribución</h3>
-            <div className="mb-3 rounded-md border border-border p-2.5">
-              <h4 className="mb-1 text-xs font-medium text-muted-foreground">Vínculo con Meta</h4>
-              <MetaMatchControl
-                link={booking.metaLink}
-                target={booking.metaLink?.touchId ? { touchId: booking.metaLink.touchId } : { bookingId: booking.id }}
-                canManage={canLinkMeta}
-              />
-            </div>
-            {attributionSectionsOf.length > 0 || entryUrl ? (
-              <div className="flex flex-col gap-3">
-                {attributionSectionsOf.map((section) => (
-                  <div key={section.title}>
-                    <h4 className="mb-1 text-xs font-medium text-muted-foreground">{section.title}</h4>
-                    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                      {section.items.map((item) => (
-                        <div key={item.key} className="contents">
-                          <dt className="text-muted-foreground">{item.label}</dt>
-                          <dd className="min-w-0 truncate" title={item.value}>
-                            {item.value}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                ))}
-                {entryUrl && <EntryUrlBlock url={entryUrl} />}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Sin datos de atribución ({booking.origin === "A mano" || booking.origin === "Agente de IA" ? "agendada a mano o por el agente" : "no llegó ningún UTM"}).
-              </p>
-            )}
-          </section>
 
           {canManage && (
             <section className="rounded-lg border border-border p-3">
@@ -597,6 +672,42 @@ export function BookingDetailPanel({
               </button>
             </section>
           )}
+
+          <section className="rounded-lg border border-border p-3">
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Atribución</h3>
+            <div className="mb-3 rounded-md border border-border p-2.5">
+              <h4 className="mb-1 text-xs font-medium text-muted-foreground">Vínculo con Meta</h4>
+              <MetaMatchControl
+                link={booking.metaLink}
+                target={booking.metaLink?.touchId ? { touchId: booking.metaLink.touchId } : { bookingId: booking.id }}
+                canManage={canLinkMeta}
+              />
+            </div>
+            {attributionSectionsOf.length > 0 || entryUrl ? (
+              <div className="flex flex-col gap-3">
+                {attributionSectionsOf.map((section) => (
+                  <div key={section.title}>
+                    <h4 className="mb-1 text-xs font-medium text-muted-foreground">{section.title}</h4>
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                      {section.items.map((item) => (
+                        <div key={item.key} className="contents">
+                          <dt className="text-muted-foreground">{item.label}</dt>
+                          <dd className="min-w-0 truncate" title={item.value}>
+                            {item.value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ))}
+                {entryUrl && <EntryUrlBlock url={entryUrl} />}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Sin datos de atribución ({booking.origin === "A mano" || booking.origin === "Agente de IA" ? "agendada a mano o por el agente" : "no llegó ningún UTM"}).
+              </p>
+            )}
+          </section>
 
           {/* @plantilla-desde(llamadas) */}
           {booking.calls.length > 0 && (

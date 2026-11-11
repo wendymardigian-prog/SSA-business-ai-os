@@ -61,12 +61,31 @@ export async function loadBookingDetail(bookingId: string): Promise<BookingDetai
   ]);
   if (!detail || detail.booking.workspace_id !== ctx.workspace.id) return null;
   const booking = detail.booking;
+
+  // El chat de WhatsApp de este contacto, para el boton «Abrir chat» de sus respuestas. Con la sesion de quien mira:
+  // la RLS decide si puede ver la conversacion. Si algo falla, simplemente no hay boton hacia el chat.
+  // Se pide a la vez que el toque de atribucion (no se espera aca).
+  const whatsappChatPromise = ctx.supabase
+    .from("conversations")
+    .select("id")
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("contact_id", booking.contact_id)
+    .eq("platform", "whatsapp")
+    .is("deleted_at", null)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle()
+    .then(
+      (r) => (r.error ? null : ((r.data?.id as string | undefined) ?? null)),
+      () => null,
+    );
   const publicBase = publicBaseUrl(ctx.workspace as { scheduling_public_base_url?: string | null });
 
   // El toque va con el cliente de servicio: quien atiende una reunión puede no ver su contacto.
   const matches = await loadBookingMatches(service, ctx.workspace.id, [{ id: booking.id, contactId: booking.contact_id, createdAt: booking.created_at }]);
   const calls = await callsPromise; // @plantilla-quitar(llamadas)
   const sales = await salesPromise; // @plantilla-quitar(ventas)
+  const whatsappChat = await whatsappChatPromise;
 
   const match = matches.get(booking.id);
   let metaLink: BookingDetailData["metaLink"] = null;
@@ -105,6 +124,7 @@ export async function loadBookingDetail(bookingId: string): Promise<BookingDetai
     contactName: detail.contact?.display_name ?? booking.booker_name ?? null,
     bookerEmail: booking.booker_email,
     bookerPhone: booking.booker_phone,
+    whatsappConversationId: whatsappChat,
     responses: answersOf(booking.responses, (detail.event?.booking_fields as BookingField[] | null) ?? []),
     internalNotes: booking.internal_notes,
     locationType: booking.location_type,

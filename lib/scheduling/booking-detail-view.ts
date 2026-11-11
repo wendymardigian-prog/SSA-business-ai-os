@@ -12,17 +12,32 @@ export function snapshotLabel(snapshot: unknown): string {
   return snap.type_name ? `${snap.area_name} · ${snap.type_name}` : snap.area_name;
 }
 
+export interface BookingAnswer {
+  label: string;
+  value: string;
+  /** Si la pregunta es de teléfono o de email (por su tipo, no por como se ve el texto). */
+  kind?: "phone" | "email";
+  /** Es el teléfono o el email PROPIO del invitado (los campos del sistema), no una pregunta extra del formulario. */
+  own?: boolean;
+}
+
 /**
  * Las respuestas con la etiqueta del formulario. Si el evento cambió de
  * preguntas, la clave se muestra tal cual: es preferible a esconder una
  * respuesta que la persona sí escribió.
  */
-export function answersOf(responses: unknown, fields: BookingField[] | null | undefined): Array<{ label: string; value: string }> {
-  const byId = new Map((fields ?? []).map((f) => [f.identifier, f.label]));
-  const out: Array<{ label: string; value: string }> = [];
+export function answersOf(responses: unknown, fields: BookingField[] | null | undefined): BookingAnswer[] {
+  const byId = new Map((fields ?? []).map((f) => [f.identifier, f]));
+  const out: BookingAnswer[] = [];
   for (const [key, value] of Object.entries((responses as Record<string, unknown>) ?? {})) {
     if (value === null || value === undefined || value === "") continue;
-    out.push({ label: byId.get(key) ?? key, value: Array.isArray(value) ? value.join(", ") : String(value) });
+    const field = byId.get(key);
+    const answer: BookingAnswer = { label: field?.label ?? key, value: Array.isArray(value) ? value.join(", ") : String(value) };
+    if (field?.type === "phone" || field?.type === "email") {
+      answer.kind = field.type;
+      answer.own = field.system;
+    }
+    out.push(answer);
   }
   return out;
 }
