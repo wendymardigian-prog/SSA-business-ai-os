@@ -56,6 +56,7 @@ Está en la guía de instalación (sección "Más adelante — Cómo recibir act
 - **Los clientes no ven nada de `docs/`** (se excluye en el export). Si una guía tiene que viajar, va en la guía de instalación o en `.claude/commands/`.
 - **El export no es lo mismo que el repo de trabajo**: si algo funciona solo con un archivo que el export excluye, no funciona en el clon. Antes de una actualización grande, vale la pena probar `/setup` en un proyecto descartable.
 - **Una persona nueva = acceso de lectura a la plantilla**, nunca miembro de la organización.
+- **El protocolo de trabajo (plan primero) viaja en `.claude/`**, no en `docs/`: `.claude/rules/00-protocolo-de-trabajo.md`, `.claude/skills/planificar/` y `.claude/hooks/plan-reminder.mjs`. El `.claude/settings.json` del cliente **no es el de este repo**: sale de `scripts/template-files/clientes/settings.json` (modo plan por defecto, modelo `opusplan` y el recordatorio; sin el aviso de "actualizar la plantilla"). Si se cambia uno, se cambia el otro: `lib/claude-protocol.test.ts` los compara. En el commit de la primera actualización que lo trae, avisar a los clientes que ya tengan su propio `.claude/settings.json`: pueden tener un conflicto simple al mezclar. Un `.claude/settings.local.json` de la persona pisa al del proyecto (incluido el modo plan).
 
 ## El aviso automático después de un merge
 

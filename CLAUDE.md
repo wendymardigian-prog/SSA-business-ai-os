@@ -1,3 +1,7 @@
+# Como se trabaja aca (obligatorio)
+
+Quien usa este proyecto puede no ser tecnico. **Antes de modificar archivos, la base de datos o la configuracion, hace falta un plan aprobado**: primero preguntas (una sola ronda, con tu recomendacion), despues un plan en dos partes (un resumen para la persona en lenguaje simple y el plan para Claude, con modelo y esfuerzo recomendados) y recien con el si se ejecuta, de corrido y sin interrumpir. Las preguntas y explicaciones se contestan directo. Cada pedido nuevo vuelve a empezar en modo plan. El protocolo completo, con la tabla de modelos, cuando SI frenar y la definicion de terminado, esta en `.claude/rules/00-protocolo-de-trabajo.md`; la plantilla del plan y los casos borde, en `/planificar`.
+
 # Comunicacion
 
 - Explica todo en lenguaje simple. Si usas un termino tecnico, agrega una explicacion breve entre parentesis.
@@ -2442,6 +2446,8 @@ Disparador de SISTEMA (`scheduled_time`, sin contacto ni persona): una automatiz
 `00339_scheduled_time_trigger` (aditiva: el CHECK de `triggers.type` suma `scheduled_time`) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 8/11/2026 UTC (version `20261108163107`), despues de ensayarla en una transaccion que se deshizo sola. En produccion conservo los 29 tipos de Servicios (67 en total). Si la base ya acepta tipos que su lista no conoce (en produccion, la `00336` de Servicios se aplico antes de que su codigo llegara a `main`), arma el CHECK con TODO lo que la base acepta + `scheduled_time`, sin sacar nada (siempre como `ARRAY['x'::text, ...]`). **Cuando Servicios mergee, su lista tiene que ir en una migracion posterior a la 00339 que sume `scheduled_time`**: la ultima definicion escrita es la que lee `registry/consistency.test.ts`. La `00330` a la `00336`, la `00340` y la `00343` son de Servicios (rama `feat/servicios-a1`; la 00343 ya esta aplicada) y la `00337`/`00338` de la guardia de email y los avisos. **La proxima libre es la `00344`** (confirmar con `list_migrations` y las ramas locales).
 
 # Buenas practicas de desarrollo
+
+Un trabajo no esta terminado hasta cumplir la "Definicion de terminado" de `.claude/rules/00-protocolo-de-trabajo.md` (compila, lint, tests, pantalla mirada, `.env.example` al dia, migracion idempotente, sin secretos). No se dice "listo" si algo fallo.
 
 ## Estructura de codigo
 - Seguir la estructura existente del fork. No inventar carpetas nuevas si ya hay una que sirve.
