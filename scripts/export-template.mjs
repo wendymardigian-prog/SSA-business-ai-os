@@ -72,8 +72,10 @@ function isExcluded(relPath) {
   if (relPath === "scripts/template-files/estudiantes" || relPath.startsWith("scripts/template-files/estudiantes/")) return true;
   // El aviso de "actualizar la plantilla" despues de un merge (hook de Claude Code) es de
   // quien mantiene este repo: ni la configuracion que lo activa ni su script van al cliente.
+  // En su lugar el cliente recibe SU configuracion (`copyClientSettings`: modo plan por defecto
+  // y el recordatorio del protocolo de trabajo). El resto de `.claude/hooks/` si viaja.
   if (relPath === ".claude/settings.json") return true;
-  if (relPath === ".claude/hooks" || relPath.startsWith(".claude/hooks/")) return true;
+  if (relPath === ".claude/hooks/baios-reminder.mjs") return true;
   if (relPath === "claude" || relPath.startsWith("claude/")) return true;
   if (relPath === ".claude/worktrees" || relPath.startsWith(".claude/worktrees/")) return true;
   if (relPath === "supabase/.temp" || relPath.startsWith("supabase/.temp/")) return true;
@@ -173,6 +175,20 @@ function copySiteDefaults() {
   filesCopied += 1;
 }
 
+/**
+ * La configuracion de Claude Code del cliente: `scripts/template-files/clientes/settings.json`
+ * se escribe como `.claude/settings.json` de la copia (modo plan por defecto, modelo y el
+ * recordatorio del protocolo de trabajo). La del repo de trabajo no viaja porque trae el
+ * aviso de actualizar la plantilla, que es solo de quien la mantiene.
+ */
+function copyClientSettings() {
+  const from = join(REPO_ROOT, "scripts/template-files/clientes/settings.json");
+  const to = join(DEST, ".claude/settings.json");
+  mkdirSync(dirname(to), { recursive: true });
+  copyFileSync(from, to);
+  filesCopied += 1;
+}
+
 function run(cmd, args, cwd) {
   execFileSync(cmd, args, { cwd, stdio: "pipe" });
 }
@@ -242,6 +258,7 @@ async function main() {
   console.log(`Exportando ${REPO_ROOT} -> ${DEST}`);
   copyTrackedFiles(REPO_ROOT, DEST);
   copySiteDefaults();
+  copyClientSettings();
   console.log(`Copiados ${filesCopied} archivos.`);
 
   // @plantilla-desde(proyecto)
