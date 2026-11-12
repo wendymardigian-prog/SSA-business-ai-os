@@ -354,6 +354,7 @@ export const EXCLUDED = Object.keys(MODULES);
  */
 const SCOPES = ["llamadas", "ventas", "comisiones", "tareas", "servicios"];
 export const excludeTests = [
+  { path: "scripts/export-template.test.ts", modules: ["proyecto"], why: "prueba el export desde el repo del proyecto (necesita git y los archivos de plantilla); en la copia no tiene que correr" },
   { path: "lib/cron/guards.test.ts", modules: ["proyecto"], why: "lee las migraciones del proyecto una por una; en la plantilla van consolidadas" },
   { path: "lib/dashboards/chat/core-migration.test.ts", modules: ["proyecto"], why: "lee la migracion 00305 por su nombre; en la plantilla van consolidadas" },
   { path: "lib/email/portal-invite-email.test.ts", modules: ["servicios"], why: "prueba la invitación al portal, que es de Servicios" },
