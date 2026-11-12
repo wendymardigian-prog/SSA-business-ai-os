@@ -24,7 +24,7 @@ Fuera de este comando, a propósito: crear el primer usuario del sistema y las i
 
 Antes de los pasos, aclará una sola vez, en una línea: este asistente funciona con la cuenta de API de Anthropic de la persona (no hace falta una suscripción Claude Pro), y lo que consuma se cobra aparte según el uso. Si está en un modelo caro, sugerile Sonnet para la instalación: alcanza y gasta menos saldo. Si no sabés con qué cuenta inició sesión, no lo asumas: preguntale.
 
-Saludá y explicá en 3-4 líneas los pasos: Supabase, Railway, conectar la base con la app, links de autenticación, archivo `.env` local y, al final, una pregunta sobre las actualizaciones. Después le vas a indicar qué falta. Preguntale si arrancamos.
+Saludá y explicá en 3-4 líneas los pasos: Supabase, Railway, conectar la base con la app, links de autenticación, archivo `.env` local, un paso opcional para que el Diseñador IA pueda exportar archivos y, al final, una pregunta sobre las actualizaciones. Después le vas a indicar qué falta. Preguntale si arrancamos.
 
 ## Paso 1 — Supabase: proyecto, conector y migraciones
 
@@ -52,7 +52,7 @@ Saludá y explicá en 3-4 líneas los pasos: Supabase, Railway, conectar la base
 
    **Conectar también Railway** (la guía también se lo pide en el Paso 3; si falta, hacelo ahora en la misma pasada, así la sesión nueva se reinicia una sola vez). Railway tiene su propio conector, con el mismo estilo de un clic: **Configuración → Conectores → Railway → Conectar**, iniciar sesión en el navegador y, cuando pida elegir a qué **espacio de trabajo (workspace)** darle acceso, elegir solo el que va a usar para este sistema. Si ya tenía Railway conectado con OTRA cuenta, el conector personalizado usa la dirección `https://mcp.railway.com` (nombre sugerido: "Railway - Mi negocio"); Railway no tiene una dirección distinta por proyecto, así que puede ser que Claude no deje tener dos con la misma dirección o que el login vuelva a la cuenta equivocada (sugerile cerrar sesión de la otra cuenta en el navegador antes). Si no funciona, el Paso 2 se hace igual, a mano: el conector de Railway ayuda pero no es obligatorio.
 
-   Con el conector de Railway usás SOLO lecturas y comprobaciones que no llevan secretos: encontrar el servicio y su dominio, ver el estado del deploy y leer los logs cuando algo falla (así la persona no tiene que copiar errores). **Nunca cargues variables con el conector**: son claves y las pega la persona directo en Railway. Igual que con Supabase, si hay varios conectores de Railway, no uses el primero que veas: confirmá que el proyecto que ves es el que la persona creó para este negocio (nombre del proyecto y del repositorio) antes de tocar o leer nada.
+   Con el conector de Railway usás lecturas y comprobaciones que no llevan secretos: encontrar el servicio y su dominio, ver el estado del deploy y leer los logs cuando algo falla (así la persona no tiene que copiar errores). En el Paso 6 (opcional) también creás y configurás el servicio de render. **Nunca cargues una CLAVE con el conector**: las claves las pega la persona directo en Railway. Lo único que podés cargar vos son valores que no son secretos (una dirección, una lista de dominios) y **referencias** a una variable de otro servicio (`${{servicio.VARIABLE}}`, Railway la reemplaza sola y vos nunca ves el valor). Igual que con Supabase, si hay varios conectores de Railway, no uses el primero que veas: confirmá que el proyecto que ves es el que la persona creó para este negocio (nombre del proyecto y del repositorio) antes de tocar o leer nada.
 
 4. **Construir la base de datos (las migraciones).** Explicale que las migraciones son archivos que ya traen escrito todo el trabajo de armar la base (las tablas, las funciones, las reglas de seguridad, las tareas automáticas), y que se corren una sola vez. Son más de doscientos archivos.
 
@@ -116,6 +116,12 @@ Railway es el servicio que va a mantener la app prendida las 24 horas con una di
    - `SUPABASE_SERVICE_ROLE_KEY`: Supabase → Project Settings → API Keys → service_role. Es la más sensible (salta todos los permisos de la base): nunca por chat.
    - `NEXT_PUBLIC_APP_URL`: el dominio del punto 3. Si el negocio ya tiene un dominio propio (por ejemplo `sistema.suempresa.com`), mejor ese: es el que van a ver en todos los links. Si lo suma después: agregarlo en Railway (Settings → Networking → Custom Domain), cambiar esta variable a `https://<dominio>`, sumar `https://<dominio>/**` en las Redirect URLs de Supabase Auth (paso 4) y, si usa Google Calendar, la dirección `https://<dominio>/api/oauth/google/callback` en su cliente OAuth de Google. Quien entre por el dominio de Railway termina en el propio solo.
    - `CRON_SECRET`: el valor del punto 4.
+
+   **Una sexta, recomendada: `RATE_LIMIT_SALT`** (la "sal" con la que se cifran las IP en los topes de las páginas públicas, como la agenda: así una misma persona no puede mandar cientos de pedidos). Sin ella el sistema usa una derivada del `CRON_SECRET`, que funciona, pero conviene que sea propia. Es una cadena al azar que nadie tiene que recordar, así que la genera una orden y va directo al portapapeles, sin mostrarse en pantalla. Dale la orden para que la pegue en el panel Terminal:
+   - Mac: `openssl rand -hex 32 | pbcopy`
+   - Windows (PowerShell): `$b=New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); (($b|%{$_.ToString('x2')}) -join '') | Set-Clipboard`
+
+   No aparece nada: es normal, ya quedó copiada. Que cree la variable `RATE_LIMIT_SALT` en Railway y pegue con Cmd + V (Mac) o Ctrl + V (Windows). Vos no leés la terminal en ese momento.
 6. Railway vuelve a desplegar solo. Si el conector de Railway está disponible, mirá vos el estado del deploy y los logs (después de confirmar el proyecto); si no, preguntale qué dice el estado. Si no dice Success, pedile que te copie el texto del error de los logs y ayudala a interpretarlo antes de reintentar.
 7. Con el deploy en verde (en Railway dice **Active** o **Success**), que abra el dominio en el navegador: tiene que ver la pantalla de login. Si ve un error 502 o "Application failed to respond", casi seguro es el puerto del dominio: volvé al punto 3 (el lápiz junto al dominio, en Networking).
 
@@ -161,8 +167,16 @@ Explicale que esto le dice a Supabase a qué dirección devolver a alguien despu
 2. **Site URL:** el dominio de Railway, con `https://`.
 3. **Redirect URLs:** agregar el mismo dominio seguido de `/**` (por ejemplo `https://tu-app.up.railway.app/**`).
 4. Guardar.
-5. **Cerrar el registro público (obligatorio):** explicale que el sistema da de alta solo por invitación, pero Supabase viene con el registro abierto: cualquiera que conozca la dirección del proyecto podría crearse una cuenta. Que vaya a Authentication → Sign In / Providers, apague **"Allow new users to sign up"** y guarde. Las invitaciones y el primer Owner no dependen de esa opción (se crean desde el servidor). En la misma pantalla, que prenda **"Secure password change"** (pide la contraseña actual o un reingreso reciente para cambiarla). Esperá a que te confirme que quedó apagado. Recomendale también prender **"Leaked password protection"** (Authentication → Attack Protection). Después comprobalo vos con `node scripts/verify-auth-settings.mjs` (usa el token de la CLI, `supabase login`): tiene que salir 0; si sale 1, el registro sigue prendido; si sale 2, no hay token y lo confirma ella mirando la pantalla. El checklist completo está en `docs/seguridad-despliegue.md`.
-6. **"Olvidé mi contraseña" (recomendado):** explicale que Supabase manda ese email, y que con su servidor de correo por defecto manda como mucho 2 por hora. Si ya tiene Resend, que lo conecte en Authentication → Emails → SMTP Settings (host `smtp.resend.com`, puerto `465`, usuario `resend`, y la API key de Resend como contraseña: la pega la persona, nunca por chat) con un remitente de un dominio verificado. Después, en Authentication → Emails → Templates → "Reset password", que pegue la plantilla en español de `docs/cuenta-y-notificaciones.md` (su link funciona aunque el email se abra en otro navegador). Si todavía no tiene Resend, se puede dejar para después: el resto del sistema funciona igual.
+5. **Cerrar el registro público (obligatorio):** explicale que el sistema da de alta solo por invitación, pero Supabase viene con el registro abierto: cualquiera que conozca la dirección del proyecto podría crearse una cuenta. Que vaya a Authentication → Sign In / Providers, apague **"Allow new users to sign up"** y guarde. Las invitaciones y el primer Owner no dependen de esa opción (se crean desde el servidor). En la misma pantalla, que prenda **"Secure password change"** (pide la contraseña actual o un reingreso reciente para cambiarla). Esperá a que te confirme que quedó apagado. Recomendale también prender **"Leaked password protection"** (Authentication → Attack Protection). Después comprobalo vos con `node scripts/verify-auth-settings.mjs` (usa el token de la CLI, `supabase login`): tiene que salir 0; si sale 1, el registro sigue prendido; si sale 2, no hay token y lo confirma ella mirando la pantalla. Recomendale además que el Owner y los Admin activen la verificación en dos pasos desde su perfil cuando entren: son las cuentas que pueden ver y cambiar todo el negocio.
+6. **"Olvidé mi contraseña" (recomendado):** explicale que Supabase manda ese email, y que con su servidor de correo por defecto manda como mucho 2 por hora. Si ya tiene Resend, que lo conecte en Authentication → Emails → SMTP Settings (host `smtp.resend.com`, puerto `465`, usuario `resend`, y la API key de Resend como contraseña: la pega la persona, nunca por chat) con un remitente de un dominio verificado. Después, en Authentication → Emails → Templates → "Reset password", que pegue esta plantilla en español (su link funciona aunque el email se abra en otro navegador; pasásela entera, lista para copiar):
+
+   ```html
+   <h2>Elegí tu contraseña nueva</h2>
+   <p>Pediste cambiar la contraseña de tu cuenta. Si no fuiste vos, ignorá este email.</p>
+   <p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/restablecer">Elegir mi contraseña nueva</a></p>
+   ```
+
+   Si todavía no tiene Resend, se puede dejar para después: el resto del sistema funciona igual.
 
 ## Paso 5 — El archivo `.env` local
 
@@ -174,7 +188,28 @@ Sirve para que el proyecto también corra en su computadora (para probar cosas a
 4. Dejá vacías `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY`. Decile EXPLÍCITAMENTE que esas tres las escribe la persona: pegue los mismos valores que usó en Railway, y guarde. Nunca por chat. El archivo `.env` está oculto en el explorador de archivos (empieza con punto), así que no se lo hagas buscar: abrilo vos con el editor de texto de su computadora (Mac: `open -e .env`; Windows: `notepad .env`), explicale que se abrió una ventana con líneas tipo `NOMBRE=valor`, y que pegue cada valor justo después del signo `=`, sin espacios ni comillas, y guarde con Cmd + S (Mac) o Ctrl + S (Windows).
 5. El resto de las variables (WhatsApp/Evolution, etc.) quedan como están: no son parte del arranque obligatorio.
 
-## Paso 6 — Actualizaciones (preguntale, no lo hagas sin su sí)
+## Paso 6 — Opcional: el servicio de render del Diseñador IA
+
+Preguntale primero si va a usar el **Diseñador IA** (carruseles, historias, PDF, certificados). Explicale en simple: casi todo el Diseñador funciona sin este paso; lo que necesita es **un servicio aparte que convierte los diseños en archivos PNG y PDF** (exportar, y generar desde plantillas o automatizaciones). Sin él, esas acciones avisan "Falta conectar el servicio de render" y quedan para reintentar. Con el servicio dormido cuando no se usa, cuesta del orden de USD 5-10 por mes. Si no lo va a usar, salteá este paso: se puede hacer más adelante pidiéndotelo.
+
+Vos hacés casi todo con el conector de Railway (después de confirmar que es el proyecto de este negocio, como en el Paso 1). La persona hace **una sola cosa**: pegar el secreto. Si el conector de Railway no está o alguna acción falla, guiala con los mismos pasos a mano en el Navegador de la app.
+
+1. **Crear el servicio** en el mismo proyecto de Railway de la app, desde SU repositorio, con el nombre **`render`** (exactamente así: las referencias del punto 5 lo usan). A mano: **New → GitHub Repo →** su repositorio, y renombrarlo a `render` en Settings.
+2. **Configurarlo:** Root Directory = **`render`** (la carpeta del repo que tiene su propio `Dockerfile`; Railway lo usa solo) y **Serverless prendido** (se duerme sin pedidos y se despierta con el primero; a mano: Settings → Deploy → Serverless). Avisale que el primer deploy puede fallar porque todavía no tiene el secreto: es esperable.
+3. **Dominio público** del servicio `render` (Settings → Networking → Generate Domain, puerto `8080`, igual que la app).
+4. **El secreto (lo hace la persona).** Es una clave que solo comparten la app y el servicio, para firmar cada pedido. Nadie la tiene que recordar, así que la genera una orden y va directo al portapapeles, sin mostrarse en pantalla. Dale la orden para el panel Terminal:
+   - Mac: `openssl rand -hex 32 | pbcopy`
+   - Windows (PowerShell): `$b=New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); (($b|%{$_.ToString('x2')}) -join '') | Set-Clipboard`
+
+   No aparece nada: es normal, ya quedó copiada. Que vaya a Railway → servicio **`render`** → **Variables** → **New Variable**, nombre `RENDER_SERVICE_SECRET`, y pegue el valor con Cmd + V (Mac) o Ctrl + V (Windows). **Vos no leés la terminal ni la pantalla** desde que le das la orden hasta que te avisa "listo". Si después lo pierde, no pasa nada: se genera otro y se pega solo en `render` (la app lo toma por la referencia).
+5. **Las variables que cargás vos** (no son secretas):
+   - En el servicio **`render`**: `RENDER_ALLOWED_HOSTS=fonts.googleapis.com,fonts.gstatic.com,<Reference ID>.supabase.co` (los únicos lugares a los que el navegador del servicio puede salir: las fuentes de Google y el Storage de SU proyecto; nunca el comodín `*.supabase.co`, que abriría a cualquier proyecto).
+   - En el servicio de **la app**: `RENDER_SERVICE_SECRET=${{render.RENDER_SERVICE_SECRET}}` y `RENDER_SERVICE_URL=https://${{render.RAILWAY_PUBLIC_DOMAIN}}`. Son **referencias**: Railway pone solo el valor del otro servicio, así el secreto no se pega dos veces y nunca pasa por vos.
+   - Las referencias solo funcionan dentro del **mismo proyecto** de Railway. Si `render` quedó en otro proyecto, la persona pega en la app el MISMO valor del secreto (no uno nuevo: que lo copie con el ojito de la variable en `render`) y vos cargás `RENDER_SERVICE_URL` con el dominio del punto 3, sin barra final.
+6. **Redesplegar** primero `render` y después la app (las variables nuevas recién valen con un deploy nuevo). Si algo queda en rojo, leé los logs con el conector y explicáselo en simple.
+7. **Comprobar:** `curl -s https://<dominio de render>/health` tiene que devolver `{"ok":true,...}`. La primera vez puede tardar unos segundos porque estaba dormido: no es un error. Después, que ella abra un diseño en el Diseñador IA y pruebe **Exportar → PDF**: tiene que descargarse.
+
+## Paso 7 — Actualizaciones (preguntale, no lo hagas sin su sí)
 
 Explicale, en lenguaje simple y sin apuro:
 
@@ -197,10 +232,13 @@ Hacé un resumen corto con checks de lo que quedó funcionando:
 - Los cron conectados (`system_secrets_status` con 200 y sin 401).
 - Las URLs de Auth apuntando al dominio y el registro público apagado.
 - El `.env` local listo.
+- El render del Diseñador IA: conectado (con `/health` en verde) o salteado, según lo que eligió.
 - Actualizaciones: preparadas o no, según lo que eligió.
 
 Después explicale qué falta y dónde está. Primero, crear su primer usuario (Supabase → Authentication → Users → Add user, con "Auto Confirm User"; o `scripts/create-owner.mjs` si prefiere la terminal) y las integraciones opcionales. Todo eso está en la guía de instalación.
 
 **Un último paso que necesita al primer usuario: los precios de los modelos de IA.** No viajan en las migraciones: están en `supabase/seeds/00_model_pricing.sql` y `01_transcription_pricing.sql` (son chicos y se pueden correr más de una vez sin duplicar nada). Sin ellos, todo lo que gasta IA queda con el costo vacío y los topes de gasto no pueden funcionar. Cargan precios para cada espacio de trabajo que exista, así que hay que correrlos DESPUÉS de crear el primer usuario. Si en este momento ya lo creó (`select count(*) from public.workspaces;` da 1 o más), cargalos vos con el conector, uno por vez, después de confirmar el proyecto como en el paso 1. Si todavía no lo creó, decile que cuando lo haga vuelva y te pida "cargá los precios de los modelos de IA", y que la guía de instalación también se lo recuerda.
+
+**Otro que también necesita al primer usuario: Servicios y el portal (opcional).** Preguntale si el negocio va a vender servicios que se siguen después de la venta (programas, mentorías, cursos) con un portal para sus clientes. El módulo nace **apagado** y no tiene botón en la pantalla: lo prende la plataforma. Si dice que sí y el primer usuario ya existe, buscá el id del negocio (`select id, name from public.workspaces;`; si hay más de uno, preguntale cuál) y prendelo con el conector, después de confirmar el proyecto como en el Paso 1: `select app_servicio.set_module_enabled('<id del negocio>', true);`. Tiene que devolver `"enabled": true`. Si todavía no creó el usuario, o prefiere esperar, decile que cuando quiera te pida "prendé el módulo de Servicios". Si dice que no, queda apagado y no cambia nada.
 
 Si en el medio te pregunta por el primer usuario o una integración, respondé lo puntual si es rápido, pero sugerile terminar primero el arranque obligatorio.
