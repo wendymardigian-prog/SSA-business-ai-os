@@ -11,6 +11,7 @@ import { AccountView } from "@/components/account/account-view";
 import { ProfileTab } from "@/components/account/profile-tab";
 import { NotificationsTab } from "@/components/account/notifications-tab";
 import { WhatsAppTestButton } from "@/components/account/whatsapp-test-button";
+import { ConnectionsTab } from "@/components/account/connections-tab";
 
 /**
  * Mi cuenta (00273/00274): lo de cada persona, no del negocio. No pide ningun
@@ -70,6 +71,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           whatsapp={{ number: whatsappNumber, channelReady: Boolean(alertsChannel), canConfigure: ctx.can("settings.general") }}
         />
       }
+      connections={<ConnectionsTab />}
     />
   );
 }
