@@ -17,7 +17,7 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.10, parte "Corrid
 - [x] **F125** Botones del camino (`ref.button`, `ref.show_response`, `svc_item` en la agenda) con la migración de `journey_item_ref_problems`.
 - [x] **F127.8** Campo Link en Formularios.
 - [x] **F124** Los avisos de Servicios en las preferencias de notificaciones.
-- [ ] Cierre: build, lint, `verify-*` de A1, huellas, revisión visual y PR (sin merge).
+- [x] Cierre: build, lint, `verify-*` de A1, huellas, revisión visual (sobre las capturas) y PR (sin merge).
 
   - F130 (11/11): `PageHeader` con lugares fijos y `topbar-controls`; Portal, programa y Comisiones sin controles en el contenido (`lib/ui/topbar-placement.test.ts`, 7 pantallas). Fichas en `components/services/records/`, lógica pura en `lib/services/screens/{record-url,record-figures,service-record,client-record,clients-list,saved-view}.ts` y `lib/services/set-dates.ts`. 00361 y 00362 aplicadas y registradas (17 casos de `set-dates.cases.json` iguales en SQL). Decisiones en PENDIENTE (A2). Revisión visual y responsive: con F131.
 

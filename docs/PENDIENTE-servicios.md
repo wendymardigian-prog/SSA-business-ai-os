@@ -38,6 +38,17 @@ Corridos de a uno con el candado, sobre `origin/main` 35f204e. Cuatro ya fallaba
 - **`verify-servicios-migracion`**: corte de la CLI de Supabase en medio de la corrida (conexión), no una regla. · Se repite al cerrar.
 - **`verify-auth-settings`**: devuelve 1 a propósito mientras el registro público siga prendido en el panel (pendiente de la auditoría de seguridad).
 
+## Verificación final (12/11)
+
+Los mismos verify, de a uno con el candado. Ninguno empeoró por A2:
+
+- **Igual que al empezar**: `forms`, `rls` y `auth-settings` fallan por los mismos motivos de arriba. `servicios-migracion` pasó (el corte de la CLI no se repitió).
+- **`verify-services`**: el bloque nuevo `a2` falló la primera vez por mis datos de prueba (claves de 7 letras, la regla pide 6). Corregido y repetido solo, en verde.
+- **`verify-program`**, dos fallas que no son de A2:
+  - **«encola uno por día y por negocio»** depende de la hora: `enqueue_svc_daily` no encola si en el negocio todavía no son las 02:00. A las 07:00 UTC, en un negocio de Costa Rica es la 01:00 → 0. · Hacer que la prueba no dependa de la hora (pasarle un `now` a las 12:00 locales). Otra tanda.
+  - **«anular con motivo»** encontró el certificado todavía en `rendering` en la corrida larga. Repetido solo (`--bloque ce`), en verde. · Es de tiempo del render simulado.
+- **Huellas**: las 8 protegidas y las 15 «no se tocan» son iguales a las del punto de partida.
+
 ## Lo que encontró el chequeo responsive (F131)
 
 - **La pantalla de un programa se caía entera** (Portal › programa): la página del servidor llamaba `intentHref`, que vivía en un archivo `"use client"`. Ni el typecheck, ni el build, ni los tests lo veían. · `intentHref` pasa a `lib/ui/url-intent.ts` y `lib/ui/client-boundary.test.ts` recorre todas las páginas y falla si una importa algo que no es un componente de un archivo de cliente.

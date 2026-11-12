@@ -746,10 +746,10 @@ try {
     console.log("\na2 · Editar fechas y plazo (svc_set_dates)");
     sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
     const vD = await mkVariant("zz-test Fechas");
-    sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [{ key: "ph_dates01", name: "Fase", advance: "manual", items: [{ key: "it_dates01", kind: "checkbox", name: "A los 10 días", assignee: "owner", due_rule: { from: "service_start", days: 10 } }] }] })}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vD.id)}`);
+    sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [{ key: "ph_dates1", name: "Fase", advance: "manual", items: [{ key: "it_dates1", kind: "checkbox", name: "A los 10 días", assignee: "owner", due_rule: { from: "service_start", days: 10 } }] }] })}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vD.id)}`);
     const cD = await newContact("fechas");
     const sD = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cD.id)}, 'variant_id', ${lit(vD.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
-    const due = () => sql(`SELECT to_char(due_on, 'YYYY-MM-DD') d FROM app_servicio.service_items WHERE service_id = ${lit(sD)} AND template_key = 'it_dates01'`)[0]?.d;
+    const due = () => sql(`SELECT to_char(due_on, 'YYYY-MM-DD') d FROM app_servicio.service_items WHERE service_id = ${lit(sD)} AND template_key = 'it_dates1'`)[0]?.d;
     const start0 = sql(`SELECT to_char(starts_on, 'YYYY-MM-DD') s FROM app_servicio.services WHERE id = ${lit(sD)}`)[0]?.s;
     const plus = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
     const memberTry = await rpcAs(member, "svc_set_dates", { p_service_id: sD, p: { starts_on: plus(start0, 5), ends_on: plus(start0, 60), reason: "zz-test" } });
@@ -768,18 +768,18 @@ try {
       const { data: catS } = await svc.from("booking_categories").insert({ workspace_id: ws.id, name: "zz-test Servicio A2" }).select("id").single();
       const { data: evS } = await svc.from("event_types").insert({ workspace_id: ws.id, category_id: catS.id, owner_user_id: owner.id, title: "zz-test Sesion A2", slug: `zz-test-sesion-a2-${Date.now()}` }).select("id").single();
       const vS = await mkVariant("zz-test Dos sesiones");
-      sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [{ key: "ph_sesion1", name: "Sesiones", advance: "manual", items: [
-        { key: "it_sesion1", kind: "booking", name: "Sesión 1", ref: { event_type_id: evS.id, complete_on: "booked" } },
-        { key: "it_sesion2", kind: "booking", name: "Sesión 2", ref: { event_type_id: evS.id, complete_on: "booked" } },
+      sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [{ key: "ph_sesio1", name: "Sesiones", advance: "manual", items: [
+        { key: "it_sesio1", kind: "booking", name: "Sesión 1", ref: { event_type_id: evS.id, complete_on: "booked" } },
+        { key: "it_sesio2", kind: "booking", name: "Sesión 2", ref: { event_type_id: evS.id, complete_on: "booked" } },
       ] }] })}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vS.id)}`);
       const cS = await newContact("dos sesiones");
       const sS = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cS.id)}, 'variant_id', ${lit(vS.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
-      const item2 = sql(`SELECT id FROM app_servicio.service_items WHERE service_id = ${lit(sS)} AND template_key = 'it_sesion2'`)[0]?.id;
+      const item2 = sql(`SELECT id FROM app_servicio.service_items WHERE service_id = ${lit(sS)} AND template_key = 'it_sesio2'`)[0]?.id;
       const start = new Date(Date.now() + 9 * 86_400_000);
       const { error: bErr } = await svc.from("bookings").insert({ workspace_id: ws.id, uid: `zz-test-${randomUUID()}`, event_type_id: evS.id, host_user_id: owner.id, contact_id: cS.id, title: "zz-test Sesion A2",
         start_at: start.toISOString(), end_at: new Date(start.getTime() + 3_600_000).toISOString(), origin: "public_page", status: "scheduled", utm: { svc_item: item2 } });
       const st = Object.fromEntries(sql(`SELECT template_key k, status FROM app_servicio.service_items WHERE service_id = ${lit(sS)}`).map((r) => [r.k, r.status]));
-      check(!bErr && st.it_sesion2 === "completed" && st.it_sesion1 === "pending", "con dos pasos del mismo tipo de reunión, la reserva con svc_item completa el indicado y no el primero", bErr?.message ?? JSON.stringify(st));
+      check(!bErr && st.it_sesio2 === "completed" && st.it_sesio1 === "pending", "con dos pasos del mismo tipo de reunión, la reserva con svc_item completa el indicado y no el primero", bErr?.message ?? JSON.stringify(st));
     }
 
     console.log("\na2 · Las lecturas de las fichas (00361)");
