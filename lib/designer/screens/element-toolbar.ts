@@ -63,9 +63,11 @@ const STYLE_CONTROLS: Record<DesignElement["type"], ControlId[]> = {
 };
 
 /** Los grupos de la barra para un elemento. Un grupo sin controles no se devuelve. */
-export function toolbarFor(el: Pick<DesignElement, "type"> & { shape?: string }, isTemplate: boolean): ToolGroup[] {
+export function toolbarFor(el: Pick<DesignElement, "type"> & { shape?: string }, isTemplate: boolean, opts: { htmlTextEditing?: boolean } = {}): ToolGroup[] {
   let style = [...STYLE_CONTROLS[el.type]];
   if (el.type === "text" && isTemplate) style = [...style, "variable"];
+  // Escribiendo un texto de adentro de un HTML cargado: también se le pueden poner variables.
+  if (el.type === "html" && isTemplate && opts.htmlTextEditing) style = ["variable", ...style];
   // Una línea no tiene relleno ni esquinas: solo su borde y la opacidad.
   if (el.type === "shape" && el.shape === "line") style = ["stroke", "opacity"];
   return [

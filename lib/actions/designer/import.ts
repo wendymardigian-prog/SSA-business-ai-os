@@ -142,10 +142,10 @@ async function leaveGreeting(
     const thread = await getOrCreateDesignerThread(service, { workspaceId: input.workspaceId, kind: input.kind === "template" ? "template" : "design", subjectId: input.id, userId: input.userId, title: input.name });
     const what = input.as === "web" ? "una página web" : `una presentación de ${input.pages} ${input.pages === 1 ? "diapositiva" : "diapositivas"}`;
     const removed = input.record.removed.scripts > 0 ? " y quité los scripts" : "";
-    const variables = input.kind === "template" ? ", convertí partes en variables" : "";
+    const variables = input.kind === "template" ? " o ponerle variables" : "";
     await appendMessage(service, thread, {
       role: "assistant",
-      content: `Cargué ${input.record.fileName}: ${what}. Guardé las imágenes y las fuentes${removed}. Tocá cualquier texto para editarlo${variables} o pedime cambios en los textos acá.`,
+      content: `Cargué ${input.record.fileName}: ${what}. Guardé las imágenes y las fuentes${removed}. Tocá un texto y hacé doble clic para editarlo${variables} (también los encontrás en la pestaña Capas), o pedime cambios en los textos acá.`,
       context: { scope: {} },
       result: { changed_pages: [], summary: "Cargó el archivo" },
     });

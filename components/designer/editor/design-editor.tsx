@@ -20,7 +20,8 @@ import { VariableMenu } from "@/components/designer/variables/variable-menu";
 import { VariablesPanel } from "@/components/designer/variables/variables-panel";
 import { saveDesignDoc, renameDesign, updateTemplateSettings } from "@/lib/actions/designer/designs";
 import type { DesignerCan } from "@/lib/designer/contracts";
-import { type DesignDoc, type DesignElement, type TextElement } from "@/lib/designer/doc/schema";
+import { type DesignDoc, type DesignElement, type HtmlElement, type TextElement } from "@/lib/designer/doc/schema";
+import { applyHtmlText } from "@/lib/designer/screens/html-texts";
 import type { UploadedFont } from "@/lib/designer/fonts";
 import { FORMATS, type FormatKey } from "@/lib/designer/formats";
 import type { EditorRecord } from "@/lib/designer/queries";
@@ -33,7 +34,7 @@ import { aiNoticeText, PANEL_LABELS, panelTabs, parsePanel, type PanelId } from 
 import { addPage, deletePage, duplicatePage, followSelected, movePage } from "@/lib/designer/screens/pages";
 import { hasUnpublishedChanges } from "@/lib/designer/screens/stale";
 import { AUTOSAVE_DELAY_MS, hasUnsavedChanges, initialSaveState, isOfflineError, needsSave, saveReducer } from "@/lib/designer/screens/save";
-import { clear, EMPTY_SELECTION, selectAll, selectOnly, soleSelected, startEditing, stopEditing, type SelectionState } from "@/lib/designer/screens/selection";
+import { clear, EMPTY_SELECTION, selectAll, selectHtmlText, selectOnly, soleSelected, startEditing, stopEditing, type SelectionState } from "@/lib/designer/screens/selection";
 import { keyboardNudge } from "@/lib/designer/screens/canvas-session";
 import { sheetTabsFor } from "@/lib/designer/screens/element-toolbar";
 import { editorActions, type EditorCan } from "@/lib/designer/screens/toolbar";
@@ -271,6 +272,16 @@ export function DesignEditor(props: DesignEditorProps) {
     change((d) => patchElement(d, pageIndex, el.id, { text }), `texto:${el.id}`);
   }
 
+  /** Un texto de adentro de un HTML cargado: solo cambia esa marca; el servidor vuelve a limpiar todo al guardar. */
+  function htmlTextChange(el: HtmlElement, tx: string, text: string) {
+    change((d) => {
+      const target = d.pages[pageIndex]?.elements.find((e): e is HtmlElement => e.id === el.id && e.type === "html");
+      if (!target) return d;
+      const next = applyHtmlText(target, tx, text);
+      return next === target ? d : mapPage(d, pageIndex, (p) => ({ ...p, elements: p.elements.map((e) => (e.id === el.id ? next : e)) }));
+    });
+  }
+
   // Variables: en el cursor del texto que se escribe; o al final del texto elegido; o en un texto nuevo.
   function insertVariableFromMenu(key: string) {
     setMenu(null);
@@ -500,8 +511,14 @@ export function DesignEditor(props: DesignEditorProps) {
             page={page}
             pageNumber={pageIndex + 1}
             selectedIds={selection.ids}
+            selectedText={selection.text ?? null}
             labelFor={labelFor}
             readOnly={canvasReadOnly}
+            onSelectText={(elId, tx) => setSelection((s) => selectHtmlText(s, elId, tx))}
+            onEditText={(elId, tx) => {
+              const el = page.elements.find((e) => e.id === elId);
+              if (el) setSelection((s) => startEditing(selectHtmlText(s, elId, tx), el));
+            }}
             onSelect={(elId, additive) => setSelection((s) => (additive ? { ids: s.ids.includes(elId) ? s.ids.filter((x) => x !== elId) : [...s.ids, elId], editing: null } : selectOnly(s, elId)))}
             onChange={(elements) => patchPage((p) => ({ ...p, elements }))}
           />
@@ -529,6 +546,7 @@ export function DesignEditor(props: DesignEditorProps) {
     }
   };
 
+  const htmlTextEditing = !!sole && sole.type === "html" && selection.editing === sole.id && selection.text?.el === sole.id;
   const elementToolbar = sole && !canvasReadOnly && (
     <ElementToolbar
       element={sole}
@@ -549,6 +567,7 @@ export function DesignEditor(props: DesignEditorProps) {
       onDelete={removeSelected}
       onDone={() => setSelection(EMPTY_SELECTION)}
       onInsertVariable={openVariableMenu}
+      htmlTextEditing={htmlTextEditing}
       onImageUploaded={(file) => setAssetUrls((m) => ({ ...m, [file.path]: file.url }))}
       mode={{ kind: "bar" }}
     />
@@ -703,6 +722,7 @@ export function DesignEditor(props: DesignEditorProps) {
               onGesturePatch={onGesturePatch}
               onGestureEnd={onGestureEnd}
               onTextChange={textChange}
+              onHtmlTextChange={htmlTextChange}
               onChipTap={(el, index, rect) => setMenu({ mode: "swap", anchor: { left: rect.left, top: rect.top, bottom: rect.bottom }, target: { id: el.id, index, key: parseText(el.text)[index]?.kind === "var" ? (parseText(el.text)[index] as { key: string }).key : "" } })}
               mobilePreview={mobilePreview}
               handleRef={canvasRef}
@@ -770,6 +790,7 @@ export function DesignEditor(props: DesignEditorProps) {
                 onDelete={removeSelected}
                 onDone={() => setSelection(EMPTY_SELECTION)}
                 onInsertVariable={openVariableMenu}
+                htmlTextEditing={htmlTextEditing}
                 onImageUploaded={(file) => setAssetUrls((m) => ({ ...m, [file.path]: file.url }))}
                 mode={{ kind: "sheet", groups: sheetTabsFor(sole).find((t) => t.id === elementTab)?.groups ?? ["style"] }}
               />

@@ -10,6 +10,7 @@ import {
   movableIds,
   reconcile,
   selectAll,
+  selectHtmlText,
   selectOnly,
   selectRect,
   soleSelected,
@@ -113,5 +114,35 @@ describe("selección del lienzo (F18)", () => {
     const s = { ids: ["el_a", "el_b"], editing: null };
     expect(dragGroup(s, "el_b")).toEqual(["el_a", "el_b"]);
     expect(dragGroup(s, "el_z")).toEqual(["el_z"]);
+  });
+});
+
+describe("un texto de adentro de un HTML cargado", () => {
+  const html = { id: "h", type: "html" as const, locked: false, hidden: false };
+
+  it("elegirlo deja el bloque como única selección, con ese texto", () => {
+    const next = selectHtmlText({ ids: ["a", "b"], editing: null }, "h", "tx2");
+    expect(next).toEqual({ ids: ["h"], editing: null, text: { el: "h", tx: "tx2" } });
+    expect(selectHtmlText(next, "h", "tx2")).toBe(next);
+  });
+
+  it("doble clic escribe el texto elegido; sin texto elegido, no hace nada", () => {
+    const chosen = selectHtmlText(EMPTY_SELECTION, "h", "tx2");
+    expect(startEditing(chosen, html)).toEqual({ ids: ["h"], editing: "h", text: { el: "h", tx: "tx2" } });
+    const whole = selectOnly(EMPTY_SELECTION, "h");
+    expect(startEditing(whole, html)).toBe(whole);
+  });
+
+  it("un bloque bloqueado u oculto no se escribe", () => {
+    const chosen = selectHtmlText(EMPTY_SELECTION, "h", "tx2");
+    expect(startEditing(chosen, { ...html, locked: true })).toBe(chosen);
+    expect(startEditing(chosen, { ...html, hidden: true })).toBe(chosen);
+  });
+
+  it("Esc sale de escribir y deja el texto elegido; tocar otra cosa lo suelta", () => {
+    const editing = startEditing(selectHtmlText(EMPTY_SELECTION, "h", "tx2"), html);
+    expect(stopEditing(editing)).toEqual({ ids: ["h"], editing: null, text: { el: "h", tx: "tx2" } });
+    expect(selectOnly(editing, "otro").text).toBeUndefined();
+    expect(reconcile(editing, [{ id: "otro" }])).toEqual({ ids: [], editing: null });
   });
 });

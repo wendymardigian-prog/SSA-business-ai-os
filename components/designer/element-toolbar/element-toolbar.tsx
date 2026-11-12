@@ -79,6 +79,8 @@ export interface ElementToolbarProps {
   onDelete: () => void;
   onDone: () => void;
   onInsertVariable: (anchor: HTMLElement) => void;
+  /** Se está escribiendo un texto de adentro de un HTML cargado (ofrece «Insertar variable»). */
+  htmlTextEditing?: boolean;
   onImageUploaded: (file: { path: string; url: string }) => void;
   /** `bar`: una fila de la computadora. `sheet`: los grupos de una pestaña de la hoja del celular. */
   mode: { kind: "bar" } | { kind: "sheet"; groups: GroupId[] };
@@ -106,7 +108,7 @@ const field = "h-7 rounded-md border border-input bg-background px-1.5 text-[12.
 
 export function ElementToolbar(props: ElementToolbarProps) {
   const { element: el, isTemplate, readOnly } = props;
-  const groups = toolbarFor(el, isTemplate).filter((g) => (props.mode.kind === "sheet" ? props.mode.groups.includes(g.id) : true));
+  const groups = toolbarFor(el, isTemplate, { htmlTextEditing: props.htmlTextEditing }).filter((g) => (props.mode.kind === "sheet" ? props.mode.groups.includes(g.id) : true));
   const { upload, busy, error } = useImageUpload();
   const fileRef = useRef<HTMLInputElement>(null);
   const variableRef = useRef<HTMLButtonElement>(null);
@@ -264,7 +266,7 @@ export function ElementToolbar(props: ElementToolbarProps) {
           </ToolButton>
         ) : null;
       case "variable":
-        return text ? (
+        return text || props.htmlTextEditing ? (
           <button
             key={id}
             ref={variableRef}
