@@ -89,3 +89,25 @@ export function spaceKeyFor(name: string, taken: string[]): string {
   for (let n = 2; taken.includes(key); n++) key = `${base}_${n}`;
   return key;
 }
+
+/** Las opciones del filtro rapido de la Comunidad (barra superior, Servicios A2): las de siempre, con su conteo. */
+export function communityQuickOptions(input: {
+  base: string;
+  spaces: CommunitySpace[];
+  counts: { unanswered: number; reported: number };
+}): Array<{ key: string; label: string; count?: number; href: string }> {
+  const href = (q: Record<string, string>) => `${input.base}?${new URLSearchParams({ tab: "comunidad", ...q })}`;
+  return [
+    { key: "all", label: "Todo", href: href({}) },
+    { key: "unanswered", label: "Sin contestar · 30 días", count: input.counts.unanswered, href: href({ filtro: "sin-contestar" }) },
+    { key: "reported", label: "Reportados", count: input.counts.reported, href: href({ filtro: "reportados" }) },
+    ...input.spaces.filter((s) => !s.archived).map((s) => ({ key: `esp:${s.key}`, label: s.name, href: href({ espacio: s.key }) })),
+    { key: `esp:${LESSON_SPACE}`, label: "Clases", href: href({ espacio: LESSON_SPACE }) },
+  ];
+}
+
+/** Que opcion esta elegida, con la misma regla de antes (un filtro gana sobre un espacio). */
+export function communityQuickValue(filter: "all" | "unanswered" | "reported", space: string | null): string {
+  if (filter !== "all") return filter;
+  return space ? `esp:${space}` : "all";
+}

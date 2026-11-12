@@ -21,6 +21,8 @@ import { configProblems } from "./node-requirements";
 import { buildDesiredTriggers, CANVAS_TRIGGER_ROWS_FILTER, persistableTriggerTypes } from "@/lib/flow-triggers";
 import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative"; // @plantilla-quitar(ventas)
 import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers"; // @plantilla-quitar(ventas)
+import { graphUsesServiceKeys, serviceKeyProblems } from "@/lib/services/service-picker"; // @plantilla-quitar(servicios)
+import { loadServicePicker } from "@/lib/services/service-picker-load"; // @plantilla-quitar(servicios)
 import type { Database, Json } from "@/lib/types/database";
 import { checkMemberFlow } from "./member-flow-db";
 import { connectionProblemsForGraph } from "./connection-problems";
@@ -77,6 +79,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     ...(await checkMemberFlow(db, workspaceId, nodes, edges, { publishing: true })),
     ...(await connectionProblemsForGraph(args.getServiceClient, workspaceId, nodes, edges)),
     ...(await schedulePastProblems(db, workspaceId, nodes)),
+    ...(await serviceKeyProblemsForGraph(args.getServiceClient, workspaceId, nodes)), // @plantilla-quitar(servicios)
   ];
   if (problems.length > 0) return { ok: false, status: 400, error: problems[0], problems };
 
@@ -176,6 +179,22 @@ function hasScheduledTrigger(nodes: unknown[]): boolean {
  * Una automatizacion «En una fecha y hora» que no tiene ninguna vez por delante (una sola vez que ya paso) no se publica:
  * no correria nunca. Se mira en la zona del negocio; si no se puede leer, no se frena (la cola lo vuelve a mirar).
  */
+// @plantilla-desde(servicios)
+/**
+ * F122: un paso o un disparador de Servicios cuya fase o paso ya no existe en el camino no se publica. Solo lee los
+ * caminos si el flujo tiene algo de Servicios con clave; si no los puede leer, no publica (nunca abre por un error).
+ */
+async function serviceKeyProblemsForGraph(getServiceClient: () => Promise<Db>, workspaceId: string, nodes: unknown[]): Promise<string[]> {
+  if (!graphUsesServiceKeys(nodes)) return [];
+  try {
+    return serviceKeyProblems(nodes, await loadServicePicker(await getServiceClient(), workspaceId));
+  } catch (error) {
+    console.error("[flujos] no pude leer los caminos de Servicios:", error instanceof Error ? error.message : "error");
+    return ["No pude comprobar las fases y los pasos de Servicios de esta automatización. Probá de nuevo en un rato."];
+  }
+}
+// @plantilla-hasta(servicios)
+
 async function schedulePastProblems(db: Db, workspaceId: string, nodes: unknown[]): Promise<string[]> {
   if (!hasScheduledTrigger(nodes)) return [];
   const data = (triggerNodesOf(nodes)[0].data ?? {}) as Record<string, unknown>;

@@ -33,7 +33,7 @@ export function ViewToggle<T extends string>({
           aria-pressed={value === option}
           onClick={() => value !== option && onChange(option)}
           className={cn(
-            "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm",
+            "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm max-topbar:h-10",
             value === option ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground",
           )}
         >

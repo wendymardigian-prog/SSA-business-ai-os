@@ -26,6 +26,8 @@ export const FORM_FIELD_TYPES = [
   "consent",
   "hidden",
   "social",
+  // Servicios A2 (F127.8): un link (texto de una linea que tiene que empezar con https://).
+  "link",
 ] as const;
 export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
 
@@ -44,6 +46,7 @@ export const FIELD_TYPE_LABELS: Record<FormFieldType, string> = {
   consent: "Casilla de consentimiento",
   hidden: "Campo oculto",
   social: "Usuario de red social",
+  link: "Link",
 };
 
 export const FORM_TYPES = ["custom", "survey", "contract", "eod"] as const;

@@ -2,13 +2,13 @@
 // @plantilla-quitar(servicios)
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Settings } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { SidePanel } from "@/components/tasks/overlay";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
+import { useUrlIntent } from "@/components/ui/use-url-intent";
 import { communityMarkSeen, communityModerate, communityResolveReport, communitySetMuted, communityTeamPost } from "@/lib/actions/community";
 import { saveProgramSettings } from "@/lib/actions/services";
 import { LESSON_SPACE, spaceKeyFor, spacesIssues, type CommunitySpace } from "@/lib/program/community";
@@ -78,7 +78,6 @@ export function ProgramCommunity({
   const [replying, setReplying] = useState<string | null>(null);
   const [reply, setReply] = useState("");
   const when = (iso: string) => new Intl.DateTimeFormat("es", { timeZone: tz, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
-  const href = (q: Record<string, string>) => `/dashboard/portal/${productId}?${new URLSearchParams({ tab: "comunidad", ...q })}`;
   const run = (fn: () => Promise<{ ok: boolean; error?: { message: string } }>, after?: () => void) =>
     start(async () => {
       setError(null);
@@ -94,24 +93,19 @@ export function ProgramCommunity({
     return r && r.trim() ? r.trim() : null;
   };
 
-  const chips: Array<{ key: string; label: string; q: Record<string, string>; active: boolean }> = [
-    { key: "all", label: "Todo", q: {}, active: filter === "all" && !space && !lessonId },
-    { key: "unanswered", label: `Sin contestar · 30 días (${counts.unanswered})`, q: { filtro: "sin-contestar" }, active: filter === "unanswered" },
-    { key: "reported", label: `Reportados (${counts.reported})`, q: { filtro: "reportados" }, active: filter === "reported" },
-    ...live.map((s) => ({ key: s.key, label: s.name, q: { espacio: s.key }, active: space === s.key && filter === "all" })),
-    { key: LESSON_SPACE, label: "Clases", q: { espacio: LESSON_SPACE }, active: space === LESSON_SPACE && filter === "all" },
-  ];
+  // Los filtros (Todo, Sin contestar, Reportados, cada espacio) y la tuerca de los espacios viven en la barra superior
+  // (Servicios A2): la tuerca llega como `?espacios=1`.
+  useUrlIntent("espacios", () => {
+    if (can.spaces) setGear(true);
+  });
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {chips.map((c) => (
-          <Link key={c.key} href={href(c.q)} aria-current={c.active ? "page" : undefined} className={cn("rounded-full border px-3 py-1 text-xs", c.active ? "border-primary-edge bg-primary/10" : "border-border hover:bg-accent")}>
-            {c.label}
-          </Link>
-        ))}
-        {lessonId && <span className="rounded-full border border-primary-edge bg-primary/10 px-3 py-1 text-xs">Clase: {lessonTitles[lessonId] ?? "…"}</span>}
-      </div>
+      {lessonId && (
+        <p className="text-xs text-muted-foreground">
+          Comentarios de la clase <span className="font-medium text-foreground">{lessonTitles[lessonId] ?? "…"}</span>
+        </p>
+      )}
       {error && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
       {can.reply && (
         <div className="space-y-2 rounded-xl border border-border p-3">
@@ -124,21 +118,11 @@ export function ProgramCommunity({
               <input type="checkbox" checked={draft.asBusiness} onChange={(e) => setDraft({ ...draft, asBusiness: e.target.checked })} /> Como {businessName}
             </label>
             <span className="flex-1" />
-            {can.spaces && (
-              <button type="button" aria-label="Espacios de la comunidad" onClick={() => setGear(true)} className="rounded-md p-1.5 hover:bg-accent">
-                <Settings className="h-4 w-4" />
-              </button>
-            )}
             <button type="button" disabled={pending || !draft.body.trim() || !draft.space} onClick={() => run(() => communityTeamPost(productId, { body: draft.body, spaceKey: draft.space, asBusiness: draft.asBusiness }), () => setDraft({ ...draft, body: "" }))} className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50">
               Publicar
             </button>
           </div>
         </div>
-      )}
-      {!can.reply && can.spaces && (
-        <button type="button" onClick={() => setGear(true)} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">
-          <Settings className="h-3.5 w-3.5" /> Espacios
-        </button>
       )}
       {posts.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">

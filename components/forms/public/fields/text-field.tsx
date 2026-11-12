@@ -31,6 +31,32 @@ export function ShortTextField({ field, value, onChange, error, locked, onIntera
   );
 }
 
+/** Un link (Servicios A2, F127.8): el teclado de URL en el celular; la validacion (https://) es la del servidor. */
+export function LinkField({ field, value, onChange, error, locked, onInteract }: FieldProps) {
+  return (
+    <FieldShell field={field} error={error} locked={locked}>
+      {({ id, describedBy }) => (
+        <input
+          id={id}
+          type="url"
+          inputMode="url"
+          autoComplete="url"
+          className={publicInputClass}
+          value={text(value)}
+          placeholder={field.placeholder || "https://"}
+          disabled={locked}
+          required={field.required}
+          aria-invalid={!!error}
+          aria-describedby={describedBy}
+          onFocus={onInteract}
+          onChange={(e) => onChange(e.target.value)}
+          maxLength={2000}
+        />
+      )}
+    </FieldShell>
+  );
+}
+
 export function LongTextField({ field, value, onChange, error, locked, onInteract }: FieldProps) {
   return (
     <FieldShell field={field} error={error} locked={locked}>

@@ -460,8 +460,8 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
     <div className="flex h-full flex-col">
       {/* La barra de arriba mide 56 px como en todas las pantallas (F13). Antes
           el alto lo definia el contenido y esta quedaba mas alta que el resto. */}
-      <div className="flex h-14 flex-shrink-0 items-center justify-between border-b border-border bg-card px-4">
-        <div className="flex items-center gap-3">
+      <div className="flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4">
+        <div className="flex min-w-0 shrink items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
           <button
             onClick={() => unsaved.guard(() => router.push("/dashboard/flows"))}
             className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
@@ -506,7 +506,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             Detalles
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
           {saveError && (
             <span className="text-xs font-medium text-destructive">
               {saveError}

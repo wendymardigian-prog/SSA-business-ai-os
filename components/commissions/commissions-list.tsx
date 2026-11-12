@@ -9,6 +9,7 @@ import { CommissionStatusChip, RoleChip } from "@/components/commissions/commiss
 import { PayoutDialog } from "@/components/commissions/payout-dialog";
 import { ChipMultiSelect } from "@/components/finance/chip-multi-select";
 import { FinanceTabs } from "@/components/finance/finance-tabs";
+import { QuickFilterMenu } from "@/components/ui/topbar-controls";
 import { PageHeader } from "@/components/page-header";
 import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 import { selectAllCommissionsOfFilter } from "@/lib/actions/commissions-ui";
@@ -212,6 +213,15 @@ export function CommissionsList({ data, extras, mine, canViewExpenses, canViewSa
         title={own ? "Mis comisiones" : undefined}
         tooltip={own ? "Lo que te toca cobrar por cada pago cobrado de tus ventas: cuánto es, de qué regla sale y cuándo se te paga." : undefined}
         tabs={<FinanceTabs />}
+        quickFilter={
+          <QuickFilterMenu
+            label="Atajo"
+            value={filters.pill ?? "todas"}
+            allKey="todas"
+            options={[{ key: "todas", label: "Todas" }, ...visiblePills.map((p) => ({ key: p, label: COMMISSION_PILL_LABELS[p], count: pills[p].count }))]}
+            onSelect={(k) => go({ pill: k === "todas" ? null : (k as typeof visiblePills[number]) })}
+          />
+        }
         filters={barFilters}
         right={headerActions}
       />
@@ -233,23 +243,21 @@ export function CommissionsList({ data, extras, mine, canViewExpenses, canViewSa
 
           {own && mine && <p className="rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium tabular-nums">{mineSummaryText(mine)}</p>}
 
-          <div className={`grid grid-cols-2 gap-2 ${visiblePills.length === 5 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`} role="group" aria-label="Atajos">
+          {/* Los totales de cada atajo. Elegir un atajo es el filtro rápido de la barra superior (Servicios A2, F130.0). */}
+          <dl className={`grid grid-cols-2 gap-2 ${visiblePills.length === 5 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`} aria-label="Totales por estado">
             {visiblePills.map((p) => (
-              <button
+              <div
                 key={p}
-                type="button"
-                aria-pressed={filters.pill === p}
-                onClick={() => go({ pill: filters.pill === p ? null : p })}
-                className={`rounded-xl border p-3 text-left transition-colors ${filters.pill === p ? "border-primary-edge bg-primary/10" : "border-border hover:bg-accent"} ${p === "anuladas" && filters.pill !== p ? "bg-zinc-500/5 text-muted-foreground" : ""}`}
+                className={`rounded-xl border p-3 text-left ${filters.pill === p ? "border-primary-edge bg-primary/10" : "border-border"} ${p === "anuladas" && filters.pill !== p ? "bg-zinc-500/5 text-muted-foreground" : ""}`}
               >
-                <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <dt className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span className={filters.pill === p ? "font-medium text-primary-ink" : ""}>{COMMISSION_PILL_LABELS[p]}</span>
                   <span className="rounded-full bg-muted px-1.5 text-[11px]">{pills[p].count}</span>
-                </span>
-                <span className={`mt-1 block text-base font-semibold tabular-nums ${p === "anuladas" ? "text-muted-foreground" : ""}`}>{formatUsd(pills[p].cents)}</span>
-              </button>
+                </dt>
+                <dd className={`mt-1 block text-base font-semibold tabular-nums ${p === "anuladas" ? "text-muted-foreground" : ""}`}>{formatUsd(pills[p].cents)}</dd>
+              </div>
             ))}
-          </div>
+          </dl>
 
           {warning && <p role="status" className="text-[11px] text-amber-700 dark:text-amber-300">{warning}</p>}
 

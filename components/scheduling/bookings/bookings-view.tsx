@@ -279,7 +279,9 @@ export function BookingsScreen({
       <PageHeader
         route="/dashboard/agenda"
         filtersBreakpoint="wide"
-        left={
+        // `view` y no `left` (Servicios A2, F131): sin lugar, baja a la franja con los filtros en vez de dejar
+        // «Agendar» y la configuracion fuera de la pantalla (pasaba a 390 y a 768 px).
+        view={
           <ViewToggle
             value={shownView}
             options={VIEWS}

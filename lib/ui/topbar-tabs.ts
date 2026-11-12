@@ -11,7 +11,7 @@ export function tabCountLabel(count: number | null | undefined): string | null {
 /** Las clases de UNA pestaña de la barra (el control segmentado: la activa en blanco sobre el gris). */
 export function headerTabClass(active: boolean): string {
   return [
-    "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-sm transition-colors",
+    "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-sm transition-colors max-topbar:h-10",
     active ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
   ].join(" ");
 }

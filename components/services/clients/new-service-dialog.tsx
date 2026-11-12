@@ -1,6 +1,7 @@
 // @plantilla-quitar(servicios)
 "use client";
 
+import { serviceHref } from "@/lib/services/screens/record-url";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -109,7 +110,7 @@ export function NewServiceDialog({
         offRule,
       });
       if (!res.ok) return setError(res.error.message);
-      router.push(`/dashboard/clientes/s/${res.data}`);
+      router.push(serviceHref(res.data));
     });
   }
 

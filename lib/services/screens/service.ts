@@ -3,6 +3,7 @@
  * La ficha del servicio (F29), «+ Servicio» (F30), la celda de Ventas (F95) y la actividad del cliente (F28). Puro.
  */
 import type { ServiceStatus } from "./list";
+import { serviceHref } from "./record-url";
 
 // ── Alertas con acción (F29), en orden de gravedad ─────────────────────────
 export interface ServiceAlertInput {
@@ -23,12 +24,12 @@ export interface ServiceAlert {
 
 export function serviceAlerts(s: ServiceAlertInput): ServiceAlert[] {
   const out: ServiceAlert[] = [];
-  if (s.overduePayment && s.saleId) out.push({ kind: "overdue_payment", severity: 1, text: "Tiene un pago vencido.", action: { label: "Ver venta", href: `/dashboard/ventas?venta=${s.saleId}` } });
+  if (s.overduePayment && s.saleId) out.push({ kind: "overdue_payment", severity: 1, text: "Tiene un pago vencido.", action: { label: "Ver venta", href: `/dashboard/ventas/${s.saleId}` } });
   for (const it of s.overdueItems) out.push({ kind: "overdue_item", severity: 2, text: `Venció «${it.name}».`, action: { label: "Hacer ahora", command: "do_item", itemId: it.id } });
   if (s.status === "pending_confirmation") out.push({ kind: "pending", severity: 3, text: "Está por confirmar.", action: { label: "Confirmar", command: "confirm" } });
   if (s.possibleDuplicate) out.push({ kind: "duplicate", severity: 4, text: "¿Venta repetida? El contacto ya tenía un servicio de este producto.", action: { label: "Revisar", command: "confirm" } });
   for (const it of s.needsAttentionItems) out.push({ kind: "needs_attention", severity: 5, text: `«${it.name}» requiere atención: su formulario o clase ya no está.`, action: { label: "Ver el paso", command: "do_item", itemId: it.id } });
-  if (s.saleChanged && s.saleId) out.push({ kind: "sale_changed", severity: 6, text: "La venta cambió: revisá el servicio.", action: { label: "Ver venta", href: `/dashboard/ventas?venta=${s.saleId}` } });
+  if (s.saleChanged && s.saleId) out.push({ kind: "sale_changed", severity: 6, text: "La venta cambió: revisá el servicio.", action: { label: "Ver venta", href: `/dashboard/ventas/${s.saleId}` } });
   return out.sort((a, b) => a.severity - b.severity);
 }
 
@@ -111,10 +112,10 @@ export function salesServiceCell(info: SaleServiceInfo | null, canCreate: boolea
   | { kind: "extends"; label: string; href: string | null }
   | { kind: "create" }
   | { kind: "none" } {
-  if (info?.extendsProductName) return { kind: "extends", label: `Extiende el servicio de ${info.extendsProductName}`, href: info.serviceId ? `/dashboard/clientes/s/${info.serviceId}` : null };
+  if (info?.extendsProductName) return { kind: "extends", label: `Extiende el servicio de ${info.extendsProductName}`, href: info.serviceId ? serviceHref(info.serviceId) : null };
   if (info?.serviceId && info.status) {
     const st = { pending_confirmation: "Por confirmar", active: "Activo", paused: "Pausado", completed: "Completado", cancelled: "Cancelado" }[info.status];
-    return { kind: "service", label: info.phaseName ? `${st} · ${info.phaseName}` : st, light: info.light ?? "gray", href: `/dashboard/clientes/s/${info.serviceId}` };
+    return { kind: "service", label: info.phaseName ? `${st} · ${info.phaseName}` : st, light: info.light ?? "gray", href: serviceHref(info.serviceId) };
   }
   return canCreate ? { kind: "create" } : { kind: "none" };
 }

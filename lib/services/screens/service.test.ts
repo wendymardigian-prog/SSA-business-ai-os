@@ -14,7 +14,7 @@ describe("las alertas de la ficha", () => {
       saleId: "s1",
     });
     expect(a.map((x) => x.kind)).toEqual(["overdue_payment", "overdue_item", "pending", "duplicate", "needs_attention", "sale_changed"]);
-    expect(a[0].action.href).toBe("/dashboard/ventas?venta=s1");
+    expect(a[0].action.href).toBe("/dashboard/ventas/s1");
   });
   it("sin nada, ninguna", () => {
     expect(serviceAlerts({ status: "active", overduePayment: false, overdueItems: [], possibleDuplicate: false, needsAttentionItems: [], saleChanged: false, saleId: null })).toEqual([]);
@@ -53,7 +53,7 @@ describe("la celda Servicio de Ventas", () => {
       kind: "service",
       label: "Activo · Implementación",
       light: "green",
-      href: "/dashboard/clientes/s/s",
+      href: "/dashboard/clientes?servicio=s",
     });
     expect(salesServiceCell({ serviceId: "s", status: "active", phaseName: null, light: null, extendsProductName: "Programa" }, true).kind).toBe("extends");
     expect(salesServiceCell(null, true)).toEqual({ kind: "create" });

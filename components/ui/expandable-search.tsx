@@ -72,7 +72,7 @@ export function ExpandableSearch({
         title={label}
         aria-expanded={false}
         onClick={() => setOpen(true)}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-input bg-background text-muted-foreground transition-colors hover:border-muted-foreground/60 hover:text-foreground"
+        className="flex h-8 w-8 shrink-0 max-topbar:h-10 max-topbar:w-10 items-center justify-center rounded-lg border border-input bg-background text-muted-foreground transition-colors hover:border-muted-foreground/60 hover:text-foreground"
       >
         <Search className="h-3.5 w-3.5" aria-hidden />
       </button>
@@ -108,7 +108,7 @@ export function ExpandableSearch({
         // Respaldo nativo: en la franja del telefono el cartel queda cortado por el scroll.
         title={hint ?? undefined}
         className={cn(
-          "h-8 w-44 rounded-lg border border-input bg-background pl-8 pr-8 text-[13px] placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none focus:ring-2 focus:ring-ring sm:w-56",
+          "h-8 w-44 rounded-lg max-topbar:h-10 border border-input bg-background pl-8 pr-8 text-[13px] placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none focus:ring-2 focus:ring-ring sm:w-56",
           value !== "" && "border-primary-edge",
           inputClassName,
         )}

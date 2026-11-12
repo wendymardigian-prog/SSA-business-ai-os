@@ -48,6 +48,8 @@ export interface ColumnDef<Row> {
   hint?: string;
   /** Un campo que ya no está en la versión vigente del formulario. */
   removed?: boolean;
+  /** El valor es un link (un campo Link de un formulario): se abre en una pestaña nueva. */
+  link?: boolean;
   value: (row: Row) => string;
 }
 

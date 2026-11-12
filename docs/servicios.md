@@ -43,6 +43,37 @@ por una automatización. El avance (`progress_pct`) y el paso de fase (`auto`, `
 base. Lo automático **nunca tumba lo que lo origina**: cada trigger va en `EXCEPTION WHEN OTHERS` y deja
 `svc.hook_failed` en el historial.
 
+## El botón de cada paso (Servicios A2, F125)
+
+Cada paso del camino puede mostrar en el portal un botón (drawer del paso › «Mostrar el botón en el portal»). Vive
+dentro de `ref` (sin columnas): `ref.button = { label?, url? }` y `ref.show_response` (ausente = sí). Lo arma el portal;
+el panel solo lo configura, lo valida (gemelas `refProblems` / `app_servicio.journey_item_ref_problems`, 00363, con
+`journey-template.cases.json`) y lo muestra. El botón se ve solo mientras el paso está pendiente.
+
+| Tipo de paso | A dónde lleva | Texto por defecto |
+|---|---|---|
+| `form` | El formulario, con su link firmado | «Completar el formulario» |
+| `survey` | La encuesta, con su link firmado | «Responder la encuesta» |
+| `contract` | El contrato, con su link firmado | «Firmar el contrato» |
+| `activity` | La actividad, con su link firmado | «Entregar la actividad» |
+| `quiz` | La evaluación, con su link firmado | «Hacer la evaluación» |
+| `booking` (al agendar) | La agenda de ese tipo de reunión, con `svc_item` | «Agendar la llamada» |
+| `booking` (cuando asistió) | Lo mismo mientras no agendó; con una reunión agendada, la reunión («Entrar a la llamada») | «Agendar la llamada» |
+| `program_item` / `open_module` | La clase o el módulo en el portal | «Ver la clase» / «Ver el módulo» |
+| `certificate` | El certificado | «Ver mi certificado» |
+| `open_section` | La sección del portal | «Ir a la sección» |
+| `team_task` / `student_task` / `checkbox` | El link pegado (pestaña nueva) | «Abrir» |
+
+- **El texto**: hasta 40 caracteres, en una línea; vacío = el de por defecto (`defaultButtonLabel`).
+- **El link pegado** solo en las tareas y la casilla (https://, sin espacios, hasta 2000) y ahí es obligatorio. Los
+  pasos con formulario o agenda no aceptan uno: el link automático es el que hace que el paso se complete solo.
+- **Para mostrar el botón, el cliente tiene que ver el paso**: apagar «Lo ve el cliente» apaga el botón.
+- **«El cliente puede ver su respuesta»** (formulario, encuesta, actividad, evaluación y contrato; en el contrato, el
+  firmado y su PDF). Lo usa el portal.
+- **`svc_item`**: la agenda pública (y el embed) lee `?svc_item=` y lo guarda en `bookings.utm.svc_item` solo si es un
+  uuid (`pickUtm`); `booking_hook` completa ESE paso (si es del mismo contacto), no el primero del mismo tipo de
+  reunión. `create_booking` no cambió.
+
 ## El semáforo
 
 `svc_compute_light` (gemela `lib/services/light.ts`, ≥ 28 casos): verde, amarillo o rojo según los pasos

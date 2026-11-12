@@ -1,0 +1,40 @@
+{
+  "_comment": "Punto de partida de la Corrida A2 de Servicios (11/11/2026), medido contra produccion knrxjnmx antes de cualquier cambio. md5 de pg_get_functiondef. Las protegidas no pueden cambiar; journey_item_ref_problems cambia a proposito en la migracion de F125.",
+  "rama": "feat/servicios-a2",
+  "base": "origin/main 35f204e",
+  "ultima_migracion": "00360_table_views",
+  "proxima_libre": "00361",
+  "vitest": { "archivos": 1522, "tests": 20139, "fallan": 0 },
+  "lint": { "errores": 0, "advertencias": 37 },
+  "build": "ok (despues de npm ci en la carpeta)",
+  "protegidas": {
+    "record_contact_touch": "2f51ddbf060e31528b89ce7481b38e3d",
+    "find_or_link_contact": "0aee03549e9361626ad4720c4a98254a",
+    "find_contact_for_form": "b7b5605c4a19a27865c7915f57c36fe8",
+    "find_or_create_contact": "a71d6af701ea4460c5309631205de522",
+    "submit_form_response": "78a358d5ac8c4dfebd598bb3f5f91e7c",
+    "create_booking": "b9e1eef82fe3b5660f7a1dc879b5087f",
+    "create_sale": "adb766e6d657bf55db42779c7c53bcb3",
+    "resolve_meta_match": "e3c54b36e4ea1a1a6ef4b07eb6bd1387"
+  },
+  "no_se_tocan": {
+    "get_public_form": "213653eaa67009173e0373a4f6767d7b",
+    "private.call_app_cron": "fa1c8e4243e54277f5787c5d29ad1a7d",
+    "can_see_contact": "e60b52a2ed7d16f666a711532e90c234",
+    "can_see_sale": "94424068c81ba105f69efe5c8b37c9c0",
+    "can_see_task": "366c2d74a3a06ae087bee646e2d18665",
+    "handle_new_user": "616170954fefbf5b9f310c40ca051cb9",
+    "has_permission": "e955f005e8308868bc1e7a48f8d10d52",
+    "merge_contacts": "84aa6447a19d4bd63c798fb7faf02fe4",
+    "commission_payee": "40d4c23557c112a1b50d9e9b3e80a6d1",
+    "generate_commissions_for_payment": "816f311b7c8d1b9c78f28e207d6b2b7f",
+    "private.member_permission_keys": "1db3525c879c7e2d9cb8ca9bedb977f7",
+    "app_servicio.validate_journey_template": "a1941c317a937c1825f775d51b7553b9",
+    "app_servicio.svc_compute_light": "e6fc58d070d1508232a91d799afe0b5e",
+    "app_servicio.svc_set_owner": "d20658e21bd5bcad248d63a537c8f976",
+    "app_servicio.svc_due_date": "d747f0effccccd9f500737d7d5d77e45"
+  },
+  "cambia_a_proposito": {
+    "app_servicio.journey_item_ref_problems": "0b3576ce6a318fdea60d0638eef76709"
+  }
+}

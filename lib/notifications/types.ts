@@ -111,7 +111,34 @@ export const NOTIFICATION_TYPES = [
   "commission_payout_paid",
   /** Se revirtió un cobro con comisiones ya liquidadas: revisá si corresponde un ajuste. Va a Owner/Admin. */
   "commission_review_needed",
+  /** Una comisión quedó sin persona: la del rol ya no está en el equipo (00343). Va a Owner/Admin. */
+  "commission_unassigned",
   // @plantilla-hasta(comisiones)
+  // @plantilla-desde(servicios)
+  // Servicios (Corrida A1; en el catálogo desde Servicios A2, F124). Los escribe la base (`app_servicio.notify`).
+  /** Te dejaron a cargo de un servicio. Va SOLO a esa persona. */
+  "svc_owner_assigned",
+  /** Un servicio quedó a nombre de la persona de respaldo (la elegida no está). Va a Owner/Admin. */
+  "svc_owner_fallback",
+  /** Se fue del equipo alguien con servicios a cargo. Va a Owner/Admin. */
+  "svc_owner_departed",
+  /** Se canceló la venta de un servicio ya completado. Va a Owner/Admin. */
+  "svc_sale_closed",
+  /** Cambió la venta de un servicio: revisarlo. Va al responsable. */
+  "svc_sale_changed",
+  /** Se canceló una venta que había extendido un servicio. Va a Owner/Admin. */
+  "svc_extension_sale_closed",
+  /** Se revirtió un pago de un servicio. Va al responsable y a Owner/Admin. */
+  "svc_payment_reverted",
+  /** Compró una renovación sin servicio anterior. Va a Owner/Admin. */
+  "svc_renewal_without_previous",
+  /** Algo automático del módulo no se pudo hacer (un enganche falló). Va a Owner/Admin. */
+  "svc_hook_failed",
+  /** Llegó una respuesta de un formulario del camino que no completó ningún paso. Va al responsable. */
+  "svc_item_unmatched",
+  /** Al unir dos contactos quedaron dos servicios activos del mismo producto. Va a Owner/Admin. */
+  "svc_merge_two_services",
+  // @plantilla-hasta(servicios)
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -147,7 +174,11 @@ export type NotificationEntity =
   /** Un gasto (el id es el del gasto); sin id apunta a la lista filtrada por `metadata.pill`.  @plantilla-quitar(finanzas) */
   | "expense" // @plantilla-quitar(finanzas)
   /** Una comisión (el id es el de la comisión); abre su ficha.  @plantilla-quitar(comisiones) */
-  | "commission"; // @plantilla-quitar(comisiones)
+  | "commission" // @plantilla-quitar(comisiones)
+  /** Una venta (el id es el de la venta).  @plantilla-quitar(ventas) */
+  | "sale" // @plantilla-quitar(ventas)
+  /** Un servicio (el id es el del servicio): abre su ficha en Clientes.  @plantilla-quitar(servicios) */
+  | "service"; // @plantilla-quitar(servicios)
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -431,7 +462,21 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
   commission_generated: { type: "commission_generated", label: "Generaste comisiones", tone: "success", entity: "commission" },
   commission_payout_paid: { type: "commission_payout_paid", label: "Se pagaron tus comisiones", tone: "success", entity: "commission" },
   commission_review_needed: { type: "commission_review_needed", label: "Un cobro revertido tenía comisiones liquidadas", tone: "warning", entity: "commission" },
+  commission_unassigned: { type: "commission_unassigned", label: "Una comisión quedó sin persona", tone: "warning", entity: "sale" },
   // @plantilla-hasta(comisiones)
+  // @plantilla-desde(servicios)
+  svc_owner_assigned: { type: "svc_owner_assigned", label: "Tenés un servicio a cargo", tone: "info", entity: "service" },
+  svc_owner_fallback: { type: "svc_owner_fallback", label: "Servicio a nombre del respaldo", tone: "warning", entity: "service" },
+  svc_owner_departed: { type: "svc_owner_departed", label: "Servicios con responsable que ya no está", tone: "warning" },
+  svc_sale_closed: { type: "svc_sale_closed", label: "Se canceló la venta de un servicio completado", tone: "warning", entity: "service" },
+  svc_sale_changed: { type: "svc_sale_changed", label: "La venta de un servicio cambió", tone: "warning", entity: "service" },
+  svc_extension_sale_closed: { type: "svc_extension_sale_closed", label: "Se canceló una venta que extendió un servicio", tone: "warning", entity: "service" },
+  svc_payment_reverted: { type: "svc_payment_reverted", label: "Se revirtió un pago de un servicio", tone: "warning", entity: "service" },
+  svc_renewal_without_previous: { type: "svc_renewal_without_previous", label: "Renovación sin servicio anterior", tone: "warning" },
+  svc_hook_failed: { type: "svc_hook_failed", label: "Algo automático de Servicios no se hizo", tone: "warning" },
+  svc_item_unmatched: { type: "svc_item_unmatched", label: "Una respuesta no completó ningún paso", tone: "warning", entity: "form_submission" },
+  svc_merge_two_services: { type: "svc_merge_two_services", label: "Dos servicios del mismo producto", tone: "warning", entity: "contact" },
+  // @plantilla-hasta(servicios)
   // @plantilla-desde(webhooks)
   webhook_errors: {
     type: "webhook_errors",
@@ -539,6 +584,17 @@ export function linkFor(
       return typeof saleId === "string" ? `/dashboard/finanzas/comisiones?venta=${encodeURIComponent(saleId)}` : "/dashboard/finanzas/comisiones";
     }
     // @plantilla-hasta(comisiones)
+
+    // @plantilla-desde(ventas)
+    case "sale":
+      return entityId ? `/dashboard/ventas/${entityId}` : "/dashboard/ventas";
+    // @plantilla-hasta(ventas)
+
+    // @plantilla-desde(servicios)
+    // Servicios: la ficha del servicio, en modal encima de Clientes (Servicios A2).
+    case "service":
+      return entityId ? `/dashboard/clientes?servicio=${encodeURIComponent(entityId)}` : "/dashboard/clientes";
+    // @plantilla-hasta(servicios)
 
     // @plantilla-desde(tareas)
     // Tareas: abre la tarea en su drawer.

@@ -58,7 +58,15 @@ export const MESSAGES = {
   consent: "Tenés que aceptar para continuar",
   file: "Subí al menos un archivo",
   tooLong: "El texto es demasiado largo",
+  link: "Pegá un link que empiece con https://, sin espacios",
 } as const;
+
+/** Un link de un formulario (Servicios A2, F127.8): https://, sin espacios, hasta 2000 caracteres. */
+export const LINK_MAX = 2000;
+export function validLink(value: string): boolean {
+  // Un dominio con punto ("ejemplo.com"), y despues lo que sea sin espacios.
+  return value.length <= LINK_MAX && /^https:\/\/[^\s/?#.]+(\.[^\s/?#.]+)+([/?#]\S*)?$/i.test(value);
+}
 
 function isBlank(value: unknown): boolean {
   if (value === null || value === undefined) return true;
@@ -119,6 +127,13 @@ function validateField(
       const text = raw.trim();
       const max = field.type === "short_text" ? TEXT_MAX : LONG_TEXT_MAX;
       return text.length > max ? { error: MESSAGES.tooLong } : { value: text };
+    }
+
+    case "link": {
+      if (blank) return field.required ? { error: MESSAGES.required } : {};
+      if (typeof raw !== "string") return { error: MESSAGES.link };
+      const link = raw.trim();
+      return validLink(link) ? { value: link } : { error: MESSAGES.link };
     }
 
     case "email": {

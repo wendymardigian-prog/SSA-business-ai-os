@@ -66,3 +66,6 @@ claude/
 # Respaldos y salidas locales de las sesiones de Claude (pueden tener datos del negocio).
 # Nunca se commitean ni viajan a una plantilla.
 /Claude outputs/
+
+# Capturas del chequeo responsive de Servicios A2 (13 MB): se regeneran con scripts/verify-responsive.mjs
+docs/capturas-a2/*.png

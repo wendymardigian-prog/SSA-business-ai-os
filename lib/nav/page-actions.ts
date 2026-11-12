@@ -407,19 +407,11 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/clientes/lista": {
     title: "Clientes",
-    tooltip: "Una fila por cliente con al menos un servicio: cuántos tiene, lo que pagó y su último contacto.",
-  },
-  "/dashboard/clientes/c/[contactId]": {
-    title: "Cliente",
-    tooltip: "Todo lo de este cliente: sus servicios, lo que pagó y la actividad del equipo.",
+    tooltip: "Una fila por cliente con al menos un servicio: su semáforo, sus entregas por revisar, su avance, su último ingreso y lo que pagó. Las fichas del cliente y del servicio se abren encima.",
   },
   "/dashboard/clientes/importar": {
     title: "Importar servicios",
     tooltip: "Carga inicial de los servicios que ya existían antes del sistema.",
-  },
-  "/dashboard/clientes/s/[serviceId]": {
-    title: "Servicio",
-    tooltip: "El servicio de un cliente: su camino, su semáforo, sus datos y lo que se puede hacer.",
   },
   "/dashboard/portal": {
     title: "Portal",
@@ -534,6 +526,12 @@ export const PAGE_META: Record<string, PageMeta> = {
 
 /** Rutas que a proposito NO llevan barra superior, y por que. */
 export const PAGES_WITHOUT_HEADER: Record<string, string> = {
+  // @plantilla-desde(servicios)
+  "/dashboard/clientes/c/[contactId]":
+    "La ficha del cliente es un modal encima de Clientes (Servicios A2, ?cliente=): el link viejo solo redirige; nunca se dibuja.",
+  "/dashboard/clientes/s/[serviceId]":
+    "La ficha del servicio es un modal encima de Clientes (Servicios A2, ?servicio=): el link viejo solo redirige; nunca se dibuja.",
+  // @plantilla-hasta(servicios)
   "/dashboard/growth":
     "Growth paso a llamarse Comentarios: solo redirige a /dashboard/comentarios; nunca se dibuja.",
   "/dashboard/agenda/configuracion":

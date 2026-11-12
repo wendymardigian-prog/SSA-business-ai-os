@@ -180,6 +180,15 @@ El modo, la firma del negocio y las copias viven en `forms.contract_config` (`li
 - **Todo campo de teléfono de un formulario público lleva el selector de país** (`PhoneField` → `components/ui/phone-input.tsx`): el desplegable trae TODOS los países con su prefijo y la persona escribe el número sin prefijo. Lo que viaja y se guarda sigue siendo `+<dígitos>`. El selector es angosto a propósito (muestra la bandera y el prefijo; el nombre del país queda cortado) para dejar lugar al número en el celular. Arranca en el país de la zona horaria del navegador (Costa Rica si no se sabe). La lista (`lib/scheduling/phone-countries.ts`) es FIJA, con los nombres en español escritos a mano: con `Intl.DisplayNames` el servidor y el navegador no coincidían y el formulario fallaba al hidratar. Un test la compara con la tabla de prefijos de `lib/phone-country.ts` (mismos países y prefijos) y comprueba el orden.
 - **Un link firmado (`?c=`) abre el formulario con el nombre, el email y el teléfono de la persona ya puestos** (`loadLinkPrefill`, `lib/forms/link-prefill.ts`), editables. Qué campo recibe qué dato lo dice el mapeo al contacto del formulario; sin mapeo, el primer email y el primer teléfono. Solo viajan esos tres datos. Un nombre de relleno ("Instagram User", un id) no se prellena, y lo que la URL ya trae gana sobre el link. Un link roto o vencido deja el formulario vacío: nunca rompe la página. Solo en la página `/f/<slug>` (no en la vista previa ni en el embed).
 
+## El campo Link (Servicios A2, F127.8)
+
+Un tipo de campo más (`link`, en el grupo «Texto» del editor): una línea que tiene que empezar con `https://`, con un
+dominio y sin espacios (hasta 2000 caracteres). Lo valida `validLink` (`lib/forms/submission-schema.ts`) en el
+navegador y en el servidor; la página pública usa el teclado de URL. En las respuestas, el link se abre en una
+pestaña nueva (tabla y detalle); en el CSV va como texto. Se puede guardar en un campo personalizado de tipo url o
+texto. No va en EOD ni en las evaluaciones y actividades del portal. **La base no cambió**: ningún SQL mira el tipo de
+un campo.
+
 ## Embed y sitio
 
 El mismo `embed.js` de la Agenda con el link `f/<slug>`, el modo botón flotante y el seguimiento. Para páginas del propio proyecto: `<Formulario slug="…" />` ([sitio.md](sitio.md)).

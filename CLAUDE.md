@@ -1248,7 +1248,7 @@ Toda tabla con columnas se arma con `DataTable` (`components/ui/data-table/`): c
 
 ## Migración
 
-`00360_table_views` (aditiva: tres tablas y tres funciones) va **ANTES** de desplegar el código (las pantallas leen las tablas; sin ellas la tabla anda con las columnas del sistema y guardar una vista falla): **aplicada y registrada** el 11/11/2026 (versión `20261111185016`), después de ensayarla en una transacción que se deshizo sola, con `verify-table-views` en verde. **La próxima libre es la `00361`** (confirmar con `list_migrations` y las ramas locales).
+`00360_table_views` (aditiva: tres tablas y tres funciones) va **ANTES** de desplegar el código (las pantallas leen las tablas; sin ellas la tabla anda con las columnas del sistema y guardar una vista falla): **aplicada y registrada** el 11/11/2026 (versión `20261111185016`), después de ensayarla en una transacción que se deshizo sola, con `verify-table-views` en verde. **La próxima libre es la `00361`** (desde A2 de Servicios, la `00364`; confirmar con `list_migrations` y las ramas locales).
 
 # Sitio publico
 
@@ -2231,6 +2231,7 @@ Lo que pasa con cada cliente **después** de la venta (servicio, camino, semáfo
 - **Lo automático de tiempo lo hace el barrido diario** (`svc_daily_run`, job `svc_daily`, cron `svc-daily` por SQL directo, no `call_app_cron`): cada paso en su bloque, y dos veces el mismo día no duplica nada.
 - **Certificados = Diseñador IA:** una generación con el servicio como sujeto (`subjectRef.module = "service"`, el grupo registrado). El módulo se engancha por `registerDesignVariables` y `onDesignGenerated`, cargados en los puntos de entrada del servidor (`lib/designer/module-extensions.ts`), nunca al importar el Diseñador.
 - **El tutor:** un agente `student_tutor` por programa (`products.tutor_agent_id`, único, SV003); para un estudiante busca solo en las clases que tiene abiertas; nunca evaluaciones, documentos internos ni lo excluido. Los montos de gasto, solo con `ai_costs.view`.
+- **El botón de un paso vive en `ref.button`** (y «ver su respuesta» en `ref.show_response`): sin columnas. Los pasos con formulario o agenda no aceptan un link pegado, porque rompería que se completen solos. `svc_item` solo viaja si es un uuid (`pickUtm`), dentro de `bookings.utm`. Gemelas `refProblems` / `journey_item_ref_problems` (00363) con `journey-template.cases.json`.
 - **Afiliados:** la asignación sale **solo del link** (`?ref=`, trigger sobre el toque que nunca lo tumba) o de un administrador con permiso; el comprador nunca es su propio afiliado. La comisión se genera **por pago cobrado** y lo ya cobrado no cambia por una baja ni por una regla nueva. Una comisión editada a mano no la pisa ningún recálculo.
 - **Permisos:** 34 claves `services`/portal y las de afiliados, en las tres capas. Cambio aprobado **M11**: el Member suma `services.view`, `services.items`, `portal.view_as` (alcance `own`) y `affiliates.use`.
 
@@ -2238,9 +2239,25 @@ Lo que pasa con cada cliente **después** de la venta (servicio, camino, semáfo
 
 `00330` (esquema, `services`, permisos, interruptor), `00331` (fases y pasos; sin claves foráneas en `form_submissions`/`contract_signatures`, el trigger valida), `00332` (configuración y validadores), `00333` (motor), `00334` (cobros y ventas), `00335` (completado automático), `00336` (historial y CHECK de `triggers.type`), `00340` y `00341` (cuentas y accesos del portal), `00342` (programa), `00343` (afiliados, BAIOS), `00345` (evaluaciones y actividades), `00346` (calendario y asistencia), `00351` (comunidad), `00352` (tutor) y `00353` (fusión, barrido diario, emisión automática del certificado, límite propio del asistente y métricas de las cards). La `00337`, `00338`, `00339`, `00344`, `00347` a `00350` y `00354` son de otras sesiones. **La próxima libre es la `00355`** (confirmar con `list_migrations` y las ramas locales). En un clon nuevo van en orden numérico y **antes** de desplegar el código.
 
+## Corrida A2 (12/11/2026): la app del equipo de servicio
+
+Barra superior única, Clientes con tabla y tablero, fichas en modal, responsive, listas en vez de claves, el botón de cada paso, el campo Link y los avisos de Servicios. Avance en `docs/PROGRESS-servicios.md` («Corrida A2»), decisiones en `docs/PENDIENTE-servicios.md` («A2»).
+
+- **Toda pantalla del módulo pone sus controles en `PageHeader`**, con los lugares fijos `view`, `quickFilter`, `filters`, `search`, `group`, `more` y `primary` (en ese orden). En el teléfono, `primary` queda arriba y lo demás va a la franja. Ninguna deja pestañas ni barras de herramientas dentro del contenido: `lib/ui/topbar-placement.test.ts`. Un botón de la barra que abre algo del contenido manda una orden por la URL (`intentHref` de `lib/ui/url-intent.ts` + `useUrlIntent`).
+- **Una página del servidor nunca llama una función de un archivo `"use client"`** (solo dibuja sus componentes): se cae entera y ni el build lo ve. `lib/ui/client-boundary.test.ts`.
+- **Las fichas son modales por la URL** (`?cliente=` / `?servicio=` sobre `/dashboard/clientes` y `/lista`) y los links salen solo de `serviceHref` / `clientHref`. Los links viejos `/clientes/c/<id>` y `/s/<id>` redirigen. Lo del portal se ve solo si el producto tiene portal.
+- **Las cifras de la ficha son funciones puras** (`record-figures.ts`): si un dato no existe, la cifra no se muestra.
+- **Editar fechas y plazo es `svc_set_dates`** (`services.extend`, motivo obligatorio), con su gemela `datesEditPlan` y `set-dates.cases.json`.
+- **En Automatizaciones nada se elige escribiendo una clave** (`servicePickerOptions`); una clave que ya no existe avisa y no deja publicar (`serviceKeyProblems`, en `publishFlow`). `lib/services/no-typed-keys.test.ts`.
+- **El campo Link** (`link`) valida `https://`, sin espacios, hasta 2000 caracteres; la base no cambió.
+- **Los avisos `svc_*` están en el catálogo** con solo campana por defecto; `lib/notifications/service-types.test.ts` falla si una migración suma uno que no está.
+- **`scripts/verify-responsive.mjs`**: 390, 768, 1100 y 1440 px, claro y oscuro, sin dependencias (maneja el Chrome instalado). Toma el candado de los verify-*.
+
+Migraciones `00361_svc_record_reads` (lecturas de la ficha: classroom, asistencia y resumen del portal, mirando el permiso adentro), `00362_svc_set_dates` y `00363_journey_item_button` (el botón de cada paso; la definición vieja en la cabecera). Las tres aditivas, ensayadas en una transacción que se deshizo sola, **aplicadas y registradas** el 12/11/2026 UTC (versiones `20261112051326`, `20261112051935` y `20261112054433`). Van **antes** de desplegar el código. **La próxima libre es la `00364`** (confirmar con `list_migrations` y las ramas locales).
+
 ```
 node scripts/verify-servicios-migracion.mjs --todas
-node scripts/verify-services.mjs          # sv1, sv2, prd, ac
+node scripts/verify-services.mjs          # sv1, sv2, prd, ac, a2
 node scripts/verify-program.mjs           # pr, ev, ca, ce, co, ia, x
 node scripts/verify-affiliates.mjs
 node scripts/verify-portal-schema.mjs

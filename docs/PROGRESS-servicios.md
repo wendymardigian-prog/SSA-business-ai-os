@@ -1,4 +1,68 @@
-# PROGRESS — Servicios v12, Corrida A1
+# PROGRESS — Servicios v12 (Corridas A1 y A2)
+
+# Corrida A2 (rama `feat/servicios-a2`, desde el 11/11/2026)
+
+Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.10, parte "Corrida A2" (más §17 por F122 y F124 y la sección "Qué se construye" de `claude/v12/Prompt_OneShot_Servicios_Botones_Camino.md` por F125). Referencia visual: el prototipo del panel (artifact "SSA BAIOS Prototipo"). Lo que es de A3 (puntos, gráfico de actividad, reto, entregas de actividades, avisos del estudiante) **no** se construye.
+
+**Para retomar:** esta checklist, la sección "A2" de `docs/PENDIENTE-servicios.md` y `docs/servicios/punto-de-partida-a2.json`. Después de cada funcionalidad: `npx vitest run`, commit y push.
+
+## Checklist (A2)
+
+- [x] **F130.0** Barra superior única (`PageHeader` extendido) en Clientes, Portal, un programa, Afiliados, Grabaciones y Comisiones, con un test por pantalla.
+- [x] **F130.1** Clientes: Servicios y Clientes con tabla y tablero, agrupar, filtro rápido, vista por usuario.
+- [x] **F130.2** Ficha del cliente en modal (`?cliente=`), datos editables en el lugar; la URL vieja abre el modal.
+- [x] **F130.3** Ficha del servicio en modal (`?servicio=`), responsable directo, "Más… › Editar fechas y plazo", cifras, classroom, camino; la URL vieja abre el modal. Lo del portal solo si el producto tiene portal.
+- [x] **F131** Responsive (390, 768, 1100, 1440; claro y oscuro) con `scripts/verify-responsive.mjs` (sin dependencias, decisión de Wendy del 11/11).
+- [x] **F122** Listas en lugar de claves en Automatizaciones (`servicePickerOptions`, aviso y bloqueo al publicar).
+- [x] **F125** Botones del camino (`ref.button`, `ref.show_response`, `svc_item` en la agenda) con la migración de `journey_item_ref_problems`.
+- [x] **F127.8** Campo Link en Formularios.
+- [x] **F124** Los avisos de Servicios en las preferencias de notificaciones.
+- [x] Cierre: build, lint, `verify-*` de A1, huellas, revisión visual (sobre las capturas) y PR (sin merge).
+
+  - F130 (11/11): `PageHeader` con lugares fijos y `topbar-controls`; Portal, programa y Comisiones sin controles en el contenido (`lib/ui/topbar-placement.test.ts`, 7 pantallas). Fichas en `components/services/records/`, lógica pura en `lib/services/screens/{record-url,record-figures,service-record,client-record,clients-list,saved-view}.ts` y `lib/services/set-dates.ts`. 00361 y 00362 aplicadas y registradas (17 casos de `set-dates.cases.json` iguales en SQL). Decisiones en PENDIENTE (A2). Revisión visual y responsive: con F131.
+
+  - F131 (12/11): `scripts/verify-responsive.mjs` recorre 23 pantallas (más el drawer del paso y el teclado de la ficha) en 4 anchos y 2 temas contra la app local, con un negocio `zz-test-` que arma y borra. La primera pasada dio 146 de 178 y encontró un bug que tumbaba la pantalla del programa (`intentHref` de un archivo de cliente llamado desde el servidor; ahora lo ataja `lib/ui/client-boundary.test.ts`). Los arreglos: la barra decide por su propio ancho (container queries) en las pantallas con lugares fijos, el título se achica en el teléfono, Agenda pasa su vista al lugar `view`, la barra del lienzo se desliza, la cabecera de la ficha del servicio se apila y los tocables de la barra miden 40 px en el teléfono. Detalle en PENDIENTE (A2).
+
+  - F122 (11/11): `lib/services/service-picker.ts` (`servicePickerOptions`, listas, `staleKeyMessage`, `serviceKeyProblems`) con su test; `ServiceActionPanel` elige de listas y el panel nuevo `ServiceTriggerPanel` da los filtros de producto, variante, fase, paso y días; `publishFlow` frena una clave que ya no existe (y no publica si no puede leer los caminos). `lib/services/no-typed-keys.test.ts` recorre el módulo.
+
+  - F125 (11/11): `ref.button` y `ref.show_response` en `refProblems` y en `journey_item_ref_problems` (00363, aplicada y registrada; los 37 casos de `journey-template.cases.json`, 19 nuevos, iguales en SQL; antes de aplicarla ninguna plantilla guardada quedaba inválida y después tampoco). Drawer del paso con el interruptor, texto, link, destino y vista previa, y «El cliente puede ver su respuesta». `svc_item` de la URL de la agenda a `bookings.utm` (`pickUtm`, solo uuid). `verify-services --bloque a2` (casos del camino y de fechas contra SQL, `svc_set_dates`, las lecturas de la 00361 y la reserva con `svc_item`).
+
+  - F127.8 (11/11): `link` en `FORM_FIELD_TYPES` y todos sus catálogos, `LinkField` público, `validLink` (servidor y navegador) con su test, prefill, mapeo a campo personalizado url o texto, y el link que se abre en pestaña nueva en la tabla y el detalle de las respuestas. Sin base.
+
+  - F124 (11/11): los 11 avisos `svc_*` (y `commission_unassigned`, que tampoco estaba) en `NOTIFICATION_TYPES`, con su definición y link (`service` abre la ficha en Clientes, `sale` la venta), y en la sección nueva «Servicios y portal» de las preferencias, con solo campana por defecto (nadie recibe nada distinto hasta que lo elija). `lib/notifications/service-types.test.ts` falla si la base escribe un aviso del módulo que no está en el catálogo.
+
+## Punto de partida (11/11/2026)
+
+- Carpeta aparte `.claude/worktrees/servicios-a2` desde `origin/main` 35f204e. `npm ci` con el lockfile de main.
+- `npx vitest run`: 1.522 archivos, 20.139 tests, todos en verde. Lint: 0 errores, 37 advertencias. Build: ok.
+- Última migración aplicada: `00360_table_views`; próxima libre: `00361`.
+- Huellas: `docs/servicios/punto-de-partida-a2.json` (las 8 protegidas coinciden con `scripts/protected-functions.mjs`).
+- `verify-*` de A1: ver "Punto de partida de los verify-*" en `PENDIENTE-servicios.md`, sección A2.
+
+## Migraciones (A2)
+
+| Orden | Número | Qué | Cuándo |
+|---|---|---|---|
+| 1 | 00361 | `svc_record_reads`: lecturas del portal para las fichas y la lista (classroom, asistencia, resumen del portal por contacto) | Antes del código de las fichas |
+| 2 | 00362 | `svc_set_dates`: editar inicio, plazo y fin con motivo; recalcula plazos y semáforo | Antes del código de "Editar fechas y plazo" |
+| 3 | 00363 | `journey_item_ref_problems` con `ref.button` y `ref.show_response` (F125) | Antes del código de F125 |
+
+Por qué tres y no una: el esquema del portal está cerrado (la pantalla no puede leer el avance ni la asistencia de una persona sin una función) y no existe ninguna función para editar las fechas de un servicio. Ninguna suma tablas ni columnas.
+
+## Plan por funcionalidad
+
+- **F130.0:** `components/page-header.tsx` suma lugares con nombre que se dibujan siempre en el mismo orden (`view`, `quickFilter`, `search`, `group`, `more`, `primary`); en el teléfono `primary` queda arriba y el resto pasa a la franja con scroll. Nuevos `components/ui/topbar-more-menu.tsx` (⋯) y `quick-filter-menu.tsx`. Test `lib/ui/topbar-placement.test.ts`, un caso por pantalla.
+- **F130.1:** `lib/services/screens/clients-list.ts` (`clientsListView`, puro con test) y su carga; `?modo=tablero` (se sigue leyendo `vista=tablero`); vista por usuario con `table_views` (#220).
+- **F130.2/3:** `components/services/records/*` (modal con pila, Esc y foco), `loadClientRecord` / `loadServiceRecord`, redirecciones de `/clientes/c/[id]` y `/clientes/s/[id]`, cifras puras en `lib/services/screens/record-figures.ts` (`nextPaymentView`, `attendanceRateView`, `classroomProgressView`), `datesEditPlan` con `set-dates.cases.json`.
+- **F131:** arreglos de CSS y `scripts/verify-responsive.mjs` contra la app local con un negocio de prueba `zz-test-`; capturas en `docs/capturas-a2/`.
+- **F122:** `servicePickerOptions` (puro con test), selects en `ServiceActionPanel`, filtros de los disparadores de Servicios en `TriggerPanel`, `serviceKeyProblems` en `publishFlow`.
+- **F125:** `refProblems` + `defaultButtonLabel`, casos nuevos en `journey-template.cases.json` (que ahora también corren contra SQL en `verify-services`), el drawer del paso y `svc_item` en `pickUtm` y el booker.
+- **F127.8:** tipo `link` en Formularios (editor, página pública, validación, respuestas, CSV), sin base.
+- **F124:** sección `servicios` y los tipos `svc_*` en `lib/notifications/preferences.ts` y `types.ts`, solo campana por defecto.
+
+---
+
+# Corrida A1
 
 > **Base de datos:** toda consulta, migración y verificación contra la base va **solo a producción `knrxjnmx…`** (servidor MCP `23853d12…` o `supabase db query --linked`). Nunca a los otros proyectos conectados al MCP.
 >

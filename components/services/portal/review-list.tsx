@@ -1,7 +1,7 @@
 "use client";
 // @plantilla-quitar(servicios)
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { reviewSubmission } from "@/lib/actions/program";
 import type { ReviewItem } from "@/lib/program/load-review";
@@ -10,43 +10,21 @@ import { SCALE_LABELS, WORD_LABELS, WORD_SCALE } from "@/lib/program/grading";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 
-const FILTERS: Array<{ key: ReviewFilter; label: string }> = [
-  { key: "pending", label: "Por revisar o calificar" },
-  { key: "needs_changes", label: "A corregir" },
-  { key: "reviewed", label: "Revisadas" },
-  { key: "quiz", label: "Resultados de evaluaciones" },
-  { key: "all", label: "Todo" },
-];
-
 const TONE: Record<string, string> = { todo: "text-foreground", warn: "text-warn", done: "text-muted-foreground", info: "text-muted-foreground" };
 
 /**
- * Portal › Por revisar (F57): las entregas de todos los programas, con filtros, y el drawer para revisar o calificar
- * (comentario para el estudiante y nota interna, que nunca ve el estudiante). Revisar pide `submissions.review`.
+ * Portal › Por revisar (F57): las entregas de todos los programas y el drawer para revisar o calificar (comentario
+ * para el estudiante y nota interna, que nunca ve el estudiante). Revisar pide `submissions.review`. El filtro vive en
+ * la barra superior (`?filtro=`, Servicios A2): aca solo se recibe.
  */
-export function ReviewList({ items, canReview, timeZone }: { items: ReviewItem[]; canReview: boolean; timeZone: string }) {
+export function ReviewList({ items, canReview, timeZone, filter }: { items: ReviewItem[]; canReview: boolean; timeZone: string; filter: ReviewFilter }) {
   const router = useRouter();
-  const [filter, setFilter] = useState<ReviewFilter>("pending");
   const [open, setOpen] = useState<ReviewItem | null>(null);
   const shown = useMemo(() => items.filter((i) => matchesReviewFilter(i, filter)), [items, filter]);
   const fmt = (iso: string) => new Date(iso).toLocaleDateString("es-AR", { timeZone, day: "2-digit", month: "2-digit", year: "numeric" });
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1" role="tablist" aria-label="Filtro de entregas">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            role="tab"
-            aria-selected={filter === f.key}
-            onClick={() => setFilter(f.key)}
-            className={cn("rounded-full border px-3 py-1 text-xs", filter === f.key ? "border-primary-edge text-foreground" : "border-border text-muted-foreground hover:text-foreground")}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
       {shown.length === 0 ? (
         <p className="text-sm text-muted-foreground">No hay entregas con este filtro.</p>
       ) : (
@@ -91,7 +69,7 @@ export function ReviewList({ items, canReview, timeZone }: { items: ReviewItem[]
   );
 }
 
-function ReviewDrawer({ item, canReview, onClose, onDone }: { item: ReviewItem; canReview: boolean; onClose: () => void; onDone: () => void }) {
+export function ReviewDrawer({ item, canReview, onClose, onDone }: { item: ReviewItem; canReview: boolean; onClose: () => void; onDone: () => void }) {
   const [comment, setComment] = useState(item.reviewComment ?? "");
   const [note, setNote] = useState(item.internalNote ?? "");
   const scale = item.grading?.enabled ? item.grading.scale ?? "pass" : null;
@@ -99,6 +77,17 @@ function ReviewDrawer({ item, canReview, onClose, onDone }: { item: ReviewItem; 
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const editable = canReview && item.formType === "activity";
+  // Esc cierra el drawer primero (está encima de la ficha del servicio o de Por revisar).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
 
   function submit(status: "reviewed" | "needs_changes") {
     setError(null);

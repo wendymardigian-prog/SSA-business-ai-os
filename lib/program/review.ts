@@ -57,6 +57,27 @@ export function reviewRowView(s: ReviewSubmission): ReviewRowView {
 
 export type ReviewFilter = "pending" | "needs_changes" | "reviewed" | "quiz" | "all";
 
+/** Los filtros de Por revisar, en el orden de la barra (filtro rapido). */
+export const REVIEW_FILTERS: ReadonlyArray<{ key: ReviewFilter; label: string }> = [
+  { key: "pending", label: "Por revisar o calificar" },
+  { key: "needs_changes", label: "A corregir" },
+  { key: "reviewed", label: "Revisadas" },
+  { key: "quiz", label: "Resultados de evaluaciones" },
+  { key: "all", label: "Todo" },
+];
+
+/** `?filtro=` de la URL; lo que no se conoce es "pending" (lo de siempre). */
+export function parseReviewFilter(v: string | null | undefined): ReviewFilter {
+  return REVIEW_FILTERS.some((f) => f.key === v) ? (v as ReviewFilter) : "pending";
+}
+
+/** Cuantas entregas hay con cada filtro (para el conteo del filtro rapido). */
+export function reviewFilterCounts(items: readonly ReviewSubmission[]): Record<ReviewFilter, number> {
+  const out = { pending: 0, needs_changes: 0, reviewed: 0, quiz: 0, all: 0 } as Record<ReviewFilter, number>;
+  for (const f of REVIEW_FILTERS) out[f.key] = items.filter((s) => matchesReviewFilter(s, f.key)).length;
+  return out;
+}
+
 export function matchesReviewFilter(s: ReviewSubmission, f: ReviewFilter): boolean {
   if (f === "all") return true;
   if (f === "quiz") return s.formType === "quiz";

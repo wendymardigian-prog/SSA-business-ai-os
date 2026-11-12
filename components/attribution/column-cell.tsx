@@ -28,12 +28,19 @@ function CopyCellButton({ value, label }: { value: string; label: string }) {
 }
 
 /** Una celda de una columna del catálogo: un dato que falta es «—», nunca 0. */
+/** Solo un https:// se dibuja como link (lo que guardó un formulario ya pasó por esa regla; esto es la red de seguridad). */
+const isHttpsLink = (value: string) => /^https:\/\/\S+$/i.test(value);
+
 export function ColumnCell<Row>({ def, row, className }: { def: ColumnDef<Row>; row: Row; className?: string }) {
   const value = def.value(row);
   if (!value) return <td className={cn("px-3 py-2 text-muted-foreground", className)}>—</td>;
   return (
     <td className={cn("max-w-[16rem] px-3 py-2", className)} title={value}>
-      {def.copyable ? (
+      {def.link && isHttpsLink(value) ? (
+        <a href={value} target="_blank" rel="noopener noreferrer" className="block truncate text-primary-ink underline-offset-2 hover:underline">
+          {value}
+        </a>
+      ) : def.copyable ? (
         <div className="flex items-center gap-1">
           <span className="min-w-0 flex-1 truncate">{value}</span>
           <CopyCellButton value={value} label={def.label} />

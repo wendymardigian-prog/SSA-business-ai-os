@@ -62,7 +62,8 @@ describe("opciones, ocultos y selector (F9)", () => {
     const groups = pickerGroups("custom");
     expect(groups.map((g) => g.title)).toEqual(["Datos de contacto", "Texto", "Opciones", "Otros"]);
     expect(groups.flatMap((g) => g.types.map((t) => t.type)).sort()).toEqual(
-      ["consent", "date", "email", "file", "hidden", "long_text", "multi_select", "nps", "number", "phone", "rating", "short_text", "single_select", "social"].sort(),
+      // Servicios A2 (F127.8) suma «link».
+      ["consent", "date", "email", "file", "hidden", "link", "long_text", "multi_select", "nps", "number", "phone", "rating", "short_text", "single_select", "social"].sort(),
     );
   });
 

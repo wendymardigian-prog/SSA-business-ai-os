@@ -1,4 +1,6 @@
 // @plantilla-quitar(servicios)
+import { clientHref, serviceHref } from "./record-url";
+
 /**
  * Clientes › Servicios (F26): la fila de cada servicio, los filtros en la URL y el tablero por fase. Puro.
  */
@@ -55,8 +57,8 @@ export const PORTAL_LABELS: Record<ServiceListItem["portal"], string> = { active
 export function serviceRowView(s: ServiceListItem, today: string) {
   return {
     id: s.id,
-    href: `/dashboard/clientes/s/${s.id}`,
-    clientHref: `/dashboard/clientes/c/${s.contactId}`,
+    href: serviceHref(s.id),
+    clientHref: clientHref(s.contactId),
     client: s.contactName,
     product: s.variantName ? `${s.productName} · ${s.variantName}` : s.productName,
     owner: s.ownerName ?? "Sin responsable",
@@ -112,7 +114,8 @@ export function parseServiceFilters(params: URLSearchParams | Record<string, str
   const page = Number(get("pagina"));
   const owner = get("responsable");
   return {
-    view: get("vista") === "tablero" ? "board" : "table",
+    // `?modo=tablero` (Servicios A2: `vista` es de las vistas guardadas); el link viejo `?vista=tablero` se sigue entendiendo.
+    view: get("modo") === "tablero" || get("vista") === "tablero" ? "board" : "table",
     quick: (QUICK_FILTERS as readonly string[]).includes(quick ?? "") ? (quick as QuickFilter) : "all",
     groupBy: (GROUP_BY as readonly string[]).includes(group ?? "") ? (group as GroupBy) : "none",
     q: (get("q") ?? "").slice(0, 100),
@@ -124,7 +127,7 @@ export function parseServiceFilters(params: URLSearchParams | Record<string, str
 
 export function serializeServiceFilters(f: ServiceFilters): string {
   const p = new URLSearchParams();
-  if (f.view === "board") p.set("vista", "tablero");
+  if (f.view === "board") p.set("modo", "tablero");
   if (f.quick !== "all") p.set("f", f.quick);
   if (f.groupBy !== "none") p.set("agrupar", f.groupBy);
   if (f.q) p.set("q", f.q);

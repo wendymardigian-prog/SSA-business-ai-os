@@ -57,7 +57,7 @@ export function FieldEditor({
   const isEod = mode === "eod";
   const isHidden = field.type === "hidden";
   const hasOptions = field.type === "single_select" || field.type === "multi_select";
-  const textLike = field.type === "short_text" || field.type === "long_text" || field.type === "email" || field.type === "phone" || field.type === "number" || field.type === "social";
+  const textLike = field.type === "short_text" || field.type === "long_text" || field.type === "email" || field.type === "phone" || field.type === "number" || field.type === "social" || field.type === "link";
   const prefillOk = supportsPrefill(field.type) && !isHidden && !isEod;
 
   return (

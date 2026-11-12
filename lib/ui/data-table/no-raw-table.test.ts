@@ -15,7 +15,6 @@ import { describe, expect, it } from "vitest";
 const LEGACY = [
   "app/(dashboard)/dashboard/(comunicacion)/comentarios/page.tsx",
   "app/(dashboard)/dashboard/afiliados/page.tsx", // @plantilla-quitar(ventas)
-  "app/(dashboard)/dashboard/clientes/lista/page.tsx", // @plantilla-quitar(servicios)
   "app/(dashboard)/dashboard/contacts/contacts-view.tsx",
   "app/(dashboard)/dashboard/contacts/import/import-view.tsx",
   "app/(dashboard)/dashboard/settings/custom-fields/custom-fields-view.tsx",

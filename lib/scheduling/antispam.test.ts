@@ -101,3 +101,21 @@ describe("uid de la agenda", () => {
     expect(a).not.toBe(b);
   });
 });
+
+describe("svc_item en la agenda (Servicios A2, F125)", () => {
+  const ID = "0F8FAD5B-D9CB-469F-A165-70867728950E";
+  it("pickUtm guarda el paso solo si es un uuid", () => {
+    expect(pickUtm({ svc_item: ID }).svc_item).toBe(ID.toLowerCase());
+    expect(pickUtm(new URLSearchParams(`svc_item=${ID}`)).svc_item).toBe(ID.toLowerCase());
+    expect(pickUtm({ svc_item: "it_aaaaaa" }).svc_item).toBeUndefined();
+    expect(pickUtm({ svc_item: "1; drop" }).svc_item).toBeUndefined();
+    expect(pickUtm({}).svc_item).toBeUndefined();
+  });
+  it("la página pública lo lee de la URL con la misma regla", async () => {
+    const { svcItemParam, parseEmbedParams } = await import("./booker/embed-params");
+    expect(svcItemParam(ID)).toBe(ID.toLowerCase());
+    expect(svcItemParam("x")).toBeNull();
+    expect(parseEmbedParams({ svc_item: ID }).svcItem).toBe(ID.toLowerCase());
+    expect(parseEmbedParams({}).svcItem).toBeNull();
+  });
+});

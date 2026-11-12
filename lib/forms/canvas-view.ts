@@ -47,7 +47,7 @@ export function hiddenNote(field: FormField): string {
 /** Los tipos del selector, agrupados como en el prototipo. En un reporte de fin de dia, solo los que acepta. */
 export const PICKER_GROUPS: Array<{ title: string; types: FormFieldType[] }> = [
   { title: "Datos de contacto", types: ["email", "phone", "social"] },
-  { title: "Texto", types: ["short_text", "long_text", "number", "date"] },
+  { title: "Texto", types: ["short_text", "long_text", "number", "date", "link"] },
   { title: "Opciones", types: ["single_select", "multi_select", "rating", "nps"] },
   { title: "Otros", types: ["file", "consent", "hidden"] },
 ];

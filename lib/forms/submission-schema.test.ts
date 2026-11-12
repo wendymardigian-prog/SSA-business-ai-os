@@ -170,3 +170,31 @@ describe("validateSubmission: usuario de red social (R5)", () => {
     expect(validateSubmission([li], { linkedin: "linkedin.com/in/Ana-Perez/" }).values.linkedin).toBe("https://www.linkedin.com/in/ana-perez");
   });
 });
+
+describe("el campo Link (Servicios A2, F127.8)", () => {
+  it("acepta un https:// con dominio y sin espacios", async () => {
+    const { validLink } = await import("./submission-schema");
+    expect(validLink("https://ejemplo.com")).toBe(true);
+    expect(validLink("https://www.ejemplo.com/video?t=10#a")).toBe(true);
+    expect(validLink("https://sub.dominio.co/ruta/larga")).toBe(true);
+    expect(validLink("http://ejemplo.com")).toBe(false);
+    expect(validLink("https://ejemplo com")).toBe(false);
+    expect(validLink("https://localhost")).toBe(false);
+    expect(validLink("ejemplo.com")).toBe(false);
+    expect(validLink("javascript:alert(1)")).toBe(false);
+    expect(validLink(`https://ejemplo.com/${"a".repeat(2000)}`)).toBe(false);
+  });
+});
+
+describe("validateSubmission con un campo Link", () => {
+  it("guarda el link limpio; uno inválido da su error; vacío y opcional no pide nada", () => {
+    const ok = validateSubmission([f("link", "video")], { video: "  https://ejemplo.com/v  " });
+    expect(ok.ok).toBe(true);
+    expect(ok.values.video).toBe("https://ejemplo.com/v");
+    const bad = validateSubmission([f("link", "video")], { video: "http://ejemplo.com" });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors.video).toBe("Pegá un link que empiece con https://, sin espacios");
+    expect(validateSubmission([f("link", "video")], {}).ok).toBe(true);
+    expect(validateSubmission([f("link", "video", { required: true })], {}).ok).toBe(false);
+  });
+});

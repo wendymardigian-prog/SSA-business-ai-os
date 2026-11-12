@@ -4,12 +4,13 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { SidePanel } from "@/components/tasks/overlay";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
+import { useUrlIntent } from "@/components/ui/use-url-intent";
 import {
   archiveLiveSession,
   loadSessionSheet,
@@ -32,7 +33,6 @@ import {
   pctLabel,
   seriesStats,
   sessionRowView,
-  shiftMonth,
   studentRate,
   type OverviewDate,
 } from "@/lib/program/calendar-view";
@@ -94,30 +94,14 @@ export function ProgramCalendar({
     else if (canManage) setForm({ session: s, occurrence: o as CalendarOccurrence });
   };
 
-  const header = (
-    <div className="flex flex-wrap items-center gap-2">
-      <nav className="flex gap-1 rounded-lg border border-border p-0.5" aria-label="Vistas del calendario">
-        {(["lista", "mes"] as const).map((v) => (
-          <Link key={v} href={href(v)} aria-current={view === v ? "page" : undefined} className={cn("rounded-md px-3 py-1 text-sm", view === v ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")}>
-            {v === "lista" ? "Lista" : "Mes"}
-          </Link>
-        ))}
-      </nav>
-      <Link href={href("series")} aria-current={view === "series" ? "page" : undefined} className={cn("rounded-md border border-border px-3 py-1 text-sm", view === "series" ? "bg-accent" : "hover:bg-accent")}>
-        Sesiones recurrentes ({series.length})
-      </Link>
-      <div className="flex-1" />
-      {canManage && (
-        <button type="button" onClick={() => setForm({ session: null })} className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground">
-          <Plus className="h-4 w-4" /> {view === "series" ? "Sesión recurrente" : "Sesión"}
-        </button>
-      )}
-    </div>
-  );
+  // Lista | Mes | Recurrentes, el mes y «+ Sesión» viven en la barra superior (Servicios A2): «+ Sesión» llega como
+  // `?nuevo=sesion`.
+  useUrlIntent("nuevo", (v) => {
+    if (v === "sesion" && canManage) setForm({ session: null });
+  });
 
   return (
     <div className="space-y-4">
-      {header}
       {data.sessions.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
           Todavía no hay sesiones en vivo. {canManage ? "Sumá la primera con «+ Sesión»." : ""}
@@ -246,10 +230,7 @@ export function ProgramCalendar({
     return (
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={href("mes", { mes: shiftMonth(month, -1) })} aria-label="Mes anterior" className="rounded-md p-1 hover:bg-accent"><ChevronLeft className="h-4 w-4" /></Link>
-          <span className="min-w-36 text-center text-sm font-medium capitalize">{label}</span>
-          <Link href={href("mes", { mes: shiftMonth(month, 1) })} aria-label="Mes siguiente" className="rounded-md p-1 hover:bg-accent"><ChevronRight className="h-4 w-4" /></Link>
-          <Link href={href("mes", { mes: today.slice(0, 7) })} className="rounded-md border border-border px-2 py-0.5 text-xs hover:bg-accent">Hoy</Link>
+          <h3 className="text-sm font-medium capitalize">{label}</h3>
           <span className="flex-1" />
           <ul className="flex flex-wrap gap-2 text-xs" aria-label="Series">
             {active.map((s) => <li key={s.id} className={cn("rounded px-1.5", color(s.id))}>{s.title}</li>)}

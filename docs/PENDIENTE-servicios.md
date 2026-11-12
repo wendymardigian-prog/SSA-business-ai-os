@@ -1,4 +1,65 @@
-# PENDIENTE — Servicios v12, Corrida A1
+# PENDIENTE — Servicios v12
+
+# A2 (desde el 11/11/2026)
+
+Formato: **qué quedó · por qué · qué se decidió**.
+
+## Lo que encontró la exploración (regla aplicada)
+
+- **La barra superior es `PageHeader` con props** (`left`, `tabs`, `filters`, `right`), no un portal ni un contexto. Le faltaba un lugar para ⋯ y un orden fijo. · Se extiende con lugares con nombre; las pantallas de otros módulos siguen con sus props de siempre.
+- **`?vista=` ya lo usan las vistas guardadas (#220)** y Clientes lo usaba para tabla o tablero. · Clientes pasa a `?modo=tablero`; `vista=tablero` se sigue entendiendo.
+- **No existe ninguna función para editar fechas y plazo** (solo `svc_activate`, `svc_extend`, `svc_resume`). · Migración nueva con su gemela TS y casos.
+- **El avance del classroom, la asistencia de una persona y el último ingreso al portal viven en el esquema cerrado del portal.** `live_attendance_overview` pide `attendance.manage` y llega a 120 días. · Migración de solo lectura, con el permiso mirado adentro.
+- **Los avisos `svc_*` no están en `NOTIFICATION_TYPES`** (los escribe solo SQL; `deliver.ts` los descarta como `unknown_type`, así que nunca salieron por email). · Se suman con solo campana por defecto, así nadie recibe nada distinto hasta que lo elija.
+- **Solo dos campos piden una clave a mano** (`itemKey`, `phaseKey` de `ServiceActionPanel`). Los disparadores de Servicios no tienen panel de filtros. El plano nombra filtros de "sesión" y "sección" que `serviceEventMatches` no mira. · Se ofrecen los que ya mira (producto, variante, fase, paso, días).
+- **`journey-template.cases.json` no corría contra SQL** aunque su comentario lo decía. · Se suma a `verify-services`.
+- **El drawer del paso no tiene selector de `complete_on` para formularios ni elección de clase, módulo o sección.** · Fuera de A2: no se agranda el alcance.
+- **No hay Playwright.** · Decisión de Wendy (11/11): script propio sin dependencias que maneja el Chrome instalado (`scripts/verify-responsive.mjs`).
+- **El prototipo a 390 px no se reacomoda** (es un dibujo de escritorio). · En el teléfono mandan las reglas de F131.
+
+## Decisiones de F130 (11/11)
+
+- **Las fichas se abren por la URL y las arma el servidor** (`?cliente=` / `?servicio=` sobre `/dashboard/clientes` y `/dashboard/clientes/lista`, `components/services/records/`). · Así se reusa todo lo que ya armaba la página de la ficha (accesos, certificado, asistente) con la sesión de quien mira. · Los links viejos `/clientes/c/<id>` y `/clientes/s/<id>?tab=` redirigen (están en `PAGES_WITHOUT_HEADER`). `serviceHref` / `clientHref` (`lib/services/screens/record-url.ts`) son los únicos que arman esos links.
+- **"Empresa" no está en la cabecera del cliente.** · `contacts` no tiene esa columna y A2 no suma columnas. · Si un negocio la necesita, va como campo personalizado o en una corrida con su migración.
+- **"Invitar / Ver como estudiante"** quedan en la tarjeta del portal de la ficha del cliente (la de A1, con sus permisos), no como botones sueltos de la cabecera. Solo aparece si alguno de sus productos tiene portal.
+- **"Marcar asistió"** sigue en Portal › programa › Calendario: la ficha muestra las últimas clases con su estado (la acción pide la fecha y la sesión, que viven en el calendario).
+- **Reto (bloque de la ficha)**: no se dibuja; su control semanal es F127.5 (A3). "Empezar el Reto" sigue en el camino.
+- **Clientes › Clientes usa la tabla común (`DataTable`) con vistas guardadas en la base (#220, `table_key = service_clients`)**: «la vista se recuerda por usuario» es la vista predeterminada de cada persona. Ordenar es un menú de la barra («Ordenar»): `DataTable` no ordena por el encabezado.
+- **Clientes › Servicios sigue con su tabla de A1 (en `LEGACY`)** y «Guardar vista» se guarda en el navegador, por persona (`useSavedView`). · Pasarla a `DataTable` (y a las vistas de la base) queda para otra tanda.
+- **Los links rotos de A1**: «Ver venta» (`/dashboard/ventas?venta=`) y «Tarea en Tareas» (`?tarea=`) no abrían nada. Ahora van a `/dashboard/ventas/<id>` y `?task=`.
+- **La columna «Puntos 30 días» de la tabla** es A3: en A2 la tabla lleva «Último ingreso» (solo si algún producto tiene portal).
+
+## Punto de partida de los verify (11/11, antes de tocar nada)
+
+Corridos de a uno con el candado, sobre `origin/main` 35f204e. Cuatro ya fallaban y **no son de A2**; al cerrar tienen que fallar igual, no peor:
+
+- **`verify-forms`**: compara la huella de `create_booking` con la vieja. La `00358` (agenda: nombre del contacto) la cambió a propósito y el script no se actualizó. · Actualizar la huella esperada en `verify-forms.mjs` (otra tanda: no es de este módulo).
+- **`verify-rls`**: «un Member LEE la base de conocimiento». La `00314` (auditoría de seguridad) cerró eso a propósito y el caso quedó con lo de antes. · Invertir el caso (otra tanda).
+- **`verify-servicios-migracion`**: corte de la CLI de Supabase en medio de la corrida (conexión), no una regla. · Se repite al cerrar.
+- **`verify-auth-settings`**: devuelve 1 a propósito mientras el registro público siga prendido en el panel (pendiente de la auditoría de seguridad).
+
+## Verificación final (12/11)
+
+Los mismos verify, de a uno con el candado. Ninguno empeoró por A2:
+
+- **Igual que al empezar**: `forms`, `rls` y `auth-settings` fallan por los mismos motivos de arriba. `servicios-migracion` pasó (el corte de la CLI no se repitió).
+- **`verify-services`**: el bloque nuevo `a2` falló la primera vez por mis datos de prueba (claves de 7 letras, la regla pide 6). Corregido y repetido solo, en verde.
+- **`verify-program`**, dos fallas que no son de A2:
+  - **«encola uno por día y por negocio»** depende de la hora: `enqueue_svc_daily` no encola si en el negocio todavía no son las 02:00. A las 07:00 UTC, en un negocio de Costa Rica es la 01:00 → 0. · Hacer que la prueba no dependa de la hora (pasarle un `now` a las 12:00 locales). Otra tanda.
+  - **«anular con motivo»** encontró el certificado todavía en `rendering` en la corrida larga. Repetido solo (`--bloque ce`), en verde. · Es de tiempo del render simulado.
+- **Huellas**: las 8 protegidas y las 15 «no se tocan» son iguales a las del punto de partida.
+
+## Lo que encontró el chequeo responsive (F131)
+
+- **La pantalla de un programa se caía entera** (Portal › programa): la página del servidor llamaba `intentHref`, que vivía en un archivo `"use client"`. Ni el typecheck, ni el build, ni los tests lo veían. · `intentHref` pasa a `lib/ui/url-intent.ts` y `lib/ui/client-boundary.test.ts` recorre todas las páginas y falla si una importa algo que no es un componente de un archivo de cliente.
+- **El lienzo de flujos no tiene `PageHeader`** (es un editor de pantalla completa con su barra propia). · El chequeo mide los controles de la franja de arriba del lienzo en vez de la barra superior. Debajo de 1100 px sus botones quedaban afuera: ahora la parte derecha se desliza de costado y el nombre se achica.
+- **La barra decidía por el ancho de la ventana, no por el de la barra**: con el menú lateral abierto, a 1100 px Clientes dejaba «Vistas», «Columnas» y «Nuevo servicio» cortados. · Las pantallas con los lugares fijos de A2 deciden con container queries (`@container` sobre la barra: 900 px, o 1180 con `filtersBreakpoint="wide"`). El botón principal queda siempre arriba. Las demás pantallas siguen con su lógica de siempre.
+- **Agenda**: a 390 y 768 px «Agendar» y la configuración quedaban afuera. · El selector Lista/Kanban/Calendario pasa del lugar `left` al lugar `view` y, si no entra, baja a la franja.
+- **Un título largo en el teléfono** («Grabaciones de llamadas») dejaba la campana afuera. · Debajo de 860 px el título se achica y se corta con «…».
+- **La cabecera de la ficha del servicio en el teléfono**: los botones dejaban el nombre en «zz…». · En el teléfono el nombre ocupa su renglón y los botones bajan.
+- **Tocables de 32 px en el teléfono**: pestañas, filtros, vista, buscador, «Vistas», el período, «Volver» (`BackLink`), las pestañas y botones del editor de formularios y el ⓘ de la barra pasan a 40 px debajo de 860 px (`max-topbar:h-10`), en todas las pantallas. · Las flechas «Volver» que arma cada pantalla a mano (no `BackLink`) siguen en 28 px: se anota y no se tocan una por una.
+- **Avisos que quedan en el teléfono (no fallan)**: dentro de las fichas, el lápiz de `InlineField` (22 px), los botones de la tarjeta del portal de A1 (34 px), «Columnas» de la tabla, «Nuevo formulario» y las flechas «Volver» armadas a mano (28 px). · Se anotan; el resultado final fue **186 de 186 en verde** (12/11). Las capturas (13 MB) no se commitean: se regeneran con el script.
+- **Las variantes de un producto tienen sus pestañas (Camino, Servicio, Portal, Precio) dentro del contenido.** · Están dentro de Ajustes, que ya usa la fila de pestañas de la barra para sus secciones; es un segundo nivel. Queda como está.
 
 ## Corrida frenada en S02 (8/11/2026) — resuelto
 

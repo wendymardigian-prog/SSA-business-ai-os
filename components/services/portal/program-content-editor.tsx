@@ -12,6 +12,7 @@ import { transcriptFormat } from "@/lib/program/transcript";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 import { PortalFormEditor, type PortalFormInitial } from "./portal-form-editor";
+import { useUrlIntent } from "@/components/ui/use-url-intent";
 
 export interface ContentRow extends ProgramRow {
   /** El formulario de una evaluación o actividad (bloque EV), si ya tiene uno. */
@@ -63,6 +64,10 @@ export function ProgramContentEditor({
   const [title, setTitle] = useState("");
   const [lessonType, setLessonType] = useState("video");
   const [msg, setMsg] = useState<string | null>(null);
+  // «+ Módulo» vive en la barra superior (Servicios A2): llega como `?nuevo=modulo`.
+  useUrlIntent("nuevo", (v) => {
+    if (v === "modulo" && canManage) setAdding({ kind: "module", parentId: null });
+  });
   const [pending, start] = useTransition();
 
   const run = (fn: () => Promise<{ ok: boolean; error?: { message: string } }>) =>
@@ -101,13 +106,6 @@ export function ProgramContentEditor({
 
   return (
     <div className="space-y-3">
-      {canManage && (
-        <div className="flex justify-end">
-          <button type="button" onClick={() => setAdding({ kind: "module", parentId: null })} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent">
-            <Plus className="h-4 w-4" aria-hidden /> Módulo
-          </button>
-        </div>
-      )}
       {flat.length === 0 ? (
         <p className="text-sm text-muted-foreground">Todavía no hay contenido. Empezá con un módulo: lo nuevo nace inactivo, así podés armarlo antes de que lo vean.</p>
       ) : (

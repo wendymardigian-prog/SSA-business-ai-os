@@ -82,6 +82,12 @@ export interface EmbedParams {
   /** Las demas claves de atribucion de la URL (utm_id, ad_id, adset_id, campaign_id, gbraid…), Extra L F16. */
   attribution: Record<string, string>;
   /**
+   * El paso del camino del cliente que se agenda (Servicios A2, F125): el boton del portal lo manda en `?svc_item=`.
+   * Solo un uuid; viaja dentro de la atribucion hasta `bookings.utm.svc_item` y el trigger de la base completa ESE
+   * paso (si es del mismo contacto). `create_booking` no cambia.
+   */
+  svcItem: string | null;
+  /**
    * Lo que mando el script del embed con la atribucion y las cookies de la web que lo contiene
    * (`lib/attribution/embed-attr.ts`), todavia codificado. Se decodifica y re-sanea en `bookingAttribution`.
    */
@@ -134,6 +140,12 @@ export function normalizeHexColor(value: string | null | undefined): string | nu
 
 export function isTruthyParam(value: string | null): boolean {
   return value === "1" || value === "true" || value === "yes";
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** `svc_item` solo si es un uuid (en minusculas); cualquier otra cosa se descarta. */
+export function svcItemParam(value: string | null | undefined): string | null {
+  return value && UUID_RE.test(value) ? value.toLowerCase() : null;
 }
 
 export function parseEmbedParams(source: ParamsSource): EmbedParams {
@@ -191,6 +203,7 @@ export function parseEmbedParams(source: ParamsSource): EmbedParams {
     utm,
     clickIds,
     attribution,
+    svcItem: svcItemParam(first(source, "svc_item")),
     attr: first(source, "attr"),
     landingPage: safeUrl(first(source, "referrer")),
   };

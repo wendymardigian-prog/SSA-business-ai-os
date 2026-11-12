@@ -3,8 +3,8 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { KanbanSquare, ListFilter, Plus, Rows3, Table2, Upload } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Bookmark, KanbanSquare, Table2, Upload } from "lucide-react";
 import {
   GROUP_BY,
   PAGE_SIZE,
@@ -14,16 +14,20 @@ import {
   serializeServiceFilters,
   serviceRowView,
   type GroupBy,
+  type QuickFilter,
   type ServiceFilters,
   type ServiceListItem,
 } from "@/lib/services/screens/list";
+import { withRecord } from "@/lib/services/screens/record-url";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
-import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
+import { GroupMenu, PrimaryButton, QuickFilterMenu, TopbarMoreMenu, type MoreAction } from "@/components/ui/topbar-controls";
 import { ViewToggle } from "@/components/ui/view-toggle";
+import { rememberRecordOpener } from "@/components/services/records/record-modal";
 import { ClientesTabs } from "./clientes-tabs";
 import { cn } from "@/lib/utils";
 import { NewServiceDialog, type NewServiceOptions } from "./new-service-dialog";
+import { useSavedView } from "./use-saved-view";
 
 const LIGHT_DOT: Record<string, string> = { red: "bg-bad", yellow: "bg-warn", green: "bg-good", gray: "bg-muted-foreground/40" };
 const GROUP_LABELS: Record<GroupBy, string> = { none: "Sin agrupar", phase: "Fase", light: "Semáforo", owner: "Responsable" };
@@ -33,8 +37,9 @@ export function LightDot({ light, label }: { light: string; label: string }) {
 }
 
 /**
- * Clientes › Servicios (F26): tabla o tablero por fase, filtros rápidos, buscador, «Agrupar por», paginado de 50 y
- * el aviso de servicios con responsable dado de baja. Los filtros viven en la URL.
+ * Clientes › Servicios (F26, Servicios A2): tabla o tablero, filtro rapido con conteos, buscador, «Agrupar», el menu ⋯
+ * (Importar, Guardar vista) y «+ Servicio», todo en la barra superior. Cada fila abre la ficha del servicio en modal.
+ * Los filtros viven en la URL.
  */
 export function ServicesListView({
   items,
@@ -45,6 +50,9 @@ export function ServicesListView({
   canCreate,
   canImport,
   newServiceOptions,
+  counts,
+  anyPortal,
+  records,
 }: {
   items: ServiceListItem[];
   total: number;
@@ -54,16 +62,32 @@ export function ServicesListView({
   canCreate: boolean;
   canImport: boolean;
   newServiceOptions: NewServiceOptions;
+  counts: Partial<Record<QuickFilter, number>>;
+  anyPortal: boolean;
+  /** La ficha abierta (modal), si la URL la pide. */
+  records?: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
   const [pending, start] = useTransition();
   const [creating, setCreating] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const saveView = useSavedView("servicios");
   const go = (patch: Partial<ServiceFilters>) => {
     const next = serializeServiceFilters({ ...filters, page: 1, ...patch });
     start(() => router.push(`/dashboard/clientes${next ? `?${next}` : ""}`));
   };
+  const open = (id: string) => withRecord(pathname, params?.toString() ?? "", { kind: "service", id });
+  const openClient = (id: string) => withRecord(pathname, params?.toString() ?? "", { kind: "client", id });
   const rows = items.map((s) => serviceRowView(s, today));
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const quickKeys = QUICK_FILTERS.filter((k) => anyPortal || (k !== "expiring" && k !== "reviews"));
+  const more: MoreAction[] = [
+    ...(canImport ? [{ key: "import", label: "Importar servicios", icon: <Upload className="h-4 w-4" aria-hidden />, href: "/dashboard/clientes/importar" }] : []),
+    { key: "save", label: saved ? "Vista guardada ✓" : "Guardar vista", icon: <Bookmark className="h-4 w-4" aria-hidden />, onSelect: () => setSaved(saveView()) },
+  ];
+  const boardGroup: GroupBy = filters.groupBy === "none" ? "phase" : filters.groupBy;
 
   return (
     <div className="flex h-full flex-col">
@@ -71,57 +95,29 @@ export function ServicesListView({
         route="/dashboard/clientes"
         filtersBreakpoint="wide"
         tabs={<ClientesTabs active="servicios" />}
-        filters={
-          <>
-            <ViewToggle
-              label="Tabla o tablero"
-              value={filters.view}
-              onChange={(view) => go({ view })}
-              options={[
-                { value: "table", label: "Tabla", icon: Table2 },
-                { value: "board", label: "Tablero", icon: KanbanSquare },
-              ]}
-            />
-            <ExpandableSearch value={filters.q} onCommit={(q) => go({ q })} label="Buscar un cliente" placeholder="Buscar un cliente…" pending={pending} />
-            <FilterMenu label="Mostrar" value={QUICK_FILTER_LABELS[filters.quick]} active={filters.quick !== "all"} icon={<ListFilter className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />} menuClassName="topbar:w-[240px]">
-              {QUICK_FILTERS.map((k) => (
-                <MenuOption key={k} checked={filters.quick === k} onSelect={() => go({ quick: k, departedOnly: false })} title={QUICK_FILTER_LABELS[k]} />
-              ))}
-            </FilterMenu>
-            {filters.view === "table" && (
-              <FilterMenu
-                label={`Agrupar por: ${GROUP_LABELS[filters.groupBy]}`}
-                compact
-                active={filters.groupBy !== "none"}
-                icon={<Rows3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
-                menuClassName="topbar:w-[220px]"
-              >
-                <MenuGroupLabel>Agrupar por</MenuGroupLabel>
-                {GROUP_BY.map((g) => (
-                  <MenuOption key={g} checked={filters.groupBy === g} onSelect={() => go({ groupBy: g })} title={GROUP_LABELS[g]} />
-                ))}
-              </FilterMenu>
-            )}
-          </>
+        view={
+          <ViewToggle
+            label="Tabla o tablero"
+            value={filters.view}
+            onChange={(view) => go({ view })}
+            options={[
+              { value: "table", label: "Tabla", icon: Table2 },
+              { value: "board", label: "Tablero", icon: KanbanSquare },
+            ]}
+          />
         }
-        right={
-          canImport || canCreate ? (
-            <div className="flex shrink-0 gap-2">
-              {canImport && (
-                <Link href="/dashboard/clientes/importar" className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent" aria-label="Importar servicios">
-                  <Upload className="h-4 w-4" aria-hidden />
-                  <span className="hidden sm:inline">Importar</span>
-                </Link>
-              )}
-              {canCreate && (
-                <button type="button" onClick={() => setCreating(true)} className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90" aria-label="Nuevo servicio">
-                  <Plus className="h-4 w-4" aria-hidden />
-                  <span className="hidden sm:inline">Servicio</span>
-                </button>
-              )}
-            </div>
-          ) : undefined
+        quickFilter={
+          <QuickFilterMenu<QuickFilter>
+            value={filters.quick}
+            allKey="all"
+            options={quickKeys.map((k) => ({ key: k, label: QUICK_FILTER_LABELS[k], count: counts[k] }))}
+            onSelect={(k) => go({ quick: k, departedOnly: false })}
+          />
         }
+        search={<ExpandableSearch value={filters.q} onCommit={(q) => go({ q })} label="Buscar un cliente" placeholder="Buscar un cliente…" pending={pending} />}
+        group={<GroupMenu<GroupBy> value={filters.groupBy} noneKey="none" options={GROUP_BY.map((g) => ({ key: g, label: GROUP_LABELS[g] }))} onSelect={(g) => go({ groupBy: g })} />}
+        more={<TopbarMoreMenu actions={more} />}
+        primary={canCreate ? <PrimaryButton label="Nuevo servicio" text="Servicio" onClick={() => setCreating(true)} /> : undefined}
       />
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="space-y-4 p-4 md:p-6">
@@ -130,7 +126,7 @@ export function ServicesListView({
               <span>
                 {departed} {departed === 1 ? "servicio tiene" : "servicios tienen"} un responsable que ya no está o quedó a nombre del respaldo.
               </span>
-              <button type="button" onClick={() => go({ departedOnly: true })} className="font-medium text-primary-ink hover:underline">
+              <button type="button" onClick={() => go({ departedOnly: true })} className="min-h-10 font-medium text-primary-ink hover:underline md:min-h-0">
                 Ver y reasignar
               </button>
             </div>
@@ -142,7 +138,7 @@ export function ServicesListView({
             </p>
           ) : filters.view === "board" ? (
             <div className="flex gap-3 overflow-x-auto pb-2">
-              {groupServices(items, "phase").map((g) => (
+              {groupServices(items, boardGroup).map((g) => (
                 <section key={g.key} className="w-64 shrink-0 rounded-xl border border-border bg-muted/30 p-2">
                   <h3 className="px-1 pb-2 text-xs font-semibold text-muted-foreground">
                     {g.label} · {g.items.length}
@@ -152,10 +148,11 @@ export function ServicesListView({
                       const r = serviceRowView(s, today);
                       return (
                         <li key={s.id}>
-                          <Link href={r.href} className="block rounded-lg border border-border bg-card p-2.5 text-sm hover:bg-accent/40">
+                          <Link href={open(s.id)} scroll={false} onClick={(e) => rememberRecordOpener(e.currentTarget)} className="block rounded-lg border border-border bg-card p-2.5 text-sm hover:bg-accent/40">
                             <span className="flex items-center gap-2 font-medium">
                               <LightDot light={r.light} label={r.lightLabel} />
                               <span className="truncate">{r.client}</span>
+                              {r.reviewChip && <span className="ml-auto shrink-0 rounded-full bg-warn/15 px-1.5 text-[11px] font-medium text-warn">{s.pendingReviews}</span>}
                             </span>
                             <span className="mt-1 block truncate text-xs text-muted-foreground">{r.product}</span>
                             <span className="mt-1 block text-xs text-muted-foreground">
@@ -172,7 +169,11 @@ export function ServicesListView({
           ) : (
             groupServices(items, filters.groupBy).map((g) => (
               <section key={g.key} className="space-y-1">
-                {filters.groupBy !== "none" && <h3 className="text-xs font-semibold text-muted-foreground">{g.label}</h3>}
+                {filters.groupBy !== "none" && (
+                  <h3 className="text-xs font-semibold text-muted-foreground">
+                    {g.label} · {g.items.length}
+                  </h3>
+                )}
                 <div className="overflow-x-auto rounded-xl border border-border">
                   <table className="w-full min-w-[860px] text-sm">
                     <thead className="text-left text-xs text-muted-foreground">
@@ -184,7 +185,7 @@ export function ServicesListView({
                         <th className="px-3 py-2 font-medium">Fase</th>
                         <th className="px-3 py-2 font-medium">Día</th>
                         <th className="px-3 py-2 font-medium">Avance</th>
-                        <th className="px-3 py-2 font-medium">Portal</th>
+                        {anyPortal && <th className="px-3 py-2 font-medium">Portal</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -193,14 +194,13 @@ export function ServicesListView({
                         return (
                           <tr key={s.id} className="border-t border-border hover:bg-accent/30">
                             <td className="px-3 py-2">
-                              <Link href={r.href} className="font-medium text-foreground hover:underline">
+                              <Link href={open(s.id)} scroll={false} onClick={(e) => rememberRecordOpener(e.currentTarget)} className="font-medium text-foreground hover:underline">
                                 {r.client}
                               </Link>
-                              {r.reviewChip && (
-                                <Link href={r.reviewChip.href} className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary-ink">
-                                  {r.reviewChip.label}
-                                </Link>
-                              )}
+                              {r.reviewChip && <span className="ml-2 rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-medium text-warn">{r.reviewChip.label}</span>}
+                              <Link href={openClient(s.contactId)} scroll={false} onClick={(e) => rememberRecordOpener(e.currentTarget)} className="ml-2 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
+                                Ficha del cliente
+                              </Link>
                             </td>
                             <td className="px-3 py-2 text-muted-foreground">{r.product}</td>
                             <td className="px-3 py-2 text-muted-foreground">{r.owner}</td>
@@ -213,7 +213,7 @@ export function ServicesListView({
                             <td className="px-3 py-2 text-muted-foreground">{r.phase}</td>
                             <td className="px-3 py-2 text-muted-foreground">{r.day}</td>
                             <td className="px-3 py-2 text-muted-foreground">{r.progress}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{r.portal}</td>
+                            {anyPortal && <td className="px-3 py-2 text-muted-foreground">{r.portal}</td>}
                           </tr>
                         );
                       })}
@@ -226,13 +226,13 @@ export function ServicesListView({
 
           {pages > 1 && (
             <nav aria-label="Páginas" className="flex items-center justify-between text-sm">
-              <button type="button" disabled={filters.page <= 1} onClick={() => go({ page: filters.page - 1 })} className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40">
+              <button type="button" disabled={filters.page <= 1} onClick={() => go({ page: filters.page - 1 })} className="min-h-10 rounded-lg border border-border px-3 disabled:opacity-40 md:min-h-8">
                 Anterior
               </button>
               <span className="text-muted-foreground">
                 Página {filters.page} de {pages} · {total} servicios
               </span>
-              <button type="button" disabled={filters.page >= pages} onClick={() => go({ page: filters.page + 1 })} className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40">
+              <button type="button" disabled={filters.page >= pages} onClick={() => go({ page: filters.page + 1 })} className="min-h-10 rounded-lg border border-border px-3 disabled:opacity-40 md:min-h-8">
                 Siguiente
               </button>
             </nav>
@@ -240,6 +240,7 @@ export function ServicesListView({
         </div>
       </div>
       {creating && <NewServiceDialog options={newServiceOptions} onClose={() => setCreating(false)} />}
+      {records}
     </div>
   );
 }

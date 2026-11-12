@@ -12,6 +12,7 @@
 import { normalizeSocialHandle } from "@/lib/contacts/social";
 import { normalizePhoneWithCountry } from "@/lib/scheduling/phone-countries";
 import { PREFILL_PARAM_RE, supportsPrefill, type FormField, type PrefillConfig } from "./fields";
+import { validLink } from "./submission-schema";
 
 export type PrefillValue = string | number | string[];
 
@@ -68,6 +69,8 @@ export function coercePrefillValue(
       return text.length <= MAX_SHORT ? text : null;
     case "long_text":
       return text.length <= MAX_LONG ? text : null;
+    case "link":
+      return validLink(text) ? text : null;
     case "email": {
       const email = text.toLowerCase();
       return EMAIL_RE.test(email) && email.length <= 254 ? email : null;
@@ -273,6 +276,8 @@ export function exampleValueFor(field: Pick<FormField, "type" | "options" | "soc
       return (field.options ?? []).slice(0, 2).join(",") || "opcion";
     case "long_text":
       return "Hola";
+    case "link":
+      return "https://ejemplo.com";
     default:
       return "Ana";
   }
