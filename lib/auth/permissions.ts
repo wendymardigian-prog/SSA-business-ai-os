@@ -33,7 +33,7 @@ export const PERMISSION_MODULES = [
   "agents",
   "knowledge",
   "content",
-  "designer",
+  "designer", // @plantilla-quitar(disenador)
   "scheduling",
   "calls", // @plantilla-quitar(llamadas)
   "forms", // @plantilla-quitar(formularios)
@@ -61,7 +61,7 @@ export const MODULE_LABELS: Record<PermissionModule, string> = {
   agents: "Agente de IA",
   knowledge: "Base de conocimiento",
   content: "Contenido",
-  designer: "Diseñador IA",
+  designer: "Diseñador IA", // @plantilla-quitar(disenador)
   scheduling: "Agenda",
   calls: "Grabaciones", // @plantilla-quitar(llamadas)
   forms: "Formularios", // @plantilla-quitar(formularios)
@@ -159,12 +159,14 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "content.publish", module: "content", label: "Programar y publicar", description: "Lo que sale a las redes de verdad." },
   { key: "content.ai", module: "content", label: "Generar copy con IA", description: "Gasta del presupuesto de IA del negocio." },
 
+  // @plantilla-desde(disenador)
   // ── Diseñador IA ────────────────────────────────────────────────────────
   { key: "designer.view", module: "designer", label: "Ver diseños y plantillas", description: "Diseños, plantillas y sus generaciones." },
   { key: "designer.edit", module: "designer", label: "Crear y editar diseños", description: "Crear, editar, duplicar, archivar, exportar, usar la IA y mandar a Contenido." },
   { key: "designer.publish", module: "designer", label: "Publicar diseños", description: "Publicar, despublicar y permitir la descarga del link público." },
   { key: "designer.generate", module: "designer", label: "Generar desde plantillas", description: "Emitir para una persona o para varias, reintentar, volver a generar y anular." },
   { key: "designer.manage", module: "designer", label: "Administrar el Diseñador IA", description: "Estilos propios, fuentes subidas y borrar definitivamente un borrador sin uso." },
+  // @plantilla-hasta(disenador)
 
   // ── Agenda (Etapa 4, §5) ────────────────────────────────────────────────
   { key: "scheduling.use", module: "scheduling", label: "Tener agenda propia", description: "Perfil, sus cuentas de Google Calendar, horarios, excepciones, tiempo fuera y eventos." },
@@ -403,10 +405,12 @@ const MEMBER_KEYS = [
   // `own`, las que tiene a su nombre). Es lo unico que suma: NO administra comisiones // @plantilla-quitar(comisiones)
   // (`commissions.manage`) ni ve los gastos (`expenses.*`). // @plantilla-quitar(comisiones)
   "commissions.view", // @plantilla-quitar(comisiones)
+  // @plantilla-desde(disenador)
   // Diseñador IA (cambio aprobado M12): un Member ve y edita diseños y plantillas (y usa la IA con los
   // topes del negocio). NO publica, no genera desde plantillas, no anula ni administra estilos y fuentes.
   "designer.view",
   "designer.edit",
+  // @plantilla-hasta(disenador)
   // Servicios (cambio aprobado M11): un Member ve los servicios donde es responsable o setter o // @plantilla-quitar(servicios)
   // vendedor del contacto, tilda los pasos a su cargo y abre "Ver como estudiante" a esos clientes // @plantilla-quitar(servicios)
   // (alcance `own` del modulo services). NO crea, confirma, pausa ni cancela servicios. // @plantilla-quitar(servicios)

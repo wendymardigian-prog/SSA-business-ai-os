@@ -38,7 +38,7 @@ import {
   CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
   COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
   FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
-  DESIGN_ACTION_LABELS,
+  DESIGN_ACTION_LABELS, // @plantilla-quitar(disenador)
   FORM_ACTION_LABELS,
   SALE_ACTION_LABELS,
 } from "@/lib/audit-history";
@@ -168,7 +168,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   ...FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
   ...FORM_ACTION_LABELS,
   ...SALE_ACTION_LABELS,
-  ...DESIGN_ACTION_LABELS,
+  ...DESIGN_ACTION_LABELS, // @plantilla-quitar(disenador)
 };
 
 const FIELD_LABELS: Record<string, string> = {

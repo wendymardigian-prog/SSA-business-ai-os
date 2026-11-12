@@ -48,7 +48,7 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
         // va en «Servicio al cliente», que sin el modulo de Servicios prendido muestra solo Afiliados.
         { group: "servicio", title: "Servicio al cliente", separatorBefore: true, items: ["Afiliados"] }, // @plantilla-quitar(ventas)
         { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA", "Ajustes"] }, // @plantilla-quitar(tareas,formularios)
-        // @plantilla-sin(tareas,formularios): { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Automatizaciones", "Diseñador IA", "Agentes IA", "Ajustes"] },
+        // @plantilla-sin(tareas,formularios): { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Automatizaciones", "Agentes IA", "Ajustes"] },
       ]);
     }
   });
@@ -63,7 +63,7 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
       { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas"] }, // @plantilla-quitar(llamadas,ventas,comisiones)
       // @plantilla-sin(llamadas,ventas,comisiones): { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda"] },
       { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA", "Ajustes"] }, // @plantilla-quitar(tareas,formularios)
-      // @plantilla-sin(tareas,formularios): { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Automatizaciones", "Diseñador IA", "Agentes IA", "Ajustes"] },
+      // @plantilla-sin(tareas,formularios): { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Automatizaciones", "Agentes IA", "Ajustes"] },
     ]);
   });
 

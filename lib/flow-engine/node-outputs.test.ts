@@ -38,6 +38,7 @@ describe("node-outputs y el registro dicen lo mismo", () => {
   });
 });
 
+// @plantilla-desde(disenador)
 describe("«Generar desde plantilla» (Diseñador IA, F58)", () => {
   it("deja sus seis salidas con su rótulo, y Condiciones las ofrece DESPUÉS del paso", () => {
     const outputs = nodeOutputs({ type: "action", data: { actionType: "designGenerate", templateId: "tpl-1" } });
@@ -61,3 +62,4 @@ describe("«Generar desde plantilla» (Diseñador IA, F58)", () => {
     expect(before).not.toContain("design.status");
   });
 });
+// @plantilla-hasta(disenador)

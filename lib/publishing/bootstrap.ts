@@ -30,8 +30,8 @@ import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-rela
 import { registerFlowWaitTimeoutHandler } from "@/lib/jobs/handlers/flow-wait-timeout";
 import { registerFlowScheduledRunHandler } from "@/lib/jobs/handlers/flow-scheduled-run";
 import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
-import { registerDesignerHandlers } from "@/lib/jobs/handlers/designer";
-import { loadModuleDesignExtensions } from "@/lib/designer/module-extensions";
+import { registerDesignerHandlers } from "@/lib/jobs/handlers/designer"; // @plantilla-quitar(disenador)
+import { loadModuleDesignExtensions } from "@/lib/designer/module-extensions"; // @plantilla-quitar(disenador)
 import { registerSvcCertificateHandler } from "@/lib/jobs/handlers/svc-certificate"; // @plantilla-quitar(servicios)
 import { registerSvcDailyHandler } from "@/lib/jobs/handlers/svc-daily"; // @plantilla-quitar(servicios)
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
@@ -127,9 +127,9 @@ export function registerPublishing(): void {
   // Las tareas de IA en segundo plano (F24). Despacha por `payload.task`: una
   // tarea sin implementacion falla con el motivo, no completa en silencio.
   registerBgTaskHandler();
-  registerDesignerHandlers();
+  registerDesignerHandlers(); // @plantilla-quitar(disenador)
   // Lo que los módulos le suman al Diseñador (Servicios: variables y el aviso que completa el paso Certificado).
-  loadModuleDesignExtensions();
+  loadModuleDesignExtensions(); // @plantilla-quitar(disenador)
   registerSvcCertificateHandler(); // @plantilla-quitar(servicios)
   registerSvcDailyHandler(); // @plantilla-quitar(servicios)
 

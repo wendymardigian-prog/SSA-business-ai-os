@@ -39,8 +39,8 @@ const NODOS_DE_ACCION = [
   "sendAsset",
   // Tareas × CRM (R4).  @plantilla-quitar(tareas)
   "complete_task", // @plantilla-quitar(tareas)
-  // Diseñador IA (F57).
-  "designGenerate",
+  // Diseñador IA (F57). @plantilla-quitar(disenador)
+  "designGenerate", // @plantilla-quitar(disenador)
   // API de Conversiones de Meta (00328).
   "send_meta_event",
   // Calificación del lead (00329).
@@ -69,8 +69,8 @@ describe("registro de nodos", () => {
     // + `send_to_group` y `invite_to_group` ("Enviar al grupo", "Invitar a un grupo", 00344).
     // + las seis acciones de Servicios (svc_complete_step, svc_change_phase, svc_start_challenge, svc_extend_service,
     //   svc_pause_service; Servicios A1, F25; y svc_issue_certificate, bloque CE).  @plantilla-quitar(servicios)
-    expect(listNodes()).toHaveLength(44); // @plantilla-quitar(ventas,webhooks,tareas,servicios)
-    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(32);
+    expect(listNodes()).toHaveLength(44); // @plantilla-quitar(ventas,webhooks,tareas,servicios,disenador)
+    // @plantilla-sin(ventas,webhooks,tareas,disenador): expect(listNodes()).toHaveLength(31);
   });
 
   it.each(NODOS_DE_ACCION)(
@@ -98,6 +98,7 @@ describe("registro de nodos", () => {
     expect(resolveNodeType({ type: "noExiste", data: {} })).toBeUndefined();
   });
 
+  // @plantilla-desde(disenador)
   it("solo aiResponse, httpRequest y designGenerate persisten variables", () => {
     const persisten = listNodes()
       .filter((n) => n.persistsVariables)
@@ -106,6 +107,8 @@ describe("registro de nodos", () => {
     // designGenerate (Diseñador IA, F58): `design.*` y la generación pendiente tienen que sobrevivir a una pausa.
     expect(persisten).toEqual(["aiResponse", "designGenerate", "httpRequest"]);
   });
+  // @plantilla-hasta(disenador)
+  // @plantilla-sin(disenador): it("solo aiResponse y httpRequest persisten variables", () => { expect(listNodes().filter((n) => n.persistsVariables).map((n) => n.type).sort()).toEqual(["aiResponse", "httpRequest"]); });
 
   it("todos los nodos tienen etiqueta y funcion de ejecucion", () => {
     for (const node of listNodes()) {

@@ -30,7 +30,7 @@ export const RUN_SOURCE_LABELS: Record<string, string> = {
   ads_matching: "Vincular anuncios",
   audio_transcription: "Transcripcion",
   media_description: "Descripcion de imagen",
-  designer: "Diseñador IA",
+  designer: "Diseñador IA", // @plantilla-quitar(disenador)
   // @plantilla-desde(llamadas)
   call_classification: "Clasificacion de llamada",
   call_analysis: "Analisis de llamada",

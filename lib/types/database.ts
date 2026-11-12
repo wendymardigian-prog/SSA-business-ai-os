@@ -498,9 +498,11 @@ export type AuditEntityType =
   | "webhook_endpoint" // @plantilla-quitar(webhooks)
   /** Un anuncio del catalogo de Meta (00191): el vinculo manual con una pieza de Contenido (Extra L, Tiron 2, A2). */
   | "meta_ad"
+  // @plantilla-desde(disenador)
   /** Diseñador IA (00320): un diseño o una generación, y una plantilla (publicar, despublicar, generar, anular, archivar). */
   | "design"
   | "design_template"
+  // @plantilla-hasta(disenador)
   /** Tareas (00196). Las RPC de 00197 escriben `task.completed`, `task.date_shifted`, `task.blockers_changed` y `task.deleted`.  @plantilla-quitar(tareas) */
   /** Finanzas (Extra I, 00225): gastos, plantillas recurrentes y proveedores. Las categorias y la configuracion se auditan sobre "workspace".  @plantilla-quitar(finanzas) */
   | "expense" // @plantilla-quitar(finanzas)
@@ -791,6 +793,7 @@ export type AuditAction =
   | "commission_rule.resumed" // @plantilla-quitar(comisiones)
   | "commission_rule.archived" // @plantilla-quitar(comisiones)
   | "commission_rule.reordered" // @plantilla-quitar(comisiones)
+  // @plantilla-desde(disenador)
   /** Diseñador IA (entity design / design_template). Lo que cambia el estado público queda en el historial. */
   | "design.created"
   | "design.renamed"
@@ -812,6 +815,8 @@ export type AuditAction =
   | "design_template.settings_changed"
   | "design_template.archived"
   | "design_template.automation_created";
+  // @plantilla-hasta(disenador)
+  // @plantilla-sin(disenador): ;
 /** Quien hizo la accion (migracion 00144). */
 export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
@@ -875,8 +880,10 @@ export type AgentRunSource =
   // los pide el sistema al recibir un mensaje.
   | "audio_transcription"
   | "media_description"
+  // @plantilla-desde(disenador)
   /** Diseñador IA (00321): crear y cambiar diseños con IA, revisión automática y estilos propios. */
   | "designer"
+  // @plantilla-hasta(disenador)
   // Llamadas (00148): clasificar, analizar, corregir con IA, probar el borrador y resumir.  @plantilla-quitar(llamadas)
   | "call_classification" // @plantilla-quitar(llamadas)
   | "call_analysis" // @plantilla-quitar(llamadas)
@@ -1271,8 +1278,10 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings: Json;
           team_alerts_settings: Json;
+          // @plantilla-desde(disenador)
           /** Diseñador IA (00319): estilos propios, fuentes y paleta extra. */
           design_settings: Json;
+          // @plantilla-hasta(disenador)
           website_settings: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */ // @plantilla-quitar(ventas)
@@ -1331,7 +1340,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
-          design_settings?: Json;
+          design_settings?: Json; // @plantilla-quitar(disenador)
           website_settings?: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
@@ -1384,7 +1393,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
-          design_settings?: Json;
+          design_settings?: Json; // @plantilla-quitar(disenador)
           website_settings?: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
@@ -2191,6 +2200,7 @@ export interface Database {
           },
         ];
       };
+      // @plantilla-desde(disenador)
       // Diseñador IA (00320). Escribe SOLO el servidor (cliente de servicio, después del permiso).
       design_templates: {
         Row: {
@@ -2338,6 +2348,8 @@ export interface Database {
         Update: Record<string, never>;
         Relationships: [];
       };
+      // @plantilla-hasta(disenador)
+      // @plantilla-desde(disenador)
       // Conversaciones con IA fuera de la bandeja (00320, genéricas de BAIOS). Escribe SOLO el servidor.
       ai_threads: {
         Row: {
@@ -2405,6 +2417,7 @@ export interface Database {
         Update: { feedback?: "up" | "down" | null; result?: Json | null };
         Relationships: [];
       };
+      // @plantilla-hasta(disenador)
       flow_link_clicks: {
         Row: {
           id: string;
@@ -7108,12 +7121,14 @@ export interface Database {
         Args: { p_workspace_id: string; p_channel_id: string; p_since: string; p_time_zone: string };
         Returns: Array<{ day: string; received: number; automation: number; broadcast: number; agent: number; approved: number; human: number; external: number }>;
       };
+      // @plantilla-desde(disenador)
       /** Diseñador IA (00320): lo único que ve el link público /d/<código>. anon la puede ejecutar. */
       design_public_get: { Args: { p_code: string }; Returns: Json };
       /** Diseñador IA (00320): gemela de estructura del documento (`lib/designer/doc/schema.ts`). */
       validate_design_doc: { Args: { p: Json }; Returns: boolean };
       /** Diseñador IA (00319): gemela de estructura de `workspaces.design_settings`. */
       validate_design_settings: { Args: { p: Json }; Returns: boolean };
+      // @plantilla-hasta(disenador)
       // @plantilla-desde(comisiones)
       /** Comisiones (00231): los hechos de un pago que mira el motor. Solo service_role. */
       commission_facts: { Args: { p_payment_id: string }; Returns: Json };

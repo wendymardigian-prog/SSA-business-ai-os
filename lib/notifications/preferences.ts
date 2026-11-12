@@ -188,6 +188,7 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     audience: ADMINS,
     defaults: BELL,
   },
+  // @plantilla-desde(disenador)
   {
     key: "design_generation_failed",
     section: "contenido",
@@ -197,6 +198,7 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     audience: { kind: "admins", permissions: ["designer.generate"] },
     defaults: BELL,
   },
+  // @plantilla-hasta(disenador)
   // ── Lo que solo tiene sentido con esos módulos ──
   // @plantilla-desde(comisiones)
   {

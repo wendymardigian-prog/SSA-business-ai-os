@@ -8,7 +8,7 @@ import { InsertAssetButton } from "@/components/response-assets/insert-asset-but
 import { VariableChips } from "./variable-chips";
 import { EmailAttachmentsField } from "./EmailAttachmentsField";
 import { EmailCategoryField } from "@/components/automations/email-category-field";
-import { isDesignAttachment, parseEmailAttachments } from "@/lib/email/attachment-limits";
+import { isDesignAttachment, parseEmailAttachments } from "@/lib/email/attachment-limits"; // @plantilla-quitar(disenador)
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -96,6 +96,7 @@ export function SendEmailPanel({
 
       <EmailAttachmentsField value={data.attachments} onChange={(attachments) => set({ attachments })} />
 
+      {/* @plantilla-desde(disenador) */}
       {/* Diseñador IA (F59): solo si hay un «Generar desde plantilla» antes (deja `design.pdf_url` en este paso). */}
       {(availableVariables ?? []).includes("design.pdf_url") || parseEmailAttachments(data.attachments).some(isDesignAttachment) ? (
         <label className="flex items-start gap-2 text-sm text-foreground">
@@ -114,6 +115,7 @@ export function SendEmailPanel({
           </span>
         </label>
       ) : null}
+      {/* @plantilla-hasta(disenador) */}
 
       {availableVariables && availableVariables.length > 0 && mode === "variable" && (
         <div>

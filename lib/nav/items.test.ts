@@ -125,7 +125,7 @@ describe("Agenda en el menu (F8)", () => {
     // que aca no se pasa: un viewer sin flags no lo ve.
     // Cambio aprobado M12: el Member de sistema gana «Diseñador IA» (designer.view).
     expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas", "Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA"]); // @plantilla-quitar(llamadas,ventas,finanzas,comisiones,tareas,formularios)
-    // @plantilla-sin(llamadas,ventas,finanzas,comisiones,tareas,formularios): expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Automatizaciones", "Diseñador IA", "Agentes IA"]);
+    // @plantilla-sin(llamadas,ventas,finanzas,comisiones,tareas,formularios): expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Automatizaciones", "Agentes IA"]);
     // (cambio aprobado M9: «Finanzas» se suma al Member de sistema, que tiene commissions.view) // @plantilla-quitar(comisiones)
     // Sin ningun permiso (y sin banderas), no queda nada.
     expect(visibleNavItems(NAV_ITEMS, { permissionKeys: [] }).map((i) => i.name)).toEqual([]);
@@ -297,7 +297,7 @@ describe("grupos del menu (bloque N, N1)", () => {
       ["servicio", ["Clientes", "Portal", "Afiliados"]], // @plantilla-quitar(ventas,servicios)
       // Diseñador IA: después de Formularios.
       ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA", "Ajustes"]], // @plantilla-quitar(tareas,formularios)
-      // @plantilla-sin(tareas,formularios): ["herramientas", ["Automatizaciones", "Diseñador IA", "Agentes IA", "Ajustes"]],
+      // @plantilla-sin(tareas,formularios): ["herramientas", ["Automatizaciones", "Agentes IA", "Ajustes"]],
     ]);
   });
 

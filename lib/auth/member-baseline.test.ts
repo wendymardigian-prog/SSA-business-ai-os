@@ -382,8 +382,10 @@ describe("caracterizacion: el menu (F68)", () => {
       "Contactos",
       "Contenido",
       "Dashboards",
+      // @plantilla-desde(disenador)
       // Diseñador IA (cambio aprobado M12): el Member de sistema tiene designer.view (ve y edita diseños).
       "Diseñador IA",
+      // @plantilla-hasta(disenador)
       // @plantilla-desde(comisiones)
       // Finanzas (Extra I, cambio aprobado M9): el Member de sistema tiene commissions.view (sus comisiones,
       // alcance own). Adentro NO ve las pestañas de gastos (piden expenses.view).

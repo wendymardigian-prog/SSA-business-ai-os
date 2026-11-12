@@ -13,7 +13,8 @@
  * `noindex`, salvo una página web publicada con "Permitir que aparezca en buscadores" (Diseñador IA): sin
  * esto, esa opción no haría nada porque el robot ni la leería. Los códigos son al azar y no se pueden listar.
  */
-export const ALWAYS_CRAWLABLE = ["/d/"];
+export const ALWAYS_CRAWLABLE = ["/d/"]; // @plantilla-quitar(disenador)
+// @plantilla-sin(disenador): export const ALWAYS_CRAWLABLE: string[] = [];
 
 export const PREVIEW_BOTS = [
   "facebookexternalhit",
@@ -34,7 +35,8 @@ export const PREVIEW_BOTS = [
 export function previewBotRule(sitePaths: string[] = []) {
   return {
     userAgent: PREVIEW_BOTS,
-    allow: ["/calendario/", "/f/", "/l/", "/d/", ...sitePaths],
+    allow: ["/calendario/", "/f/", "/l/", "/d/", ...sitePaths], // @plantilla-quitar(disenador)
+    // @plantilla-sin(disenador): allow: ["/calendario/", "/f/", "/l/", ...sitePaths],
     disallow: ["/calendario/agenda/", "/"],
   };
 }

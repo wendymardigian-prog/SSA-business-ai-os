@@ -38,8 +38,8 @@ describe("historyVisual", () => {
     expect(auditCategory("call.analyzed")).toBe("call");
     expect(auditCategory("form.submitted")).toBe("form");
     expect(auditCategory("task.completed")).toBe("task");
-    expect(auditCategory("design.created")).toBe("design");
-    expect(auditCategory("design_template.created")).toBe("design");
+    expect(auditCategory("design.created")).toBe("design"); // @plantilla-quitar(disenador)
+    expect(auditCategory("design_template.created")).toBe("design"); // @plantilla-quitar(disenador)
     expect(auditCategory("contact.created")).toBe("contact");
     expect(auditCategory("assign")).toBe("assign");
     expect(auditCategory("automation_triggered")).toBe("flow");
