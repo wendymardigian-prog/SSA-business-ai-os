@@ -37,46 +37,52 @@ Se aplican en el orden en que las usa cada bloque, numeradas sin saltear (Slack 
 
 Antes de las que reescriben funciones, las definiciones de la base van a `docs/servicios/definiciones-viejas-a4.sql`.
 
+**Estado (12/11/2026 UTC):** las nueve **aplicadas y registradas**, cada una después de ensayarla en una transacción que se deshizo sola y con su `verify-servicios-migracion --a4 M<n>` en verde: 00364 (`20261112144929`), 00365 (`…145055`), 00366 (`…145256`), 00367 (`…145301`, corregida el mismo día: una comparación con NULL dejaba vincular una reunión sin área ni tipo; el SQL registrado es el corregido), 00368 (`…150607`, el relleno no tocó ninguna fila), 00369 (`…151026`), 00370 (`…151140`), 00371 (`…151146`) y 00372 (`…152911`). Las definiciones viejas guardadas coinciden con las huellas del punto de partida.
+
+**Verificado:** `verify-comments`, `verify-services` (a4, sv2, prd), `verify-calls`, `verify-scheduling`, `verify-tasks` y `verify-flow-runs` en verde después de cada migración. `verify-services --bloque a4` prueba contra la base las gemelas (call-link 22, lock 14, relativos 21, reparto 17, camino 56 casos), el vínculo de reuniones, el candado (SV033), la evidencia (SV034), el checklist en la tarea, la guardia de tareas, el cierre al cancelar, el módulo apagado y el barrido de los disparadores relativos. Suite: vitest, tsc y lint (0 errores, 37 avisos como el punto de partida).
+
+**Revisión visual (tu sesión, navegador integrado, 1440 y 390 px, claro y oscuro):** Tareas agrupadas por vencimiento y el panel con Checklist y Comentarios; Grabaciones (sin grabaciones en el negocio: estado vacío); Productos con «Reparto de clientes»; Mi cuenta › Notificaciones (sin Slack conectado, la columna no aparece); el editor del camino (duplicar, «Lo completan», «Se puede completar desde», «Evidencia»). Se corrigió «después de el inicio» y el estilo de esos títulos. Sin errores en consola ni en el servidor.
+
 ## Checklist (A4)
 
 **A4.1 · Comentarios y avisos**
-- [ ] **F132** Comentarios con @menciones (`public.comments`, `CommentThread`, `verify-comments`)
-- [ ] **F133** Slack como canal de avisos (tarjeta, ID en Mi cuenta, columna Slack, `deliver`)
-- [ ] **F134** Avisos nuevos (`mentioned`, `call_service_review`, `call_missing_recording`, `call_proposals_pending`, `svc_capacity_full`, `call_note`)
+- [x] **F132** Comentarios con @menciones (`public.comments`, `CommentThread`, `verify-comments`)
+- [x] **F133** Slack como canal de avisos (tarjeta, ID en Mi cuenta, columna Slack, `deliver`)
+- [x] **F134** Avisos nuevos (`mentioned`, `call_service_review`, `call_missing_recording`, `call_proposals_pending`, `svc_capacity_full`, `call_note`)
 
 **A4.2 · Reuniones unidas al servicio**
-- [ ] **F135** La reunión guarda su servicio (`call-link` con gemela SQL)
-- [ ] **F136** Servicio en Grabaciones (columna, filtro, «por revisar», cabecera)
-- [ ] **F137** Bloque «Reuniones» en la ficha del servicio, «Vincular las reuniones de este servicio», `backfill-call-services`
-- [ ] **F138** Paso Reunión «cuando hay grabación» (motor en A4.2, regla de guardado en A4.4)
-- [ ] **F139** Aviso de reunión sin grabación (barrido horario)
-- [ ] **F140** Criterio de rúbrica que resta
-- [ ] **F141** Cargar una reunión a mano
+- [x] **F135** La reunión guarda su servicio (`call-link` con gemela SQL)
+- [x] **F136** Servicio en Grabaciones (columna, filtro, «por revisar», cabecera)
+- [x] **F137** Bloque «Reuniones» en la ficha del servicio, «Vincular las reuniones de este servicio», `backfill-call-services`
+- [x] **F138** Paso Reunión «cuando hay grabación» (motor en A4.2, regla de guardado en A4.4)
+- [x] **F139** Aviso de reunión sin grabación (barrido horario)
+- [x] **F140** Criterio de rúbrica que resta
+- [x] **F141** Cargar una reunión a mano
 
 **A4.3 · Propuestas del analizador**
-- [ ] **F142** El analizador propone acciones
-- [ ] **F143** Aprobar, editar o descartar (una sola vez)
-- [ ] **F144** Mensaje para el cliente (al aprobar, de a uno)
-- [ ] **F145** Actividad de la reunión y contador del menú
+- [x] **F142** El analizador propone acciones
+- [x] **F143** Aprobar, editar o descartar (una sola vez)
+- [x] **F144** Mensaje para el cliente (al aprobar, de a uno)
+- [x] **F145** Actividad de la reunión y contador del menú
 
 **A4.4 · Camino y servicio**
-- [ ] **F146** Paso bloqueado hasta una fecha o hasta otro paso
-- [ ] **F147** Paso que pide evidencia
-- [ ] **F148** Checklist del paso
-- [ ] **F149** Duplicar fases y pasos
-- [ ] **F150** Workflows que completan el paso
-- [ ] **F151** Tope de cartera por persona
+- [x] **F146** Paso bloqueado hasta una fecha o hasta otro paso
+- [x] **F147** Paso que pide evidencia
+- [x] **F148** Checklist del paso
+- [x] **F149** Duplicar fases y pasos
+- [x] **F150** Workflows que completan el paso
+- [x] **F151** Tope de cartera por persona
 
 **A4.5 · Tareas**
-- [ ] **F152** La tarea se vincula a un servicio y a una reunión
-- [ ] **F153** Checklist y evidencia en la tarea (guardia)
-- [ ] **F154** Resumen del servicio en la tarea
-- [ ] **F155** Crear una tarea desde una reunión
-- [ ] **F156** Cierre al terminar el servicio, agrupar por vencimiento, comentarios
+- [x] **F152** La tarea se vincula a un servicio y a una reunión
+- [x] **F153** Checklist y evidencia en la tarea (guardia)
+- [x] **F154** Resumen del servicio en la tarea
+- [x] **F155** Crear una tarea desde una reunión
+- [x] **F156** Cierre al terminar el servicio, agrupar por vencimiento, comentarios
 
 **A4.6 · Automatizaciones**
-- [ ] **F157** «El responsable del servicio», con alternativa obligatoria
-- [ ] **F158** Disparadores relativo y periódico; acción «Enviar a Slack»
+- [x] **F157** «El responsable del servicio», con alternativa obligatoria
+- [x] **F158** Disparadores relativo y periódico; acción «Enviar a Slack»
 
 **Cierre**
 - [ ] `verify-*` de A1 y A2 contra `punto-de-partida-a4.json`, huellas, módulo apagado, `verify-responsive`, revisión visual, docs y PR (sin merge)
