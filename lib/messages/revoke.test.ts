@@ -148,6 +148,7 @@ describe("canDeleteForEveryone: cuando se ofrece «Eliminar para todos»", () =>
   });
 });
 
+// @plantilla-desde(proyecto)
 describe("la vista previa de la lista (00356) dice lo mismo que la burbuja", () => {
   it("la etiqueta del SQL es DELETED_MESSAGE_LABEL", () => {
     const sql = readFileSync(join(process.cwd(), "supabase/migrations/00356_messages_deleted_for_everyone.sql"), "utf8");
@@ -160,3 +161,4 @@ describe("la vista previa de la lista (00356) dice lo mismo que la burbuja", () 
     expect(sql).toMatch(/AFTER UPDATE OF deleted_for_everyone_at ON public\.messages/);
   });
 });
+// @plantilla-hasta(proyecto)

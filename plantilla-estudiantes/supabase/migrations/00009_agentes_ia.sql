@@ -85,7 +85,7 @@ COMMENT ON COLUMN public.agents.summary_on_close IS 'Si al cerrar una conversaci
 COMMENT ON COLUMN public.agents.classify_on_close IS 'Si al cerrar aplica tags, temperatura y proximo seguimiento, con las mismas reglas que sus herramientas.';
 COMMENT ON COLUMN public.agents.channel_modes IS 'Modo del agente por canal: { channel_id: "send" | "draft" }. Sin entrada = send (envia directo). En draft el turno deja un borrador en agent_drafts y no envia nada. Solo tiene sentido para canales que estan en enabled_channel_ids.';
 REVOKE ALL ON TABLE public.agents FROM anon;
-REVOKE SELECT ON TABLE public.agents FROM authenticated;
+REVOKE SELECT, TRUNCATE, REFERENCES, TRIGGER ON TABLE public.agents FROM authenticated;
 GRANT SELECT (id, workspace_id, name, type, is_enabled, system_prompt, active_prompt_version, provider, model, fallback_provider, fallback_model, temperature, max_output_tokens, model_timeout_seconds, bundle_window_seconds, response_delay_seconds, max_wait_seconds, max_replies_per_conversation, output_format, allowed_tools, tools_config, guardrails, knowledge_enabled, knowledge_tags, knowledge_fallback, enabled_channel_ids, config, created_by, created_at, updated_at, deleted_at, burst_max_age_hours, close_after_inactive_hours, summary_on_close, classify_on_close, channel_modes, response_rules, response_rules_default, external_reply_cooldown_minutes) ON TABLE public.agents TO authenticated;
 
 CREATE TABLE IF NOT EXISTS public.agent_prompt_versions (
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS public.agent_prompt_versions (
 ALTER TABLE public.agent_prompt_versions ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.agent_prompt_versions IS 'Historial inmutable del system prompt de cada agente. Mismo patron que flow_versions. Cada run guarda la version que uso (agent_runs.prompt_version).';
 REVOKE ALL ON TABLE public.agent_prompt_versions FROM anon;
-REVOKE UPDATE, DELETE ON TABLE public.agent_prompt_versions FROM authenticated;
+REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public.agent_prompt_versions FROM authenticated;
 
 CREATE TABLE IF NOT EXISTS public.ai_task_prompt_versions (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS public.ai_task_prompt_versions (
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   variant uuid,
   CONSTRAINT ai_task_prompt_versions_pkey PRIMARY KEY (id),
-  CONSTRAINT ai_task_prompt_versions_task_check CHECK ((task = ANY (ARRAY['message_classification'::text, 'conversation_summary'::text, 'close_classification'::text, 'media_description'::text, 'ads_analysis'::text]))),
+  CONSTRAINT ai_task_prompt_versions_task_check CHECK ((task = ANY (ARRAY['message_classification'::text, 'conversation_summary'::text, 'close_classification'::text, 'media_description'::text, 'ads_analysis'::text, 'ads_matching'::text]))),
   CONSTRAINT ai_task_prompt_versions_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL,
   CONSTRAINT ai_task_prompt_versions_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
@@ -126,7 +126,7 @@ ALTER TABLE public.ai_task_prompt_versions ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.ai_task_prompt_versions IS 'Historial inmutable de las instrucciones (parte editable del prompt) de cada tarea de IA. Mismo patron que agent_prompt_versions.';
 COMMENT ON COLUMN public.ai_task_prompt_versions.variant IS 'Sin uso en esta instalacion: siempre NULL, que son las instrucciones generales de la tarea de IA.';
 REVOKE ALL ON TABLE public.ai_task_prompt_versions FROM anon;
-REVOKE UPDATE, DELETE ON TABLE public.ai_task_prompt_versions FROM authenticated;
+REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public.ai_task_prompt_versions FROM authenticated;
 
 CREATE TABLE IF NOT EXISTS public.knowledge_base (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -158,6 +158,7 @@ COMMENT ON TABLE public.knowledge_base IS 'Documentos de la base de conocimiento
 COMMENT ON COLUMN public.knowledge_base.status IS 'processing = el job async todavia corre; pending = guardado, falta conectar Voyage para indexarlo (se retoma solo al conectarlo); ready = indexado; error = fallo, el motivo esta en error_detail.';
 COMMENT ON COLUMN public.knowledge_base.embedding_model IS 'Modelo que genero los embeddings de este documento (ej: voyage-4-lite). Si se cambia de modelo, identifica que hay que reindexar.';
 COMMENT ON COLUMN public.knowledge_base.internal_only IS 'Uso interno: nunca llega al prompt de un agente, tenga el tag que tenga. El filtro va dentro de match_knowledge_chunks_filtered.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.knowledge_base FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.knowledge_chunks (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -176,6 +177,7 @@ ALTER TABLE public.knowledge_chunks ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.knowledge_chunks IS 'Fragmentos indexados de un documento. Se borran en cascada con su documento. Los escribe solo el service role, desde el job de indexacion.';
 COMMENT ON COLUMN public.knowledge_chunks.workspace_id IS 'Desnormalizado del documento a proposito: evita un JOIN en la busqueda semantica y hace la RLS de una sola condicion.';
 COMMENT ON COLUMN public.knowledge_chunks.embedding IS 'Embedding de Voyage AI voyage-4-lite, 1024 dimensiones (su default). Cambiar la dimension obliga a reindexar todo.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.knowledge_chunks FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.model_pricing (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -199,6 +201,7 @@ ALTER TABLE public.model_pricing ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.model_pricing IS 'Precios por millon de tokens por modelo, con vigencia. Un cambio de precio es una fila nueva con valid_from nuevo: el historial se conserva y los runs viejos no se recalculan. model es texto libre, sin lista cerrada. Solo Owner/Admin la leen.';
 COMMENT ON COLUMN public.model_pricing.audio_per_hour IS 'USD por hora de audio. Solo para modelos de transcripcion, que se cobran por duracion y no por tokens. Null en los modelos de chat y de embeddings.';
 REVOKE ALL ON TABLE public.model_pricing FROM anon;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.model_pricing FROM authenticated;
 
 CREATE TABLE IF NOT EXISTS public.agent_runs (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -233,7 +236,7 @@ CREATE TABLE IF NOT EXISTS public.agent_runs (
   audio_seconds numeric(12,3),
   CONSTRAINT agent_runs_pkey PRIMARY KEY (id),
   CONSTRAINT agent_runs_agent_only_for_agent_sources CHECK (((agent_id IS NULL) OR (source = ANY (ARRAY['agent'::text, 'conversation_summary'::text, 'content_copy'::text])))),
-  CONSTRAINT agent_runs_source_check CHECK ((source = ANY (ARRAY['agent'::text, 'flow_ai_node'::text, 'sequence_ai_step'::text, 'kb_indexing'::text, 'conversation_summary'::text, 'message_classification'::text, 'message_classification_eval'::text, 'content_copy'::text, 'ads_analysis'::text, 'audio_transcription'::text, 'media_description'::text]))),
+  CONSTRAINT agent_runs_source_check CHECK ((source = ANY (ARRAY['agent'::text, 'flow_ai_node'::text, 'sequence_ai_step'::text, 'kb_indexing'::text, 'conversation_summary'::text, 'message_classification'::text, 'message_classification_eval'::text, 'content_copy'::text, 'ads_analysis'::text, 'audio_transcription'::text, 'media_description'::text, 'ads_matching'::text]))),
   CONSTRAINT agent_runs_status_values CHECK ((status = ANY (ARRAY['running'::text, 'responded'::text, 'escalated'::text, 'skipped_automation'::text, 'skipped'::text, 'blocked_guardrail'::text, 'completed'::text, 'error'::text, 'drafted'::text, 'already_answered'::text]))),
   CONSTRAINT agent_runs_trigger_values CHECK ((trigger = ANY (ARRAY['inbound_message'::text, 'cron_close'::text, 'manual'::text, 'flow_node'::text, 'sequence_step'::text, 'job'::text]))),
   CONSTRAINT agent_runs_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE SET NULL,
@@ -340,11 +343,15 @@ CREATE TABLE IF NOT EXISTS public.agent_run_steps (
 ALTER TABLE public.agent_run_steps ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.agent_run_steps IS 'Detalle tecnico de cada run: una fila por llamada al modelo, busqueda en la KB o herramienta. input/output pueden tener texto del lead: siguen la retencion de los mensajes y nunca van a los logs.';
 REVOKE ALL ON TABLE public.agent_run_steps FROM anon;
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.agent_run_steps FROM authenticated;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public.agent_run_steps FROM authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Claves foraneas hacia tablas de esta area
 -- ----------------------------------------------------------------------------
+
+DO $$ BEGIN
+  ALTER TABLE public.contact_qualification_changes ADD CONSTRAINT contact_qualification_changes_changed_by_agent_id_fkey FOREIGN KEY (changed_by_agent_id) REFERENCES public.agents(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   ALTER TABLE public.contact_status_changes ADD CONSTRAINT contact_status_changes_changed_by_agent_id_fkey FOREIGN KEY (changed_by_agent_id) REFERENCES public.agents(id) ON DELETE SET NULL;
@@ -384,13 +391,23 @@ BEGIN
   SELECT value::timestamptz INTO v_since FROM private.system_config WHERE key = 'draft_alerts_since';
   v_since := COALESCE(v_since, now());
 
+  -- Sin borradores vivos con ventana no hay nada que avisar. Antes de
+  -- esto, cada 5 minutos se creaba y borraba la tabla temporal igual.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.agent_drafts d
+    WHERE d.status IN ('pending', 'failed')
+      AND d.sendable_until IS NOT NULL
+      AND d.sendable_until > now()
+      AND d.created_at >= v_since
+  ) THEN
+    RETURN jsonb_build_object('drafts', 0, 'notifications', 0);
+  END IF;
+
   CREATE TEMP TABLE IF NOT EXISTS pg_temp.draft_alerts (
     id uuid, workspace_id uuid, owner uuid, window_hours integer, new_cuts smallint[], deepest smallint
   ) ON COMMIT DROP;
   TRUNCATE pg_temp.draft_alerts;
 
-  -- Los borradores vivos con ventana abierta que cruzaron algun corte nuevo.
-  -- FOR UPDATE: dos corridas superpuestas no avisan el mismo corte.
   INSERT INTO pg_temp.draft_alerts (id, workspace_id, owner, window_hours, new_cuts, deepest)
   SELECT x.id, x.workspace_id, x.owner, x.w, x.cuts, (SELECT max(t) FROM unnest(x.cuts) t)
   FROM (
@@ -413,14 +430,12 @@ BEGIN
   ) x
   WHERE cardinality(x.cuts) > 0;
 
-  -- Se anotan TODOS los cortes cruzados.
   UPDATE public.agent_drafts d
   SET alerted_thresholds = d.alerted_thresholds || a.new_cuts
   FROM pg_temp.draft_alerts a
   WHERE d.id = a.id;
   GET DIAGNOSTICS v_drafts = ROW_COUNT;
 
-  -- Y se avisa solo el mas profundo, agrupado por persona, corte y ventana.
   INSERT INTO public.notifications (workspace_id, type, title, body, entity_type, entity_id, recipient_id, metadata)
   SELECT
     g.workspace_id,
@@ -518,7 +533,37 @@ BEGIN
 END;
 $function$;
 COMMENT ON FUNCTION public.claim_agent_reply(p_conversation_id uuid, p_inbound_at timestamp with time zone, p_run_id uuid) IS 'Bajo un advisory lock por conversación: true si ya hay un saliente posterior al inbound del turno que no es el propio run.';
-REVOKE ALL ON FUNCTION public.claim_agent_reply(p_conversation_id uuid, p_inbound_at timestamp with time zone, p_run_id uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.claim_agent_reply(p_conversation_id uuid, p_inbound_at timestamp with time zone, p_run_id uuid) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.closable_inactive_conversations(p_workspace_id uuid, p_channel_ids uuid[], p_inactive_before timestamp with time zone, p_active_since timestamp with time zone, p_now timestamp with time zone DEFAULT now(), p_limit integer DEFAULT 50)
+ RETURNS TABLE(id uuid, channel_id uuid, agent_enabled boolean, agent_paused_until timestamp with time zone, last_message_at timestamp with time zone)
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  SELECT c.id, c.channel_id, c.agent_enabled, c.agent_paused_until, c.last_message_at
+  FROM public.conversations c
+  WHERE c.workspace_id = p_workspace_id
+    AND c.status = 'open'
+    AND c.deleted_at IS NULL
+    AND c.channel_id = ANY (p_channel_ids)
+    AND c.last_message_at < p_inactive_before
+    AND c.last_message_at >= p_active_since
+    AND c.agent_enabled IS DISTINCT FROM false
+    AND (c.agent_paused_until IS NULL OR c.agent_paused_until <= p_now)
+    AND EXISTS (
+      SELECT 1 FROM public.agent_runs r
+      WHERE r.conversation_id = c.id AND r.source = 'agent'
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.agent_drafts d
+      WHERE d.conversation_id = c.id AND d.status IN ('pending', 'sending', 'failed')
+    )
+  ORDER BY c.last_message_at ASC
+  LIMIT GREATEST(p_limit, 0)
+$function$;
+COMMENT ON FUNCTION public.closable_inactive_conversations(p_workspace_id uuid, p_channel_ids uuid[], p_inactive_before timestamp with time zone, p_active_since timestamp with time zone, p_now timestamp with time zone, p_limit integer) IS 'Conversaciones abiertas que el barrido de inactividad puede cerrar. Solo service_role.';
+REVOKE ALL ON FUNCTION public.closable_inactive_conversations(p_workspace_id uuid, p_channel_ids uuid[], p_inactive_before timestamp with time zone, p_active_since timestamp with time zone, p_now timestamp with time zone, p_limit integer) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.ensure_default_agents(p_workspace_id uuid, p_provider text, p_model text, p_chat_prompt text, p_copywriter_instructions text)
  RETURNS jsonb
@@ -601,15 +646,20 @@ CREATE OR REPLACE FUNCTION public.match_knowledge_chunks_filtered(p_workspace_id
  STABLE SECURITY DEFINER
  SET search_path TO ''
 AS $function$
+DECLARE
+  v_service boolean := COALESCE(auth.role(), '') = 'service_role';
 BEGIN
   IF p_workspace_id IS NULL THEN
     RAISE EXCEPTION 'workspace_id is required';
   END IF;
 
-  -- Mismo chequeo que match_knowledge_chunks (ver ahi por que va el coalesce).
-  IF COALESCE(auth.role(), '') <> 'service_role'
-     AND NOT public.is_workspace_member(p_workspace_id) THEN
+  IF NOT v_service AND NOT public.is_workspace_member(p_workspace_id) THEN
     RAISE EXCEPTION 'forbidden: not a member of this workspace';
+  END IF;
+
+  -- Lo interno solo lo pide el servidor.
+  IF COALESCE(p_include_internal, false) AND NOT v_service THEN
+    RAISE EXCEPTION 'forbidden: p_include_internal is only for the server';
   END IF;
 
   RETURN QUERY
@@ -625,6 +675,8 @@ BEGIN
   WHERE kc.workspace_id = p_workspace_id
     AND kb.deleted_at IS NULL
     AND (COALESCE(p_include_internal, false) OR kb.internal_only = false)
+    -- Con la sesion de una persona, solo lo que esa persona puede leer.
+    AND (v_service OR public.can_read_knowledge(p_workspace_id, kb.internal_only))
     AND (p_tags IS NULL OR cardinality(p_tags) = 0 OR kb.tags && p_tags)
     AND (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding)) >= COALESCE(p_min_similarity, 0)
   ORDER BY kc.embedding OPERATOR(extensions.<=>) p_query_embedding
@@ -640,17 +692,17 @@ CREATE OR REPLACE FUNCTION public.match_knowledge_chunks(p_workspace_id uuid, p_
  STABLE SECURITY DEFINER
  SET search_path TO ''
 AS $function$
+DECLARE
+  -- coalesce y no auth.role() pelado: una conexion sin JWT devuelve NULL, y
+  -- "NULL <> 'service_role' AND ..." evalua a NULL, con lo cual el IF no entra
+  -- y el chequeo de permiso se saltea solo.
+  v_service boolean := COALESCE(auth.role(), '') = 'service_role';
 BEGIN
   IF p_workspace_id IS NULL THEN
     RAISE EXCEPTION 'workspace_id is required';
   END IF;
 
-  -- coalesce y no auth.role() pelado: una conexion sin JWT devuelve NULL, y
-  -- "NULL <> 'service_role' AND ..." evalua a NULL, con lo cual el IF no entra
-  -- y el chequeo de permiso se saltea solo. Con coalesce, sin rol conocido se
-  -- exige pertenencia al workspace, que es el lado seguro.
-  IF COALESCE(auth.role(), '') <> 'service_role'
-     AND NOT public.is_workspace_member(p_workspace_id) THEN
+  IF NOT v_service AND NOT public.is_workspace_member(p_workspace_id) THEN
     RAISE EXCEPTION 'forbidden: not a member of this workspace';
   END IF;
 
@@ -666,6 +718,8 @@ BEGIN
   JOIN public.knowledge_base kb ON kb.id = kc.document_id
   WHERE kc.workspace_id = p_workspace_id
     AND kb.deleted_at IS NULL
+    -- Con la sesion de una persona, solo lo que esa persona puede leer.
+    AND (v_service OR public.can_read_knowledge(p_workspace_id, kb.internal_only))
     AND (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding)) >= p_min_similarity
   ORDER BY kc.embedding OPERATOR(extensions.<=>) p_query_embedding
   LIMIT GREATEST(p_match_count, 1);
@@ -863,19 +917,9 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE POLICY knowledge_base_select ON public.knowledge_base FOR SELECT TO public
-    USING (public.is_workspace_member(workspace_id));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
   CREATE POLICY knowledge_base_update ON public.knowledge_base FOR UPDATE TO public
     USING (( SELECT public.has_permission(knowledge_base.workspace_id, 'knowledge.edit'::text) AS has_permission))
     WITH CHECK (( SELECT public.has_permission(knowledge_base.workspace_id, 'knowledge.edit'::text) AS has_permission));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE POLICY knowledge_chunks_select ON public.knowledge_chunks FOR SELECT TO public
-    USING (public.is_workspace_member(workspace_id));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN

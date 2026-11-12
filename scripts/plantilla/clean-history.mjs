@@ -178,6 +178,10 @@ const MODULE_SAFE = [
   /formulario \| agenda \| pago/gi,
   /Ventas, Servicio, Equipo y Otros/gi,
   /regla de cierre|al cierre|clasificaci[oó]n al cierre|el cierre de la conversaci[oó]n|un cierre/gi,
+  // El cron de jobs (guarda): "llamar" a la app, no una llamada de Fathom.
+  /anotar la llamada|[uú]ltima llamada|llamada de seguridad/gi,
+  /cierre por inactividad/gi,
+  /formulario de la agenda/gi,
 ];
 
 export function findHistory(text, { comment = true } = {}) {
@@ -251,7 +255,11 @@ export const REWRITES = [
     to: "    -- Facebook solo busca cuando el que llama lo pide (un canal de Facebook): sus ids no son\n    -- confiables como dato de identidad suelto." },
   { from: "  -- eventos assignment_changed de mas (contacts_automation_changes, 00039).",
     to: "  -- eventos assignment_changed de mas (contacts_automation_changes)." },
-  { from: "    -- verify-rls, que es justo para lo que esta).", to: "    -- verify-rls, que es justo para lo que esta)." },
+  { from: "  -- Lo interno (lo que sale de las llamadas, por ejemplo) solo lo pide el servidor.",
+    to: "  -- Lo interno solo lo pide el servidor." },
+  { from: "-- 00356", to: "-- Cuando se borro para todos" },
+  { from: "          -- reemplaza el nombre que dejo otro camino automatico (un formulario previo, el nombre de su",
+    to: "          -- reemplaza el nombre que dejo otro camino automatico (una reserva previa, el nombre de su" },
 ];
 
 // Comentarios de la base (COMMENT ON) que se reescriben enteros. Clave: el objeto como
@@ -441,6 +449,8 @@ export const COMMENT_REWRITES = {
     "Que archivo de content-media corresponde a que URL del proveedor, para no subirlo dos veces.",
   "table public.social_account_metrics_daily":
     "Seguidores y alcance de una cuenta, por dia. Es la base del grafico de crecimiento y del salto de seguidores por post.",
+  "table public.meta_capi_request_context":
+    "La IP y el navegador de quien agendó, para la API de Conversiones de Meta. Solo service_role; se borra a los 8 días.",
   "table public.stickers":
     "Biblioteca de stickers de WhatsApp: los mandados se agregan solos, los recibidos se guardan con un boton, y se pueden subir. Archivo en chat-media/<ws>/stickers/<sha>.webp.",
 };

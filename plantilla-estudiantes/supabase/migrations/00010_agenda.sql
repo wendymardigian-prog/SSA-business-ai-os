@@ -35,6 +35,7 @@ ALTER TABLE public.availability_schedules ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.availability_schedules IS 'Horarios de disponibilidad de cada persona. Las reglas van en hora local + la zona del horario; el motor las convierte a UTC.';
 COMMENT ON COLUMN public.availability_schedules.weekly_hours IS 'Rangos por dia de la semana (clave 0=domingo..6=sabado). Dia ausente o vacio = no trabaja. Validado con Zod en la Server Action.';
 COMMENT ON COLUMN public.availability_schedules.date_overrides IS 'Excepciones por fecha: reemplazan la regla semanal de ese dia. ranges vacio = no disponible todo el dia.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.availability_schedules FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.booking_categories (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -60,6 +61,7 @@ COMMENT ON TABLE public.booking_categories IS 'Areas (parent_id null) y tipos (c
 COMMENT ON COLUMN public.booking_categories.is_system IS 'Ventas, Servicio, Equipo y Otros vienen precargadas: se renombran pero no se archivan.';
 COMMENT ON COLUMN public.booking_categories.description IS 'Opcional: cuando se usa este tipo. Lo lee la IA al clasificar una grabacion.';
 COMMENT ON COLUMN public.booking_categories.system_key IS 'Clave estable de las areas y tipos que el codigo reconoce. No cambia al renombrar.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.booking_categories FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.calendars (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -86,6 +88,7 @@ CREATE TABLE IF NOT EXISTS public.calendars (
 );
 ALTER TABLE public.calendars ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.calendars IS 'Los calendarios de cada cuenta de Google conectada por una persona. check_conflicts = se leen sus horarios ocupados; is_active = sigue existiendo en la cuenta.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.calendars FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.event_types (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -134,6 +137,7 @@ CREATE TABLE IF NOT EXISTS public.event_types (
   CONSTRAINT event_types_scheduling_type_check CHECK ((scheduling_type = ANY (ARRAY['individual'::text, 'round_robin'::text, 'collective'::text]))),
   CONSTRAINT event_types_slug_check CHECK (((slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'::text) AND (char_length(slug) <= 60))),
   CONSTRAINT event_types_status_check CHECK ((status = ANY (ARRAY['active'::text, 'hidden'::text, 'inactive'::text]))),
+  CONSTRAINT event_types_success_redirect_https CHECK (((success_redirect_url IS NULL) OR (success_redirect_url ~* '^https://[^/@\s]+'::text))),
   CONSTRAINT event_types_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.booking_categories(id),
   CONSTRAINT event_types_destination_calendar_id_fkey FOREIGN KEY (destination_calendar_id) REFERENCES public.calendars(id) ON DELETE SET NULL,
   CONSTRAINT event_types_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -146,6 +150,7 @@ COMMENT ON COLUMN public.event_types.conflict_calendar_ids IS 'Calendarios de co
 COMMENT ON COLUMN public.event_types.booking_fields IS 'Formulario de reserva, validado con Zod: [{id, type, system, label, visibility, options?, identifier, ...}].';
 COMMENT ON COLUMN public.event_types.unavailable_messages IS 'Que ve el invitado cuando no puede agendar. null = textos por defecto.';
 COMMENT ON COLUMN public.event_types.is_internal IS 'El evento interno de su duena: sostiene las reuniones agendadas a mano sin elegir un evento. Nunca se publica ni aparece en las listas.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.event_types FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.bookings (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -228,6 +233,7 @@ ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.bookings IS 'Una fila por reunion agendada. No se borran: cancelar es un estado. El historial vive en audit_log con entity_type = booking.';
 COMMENT ON COLUMN public.bookings.uid IS 'Token publico de 22 caracteres (unos 131 bits): con el se cancela y se reagenda sin sesion. Nunca se le entrega al agente de IA.';
 COMMENT ON COLUMN public.bookings.status_group IS 'Calculada desde status. active / no_show / outcome / cancelled. Solo las active ocupan el horario.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.bookings FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.event_type_moved_links (
   username text NOT NULL,
@@ -263,6 +269,7 @@ CREATE TABLE IF NOT EXISTS public.out_of_office (
 );
 ALTER TABLE public.out_of_office ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.out_of_office IS 'Tiempo fuera de una persona (vacaciones, viajes). Bloquea todos sus horarios y eventos. Instantes en UTC.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.out_of_office FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.scheduling_profiles (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -290,6 +297,7 @@ CREATE TABLE IF NOT EXISTS public.scheduling_profiles (
 ALTER TABLE public.scheduling_profiles ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.scheduling_profiles IS 'El perfil de agenda de cada persona: usuario de los links, zona horaria, formato de hora, horario y calendario destino por defecto.';
 COMMENT ON COLUMN public.scheduling_profiles.username IS 'Slug de 3 a 40 caracteres, unico en el workspace sin distinguir mayusculas. Palabras reservadas: agenda, embed, api, equipo, admin.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.scheduling_profiles FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Claves foraneas hacia tablas de esta area
@@ -532,7 +540,18 @@ BEGIN
   -- contacto no se escribe en este.
   IF NOT v_created THEN
     UPDATE public.contacts
-    SET display_name = coalesce(display_name, nullif(btrim(p_name), '')),
+    SET display_name = CASE
+          -- Una reserva PUBLICA (la persona escribio su propio nombre en el formulario de la agenda)
+          -- reemplaza el nombre que dejo otro camino automatico (una reserva previa, el nombre de su
+          -- negocio, un relleno), salvo que alguien del equipo lo haya editado a mano
+          -- (display_name_source = 'manual'). Agendar a mano o el agente (p_contact_id dado) nunca lo pisan.
+          WHEN p_contact_id IS NULL
+           AND p_origin IN ('public_page', 'embed')
+           AND nullif(btrim(p_name), '') IS NOT NULL
+           AND display_name_source IS DISTINCT FROM 'manual'
+            THEN btrim(p_name)
+          ELSE coalesce(display_name, nullif(btrim(p_name), ''))
+        END,
         email        = CASE WHEN private.contact_value_taken(p_workspace_id, v_contact_id, 'email', v_email) THEN email ELSE coalesce(email, v_email) END,
         phone        = CASE WHEN private.contact_value_taken(p_workspace_id, v_contact_id, 'phone', v_nphone) THEN phone ELSE coalesce(phone, v_nphone) END,
         timezone     = coalesce(timezone, nullif(p_timezone, '')),

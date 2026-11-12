@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS public.content_pillars (
 );
 ALTER TABLE public.content_pillars ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.content_pillars IS 'Pilares de contenido del negocio. Se archivan, nunca se borran: lo publicado sigue mostrando el suyo.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.content_pillars FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.content_ideas (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -69,6 +70,7 @@ COMMENT ON TABLE public.content_ideas IS 'Ideas de contenido. Aprobar una crea u
 COMMENT ON COLUMN public.content_ideas.source IS 'manual: la escribio una persona. agent: la propuso un agente.';
 COMMENT ON COLUMN public.content_ideas.content IS 'El texto unico de la idea.';
 COMMENT ON COLUMN public.content_ideas.platforms IS 'Redes a las que apunta la idea. Es una intencion: al aprobar se heredan a la pieza.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.content_ideas FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.content_posts (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -128,6 +130,7 @@ COMMENT ON COLUMN public.content_posts.script IS 'El guion completo para grabar.
 COMMENT ON COLUMN public.content_posts.recording_notes IS 'Instrucciones para grabar la pieza.';
 COMMENT ON COLUMN public.content_posts.assigned_to IS 'Responsable de la pieza (miembro del workspace). Distinto de created_by, que no cambia. Por defecto, quien la crea.';
 COMMENT ON COLUMN public.content_posts.attribution_code IS 'Codigo corto y unico por workspace (c + 5 caracteres [a-z2-9]) que va en el utm_content de los links de la pieza.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.content_posts FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.content_post_versions (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -150,6 +153,7 @@ CREATE TABLE IF NOT EXISTS public.content_post_versions (
 ALTER TABLE public.content_post_versions ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.content_post_versions IS 'Historial del post. Restaurar crea una version nueva: nunca se borra una.';
 COMMENT ON COLUMN public.content_post_versions.updated_at IS 'Cuando se toco por ultima vez esta fila. Con reason=edit y menos de 10 minutos, el proximo cambio del mismo autor actualiza esta misma version en vez de crear otra.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.content_post_versions FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.provider_media (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -165,6 +169,7 @@ CREATE TABLE IF NOT EXISTS public.provider_media (
 );
 ALTER TABLE public.provider_media ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.provider_media IS 'Que archivo de content-media corresponde a que URL del proveedor, para no subirlo dos veces.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.provider_media FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.social_accounts (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -197,6 +202,7 @@ COMMENT ON TABLE public.social_accounts IS 'Una fila por cuenta social del works
 COMMENT ON COLUMN public.social_accounts.channel_id IS 'El canal de la bandeja, cuando la misma cuenta ademas conversa (Instagram por Zernio).';
 COMMENT ON COLUMN public.social_accounts.default_publisher IS 'Cual se usa si no se elige otro. Si deja de estar disponible, el sistema pasa al siguiente y avisa.';
 COMMENT ON COLUMN public.social_accounts.publishers IS 'Por donde se puede publicar en esta red: [{ publisher, account_ref, status, status_reason, verified_at, manually_enabled }]. Se valida con Zod al escribir.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.social_accounts FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.social_posts (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -252,6 +258,7 @@ COMMENT ON COLUMN public.social_posts.status IS 'uploading = subiendo la media a
 COMMENT ON COLUMN public.social_posts.last_error_kind IS 'temporary: reintentar tiene sentido. permanent: no va a mejorar solo.';
 COMMENT ON COLUMN public.social_posts.publish_progress IS 'Que pasos de la publicacion ya salieron, para que un reintento no los repita. Lo escribe solo el publicador.';
 COMMENT ON COLUMN public.social_posts.assigned_to IS 'Responsable de una publicacion SIN pieza (externa o marcada a mano). Las de una pieza usan content_posts.assigned_to.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.social_posts FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.social_post_comments (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -284,6 +291,7 @@ CREATE TABLE IF NOT EXISTS public.social_post_comments (
 );
 ALTER TABLE public.social_post_comments ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.social_post_comments IS 'Comentarios de las publicaciones. Entran por el webhook en el momento y se vuelven a leer en la sincronizacion. Los propios se guardan y nunca disparan automatizaciones.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.social_post_comments FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Funciones

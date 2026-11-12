@@ -147,6 +147,9 @@ const QUERIES = {
 
 // Filas que dejan las migraciones en una base vacia (datos de sistema, no de
 // un negocio): se comparan por su huella.
+// Estado que escribe el cron de la guarda mientras la base esta prendida: no es una semilla.
+const RUNTIME_STATE = new Set(["private.cron_guard_state", "private.cron_tick_errors"]);
+
 async function seededRows(client) {
   const { rows: tables } = await client.query(
     `select n.nspname || '.' || c.relname as t from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -155,7 +158,7 @@ async function seededRows(client) {
   for (const { t } of tables) {
     const q = `select count(*)::int as n, md5(coalesce(string_agg(x::text, '|' order by x::text), '')) as h from ${t} x`;
     const { rows } = await client.query(q);
-    if (rows[0].n > 0) out.push({ k: t, rows: rows[0].n, hash: rows[0].h });
+    if (rows[0].n > 0 && !RUNTIME_STATE.has(t)) out.push({ k: t, rows: rows[0].n, hash: rows[0].h });
   }
   return out;
 }

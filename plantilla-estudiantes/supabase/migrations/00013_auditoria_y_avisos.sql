@@ -40,7 +40,8 @@ COMMENT ON COLUMN public.audit_log.reverted_at IS 'Cuando una persona revirtio e
 COMMENT ON COLUMN public.audit_log.reverted_by_audit_id IS 'La entrada revert que deshizo esta accion (quien y cuando).';
 COMMENT ON COLUMN public.audit_log.actor_type IS 'Quien hizo la accion: user (una persona), agent (agente de IA), system (proceso interno) o webhook (un proveedor). Para leerlo, usar effectiveActorType().';
 COMMENT ON COLUMN public.audit_log.actor_label IS 'Nombre legible del actor cuando no es una persona (ej: "Analisis automatico").';
-REVOKE UPDATE, DELETE ON TABLE public.audit_log FROM authenticated;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.audit_log FROM anon;
+REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public.audit_log FROM authenticated;
 
 CREATE TABLE IF NOT EXISTS public.notifications (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -63,6 +64,7 @@ COMMENT ON TABLE public.notifications IS 'Centro de notificaciones in-app. Las e
 COMMENT ON COLUMN public.notifications.entity_type IS 'A que apunta el aviso: conversation, channel, sequence_enrollment, contact. Define el deep-link y, para un Member, si puede verlo.';
 COMMENT ON COLUMN public.notifications.metadata IS 'Datos del evento. Nunca API keys, contenido de mensajes ni PII de mas.';
 COMMENT ON COLUMN public.notifications.recipient_id IS 'Destinatario puntual. NULL = para los Owner/Admin del workspace (no "para cualquiera").';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.notifications FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Claves foraneas hacia tablas de esta area
@@ -163,6 +165,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_agent_metadata ON public.audit_log USIN
 CREATE INDEX IF NOT EXISTS idx_audit_log_agent_reverted ON public.audit_log USING btree (workspace_id, reverted_at, performed_at DESC) WHERE (performed_by_agent_id IS NOT NULL);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON public.audit_log USING btree (entity_type, entity_id, performed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity_agent ON public.audit_log USING btree (entity_id, performed_at DESC) WHERE (performed_by_agent_id IS NOT NULL);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_performer ON public.audit_log USING btree (workspace_id, performed_by, performed_at DESC);
 

@@ -11,6 +11,8 @@
 -- marcas "conocido" y "cliente", el "no contactar", el estado de suscripcion a emails (con la
 -- baja, que gana siempre) y las importaciones por CSV. Un Member solo ve los contactos que le
 -- corresponden (can_see_contact).
+--
+-- Tambien el nivel de calificacion del lead (de 1 a 5) con su historial de cambios.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -80,12 +82,19 @@ CREATE TABLE IF NOT EXISTS public.contacts (
   email_unsubscribe_token uuid DEFAULT gen_random_uuid() NOT NULL,
   first_inbound_at timestamp with time zone,
   is_anonymous boolean GENERATED ALWAYS AS ((((lower(btrim(COALESCE(display_name, ''::text))) = ANY (ARRAY[''::text, 'instagram user'::text, 'facebook user'::text, 'whatsapp user'::text, 'unknown commenter'::text])) OR ((btrim(COALESCE(display_name, ''::text)) ~ '^\+?[0-9]{8,}$'::text) AND (first_inbound_at IS NULL))) AND (email IS NULL) AND (secondary_email IS NULL) AND (phone IS NULL) AND (whatsapp_phone IS NULL) AND (instagram_username IS NULL))) STORED,
+  qualification_level smallint,
+  qualification_at timestamp with time zone,
+  qualification_by_agent boolean DEFAULT false NOT NULL,
+  display_name_source text,
   CONSTRAINT contacts_pkey PRIMARY KEY (id),
   CONSTRAINT contacts_avatar_source_check CHECK ((avatar_source = ANY (ARRAY['external'::text, 'storage'::text, 'manual'::text]))),
   CONSTRAINT contacts_customer_source_check CHECK (((customer_source IS NULL) OR (customer_source = ANY (ARRAY['manual'::text, 'sale'::text])))),
+  CONSTRAINT contacts_display_name_source_check CHECK (((display_name_source IS NULL) OR (display_name_source = 'manual'::text))),
   CONSTRAINT contacts_email_status_check CHECK ((email_status = ANY (ARRAY['subscribed'::text, 'not_subscribed'::text, 'unsubscribed'::text, 'bounced'::text, 'complained'::text]))),
   CONSTRAINT contacts_last_status_role_check CHECK (((last_status_role IS NULL) OR (last_status_role = ANY (ARRAY['setter'::text, 'closer'::text])))),
   CONSTRAINT contacts_lead_temperature_check CHECK (((lead_temperature IS NULL) OR (lead_temperature = ANY (ARRAY['cold'::text, 'warm'::text, 'hot'::text])))),
+  CONSTRAINT contacts_qualification_dates_check CHECK (((qualification_level IS NULL) = (qualification_at IS NULL))),
+  CONSTRAINT contacts_qualification_level_check CHECK (((qualification_level IS NULL) OR ((qualification_level >= 1) AND (qualification_level <= 5)))),
   CONSTRAINT contacts_status_dates_check CHECK ((((setter_status IS NULL) = (setter_status_at IS NULL)) AND ((closer_status IS NULL) = (closer_status_at IS NULL)) AND ((last_status IS NULL) = (last_status_role IS NULL)) AND ((last_status IS NULL) = (last_status_at IS NULL)))),
   CONSTRAINT contacts_customer_marked_by_fkey FOREIGN KEY (customer_marked_by) REFERENCES auth.users(id) ON DELETE SET NULL,
   CONSTRAINT contacts_interest_product_id_fkey FOREIGN KEY (interest_product_id) REFERENCES public.products(id),
@@ -120,6 +129,8 @@ COMMENT ON COLUMN public.contacts.email_status IS 'Estado de las direcciones de 
 COMMENT ON COLUMN public.contacts.email_unsubscribe_token IS 'Token opaco del link de baja (/baja/<token>). Solo permite darse de baja.';
 COMMENT ON COLUMN public.contacts.first_inbound_at IS 'Cuando escribio la persona por primera vez, por cualquier canal. Null = nunca escribio, o escribio antes de que se guardaran los mensajes entrantes. La mantienen los triggers messages_zz_contact_wrote y conversations_zz_contact_wrote.';
 COMMENT ON COLUMN public.contacts.is_anonymous IS 'true cuando no hay con que reconocer a la persona: sin ningun dato de contacto y con un nombre vacio, un relleno de la plataforma, o un id numerico si nunca escribio. Es sobre la identidad, no sobre el trabajo hecho: un contacto con tags y vendedor asignado sigue siendo anonimo. La calcula la base, asi que se apaga sola.';
+COMMENT ON COLUMN public.contacts.display_name_source IS 'manual = una persona del equipo edito el nombre; NULL = lo puso un camino automatico (puede reescribirlo la agenda).';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.contacts FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.contact_channels (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -134,6 +145,7 @@ CREATE TABLE IF NOT EXISTS public.contact_channels (
   CONSTRAINT contact_channels_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id) ON DELETE CASCADE
 );
 ALTER TABLE public.contact_channels ENABLE ROW LEVEL SECURITY;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.contact_channels FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.contact_notes (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -152,6 +164,33 @@ CREATE TABLE IF NOT EXISTS public.contact_notes (
 );
 ALTER TABLE public.contact_notes ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.contact_notes IS 'Notas sueltas de un contacto, aparte de contacts.notes (el texto de la ficha). Las lee la herramienta del agente que consulta el CRM (campo notes); la fusion de contactos las mueve y purge_soft_deleted purga las borradas.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.contact_notes FROM anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS public.contact_qualification_changes (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  workspace_id uuid NOT NULL,
+  contact_id uuid NOT NULL,
+  old_level smallint,
+  new_level smallint,
+  source text NOT NULL,
+  changed_by uuid,
+  changed_by_agent_id uuid,
+  flow_id uuid,
+  reason text,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT contact_qualification_changes_pkey PRIMARY KEY (id),
+  CONSTRAINT contact_qualification_changes_check CHECK ((old_level IS DISTINCT FROM new_level)),
+  CONSTRAINT contact_qualification_changes_new_level_check CHECK (((new_level IS NULL) OR ((new_level >= 1) AND (new_level <= 5)))),
+  CONSTRAINT contact_qualification_changes_old_level_check CHECK (((old_level IS NULL) OR ((old_level >= 1) AND (old_level <= 5)))),
+  CONSTRAINT contact_qualification_changes_reason_check CHECK (((reason IS NULL) OR (char_length(reason) <= 300))),
+  CONSTRAINT contact_qualification_changes_source_check CHECK ((source = ANY (ARRAY['person'::text, 'agent'::text, 'automation'::text, 'import'::text, 'merge'::text, 'seed'::text]))),
+  CONSTRAINT contact_qualification_changes_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES auth.users(id) ON DELETE SET NULL,
+  CONSTRAINT contact_qualification_changes_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id) ON DELETE CASCADE,
+  CONSTRAINT contact_qualification_changes_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
+);
+ALTER TABLE public.contact_qualification_changes ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.contact_qualification_changes FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.contact_qualification_changes FROM authenticated;
 
 CREATE TABLE IF NOT EXISTS public.contact_status_changes (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -198,6 +237,7 @@ ALTER TABLE public.csv_imports ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.csv_imports IS 'Una fila por importacion de CSV: contadores, detalle de los errores y quien la corrio. Sin soft delete, como el audit log.';
 COMMENT ON COLUMN public.csv_imports.error_details IS 'Array de { line, error } con el numero de fila como lo ve la persona en la planilla. La app lo corta en los primeros 200.';
 COMMENT ON COLUMN public.csv_imports.finished_at IS 'NULL mientras la importacion corre. Una que quedo con NULL y contadores que no suman total_rows es una que se corto a la mitad.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.csv_imports FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.custom_field_definitions (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -215,6 +255,7 @@ CREATE TABLE IF NOT EXISTS public.custom_field_definitions (
 ALTER TABLE public.custom_field_definitions ENABLE ROW LEVEL SECURITY;
 COMMENT ON COLUMN public.custom_field_definitions.slug IS 'Identificador estable del campo. Se genera del nombre al crearlo y NO cambia al renombrar: el flow builder busca los campos por slug y esos slugs viven adentro del JSON de los flows, que nada migra.';
 COMMENT ON COLUMN public.custom_field_definitions.deleted_at IS 'Borrado logico. Borrar de verdad la definicion se llevaria por cascade el valor que ese campo tenia en cada contacto.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.custom_field_definitions FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.contact_custom_fields (
   contact_id uuid NOT NULL,
@@ -228,6 +269,7 @@ CREATE TABLE IF NOT EXISTS public.contact_custom_fields (
   CONSTRAINT contact_custom_fields_field_id_fkey FOREIGN KEY (field_id) REFERENCES public.custom_field_definitions(id) ON DELETE CASCADE
 );
 ALTER TABLE public.contact_custom_fields ENABLE ROW LEVEL SECURITY;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.contact_custom_fields FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.tags (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -245,6 +287,7 @@ CREATE TABLE IF NOT EXISTS public.tags (
 ALTER TABLE public.tags ENABLE ROW LEVEL SECURITY;
 COMMENT ON COLUMN public.tags.disables_agent IS 'Etiqueta con efecto: el agente queda forzado apagado en las conversaciones del contacto.';
 COMMENT ON COLUMN public.tags.assigns_to IS 'Etiqueta con efecto: al ponerla, setter y vendedor del contacto pasan a esta persona.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.tags FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.contact_tags (
   contact_id uuid NOT NULL,
@@ -255,6 +298,7 @@ CREATE TABLE IF NOT EXISTS public.contact_tags (
   CONSTRAINT contact_tags_tag_id_fkey FOREIGN KEY (tag_id) REFERENCES public.tags(id) ON DELETE CASCADE
 );
 ALTER TABLE public.contact_tags ENABLE ROW LEVEL SECURITY;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.contact_tags FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Funciones
@@ -631,6 +675,31 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION private.contacts_interest_check() FROM PUBLIC;
 
+CREATE OR REPLACE FUNCTION private.contacts_qualification_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF coalesce(current_setting('app.contact_qualification_internal', true), '') = 'on' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.qualification_level IS NOT NULL OR NEW.qualification_at IS NOT NULL OR NEW.qualification_by_agent THEN
+      RAISE EXCEPTION 'El nivel de calificacion se cambia con set_contact_qualification' USING ERRCODE = 'QL001';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.qualification_level IS DISTINCT FROM OLD.qualification_level
+     OR NEW.qualification_at IS DISTINCT FROM OLD.qualification_at
+     OR NEW.qualification_by_agent IS DISTINCT FROM OLD.qualification_by_agent THEN
+    RAISE EXCEPTION 'El nivel de calificacion se cambia con set_contact_qualification' USING ERRCODE = 'QL001';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.contacts_qualification_guard() FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION private.contacts_status_guard()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -964,6 +1033,32 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION private.known_assignee(p_workspace_id uuid, p_channel_id uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION private.known_assignee(p_workspace_id uuid, p_channel_id uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION private.qualification_next_level(p_old smallint, p_mode text, p_value integer)
+ RETURNS integer
+ LANGUAGE plpgsql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v integer;
+BEGIN
+  IF p_mode = 'clear' THEN
+    RETURN NULL;
+  ELSIF p_mode = 'set' THEN
+    IF p_value IS NULL OR p_value < 1 OR p_value > 5 THEN RETURN -1; END IF;
+    RETURN p_value;
+  ELSIF p_mode = 'add' THEN
+    IF p_value IS NULL THEN RETURN -1; END IF;
+    v := coalesce(p_old, 0) + p_value;
+    IF p_old IS NULL AND v < 1 THEN RETURN NULL; END IF;
+    RETURN greatest(1, least(5, v));
+  END IF;
+  RETURN -1;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.qualification_next_level(p_old smallint, p_mode text, p_value integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION private.qualification_next_level(p_old smallint, p_mode text, p_value integer) TO service_role;
 
 CREATE OR REPLACE FUNCTION private.tag_effect_apply(p_contact_id uuid, p_tag_id uuid, p_origin text)
  RETURNS void
@@ -1772,6 +1867,60 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.contacts_known_on_merge() FROM PUBLIC, anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.contacts_qualification_on_merge()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_main      uuid;
+  v_main_lvl  smallint;
+BEGIN
+  IF OLD.deleted_at IS NOT NULL OR NEW.deleted_at IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF NOT (coalesce(NEW.metadata, '{}'::jsonb) ? 'merged_into') THEN
+    RETURN NULL;
+  END IF;
+  BEGIN
+    v_main := (NEW.metadata ->> 'merged_into')::uuid;
+  EXCEPTION WHEN others THEN
+    RETURN NULL;
+  END;
+
+  BEGIN
+    UPDATE public.contact_qualification_changes
+       SET contact_id = v_main
+     WHERE contact_id = OLD.id AND workspace_id = NEW.workspace_id;
+
+    IF OLD.qualification_level IS NOT NULL THEN
+      SELECT qualification_level INTO v_main_lvl
+        FROM public.contacts
+       WHERE id = v_main AND workspace_id = NEW.workspace_id;
+      IF FOUND AND (v_main_lvl IS NULL OR OLD.qualification_level > v_main_lvl) THEN
+        PERFORM set_config('app.contact_qualification_internal', 'on', true);
+        UPDATE public.contacts
+           SET qualification_level = OLD.qualification_level,
+               qualification_at = coalesce(OLD.qualification_at, now()),
+               qualification_by_agent = OLD.qualification_by_agent
+         WHERE id = v_main AND workspace_id = NEW.workspace_id;
+        PERFORM set_config('app.contact_qualification_internal', 'off', true);
+        INSERT INTO public.contact_qualification_changes
+          (workspace_id, contact_id, old_level, new_level, source, reason)
+        VALUES
+          (NEW.workspace_id, v_main, v_main_lvl, OLD.qualification_level, 'merge', 'Fusión de contactos');
+      END IF;
+    END IF;
+  EXCEPTION WHEN others THEN
+    PERFORM set_config('app.contact_qualification_internal', 'off', true);
+    RAISE WARNING 'contacts_qualification_on_merge: no pude mover la calificacion del contacto %: %', OLD.id, SQLERRM;
+  END;
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.contacts_qualification_on_merge() FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.email_address_send_state(p_workspace_id uuid, p_email text, p_contact_id uuid DEFAULT NULL::uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -2160,6 +2309,95 @@ $function$;
 COMMENT ON FUNCTION public.find_or_link_contact(p_channel_id uuid, p_sender_id text, p_display_name text, p_username text, p_avatar_url text, p_phone text, p_email text, p_interaction_at timestamp with time zone, p_stamp_existing boolean) IS 'Dedup cross-canal. Solo service_role: no valida permisos, solo deriva el workspace del canal. Las rutas que la usan validan el rol antes y llaman con service client (lib/inbox-sync.ts). El avatar_url de un contacto external se refresca con cada mensaje; storage y manual no se pisan nunca (avatar_source).';
 REVOKE ALL ON FUNCTION public.find_or_link_contact(p_channel_id uuid, p_sender_id text, p_display_name text, p_username text, p_avatar_url text, p_phone text, p_email text, p_interaction_at timestamp with time zone, p_stamp_existing boolean) FROM PUBLIC, anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.set_contact_qualification(p_workspace_id uuid, p_contact_id uuid, p_mode text, p_value integer DEFAULT NULL::integer, p_actor_user uuid DEFAULT NULL::uuid, p_actor_agent uuid DEFAULT NULL::uuid, p_source text DEFAULT 'person'::text, p_flow_id uuid DEFAULT NULL::uuid, p_reason text DEFAULT NULL::text, p_respect_human boolean DEFAULT false, p_only_raise boolean DEFAULT false)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_contact public.contacts%ROWTYPE;
+  v_old     smallint;
+  v_next    integer;
+  v_new     smallint;
+  v_now     timestamptz := now();
+  v_change  uuid;
+  v_dir     text;
+BEGIN
+  IF p_mode IS NULL OR p_mode NOT IN ('set', 'add', 'clear') THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+  IF p_source IS NULL OR p_source NOT IN ('person', 'agent', 'automation', 'import') THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+
+  SELECT * INTO v_contact
+    FROM public.contacts
+   WHERE id = p_contact_id
+     AND workspace_id = p_workspace_id
+     AND deleted_at IS NULL
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('result', 'not_found');
+  END IF;
+
+  v_old := v_contact.qualification_level;
+  v_next := private.qualification_next_level(v_old, p_mode, p_value);
+  IF v_next = -1 THEN
+    RETURN jsonb_build_object('result', 'invalid', 'old_level', v_old);
+  END IF;
+  v_new := v_next::smallint;
+
+  IF v_old IS NOT DISTINCT FROM v_new THEN
+    RETURN jsonb_build_object('result', 'unchanged', 'old_level', v_old, 'new_level', v_new);
+  END IF;
+
+  IF p_respect_human AND v_old IS NOT NULL AND NOT v_contact.qualification_by_agent THEN
+    RETURN jsonb_build_object('result', 'protected', 'old_level', v_old, 'new_level', v_new);
+  END IF;
+
+  IF p_only_raise AND v_old IS NOT NULL AND (v_new IS NULL OR v_new < v_old) THEN
+    RETURN jsonb_build_object('result', 'not_raised', 'old_level', v_old, 'new_level', v_new);
+  END IF;
+
+  PERFORM set_config('app.contact_qualification_internal', 'on', true);
+  UPDATE public.contacts
+     SET qualification_level = v_new,
+         qualification_at = CASE WHEN v_new IS NULL THEN NULL ELSE v_now END,
+         qualification_by_agent = v_new IS NOT NULL AND p_actor_agent IS NOT NULL,
+         updated_at = v_now
+   WHERE id = p_contact_id;
+  PERFORM set_config('app.contact_qualification_internal', 'off', true);
+
+  INSERT INTO public.contact_qualification_changes
+    (workspace_id, contact_id, old_level, new_level, source, changed_by, changed_by_agent_id, flow_id, reason, created_at)
+  VALUES
+    (p_workspace_id, p_contact_id, v_old, v_new, p_source, p_actor_user, p_actor_agent, p_flow_id,
+     left(nullif(btrim(coalesce(p_reason, '')), ''), 300), v_now)
+  RETURNING id INTO v_change;
+
+  v_dir := CASE
+    WHEN v_new IS NULL THEN 'cleared'
+    WHEN v_old IS NULL OR v_new > v_old THEN 'up'
+    ELSE 'down'
+  END;
+
+  -- El evento de automatizacion nunca tumba el cambio.
+  BEGIN
+    PERFORM public.emit_automation_event(
+      p_workspace_id, 'qualification_changed', p_contact_id,
+      jsonb_build_object('level', v_new, 'previous_level', v_old, 'direction', v_dir,
+                         'source', p_source, 'change_id', v_change)
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'set_contact_qualification: no pude emitir el evento: %', SQLERRM;
+  END;
+
+  RETURN jsonb_build_object('result', 'changed', 'old_level', v_old, 'new_level', v_new, 'change_id', v_change);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.set_contact_qualification(p_workspace_id uuid, p_contact_id uuid, p_mode text, p_value integer, p_actor_user uuid, p_actor_agent uuid, p_source text, p_flow_id uuid, p_reason text, p_respect_human boolean, p_only_raise boolean) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.set_contact_status(p_workspace_id uuid, p_contact_id uuid, p_role text, p_status text, p_actor_user uuid DEFAULT NULL::uuid, p_actor_agent uuid DEFAULT NULL::uuid, p_reason text DEFAULT NULL::text, p_respect_human boolean DEFAULT false)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -2407,6 +2645,10 @@ CREATE INDEX IF NOT EXISTS idx_contact_notes_contact ON public.contact_notes USI
 
 CREATE INDEX IF NOT EXISTS idx_contact_notes_deleted_at ON public.contact_notes USING btree (deleted_at) WHERE (deleted_at IS NOT NULL);
 
+CREATE INDEX IF NOT EXISTS idx_contact_qualification_changes_contact ON public.contact_qualification_changes USING btree (contact_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_contact_qualification_changes_workspace ON public.contact_qualification_changes USING btree (workspace_id, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_contact_status_changes_contact ON public.contact_status_changes USING btree (contact_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_contact_status_changes_workspace ON public.contact_status_changes USING btree (workspace_id, created_at DESC);
@@ -2466,6 +2708,8 @@ CREATE INDEX IF NOT EXISTS idx_contacts_linkedin_slug ON public.contacts USING b
 CREATE INDEX IF NOT EXISTS idx_contacts_next_followup ON public.contacts USING btree (workspace_id, next_followup_date) WHERE ((deleted_at IS NULL) AND (next_followup_date IS NOT NULL));
 
 CREATE INDEX IF NOT EXISTS idx_contacts_phone ON public.contacts USING btree (workspace_id, phone) WHERE (phone IS NOT NULL);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_qualification_level ON public.contacts USING btree (workspace_id, qualification_level) WHERE ((deleted_at IS NULL) AND (qualification_level IS NOT NULL));
 
 CREATE INDEX IF NOT EXISTS idx_contacts_referred_by_contact ON public.contacts USING btree (referred_by_contact_id) WHERE (referred_by_contact_id IS NOT NULL);
 
@@ -2547,6 +2791,10 @@ CREATE OR REPLACE TRIGGER contacts_known_effects AFTER UPDATE OF is_known ON pub
 
 CREATE OR REPLACE TRIGGER contacts_known_on_merge AFTER UPDATE OF deleted_at ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_known_on_merge();
 
+CREATE OR REPLACE TRIGGER contacts_qualification_guard BEFORE INSERT OR UPDATE ON public.contacts FOR EACH ROW EXECUTE FUNCTION private.contacts_qualification_guard();
+
+CREATE OR REPLACE TRIGGER contacts_qualification_on_merge AFTER UPDATE OF deleted_at ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_qualification_on_merge();
+
 CREATE OR REPLACE TRIGGER contacts_status_guard BEFORE INSERT OR UPDATE ON public.contacts FOR EACH ROW EXECUTE FUNCTION private.contacts_status_guard();
 
 CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
@@ -2615,6 +2863,13 @@ DO $$ BEGIN
    FROM public.contacts c
   WHERE (c.id = contact_notes.contact_id)))))
     WITH CHECK (((created_by = auth.uid()) OR public.is_workspace_admin(workspace_id)));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY contact_qualification_changes_select ON public.contact_qualification_changes FOR SELECT TO authenticated
+    USING ((( SELECT public.is_workspace_member(contact_qualification_changes.workspace_id) AS is_workspace_member) AND (EXISTS ( SELECT 1
+   FROM public.contacts c
+  WHERE ((c.id = contact_qualification_changes.contact_id) AND (c.workspace_id = contact_qualification_changes.workspace_id) AND public.can_see_contact(c.*))))));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
