@@ -12,7 +12,7 @@
  * Avisa (sin fallar) los tocables de menos de 40 px en el telefono. Guarda una captura por pantalla, ancho y tema.
  *
  * Sin dependencias: maneja el Chrome instalado por el protocolo de Chrome (CDP), con el WebSocket que trae Node.
- * Decision de Wendy (11/11/2026): un script propio en vez de sumar @playwright/test.
+ * Decision del 11/11/2026: un script propio en vez de sumar @playwright/test.
  *
  * Datos: arma un negocio de prueba (zz-test-) con el modulo de Servicios prendido, un producto con portal, clientes,
  * servicios, un programa, un formulario con un campo Link y una automatizacion con un paso de Servicios; entra con un
