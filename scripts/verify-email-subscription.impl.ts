@@ -388,7 +388,7 @@ END $do$;`);
     check(c.warmup_level === "1" && (warmed.data as { cap?: number }).cap === 200, "el calentamiento sube a 200 y la base lo guarda", JSON.stringify({ level: c.warmup_level, cap: (warmed.data as { cap?: number }).cap }));
 
     // La zona del negocio: un nombre IANA vale; una abreviatura, minusculas o una zona inventada caen a UTC.
-    // Da lo mismo antes y despues de la 00337 (la regla no cambio, solo dejo de leer el catalogo entero).
+    // La regla es la misma que cuando se leia el catalogo entero; solo cambio como se calcula.
     const { data: wsRow } = await svc.from("workspaces").select("timezone").eq("id", ws).single();
     const zoneCases: Array<[string, string]> = [
       ["America/Bogota", "America/Bogota"],

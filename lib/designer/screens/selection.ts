@@ -6,6 +6,7 @@
  * - Un rectángulo en vacío selecciona todo lo que toca (`intersects`). Un elemento OCULTO no se selecciona así.
  * - Doble clic (o Enter) sobre un texto entra a escribir; Esc sale. Solo con UN texto seleccionado.
  * - Un elemento BLOQUEADO se selecciona pero no se mueve ni se edita.
+ * - En un HTML cargado se puede elegir UN texto de adentro (`text`, su marca `data-tx`); doble clic lo deja escribir.
  *
  * Módulo puro (inmutable).
  */
@@ -16,8 +17,17 @@ import type { DesignElement } from "../doc/schema";
 export interface SelectionState {
   /** Los elementos seleccionados, en el orden en que se eligieron. */
   ids: string[];
-  /** El texto que se está escribiendo (siempre uno de `ids`). */
+  /** El texto que se está escribiendo (siempre uno de `ids`). En un HTML cargado, el bloque cuyo `text` se escribe. */
   editing: string | null;
+  /** Un texto de adentro de un HTML cargado (su bloque es la única selección). Sin esto, el bloque entero. */
+  text?: HtmlTextTarget | null;
+}
+
+export interface HtmlTextTarget {
+  /** El id del bloque HTML. */
+  el: string;
+  /** La marca `data-tx` del texto. */
+  tx: string;
 }
 
 export const EMPTY_SELECTION: SelectionState = { ids: [], editing: null };
@@ -77,6 +87,12 @@ export function canEditText(el: Pick<DesignElement, "locked" | "type" | "hidden"
   return el.type === "text" && !el.locked && !el.hidden;
 }
 
+/** Elegir un texto de adentro de un HTML cargado: el bloque queda como única selección, con ese texto marcado. */
+export function selectHtmlText(state: SelectionState, elId: string, tx: string): SelectionState {
+  if (state.ids.length === 1 && state.ids[0] === elId && state.editing === null && state.text?.el === elId && state.text.tx === tx) return state;
+  return { ids: [elId], editing: null, text: { el: elId, tx } };
+}
+
 /** Los elementos seleccionados que se pueden mover (sin los bloqueados). */
 export function movableIds(state: SelectionState, elements: readonly DesignElement[]): string[] {
   return elements.filter((el) => state.ids.includes(el.id) && canMove(el)).map((el) => el.id);
@@ -84,6 +100,12 @@ export function movableIds(state: SelectionState, elements: readonly DesignEleme
 
 /** Doble clic o Enter sobre un texto: entra a escribir. Solo con ese texto como única selección y sin bloqueo. */
 export function startEditing(state: SelectionState, el: Pick<DesignElement, "id" | "locked" | "type" | "hidden">): SelectionState {
+  if (el.type === "html") {
+    // En un HTML cargado se escribe el texto elegido adentro, no el bloque.
+    const text = state.text;
+    if (!text || text.el !== el.id || el.locked || el.hidden) return state;
+    return { ids: [el.id], editing: el.id, text };
+  }
   if (!canEditText(el)) return state;
   return { ids: [el.id], editing: el.id };
 }

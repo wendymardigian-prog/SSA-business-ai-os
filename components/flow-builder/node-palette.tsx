@@ -42,7 +42,10 @@ import { Search } from "lucide-react";
 import { matchesQuery } from "@/lib/flows/search";
 import { isContactFreeNodeType } from "@/lib/flow-engine/contact-free";
 import { requirementsOfType } from "@/lib/flow-engine/node-requirements";
+// @plantilla-desde(servicios)
 import { PaletteBlockedNote, useFlowModules, useMissingFor } from "./capabilities-context";
+// @plantilla-hasta(servicios)
+// @plantilla-sin(servicios): import { PaletteBlockedNote, useMissingFor } from "./capabilities-context";
 
 export interface PaletteItem {
   type: string;
@@ -457,6 +460,7 @@ const categories: PaletteCategory[] = [
     ],
   },
   // @plantilla-hasta(servicios)
+  // @plantilla-desde(disenador)
   // Diseñador IA (F57): una pieza desde una plantilla (un certificado, una constancia...) para el contacto.
   {
     name: "Diseñador IA",
@@ -472,6 +476,7 @@ const categories: PaletteCategory[] = [
       },
     ],
   },
+  // @plantilla-hasta(disenador)
 ];
 
 /** El grupo del panel que solo se ofrece con el modulo de Servicios prendido. */

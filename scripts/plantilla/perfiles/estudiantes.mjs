@@ -303,6 +303,36 @@ export const MODULES = {
       "scripts/verify-api-schemas.mjs",
     ],
   },
+  // Diseñador IA (disenos, plantillas, generaciones, link publico /d/ y el servicio de render). Sus tablas,
+  // funciones y buckets salen en poda.sql; lo que toca en Contenido, Automatizaciones y el menu, con marcas.
+  disenador: {
+    label: "Diseñador IA (diseños, plantillas, generaciones y el servicio de render)",
+    paths: [
+      `${D}/disenos`,
+      "app/d",
+      "lib/designer",
+      "components/designer",
+      "lib/actions/designer",
+      "lib/ai-threads",
+      "lib/jobs/handlers/designer.ts",
+      "lib/flow-engine/nodes/design-generate.ts",
+      "lib/flow-engine/nodes/design-generate.test.ts",
+      "lib/flow-engine/nodes/send-email-design.test.ts",
+      "components/flow-builder/panels/DesignGeneratePanel.tsx",
+      "components/content/drawer/piece-designer.tsx",
+      "components/content/drawer/piece-drawer.designer.test.ts",
+      "components/content/kanban.designer.test.ts",
+      "lib/content/piece-designs.ts",
+      "lib/content/piece-designs.test.ts",
+      "lib/content/load-piece-designer.test.ts",
+      "lib/content/load-designed.ts",
+      "lib/content/load-designed.test.ts",
+      "scripts/verify-designer.mjs",
+      "scripts/verify-designer",
+      "render",
+      "types/sanitize-html.d.ts",
+    ],
+  },
   // No es un modulo de la app: lo que solo tiene sentido en el proyecto y no viaja a
   // ninguna plantilla. Columnas que el sistema ya no lee (la plantilla no las crea),
   // tests que fijan una migracion vieja del proyecto y comentarios que cuentan su
@@ -332,6 +362,10 @@ export const EXCLUDED = Object.keys(MODULES);
  */
 const SCOPES = ["llamadas", "ventas", "comisiones", "tareas", "servicios"];
 export const excludeTests = [
+  { path: "scripts/export-template.test.ts", modules: ["proyecto"], why: "prueba el export desde el repo del proyecto (necesita git y los archivos de plantilla); en la copia no tiene que correr" },
+  { path: "lib/cron/guards.test.ts", modules: ["proyecto"], why: "lee las migraciones del proyecto una por una; en la plantilla van consolidadas" },
+  { path: "lib/dashboards/chat/core-migration.test.ts", modules: ["proyecto"], why: "lee la migracion 00305 por su nombre; en la plantilla van consolidadas" },
+  { path: "lib/email/portal-invite-email.test.ts", modules: ["servicios"], why: "prueba la invitación al portal, que es de Servicios" },
   { path: "components/automations/step-tree-render.test.ts", modules: ["formularios"], why: "arma el editor de pasos con el «Solo si…» de Formularios" },
   { path: "lib/automations/condition-builder-model.test.ts", modules: ["formularios"], why: "usa las preguntas de un formulario" },
   { path: "lib/automations/editor-characterization.test.ts", modules: ["formularios"], why: "caracteriza las plantillas de Formularios" },
@@ -382,6 +416,8 @@ export const excludeTests = [
 export const PACKAGES = {
   "@tanstack/react-table": ["tareas"],
   "pdf-lib": ["formularios"],
+  fflate: ["disenador"],
+  "sanitize-html": ["disenador"],
 };
 
 /** De donde salen supabase/migrations, supabase/seeds y supabase/config.toml de la plantilla. */

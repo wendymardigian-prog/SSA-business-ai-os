@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 import type { Guide } from "@/lib/designer/canvas-math";
-import type { DesignDoc, DesignElement, TextElement } from "@/lib/designer/doc/schema";
+import type { DesignDoc, DesignElement, HtmlElement, TextElement } from "@/lib/designer/doc/schema";
 import { FORMATS } from "@/lib/designer/formats";
 import type { UploadedFont } from "@/lib/designer/fonts";
 import { backgroundLayers, renderPageHTML, rewriteAssetRefs, toReactStyle } from "@/lib/designer/render/page-html";
@@ -34,10 +34,12 @@ import {
 } from "@/lib/designer/screens/canvas-session";
 import type { Box } from "@/lib/designer/canvas-math";
 import { boxOf, type ElementPatch } from "@/lib/designer/screens/doc-ops";
-import { clear, clickElement, dragGroup, isSelected, movableIds, selectRect, startEditing, type SelectionState } from "@/lib/designer/screens/selection";
+import { designBox, designPoint, htmlTextOf, type ScreenBox } from "@/lib/designer/screens/html-texts";
+import { clear, clickElement, dragGroup, isSelected, movableIds, selectHtmlText, selectRect, startEditing, stopEditing, type SelectionState } from "@/lib/designer/screens/selection";
 import { pageDesignHeight } from "@/lib/designer/screens/thumbs";
 import { inverseScale, pinchScale, pointerDistance, scaledSize, wheelZoom, zoomScale, type ZoomMode } from "@/lib/designer/screens/zoom";
 import { ElementView } from "./element-view";
+import { HtmlTextEditor, type HtmlTextLook } from "./html-text-editor";
 import type { TextEditorHandle } from "./text-editor";
 
 export interface CanvasHandle {
@@ -53,6 +55,9 @@ type Active =
   | { kind: "corner"; session: CornerSession; started: boolean; pointerId: number }
   | { kind: "rotate"; session: RotateSession; started: boolean; pointerId: number }
   | { kind: "marquee"; from: Point; additive: boolean; base: SelectionState; pointerId: number };
+
+/** Dónde se escribe un texto que no se ve en el diseño (oculto o sin tamaño): arriba a la izquierda. */
+const FALLBACK_SPOT: ScreenBox = { left: 16, top: 16, width: 240, height: 0 };
 
 const toRect = (rect: DOMRect): ScreenRect => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
 
@@ -79,6 +84,7 @@ export function CanvasStage({
   onGesturePatch,
   onGestureEnd,
   onTextChange,
+  onHtmlTextChange,
   onChipTap,
   mobilePreview,
   handleRef,
@@ -98,6 +104,8 @@ export function CanvasStage({
   onGesturePatch: (patches: Record<string, ElementPatch>) => void;
   onGestureEnd: () => void;
   onTextChange: (el: TextElement, text: string) => void;
+  /** Se escribió un texto de adentro de un HTML cargado (su marca `data-tx`). */
+  onHtmlTextChange: (el: HtmlElement, tx: string, text: string) => void;
   onChipTap: (el: TextElement, nodeIndex: number, rect: DOMRect) => void;
   /** Página web en «Celular»: el render público a 390 px, en lugar del lienzo. */
   mobilePreview: string | null;
@@ -115,6 +123,12 @@ export function CanvasStage({
   const [dragging, setDragging] = useState(false);
   const [marquee, setMarquee] = useState<Box | null>(null);
   const [override, setOverride] = useState<{ zoom: ZoomMode; scale: number } | null>(null);
+  /** Los iframes de los bloques HTML (por id): el editor lee su contenido para ubicar cada texto. */
+  const frames = useRef(new Map<string, HTMLIFrameElement>());
+  const [frameTick, setFrameTick] = useState(0);
+  const [textSpot, setTextSpot] = useState<{ box: ScreenBox | null; look: HtmlTextLook | null } | null>(null);
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
 
   const format = FORMATS[doc.format];
   const page = doc.pages[pageIndex] ?? doc.pages[0];
@@ -142,6 +156,21 @@ export function CanvasStage({
   const domRectOf = (id: string): ScreenRect | null => {
     const node = stageRef.current?.querySelector<HTMLElement>(`[data-el-id="${id}"]`);
     return node ? toRect(node.getBoundingClientRect()) : null;
+  };
+
+  /** El nodo de un texto marcado dentro del iframe de su bloque (o `null` si el iframe todavía no cargó). */
+  const textNodeIn = (elId: string, tx: string): HTMLElement | null => {
+    const inner = frames.current.get(elId)?.contentDocument;
+    if (!inner) return null;
+    return [...inner.querySelectorAll<HTMLElement>("[data-tx]")].find((node) => node.getAttribute("data-tx") === tx) ?? null;
+  };
+
+  /** El texto marcado que está bajo el puntero, dentro del iframe de un bloque HTML. */
+  const hitText = (elId: string, clientX: number, clientY: number): string | null => {
+    const inner = frames.current.get(elId)?.contentDocument;
+    if (!inner || !pageRef.current) return null;
+    const point = designPoint({ x: clientX, y: clientY }, pageRect(), scale);
+    return inner.elementFromPoint(point.x, point.y)?.closest("[data-tx]")?.getAttribute("data-tx") ?? null;
   };
 
   /** La caja de un elemento en % de la página: el alto de un texto sale de lo que mide en pantalla. */
@@ -201,12 +230,21 @@ export function CanvasStage({
 
   function onElementPointerDown(event: ReactPointerEvent<HTMLDivElement>, el: DesignElement) {
     if (readOnly || event.button > 0) return;
-    if (selection.editing === el.id) return; // el cursor es del navegador
+    if (selection.editing === el.id && el.type === "text") return; // el cursor es del navegador
     event.stopPropagation();
     if (pointers.current.size > 0) return;
+    // Un HTML cargado: tocar uno de sus textos lo elige (y no arrastra la página entera).
+    const tx = el.type === "html" && !event.shiftKey ? hitText(el.id, event.clientX, event.clientY) : null;
+    if (tx) {
+      const same = selection.ids.length === 1 && selection.text?.el === el.id && selection.text.tx === tx;
+      if (same && selection.editing === el.id) return;
+      // En pantallas táctiles no hay doble clic: tocar de nuevo el mismo texto entra a escribir.
+      onSelection(same && event.pointerType !== "mouse" ? startEditing(selection, el) : selectHtmlText(selection, el.id, tx));
+      return;
+    }
     const alreadySelected = isSelected(selection, el.id);
     const wasSole = alreadySelected && selection.ids.length === 1;
-    const next = alreadySelected && !event.shiftKey ? { ...selection, editing: null } : clickElement(selection, el.id, event.shiftKey);
+    const next = alreadySelected && !event.shiftKey ? { ...selection, editing: null, text: null } : clickElement(selection, el.id, event.shiftKey);
     onSelection(next);
     if (event.shiftKey) return;
     const ids = movableIds(next, page.elements.filter((e) => dragGroup(next, el.id).includes(e.id)));
@@ -353,6 +391,27 @@ export function CanvasStage({
     return out;
   };
 
+  // El texto elegido de un HTML cargado: dónde está (para el recuadro y el campo de escribir) y cómo se ve.
+  const chosen = selection.text && selection.ids.length === 1 && selection.ids[0] === selection.text.el ? selection.text : null;
+  const chosenEl = chosen ? page.elements.find((e): e is HtmlElement => e.id === chosen.el && e.type === "html") ?? null : null;
+  useLayoutEffect(() => {
+    if (!chosen) {
+      setTextSpot(null);
+      return;
+    }
+    const node = textNodeIn(chosen.el, chosen.tx);
+    if (!node) {
+      setTextSpot(null);
+      return;
+    }
+    const cs = node.ownerDocument.defaultView?.getComputedStyle(node);
+    const look: HtmlTextLook | null = cs
+      ? { fontFamily: cs.fontFamily, fontSize: cs.fontSize, fontWeight: cs.fontWeight, fontStyle: cs.fontStyle, lineHeight: cs.lineHeight, letterSpacing: cs.letterSpacing, textAlign: cs.textAlign, textTransform: cs.textTransform }
+      : null;
+    setTextSpot({ box: designBox(node.getBoundingClientRect()), look });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- se vuelve a medir cuando cambia el texto elegido o se recarga el iframe
+  }, [chosen?.el, chosen?.tx, frameTick, htmlDocs]);
+
   if (mobilePreview !== null) {
     return (
       <div ref={stageRef} className="flex min-h-0 flex-1 justify-center overflow-auto bg-muted p-4">
@@ -385,7 +444,22 @@ export function CanvasStage({
           ))}
 
           {htmlDocs.map((h) => (
-            <iframe key={h.id} title="Bloque cargado" sandbox="" srcDoc={h.srcDoc} tabIndex={-1} aria-hidden style={{ position: "absolute", left: 0, top: 0, width: designWidth, height: designHeight, border: 0, background: "transparent", pointerEvents: "none", zIndex: h.z }} />
+            // `allow-same-origin` (nunca `allow-scripts`): el editor lee el contenido para ubicar cada texto. Adentro no
+            // corre nada: lo impiden el `sandbox` y la política del render de edición (`EDIT_CSP`).
+            <iframe
+              key={h.id}
+              ref={(node) => {
+                if (node) frames.current.set(h.id, node);
+                else frames.current.delete(h.id);
+              }}
+              onLoad={() => setFrameTick((t) => t + 1)}
+              title="Bloque cargado"
+              sandbox="allow-same-origin"
+              srcDoc={h.srcDoc}
+              tabIndex={-1}
+              aria-hidden
+              style={{ position: "absolute", left: 0, top: 0, width: designWidth, height: designHeight, border: 0, background: "transparent", pointerEvents: "none", zIndex: h.z }}
+            />
           ))}
 
           {page.elements.map((el, index) => (
@@ -396,8 +470,8 @@ export function CanvasStage({
                 assetUrls={assetUrls}
                 labelFor={labelFor}
                 values={values}
-                selected={isSelected(selection, el.id)}
-                sole={sole === el.id}
+                selected={isSelected(selection, el.id) && chosen?.el !== el.id}
+                sole={sole === el.id && chosen?.el !== el.id}
                 editing={selection.editing === el.id}
                 inverseScale={inv}
                 readOnly={readOnly}
@@ -410,6 +484,25 @@ export function CanvasStage({
                 textHandleRef={selection.editing === el.id ? textRef : undefined}
               />
           ))}
+
+          {chosen && chosenEl && textSpot?.box && selection.editing !== chosen.el && (
+            <div aria-hidden style={{ position: "absolute", ...textSpot.box, border: `${2 * inv}px solid var(--primary-edge)`, borderRadius: 4 * inv, pointerEvents: "none", zIndex: 3000 }} />
+          )}
+          {chosen && chosenEl && selection.editing === chosen.el && !readOnly && (
+            <HtmlTextEditor
+              key={`${chosen.el}:${chosen.tx}`}
+              text={htmlTextOf(chosenEl, chosen.tx) ?? ""}
+              box={textSpot?.box ?? FALLBACK_SPOT}
+              look={textSpot?.look ?? null}
+              inverseScale={inv}
+              zIndex={3002}
+              labelFor={labelFor}
+              onCommit={(text) => onHtmlTextChange(chosenEl, chosen.tx, text)}
+              onExit={() => onSelection(stopEditing(selectionRef.current))}
+              onChipTap={() => undefined}
+              handleRef={textRef}
+            />
+          )}
 
           {dragging && <div aria-hidden style={{ position: "absolute", inset: safeInset(format.safeZone), border: `${2 * inv}px dashed rgba(34,211,238,.6)`, pointerEvents: "none", zIndex: 2999 }} />}
           {guides.map((guide, i) => (

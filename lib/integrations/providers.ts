@@ -498,7 +498,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     docsUrl: "https://business.facebook.com/settings/system-users",
   },
 
-  // La API de Conversiones de Meta (00328): SSA le manda a un Pixel los eventos que valen (leads, reuniones, pagos)
+  // La API de Conversiones de Meta (00328): SSA le manda a un Pixel los eventos que valen (leads, reuniones, compras)
   // desde el servidor. Va aparte de la de arriba (que solo lee): otro token, que solo sirve para mandar eventos a ESE
   // Pixel, y desconectar una no toca la otra.
   {
@@ -511,7 +511,8 @@ export const PROVIDERS: ProviderDefinition[] = [
     visible: true,
     label: "Meta: API de Conversiones",
     description:
-      "Le manda a tu Pixel de Meta los leads, las reuniones y los pagos desde el servidor, con los datos de la persona. Funciona aunque haya bloqueadores de anuncios.",
+      "Le manda a tu Pixel de Meta los leads, las reuniones y los pagos desde el servidor, con los datos de la persona. Funciona aunque haya bloqueadores de anuncios.", // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): "Le manda a tu Pixel de Meta los leads y las reuniones desde el servidor, con los datos de la persona. Funciona aunque haya bloqueadores de anuncios.",
     secretName: SECRET_NAMES.metaCapiToken,
     minKeyLength: 40,
     secretFields: [
@@ -543,6 +544,7 @@ export const PROVIDERS: ProviderDefinition[] = [
         required: false,
         validate: (value) => (/^[A-Za-z0-9]{1,40}$/.test(value.trim()) ? null : "El código de prueba son letras y números, sin espacios."),
       },
+      // @plantilla-desde(ventas)
       {
         // Se edita en su propia sección («Compras»): el formulario genérico no lo dibuja y guardar el token lo conserva.
         key: "purchase_enabled",
@@ -550,6 +552,7 @@ export const PROVIDERS: ProviderDefinition[] = [
         required: false,
         hidden: true,
       },
+      // @plantilla-hasta(ventas)
     ],
     docsUrl: "https://business.facebook.com/events_manager2",
   },

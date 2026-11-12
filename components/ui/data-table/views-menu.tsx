@@ -319,7 +319,8 @@ function ViewEditor({
           onChange={(e) => setName(e.target.value)}
           maxLength={60}
           autoFocus
-          placeholder="Por ejemplo: Cobranza de la semana"
+          placeholder="Por ejemplo: Cobranza de la semana" // @plantilla-quitar(ventas)
+          // @plantilla-sin(ventas): placeholder="Por ejemplo: Contactos de la semana"
           className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
         />
       </label>

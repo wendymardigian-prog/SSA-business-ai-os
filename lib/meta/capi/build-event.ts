@@ -115,7 +115,7 @@ export interface CapiEventInput {
   /** Cuándo pasó (la respuesta, la reunión, el cobro). */
   occurredAt: Date;
   now: Date;
-  /** Si hubo una persona en una web: la respuesta de un formulario o una reunión pública. */
+  /** Si hubo una persona en una web: una respuesta o una reunión pública. */
   fromWebsite: boolean;
   sourceUrl?: string | null;
   user: UserDataInput & { fbclid?: string | null };

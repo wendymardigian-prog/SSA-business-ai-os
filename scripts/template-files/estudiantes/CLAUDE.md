@@ -266,6 +266,7 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 ## Contactos
 
 - **Un dato fuerte identifica a una persona**: el canal con el id del remitente, el teléfono, el WhatsApp, el email (y el secundario) y los usuarios de Instagram, TikTok, X, LinkedIn y Facebook. **Nunca el nombre.** Se normalizan igual en TS y SQL (`lib/contacts/identity.ts` + gemela, casos en `identity.cases.json`; los usuarios sin "@" y en minúsculas).
+- **Nivel de calificación** (1 a 5, o «Sin calificar»): se cambia a mano (ficha, bandeja, Kanban), con el paso «Calificar lead» o por el agente; el historial queda en `contact_qualification_changes` y `merge_contacts` deja al principal con el nivel más alto.
 - **Todo contacto nuevo nace en UN lugar**: `find_or_create_contact` / `findOrCreateContact` (`lib/contacts/find-or-create.ts`), con bloqueo por dato (dos llegadas simultáneas = un contacto), siempre con el cliente de servicio. Los mensajes entrantes (`find_or_link_contact`) y la agenda (`create_booking`) la usan desde la base. **Ningún archivo de la app inserta en `contacts`** (`lib/contacts/single-entry.test.ts`).
 - **Un error de la base nunca se toma como "no encontrado"** (crearía un duplicado): `findOrCreateContact` lanza y quien llama decide.
 - Solo el alta manual crea un contacto con el nombre solo. **Un teléfono o email que ya es de OTRO contacto no se escribe** al completar datos; se anota el conflicto (`lib/contacts/unique-errors.ts`). El alta manual de un Member con un dato de un contacto que no ve responde sin enlace ni nombre.
@@ -295,6 +296,8 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - **Un receptor por canal, en la app**: `app/api/webhooks/late` (Zernio, firma HMAC; sin secreto, rechaza) y `app/api/webhooks/evolution` (header `x-webhook-token` comparado en tiempo constante). Nunca en una Edge Function: el motor de flujos y el agente corren en Node.
 - Lo que hacen los dos igual vive en `lib/inbound.ts`. Responden 200 enseguida y procesan en `after()`, con idempotencia por `webhook_events`.
 - **Todos los mensajes entrantes se guardan en `messages`**; guardar nunca hace fallar un webhook. El hilo de Instagram se lee en vivo de Zernio y se cruza con la tabla por `platform_message_id`.
+- **Un mensaje nuestro que sale reabre la conversación cerrada** (trigger en `messages`), venga de donde venga: solo si salió, es reciente (menos de 10 minutos: lo importado no reabre) y la conversación se cerró antes de ese mensaje.
+- **El aviso de «24 horas sin respuesta»** es solo de Instagram: WhatsApp no tiene esa ventana.
 - La URL que se registra en cada proveedor la arma `lib/webhook-url.ts` desde `NEXT_PUBLIC_APP_URL`, y se niega a registrar una dirección local: un webhook a localhost no falla, simplemente no entra nada.
 - Una cuenta conectada o desconectada en Zernio se identifica por la firma y relee la lista completa (`syncZernioChannels`). Si Zernio no responde, no se desactiva ningún canal.
 - **Los adjuntos tienen UN solo formato**: `{ v: 2, items: ChatAttachment[] }`; `parseAttachments` (`lib/messages/attachments.ts`, módulo PURO) entiende además los formatos viejos de cada origen.
@@ -341,6 +344,10 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - **Las variables de un flujo entienden `{{x|respaldo}}`.**
 - **«Responder por privado»** solo se publica con el disparador de comentario, hasta tres botones con link. Lo que no se puede mandar se descarta antes de llamar a Zernio: un rechazo puede gastar la única respuesta del comentario.
 - **Historial de ejecuciones** (`/dashboard/flows/<id>/ejecuciones`): anotar nunca frena un flujo (`lib/flow-engine/run-log.ts` no lanza). Un paso que falla o se saltea sin lanzar avisa con `context.noteStep`, o queda como «Salió bien» (`run-history-boundary.test.ts`). `reason` y `error_message` pasan por `sanitizeRunText`. Quién ve qué lo decide `can_see_flow_session`. **`flow_sessions.variables` no se lee con la sesión: nunca `select("*")` sobre `flow_sessions`**, y una columna nueva para la pantalla se suma a su `GRANT`. `flow_session_steps` no lleva `contact_id` a propósito. Los pasos se borran a los 12 meses; la fila de la sesión nunca, porque «Una sola vez por contacto» la mira.
+- **«En una fecha y hora»** (`scheduled_time`) es un disparador de SISTEMA, sin contacto: arranca una vez, todos los días, ciertos días o un día del mes, en la hora del NEGOCIO. Todo lo que se programa lleva `BusinessTimeNote` (`components/ui/business-time-note.tsx`): dice en qué zona se programa y, si quien mira está en otra, a qué hora le cae.
+- **«Calificar lead»** (`qualify_lead`) fija, suma o resta el nivel (1 a 5) o lo calcula «según reglas»; el nombre y la rúbrica de cada nivel están en Ajustes → Estados. Convive con la temperatura y no la reemplaza.
+- **«Enviar evento a Meta»** (`send_meta_event`) manda Lead, Schedule, CompleteRegistration, Contact o un evento propio por la API de Conversiones (Ajustes → Integraciones → «Meta: API de Conversiones»: Pixel + token). Con el mismo código que el Pixel, Meta lo cuenta una vez.
+- **Las automatizaciones de comentarios se arman en el lienzo** y cada paso muestra sus métricas; un envío que falló se puede reintentar. Los flujos respetan «no contactar» en WhatsApp e Instagram (salvo los de la agenda).
 
 ## Emails: suscripción, baja y entrega
 
@@ -369,6 +376,7 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 ## Broadcasts y la cola de envíos
 
 - **La audiencia son los parámetros de URL de Contactos** (`broadcasts.audience_params`), se planifica con el cliente de la PERSONA y se congela al confirmar. Antes de cada envío se vuelve a mirar borrado, no contactar, baja y, si el filtro lleva etiquetas, que siga teniendo alguna.
+- **Editar y borrar**: un broadcast programado o pausado se edita (vuelve a un borrador sin enviar); uno que nunca mandó nada se puede eliminar; la lista se filtra por estado. Un error al leer el contacto en la cola se reintenta, no se da por borrado.
 - **A quién se le manda lo decide UNA función** (`classifyRecipient`, `lib/broadcasts/audience.ts`). WhatsApp: solo quien ya escribió a ESE número, salvo la casilla «solo tienen teléfono». Email: marketing. Instagram queda afuera.
 - **El mensaje se arma en UN lugar** (`lib/broadcasts/render.ts`, puro): variables, respaldo `{{x|y}}` y hasta 5 variantes, estable por destinatario.
 - **El ritmo es del carril (el canal) y es puro** (`lib/send-queue/pace.ts`): espera al azar, topes por minuto, hora y día, horario del negocio y pausa tras fallos seguidos. El techo es `channels.send_policy`; un broadcast solo puede ir más lento.
@@ -384,6 +392,11 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - **Contactos solo si el grupo guarda contactos** (o con «Importar miembros», que no dispara automatizaciones). El toque es `origin = whatsapp_group`, orgánico, una vez por persona y grupo.
 - **Un voto de encuesta NO es un mensaje** (`parseBaileysPollVote`). Evolution solo descifra votos de encuestas que salieron de nuestro número.
 - **Disparadores** (`whatsapp_group_joined`, `_reaction`, `_poll_vote`): de contacto, escriben por privado desde el número del grupo y saltean «no contactar». Paso «Enviar encuesta» (`send_poll`, sin contacto).
+- **Comunidades**: la comunidad madre nunca se guarda (no tiene mensajes); cada grupo lleva `parent_group_jid` y la lista, la bandeja y los pasos los agrupan por comunidad. Crear una comunidad o vincular un grupo se hace desde el celular (Evolution no tiene esas rutas). Los grupos se configuran y se crean desde el sistema, y todos los del número entran solos a la bandeja.
+- **Pasos «Enviar al grupo» e «Invitar a un grupo»**; en una encuesta de grupo se ve quién votó cada opción y se puede «Etiquetar según la respuesta» sin pasar por el lienzo.
+- **Mensajes borrados para todos**: se ven como «Mensaje eliminado» y el equipo puede ver lo que decía.
+- **Riesgo de bloqueo**: conectar un número por Evolution (API no oficial) puede terminar en un bloqueo de WhatsApp; la pantalla de conexión lo avisa. Todo lo que sale por un número (broadcasts, automatizaciones y los avisos al equipo) cuenta en un único tope por hora (`claim_automated_send`), y la cola le hace lugar a lo que sale en el momento.
+- **Gráfico diario de mensajes por número** (Canales): recibidos, automatización, broadcasts, agente y humano, con lo programado como estimación.
 - **Chats y grupos son una sola lista, sin tocar la base** (`lib/inbox/unified-list.ts`, puro): cada grupo cae en la página que le toca por fecha. Con filtros que un grupo no puede cumplir, no aparece (`groupsCanMatch`).
 - **Revisar e importar el historial** (Canales, `channels.manage`) solo lee la base del propio Evolution, sin hablar con WhatsApp. Lo importado es historia: sin no leídos, automatizaciones, agente, asignación ni toques. Una conversación que ya existe no se toca y volver a importar no duplica. Los archivos no se traen (el adjunto queda en `none`). Es un botón a propósito: cada chat pasa a ser un contacto, también los personales.
 - **La identidad de WhatsApp es el teléfono o, si no hay, el `@lid`** (`resolveWhatsappSender`, `lib/whatsapp-sender.ts`). Un `@lid` se manda ENTERO a Evolution (`toEvolutionNumber`) y `getDmLink` no arma `wa.me` con él. Grupos, estados y canales no son una persona.
@@ -436,6 +449,7 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - **Las cuatro áreas de sistema de la agenda vienen precargadas**: se renombran pero no se archivan, y `SYSTEM_AREAS` y el SQL dicen lo mismo.
 - **El embed** (`public/embed/embed.js`) **se commitea** (en Railway el build no tiene esbuild) y no pasa de 60 KB. Se regenera con `npm run build:embed` cuando se toca `lib/attribution/` o `lib/embed/`.
 - **Agendar a mano es un solo modal**: título libre o cualquier evento, con **ubicación** o Google Meet. El botón de Meet aparece solo si quien atiende puede crearlo (`meetAvailableFor`) y el servidor lo vuelve a comprobar. El modal separa la zona de quien agenda de la del invitado (`p_timezone`, con ella salen sus emails).
+- **La tabla de reuniones** tiene columnas ajustables, el estado se cambia con un clic, y un panel lateral (drawer) muestra y edita la reunión: las notas y el lugar se guardan solos en una caja que crece.
 - **Reuniones sin evento** (Agenda → Configuración): flujos con `event_type_id` null y `template_key` `no_event_*`, con el permiso `settings.general`. Un flujo de evento y uno sin evento nunca corren para la misma reunión.
 - **Cambiar el anfitrión de un evento** solo cambia las reuniones NUEVAS y va por `change_event_type_host`. El link anterior sigue funcionando (`event_type_moved_links`). **Reagendar nunca busca el evento por el link**: sale de la reunión. Mover una reunión conserva SU duración.
 - Los endpoints públicos tienen tope por IP; la IP nunca se guarda en texto (SHA-256 con `RATE_LIMIT_SALT`).
@@ -465,6 +479,7 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - El dashboard de contenido agrupa y filtra por URL; **nada se pierde**: lo sin valor va a "Sin asignar" y la suma de las filas es el total.
 - **Dashboard de Chat**: la sección "El agente" existe solo si el agente actuó alguna vez o hay uno encendido con canales.
 - **Dashboard de Agenda**: cuentas puras en `lib/dashboards/agenda.ts`, lee con el cliente del usuario (la RLS decide qué ve cada quien).
+- **Dashboard de Chat**: calcula todo de una sola pasada (una función de la base) y, si algo falla, dice qué pasó en vez de cortarse. No gasta IA en resumir conversaciones donde el lead no dijo nada.
 - Cada dashboard pide su permiso (`dashboards.*.view`), no el cargo.
 
 ## Atribución y anuncios
@@ -483,6 +498,8 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - **Leads de Meta: un solo evento canónico por nombre** (`lib/meta/action-counts.ts`); sumar variantes infla el número.
 - **Tabla Meta vs CRM** (`ads_crm_metrics_v2`, `ads_crm_items`, SECURITY INVOKER: la RLS de quien mira decide). Leads nuevos ≠ leads totales; el Total cuenta personas DISTINTAS; la lista que abre un número sale de la misma consulta. Las columnas son un catálogo (`lib/dashboards/ads-crm-columns.ts`); las preferencias en `localStorage` siempre en `try/catch`.
 - **La pantalla Anuncios (`/dashboard/anuncios`) es la misma tabla del dashboard**, con el mismo permiso y la misma consulta (`loadCrmForRows`): si cambia una, cambian las dos.
+- **Anuncios**: filtros en la barra superior, ordenar y fijar columnas, semáforo de métricas; el embudo de un detalle sigue el objetivo de la campaña y el total de Meta vs CRM usa alcance y frecuencia de a pares. «Sin vincular» se vacía con reglas, nombre exacto y parecido, y una propuesta con IA que una persona confirma; lo que decide una persona queda como regla. El detalle de un anuncio muestra el video y deja cargar la transcripción a mano (`meta_ads.video_id`, `transcript*`).
+- **API de Conversiones de Meta**: manda leads y reuniones desde el servidor con los datos de la persona (`lib/meta/capi/`); el `external_id` del navegador evita el doble conteo con el Pixel.
 - El anuncio de origen de un DM de Instagram se recupera de Zernio UNA vez (job con reintentos a 1, 5 y 15 minutos), sin bloquear el webhook.
 
 ## Catálogo de productos
@@ -496,6 +513,7 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 ## Autenticación y sesiones
 - Supabase Auth con email/password. Sesiones por Supabase SSR con cookies httpOnly.
 - Sin registro público (`enable_signup = false`): las cuentas nacen por invitación o con `create-owner.mjs`.
+- **`/setup` cierra el registro público** y los scripts crean sus usuarios con la marca de workspace; el `next` del login se resuelve con URL y nunca deja salir a otro dominio.
 - Recuperación de contraseña con token de tiempo limitado. Las URLs de Auth (Site URL y Redirect URLs) apuntan al dominio de la app.
 
 ## Row Level Security (RLS) — obligatorio
@@ -508,6 +526,8 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - Validación en cliente Y en servidor. Sanitizar entradas (XSS, inyección SQL).
 - Claves de terceros en Supabase Vault, nunca en variables del frontend ni en el código. Service Role Key solo en el servidor.
 - Logs sin tokens, contraseñas, claves ni datos personales.
+- **El optimizador de imágenes de Next está apagado** (`images.unoptimized`): `/_next/image` abierto era un proxy. Los datos del contacto viajan como dato en los prompts de IA, y los gastos de IA (transcripción, descripción de imágenes, resúmenes) respetan el tope de gasto.
+- **Cambiar la dirección de Evolution exige volver a escribir su API key**; bajar la media del chat solo desde direcciones públicas; la IP de los topes sale de `X-Real-IP`.
 - `.env` nunca se commitea.
 - **En un archivo `"use server"` todo lo exportado es una función asincrónica.** Un `export type { ... }` rompe la app entera en tiempo de ejecución y ni el typecheck ni el build lo ven (`lib/vault-boundary.test.ts` lo atrapa). Los tipos van en otro archivo.
 - **Los jobs no lanzan por el fallo de un proveedor** (IA, Zernio, Google, Voyage): la cola reintentaría a los 10 s encima de la espera propia. Reagendan (1, 5 y 15 minutos) o dejan un estado que una persona ve.
@@ -554,6 +574,11 @@ supabase/
 ├── migrations/          # La base, un archivo por área (00000 a 00016) y lo que sumes desde la 00017
 └── seeds/               # Precios de los modelos de IA
 ```
+
+## Menú y barra superior
+
+- **Todo control de una pantalla va en la barra superior** (buscador, filtros, pestañas y botones; `TopbarTabs` es la única pestaña). Se declara en `lib/nav/page-actions.ts`.
+- **El menú tiene secciones colapsables** y cada persona puede elegir una **pantalla favorita por sección** (`user_preferences.nav_favorites`): la flechita solo abre o cierra; el título lleva a la favorita. Sin la migración, el menú anda igual, sin favoritas.
 
 ## Cómo sumar un permiso nuevo
 

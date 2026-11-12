@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 
 const LEGACY = [
   "app/(dashboard)/dashboard/(comunicacion)/comentarios/page.tsx",
-  "app/(dashboard)/dashboard/afiliados/page.tsx",
+  "app/(dashboard)/dashboard/afiliados/page.tsx", // @plantilla-quitar(ventas)
   "app/(dashboard)/dashboard/contacts/contacts-view.tsx",
   "app/(dashboard)/dashboard/contacts/import/import-view.tsx",
   "app/(dashboard)/dashboard/settings/custom-fields/custom-fields-view.tsx",
@@ -22,55 +22,55 @@ const LEGACY = [
   "components/agents/actions-tab.tsx",
   "components/agents/costs-tab.tsx",
   "components/agents/runs-screen.tsx",
-  "components/agents/tasks/calls/prompt-test-panel.tsx",
+  "components/agents/tasks/calls/prompt-test-panel.tsx", // @plantilla-quitar(llamadas)
   "components/assignment/assignment-tester.tsx",
-  "components/calls/calls-list.tsx",
+  "components/calls/calls-list.tsx", // @plantilla-quitar(llamadas)
   "components/channels/whatsapp-daily-chart.tsx",
-  "components/commissions/adjustment-dialog.tsx",
-  "components/commissions/commissions-list.tsx",
-  "components/commissions/payout-dialog.tsx",
+  "components/commissions/adjustment-dialog.tsx", // @plantilla-quitar(comisiones)
+  "components/commissions/commissions-list.tsx", // @plantilla-quitar(comisiones)
+  "components/commissions/payout-dialog.tsx", // @plantilla-quitar(comisiones)
   "components/content/drawer/piece-performance.tsx",
   "components/content/list-view.tsx",
   "components/dashboards/ads/crm-table.tsx",
   "components/dashboards/ads/daily-table.tsx",
   "components/dashboards/agenda/agenda-dashboard.tsx",
-  "components/dashboards/calls/calls-dashboard.tsx",
+  "components/dashboards/calls/calls-dashboard.tsx", // @plantilla-quitar(llamadas)
   "components/dashboards/chat/team-block.tsx",
   "components/dashboards/group-table.tsx",
   "components/dashboards/posts-table.tsx",
   "components/dashboards/unified-dashboard.tsx",
-  "components/designer/generate/generations-tab.tsx",
+  "components/designer/generate/generations-tab.tsx", // @plantilla-quitar(disenador)
   "components/drafts/metrics-strip.tsx",
-  "components/eod/reports/reports-view.tsx",
-  "components/finance/expenses-list.tsx",
-  "components/finance/recurring-list.tsx",
-  "components/finance/summary-dashboard.tsx",
-  "components/finance/vendors-list.tsx",
+  "components/eod/reports/reports-view.tsx", // @plantilla-quitar(formularios)
+  "components/finance/expenses-list.tsx", // @plantilla-quitar(finanzas)
+  "components/finance/recurring-list.tsx", // @plantilla-quitar(finanzas)
+  "components/finance/summary-dashboard.tsx", // @plantilla-quitar(finanzas)
+  "components/finance/vendors-list.tsx", // @plantilla-quitar(finanzas)
   "components/flows/runs/flow-runs-screen.tsx",
-  "components/forms/editor/contact-tab.tsx",
-  "components/forms/editor/prefill-card.tsx",
-  "components/forms/responses/metrics-view.tsx",
-  "components/forms/responses/response-groups.tsx",
-  "components/forms/responses/responses-table.tsx",
+  "components/forms/editor/contact-tab.tsx", // @plantilla-quitar(formularios)
+  "components/forms/editor/prefill-card.tsx", // @plantilla-quitar(formularios)
+  "components/forms/responses/metrics-view.tsx", // @plantilla-quitar(formularios)
+  "components/forms/responses/response-groups.tsx", // @plantilla-quitar(formularios)
+  "components/forms/responses/responses-table.tsx", // @plantilla-quitar(formularios)
   "components/inbox/assignment/known-assignment-view.tsx",
-  "components/sales/payment-plan.tsx",
-  "components/sales/wizard/step3-financing.tsx",
+  "components/sales/payment-plan.tsx", // @plantilla-quitar(ventas)
+  "components/sales/wizard/step3-financing.tsx", // @plantilla-quitar(ventas)
   "components/scheduling/bookings/list.tsx",
-  "components/services/clients/import-services-view.tsx",
-  "components/services/clients/service-accesses-panel.tsx",
-  "components/services/clients/services-list-view.tsx",
-  "components/services/portal/program-calendar.tsx",
-  "components/services/portal/review-list.tsx",
-  "components/services/products/service-product-page.tsx",
-  "components/services/products/variant-portal-panel.tsx",
-  "components/settings/finance-categories-card.tsx",
-  "components/settings/integrations/website-screen.tsx",
-  "components/settings/payment-methods-card.tsx",
+  "components/services/clients/import-services-view.tsx", // @plantilla-quitar(servicios)
+  "components/services/clients/service-accesses-panel.tsx", // @plantilla-quitar(servicios)
+  "components/services/clients/services-list-view.tsx", // @plantilla-quitar(servicios)
+  "components/services/portal/program-calendar.tsx", // @plantilla-quitar(servicios)
+  "components/services/portal/review-list.tsx", // @plantilla-quitar(servicios)
+  "components/services/products/service-product-page.tsx", // @plantilla-quitar(servicios)
+  "components/services/products/variant-portal-panel.tsx", // @plantilla-quitar(servicios)
+  "components/settings/finance-categories-card.tsx", // @plantilla-quitar(finanzas)
+  "components/settings/integrations/website-screen.tsx", // @plantilla-quitar(formularios)
+  "components/settings/payment-methods-card.tsx", // @plantilla-quitar(ventas)
   "components/settings/roles/channel-access-section.tsx",
-  "components/tasks/tasks-table.tsx",
-  "components/webhooks/endpoint-detail.tsx",
-  "components/webhooks/inbound-drawer.tsx",
-  "components/webhooks/webhooks-screen.tsx",
+  "components/tasks/tasks-table.tsx", // @plantilla-quitar(tareas)
+  "components/webhooks/endpoint-detail.tsx", // @plantilla-quitar(webhooks)
+  "components/webhooks/inbound-drawer.tsx", // @plantilla-quitar(webhooks)
+  "components/webhooks/webhooks-screen.tsx", // @plantilla-quitar(webhooks)
 ] as const;
 
 const ROOT = process.cwd();
@@ -96,9 +96,11 @@ describe("tablas con columnas", () => {
     expect(stale, "Estas tablas ya no tienen <table>: sacalas de LEGACY.").toEqual([]);
   });
 
+  // @plantilla-desde(ventas)
   it("Ventas y Pagos ya usan DataTable", () => {
     for (const file of ["components/sales/sales-list.tsx", "components/sales/payments-list.tsx"]) {
       expect(readFileSync(join(ROOT, file), "utf8")).toContain("<DataTable");
     }
   });
+  // @plantilla-hasta(ventas)
 });

@@ -79,10 +79,20 @@ describe("lo que dibuja el editor es seguro", () => {
         const source = strip(readFileSync(file, "utf8"));
         for (const tag of source.matchAll(/<iframe\b[\s\S]*?\/>|<iframe\b[\s\S]*?>/g)) {
           expect(tag[0], `${relative(ROOT, file)}: iframe sin sandbox`).toMatch(/sandbox/);
-          expect(tag[0]).not.toMatch(/allow-scripts|allow-same-origin/);
+          expect(tag[0]).not.toMatch(/allow-scripts/);
+          // Solo el lienzo puede leer el contenido de un bloque cargado (para ubicar sus textos), y nunca con scripts.
+          if (relative(ROOT, file) !== "components/designer/canvas/canvas-stage.tsx") expect(tag[0], relative(ROOT, file)).not.toMatch(/allow-same-origin/);
         }
       }
     }
+  });
+
+  it("el bloque cargado del lienzo: `allow-same-origin` y nada más, con la política del render de edición", () => {
+    const stage = strip(readFileSync(join(CANVAS, "canvas-stage.tsx"), "utf8"));
+    const sandboxes = [...stage.matchAll(/sandbox="([^"]*)"/g)].map((m) => m[1]);
+    expect(sandboxes.sort()).toEqual(["", "allow-same-origin"]);
+    expect(stage).toMatch(/mode: "edit"/);
+    expect(readFileSync(join(ROOT, "lib/designer/render/page-html.ts"), "utf8")).toMatch(/opts\.mode === "edit" \? `<meta http-equiv="Content-Security-Policy" content="\$\{EDIT_CSP\}">`/);
   });
 
   it("los componentes del editor no usan `dark:` (los tokens del tema ya cambian solos)", () => {

@@ -4,7 +4,8 @@
 -- Las metricas diarias de cada publicacion y de cada cuenta, el catalogo de Meta
 -- (campanas, conjuntos y anuncios) con sus metricas diarias, y la atribucion: cada
 -- interaccion de un contacto (toque) con su canal (organico, pauta, referido, directo),
--- su vinculo con el anuncio de Meta y con la pieza de contenido.
+-- su vinculo con el anuncio de Meta y con la pieza de contenido. Tambien la cola de eventos
+-- de la API de Conversiones de Meta (reuniones agendadas y pasos de automatizacion).
 --
 -- Un metric que la red no dio queda en null: nunca se inventa un cero.
 -- ============================================================================
@@ -69,7 +70,7 @@ COMMENT ON COLUMN public.contact_touches.meta_match_status IS 'Resultado del vin
 COMMENT ON COLUMN public.contact_touches.entry_url IS 'La URL de entrada completa de la visita (con todos sus parametros, sin sensibles ni fragmento). La escribe record_contact_touch. Puede traer datos de la persona: nunca se loguea.';
 COMMENT ON COLUMN public.contact_touches.channel IS 'organic | paid | referral | direct. Lo calcula contact_touches_zz_channel con touch_channel(); un valor puesto en el INSERT se respeta.';
 REVOKE ALL ON TABLE public.contact_touches FROM anon;
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.contact_touches FROM authenticated;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public.contact_touches FROM authenticated;
 
 CREATE TABLE IF NOT EXISTS public.meta_ads (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -97,14 +98,28 @@ CREATE TABLE IF NOT EXISTS public.meta_ads (
   synced_at timestamp with time zone DEFAULT now() NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  video_id text,
+  transcript text,
+  transcript_status text DEFAULT 'none'::text NOT NULL,
+  transcript_source text,
+  transcript_updated_at timestamp with time zone,
+  transcript_updated_by uuid,
   CONSTRAINT meta_ads_pkey PRIMARY KEY (id),
   CONSTRAINT meta_ads_thumbnail_attempts_check CHECK ((thumbnail_attempts >= 0)),
+  CONSTRAINT meta_ads_transcript_shape CHECK ((((transcript_status = 'ready'::text) AND (transcript IS NOT NULL) AND (btrim(transcript) <> ''::text) AND (transcript_source IS NOT NULL)) OR ((transcript_status = 'none'::text) AND (transcript IS NULL)) OR (transcript_status = ANY (ARRAY['pending'::text, 'failed'::text])))),
+  CONSTRAINT meta_ads_transcript_source_check CHECK (((transcript_source IS NULL) OR (transcript_source = ANY (ARRAY['auto'::text, 'manual'::text])))),
+  CONSTRAINT meta_ads_transcript_status_check CHECK ((transcript_status = ANY (ARRAY['none'::text, 'pending'::text, 'ready'::text, 'failed'::text]))),
   CONSTRAINT meta_ads_content_post_id_fkey FOREIGN KEY (content_post_id) REFERENCES public.content_posts(id) ON DELETE SET NULL,
   CONSTRAINT meta_ads_social_post_id_fkey FOREIGN KEY (social_post_id) REFERENCES public.social_posts(id) ON DELETE SET NULL,
+  CONSTRAINT meta_ads_transcript_updated_by_fkey FOREIGN KEY (transcript_updated_by) REFERENCES auth.users(id) ON DELETE SET NULL,
   CONSTRAINT meta_ads_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
 ALTER TABLE public.meta_ads ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.meta_ads IS 'Catalogo de anuncios de Meta. Los escribe el sync con el service role.';
+COMMENT ON COLUMN public.meta_ads.video_id IS 'El id del video del creativo en Meta (creative.video_id, object_story_spec.video_data o asset_feed_spec). Lo escribe el sync.';
+COMMENT ON COLUMN public.meta_ads.transcript IS 'Lo que se dice en el video. Hoy se carga a mano desde el detalle del anuncio.';
+COMMENT ON COLUMN public.meta_ads.transcript_status IS 'none | pending | ready | failed. pending y failed quedan para la transcripcion automatica.';
+COMMENT ON COLUMN public.meta_ads.transcript_source IS 'auto | manual. La automatica nunca pisa una manual.';
 REVOKE ALL ON TABLE public.meta_ads FROM anon;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.meta_ads FROM authenticated;
 
@@ -152,6 +167,7 @@ CREATE TABLE IF NOT EXISTS public.meta_ads_insights_daily (
 );
 ALTER TABLE public.meta_ads_insights_daily ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.meta_ads_insights_daily IS 'Insights de Meta Ads por dia y objeto. Los cuatro niveles (cuenta, campaña, conjunto, anuncio) en una tabla: son las mismas metricas con distinto detalle.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.meta_ads_insights_daily FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.meta_adsets (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -210,6 +226,94 @@ COMMENT ON TABLE public.meta_campaigns IS 'Catalogo de campañas de Meta. Las es
 REVOKE ALL ON TABLE public.meta_campaigns FROM anon;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.meta_campaigns FROM authenticated;
 
+CREATE TABLE IF NOT EXISTS public.meta_capi_events (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  workspace_id uuid NOT NULL,
+  event_name text NOT NULL,
+  event_id text NOT NULL,
+  source_type text NOT NULL,
+  source_id uuid NOT NULL,
+  flow_id uuid,
+  flow_session_id uuid,
+  event_time timestamp with time zone NOT NULL,
+  params jsonb DEFAULT '{}'::jsonb NOT NULL,
+  status text DEFAULT 'pending'::text NOT NULL,
+  skip_reason text,
+  attempts integer DEFAULT 0 NOT NULL,
+  test boolean DEFAULT false NOT NULL,
+  action_source text,
+  fbtrace_id text,
+  error text,
+  sent_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT meta_capi_events_pkey PRIMARY KEY (id),
+  CONSTRAINT meta_capi_events_action_source_check CHECK (((action_source IS NULL) OR (action_source = ANY (ARRAY['website'::text, 'system_generated'::text])))),
+  CONSTRAINT meta_capi_events_attempts_check CHECK ((attempts >= 0)),
+  CONSTRAINT meta_capi_events_error_check CHECK (((error IS NULL) OR (char_length(error) <= 500))),
+  CONSTRAINT meta_capi_events_event_id_check CHECK (((char_length(event_id) >= 1) AND (char_length(event_id) <= 200))),
+  CONSTRAINT meta_capi_events_event_name_check CHECK (((char_length(event_name) >= 1) AND (char_length(event_name) <= 50))),
+  CONSTRAINT meta_capi_events_fbtrace_id_check CHECK (((fbtrace_id IS NULL) OR (char_length(fbtrace_id) <= 100))),
+  CONSTRAINT meta_capi_events_params_check CHECK ((jsonb_typeof(params) = 'object'::text)),
+  CONSTRAINT meta_capi_events_skip_reason_check CHECK (((skip_reason IS NULL) OR (skip_reason ~ '^[a-z_]{1,40}$'::text))),
+  CONSTRAINT meta_capi_events_source_type_check CHECK ((source_type = ANY (ARRAY['booking'::text, 'contact'::text]))),
+  CONSTRAINT meta_capi_events_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'sent'::text, 'failed'::text, 'skipped'::text]))),
+  CONSTRAINT meta_capi_events_flow_id_fkey FOREIGN KEY (flow_id) REFERENCES public.flows(id) ON DELETE SET NULL,
+  CONSTRAINT meta_capi_events_flow_session_id_fkey FOREIGN KEY (flow_session_id) REFERENCES public.flow_sessions(id) ON DELETE SET NULL,
+  CONSTRAINT meta_capi_events_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
+);
+ALTER TABLE public.meta_capi_events ENABLE ROW LEVEL SECURITY;
+COMMENT ON TABLE public.meta_capi_events IS 'Cada evento de la API de Conversiones de Meta. Un evento se manda una sola vez (índice único por workspace, evento y código). Sin contact_id ni datos de la persona a propósito.';
+REVOKE ALL ON TABLE public.meta_capi_events FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.meta_capi_events FROM authenticated;
+
+CREATE TABLE IF NOT EXISTS public.meta_capi_request_context (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  workspace_id uuid NOT NULL,
+  source_type text NOT NULL,
+  source_id uuid NOT NULL,
+  client_ip text,
+  user_agent text,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT meta_capi_request_context_pkey PRIMARY KEY (id),
+  CONSTRAINT meta_capi_request_context_client_ip_check CHECK (((client_ip IS NULL) OR (char_length(client_ip) <= 64))),
+  CONSTRAINT meta_capi_request_context_source_type_check CHECK ((source_type = ANY (ARRAY['booking'::text]))),
+  CONSTRAINT meta_capi_request_context_user_agent_check CHECK (((user_agent IS NULL) OR (char_length(user_agent) <= 500))),
+  CONSTRAINT meta_capi_request_context_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
+);
+ALTER TABLE public.meta_capi_request_context ENABLE ROW LEVEL SECURITY;
+COMMENT ON TABLE public.meta_capi_request_context IS 'La IP y el navegador de quien agendó, para la API de Conversiones de Meta. Solo service_role; se borra a los 8 días.';
+REVOKE ALL ON TABLE public.meta_capi_request_context FROM anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS public.meta_match_rules (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  workspace_id uuid NOT NULL,
+  campaign_key text DEFAULT ''::text NOT NULL,
+  content_key text DEFAULT ''::text NOT NULL,
+  term_key text DEFAULT ''::text NOT NULL,
+  utm_campaign text,
+  utm_content text,
+  utm_term text,
+  action text NOT NULL,
+  ad_id text,
+  adset_id text,
+  campaign_id text,
+  origin text DEFAULT 'manual'::text NOT NULL,
+  created_by uuid,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT meta_match_rules_pkey PRIMARY KEY (id),
+  CONSTRAINT meta_match_rules_action_check CHECK ((action = ANY (ARRAY['link'::text, 'ignore'::text]))),
+  CONSTRAINT meta_match_rules_keys_check CHECK (((campaign_key <> ''::text) OR (content_key <> ''::text) OR (term_key <> ''::text))),
+  CONSTRAINT meta_match_rules_origin_check CHECK ((origin = ANY (ARRAY['manual'::text, 'confirmed'::text, 'ai'::text]))),
+  CONSTRAINT meta_match_rules_target_check CHECK ((((action = 'ignore'::text) AND (ad_id IS NULL) AND (adset_id IS NULL) AND (campaign_id IS NULL)) OR ((action = 'link'::text) AND (COALESCE(ad_id, adset_id, campaign_id) IS NOT NULL)))),
+  CONSTRAINT meta_match_rules_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL,
+  CONSTRAINT meta_match_rules_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
+);
+ALTER TABLE public.meta_match_rules ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.meta_match_rules FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.meta_match_rules FROM authenticated;
+
 CREATE TABLE IF NOT EXISTS public.social_account_metrics_daily (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   workspace_id uuid NOT NULL,
@@ -230,6 +334,7 @@ CREATE TABLE IF NOT EXISTS public.social_account_metrics_daily (
 );
 ALTER TABLE public.social_account_metrics_daily ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.social_account_metrics_daily IS 'Seguidores y alcance de una cuenta, por dia. Es la base del grafico de crecimiento y del salto de seguidores por post.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.social_account_metrics_daily FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.social_post_metrics_daily (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -256,6 +361,7 @@ CREATE TABLE IF NOT EXISTS public.social_post_metrics_daily (
 ALTER TABLE public.social_post_metrics_daily ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.social_post_metrics_daily IS 'Metricas de una publicacion, acumuladas a cada dia. Un dia sin dato no tiene fila: el grafico muestra el hueco en vez de un cero inventado.';
 COMMENT ON COLUMN public.social_post_metrics_daily.extra IS 'Lo propio de cada red: reach_followers, reach_non_followers, creatorContentType, etc.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.social_post_metrics_daily FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Funciones
@@ -310,6 +416,103 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION private.meta_is_numeric(p_value text) FROM PUBLIC;
 
+CREATE OR REPLACE FUNCTION private.meta_medium_is_organic(p_medium text)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT coalesce(lower(btrim(p_medium)) IN ('social', 'organic', 'organic_social', 'bio', 'link_in_bio', 'referral', 'email',
+                                             'newsletter', 'dm', 'dm_link', 'story', 'story_reply', 'story_mention', 'comment',
+                                             'whatsapp', 'whatsapp_group', 'sms'), false)
+$function$;
+REVOKE ALL ON FUNCTION private.meta_medium_is_organic(p_medium text) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.meta_medium_is_paid(p_medium text)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT coalesce(lower(btrim(p_medium)) IN ('paid', 'paid_social', 'paidsocial', 'paid-social', 'cpc', 'ppc', 'cpm', 'display', 'paid_search', 'ads', 'ad'), false)
+$function$;
+REVOKE ALL ON FUNCTION private.meta_medium_is_paid(p_medium text) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.meta_name_tokens(p_raw text)
+ RETURNS text[]
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT coalesce(array_agg(DISTINCT w ORDER BY w), ARRAY[]::text[])
+    FROM unnest(regexp_split_to_array(coalesce(public.meta_name_key(p_raw), ''), '[^a-z0-9]+')) AS w
+   WHERE w <> ''
+     AND w <> ALL (ARRAY['ad', 'ads', 'anuncio', 'anuncios', 'campana', 'campanas', 'campaign', 'conjunto', 'adset',
+                         'copia', 'copy', 'el', 'la', 'los', 'las', 'de', 'del', 'y', 'e', 'en', 'un', 'una', 'a', 'al',
+                         'con', 'por', 'para', 'the', 'of', 'and'])
+$function$;
+REVOKE ALL ON FUNCTION private.meta_name_tokens(p_raw text) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.meta_rematch_by_keys(p_workspace_id uuid, p_campaign_key text, p_content_key text, p_term_key text)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  t          public.contact_touches%ROWTYPE;
+  r          jsonb;
+  v_changed  int := 0;
+  v_contacts uuid[] := ARRAY[]::uuid[];
+BEGIN
+  FOR t IN
+    SELECT ct.* FROM public.contact_touches ct
+     WHERE ct.workspace_id = p_workspace_id
+       AND ct.meta_match_status IN ('none', 'unmatched', 'matched', 'ignored')
+       AND NOT (ct.meta_match_status = 'ignored' AND ct.meta_match_by IS NOT NULL)
+       AND private.meta_touch_utm_counts(ct)
+       AND private.meta_rule_key(ct.campaign) = p_campaign_key
+       AND private.meta_rule_key(ct.content_label) = p_content_key
+       AND private.meta_rule_key(ct.term) = p_term_key
+     FOR UPDATE
+  LOOP
+    r := public.resolve_meta_match_for_touch(t);
+    IF (r->>'status') IS DISTINCT FROM t.meta_match_status
+       OR (r->>'ad_id') IS DISTINCT FROM t.meta_ad_id
+       OR (r->>'adset_id') IS DISTINCT FROM t.meta_adset_id
+       OR (r->>'campaign_id') IS DISTINCT FROM t.meta_campaign_id
+       OR (r->>'method') IS DISTINCT FROM t.meta_match_method
+       OR (r->>'reason') IS DISTINCT FROM t.meta_match_reason THEN
+      UPDATE public.contact_touches
+         SET meta_campaign_id = r->>'campaign_id',
+             meta_adset_id = r->>'adset_id',
+             meta_ad_id = r->>'ad_id',
+             meta_match_status = coalesce(r->>'status', 'none'),
+             meta_match_method = r->>'method',
+             meta_match_reason = r->>'reason',
+             meta_matched_at = CASE WHEN r->>'status' IN ('matched', 'ignored') THEN now() END
+       WHERE id = t.id;
+      v_changed := v_changed + 1;
+      v_contacts := array_append(v_contacts, t.contact_id);
+    END IF;
+  END LOOP;
+
+  PERFORM private.refresh_contact_attribution(c) FROM (SELECT DISTINCT unnest(v_contacts) AS c) x;
+  RETURN v_changed;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.meta_rematch_by_keys(p_workspace_id uuid, p_campaign_key text, p_content_key text, p_term_key text) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.meta_rule_key(p_raw text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT coalesce(public.meta_name_key(nullif(btrim(private.meta_url_decode(p_raw)), '')), '')
+$function$;
+REVOKE ALL ON FUNCTION private.meta_rule_key(p_raw text) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION private.meta_source_counts(p_source text)
  RETURNS boolean
  LANGUAGE sql
@@ -319,6 +522,30 @@ AS $function$
   SELECT coalesce(nullif(btrim(lower(p_source)), ''), 'web') IN ('meta', 'facebook', 'fb', 'instagram', 'ig', 'msg', 'an', 'web')
 $function$;
 REVOKE ALL ON FUNCTION private.meta_source_counts(p_source text) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.meta_tokens_qualify(p_tokens text[])
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT coalesce(cardinality(p_tokens), 0) >= 2
+      OR EXISTS (SELECT 1 FROM unnest(coalesce(p_tokens, ARRAY[]::text[])) w WHERE w ~ '[a-z]' AND w ~ '[0-9]')
+$function$;
+REVOKE ALL ON FUNCTION private.meta_tokens_qualify(p_tokens text[]) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.meta_touch_medium(t public.contact_touches)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT coalesce(
+    nullif(lower(btrim(coalesce(t.raw->'utm'->>'utm_medium', t.raw->>'utm_medium'))), ''),
+    nullif(lower(btrim(t.medium)), '')
+  )
+$function$;
+REVOKE ALL ON FUNCTION private.meta_touch_medium(t public.contact_touches) FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION private.meta_touch_utm_counts(t public.contact_touches)
  RETURNS boolean
@@ -331,11 +558,13 @@ AS $function$
       OR nullif(btrim(t.campaign_id), '') IS NOT NULL
       OR (
         t.origin IN ('booking', 'form', 'webhook', 'import', 'manual')
+        AND NOT private.meta_medium_is_organic(private.meta_touch_medium(t))
         AND (
-          private.meta_source_counts(t.source)
-          OR private.meta_is_numeric(t.campaign)
+          private.meta_is_numeric(t.campaign)
           OR private.meta_is_numeric(t.content_label)
           OR private.meta_is_numeric(t.term)
+          OR coalesce(lower(btrim(t.source)), '') IN ('meta', 'facebook', 'meta_ads', 'facebook_ads', 'fb_ads')
+          OR (private.meta_medium_is_paid(private.meta_touch_medium(t)) AND private.meta_source_counts(t.source))
         )
       )
 $function$;
@@ -360,7 +589,6 @@ AS $function$
   SELECT nullif(btrim(t.ad_id), '') IS NOT NULL
       OR nullif(btrim(t.adset_id), '') IS NOT NULL
       OR nullif(btrim(t.campaign_id), '') IS NOT NULL
-      OR nullif(btrim(t.fbclid), '') IS NOT NULL
       OR (
         private.meta_touch_utm_counts(t)
         AND (nullif(btrim(t.campaign), '') IS NOT NULL
@@ -408,6 +636,20 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION private.refresh_contact_attribution(p_contact_id uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION private.refresh_contact_attribution(p_contact_id uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION private.touch_effective_medium(p_medium text, p_raw jsonb)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT CASE
+    WHEN coalesce(nullif(lower(btrim(p_medium)), ''), 'form') IN ('form', 'booking', 'webhook', 'import', 'manual')
+      THEN coalesce(nullif(lower(btrim(coalesce(p_raw->'utm'->>'utm_medium', p_raw->>'utm_medium'))), ''), p_medium)
+    ELSE p_medium
+  END
+$function$;
+REVOKE ALL ON FUNCTION private.touch_effective_medium(p_medium text, p_raw jsonb) FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION public.ads_crm_cell_detail(p_level text, p_metric text, p_since date, p_until date, p_ad_account_id text DEFAULT NULL::text, p_workspace_id uuid DEFAULT NULL::uuid, p_object_id text DEFAULT NULL::text, p_object_ids text[] DEFAULT NULL::text[], p_limit integer DEFAULT 50, p_offset integer DEFAULT 0)
  RETURNS TABLE(item_id uuid, contact_id uuid, contact_name text, occurred_at timestamp with time zone, origin text, detail_at timestamp with time zone, amount_cents bigint, total_count bigint)
@@ -665,6 +907,40 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.ads_crm_metrics_v2(p_level text, p_since date, p_until date, p_ad_account_id text, p_workspace_id uuid, p_object_ids text[]) FROM PUBLIC, anon;
 
+CREATE OR REPLACE FUNCTION public.booking_last_touches(p_workspace_id uuid, p_booking_ids uuid[], p_limit integer DEFAULT 3)
+ RETURNS TABLE(booking_id uuid, touch_rank integer, touch_id uuid, occurred_at timestamp with time zone, source text, medium text, campaign text, content_label text, term text, origin text, channel text, social_post_id uuid, content_post_id uuid, ad_id text, adset_id text, campaign_id text, meta_campaign_id text, meta_adset_id text, meta_ad_id text, meta_match_status text, entry_url text)
+ LANGUAGE sql
+ STABLE
+ SET search_path TO ''
+AS $function$
+  SELECT
+    b.id,
+    (row_number() OVER (PARTITION BY b.id ORDER BY t.occurred_at DESC, t.created_at DESC, t.id DESC))::integer,
+    t.id, t.occurred_at, t.source, t.medium, t.campaign, t.content_label, t.term, t.origin, t.channel,
+    t.social_post_id, t.content_post_id, t.ad_id, t.adset_id, t.campaign_id,
+    t.meta_campaign_id, t.meta_adset_id, t.meta_ad_id, t.meta_match_status, t.entry_url
+  FROM public.bookings b
+  CROSS JOIN LATERAL (
+    SELECT ct.*
+    FROM public.contact_touches ct
+    WHERE ct.workspace_id = b.workspace_id
+      AND ct.contact_id = b.contact_id
+      AND ct.occurred_at <= b.created_at
+      AND NOT (
+        ct.origin = 'booking' AND ct.source = 'web'
+        AND ct.campaign IS NULL AND ct.content_label IS NULL AND ct.term IS NULL
+        AND ct.ad_id IS NULL AND ct.adset_id IS NULL AND ct.campaign_id IS NULL
+        AND ct.fbclid IS NULL AND ct.gclid IS NULL AND ct.ttclid IS NULL AND ct.li_fat_id IS NULL
+      )
+    ORDER BY ct.occurred_at DESC, ct.created_at DESC, ct.id DESC
+    LIMIT greatest(1, least(coalesce(p_limit, 3), 10))
+  ) t
+  WHERE b.workspace_id = p_workspace_id
+    AND b.id = ANY (p_booking_ids)
+  ORDER BY b.id, 2;
+$function$;
+REVOKE ALL ON FUNCTION public.booking_last_touches(p_workspace_id uuid, p_booking_ids uuid[], p_limit integer) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.contact_last_activity(p_workspace_id uuid, p_contact_ids uuid[])
  RETURNS TABLE(contact_id uuid, activity_at timestamp with time zone)
  LANGUAGE sql
@@ -831,16 +1107,17 @@ DECLARE
   v_channel text := NEW.channel;
   v_status text := NEW.meta_match_status;
   v_reason text := NEW.meta_match_reason;
+  v_medium text;
 BEGIN
   BEGIN
+    v_medium := private.touch_effective_medium(NEW.medium, NEW.raw);
     IF TG_OP = 'INSERT' THEN
       IF v_channel IS NULL THEN
-        v_channel := public.touch_channel(NEW.origin, NEW.medium, NEW.source, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.meta_ad_id, NEW.meta_campaign_id,
+        v_channel := public.touch_channel(NEW.origin, v_medium, NEW.source, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.meta_ad_id, NEW.meta_campaign_id,
                                           NEW.gclid, NEW.ttclid, NEW.li_fat_id, NEW.ctwa_clid, NEW.fbclid, NEW.social_post_id, NEW.content_post_id);
       END IF;
     ELSIF NEW.channel IS NOT DISTINCT FROM OLD.channel THEN
-      -- Se actualizo algo que cambia el canal y nadie lo puso a mano: se recalcula.
-      v_channel := public.touch_channel(NEW.origin, NEW.medium, NEW.source, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.meta_ad_id, NEW.meta_campaign_id,
+      v_channel := public.touch_channel(NEW.origin, v_medium, NEW.source, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.meta_ad_id, NEW.meta_campaign_id,
                                         NEW.gclid, NEW.ttclid, NEW.li_fat_id, NEW.ctwa_clid, NEW.fbclid, NEW.social_post_id, NEW.content_post_id);
     END IF;
 
@@ -867,6 +1144,102 @@ BEGIN
 END;
 $function$;
 REVOKE ALL ON FUNCTION public.contact_touches_zz_channel_trg() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.create_meta_match_rule(p_workspace_id uuid, p_user_id uuid, p_utm_campaign text, p_utm_content text, p_utm_term text, p_action text, p_ad_id text DEFAULT NULL::text, p_adset_id text DEFAULT NULL::text, p_campaign_id text DEFAULT NULL::text, p_origin text DEFAULT 'manual'::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_ckey     text := private.meta_rule_key(p_utm_campaign);
+  v_kkey     text := private.meta_rule_key(p_utm_content);
+  v_tkey     text := private.meta_rule_key(p_utm_term);
+  v_ad       text := nullif(btrim(p_ad_id), '');
+  v_adset    text := nullif(btrim(p_adset_id), '');
+  v_campaign text := nullif(btrim(p_campaign_id), '');
+  a_adset    text;
+  a_campaign text;
+  s_campaign text;
+  v_id       uuid;
+  v_applied  int;
+BEGIN
+  IF p_action NOT IN ('link', 'ignore') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'invalid_action');
+  END IF;
+  IF coalesce(p_origin, '') NOT IN ('manual', 'confirmed', 'ai') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'invalid_origin');
+  END IF;
+  IF v_ckey = '' AND v_kkey = '' AND v_tkey = '' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'no_keys');
+  END IF;
+
+  IF p_action = 'link' THEN
+    IF v_ad IS NOT NULL THEN
+      SELECT a.adset_id, a.campaign_id INTO a_adset, a_campaign FROM public.meta_ads a
+       WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_ad LIMIT 1;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+      v_adset := a_adset;
+      v_campaign := coalesce(a_campaign, v_campaign);
+    END IF;
+    IF v_adset IS NOT NULL THEN
+      SELECT s.campaign_id INTO s_campaign FROM public.meta_adsets s
+       WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_adset LIMIT 1;
+      IF NOT FOUND AND v_ad IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+      v_campaign := coalesce(v_campaign, s_campaign);
+    END IF;
+    IF v_campaign IS NOT NULL AND v_ad IS NULL AND v_adset IS NULL THEN
+      PERFORM 1 FROM public.meta_campaigns c WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_campaign;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+    END IF;
+    IF v_ad IS NULL AND v_adset IS NULL AND v_campaign IS NULL THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'nothing_to_link');
+    END IF;
+  ELSE
+    v_ad := NULL; v_adset := NULL; v_campaign := NULL;
+  END IF;
+
+  INSERT INTO public.meta_match_rules AS mr
+    (workspace_id, campaign_key, content_key, term_key, utm_campaign, utm_content, utm_term,
+     action, ad_id, adset_id, campaign_id, origin, created_by)
+  VALUES
+    (p_workspace_id, v_ckey, v_kkey, v_tkey,
+     nullif(btrim(private.meta_url_decode(p_utm_campaign)), ''),
+     nullif(btrim(private.meta_url_decode(p_utm_content)), ''),
+     nullif(btrim(private.meta_url_decode(p_utm_term)), ''),
+     p_action, v_ad, v_adset, v_campaign, p_origin, p_user_id)
+  ON CONFLICT (workspace_id, campaign_key, content_key, term_key) DO UPDATE
+    SET action = EXCLUDED.action, ad_id = EXCLUDED.ad_id, adset_id = EXCLUDED.adset_id, campaign_id = EXCLUDED.campaign_id,
+        origin = EXCLUDED.origin, created_by = EXCLUDED.created_by, updated_at = now()
+  RETURNING mr.id INTO v_id;
+
+  v_applied := private.meta_rematch_by_keys(p_workspace_id, v_ckey, v_kkey, v_tkey);
+
+  RETURN jsonb_build_object('ok', true, 'rule_id', v_id, 'applied', v_applied,
+                            'ad_id', v_ad, 'adset_id', v_adset, 'campaign_id', v_campaign);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.create_meta_match_rule(p_workspace_id uuid, p_user_id uuid, p_utm_campaign text, p_utm_content text, p_utm_term text, p_action text, p_ad_id text, p_adset_id text, p_campaign_id text, p_origin text) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.delete_meta_match_rule(p_workspace_id uuid, p_rule_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_rule    public.meta_match_rules%ROWTYPE;
+  v_changed int;
+BEGIN
+  DELETE FROM public.meta_match_rules WHERE id = p_rule_id AND workspace_id = p_workspace_id RETURNING * INTO v_rule;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'rule_not_found');
+  END IF;
+  v_changed := private.meta_rematch_by_keys(p_workspace_id, v_rule.campaign_key, v_rule.content_key, v_rule.term_key);
+  RETURN jsonb_build_object('ok', true, 'reverted', v_changed, 'rule', to_jsonb(v_rule));
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.delete_meta_match_rule(p_workspace_id uuid, p_rule_id uuid) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.enrich_touch_ad_origin(p_workspace_id uuid, p_dedupe_key text, p_ad_id text, p_title text DEFAULT NULL::text, p_post_id text DEFAULT NULL::text)
  RETURNS jsonb
@@ -1155,7 +1528,6 @@ DECLARE
   v_utm_term     text := nullif(btrim(private.meta_url_decode(p_utm_term)), '');
   v_fbclid       text := nullif(btrim(p_fbclid), '');
 
-  -- Lo resuelto
   r_ad           text;
   r_ad_adset     text;
   r_ad_campaign  text;
@@ -1167,22 +1539,27 @@ DECLARE
   m_campaign     text;
 
   h_direct       text;
+  h_named        text;
+  m_named        text;
+  v_scope        text[];
   v_name_key     text;
+  v_tokens       text[];
   v_n            int;
+  v_rule         public.meta_match_rules%ROWTYPE;
 
-  ambiguous_ad   boolean := false;
+  ambiguous_ad       boolean := false;
+  ambiguous_campaign boolean := false;
   v_notes        text[] := ARRAY[]::text[];
   v_status       text;
   v_method       text;
   v_reason       text;
 BEGIN
-  -- Sin ningun dato de Meta (ni ids, ni UTMs con valor, ni fbclid): no hay nada que resolver.
   IF v_ad_id IS NULL AND v_adset_id IS NULL AND v_campaign_id IS NULL
      AND v_utm_campaign IS NULL AND v_utm_content IS NULL AND v_utm_term IS NULL AND v_fbclid IS NULL THEN
     RETURN jsonb_build_object('status', 'none', 'ad_id', NULL, 'adset_id', NULL, 'campaign_id', NULL, 'method', NULL, 'reason', NULL);
   END IF;
 
-  -- ---- La campaña por id ----
+  -- ---- 1. Por id ----
   IF v_campaign_id IS NOT NULL THEN
     SELECT c.campaign_id INTO h_direct FROM public.meta_campaigns c
      WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_campaign_id LIMIT 1;
@@ -1192,7 +1569,6 @@ BEGIN
      WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_utm_campaign LIMIT 1;
   END IF;
 
-  -- ---- Anuncio por id ----
   IF v_ad_id IS NOT NULL THEN
     SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
      WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_ad_id LIMIT 1;
@@ -1204,7 +1580,6 @@ BEGIN
     IF r_ad IS NOT NULL THEN m_ad := 'utm_content_id'; END IF;
   END IF;
 
-  -- ---- Conjunto por id ----
   IF v_adset_id IS NOT NULL THEN
     SELECT s.adset_id, s.campaign_id INTO r_adset, r_adset_camp FROM public.meta_adsets s
      WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_adset_id LIMIT 1;
@@ -1216,7 +1591,41 @@ BEGIN
     IF r_adset IS NOT NULL THEN m_adset := 'utm_term_id'; END IF;
   END IF;
 
-  -- ---- Anuncio por nombre: solo adentro de lo que ya se conoce por id ----
+  -- ---- 2. Una regla (lo que decidio una persona para estos mismos UTMs) ----
+  IF r_ad IS NULL AND (v_utm_campaign IS NOT NULL OR v_utm_content IS NOT NULL OR v_utm_term IS NOT NULL) THEN
+    SELECT * INTO v_rule FROM public.meta_match_rules mr
+     WHERE mr.workspace_id = p_workspace_id
+       AND mr.campaign_key = coalesce(public.meta_name_key(v_utm_campaign), '')
+       AND mr.content_key = coalesce(public.meta_name_key(v_utm_content), '')
+       AND mr.term_key = coalesce(public.meta_name_key(v_utm_term), '')
+     LIMIT 1;
+    IF FOUND THEN
+      IF v_rule.action = 'ignore' THEN
+        -- «No es un anuncio» solo vale si ningun id dijo lo contrario.
+        IF r_adset IS NULL AND h_direct IS NULL THEN
+          RETURN jsonb_build_object('status', 'ignored', 'ad_id', NULL, 'adset_id', NULL, 'campaign_id', NULL, 'method', 'rule', 'reason', NULL);
+        END IF;
+      -- Una regla nunca contradice un conjunto o una campaña que vinieron por id.
+      ELSIF (r_adset IS NULL OR v_rule.adset_id IS NULL OR v_rule.adset_id = r_adset)
+        AND (h_direct IS NULL OR v_rule.campaign_id IS NULL OR v_rule.campaign_id = h_direct) THEN
+        IF v_rule.ad_id IS NOT NULL THEN
+          r_ad := v_rule.ad_id;
+          r_ad_adset := v_rule.adset_id;
+          r_ad_campaign := v_rule.campaign_id;
+          m_ad := 'rule';
+        ELSIF v_rule.adset_id IS NOT NULL AND r_adset IS NULL THEN
+          r_adset := v_rule.adset_id;
+          r_adset_camp := v_rule.campaign_id;
+          m_adset := 'rule';
+        ELSIF v_rule.campaign_id IS NOT NULL AND h_direct IS NULL THEN
+          h_named := v_rule.campaign_id;
+          m_named := 'rule';
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+
+  -- ---- 3. Anuncio por nombre exacto, adentro de lo que se conoce por id ----
   IF r_ad IS NULL AND v_utm_content IS NOT NULL AND (r_adset IS NOT NULL OR h_direct IS NOT NULL) THEN
     v_name_key := public.meta_name_key(v_utm_content);
     IF v_name_key <> '' THEN
@@ -1235,7 +1644,81 @@ BEGIN
     END IF;
   END IF;
 
-  -- ---- El unico anuncio del conjunto. No si llego un id de anuncio que no esta en el catalogo: seria otro anuncio. ----
+  -- ---- 4. Sin ningun id: la campaña por su nombre (unico) o, si no, por parecido ----
+  IF r_ad IS NULL AND r_adset IS NULL AND h_direct IS NULL AND h_named IS NULL
+     AND v_utm_campaign IS NOT NULL AND NOT private.meta_is_numeric(v_utm_campaign) THEN
+    v_name_key := public.meta_name_key(v_utm_campaign);
+    IF v_name_key <> '' THEN
+      SELECT count(*), min(c.campaign_id) INTO v_n, h_named FROM public.meta_campaigns c
+       WHERE c.workspace_id = p_workspace_id AND c.name_key = v_name_key;
+      IF v_n = 1 THEN
+        m_named := 'utm_campaign_name';
+      ELSE
+        h_named := NULL;
+        IF v_n > 1 THEN ambiguous_campaign := true; END IF;
+      END IF;
+    END IF;
+    IF h_named IS NULL THEN
+      v_tokens := private.meta_name_tokens(v_utm_campaign);
+      IF cardinality(v_tokens) > 0 THEN
+        SELECT coalesce(array_agg(c.campaign_id ORDER BY c.campaign_id), ARRAY[]::text[]) INTO v_scope
+          FROM public.meta_campaigns c
+         WHERE c.workspace_id = p_workspace_id AND private.meta_name_tokens(c.name_key) @> v_tokens;
+        IF cardinality(v_scope) = 1 THEN
+          h_named := v_scope[1];
+          m_named := 'utm_campaign_similar';
+        ELSIF cardinality(v_scope) > 1 THEN
+          ambiguous_campaign := true;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+
+  -- ---- 5. Anuncio por nombre exacto dentro de la campaña hallada por su nombre ----
+  IF r_ad IS NULL AND v_ad_id IS NULL AND m_named = 'utm_campaign_name' AND v_utm_content IS NOT NULL THEN
+    v_name_key := public.meta_name_key(v_utm_content);
+    IF v_name_key <> '' THEN
+      SELECT count(*) INTO v_n FROM public.meta_ads a
+       WHERE a.workspace_id = p_workspace_id AND a.campaign_id = h_named AND a.name_key = v_name_key;
+      IF v_n = 1 THEN
+        SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+         WHERE a.workspace_id = p_workspace_id AND a.campaign_id = h_named AND a.name_key = v_name_key LIMIT 1;
+        m_ad := 'utm_content_name';
+      ELSIF v_n > 1 THEN
+        ambiguous_ad := true;
+      END IF;
+    END IF;
+  END IF;
+
+  -- ---- 6. Anuncio por parecido: el UNICO del alcance cuyas palabras contienen todas las del utm_content ----
+  IF r_ad IS NULL AND v_ad_id IS NULL AND NOT ambiguous_ad AND v_utm_content IS NOT NULL
+     AND NOT private.meta_is_numeric(v_utm_content) THEN
+    v_tokens := private.meta_name_tokens(v_utm_content);
+    v_n := 0;
+    IF private.meta_tokens_qualify(v_tokens) THEN
+      IF r_adset IS NOT NULL THEN
+        SELECT count(*) INTO v_n FROM public.meta_ads a
+         WHERE a.workspace_id = p_workspace_id AND a.adset_id = r_adset AND private.meta_name_tokens(a.name_key) @> v_tokens;
+        IF v_n = 1 THEN
+          SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+           WHERE a.workspace_id = p_workspace_id AND a.adset_id = r_adset AND private.meta_name_tokens(a.name_key) @> v_tokens LIMIT 1;
+          m_ad := 'utm_content_similar_adset';
+        END IF;
+      ELSIF coalesce(h_direct, h_named) IS NOT NULL OR cardinality(v_scope) > 1 THEN
+        IF coalesce(h_direct, h_named) IS NOT NULL THEN v_scope := ARRAY[coalesce(h_direct, h_named)]; END IF;
+        SELECT count(*) INTO v_n FROM public.meta_ads a
+         WHERE a.workspace_id = p_workspace_id AND a.campaign_id = ANY (v_scope) AND private.meta_name_tokens(a.name_key) @> v_tokens;
+        IF v_n = 1 THEN
+          SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+           WHERE a.workspace_id = p_workspace_id AND a.campaign_id = ANY (v_scope) AND private.meta_name_tokens(a.name_key) @> v_tokens LIMIT 1;
+          m_ad := 'utm_content_similar_campaign';
+        END IF;
+      END IF;
+      IF v_n > 1 THEN ambiguous_ad := true; END IF;
+    END IF;
+  END IF;
+
+  -- ---- 7. El unico anuncio del conjunto (no si llego un id de anuncio desconocido: seria otro anuncio) ----
   IF r_ad IS NULL AND r_adset IS NOT NULL AND NOT ambiguous_ad AND v_ad_id IS NULL
      AND NOT private.meta_is_numeric(v_utm_content) THEN
     SELECT count(*) INTO v_n FROM public.meta_ads a
@@ -1259,7 +1742,6 @@ BEGIN
   IF h_direct IS NOT NULL THEN
     r_campaign := h_direct;
     m_campaign := CASE WHEN v_campaign_id IS NOT NULL AND h_direct = v_campaign_id THEN 'campaign_id' ELSE 'utm_campaign_id' END;
-    -- Coherencia: si el anuncio es de OTRA campaña, gana el anuncio (es mas especifico).
     IF r_ad IS NOT NULL AND r_ad_campaign IS NOT NULL AND r_ad_campaign <> r_campaign THEN
       r_campaign := r_ad_campaign;
       m_campaign := m_ad;
@@ -1268,6 +1750,9 @@ BEGIN
   ELSIF r_ad_campaign IS NOT NULL OR r_adset_camp IS NOT NULL THEN
     r_campaign := coalesce(r_ad_campaign, r_adset_camp);
     m_campaign := CASE WHEN r_ad_campaign IS NOT NULL THEN m_ad ELSE m_adset END;
+  ELSIF h_named IS NOT NULL THEN
+    r_campaign := h_named;
+    m_campaign := m_named;
   END IF;
 
   -- ---- Resultado ----
@@ -1275,7 +1760,6 @@ BEGIN
     v_status := 'matched';
     v_method := coalesce(m_ad, m_adset, m_campaign);
     IF ambiguous_ad THEN v_notes := array_append(v_notes, 'ambiguous_ad_name'); END IF;
-    -- Un id que vino y no esta en el catalogo, aunque otra pista haya resuelto algo.
     IF (v_ad_id IS NOT NULL AND r_ad IS NULL) OR (v_adset_id IS NOT NULL AND m_adset IS DISTINCT FROM 'adset_id')
        OR (v_campaign_id IS NOT NULL AND h_direct IS DISTINCT FROM v_campaign_id AND r_campaign IS DISTINCT FROM v_campaign_id) THEN
       v_notes := array_append(v_notes, 'id_not_in_catalog');
@@ -1285,6 +1769,12 @@ BEGIN
     v_status := 'unmatched';
     IF v_ad_id IS NOT NULL OR v_adset_id IS NOT NULL OR v_campaign_id IS NOT NULL THEN
       v_reason := 'id_not_in_catalog';
+    ELSIF ambiguous_ad THEN
+      v_reason := 'ambiguous_ad_name';
+    ELSIF ambiguous_campaign THEN
+      v_reason := 'ambiguous_campaign_name';
+    ELSIF v_utm_campaign IS NOT NULL AND NOT private.meta_is_numeric(v_utm_campaign) THEN
+      v_reason := 'name_not_found';
     ELSIF v_utm_campaign IS NOT NULL OR v_utm_content IS NOT NULL OR v_utm_term IS NOT NULL THEN
       v_reason := 'name_without_id';
     ELSE
@@ -1321,7 +1811,7 @@ AS $function$
     CASE WHEN private.meta_touch_utm_counts(t) THEN t.campaign END,
     CASE WHEN private.meta_touch_utm_counts(t) THEN t.content_label END,
     CASE WHEN private.meta_touch_utm_counts(t) THEN t.term END,
-    t.fbclid
+    NULL
   )
 $function$;
 REVOKE ALL ON FUNCTION public.resolve_meta_match_for_touch(t public.contact_touches) FROM PUBLIC, anon, authenticated;
@@ -1502,6 +1992,8 @@ CREATE INDEX IF NOT EXISTS idx_meta_ads_name_key ON public.meta_ads USING btree 
 
 CREATE INDEX IF NOT EXISTS idx_meta_ads_thumbnail_pending ON public.meta_ads USING btree (workspace_id, thumbnail_attempts) WHERE (thumbnail_path IS NULL);
 
+CREATE INDEX IF NOT EXISTS idx_meta_ads_video ON public.meta_ads USING btree (workspace_id, video_id) WHERE (video_id IS NOT NULL);
+
 CREATE INDEX IF NOT EXISTS idx_meta_ads_ws_ad ON public.meta_ads USING btree (workspace_id, ad_id);
 
 CREATE INDEX IF NOT EXISTS idx_meta_adsets_campaign ON public.meta_adsets USING btree (workspace_id, campaign_id);
@@ -1514,6 +2006,10 @@ CREATE INDEX IF NOT EXISTS idx_meta_campaigns_name_key ON public.meta_campaigns 
 
 CREATE INDEX IF NOT EXISTS idx_meta_campaigns_ws_campaign ON public.meta_campaigns USING btree (workspace_id, campaign_id);
 
+CREATE INDEX IF NOT EXISTS idx_meta_capi_events_recent ON public.meta_capi_events USING btree (workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_meta_capi_request_context_created ON public.meta_capi_request_context USING btree (created_at);
+
 CREATE INDEX IF NOT EXISTS idx_post_metrics_workspace_date ON public.social_post_metrics_daily USING btree (workspace_id, date DESC);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_account_metrics_daily ON public.social_account_metrics_daily USING btree (social_account_id, date);
@@ -1525,6 +2021,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_ads_insights ON public.meta_ads_insigh
 CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_adsets ON public.meta_adsets USING btree (workspace_id, ad_account_id, adset_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_campaigns ON public.meta_campaigns USING btree (workspace_id, ad_account_id, campaign_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_capi_events_event ON public.meta_capi_events USING btree (workspace_id, event_name, event_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_capi_request_context_source ON public.meta_capi_request_context USING btree (source_type, source_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_match_rules_keys ON public.meta_match_rules USING btree (workspace_id, campaign_key, content_key, term_key);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_post_metrics_daily ON public.social_post_metrics_daily USING btree (social_post_id, date);
 
@@ -1587,6 +2089,16 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE POLICY meta_campaigns_select ON public.meta_campaigns FOR SELECT TO authenticated
+    USING ((public.is_workspace_member(workspace_id) AND public.has_permission(workspace_id, 'dashboards.ads.view'::text)));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY meta_capi_events_select ON public.meta_capi_events FOR SELECT TO public
+    USING ((COALESCE(( SELECT public.has_permission(meta_capi_events.workspace_id, 'integrations.view'::text) AS has_permission), false) OR COALESCE(( SELECT public.has_permission(meta_capi_events.workspace_id, 'integrations.manage'::text) AS has_permission), false)));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY meta_match_rules_select ON public.meta_match_rules FOR SELECT TO authenticated
     USING ((public.is_workspace_member(workspace_id) AND public.has_permission(workspace_id, 'dashboards.ads.view'::text)));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 

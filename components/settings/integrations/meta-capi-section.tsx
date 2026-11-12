@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
-import { setMetaCapiPurchase } from "@/lib/actions/meta-capi";
+import { useState, useTransition } from "react"; // @plantilla-quitar(ventas)
+import { useRouter } from "next/navigation"; // @plantilla-quitar(ventas)
+import { Loader2 } from "lucide-react"; // @plantilla-quitar(ventas)
+import { setMetaCapiPurchase } from "@/lib/actions/meta-capi"; // @plantilla-quitar(ventas)
 import { formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { SKIP_REASON_LABELS, type SkipReason } from "@/lib/meta/capi/events";
@@ -22,9 +22,11 @@ export interface MetaCapiEventRow {
 }
 
 const SOURCE_LABELS: Record<MetaCapiEventRow["source_type"], string> = {
-  form: "Formulario",
+  form: "Formulario", // @plantilla-quitar(formularios)
+  // @plantilla-sin(formularios): form: "Respuesta",
   booking: "Reunión",
-  payment: "Pago",
+  payment: "Pago", // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): payment: "Compra",
   contact: "Automatización",
 };
 
@@ -49,7 +51,7 @@ function detailOf(row: MetaCapiEventRow): string | null {
  */
 export function MetaCapiSection({
   connected,
-  purchaseEnabled,
+  purchaseEnabled, // @plantilla-quitar(ventas)
   events,
   readOnly,
 }: {
@@ -58,8 +60,9 @@ export function MetaCapiSection({
   events: MetaCapiEventRow[];
   readOnly: boolean;
 }) {
-  const router = useRouter();
+  const router = useRouter(); // @plantilla-quitar(ventas)
   const timezone = useViewerTimezone();
+  // @plantilla-desde(ventas)
   const [enabled, setEnabled] = useState(purchaseEnabled);
   const [saving, startSave] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -77,17 +80,22 @@ export function MetaCapiSection({
       router.refresh();
     });
   }
+  // @plantilla-hasta(ventas)
 
   return (
     <div className="mt-6 space-y-6">
       <section className="space-y-2 rounded-lg border border-border bg-card p-4">
         <h2 className="text-sm font-semibold">Leads y reuniones</h2>
         <p className="text-xs text-muted-foreground">
+          {/* @plantilla-desde(formularios) */}
           Se mandan con el paso «Enviar evento a Meta»: en un formulario o en un evento de la Agenda, entrá a Automatizaciones y
+          {/* @plantilla-hasta(formularios) */}
+          {/* @plantilla-sin(formularios): Se mandan con el paso «Enviar evento a Meta»: en un evento de la Agenda, entrá a Automatizaciones y */}
           sumalo como un paso más. Ahí elegís qué evento recibe Meta (Lead, Schedule…) y su valor.
         </p>
       </section>
 
+      {/* @plantilla-desde(ventas) */}
       <section className="space-y-2 rounded-lg border border-border bg-card p-4">
         <h2 className="text-sm font-semibold">Compras</h2>
         <label className="flex items-start gap-2 text-sm">
@@ -114,6 +122,7 @@ export function MetaCapiSection({
           </p>
         )}
       </section>
+      {/* @plantilla-hasta(ventas) */}
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">Últimos envíos</h2>

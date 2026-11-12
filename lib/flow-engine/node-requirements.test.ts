@@ -112,6 +112,7 @@ describe("pasos bloqueados de un flujo", () => {
   });
 });
 
+// @plantilla-desde(disenador)
 describe("configProblems: lo que le falta a la configuración de un paso (Diseñador IA, F57)", () => {
   const t = { id: "t", type: "trigger" };
   const sinPlantilla = { id: "g", type: "action", data: { actionType: "designGenerate" } };
@@ -132,6 +133,7 @@ describe("configProblems: lo que le falta a la configuración de un paso (Diseñ
     expect(configProblems([t, sinPlantilla], [])).toEqual([]);
   });
 });
+// @plantilla-hasta(disenador)
 
 describe("configProblems: el horario de envío del WhatsApp a un número", () => {
   const t = { id: "t", type: "trigger" };

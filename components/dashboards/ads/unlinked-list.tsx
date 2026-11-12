@@ -268,7 +268,10 @@ export function UnlinkedList({ data, view, days, canManage }: { data: UnlinkedPa
       {view === "revisar" && canManage && data.groups.some((g) => g.rule && g.linkedIds) && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-3">
           <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+            {/* @plantilla-desde(ventas) */}
             Estos ya cuentan en Anuncios, agendas y ventas: se vincularon solos porque el nombre se parece. Confirmalos para que queden como regla, o cambiá el que no corresponda.
+            {/* @plantilla-hasta(ventas) */}
+            {/* @plantilla-sin(ventas): Estos ya cuentan en Anuncios y agendas: se vincularon solos porque el nombre se parece. Confirmalos para que queden como regla, o cambiá el que no corresponda. */}
           </p>
           <button type="button" onClick={confirmAllReview} disabled={pending} className={primary}>
             Confirmar todos los de esta página
@@ -330,7 +333,9 @@ export function UnlinkedList({ data, view, days, canManage }: { data: UnlinkedPa
                   {plural(group.peopleCount, "persona", "personas")}
                   <span className="font-normal text-muted-foreground"> · {plural(group.touchIds.length, "toque", "toques")}</span>
                 </span>
+                {/* @plantilla-desde(ventas) */}
                 {group.withSale > 0 && <Badge tone="strong">{plural(group.withSale, "con venta", "con venta")}</Badge>}
+                {/* @plantilla-hasta(ventas) */}
                 {group.withBooking > 0 && <Badge tone="strong">{plural(group.withBooking, "con agenda", "con agenda")}</Badge>}
                 {group.firstCount > 0 && <Badge>{`Primer toque de ${group.firstCount}`}</Badge>}
                 {group.lastCount > 0 && <Badge>{`Último toque de ${group.lastCount}`}</Badge>}
@@ -410,7 +415,9 @@ export function UnlinkedList({ data, view, days, canManage }: { data: UnlinkedPa
                       <span className="text-muted-foreground">
                         {p.when} · {p.origin}
                       </span>
+                      {/* @plantilla-desde(ventas) */}
                       {p.hasSale && <Badge tone="strong">Venta</Badge>}
+                      {/* @plantilla-hasta(ventas) */}
                       {p.hasBooking && <Badge tone="strong">Agenda</Badge>}
                       {p.isFirstTouch && <Badge>Primer toque</Badge>}
                       {p.isLastTouch && <Badge>Último toque</Badge>}

@@ -304,6 +304,19 @@ describe("design_ai_generate: un fallo del proveedor no lanza", () => {
     expect(schedule).not.toHaveBeenCalled();
     expect(lastAssistant(s.tables).content).toMatch(/rechazó el pedido/);
   });
+
+  it("un rechazo del pedido que no es de la clave no manda a revisar la conexión", async () => {
+    const s = setup();
+    const badRequest = async () => {
+      throw Object.assign(new Error("Schemas contains too many optional parameters (40)"), { statusCode: 400 });
+    };
+    const { d, schedule } = deps({ generate: badRequest as never });
+    const out = await runAiGenerate(s.db, s.payload, d);
+    expect(out).toMatchObject({ status: "failed", reason: "error" });
+    expect(schedule).not.toHaveBeenCalled();
+    expect(lastAssistant(s.tables).content).toMatch(/no pudo procesar este pedido/);
+    expect(lastAssistant(s.tables).content).not.toMatch(/Configuración/);
+  });
 });
 
 describe("design_ai_generate: primera versión (F33)", () => {

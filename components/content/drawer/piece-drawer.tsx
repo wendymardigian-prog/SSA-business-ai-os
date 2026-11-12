@@ -30,7 +30,8 @@ import {
   retryFailedNetworks,
   returnPost,
 } from "@/lib/actions/content-review";
-import { designFromPiece, keepPieceFiles, syncToPiece } from "@/lib/actions/designer/content";
+import { designFromPiece, keepPieceFiles, syncToPiece } from "@/lib/actions/designer/content"; // @plantilla-quitar(disenador)
+// @plantilla-desde(disenador)
 import {
   DESIGN_BUTTON_TEXT,
   designChangedNotices,
@@ -41,6 +42,7 @@ import {
   preparingDesigns,
   showsDesignerSection,
 } from "@/lib/content/piece-designs";
+// @plantilla-hasta(disenador)
 import { summarizeNetwork } from "@/lib/content/editor";
 import { validateNetwork } from "@/lib/content/validation";
 import { findScriptKeywords } from "@/lib/content/keywords";
@@ -73,7 +75,7 @@ import { isManualStatus, type BoardColumn } from "@/lib/content/status";
 import { platformLabel } from "@/lib/platforms";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { MediaUploader } from "../media-uploader";
-import { DesignChangedNotices, PieceDesignerBar } from "./piece-designer";
+import { DesignChangedNotices, PieceDesignerBar } from "./piece-designer"; // @plantilla-quitar(disenador)
 import { VersionHistory } from "../version-history";
 import { NetworkBadge } from "../network-badge";
 import { NetworkRow } from "../editor/network-row";
@@ -117,9 +119,11 @@ import { useToast } from "./toast";
  */
 
 const COPY_POLL_MS = 4_000;
+// @plantilla-desde(disenador)
 /** Mientras el servidor arma los archivos de un diseño, el drawer vuelve a preguntar cada tanto (un par de minutos). */
 const DESIGN_POLL_MS = 8_000;
 const DESIGN_POLL_MAX = 15;
+// @plantilla-hasta(disenador)
 
 export function PieceDrawer({
   data,
@@ -329,14 +333,16 @@ export function PieceDrawer({
   // Es estado derivado de una prop (se ajusta en el render cuando cambia la
   // fecha de la pieza), no un efecto que lo corrija un render despues.
   const [seenUpdatedAt, setSeenUpdatedAt] = useState(post.updatedAt);
+  // @plantilla-desde(disenador)
   // Los archivos que la sincronizacion de un diseno le puso a una red (DS8) entran al borrador aunque haya cambios sin guardar
   // en otro campo: si no, al guardar se mandarian los de antes y la red quedaria sin ellos.
   const [seenNetworks, setSeenNetworks] = useState(post.networks);
+  // @plantilla-hasta(disenador)
   if (post.updatedAt !== seenUpdatedAt) {
     setSeenUpdatedAt(post.updatedAt);
-    setSeenNetworks(post.networks);
+    setSeenNetworks(post.networks); // @plantilla-quitar(disenador)
     if (!dirty) setDraft(draftFromPost(post));
-    else setDraft((d) => ({ ...d, networks: mergeSyncedFiles(d.networks, seenNetworks, post.networks) }));
+    else setDraft((d) => ({ ...d, networks: mergeSyncedFiles(d.networks, seenNetworks, post.networks) })); // @plantilla-quitar(disenador)
   }
   useEffect(() => {
     if (!dirtyRef.current) {
@@ -439,6 +445,7 @@ export function PieceDrawer({
     publications,
   });
 
+  // @plantilla-desde(disenador)
   // Lo del Diseñador IA (DS8): los archivos de un diseño se agrupan en la biblioteca, el aviso «El diseño cambió» va arriba
   // de Archivos y los botones salen solo con permiso. Sin diseños ni permisos, no se dibuja nada.
   const stateByPlatform = Object.fromEntries(draft.networks.map((n, i) => [n.platform, networkStates[i].id]));
@@ -449,7 +456,9 @@ export function PieceDrawer({
   const designActions = designerActions({ designer: data.designer, networks: draft.networks });
   const syncingDesign = hasPendingSync(groupViews, preparing);
   const [designing, setDesigning] = useState(false);
+  // @plantilla-hasta(disenador)
 
+  // @plantilla-desde(disenador)
   useEffect(() => {
     if (!syncingDesign) return;
     let tries = 0;
@@ -460,6 +469,7 @@ export function PieceDrawer({
     }, DESIGN_POLL_MS);
     return () => clearInterval(timer);
   }, [syncingDesign, router]);
+  // @plantilla-hasta(disenador)
 
   const statuses = statusOptions(
     { create: perms.create, approve: perms.approve, publish: perms.publish, isAuthor: perms.isAuthor },
@@ -507,6 +517,7 @@ export function PieceDrawer({
     });
   }
 
+  // @plantilla-desde(disenador)
   /** «✦ Diseñar con el Diseñador IA»: lo escrito se guarda antes (el pedido a la IA sale del guion y el caption guardados). */
   function startDesign(platform: string) {
     setDesigning(true);
@@ -522,6 +533,7 @@ export function PieceDrawer({
       router.push(result.data.href);
     });
   }
+  // @plantilla-hasta(disenador)
 
   async function close() {
     await flush();
@@ -964,6 +976,7 @@ export function PieceDrawer({
           </section>
         )}
 
+        {/* @plantilla-desde(disenador) */}
         {/* ── El diseño cambió (DS8, F64): arriba de Archivos, cuando la red está programada y el diseño es más nuevo ── */}
         <DesignChangedNotices
           notices={designNotices}
@@ -974,6 +987,7 @@ export function PieceDrawer({
           }
           onKeep={(designId) => run(() => keepPieceFiles({ designId }), "Quedan los archivos que tenía la pieza.")}
         />
+        {/* @plantilla-hasta(disenador) */}
 
         {/* ── Archivos de la pieza (F92) ── */}
         <section aria-labelledby="archivos">
@@ -985,6 +999,7 @@ export function PieceDrawer({
               Se suben una vez. Después cada red elige cuáles publica y en qué orden.
             </p>
           </div>
+          {/* @plantilla-desde(disenador) */}
           {showsDesignerSection(designActions, groupViews, preparing) && (
             <PieceDesignerBar
               actions={designActions}
@@ -993,13 +1008,14 @@ export function PieceDrawer({
               onDesign={startDesign}
             />
           )}
+          {/* @plantilla-hasta(disenador) */}
           <div className="mt-1.5">
             <MediaUploader
               postId={post.id}
               media={library}
               usage={usage}
               canEdit={editable}
-              groups={groupViews.map((v) => ({ designId: v.designId, heading: v.heading, openHref: v.openHref, entries: v.entries }))}
+              groups={groupViews.map((v) => ({ designId: v.designId, heading: v.heading, openHref: v.openHref, entries: v.entries }))} // @plantilla-quitar(disenador)
               onRemoved={(fileId) =>
                 // El servidor ya lo saco de las redes; el borrador local
                 // tiene que enterarse o lo volveria a mostrar y a guardar.

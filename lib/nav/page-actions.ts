@@ -233,6 +233,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip: "Formularios para captar leads, medir satisfacción o firmar contratos. Cada respuesta crea o vincula un contacto con su atribución.",
   },
   // @plantilla-hasta(formularios)
+  // @plantilla-desde(disenador)
   "/dashboard/disenos": {
     title: "Diseñador IA",
     tooltip: "Diseñá carruseles, historias, presentaciones, certificados y páginas web con IA o a mano. Las plantillas generan piezas solas desde automatizaciones.",
@@ -241,6 +242,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Ajustes del Diseñador IA",
     tooltip: "Estilos propios para la IA y las fuentes del negocio (de Google o subidas).",
   },
+  // @plantilla-hasta(disenador)
   // @plantilla-desde(formularios)
   "/dashboard/formularios/[id]": {
     title: "Formulario",
@@ -540,10 +542,12 @@ export const PAGES_WITHOUT_HEADER: Record<string, string> = {
     "Solo redirige al dashboard por defecto (Meta Ads si esta conectado, si no Chat); nunca se dibuja.",
   "/dashboard/flows/[flowId]":
     "El editor de automatizaciones es un lienzo a pantalla completa con su propia barra.",
+  // @plantilla-desde(disenador)
   "/dashboard/disenos/d/[id]":
     "El editor de un diseño es un lienzo a pantalla completa con su propia barra (nombre, formato, exportar y publicar).",
   "/dashboard/disenos/t/[id]":
     "El editor de una plantilla es un lienzo a pantalla completa con su propia barra y las pestañas Diseño y Generaciones.",
+  // @plantilla-hasta(disenador)
   "/dashboard/channels/callback":
     "Pantalla de paso del OAuth de un canal: se cierra sola.",
   "/dashboard/settings/templates":
@@ -641,11 +645,13 @@ const ACTIONS: Record<string, (state: PageActionState) => PageAction[]> = {
     { id: "templates", label: "Plantillas", kind: "link", href: "/dashboard/flows/templates" },
     { id: "new", label: "Nuevo flow", kind: "primary" },
   ],
+  // @plantilla-desde(disenador)
   // Diseñador IA: crear pide `designer.edit`; los ajustes (estilos propios y fuentes), `designer.manage`.
   "/dashboard/disenos": () => [
     { id: "settings", label: "Ajustes", kind: "link", href: "/dashboard/disenos/ajustes", permission: "designer.manage" },
     { id: "new", label: "Nuevo", kind: "primary", permission: "designer.edit" },
   ],
+  // @plantilla-hasta(disenador)
   "/dashboard/sequences": () => [
     { id: "new", label: "Nueva secuencia", kind: "primary", permission: "sequences.edit" },
   ],

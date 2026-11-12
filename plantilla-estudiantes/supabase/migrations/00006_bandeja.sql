@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS public.channel_send_windows (
 );
 ALTER TABLE public.channel_send_windows ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.channel_send_windows IS 'Contador de mensajes automatizados por canal y por hora. Sostiene el tope de la API de Instagram (200/hora).';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.channel_send_windows FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.comment_logs (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS public.comment_logs (
   CONSTRAINT comment_logs_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
 ALTER TABLE public.comment_logs ENABLE ROW LEVEL SECURITY;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.comment_logs FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.conversation_assignment_rules (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -146,6 +148,7 @@ COMMENT ON COLUMN public.conversations.no_reply_needed_reason IS 'Quien lo decid
 COMMENT ON COLUMN public.conversations.last_message_direction IS 'Si el ultimo mensaje de la conversacion fue del contacto (inbound) o nuestro (outbound). Lo mantiene el trigger messages_zz_last_message.';
 COMMENT ON COLUMN public.conversations.agent_disabled_by_customer IS 'El agente lo apago la marca de cliente. Se limpia sola si una persona cambia el estado del agente.';
 COMMENT ON COLUMN public.conversations.contact_wrote_at IS 'Cuando escribio la persona por primera vez en esta conversacion. Null = nunca escribio, o escribio antes de que se guardaran los mensajes entrantes. La mantiene el trigger messages_zz_contact_wrote; no depende de la retencion de mensajes.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.conversations FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.email_log (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -187,6 +190,7 @@ COMMENT ON COLUMN public.email_log.contact_id IS 'El contacto al que se refiere 
 COMMENT ON COLUMN public.email_log.category IS 'marketing | transactional. Null: un email al equipo o del sistema. El tope diario cuenta solo marketing.';
 COMMENT ON COLUMN public.email_log.opened_at IS 'Primera apertura que informo Resend (aproximada: depende de que el cliente de correo cargue la imagen de seguimiento).';
 COMMENT ON COLUMN public.email_log.unsubscribed_at IS 'La persona se dio de baja desde el link de ESTE email (`?e=<id>` en el link y en el header de baja).';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.email_log FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.message_categories (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -210,6 +214,7 @@ CREATE TABLE IF NOT EXISTS public.message_categories (
   CONSTRAINT message_categories_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
 ALTER TABLE public.message_categories ENABLE ROW LEVEL SECURITY;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.message_categories FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.message_texts (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -239,6 +244,7 @@ CREATE TABLE IF NOT EXISTS public.message_texts (
   CONSTRAINT message_texts_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
 ALTER TABLE public.message_texts ENABLE ROW LEVEL SECURITY;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.message_texts FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.messages (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -278,7 +284,11 @@ CREATE TABLE IF NOT EXISTS public.messages (
   origin_context jsonb,
   send_error text,
   email_quoted_text text,
+  deleted_for_everyone_at timestamp with time zone,
+  deleted_for_everyone_source text,
+  deleted_for_everyone_by uuid,
   CONSTRAINT messages_pkey PRIMARY KEY (id),
+  CONSTRAINT messages_deleted_for_everyone_source_check CHECK ((((deleted_for_everyone_at IS NULL) AND (deleted_for_everyone_source IS NULL) AND (deleted_for_everyone_by IS NULL)) OR ((deleted_for_everyone_at IS NOT NULL) AND (deleted_for_everyone_source = ANY (ARRAY['contact'::text, 'business'::text, 'app'::text]))))),
   CONSTRAINT messages_direction_check CHECK ((direction = ANY (ARRAY['inbound'::text, 'outbound'::text]))),
   CONSTRAINT messages_interpretability_check CHECK ((interpretability = ANY (ARRAY['text'::text, 'transcribed'::text, 'described'::text, 'label_only'::text, 'unreadable'::text, 'unknown'::text]))),
   CONSTRAINT messages_origin_values CHECK (((origin IS NULL) OR (origin = ANY (ARRAY['agent'::text, 'user'::text, 'flow'::text, 'sequence'::text, 'broadcast'::text, 'external'::text])))),
@@ -286,6 +296,7 @@ CREATE TABLE IF NOT EXISTS public.messages (
   CONSTRAINT messages_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'sent'::text, 'delivered'::text, 'failed'::text]))),
   CONSTRAINT messages_transcript_status_check CHECK ((transcript_status = ANY (ARRAY['none'::text, 'pending'::text, 'ready'::text, 'failed'::text]))),
   CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE,
+  CONSTRAINT messages_deleted_for_everyone_by_fkey FOREIGN KEY (deleted_for_everyone_by) REFERENCES auth.users(id) ON DELETE SET NULL,
   CONSTRAINT messages_sent_by_user_id_fkey FOREIGN KEY (sent_by_user_id) REFERENCES auth.users(id) ON DELETE SET NULL,
   CONSTRAINT messages_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
@@ -306,6 +317,10 @@ COMMENT ON COLUMN public.messages.transcript_started_at IS 'Cuando arranco la tr
 COMMENT ON COLUMN public.messages.origin_context IS 'De donde vino un mensaje entrante: respuesta o mencion en una historia, anuncio (lista blanca, lib/messages/origin-context.ts). Null si no vino de ninguno.';
 COMMENT ON COLUMN public.messages.send_error IS 'Por que no salio un envio (status failed), en castellano. El texto queda con lo que se quiso mandar.';
 COMMENT ON COLUMN public.messages.email_quoted_text IS 'Email entrante: lo que el correo citó al responder. `text` guarda solo lo que escribió la persona.';
+COMMENT ON COLUMN public.messages.deleted_for_everyone_at IS 'Cuando se borro "para todos" en WhatsApp. La fila y el texto se conservan para el equipo. Se escribe solo con mark_message_deleted_for_everyone.';
+COMMENT ON COLUMN public.messages.deleted_for_everyone_source IS 'Quien lo borro: contact (el contacto), business (el telefono del negocio o la API de Evolution) o app (el boton de la bandeja).';
+COMMENT ON COLUMN public.messages.deleted_for_everyone_by IS 'La persona que lo borro desde la bandeja (solo con source = app).';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.messages FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.message_reactions (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -403,14 +418,28 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_groups (
   left_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  kind text DEFAULT 'group'::text NOT NULL,
+  parent_group_jid text,
+  community_subject text,
+  description text,
+  restrict boolean DEFAULT false NOT NULL,
+  number_is_admin boolean,
   CONSTRAINT whatsapp_groups_pkey PRIMARY KEY (id),
+  CONSTRAINT whatsapp_groups_announce_parent_check CHECK (((kind <> 'announce'::text) OR (parent_group_jid IS NOT NULL))),
+  CONSTRAINT whatsapp_groups_description_check CHECK (((description IS NULL) OR (char_length(description) <= 4000))),
   CONSTRAINT whatsapp_groups_jid_check CHECK ((group_jid ~ '^[0-9]{6,}(-[0-9]+)?@g\.us$'::text)),
+  CONSTRAINT whatsapp_groups_kind_check CHECK ((kind = ANY (ARRAY['group'::text, 'announce'::text]))),
+  CONSTRAINT whatsapp_groups_parent_jid_check CHECK (((parent_group_jid IS NULL) OR (parent_group_jid ~ '^[0-9]{6,}(-[0-9]+)?@g\.us$'::text))),
   CONSTRAINT whatsapp_groups_unread_check CHECK ((unread_count >= 0)),
   CONSTRAINT whatsapp_groups_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES public.channels(id) ON DELETE CASCADE,
   CONSTRAINT whatsapp_groups_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
 ALTER TABLE public.whatsapp_groups ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.whatsapp_groups IS 'Grupos de WhatsApp activados en un numero: verlos en la bandeja (in_inbox) y/o guardar como contacto a quien se une (save_contacts). No son conversaciones.';
+COMMENT ON COLUMN public.whatsapp_groups.kind IS 'group = un grupo; announce = el grupo de Avisos de una comunidad.';
+COMMENT ON COLUMN public.whatsapp_groups.parent_group_jid IS 'El JID de la comunidad de WhatsApp a la que pertenece el grupo, o null si es un grupo suelto.';
+COMMENT ON COLUMN public.whatsapp_groups.community_subject IS 'Copia del nombre de la comunidad, para mostrar "Comunidad > grupo".';
+COMMENT ON COLUMN public.whatsapp_groups.number_is_admin IS 'Si el numero es admin del grupo; null = no se sabe.';
 REVOKE ALL ON TABLE public.whatsapp_groups FROM anon;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.whatsapp_groups FROM authenticated;
 
@@ -658,9 +687,8 @@ BEGIN
   v_cfg := coalesce(v_cfg, '{}'::jsonb);
 
   SELECT w.timezone INTO v_tz FROM public.workspaces w WHERE w.id = p_workspace_id;
-  IF v_tz IS NULL OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names n WHERE n.name = v_tz) THEN
-    v_tz := 'UTC';
-  END IF;
+  -- La regla de la zona, sin leer el catalogo de zonas en cada email.
+  v_tz := private.email_guard_time_zone(v_tz);
 
   v_today := (p_now AT TIME ZONE v_tz)::date;
   v_day_start := v_today::timestamp AT TIME ZONE v_tz;
@@ -727,6 +755,58 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION private.email_guard_state(p_workspace_id uuid, p_now timestamp with time zone, p_category text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION private.email_guard_state(p_workspace_id uuid, p_now timestamp with time zone, p_category text) TO service_role;
+
+CREATE OR REPLACE FUNCTION private.email_guard_time_zone(p_tz text)
+ RETURNS text
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_probe timestamp;
+BEGIN
+  IF p_tz IS NULL THEN
+    RETURN 'UTC';
+  END IF;
+  IF p_tz = 'UTC' THEN
+    RETURN 'UTC';
+  END IF;
+
+  -- Forma de nombre IANA: se prueba directo. AT TIME ZONE con un nombre carga
+  -- solo ESE archivo (y queda en memoria); el catalogo los lee todos.
+  IF p_tz ~ '^[A-Z][A-Za-z0-9_+-]*(/[A-Z][A-Za-z0-9_+-]*)+$' THEN
+    BEGIN
+      v_probe := now() AT TIME ZONE p_tz;
+      RETURN p_tz;
+    EXCEPTION WHEN OTHERS THEN
+      RETURN 'UTC';
+    END;
+  END IF;
+
+  -- Lo demas, como siempre: solo vale si esta en el catalogo.
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names n WHERE n.name = p_tz) THEN
+    RETURN p_tz;
+  END IF;
+  RETURN 'UTC';
+END;
+$function$;
+COMMENT ON FUNCTION private.email_guard_time_zone(p_tz text) IS 'La zona del negocio para la guardia de entrega: la misma regla que pg_timezone_names, sin leer el catalogo para un nombre IANA. Nunca lanza; lo que no vale es UTC.';
+REVOKE ALL ON FUNCTION private.email_guard_time_zone(p_tz text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION private.email_guard_time_zone(p_tz text) TO service_role;
+
+CREATE OR REPLACE FUNCTION private.message_list_preview(p_text text, p_transcript text, p_attachments jsonb, p_deleted_at timestamp with time zone)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT CASE
+    WHEN p_deleted_at IS NOT NULL THEN 'Mensaje eliminado'
+    ELSE private.message_preview_text(p_text, p_transcript, p_attachments)
+  END;
+$function$;
+REVOKE ALL ON FUNCTION private.message_list_preview(p_text text, p_transcript text, p_attachments jsonb, p_deleted_at timestamp with time zone) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION private.message_list_preview(p_text text, p_transcript text, p_attachments jsonb, p_deleted_at timestamp with time zone) TO service_role;
 
 CREATE OR REPLACE FUNCTION private.refresh_conversation_awaiting(p_conversation_id uuid)
  RETURNS void
@@ -1376,6 +1456,43 @@ $function$;
 COMMENT ON FUNCTION public.increment_unread(conv_id uuid, preview text) IS 'Suma un no leido y pisa el preview de la conversacion. Solo service_role: la llaman los receptores de webhooks (lib/inbound.ts). No valida permisos, por eso no puede quedar expuesta a la anon key.';
 REVOKE ALL ON FUNCTION public.increment_unread(conv_id uuid, preview text) FROM PUBLIC, anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.mark_message_deleted_for_everyone(p_workspace_id uuid, p_channel_id uuid, p_platform_message_id text, p_source text, p_by uuid DEFAULT NULL::uuid, p_at timestamp with time zone DEFAULT now())
+ RETURNS integer
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_count integer;
+BEGIN
+  IF p_source IS NULL OR p_source NOT IN ('contact', 'business', 'app') THEN
+    RAISE EXCEPTION 'origen de borrado invalido: %', p_source USING ERRCODE = '22023';
+  END IF;
+  IF COALESCE(p_platform_message_id, '') = '' THEN
+    RETURN 0;
+  END IF;
+
+  UPDATE public.messages m
+  SET deleted_for_everyone_at = COALESCE(m.deleted_for_everyone_at, p_at, now()),
+      deleted_for_everyone_source = p_source,
+      deleted_for_everyone_by = CASE WHEN p_source = 'app' THEN p_by ELSE NULL END
+  FROM public.conversations c
+  WHERE m.workspace_id = p_workspace_id
+    AND m.platform_message_id = p_platform_message_id
+    -- No se pisa un borrado anterior. Excepcion: el boton de la app gana sobre el eco de Evolution, que puede
+    -- llegar ANTES de que la accion termine de marcar y diria "desde el telefono del negocio".
+    AND (
+      m.deleted_for_everyone_at IS NULL
+      OR (p_source = 'app' AND m.deleted_for_everyone_source = 'business')
+    )
+    AND c.id = m.conversation_id
+    AND c.channel_id = p_channel_id;
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.mark_message_deleted_for_everyone(p_workspace_id uuid, p_channel_id uuid, p_platform_message_id text, p_source text, p_by uuid, p_at timestamp with time zone) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.messages_discard_answered_drafts()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -1424,6 +1541,87 @@ BEGIN
 END;
 $function$;
 REVOKE ALL ON FUNCTION public.messages_fill_origin() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.messages_guard_client_attachments()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_item jsonb;
+  v_path text;
+BEGIN
+  -- Solo lo que escribe una persona con su sesion. Sin JWT (migraciones, SQL
+  -- del cron) o con service role, como siempre.
+  IF coalesce(auth.role(), '') NOT IN ('authenticated', 'anon') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.attachments IS NOT DISTINCT FROM OLD.attachments THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.attachments IS NULL OR jsonb_typeof(NEW.attachments) = 'null' THEN
+    RETURN NEW;
+  END IF;
+
+  IF jsonb_typeof(NEW.attachments) <> 'object'
+     OR (NEW.attachments->>'v') IS DISTINCT FROM '2'
+     OR jsonb_typeof(NEW.attachments->'items') IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'adjuntos con un formato que no se puede escribir desde la app'
+      USING ERRCODE = '42501';
+  END IF;
+
+  FOR v_item IN SELECT value FROM jsonb_array_elements(NEW.attachments->'items') LOOP
+    IF jsonb_typeof(v_item) <> 'object' THEN
+      RAISE EXCEPTION 'adjunto invalido' USING ERRCODE = '42501';
+    END IF;
+    IF jsonb_typeof(v_item->'sourceUrl') IS NOT NULL AND jsonb_typeof(v_item->'sourceUrl') <> 'null' THEN
+      RAISE EXCEPTION 'un adjunto escrito desde la app no puede traer una direccion de descarga'
+        USING ERRCODE = '42501';
+    END IF;
+    IF jsonb_typeof(v_item->'storagePath') IS NOT NULL AND jsonb_typeof(v_item->'storagePath') <> 'null' THEN
+      v_path := v_item->>'storagePath';
+      IF jsonb_typeof(v_item->'storagePath') <> 'string'
+         OR NEW.workspace_id IS NULL
+         OR NOT starts_with(v_path, NEW.workspace_id::text || '/')
+         OR position('..' IN v_path) > 0 THEN
+        RAISE EXCEPTION 'el archivo de un adjunto tiene que ser de este negocio'
+          USING ERRCODE = '42501';
+      END IF;
+    END IF;
+  END LOOP;
+
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.messages_guard_client_attachments() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.messages_guard_deleted_for_everyone()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  -- Sin JWT (migraciones, cron) o con service role, como siempre.
+  IF coalesce(auth.role(), '') NOT IN ('authenticated', 'anon') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.deleted_for_everyone_at IS NOT NULL
+       OR NEW.deleted_for_everyone_source IS NOT NULL
+       OR NEW.deleted_for_everyone_by IS NOT NULL THEN
+      RAISE EXCEPTION 'un mensaje nuevo no puede nacer borrado' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.deleted_for_everyone_at IS DISTINCT FROM OLD.deleted_for_everyone_at
+     OR NEW.deleted_for_everyone_source IS DISTINCT FROM OLD.deleted_for_everyone_source
+     OR NEW.deleted_for_everyone_by IS DISTINCT FROM OLD.deleted_for_everyone_by THEN
+    RAISE EXCEPTION 'el borrado de un mensaje solo lo escribe el servidor' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.messages_guard_deleted_for_everyone() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.messages_mark_contact_wrote()
  RETURNS trigger
@@ -1478,12 +1676,14 @@ CREATE OR REPLACE FUNCTION public.messages_refresh_last_message()
 AS $function$
 DECLARE
   v_last record;
+  v_preview text;
 BEGIN
   BEGIN
     -- El ultimo mensaje que existe de verdad (ni fallido ni en vuelo). Incluye
     -- al que se acaba de guardar.
     SELECT m.id, m.direction::text AS direction, m.created_at, m.origin::text AS origin, m.sent_by_user_id,
-           m.text, m.transcript, m.attachments
+           m.text, m.transcript, m.attachments,
+           m.deleted_for_everyone_at  -- Cuando se borro para todos
     INTO v_last
     FROM public.messages m
     WHERE m.conversation_id = NEW.conversation_id
@@ -1496,25 +1696,24 @@ BEGIN
       RETURN NEW;
     END IF;
 
+    -- Cuando se borro para todos: un mensaje borrado "para todos" dice «Mensaje eliminado».
+    v_preview := private.message_list_preview(v_last.text, v_last.transcript, v_last.attachments, v_last.deleted_for_everyone_at);
+
     -- Fecha, direccion y preview salen SIEMPRE del ultimo mensaje, no del que
-    -- se acaba de guardar: `increment_unread` escribe el preview del entrante
-    -- aunque ya haya una respuesta mas nueva (el eco de ManyChat que llego
-    -- antes), y esto lo vuelve a dejar bien. La fecha nunca va para atras.
+    -- se acaba de guardar. La fecha nunca va para atras.
     UPDATE public.conversations c
     SET last_message_at = GREATEST(c.last_message_at, v_last.created_at),
         last_message_direction = v_last.direction,
-        last_message_preview = private.message_preview_text(v_last.text, v_last.transcript, v_last.attachments)
+        last_message_preview = v_preview
     WHERE c.id = NEW.conversation_id
       AND (
         c.last_message_at IS NULL
         OR c.last_message_at < v_last.created_at
         OR c.last_message_direction IS DISTINCT FROM v_last.direction
-        OR c.last_message_preview IS DISTINCT FROM private.message_preview_text(v_last.text, v_last.transcript, v_last.attachments)
+        OR c.last_message_preview IS DISTINCT FROM v_preview
       );
 
     -- El no leido: si lo ultimo que se dijo es nuestro, no hay nada sin leer.
-    -- Vale tambien cuando el que se acaba de guardar es un entrante mas viejo
-    -- que esa respuesta (llego tarde).
     IF v_last.direction = 'outbound'
        AND (v_last.sent_by_user_id IS NOT NULL OR v_last.origin IN ('user', 'external')) THEN
       UPDATE public.conversations c
@@ -1529,6 +1728,31 @@ BEGIN
 END;
 $function$;
 REVOKE ALL ON FUNCTION public.messages_refresh_last_message() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.messages_reopen_conversation()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+BEGIN
+  BEGIN
+    IF NEW.direction::text = 'outbound'
+       AND NEW.created_at >= now() - interval '10 minutes' THEN
+      UPDATE public.conversations c
+      SET status = 'open'
+      WHERE c.id = NEW.conversation_id
+        AND c.status = 'closed'
+        AND c.deleted_at IS NULL
+        AND (c.closed_at IS NULL OR c.closed_at <= NEW.created_at);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'messages_reopen_conversation: no pude reabrir la conversacion % (%)', NEW.conversation_id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.messages_reopen_conversation() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.messages_set_workspace_id()
  RETURNS trigger
@@ -1775,6 +1999,65 @@ $function$;
 COMMENT ON FUNCTION public.set_conversation_no_reply(p_conversation_id uuid, p_needed boolean, p_reason text, p_by uuid, p_expected_last_inbound_at timestamp with time zone) IS 'Pone o saca la marca "no necesita respuesta" (agente o persona). Solo service_role: el permiso lo chequea quien llama.';
 REVOKE ALL ON FUNCTION public.set_conversation_no_reply(p_conversation_id uuid, p_needed boolean, p_reason text, p_by uuid, p_expected_last_inbound_at timestamp with time zone) FROM PUBLIC, anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.whatsapp_channel_daily_messages(p_workspace_id uuid, p_channel_id uuid, p_since timestamp with time zone, p_time_zone text)
+ RETURNS TABLE(day date, received integer, automation integer, broadcast integer, agent integer, approved integer, human integer, external integer)
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  WITH chat AS (
+    SELECT
+      (m.created_at AT TIME ZONE p_time_zone)::date AS day,
+      m.direction,
+      CASE
+        WHEN m.direction <> 'outbound' THEN NULL
+        WHEN m.origin = 'broadcast' THEN 'broadcast'
+        WHEN m.origin IN ('flow', 'sequence') THEN 'automation'
+        WHEN m.origin = 'agent' AND m.sent_by_user_id IS NOT NULL THEN 'approved'
+        WHEN m.origin = 'agent' THEN 'agent'
+        WHEN m.origin = 'user' THEN 'human'
+        ELSE 'external'
+      END AS who
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE c.channel_id = p_channel_id
+      AND c.workspace_id = p_workspace_id
+      AND m.created_at >= p_since
+      AND (m.direction = 'inbound' OR coalesce(m.status, 'sent') NOT IN ('failed', 'pending'))
+  ),
+  grp AS (
+    SELECT
+      (gm.created_at AT TIME ZONE p_time_zone)::date AS day,
+      CASE gm.origin WHEN 'flow' THEN 'automation' WHEN 'app' THEN 'human' ELSE 'external' END AS who
+    FROM public.whatsapp_group_messages gm
+    JOIN public.whatsapp_groups g ON g.id = gm.group_id
+    WHERE g.channel_id = p_channel_id
+      AND g.workspace_id = p_workspace_id
+      AND gm.direction = 'outbound'
+      AND gm.status = 'sent'
+      AND gm.created_at >= p_since
+  ),
+  all_rows AS (
+    SELECT day, direction, who FROM chat
+    UNION ALL
+    SELECT day, 'outbound', who FROM grp
+  )
+  SELECT
+    day,
+    count(*) FILTER (WHERE direction = 'inbound')::integer,
+    count(*) FILTER (WHERE who = 'automation')::integer,
+    count(*) FILTER (WHERE who = 'broadcast')::integer,
+    count(*) FILTER (WHERE who = 'agent')::integer,
+    count(*) FILTER (WHERE who = 'approved')::integer,
+    count(*) FILTER (WHERE who = 'human')::integer,
+    count(*) FILTER (WHERE who = 'external')::integer
+  FROM all_rows
+  GROUP BY day
+  ORDER BY day;
+$function$;
+COMMENT ON FUNCTION public.whatsapp_channel_daily_messages(p_workspace_id uuid, p_channel_id uuid, p_since timestamp with time zone, p_time_zone text) IS 'Mensajes por dia de un numero de WhatsApp: recibidos en chats y enviados por quien los mando. Solo service_role.';
+REVOKE ALL ON FUNCTION public.whatsapp_channel_daily_messages(p_workspace_id uuid, p_channel_id uuid, p_since timestamp with time zone, p_time_zone text) FROM PUBLIC, anon, authenticated;
+
 -- ----------------------------------------------------------------------------
 -- Indices
 -- ----------------------------------------------------------------------------
@@ -1851,6 +2134,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_platform_message_id ON public.mes
 
 CREATE INDEX IF NOT EXISTS idx_messages_sent_by_agent ON public.messages USING btree (sent_by_agent_id) WHERE (sent_by_agent_id IS NOT NULL);
 
+CREATE INDEX IF NOT EXISTS idx_messages_sent_by_flow_node ON public.messages USING btree (sent_by_flow_id, sent_by_node_id, created_at) WHERE (sent_by_flow_id IS NOT NULL);
+
 CREATE INDEX IF NOT EXISTS idx_messages_transcript_pending ON public.messages USING btree (transcript_started_at) WHERE (transcript_status = 'pending'::text);
 
 CREATE INDEX IF NOT EXISTS idx_messages_unreadable ON public.messages USING btree (conversation_id, created_at DESC) WHERE (interpretability = 'unreadable'::text);
@@ -1860,6 +2145,8 @@ CREATE INDEX IF NOT EXISTS idx_messages_workspace_created ON public.messages USI
 CREATE INDEX IF NOT EXISTS idx_messages_workspace_direction_created ON public.messages USING btree (workspace_id, direction, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_messages_workspace_origin_created ON public.messages USING btree (workspace_id, origin, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_messages_workspace_platform_message_id ON public.messages USING btree (workspace_id, platform_message_id) WHERE (platform_message_id IS NOT NULL);
 
 CREATE INDEX IF NOT EXISTS idx_messages_workspace_textnorm ON public.messages USING btree (workspace_id, direction, text_norm);
 
@@ -1872,6 +2159,8 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_group_messages_flow_node ON public.whats
 CREATE INDEX IF NOT EXISTS idx_whatsapp_group_messages_thread ON public.whatsapp_group_messages USING btree (group_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_whatsapp_groups_inbox ON public.whatsapp_groups USING btree (workspace_id, last_message_at DESC NULLS LAST) WHERE in_inbox;
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_groups_parent ON public.whatsapp_groups USING btree (workspace_id, parent_group_jid) WHERE (parent_group_jid IS NOT NULL);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_message_categories_fallback ON public.message_categories USING btree (workspace_id, direction) WHERE is_fallback;
 
@@ -1923,17 +2212,27 @@ CREATE OR REPLACE TRIGGER messages_fill_origin BEFORE INSERT OR UPDATE OF origin
 
 CREATE OR REPLACE TRIGGER messages_fill_workspace_id BEFORE INSERT OR UPDATE OF conversation_id ON public.messages FOR EACH ROW EXECUTE FUNCTION public.messages_set_workspace_id();
 
+CREATE OR REPLACE TRIGGER messages_guard_client_attachments BEFORE INSERT OR UPDATE OF attachments ON public.messages FOR EACH ROW EXECUTE FUNCTION public.messages_guard_client_attachments();
+
+CREATE OR REPLACE TRIGGER messages_guard_deleted_for_everyone BEFORE INSERT OR UPDATE OF deleted_for_everyone_at, deleted_for_everyone_source, deleted_for_everyone_by ON public.messages FOR EACH ROW EXECUTE FUNCTION public.messages_guard_deleted_for_everyone();
+
 CREATE OR REPLACE TRIGGER messages_upsert_text AFTER INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION public.messages_upsert_text();
 
 CREATE OR REPLACE TRIGGER messages_zz_contact_wrote AFTER INSERT OR UPDATE OF conversation_id ON public.messages FOR EACH ROW WHEN ((new.direction = 'inbound'::text)) EXECUTE FUNCTION public.messages_mark_contact_wrote();
 
 CREATE OR REPLACE TRIGGER messages_zz_last_message AFTER INSERT ON public.messages FOR EACH ROW WHEN (((new.status IS DISTINCT FROM 'failed'::text) AND (new.status IS DISTINCT FROM 'pending'::text))) EXECUTE FUNCTION public.messages_refresh_last_message();
 
+CREATE OR REPLACE TRIGGER messages_zz_last_message_deleted AFTER UPDATE OF deleted_for_everyone_at ON public.messages FOR EACH ROW WHEN (((old.deleted_for_everyone_at IS NULL) AND (new.deleted_for_everyone_at IS NOT NULL))) EXECUTE FUNCTION public.messages_refresh_last_message();
+
 CREATE OR REPLACE TRIGGER messages_zz_last_message_update AFTER UPDATE OF status ON public.messages FOR EACH ROW WHEN (((old.status = ANY (ARRAY['failed'::text, 'pending'::text])) AND (new.status IS DISTINCT FROM 'failed'::text) AND (new.status IS DISTINCT FROM 'pending'::text))) EXECUTE FUNCTION public.messages_refresh_last_message();
 
 CREATE OR REPLACE TRIGGER messages_zz_refresh_awaiting AFTER INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION public.messages_refresh_awaiting();
 
 CREATE OR REPLACE TRIGGER messages_zz_refresh_awaiting_update AFTER UPDATE OF status, direction, created_at ON public.messages FOR EACH ROW WHEN (((old.direction IS DISTINCT FROM new.direction) OR (old.created_at IS DISTINCT FROM new.created_at) OR ((old.status = 'failed'::text) IS DISTINCT FROM (new.status = 'failed'::text)))) EXECUTE FUNCTION public.messages_refresh_awaiting();
+
+CREATE OR REPLACE TRIGGER messages_zzz_reopen_conversation AFTER INSERT ON public.messages FOR EACH ROW WHEN (((new.direction = 'outbound'::text) AND (new.status IS DISTINCT FROM 'failed'::text) AND (new.status IS DISTINCT FROM 'pending'::text))) EXECUTE FUNCTION public.messages_reopen_conversation();
+
+CREATE OR REPLACE TRIGGER messages_zzz_reopen_conversation_update AFTER UPDATE OF status ON public.messages FOR EACH ROW WHEN (((new.direction = 'outbound'::text) AND (old.status = ANY (ARRAY['failed'::text, 'pending'::text])) AND (new.status IS DISTINCT FROM 'failed'::text) AND (new.status IS DISTINCT FROM 'pending'::text))) EXECUTE FUNCTION public.messages_reopen_conversation();
 
 CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.stickers FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
@@ -2095,10 +2394,6 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE public.message_reactions;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN

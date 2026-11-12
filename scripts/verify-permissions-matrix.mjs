@@ -219,6 +219,7 @@ try {
     T({ name: "contacts DELETE", table: "contacts", op: "delete", any: ["contacts.delete"], deny: ["contacts.edit", "contacts.merge"], member: false, base: ["contacts.view"],
       seed: () => svc.from("contacts").insert({ workspace_id: ws.id, display_name: `zz-test contacto ${uid()}` }).select("id").single() }),
 
+    // @plantilla-desde(disenador)
     // ---- Diseñador IA (00320): solo se LEEN con la sesion (escribe el servidor; que nadie escriba con la sesion, ni el
     // Owner, lo prueba `verify-designer --bloque ds0`). Leer pide `designer.view`; `designer.edit` sola NO alcanza.
     T({ name: "design_templates SELECT", table: "design_templates", op: "select", any: ["designer.view"], deny: ["designer.edit", "content.view"], member: true,
@@ -237,6 +238,7 @@ try {
         const t = await svc.from("ai_threads").insert({ workspace_id: ws.id, channel: "designer", subject_type: "design", subject_id: randomUUID() }).select("id").single();
         return svc.from("ai_messages").insert({ workspace_id: ws.id, thread_id: t.data.id, role: "user", content: "zz-test" }).select("id").single();
       } }),
+    // @plantilla-hasta(disenador)
 
     // @plantilla-desde(comisiones)
     // ---- Comisiones (Extra I, 00231): solo se LEEN con la sesion (escribe el servidor). `commissions.view` con alcance `all`

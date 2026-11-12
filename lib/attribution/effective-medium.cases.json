@@ -1,5 +1,5 @@
 {
-  "_comment": "Casos compartidos entre private.touch_effective_medium (SQL, 00318) y effectiveTouchMedium (TS). Corren en lib/attribution/channel.test.ts y en scripts/verify-ads-attribution.mjs.",
+  "_comment": "Casos compartidos entre private.touch_effective_medium (SQL) y effectiveTouchMedium (TS). Corren en lib/attribution/channel.test.ts y en scripts/verify-ads-attribution.mjs.",
   "cases": [
     { "name": "formulario con utm_medium pago en raw.utm", "medium": "form", "raw": { "utm": { "utm_medium": "paid" } }, "expected": "paid" },
     { "name": "formulario con utm_medium social: organico", "medium": "form", "raw": { "utm": { "utm_medium": "Social" } }, "expected": "social" },

@@ -69,8 +69,12 @@ los roles con sus permisos, las invitaciones y el perfil y las preferencias de c
 
 Las reglas de acceso de todo el sistema se apoyan en estas funciones: quien es
 miembro, quien es Owner o Admin y que permisos tiene cada rol. Cuando alguien crea su
-cuenta, un disparador sobre auth.users le arma su espacio de trabajo.`,
-    tables: ["public.workspaces", "public.workspace_roles", "public.workspace_members", "public.workspace_invites", "public.user_preferences", "public.user_profiles"],
+cuenta, un disparador sobre auth.users le arma su espacio de trabajo.
+
+Tambien las vistas guardadas de las tablas (propias o compartidas) y la que cada persona
+abre por defecto.`,
+    tables: ["public.workspaces", "public.workspace_roles", "public.workspace_members", "public.workspace_invites", "public.user_preferences", "public.user_profiles",
+      "public.table_views", "public.table_view_members", "public.table_view_defaults"],
     functions: [
       "public.is_workspace_member",
       "public.is_workspace_admin",
@@ -100,6 +104,11 @@ cuenta, un disparador sobre auth.users le arma su espacio de trabajo.`,
       "private.workspace_roles_channels_default",
       "private.channels_from_legacy",
       "private.member_channels",
+      "public.table_view_workspace",
+      "public.table_view_visible_to",
+      "public.save_table_view",
+      "public.delete_table_view",
+      "public.set_table_view_default",
     ],
   },
   {
@@ -149,7 +158,9 @@ Tambien: los canales vinculados a cada contacto, etiquetas (algunas con efecto),
 campos personalizados, notas, el estado de setter y de vendedor con su historial, las
 marcas "conocido" y "cliente", el "no contactar", el estado de suscripcion a emails (con la
 baja, que gana siempre) y las importaciones por CSV. Un Member solo ve los contactos que le
-corresponden (can_see_contact).`,
+corresponden (can_see_contact).
+
+Tambien el nivel de calificacion del lead (de 1 a 5) con su historial de cambios.`,
     tables: [
       "public.contacts",
       "public.contact_channels",
@@ -158,6 +169,7 @@ corresponden (can_see_contact).`,
       "public.custom_field_definitions",
       "public.contact_custom_fields",
       "public.contact_notes",
+      "public.contact_qualification_changes",
       "public.contact_status_changes",
       "public.csv_imports",
     ],
@@ -202,6 +214,10 @@ corresponden (can_see_contact).`,
       "private.tag_effect_apply",
       "private.tag_effect_release",
       "public.contact_attribution_options",
+      "public.set_contact_qualification",
+      "public.contacts_qualification_on_merge",
+      "private.contacts_qualification_guard",
+      "private.qualification_next_level",
     ],
   },
   {
@@ -273,6 +289,12 @@ que su rol tiene en esa cuenta (can_see_conversation).`,
       "private.refresh_conversation_awaiting",
       "private.contact_is_mine",
       "private.contact_is_unassigned",
+      "private.message_list_preview",
+      "public.mark_message_deleted_for_everyone",
+      "public.messages_guard_client_attachments",
+      "public.messages_guard_deleted_for_everyone",
+      "public.messages_reopen_conversation",
+      "public.whatsapp_channel_daily_messages",
     ],
   },
   {
@@ -291,7 +313,7 @@ columnas aplican y la base rechaza una forma invalida.`,
 que los ejecutan, la cola de eventos del CRM que los arranca, las secuencias (drip)
 con su auto-pausa cuando el contacto responde, los envios masivos (con su cola y el
 ritmo de cada canal), sus analiticas y el historial de cada ejecucion de un flujo, paso por
-paso.`,
+paso, con las metricas de cada paso y los clicks de sus links medidos.`,
     tables: [
       "public.flows",
       "public.flow_versions",
@@ -307,6 +329,7 @@ paso.`,
       "public.broadcast_recipients",
       "public.channel_send_lanes",
       "public.analytics_events",
+      "public.flow_link_clicks",
     ],
     functions: [
       "public.emit_automation_event",
@@ -321,6 +344,9 @@ paso.`,
       "public.claim_broadcast_recipient",
       "public.refresh_broadcast_counts",
       "private.fill_automation_source",
+      "public.flow_node_stats",
+      "public.delete_unsent_broadcast",
+      "public.reopen_unsent_broadcast",
     ],
   },
   {
@@ -350,6 +376,7 @@ conocimiento con su busqueda semantica.`,
       "public.sum_ai_spend",
       "private.sweep_agent_drafts",
       "private.alert_draft_windows",
+      "public.closable_inactive_conversations",
     ],
   },
   {
@@ -415,7 +442,8 @@ publicacion por red y sus comentarios.`,
     header: `Las metricas diarias de cada publicacion y de cada cuenta, el catalogo de Meta
 (campanas, conjuntos y anuncios) con sus metricas diarias, y la atribucion: cada
 interaccion de un contacto (toque) con su canal (organico, pauta, referido, directo),
-su vinculo con el anuncio de Meta y con la pieza de contenido.
+su vinculo con el anuncio de Meta y con la pieza de contenido. Tambien la cola de eventos
+de la API de Conversiones de Meta (reuniones agendadas y pasos de automatizacion).
 
 Un metric que la red no dio queda en null: nunca se inventa un cero.`,
     tables: [
@@ -427,6 +455,8 @@ Un metric que la red no dio queda en null: nunca se inventa un cero.`,
       "public.meta_ads_insights_daily",
       "public.contact_touches",
       "public.meta_match_rules",
+      "public.meta_capi_events",
+      "public.meta_capi_request_context",
     ],
     functions: [
       "public.record_contact_touch",
@@ -463,6 +493,7 @@ Un metric que la red no dio queda en null: nunca se inventa un cero.`,
       "public.create_meta_match_rule",
       "public.delete_meta_match_rule",
       "private.enqueue_comment_backfill",
+      "public.booking_last_touches",
     ],
   },
   {
@@ -545,7 +576,7 @@ que leen conversaciones, mensajes, corridas del agente e historial a la vez.`,
 privadas, el primer segmento de la ruta de cada archivo es el workspace: es lo unico
 que miran las reglas.`,
     tables: [],
-    functions: [],
+    functions: ["public.can_read_chat_media", "public.can_read_email_attachment", "public.can_read_knowledge"],
     buckets: "*",
   },
 ];

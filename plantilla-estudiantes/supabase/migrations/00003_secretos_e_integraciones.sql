@@ -51,6 +51,7 @@ COMMENT ON COLUMN public.channels.connection_status IS 'Estado en vivo. Solo lo 
 COMMENT ON COLUMN public.channels.messaging_window_hours IS 'Horas desde el ultimo mensaje del lead en las que la plataforma deja responder. NULL = default por plataforma (Instagram y Facebook: 24, lo que documenta Meta; el resto: sin ventana). 0 = sin ventana (WhatsApp por Evolution).';
 COMMENT ON COLUMN public.channels.email_address IS 'La direccion que recibe y desde la que se responde. Solo en canales de email.';
 COMMENT ON COLUMN public.channels.inbox_import IS 'Avance de la importacion de conversaciones desde Zernio: run_id, status, pass, phase, cursor, step, scanned, imported. NULL = nunca se importo.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.channels FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.integration_configs (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -75,6 +76,7 @@ ALTER TABLE public.integration_configs ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.integration_configs IS 'Integraciones del workspace (canales, IA, email). Las API keys viven en Vault; aca solo el nombre del secret.';
 COMMENT ON COLUMN public.integration_configs.vault_secret_name IS 'Nombre limpio del secret en Vault (sin el prefijo ws:<id>:). Null si la integracion no usa API key.';
 COMMENT ON COLUMN public.integration_configs.last_event_at IS 'Ultimo aviso valido (firma verificada) recibido del proveedor. Lo escribe el receptor del webhook (Resend: a lo sumo una vez por minuto).';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.integration_configs FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.oauth_connections (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -104,6 +106,7 @@ COMMENT ON COLUMN public.oauth_connections.user_id IS 'NULL = la conexion es del
 COMMENT ON COLUMN public.oauth_connections.granted_scopes IS 'Los permisos que el proveedor otorgo DE VERDAD, no los que se pidieron. Un permiso que la persona destildo se ve aca.';
 COMMENT ON COLUMN public.oauth_connections.status IS 'active: anda. attention: hay algo que resolver (vence pronto, falta un permiso). revoked: el proveedor corto el acceso. error: la ultima operacion fallo.';
 COMMENT ON COLUMN public.oauth_connections.vault_secret_prefix IS 'Prefijo del nombre de sus secretos en Vault: <prefijo>_access_token y <prefijo>_refresh_token.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.oauth_connections FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Funciones

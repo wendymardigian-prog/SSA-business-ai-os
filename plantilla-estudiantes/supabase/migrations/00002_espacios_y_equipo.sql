@@ -7,6 +7,9 @@
 -- Las reglas de acceso de todo el sistema se apoyan en estas funciones: quien es
 -- miembro, quien es Owner o Admin y que permisos tiene cada rol. Cuando alguien crea su
 -- cuenta, un disparador sobre auth.users le arma su espacio de trabajo.
+--
+-- Tambien las vistas guardadas de las tablas (propias o compartidas) y la que cada persona
+-- abre por defecto.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -20,7 +23,9 @@ CREATE TABLE IF NOT EXISTS public.user_preferences (
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
   notification_prefs jsonb DEFAULT '{}'::jsonb NOT NULL,
+  nav_favorites jsonb DEFAULT '{}'::jsonb NOT NULL,
   CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id),
+  CONSTRAINT user_preferences_nav_favorites_check CHECK ((jsonb_typeof(nav_favorites) = 'object'::text)),
   CONSTRAINT user_preferences_notification_prefs_check CHECK ((jsonb_typeof(notification_prefs) = 'object'::text)),
   CONSTRAINT user_preferences_timezone_source_check CHECK ((timezone_source = ANY (ARRAY['browser'::text, 'manual'::text]))),
   CONSTRAINT user_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
@@ -28,6 +33,8 @@ CREATE TABLE IF NOT EXISTS public.user_preferences (
 ALTER TABLE public.user_preferences ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.user_preferences IS 'Preferencias por persona, no por workspace: la zona horaria y que avisos le llegan y por donde.';
 COMMENT ON COLUMN public.user_preferences.notification_prefs IS 'Lo que la persona cambio de sus avisos: { evento: { bell, email, whatsapp } }. Lo que falta usa el valor por defecto de lib/notifications/preferences.ts.';
+COMMENT ON COLUMN public.user_preferences.nav_favorites IS 'Pantalla favorita de cada seccion del menu: { grupo: href }. La valida el codigo (lib/nav/items.ts).';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.user_preferences FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.user_profiles (
   user_id uuid NOT NULL,
@@ -47,6 +54,7 @@ ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.user_profiles IS 'Datos personales de cada persona del equipo (foto, telefono, WhatsApp), iguales en todos los negocios. El nombre sigue en auth.users.user_metadata.full_name.';
 COMMENT ON COLUMN public.user_profiles.whatsapp_phone IS 'WhatsApp para los avisos que la persona elija. Solo se usa si whatsapp_same_as_phone es false; si no, vale phone.';
 REVOKE ALL ON TABLE public.user_profiles FROM anon;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.user_profiles FROM authenticated;
 
 CREATE TABLE IF NOT EXISTS public.workspaces (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -84,6 +92,7 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
   customer_contacts_settings jsonb DEFAULT '{}'::jsonb NOT NULL,
   email_footer_address text,
   team_alerts_settings jsonb DEFAULT '{}'::jsonb NOT NULL,
+  qualification_settings jsonb DEFAULT '{"levels": [{"name": "No califica", "level": 1, "description": "No encaja con lo que ofrecemos o no tiene un interés real."}, {"name": "Bajo", "level": 2, "description": "Muestra algo de interés, pero le faltan varias condiciones: necesidad, presupuesto o momento."}, {"name": "Medio", "level": 3, "description": "Tiene la necesidad y el interés, pero falta confirmar el presupuesto o quién decide."}, {"name": "Bueno", "level": 4, "description": "Cumple casi todo: necesidad clara, presupuesto y decide; falta dar el siguiente paso."}, {"name": "Ideal", "level": 5, "description": "Cliente ideal: cumple todo y está listo para avanzar."}]}'::jsonb NOT NULL,
   CONSTRAINT workspaces_pkey PRIMARY KEY (id),
   CONSTRAINT workspaces_slug_key UNIQUE (slug),
   CONSTRAINT workspaces_ai_daily_limit_action_check CHECK ((ai_daily_limit_action = ANY (ARRAY['disable'::text, 'notify'::text]))),
@@ -122,6 +131,60 @@ COMMENT ON COLUMN public.workspaces.brand_color IS 'Color principal en #rrggbb. 
 COMMENT ON COLUMN public.workspaces.ai_language_style IS 'Como escribe la IA de este negocio, por ejemplo "español rioplatense (vos/tenés)". NULL = AI_LANGUAGE_STYLE.';
 COMMENT ON COLUMN public.workspaces.customer_contacts_settings IS 'A quien van los chats de un cliente: {"by_channel": {"<channel_id>": "<user_id>"}, "default_user_id": "<user_id>"}. Sin nada, el responsable no cambia.';
 COMMENT ON COLUMN public.workspaces.team_alerts_settings IS 'Avisos al equipo: { whatsapp_channel_id } = el canal de WhatsApp (Evolution) desde el que se mandan. Sin canal, nadie recibe avisos por WhatsApp.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.workspaces FROM anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS public.table_views (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  workspace_id uuid NOT NULL,
+  table_key text NOT NULL,
+  name text NOT NULL,
+  config jsonb DEFAULT '{}'::jsonb NOT NULL,
+  owner_id uuid NOT NULL,
+  visibility text DEFAULT 'private'::text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT table_views_pkey PRIMARY KEY (id),
+  CONSTRAINT table_views_config_check CHECK (((jsonb_typeof(config) = 'object'::text) AND (pg_column_size(config) < 20000))),
+  CONSTRAINT table_views_name_check CHECK (((char_length(btrim(name)) >= 1) AND (char_length(btrim(name)) <= 60))),
+  CONSTRAINT table_views_table_key_check CHECK ((table_key ~ '^[a-z][a-z0-9_]{1,40}$'::text)),
+  CONSTRAINT table_views_visibility_check CHECK ((visibility = ANY (ARRAY['private'::text, 'workspace'::text, 'selected'::text]))),
+  CONSTRAINT table_views_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT table_views_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
+);
+ALTER TABLE public.table_views ENABLE ROW LEVEL SECURITY;
+COMMENT ON TABLE public.table_views IS 'Vistas guardadas de una tabla (columnas y filtros). Privadas, para todo el equipo o para personas elegidas. Escribe solo save_table_view / delete_table_view.';
+REVOKE ALL ON TABLE public.table_views FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.table_views FROM authenticated;
+
+CREATE TABLE IF NOT EXISTS public.table_view_defaults (
+  workspace_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  table_key text NOT NULL,
+  view_id uuid NOT NULL,
+  assigned_by uuid,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT table_view_defaults_pkey PRIMARY KEY (workspace_id, user_id, table_key),
+  CONSTRAINT table_view_defaults_assigned_by_fkey FOREIGN KEY (assigned_by) REFERENCES auth.users(id) ON DELETE SET NULL,
+  CONSTRAINT table_view_defaults_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT table_view_defaults_view_id_fkey FOREIGN KEY (view_id) REFERENCES public.table_views(id) ON DELETE CASCADE,
+  CONSTRAINT table_view_defaults_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
+);
+ALTER TABLE public.table_view_defaults ENABLE ROW LEVEL SECURITY;
+COMMENT ON TABLE public.table_view_defaults IS 'La vista predeterminada de cada persona por tabla. La puede dejar la propia persona o un Owner/Admin (assigned_by).';
+REVOKE ALL ON TABLE public.table_view_defaults FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.table_view_defaults FROM authenticated;
+
+CREATE TABLE IF NOT EXISTS public.table_view_members (
+  view_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT table_view_members_pkey PRIMARY KEY (view_id, user_id),
+  CONSTRAINT table_view_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT table_view_members_view_id_fkey FOREIGN KEY (view_id) REFERENCES public.table_views(id) ON DELETE CASCADE
+);
+ALTER TABLE public.table_view_members ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.table_view_members FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.table_view_members FROM authenticated;
 
 CREATE TABLE IF NOT EXISTS public.workspace_roles (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -139,6 +202,7 @@ CREATE TABLE IF NOT EXISTS public.workspace_roles (
 ALTER TABLE public.workspace_roles ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.workspace_roles IS 'Los roles de un workspace: los tres de sistema (system_role no nulo, no editables) y los personalizados.';
 COMMENT ON COLUMN public.workspace_roles.permissions IS 'Las claves de permiso y los alcances. El catalogo vive en lib/auth/permissions.ts.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.workspace_roles FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.workspace_invites (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -174,6 +238,7 @@ CREATE TABLE IF NOT EXISTS public.workspace_invites (
 ALTER TABLE public.workspace_invites ENABLE ROW LEVEL SECURITY;
 COMMENT ON COLUMN public.workspace_invites.role_id IS 'El rol con el que entra la persona. NULL = el rol base `role`. Si el rol se borra antes de aceptar, cae al Member de sistema.';
 COMMENT ON COLUMN public.workspace_invites.delivery IS 'email = se mando un correo; link = solo se genero el link para pasarlo a mano.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.workspace_invites FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.workspace_members (
   workspace_id uuid NOT NULL,
@@ -189,6 +254,7 @@ CREATE TABLE IF NOT EXISTS public.workspace_members (
 );
 ALTER TABLE public.workspace_members ENABLE ROW LEVEL SECURITY;
 COMMENT ON COLUMN public.workspace_members.role_id IS 'El rol con los permisos finos. `role` sigue siendo owner/admin/member y es lo que leen varias politicas.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.workspace_members FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Funciones
@@ -668,6 +734,32 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.can_grant_permissions(p_workspace_id uuid, p_keys jsonb, p_scopes jsonb) FROM PUBLIC, anon;
 
+CREATE OR REPLACE FUNCTION public.delete_table_view(p_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_row public.table_views%ROWTYPE;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'No hay sesion' USING ERRCODE = '42501';
+  END IF;
+  SELECT * INTO v_row FROM public.table_views WHERE id = p_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+  IF NOT public.is_workspace_member(v_row.workspace_id)
+     OR NOT (v_row.owner_id = v_uid OR (public.is_workspace_admin(v_row.workspace_id) AND v_row.visibility <> 'private')) THEN
+    RAISE EXCEPTION 'No podes borrar esta vista' USING ERRCODE = '42501';
+  END IF;
+  DELETE FROM public.table_views WHERE id = p_id;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.delete_table_view(p_id uuid) FROM PUBLIC, anon;
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -681,6 +773,18 @@ declare
   v_invite_id uuid;
   v_has_pending_invite boolean;
 begin
+  -- La marca llega en un UPDATE posterior al alta. Solo cuando pasa a
+  -- `true` y la persona todavia no tiene ningun workspace.
+  if tg_op = 'UPDATE' then
+    if coalesce(new.raw_app_meta_data->>'ssa_create_workspace', '') <> 'true'
+       or coalesce(old.raw_app_meta_data->>'ssa_create_workspace', '') = 'true' then
+      return new;
+    end if;
+    if exists (select 1 from public.workspace_members m where m.user_id = new.id) then
+      return new;
+    end if;
+  end if;
+
   -- Alta por invitacion: no se crea workspace propio. registerFromInvite ya
   -- valido la invitacion antes de crear esta cuenta y suma la membresia el
   -- mismo, con finalizeAcceptInvite.
@@ -697,6 +801,14 @@ begin
     if v_has_pending_invite then
       return new;
     end if;
+  end if;
+
+  -- Un registro publico no se arma un negocio. Solo la primera cuenta
+  -- de una instalacion vacia, o una creada por el servidor con la marca en
+  -- app_metadata (que el registro publico no puede escribir).
+  if coalesce(new.raw_app_meta_data->>'ssa_create_workspace', '') <> 'true'
+     and exists (select 1 from public.workspaces) then
+    return new;
   end if;
 
   user_name := coalesce(
@@ -887,6 +999,86 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.save_table_view(p_id uuid, p_workspace uuid, p_table_key text, p_name text, p_config jsonb, p_visibility text DEFAULT 'private'::text, p_member_ids uuid[] DEFAULT NULL::uuid[])
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_uid   uuid := auth.uid();
+  v_row   public.table_views%ROWTYPE;
+  v_ws    uuid;
+  v_admin boolean;
+  v_vis   text := COALESCE(p_visibility, 'private');
+  v_id    uuid;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'No hay sesion' USING ERRCODE = '42501';
+  END IF;
+  IF v_vis NOT IN ('private', 'workspace', 'selected') THEN
+    RAISE EXCEPTION 'Visibilidad invalida' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_id IS NOT NULL THEN
+    SELECT * INTO v_row FROM public.table_views WHERE id = p_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'La vista no existe' USING ERRCODE = 'P0002';
+    END IF;
+    v_ws := v_row.workspace_id;
+  ELSE
+    v_ws := p_workspace;
+  END IF;
+
+  IF NOT public.is_workspace_member(v_ws) THEN
+    RAISE EXCEPTION 'No sos parte de este negocio' USING ERRCODE = '42501';
+  END IF;
+  v_admin := public.is_workspace_admin(v_ws);
+
+  IF p_id IS NOT NULL AND NOT (v_row.owner_id = v_uid OR (v_admin AND v_row.visibility <> 'private')) THEN
+    RAISE EXCEPTION 'No podes editar esta vista' USING ERRCODE = '42501';
+  END IF;
+  IF v_vis <> 'private' AND NOT v_admin THEN
+    RAISE EXCEPTION 'Solo Owner y Admin pueden compartir vistas' USING ERRCODE = '42501';
+  END IF;
+  IF v_vis = 'selected' AND p_member_ids IS NOT NULL AND EXISTS (
+    SELECT 1 FROM unnest(p_member_ids) AS u(user_id)
+    WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members wm WHERE wm.workspace_id = v_ws AND wm.user_id = u.user_id)
+  ) THEN
+    RAISE EXCEPTION 'Hay personas que no son parte de este negocio' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_id IS NULL THEN
+    INSERT INTO public.table_views (workspace_id, table_key, name, config, owner_id, visibility)
+    VALUES (v_ws, p_table_key, btrim(p_name), COALESCE(p_config, '{}'::jsonb), v_uid, v_vis)
+    RETURNING id INTO v_id;
+  ELSE
+    UPDATE public.table_views
+       SET name = btrim(p_name), config = COALESCE(p_config, config), visibility = v_vis
+     WHERE id = p_id
+    RETURNING id INTO v_id;
+  END IF;
+
+  IF v_vis = 'selected' THEN
+    IF p_member_ids IS NOT NULL THEN
+      DELETE FROM public.table_view_members WHERE view_id = v_id AND NOT (user_id = ANY (p_member_ids));
+      INSERT INTO public.table_view_members (view_id, user_id)
+      SELECT v_id, u.user_id FROM unnest(p_member_ids) AS u(user_id)
+      ON CONFLICT DO NOTHING;
+    END IF;
+  ELSE
+    DELETE FROM public.table_view_members WHERE view_id = v_id;
+  END IF;
+
+  -- Quien ya no puede ver la vista deja de tenerla como predeterminada.
+  DELETE FROM public.table_view_defaults d
+   WHERE d.view_id = v_id AND NOT public.table_view_visible_to(v_id, d.user_id);
+
+  RETURN v_id;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.save_table_view(p_id uuid, p_workspace uuid, p_table_key text, p_name text, p_config jsonb, p_visibility text, p_member_ids uuid[]) FROM PUBLIC, anon;
+
 CREATE OR REPLACE FUNCTION public.seed_workspace_roles()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -904,6 +1096,96 @@ BEGIN
 END;
 $function$;
 REVOKE ALL ON FUNCTION public.seed_workspace_roles() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.set_table_view_default(p_workspace uuid, p_table_key text, p_view uuid, p_user_ids uuid[] DEFAULT NULL::uuid[])
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_uid     uuid := auth.uid();
+  v_targets uuid[];
+  v_view    public.table_views%ROWTYPE;
+  v_target  uuid;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'No hay sesion' USING ERRCODE = '42501';
+  END IF;
+  IF NOT public.is_workspace_member(p_workspace) THEN
+    RAISE EXCEPTION 'No sos parte de este negocio' USING ERRCODE = '42501';
+  END IF;
+  v_targets := COALESCE(p_user_ids, ARRAY[v_uid]);
+  IF EXISTS (SELECT 1 FROM unnest(v_targets) AS t(user_id) WHERE t.user_id <> v_uid) AND NOT public.is_workspace_admin(p_workspace) THEN
+    RAISE EXCEPTION 'Solo Owner y Admin pueden elegir la vista de otras personas' USING ERRCODE = '42501';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM unnest(v_targets) AS t(user_id)
+    WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members wm WHERE wm.workspace_id = p_workspace AND wm.user_id = t.user_id)
+  ) THEN
+    RAISE EXCEPTION 'Hay personas que no son parte de este negocio' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_view IS NULL THEN
+    DELETE FROM public.table_view_defaults
+     WHERE workspace_id = p_workspace AND table_key = p_table_key AND user_id = ANY (v_targets);
+    RETURN;
+  END IF;
+
+  SELECT * INTO v_view FROM public.table_views WHERE id = p_view AND workspace_id = p_workspace AND table_key = p_table_key;
+  IF NOT FOUND OR NOT (
+    public.table_view_visible_to(p_view, v_uid)
+    OR (public.is_workspace_admin(p_workspace) AND v_view.visibility <> 'private')
+  ) THEN
+    RAISE EXCEPTION 'La vista no existe' USING ERRCODE = 'P0002';
+  END IF;
+
+  FOREACH v_target IN ARRAY v_targets LOOP
+    IF NOT public.table_view_visible_to(p_view, v_target) THEN
+      IF v_view.visibility = 'selected' THEN
+        INSERT INTO public.table_view_members (view_id, user_id) VALUES (p_view, v_target) ON CONFLICT DO NOTHING;
+      ELSE
+        RAISE EXCEPTION 'La vista es privada: compartila antes de dejarla como predeterminada de otra persona' USING ERRCODE = '22023';
+      END IF;
+    END IF;
+    INSERT INTO public.table_view_defaults (workspace_id, user_id, table_key, view_id, assigned_by)
+    VALUES (p_workspace, v_target, p_table_key, p_view, CASE WHEN v_target = v_uid THEN NULL ELSE v_uid END)
+    ON CONFLICT (workspace_id, user_id, table_key)
+    DO UPDATE SET view_id = EXCLUDED.view_id, assigned_by = EXCLUDED.assigned_by, updated_at = now();
+  END LOOP;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.set_table_view_default(p_workspace uuid, p_table_key text, p_view uuid, p_user_ids uuid[]) FROM PUBLIC, anon;
+
+CREATE OR REPLACE FUNCTION public.table_view_visible_to(p_view uuid, p_user uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  SELECT COALESCE((
+    SELECT EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = v.workspace_id AND wm.user_id = p_user
+    ) AND (
+      v.owner_id = p_user
+      OR v.visibility = 'workspace'
+      OR (v.visibility = 'selected' AND EXISTS (SELECT 1 FROM public.table_view_members m WHERE m.view_id = v.id AND m.user_id = p_user))
+    )
+    FROM public.table_views v WHERE v.id = p_view
+  ), false);
+$function$;
+REVOKE ALL ON FUNCTION public.table_view_visible_to(p_view uuid, p_user uuid) FROM PUBLIC, anon;
+
+CREATE OR REPLACE FUNCTION public.table_view_workspace(p_view uuid)
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  SELECT v.workspace_id FROM public.table_views v WHERE v.id = p_view;
+$function$;
+REVOKE ALL ON FUNCTION public.table_view_workspace(p_view uuid) FROM PUBLIC, anon;
 
 CREATE OR REPLACE FUNCTION public.workspace_member_profiles(p_workspace_id uuid)
  RETURNS TABLE(user_id uuid, role text, role_id uuid, joined_at timestamp with time zone, email text, full_name text, meta_name text, avatar_path text)
@@ -972,6 +1254,12 @@ REVOKE ALL ON FUNCTION public.workspace_roles_grant_check() FROM PUBLIC, anon, a
 -- Indices
 -- ----------------------------------------------------------------------------
 
+CREATE INDEX IF NOT EXISTS idx_table_view_defaults_view ON public.table_view_defaults USING btree (view_id);
+
+CREATE INDEX IF NOT EXISTS idx_table_view_members_user ON public.table_view_members USING btree (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_table_views_lookup ON public.table_views USING btree (workspace_id, table_key, visibility);
+
 CREATE INDEX IF NOT EXISTS idx_workspace_invites_email ON public.workspace_invites USING btree (email);
 
 CREATE INDEX IF NOT EXISTS idx_workspace_invites_workspace ON public.workspace_invites USING btree (workspace_id);
@@ -982,6 +1270,8 @@ CREATE INDEX IF NOT EXISTS idx_workspace_members_role ON public.workspace_member
 
 CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON public.workspace_members USING btree (user_id);
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_table_views_owner_name ON public.table_views USING btree (workspace_id, owner_id, table_key, lower(btrim(name)));
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_workspace_roles_name ON public.workspace_roles USING btree (workspace_id, lower(name));
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_workspace_roles_system ON public.workspace_roles USING btree (workspace_id, system_role) WHERE (system_role IS NOT NULL);
@@ -991,6 +1281,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_workspace_roles_system ON public.workspace_
 -- ----------------------------------------------------------------------------
 
 CREATE OR REPLACE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+CREATE OR REPLACE TRIGGER on_auth_user_workspace_flag AFTER UPDATE OF raw_app_meta_data ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.table_views FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.user_preferences FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
@@ -1011,6 +1305,23 @@ CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.workspaces FOR 
 -- ----------------------------------------------------------------------------
 -- Reglas de acceso (RLS)
 -- ----------------------------------------------------------------------------
+
+DO $$ BEGIN
+  CREATE POLICY table_view_defaults_select ON public.table_view_defaults FOR SELECT TO public
+    USING (((user_id = ( SELECT auth.uid() AS uid)) OR public.is_workspace_admin(workspace_id)));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY table_view_members_select ON public.table_view_members FOR SELECT TO public
+    USING (((user_id = ( SELECT auth.uid() AS uid)) OR public.is_workspace_admin(public.table_view_workspace(view_id))));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY table_views_select ON public.table_views FOR SELECT TO public
+    USING ((public.is_workspace_member(workspace_id) AND ((owner_id = ( SELECT auth.uid() AS uid)) OR (visibility = 'workspace'::text) OR ((visibility = 'selected'::text) AND (EXISTS ( SELECT 1
+   FROM public.table_view_members m
+  WHERE ((m.view_id = table_views.id) AND (m.user_id = ( SELECT auth.uid() AS uid)))))) OR ((visibility <> 'private'::text) AND public.is_workspace_admin(workspace_id)))));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE POLICY user_preferences_insert ON public.user_preferences FOR INSERT TO public
@@ -1056,9 +1367,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE POLICY workspace_invites_select ON public.workspace_invites FOR SELECT TO public
-    USING ((workspace_id IN ( SELECT workspace_members.workspace_id
-   FROM public.workspace_members
-  WHERE (workspace_members.user_id = auth.uid()))));
+    USING (( SELECT public.has_permission(workspace_invites.workspace_id, 'team.invite'::text) AS has_permission));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN

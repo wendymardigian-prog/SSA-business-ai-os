@@ -361,7 +361,8 @@ describe("caracterizacion: el menu (F68)", () => {
     // Afiliados (Servicios A1, F105) tampoco: item nuevo con claves que el Member no tiene (su «Mis links» va en el
     // menu de usuario, con affiliates.use).
     // Portal (Servicios A1, F35/F43): pide claves del portal que el Member no tiene (solo portal.view_as).
-    expect(ocultas).toEqual(["Afiliados", "Anuncios", "Portal", "Social"]);
+    expect(ocultas).toEqual(["Afiliados", "Anuncios", "Portal", "Social"]); // @plantilla-quitar(servicios,ventas)
+    // @plantilla-sin(servicios,ventas): expect(ocultas).toEqual(["Anuncios", "Social"]);
   });
 
   it("las demas las ve un Member", () => {
@@ -382,8 +383,10 @@ describe("caracterizacion: el menu (F68)", () => {
       "Contactos",
       "Contenido",
       "Dashboards",
+      // @plantilla-desde(disenador)
       // Diseñador IA (cambio aprobado M12): el Member de sistema tiene designer.view (ve y edita diseños).
       "Diseñador IA",
+      // @plantilla-hasta(disenador)
       // @plantilla-desde(comisiones)
       // Finanzas (Extra I, cambio aprobado M9): el Member de sistema tiene commissions.view (sus comisiones,
       // alcance own). Adentro NO ve las pestañas de gastos (piden expenses.view).

@@ -156,9 +156,11 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // crear y publicar lo decide `forms.manage`, no el menu.
   { name: "Formularios", href: "/dashboard/formularios", icon: "ClipboardList", permissions: ["forms.view"], group: "herramientas" },
   // @plantilla-hasta(formularios)
+  // @plantilla-desde(disenador)
   // Diseñador IA: diseños, plantillas y sus generaciones. Se ve con `designer.view` (el Member de sistema lo
   // tiene: cambio aprobado M12). Las pantallas de edición y los ajustes viven debajo de esta ruta.
   { name: "Diseñador IA", href: "/dashboard/disenos", icon: "Sparkles", permissions: ["designer.view"], group: "herramientas" },
+  // @plantilla-hasta(disenador)
   // Agentes IA: Conocimiento ya no es un item (D3): se abre con el boton "Conocimiento" de la
   // barra de esta pantalla (lib/nav/page-actions.ts), y mientras esta abierto queda marcado Agentes IA.
   { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", permissions: ["agents.view"], group: "herramientas", alsoActiveOn: ["/dashboard/knowledge"] },

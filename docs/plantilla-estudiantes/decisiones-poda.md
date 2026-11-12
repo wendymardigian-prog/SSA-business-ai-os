@@ -13,6 +13,8 @@ Los puntos marcados con **PREGUNTA** necesitan tu decisión. Todo lo demás es c
 - **Finanzas** (gastos, gastos que se repiten y proveedores).
 - **Comisiones**.
 - **Webhooks entrantes** (recibir datos de otra herramienta y arrancar una automatización).
+- **Servicios, portal y afiliados** (los esquemas `app_servicio`, `app_servicio_portal` y `app_servicio_proyectos` enteros, y sus columnas en tablas que se quedan). Ver la sección 10.
+- **Diseñador IA** (diseños, plantillas, generaciones y el link público `/d/`). Ver la sección 10.
 
 ## Qué se queda aunque nació junto con esos módulos
 
@@ -112,6 +114,23 @@ Tres que vale la pena nombrar:
 - **Áreas de grabaciones en los permisos (la `00301`) se dejan, inertes.** `can_give_role`, `workspace_roles_grant_check` y la política de insert de `workspace_roles` llaman a `can_grant_call_areas`, y `lib/team/grant.ts` usa su gemela. Sin Grabaciones ningún rol tiene ese alcance, así que nunca frenan nada. Reescribir esas tres en la poda las dejaría desfasadas del proyecto a la primera migración que las toque.
 - **El estado «Sin suscribir» se queda**: lo lee código que viaja (Broadcasts, Secuencias, la ficha), aunque en la plantilla solo lo pondría una casilla de un formulario.
 - **Reinstalar**: desde esta versión, quien la tenía instalada instala de cero. Los archivos de migración se llaman igual, así que `db push` sobre una base vieja no aplica nada (el README lo avisa).
+
+## 10. Lo que se sumó en la segunda actualización de noviembre de 2026
+
+Se cortó de `main` `35f204e` (PR #220). Lo que cambia en la base:
+
+- **Diseñador IA, no viaja.** Se sacan las tablas `designs`, `design_templates`, `design_versions`, `ai_threads` y `ai_messages`; la columna `workspaces.design_settings`; los dos buckets privados (`design-assets`, `design-renders`) con sus políticas de lectura; la tarea diaria `design-cleanup`; el link público (`design_public_get`), los validadores, el generador de códigos y los dos disparadores que viven en tablas que se quedan (fusión de contactos y validador de ajustes del negocio). Todo con nombre, sin `CASCADE`: está en la sección 8 de `poda.sql`.
+- **`ai_threads` y `ai_messages` salen con el Diseñador.** Son genéricas (el Diseñador, el tutor del portal y un asistente futuro), pero la plantilla no tiene ninguno de los tres usos y el código que las lee (`lib/ai-threads`) solo lo llaman esos módulos.
+- **No se toca la `00323`** (el id del video de cada anuncio y la transcripción): es de Anuncios y viaja.
+- **Las listas de valores no se arman desde un archivo viejo.** Los valores permitidos de cada `CHECK` se compararon con la definición que tiene la base sin podar (`pg_get_constraintdef`). Resultado: `agent_runs.source` conserva `ads_matching` (la `00321` lo había pisado y la `00326` lo devolvió) y pierde `designer` y `portal_tutor`; `triggers.type` suma **`scheduled_time`** (el disparador «En una fecha y hora», `00339`), que la poda anterior no conocía.
+- **Servicios se poda ahora de verdad.** La poda tenía una sección de Servicios sin probar contra una base. Al probarla falló: las llaves de `app_servicio` apuntan a `tasks`, `sales`, `forms` y `calls`, así que sus esquemas se sacan **antes** de las tablas (pasos 2.6 a 2.8). También se saca el índice `idx_agent_runs_portal_tutor`.
+- **API de Conversiones de Meta (`00328`) viaja, sin los pagos ni los formularios.** `meta_capi_events.source_type` queda en `booking` y `contact`, `meta_capi_request_context.source_type` en `booking`, y se borra la función `enqueue_meta_capi_purchase` (la disparaba un pago).
+- **Viajan enteras**: vistas guardadas de tablas (`00360`), calificación del lead (`00329`), «En una fecha y hora» (`00339`), crons agrupados con guarda (`00327`, `00350`), reabrir al salir un mensaje (`00354`), editar un broadcast (`00355`), mensajes borrados para todos (`00356`), favoritas del menú (`00357`), nombre del contacto al agendar (`00358`), último click de una reunión (`00359`) y el gráfico diario de WhatsApp (`00348`, `00349`).
+- **`private.touch_effective_medium`** nombra los medios `form` y `webhook` (como `meta_touch_utm_counts`): es la gemela de una regla del código, no hace ningún efecto en la plantilla y se deja (permitida en `check-residue.mjs`).
+- **Permisos por defecto de las tablas nuevas.** La auditoría de seguridad (`00315`) le quitó `TRUNCATE`, `TRIGGER` y `REFERENCES` a `anon` y `authenticated` en las tablas que se creen de ahí en adelante. El archivo `00000` de la plantilla lo repite al final, así la plantilla no vuelve a dar esos tres permisos.
+- **`config.toml` solo expone `public`.** El del proyecto suma `app_servicio`; el de la plantilla no.
+- **Estado de ejecución, no semilla.** `private.cron_guard_state` y `private.cron_tick_errors` las escribe el cron mientras la base está prendida; el generador y la foto las ignoran.
+- **Reinstalar**: los 17 archivos cambian otra vez. Quien tenga la plantilla instalada instala de cero.
 
 ## PREGUNTAS para vos
 
