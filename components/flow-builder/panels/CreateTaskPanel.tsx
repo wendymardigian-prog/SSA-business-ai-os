@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { loadTeamMemberOptions } from "@/lib/actions/flow-node-options";
-import { MAX_DUE_DAYS, type CreateTaskNodeData } from "@/lib/flow-engine/nodes/create-task";
+import type { CreateTaskNodeData } from "@/lib/flow-engine/nodes/create-task";
+import { MAX_DUE_DAYS } from "@/lib/tasks/dates";
 import { PRIORITY_LABELS, TASK_LIMITS, TASK_PRIORITIES } from "@/lib/tasks/types";
 import { BusinessTimeNote } from "@/components/ui/business-time-note";
 

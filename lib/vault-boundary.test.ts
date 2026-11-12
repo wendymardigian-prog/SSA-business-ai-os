@@ -50,10 +50,23 @@ function directiveOf(source: string): "use client" | "use server" | null {
  * modulo nunca viaja al navegador. Sin esta distincion el test marcaba 15
  * componentes que solo piden un tipo (por ejemplo `DraftActionResult`).
  */
+const importsCache = new Map<string, string[]>();
 function localImports(file: string, source: string): string[] {
+  const cached = importsCache.get(file);
+  if (cached) return cached;
+  const result = localImportsUncached(file, source);
+  importsCache.set(file, result);
+  return result;
+}
+
+function localImportsUncached(file: string, source: string): string[] {
   const specs = [...source.matchAll(/(?:^|[\n;])\s*(?:import|export)\s+(type\s+)?(?:[^'"()]*?\sfrom\s*)?["']([^"']+)["']/g)]
     .filter((m) => !m[1])
     .map((m) => m[2]);
+  // Un `import("...")` diferido también cuenta: Turbopack compila ese pedazo para el navegador igual, y un módulo de
+  // servidor ahí rompe la compilación (Servicios A4: el panel «Crear tarea» llegaba a `lib/supabase/server.ts` por el
+  // `import()` del emisor de certificados).
+  specs.push(...[...source.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1]));
   const resolved: string[] = [];
   for (const spec of specs) {
     let base: string | null = null;

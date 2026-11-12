@@ -17,7 +17,7 @@ import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import type { FlowExecutionContext } from "../types";
 import { interpolateVariables, resolveVariablePath } from "../interpolate";
 import { todayInputValue } from "@/lib/dates";
-import { addDays, isDateOnly } from "@/lib/tasks/dates";
+import { MAX_DUE_DAYS, addDays, isDateOnly } from "@/lib/tasks/dates";
 import { createTaskFromAutomation, resolveContactResponsible, resolveSaleResponsible } from "@/lib/tasks/create-from-automation";
 import { TASK_LIMITS, TASK_PRIORITIES, type TaskPriority } from "@/lib/tasks/types";
 import { serviceOwnerOf } from "./service-owner"; // @plantilla-quitar(servicios)
@@ -48,7 +48,7 @@ export interface CreateTaskNodeData {
   sourceKey?: string;
 }
 
-export const MAX_DUE_DAYS = 365;
+export { MAX_DUE_DAYS };
 
 /** Una variable que no se pudo resolver queda como `{{...}}`: en una tarea es ruido, no un dato. Se saca. Puro. */
 export function stripUnresolved(text: string): string {
