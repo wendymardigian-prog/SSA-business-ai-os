@@ -1,5 +1,29 @@
 # PENDIENTE — Servicios v12
 
+# A4 (desde el 12/11/2026)
+
+Formato: **qué quedó · por qué · qué se decidió**.
+
+## Decisiones tomadas durante la corrida
+
+- **El orden de las migraciones** no sigue M1…M9 sino el orden en que las usa cada bloque (M1, M9, M2, M6, M3, M4, M5, M8, M7 = 00364 a 00372). · Slack se usa en el bloque 1 y las columnas de tareas en las propuestas y el camino. · Numeradas sin saltear; la tabla está en PROGRESS (A4).
+- **Bloqueo = SV033 y evidencia = SV034** (no SV030 / SV031). · Esos dos ya los usa `svc_extend_plan`.
+- **`can_see_comment_entity` vive en `public`, no en `private`.** · La política de lectura de `comments` corre con los permisos de quien lee, y `authenticated` no tiene acceso al esquema `private`. Las demás funciones de los comentarios siguen en `private`.
+- **Saber si OTRA persona ve la entidad** (menciones y la lista del `@`) se hace evaluando la misma función de visibilidad con su id como sesión (`private.comment_entity_visible_to`), así la regla no se copia.
+- **Los comentarios del equipo viven en `lib/team-comments/`**, no en `lib/comments/` (como decía el plano). · `lib/comments/` ya es la de los comentarios de Instagram; mezclarlos confunde.
+- **`comments.author_id`** tiene `ON DELETE SET NULL`. El CHECK dice «un comentario de sistema no tiene autor» (no al revés), para que borrar una persona no falle.
+- **El build necesita más memoria** cuando corre a la vez que otras cosas (`NODE_OPTIONS=--max-old-space-size=8192`). · La primera pasada del punto de partida se cortó por memoria; con eso compila.
+- **La medición del punto de partida se rehízo sobre una copia limpia de `main`** para `services` y `forms` (en la rama, los casos compartidos nuevos ya se corrían contra la base vieja y los daban por fallados). `student-schema` aplicó las migraciones locales y encontró un error real en la 00365 y la 00368 (`v_vals || 'texto'` no suma a un arreglo): ahora usan `array_append`.
+- **`svc_item_lock_state`, `svc_item_evidence_missing` y `svc_assert_completable` son solo del servidor** (`service_role`). · No miran permisos; las llaman las funciones del módulo, que corren como su dueño. La pantalla calcula el candado con la gemela en TypeScript (`lockPlan`) y la tarea lo pide con el cliente de servicio DESPUÉS de leer la tarea con la sesión.
+- **La evidencia la escribe la base con la sesión** (`svc_add_evidence`, que vuelve a mirar quién puede); el archivo se sube antes con el cliente de servicio a `service-evidence/<negocio>/<servicio>/<paso>/` y, si la base lo rechaza, se borra. Abrir un archivo es un link de 10 minutos, solo para quien ve el paso o su tarea.
+- **Checklist, servicio y reunión de una tarea los escribe solo el servidor** (00368 no da permisos de escritura a la sesión). Para no saltear la RLS, primero la sesión reescribe un campo sin cambiarlo (si no puede editar la tarea, ahí falla) y recién después escribe el cliente de servicio.
+- **«Duplicar» copia los workflows del paso o la fase EN BORRADOR recién al guardar el camino** (`copyDuplicatedWorkflows`): las claves nuevas tienen que existir en el camino guardado para que sus filtros sirvan.
+- **«Lo completan» = cualquier automatización con un paso «Completar paso» de ese paso**, sea cual sea su disparador. «+ Workflow que lo complete» nace con el disparador sin elegir. Un workflow que completa un paso borrado NO se pausa (no es un lugar del camino; su paso se saltea solo).
+- **«Reparto de clientes» se abre desde Ajustes › Productos (botón de la barra)**, con `services.configure`. Las cargas salen de `app_servicio.svc_owner_loads` (00371, solo servidor) y se guardan con `rev`.
+- **«El responsable del servicio» en «Crear tarea» y «Avisar en la campana»**: el servicio del evento o, si no, el activo más reciente del contacto; el plan B es obligatorio al publicar. El editor de pasos de Formularios y Agenda no lo ofrece (solo el lienzo).
+- **«Enviar a Slack»** va a un canal (ID o #nombre, con el bot invitado) o por mensaje directo a una persona que cargó su ID en Mi cuenta. Un fallo de Slack queda anotado en el paso y no frena el flujo; no se reintenta solo.
+- **Tareas: el filtro nuevo es «Vínculo» (con servicio / con reunión)** y «Reunión» es un origen más. La columna «Servicio» oculta no se hizo: la tabla de Tareas todavía no usa `DataTable` (no tiene selector de columnas).
+
 # A2 (desde el 11/11/2026)
 
 Formato: **qué quedó · por qué · qué se decidió**.
