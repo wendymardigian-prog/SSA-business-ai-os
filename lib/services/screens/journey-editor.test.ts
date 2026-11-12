@@ -106,3 +106,38 @@ describe("el editor del camino", () => {
     expect(journeySummaryText(EMPTY_TEMPLATE)).toBe("Sin camino");
   });
 });
+
+describe("el botón del paso (F125)", () => {
+  it("en un paso nuevo de formulario o agenda arranca prendido; en una casilla, apagado", async () => {
+    const { addItem: add } = await import("./journey-editor");
+    const base = { v: 1 as const, phases: [{ key: "ph_aaaaaa", name: "F", items: [] }] } as never;
+    const f = add(base, "ph_aaaaaa", "form", "Diagnóstico", () => 0.1);
+    expect(f.template.phases[0].items[0].portal_button).toBe(true);
+    const c = add(base, "ph_aaaaaa", "checkbox", "Leer", () => 0.1);
+    expect(c.template.phases[0].items[0].portal_button).toBeUndefined();
+  });
+  it("el estado del editor: apagado y con motivo si el cliente no ve el paso", async () => {
+    const { buttonEditorState } = await import("./journey-editor");
+    expect(buttonEditorState({ key: "it_aaaaaa", kind: "checkbox", name: "x", portal_button: true, visible_to_client: false } as never)).toMatchObject({ on: false, disabledReason: "Para mostrar el botón, el cliente tiene que ver el paso", needsUrl: true, hasShowResponse: false });
+    expect(buttonEditorState({ key: "it_aaaaaa", kind: "contract", name: "x", portal_button: true, ref: { button: { label: "Firmar" }, show_response: false } } as never)).toMatchObject({ on: true, label: "Firmar", needsUrl: false, hasShowResponse: true, showResponse: false });
+  });
+  it("guardar el texto y el link conserva el resto de ref; vacíos se sacan", async () => {
+    const { withButton, visibilityPatch } = await import("./journey-editor");
+    const item = { key: "it_aaaaaa", kind: "checkbox", name: "x", ref: { form_id: "f" } } as never;
+    expect(withButton(item, { label: "Abrir\nla guía", url: " https://ejemplo.com " })).toEqual({ form_id: "f", button: { label: "Abrir la guía", url: "https://ejemplo.com" } });
+    expect(withButton({ ...(item as object), ref: { button: { label: "x" } } } as never, { label: "" })).toEqual({});
+    expect(visibilityPatch(false)).toEqual({ visible_to_client: false, portal_button: false });
+  });
+});
+
+describe("defaultButtonLabel y buttonDestination", () => {
+  it("un texto por tipo y la línea de a dónde lleva", async () => {
+    const { defaultButtonLabel, buttonDestination } = await import("../journey-template");
+    expect(defaultButtonLabel("form")).toBe("Completar el formulario");
+    expect(defaultButtonLabel("booking", "attended")).toBe("Agendar la llamada");
+    expect(defaultButtonLabel("open_module")).toBe("Ver el módulo");
+    expect(defaultButtonLabel("team_task")).toBe("Abrir");
+    expect(buttonDestination("checkbox")).toMatch(/pestaña nueva/);
+    expect(buttonDestination("booking", "attended")).toMatch(/Entrar a la llamada/);
+  });
+});

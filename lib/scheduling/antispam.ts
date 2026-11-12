@@ -122,8 +122,14 @@ export function pickUtm(params: Record<string, unknown> | URLSearchParams): Reco
     // Va dentro de `utm` y llega a `contact_touches.entry_url` por `raw.utm`, sin tocar `create_booking`.
     if (clean.entry_url) out.entry_url = clean.entry_url;
   }
+  // Servicios A2 (F125): el paso del camino que se agenda, solo si es un uuid. Llega a `bookings.utm.svc_item` y el
+  // trigger de la base (`booking_hook`) completa ese paso si es del mismo contacto. `create_booking` no se toca.
+  const svcItem = get("svc_item");
+  if (typeof svcItem === "string" && SVC_ITEM_UUID.test(svcItem)) out.svc_item = svcItem.toLowerCase();
   return out;
 }
+
+const SVC_ITEM_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** El origen de la agenda: `embed` si vino del iframe, si no la pagina publica. */
 export function originFrom(params: { embed?: string | null } | URLSearchParams): "embed" | "public_page" {

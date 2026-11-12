@@ -234,7 +234,7 @@ export function Booker({
           website: values.honeypot,
           embed: embed.embed ? "1" : null,
           // Las claves de siempre mas la atribucion completa; lo que ya venia en la URL gana si el calculo falla.
-          utm: { ...embed.utm, ...embed.clickIds, ...embed.attribution, ...attribution },
+          utm: { ...embed.utm, ...embed.clickIds, ...embed.attribution, ...attribution, ...(embed.svcItem ? { svc_item: embed.svcItem } : {}) },
           // Con un toque guardado, su referente y su pagina de llegada son los del toque, no los de esta pagina.
           referrer: (typeof attribution.referrer_url === "string" ? attribution.referrer_url : null) ?? (typeof document !== "undefined" ? document.referrer || null : null),
           // La página donde se reservó (Agenda v2): en el embed, la página del

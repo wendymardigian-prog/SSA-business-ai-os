@@ -7,6 +7,8 @@
  * El componente solo compone estas funciones; guardar manda la plantilla entera con su `rev`.
  */
 import {
+  LINK_BUTTON_KINDS,
+  SHOW_RESPONSE_KINDS,
   newJourneyKey,
   validateJourneyTemplate,
   type JourneyContext,
@@ -71,7 +73,7 @@ export function addItem(
   const key = uniqueKey(next, "it", random);
   const ph = next.phases.find((p) => p.key === phaseKey);
   if (!ph) return { template: t, key: "" };
-  ph.items.push({ key, kind, name: name.trim() || "Nuevo paso", required: true });
+  ph.items.push({ key, kind, name: name.trim() || "Nuevo paso", required: true, ...(BUTTON_ON_BY_DEFAULT.includes(kind) ? { portal_button: true } : {}) });
   return { template: next, key };
 }
 
@@ -183,4 +185,64 @@ export function journeySummaryText(t: JourneyTemplate | null | undefined): strin
   const parts = [`${phases.length} ${phases.length === 1 ? "fase" : "fases"}`, `${items} ${items === 1 ? "paso" : "pasos"}`];
   if (days !== null) parts.push(`${days} ${days === 1 ? "día" : "días"}`);
   return parts.join(" · ");
+}
+
+// ── El boton del paso en el portal (F125) ──────────────────────────────────
+/** En los pasos NUEVOS de estos tipos, «Mostrar el botón en el portal» arranca prendido (los guardados no cambian). */
+export const BUTTON_ON_BY_DEFAULT: readonly ItemKind[] = ["form", "survey", "contract", "activity", "quiz", "booking"];
+
+export interface ButtonEditorState {
+  /** El interruptor: prendido solo si el cliente ve el paso. */
+  on: boolean;
+  /** Deshabilitado porque el cliente no ve el paso (con el motivo). */
+  disabledReason: string | null;
+  label: string;
+  url: string;
+  /** Este tipo de paso lleva un link pegado (las tareas y la casilla). */
+  needsUrl: boolean;
+  /** Este tipo de paso tiene «El cliente puede ver su respuesta». */
+  hasShowResponse: boolean;
+  showResponse: boolean;
+}
+
+export function buttonEditorState(item: JourneyItem): ButtonEditorState {
+  const ref = (item.ref && typeof item.ref === "object" ? item.ref : {}) as Record<string, unknown>;
+  const b = (ref.button && typeof ref.button === "object" ? ref.button : {}) as { label?: unknown; url?: unknown };
+  const hidden = item.visible_to_client === false;
+  return {
+    on: item.portal_button === true && !hidden,
+    disabledReason: hidden ? "Para mostrar el botón, el cliente tiene que ver el paso" : null,
+    label: typeof b.label === "string" ? b.label : "",
+    url: typeof b.url === "string" ? b.url : "",
+    needsUrl: LINK_BUTTON_KINDS.includes(item.kind),
+    hasShowResponse: SHOW_RESPONSE_KINDS.includes(item.kind),
+    showResponse: ref.show_response !== false,
+  };
+}
+
+/**
+ * El cambio de `ref.button` desde el editor. El texto y el link se guardan aunque el boton este apagado (apagar y
+ * prender no pierde nada); vacios, la clave se saca. Un `ref.button` sin nada se saca entero.
+ */
+export function withButton(item: JourneyItem, patch: { label?: string; url?: string }): Record<string, unknown> {
+  const ref = { ...((item.ref && typeof item.ref === "object" ? item.ref : {}) as Record<string, unknown>) };
+  const b = { ...((ref.button && typeof ref.button === "object" ? ref.button : {}) as Record<string, unknown>) };
+  if (patch.label !== undefined) {
+    const v = patch.label.replace(/[\r\n]+/g, " ");
+    if (v) b.label = v;
+    else delete b.label;
+  }
+  if (patch.url !== undefined) {
+    const v = patch.url.trim();
+    if (v) b.url = v;
+    else delete b.url;
+  }
+  if (Object.keys(b).length) ref.button = b;
+  else delete ref.button;
+  return ref;
+}
+
+/** Apagar «Lo ve el cliente» apaga el boton (no se puede mostrar el boton de un paso que el cliente no ve). */
+export function visibilityPatch(visible: boolean): Partial<JourneyItem> {
+  return visible ? { visible_to_client: true } : { visible_to_client: false, portal_button: false };
 }

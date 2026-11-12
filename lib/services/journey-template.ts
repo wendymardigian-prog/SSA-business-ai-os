@@ -134,7 +134,109 @@ function refProblems(item: JourneyItem, ctx: JourneyContext, nm: string): string
   } else if (item.kind === "open_section") {
     if (!(AVAILABLE_SECTIONS as readonly string[]).includes(ref.section as string)) p.push(`«${nm}»: elegí la sección`);
   }
+  p.push(...buttonProblems(item, ref, nm));
   return p;
+}
+
+// ── El boton del paso en el portal (F125, decisiones 466 y 467) ────────────
+/** Los pasos que no tienen destino automatico: su boton lleva a un link pegado. */
+export const LINK_BUTTON_KINDS: readonly ItemKind[] = ["team_task", "student_task", "checkbox"];
+/** Los pasos con formulario: el cliente puede ver su respuesta (o el contrato firmado). */
+export const SHOW_RESPONSE_KINDS: readonly ItemKind[] = ["form", "survey", "activity", "quiz", "contract"];
+export const BUTTON_LABEL_MAX = 40;
+export const BUTTON_URL_MAX = 2000;
+
+/** Cuenta caracteres como la base (`char_length`), no unidades UTF-16: un emoji vale uno. */
+const chars = (s: string) => Array.from(s).length;
+
+/**
+ * `ref.button = { label?, url? }` y `ref.show_response` (ausente = true). Gemela del final de
+ * `app_servicio.journey_item_ref_problems` (00363): mismos textos, mismo orden.
+ */
+function buttonProblems(item: JourneyItem, ref: Record<string, unknown>, nm: string): string[] {
+  const p: string[] = [];
+  const linkKind = LINK_BUTTON_KINDS.includes(item.kind);
+  let url: string | null = null;
+  if (has(ref, "button")) {
+    const b = ref.button;
+    if (!isObj(b)) p.push(`«${nm}»: el botón no es válido`);
+    else {
+      const label = b.label;
+      if (label !== undefined && label !== null && label !== "") {
+        if (typeof label !== "string" || chars(label) > BUTTON_LABEL_MAX || /[\r\n]/.test(label)) p.push(`«${nm}»: el texto del botón tiene hasta 40 caracteres, en una línea`);
+      }
+      const u = b.url;
+      if (u !== undefined && u !== null && u !== "") {
+        if (!linkKind) p.push(`«${nm}»: este paso ya lleva a su destino`);
+        else if (typeof u !== "string" || !/^https:\/\/\S+$/.test(u) || chars(u) > BUTTON_URL_MAX) p.push(`«${nm}»: el link del botón tiene que empezar con https:// y no llevar espacios`);
+        else url = u;
+      }
+    }
+  }
+  if (item.portal_button === true) {
+    if (item.visible_to_client === false) p.push(`«${nm}»: para mostrar el botón, el cliente tiene que ver el paso`);
+    else if (linkKind && url === null && !p.some((x) => x.includes("link del botón"))) p.push(`«${nm}»: pegá el link del botón`);
+  }
+  if (has(ref, "show_response")) {
+    if (typeof ref.show_response !== "boolean") p.push(`«${nm}»: «El cliente puede ver su respuesta» no es válido`);
+    else if (!SHOW_RESPONSE_KINDS.includes(item.kind)) p.push(`«${nm}»: «El cliente puede ver su respuesta» es solo para pasos con formulario`);
+  }
+  return p;
+}
+
+/** El texto por defecto del boton de un paso (el placeholder del editor; el portal lo usa si no hay uno propio). */
+export function defaultButtonLabel(kind: ItemKind | string, _completeOn?: string | null): string {
+  switch (kind) {
+    case "form":
+      return "Completar el formulario";
+    case "survey":
+      return "Responder la encuesta";
+    case "contract":
+      return "Firmar el contrato";
+    case "activity":
+      return "Entregar la actividad";
+    case "quiz":
+      return "Hacer la evaluación";
+    case "booking":
+      // Con «cuando asistió», mientras no agendó dice lo mismo; agendada, el portal muestra «Entrar a la llamada».
+      return "Agendar la llamada";
+    case "program_item":
+      return "Ver la clase";
+    case "open_module":
+      return "Ver el módulo";
+    case "certificate":
+      return "Ver mi certificado";
+    case "open_section":
+      return "Ir a la sección";
+    default:
+      return "Abrir";
+  }
+}
+
+/** A dónde lleva el botón, en una línea, para el editor (lo arma el portal). */
+export function buttonDestination(kind: ItemKind | string, completeOn?: string | null): string {
+  switch (kind) {
+    case "form":
+    case "survey":
+    case "contract":
+    case "activity":
+    case "quiz":
+      return "Lleva al formulario con su link firmado: al enviarlo, el paso se completa solo.";
+    case "booking":
+      return completeOn === "attended"
+        ? "Lleva a la agenda de ese tipo de reunión; con una reunión agendada, a la reunión («Entrar a la llamada»)."
+        : "Lleva a la agenda de ese tipo de reunión, marcada con este paso.";
+    case "program_item":
+      return "Lleva a la clase en el portal.";
+    case "open_module":
+      return "Lleva al módulo en el portal.";
+    case "certificate":
+      return "Lleva al certificado.";
+    case "open_section":
+      return "Lleva a la sección del portal.";
+    default:
+      return "Abre el link que pegues, en una pestaña nueva.";
+  }
 }
 
 function recurrenceProblems(item: JourneyItem, nm: string): string[] {

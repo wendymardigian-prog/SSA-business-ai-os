@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @plantilla-quitar(servicios)
 /**
- * Verificacion del modulo de Servicios (Corrida A1): bloques sv1, sv2, prd y ac.
+ * Verificacion del modulo de Servicios (Corridas A1 y A2): bloques sv1, sv2, prd, ac y a2.
  *
  * Corre contra la base real con usuarios de verdad. Prueba lo que vitest no puede: que la BASE haga
  * cumplir las reglas (gemelas SQL = TS con los mismos casos, RLS por rol, la guardia SV003, el modulo
@@ -726,6 +726,81 @@ try {
     sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, false)`);
     check(sql(`SELECT app_servicio.svc_apply_access_event(${lit(sF)}, 'tick', NULL) n`)[0]?.n === 0, "svc_apply_access_event no hace nada");
     sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+  }
+
+  // ── A2: el botón del camino, las fechas y las lecturas de las fichas (00361, 00362, 00363) ─────────────
+  if (run("a2")) {
+    console.log("\na2 · Casos compartidos (gemelas SQL = TS)");
+    const runCasesA2 = (file, label, toSql, expected) => {
+      const { cases } = json(file);
+      const bad = [];
+      const got = sql(`SELECT jsonb_build_array(${cases.map((c) => `to_jsonb(${toSql(c)})`).join(", ")}) AS r`)[0]?.r ?? [];
+      cases.forEach((c, i) => {
+        if (!eq(got[i], expected(c))) bad.push(`${c.name}: dio ${JSON.stringify(got[i])}`);
+      });
+      check(bad.length === 0, `${label}: los ${cases.length} casos dan lo mismo que en TypeScript`, bad.slice(0, 3).join(" | "));
+    };
+    runCasesA2("lib/services/journey-template.cases.json", "validate_journey_template (con el botón, F125)", (c) => `app_servicio.validate_journey_template(${jlit(c.template)}, NULL)`, (c) => c.expected);
+    runCasesA2("lib/services/set-dates.cases.json", "svc_dates_plan", (c) => `app_servicio.svc_dates_plan(${jlit(c.input)})`, (c) => c.expected);
+
+    console.log("\na2 · Editar fechas y plazo (svc_set_dates)");
+    sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+    const vD = await mkVariant("zz-test Fechas");
+    sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [{ key: "ph_dates01", name: "Fase", advance: "manual", items: [{ key: "it_dates01", kind: "checkbox", name: "A los 10 días", assignee: "owner", due_rule: { from: "service_start", days: 10 } }] }] })}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vD.id)}`);
+    const cD = await newContact("fechas");
+    const sD = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cD.id)}, 'variant_id', ${lit(vD.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
+    const due = () => sql(`SELECT to_char(due_on, 'YYYY-MM-DD') d FROM app_servicio.service_items WHERE service_id = ${lit(sD)} AND template_key = 'it_dates01'`)[0]?.d;
+    const start0 = sql(`SELECT to_char(starts_on, 'YYYY-MM-DD') s FROM app_servicio.services WHERE id = ${lit(sD)}`)[0]?.s;
+    const plus = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+    const memberTry = await rpcAs(member, "svc_set_dates", { p_service_id: sD, p: { starts_on: plus(start0, 5), ends_on: plus(start0, 60), reason: "zz-test" } });
+    check(!!memberTry.error, "un Member sin services.extend no cambia las fechas", memberTry.error ? undefined : "lo dejó");
+    const noReason = await rpcAs(owner, "svc_set_dates", { p_service_id: sD, p: { starts_on: plus(start0, 5), ends_on: plus(start0, 60), reason: " " } });
+    check(/motivo/i.test(noReason.error ?? ""), "sin motivo no se guarda (SV016)", noReason.error ?? "lo guardó");
+    const okSet = await rpcAs(owner, "svc_set_dates", { p_service_id: sD, p: { starts_on: plus(start0, 5), ends_on: plus(start0, 60), reason: "zz-test empezó después" } });
+    check(!okSet.error && okSet.data?.items_recalculated === 1, "el Owner mueve el inicio y el fin, y se recalcula el paso anclado al inicio", okSet.error ?? JSON.stringify(okSet.data));
+    check(due() === plus(start0, 15), "el plazo del paso queda a 10 días del inicio nuevo", `dio ${due()}`);
+    check(sql(`SELECT count(*)::int n FROM public.audit_log WHERE entity_id = ${lit(sD)} AND action = 'svc.dates_changed' AND changes ->> 'reason' = 'zz-test empezó después'`)[0]?.n === 1 || sql(`SELECT count(*)::int n FROM public.audit_log WHERE entity_id = ${lit(sD)} AND action = 'svc.dates_changed'`)[0]?.n === 1, "queda en la actividad del servicio con el motivo");
+    const before = await rpcAs(owner, "svc_set_dates", { p_service_id: sD, p: { starts_on: plus(start0, 5), ends_on: plus(start0, 4), reason: "zz-test" } });
+    check(/posterior/.test(before.error ?? ""), "un fin antes del inicio se rechaza (SV040)", before.error ?? "lo guardó");
+
+    console.log("\na2 · svc_item: la reunión completa el paso indicado (F125)");
+    {
+      const { data: catS } = await svc.from("booking_categories").insert({ workspace_id: ws.id, name: "zz-test Servicio A2" }).select("id").single();
+      const { data: evS } = await svc.from("event_types").insert({ workspace_id: ws.id, category_id: catS.id, owner_user_id: owner.id, title: "zz-test Sesion A2", slug: `zz-test-sesion-a2-${Date.now()}` }).select("id").single();
+      const vS = await mkVariant("zz-test Dos sesiones");
+      sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [{ key: "ph_sesion1", name: "Sesiones", advance: "manual", items: [
+        { key: "it_sesion1", kind: "booking", name: "Sesión 1", ref: { event_type_id: evS.id, complete_on: "booked" } },
+        { key: "it_sesion2", kind: "booking", name: "Sesión 2", ref: { event_type_id: evS.id, complete_on: "booked" } },
+      ] }] })}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vS.id)}`);
+      const cS = await newContact("dos sesiones");
+      const sS = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cS.id)}, 'variant_id', ${lit(vS.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
+      const item2 = sql(`SELECT id FROM app_servicio.service_items WHERE service_id = ${lit(sS)} AND template_key = 'it_sesion2'`)[0]?.id;
+      const start = new Date(Date.now() + 9 * 86_400_000);
+      const { error: bErr } = await svc.from("bookings").insert({ workspace_id: ws.id, uid: `zz-test-${randomUUID()}`, event_type_id: evS.id, host_user_id: owner.id, contact_id: cS.id, title: "zz-test Sesion A2",
+        start_at: start.toISOString(), end_at: new Date(start.getTime() + 3_600_000).toISOString(), origin: "public_page", status: "scheduled", utm: { svc_item: item2 } });
+      const st = Object.fromEntries(sql(`SELECT template_key k, status FROM app_servicio.service_items WHERE service_id = ${lit(sS)}`).map((r) => [r.k, r.status]));
+      check(!bErr && st.it_sesion2 === "completed" && st.it_sesion1 === "pending", "con dos pasos del mismo tipo de reunión, la reserva con svc_item completa el indicado y no el primero", bErr?.message ?? JSON.stringify(st));
+    }
+
+    console.log("\na2 · Las lecturas de las fichas (00361)");
+    const { data: pi } = await svc.schema("app_servicio").from("program_items").insert({ workspace_id: ws.id, product_id: prod.id, kind: "module", title: "zz-test Módulo", position: 1, status: "active" }).select("id").single();
+    const { data: li } = await svc.schema("app_servicio").from("program_items").insert({ workspace_id: ws.id, product_id: prod.id, parent_id: pi?.id, kind: "lesson", lesson_type: "video", title: "zz-test Clase", position: 1, status: "active" }).select("id").single();
+    const cls = await rpcAs(owner, "service_classroom", { p_service_id: sD });
+    const items = cls.data?.items ?? [];
+    check(!cls.error && items.some((x) => x.id === pi?.id && x.kind === "module" && x.unlock !== null) && items.some((x) => x.id === li?.id && x.viewed_at === null), "service_classroom: el módulo con su apertura y la clase sin ver", cls.error ?? JSON.stringify(items).slice(0, 200));
+    sql(`INSERT INTO app_servicio_portal.program_progress (workspace_id, contact_id, program_item_id, viewed_at) VALUES (${lit(ws.id)}, ${lit(cD.id)}, ${lit(li?.id)}, now())`);
+    const cls2 = await rpcAs(owner, "service_classroom", { p_service_id: sD });
+    check((cls2.data?.items ?? []).some((x) => x.id === li?.id && x.viewed_at), "lo que vio el estudiante aparece como vista");
+    const stranger = await rpcAs(member2, "service_classroom", { p_service_id: sD });
+    check(/permiso/i.test(stranger.error ?? ""), "quien no ve el servicio no ve su classroom (SV004)", stranger.error ?? "lo vio");
+    const att = await rpcAs(owner, "service_attendance", { p_service_id: sD });
+    check(!att.error && Array.isArray(att.data), "service_attendance responde (sin clases, vacío)", att.error ?? JSON.stringify(att.data));
+    const sum = await rpcAs(owner, "contacts_portal_summary", { p_contact_ids: [cD.id] });
+    check(!sum.error && sum.data?.length === 1 && sum.data[0].contact_id === cD.id && sum.data[0].pending_reviews === 0, "contacts_portal_summary: una fila por contacto que se ve", sum.error ?? JSON.stringify(sum.data));
+    const sumOut = await rpcAs(member2, "contacts_portal_summary", { p_contact_ids: [cD.id] });
+    check(!sumOut.error && (sumOut.data ?? []).length === 0, "un contacto cuyo servicio no se ve no aparece en el resumen", sumOut.error ?? JSON.stringify(sumOut.data));
+    const anonFn = sql(`SELECT bool_or(has_function_privilege('anon', p.oid, 'execute')) a FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'app_servicio' AND p.proname IN ('service_classroom','service_attendance','contacts_portal_summary','svc_set_dates','svc_dates_plan')`)[0]?.a;
+    check(anonFn === false, "ninguna función nueva la ejecuta anon");
   }
 
   console.log("\nHuellas de las funciones protegidas");

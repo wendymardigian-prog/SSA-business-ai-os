@@ -6,10 +6,13 @@ import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, GripVertical, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { saveJourneyTemplate } from "@/lib/actions/services";
 import { ITEM_KINDS, ITEM_KIND_LABELS, type ItemKind } from "@/lib/services/availability";
-import { FUTURE_VISIBILITY, type JourneyItem, type JourneyPhase, type JourneyTemplate } from "@/lib/services/journey-template";
+import { FUTURE_VISIBILITY, buttonDestination, defaultButtonLabel, type JourneyItem, type JourneyPhase, type JourneyTemplate } from "@/lib/services/journey-template";
 import {
   addItem,
   addPhase,
+  buttonEditorState,
+  visibilityPatch,
+  withButton,
   itemLightAvailable,
   itemLightForm,
   itemsBefore,
@@ -272,6 +275,7 @@ export function JourneyEditor({
           before={itemsBefore(t, item.key)}
           refs={refs}
           members={members}
+          issues={issues}
           onChange={(patch) => change(updateItem(t, item.key, patch))}
           onRemove={() => {
             const r = removeItem(t, item.key);
@@ -389,6 +393,7 @@ function ItemDrawer({
   before,
   refs,
   members,
+  issues,
   onChange,
   onRemove,
   onClose,
@@ -397,6 +402,8 @@ function ItemDrawer({
   before: JourneyItem[];
   refs: JourneyRefs;
   members: NamedOption[];
+  /** Los problemas del camino entero (journeyEditorIssues): el drawer muestra los de su botón. */
+  issues: string[];
   onChange: (patch: Partial<JourneyItem>) => void;
   onRemove: () => void;
   onClose: () => void;
@@ -610,15 +617,93 @@ function ItemDrawer({
             Obligatorio
           </label>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={item.visible_to_client !== false} onChange={(e) => onChange({ visible_to_client: e.target.checked })} />
+            <input type="checkbox" checked={item.visible_to_client !== false} onChange={(e) => onChange(visibilityPatch(e.target.checked))} />
             Lo ve el cliente
           </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={item.portal_button === true} onChange={(e) => onChange({ portal_button: e.target.checked })} />
-            Mostrar el botón en el portal
-          </label>
         </div>
+
+        <ButtonSection item={item} onChange={onChange} issues={issues} />
       </div>
     </SidePanel>
+  );
+}
+
+/**
+ * El botón del paso en el portal (F125): el interruptor, el texto (con el de por defecto como ayuda), el link (solo en
+ * las tareas y la casilla), a dónde lleva y cómo se ve. Y, en los pasos con formulario, «El cliente puede ver su
+ * respuesta». El botón se ve en el portal solo mientras el paso está pendiente.
+ */
+function ButtonSection({ item, onChange, issues }: { item: JourneyItem; onChange: (patch: Partial<JourneyItem>) => void; issues: string[] }) {
+  const st = buttonEditorState(item);
+  const ref = (item.ref ?? {}) as Record<string, unknown>;
+  const completeOn = (ref.complete_on as string | undefined) ?? null;
+  const placeholder = defaultButtonLabel(item.kind, completeOn);
+  const mine = issues.filter((x) => x.startsWith(`«${item.name}»:`) && /botón|link|respuesta/.test(x));
+  return (
+    <section aria-labelledby="it-button" className="space-y-3 rounded-xl border border-border p-3">
+      <label className="flex items-center justify-between gap-3 text-sm">
+        <span id="it-button" className="font-medium">
+          Mostrar el botón en el portal
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          aria-checked={st.on}
+          checked={st.on}
+          disabled={!!st.disabledReason}
+          onChange={(e) => onChange({ portal_button: e.target.checked })}
+          className="h-5 w-9 cursor-pointer accent-[var(--color-primary)] disabled:cursor-not-allowed"
+        />
+      </label>
+      {st.disabledReason && <p className="text-xs text-muted-foreground">{st.disabledReason}</p>}
+      {st.on && (
+        <div className="space-y-2">
+          <div>
+            <label htmlFor="it-button-label" className={label}>
+              Texto del botón
+            </label>
+            <input id="it-button-label" value={st.label} maxLength={40} placeholder={placeholder} onChange={(e) => onChange({ ref: withButton(item, { label: e.target.value }) })} className={input} />
+          </div>
+          {st.needsUrl && (
+            <div>
+              <label htmlFor="it-button-url" className={label}>
+                Link del botón
+              </label>
+              <input id="it-button-url" type="url" inputMode="url" value={st.url} maxLength={2000} placeholder="https://…" onChange={(e) => onChange({ ref: withButton(item, { url: e.target.value }) })} className={input} />
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">{buttonDestination(item.kind, completeOn)}</p>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            Así se ve:
+            <span className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground">{st.label.trim() || placeholder}</span>
+          </div>
+        </div>
+      )}
+      {st.hasShowResponse && (
+        <label className="flex items-start justify-between gap-3 border-t border-border pt-3 text-sm">
+          <span>
+            <span className="block font-medium">El cliente puede ver su respuesta</span>
+            <span className="block text-xs text-muted-foreground">
+              {item.kind === "contract" ? "Cuando lo complete, va a poder ver el contrato firmado y bajar el PDF." : "Cuando lo complete, va a poder ver lo que respondió, sin editarlo."}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-checked={st.showResponse}
+            checked={st.showResponse}
+            onChange={(e) => onChange({ ref: { ...ref, show_response: e.target.checked } })}
+            className="mt-1 h-5 w-9 cursor-pointer accent-[var(--color-primary)]"
+          />
+        </label>
+      )}
+      {mine.length > 0 && (
+        <ul role="alert" className="space-y-1 text-xs text-destructive">
+          {mine.map((m) => (
+            <li key={m}>{m.replace(`«${item.name}»: `, "")}</li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

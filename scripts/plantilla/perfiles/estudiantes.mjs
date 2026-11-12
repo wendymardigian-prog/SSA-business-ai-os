@@ -285,6 +285,11 @@ export const MODULES = {
       "lib/flow-engine/nodes/service-action-detail.test.ts",
       "lib/flow-engine/registry/service-triggers.ts",
       "components/flow-builder/panels/ServiceActionPanel.tsx",
+      // Servicios A2 (F122): las listas de Servicios del editor de automatizaciones.
+      "components/flow-builder/panels/ServiceTriggerPanel.tsx",
+      "components/flow-builder/panels/service-key-select.tsx",
+      "components/flow-builder/panels/use-service-picker.ts",
+      "lib/actions/service-picker.ts",
       "scripts/verify-services.mjs",
       "scripts/verify-portal-schema.mjs",
       "scripts/verify-program/verify-ce.ts",
