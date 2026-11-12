@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Copy, ExternalLink, Loader2 } from "lucide-react";
+import { Copy, ExternalLink, Loader2, Wand2 } from "lucide-react";
 import { saveIntegration, disconnectIntegration, countScheduledUses } from "@/lib/actions/integrations";
 import { syncSocialAccountsNow } from "@/lib/actions/social-accounts";
 import { secretFieldsOf, type ProviderDefinition } from "@/lib/integrations/providers";
@@ -151,15 +151,32 @@ export function CredentialsForm({
                   </button>
                 </div>
               ) : (
-                <input
-                  id={`secret-${field.key}`}
-                  type="password"
-                  autoComplete="off"
-                  value={secrets[field.key] ?? ""}
-                  placeholder={field.placeholder}
-                  onChange={(e) => setSecrets((s) => ({ ...s, [field.key]: e.target.value }))}
-                  className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                />
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    id={`secret-${field.key}`}
+                    type="password"
+                    autoComplete="off"
+                    value={secrets[field.key] ?? ""}
+                    placeholder={field.placeholder}
+                    onChange={(e) => setSecrets((s) => ({ ...s, [field.key]: e.target.value }))}
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm"
+                  />
+                  {field.generatable && (
+                    <button
+                      type="button"
+                      onClick={() => setSecrets((s) => ({ ...s, [field.key]: randomToken() }))}
+                      className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-3 text-xs hover:bg-muted"
+                    >
+                      <Wand2 className="h-3 w-3" aria-hidden />
+                      Generar
+                    </button>
+                  )}
+                </div>
+              )}
+              {field.generatable && isReplacing && secrets[field.key] && (
+                <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+                  Listo. Se guarda al tocar Probar y guardar; no hace falta anotarlo.
+                </p>
               )}
               {field.hint && <p className="mt-1 text-[11px] text-muted-foreground">{field.hint}</p>}
             </div>
@@ -315,6 +332,13 @@ async function saveZernio(secrets: Record<string, string>) {
     return { ok: false as const, error: data.error || `No se pudo conectar (${res.status})` };
   }
   return { ok: true as const, warnings: (data.warnings ?? []) as string[] };
+}
+
+/** 48 caracteres hex al azar (24 bytes) para un secreto que inventa quien configura. */
+function randomToken(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export function CopyableUrl({ label, url }: { label: string; url: string }) {
