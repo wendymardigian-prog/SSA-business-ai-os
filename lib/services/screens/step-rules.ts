@@ -10,10 +10,11 @@ import type { EvidenceKind } from "@/lib/services/evidence";
 export type LockMode = "any" | "days" | "after";
 export type LockForm = { mode: LockMode; from: "service_created" | "service_start" | "phase_start"; days: number; afterKey: string };
 
+/** Con la preposición ya contraída: «después del inicio…», nunca «después de el inicio…». */
 export const LOCK_FROM_LABEL: Record<LockForm["from"], string> = {
-  service_created: "la creación del servicio",
-  service_start: "el inicio del servicio",
-  phase_start: "el inicio de la fase",
+  service_created: "de la creación del servicio",
+  service_start: "del inicio del servicio",
+  phase_start: "del inicio de la fase",
 };
 
 export function lockForm(ref: Record<string, unknown>): LockForm {

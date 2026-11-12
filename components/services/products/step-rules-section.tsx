@@ -22,8 +22,8 @@ import {
   type LockForm,
 } from "@/lib/services/screens/step-rules";
 
-const label = "mb-1 block text-xs font-medium text-muted-foreground";
-const input = "h-9 w-full rounded-lg border border-border bg-background px-3 text-sm";
+const label = "mb-1.5 flex items-center gap-1 text-xs font-semibold text-foreground";
+const input = "h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge";
 
 const EVIDENCE_LABEL: Record<EvidenceKind, string> = { file: "Una captura o un archivo", link: "Un link", note: "Una nota" };
 
@@ -52,7 +52,7 @@ export function StepRulesSection({ item, before, onRef }: { item: JourneyItem; b
           <option value="any">En cualquier momento</option>
           {(Object.keys(LOCK_FROM_LABEL) as LockForm["from"][]).map((f) => (
             <option key={f} value={`days:${f}`}>
-              Unos días después de {LOCK_FROM_LABEL[f]}
+              Unos días después {LOCK_FROM_LABEL[f]}
             </option>
           ))}
           {before.map((b) => (
@@ -70,7 +70,7 @@ export function StepRulesSection({ item, before, onRef }: { item: JourneyItem; b
               onChange={(e) => setLock({ days: Number(e.target.value.replace(/\D/g, "")) || 0 })}
               className={`${input} w-20`}
             />
-            <span className="text-muted-foreground">día(s) después de {LOCK_FROM_LABEL[lock.from]}</span>
+            <span className="text-muted-foreground">día(s) después {LOCK_FROM_LABEL[lock.from]}</span>
           </div>
         )}
         {lock.mode !== "any" && <p className="text-xs text-muted-foreground">Antes de eso el paso se ve con un candado y no se puede marcar.</p>}
