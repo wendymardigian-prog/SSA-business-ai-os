@@ -28,8 +28,3 @@ export function useUrlIntent(param: string, onIntent: (value: string) => void) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 }
-
-/** El link que manda una orden a la pantalla (`base` ya trae sus parametros). */
-export function intentHref(base: string, param: string, value: string): string {
-  return `${base}${base.includes("?") ? "&" : "?"}${encodeURIComponent(param)}=${encodeURIComponent(value)}`;
-}

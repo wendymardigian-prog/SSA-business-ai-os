@@ -22,7 +22,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import type { PortalFormInitial } from "@/components/services/portal/portal-form-editor";
 import { LinkQuickFilterMenu, LinkViewToggle, PrimaryButton, TopbarMoreMenu, type MoreAction } from "@/components/ui/topbar-controls";
 import { MonthNav } from "@/components/ui/month-nav";
-import { intentHref } from "@/components/ui/use-url-intent";
+import { intentHref } from "@/lib/ui/url-intent";
 import { communityQuickOptions, communityQuickValue } from "@/lib/program/community";
 import { shiftMonth } from "@/lib/program/calendar-view";
 

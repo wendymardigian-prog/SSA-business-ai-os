@@ -293,6 +293,7 @@ export const MODULES = {
       "lib/ui/topbar-placement.test.ts",
       "lib/notifications/service-types.test.ts",
       "scripts/verify-services.mjs",
+      "scripts/verify-responsive.mjs",
       "scripts/verify-portal-schema.mjs",
       "scripts/verify-program/verify-ce.ts",
       "scripts/verify-program.mjs",

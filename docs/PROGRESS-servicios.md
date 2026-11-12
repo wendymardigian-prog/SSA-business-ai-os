@@ -12,7 +12,7 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.10, parte "Corrid
 - [x] **F130.1** Clientes: Servicios y Clientes con tabla y tablero, agrupar, filtro rápido, vista por usuario.
 - [x] **F130.2** Ficha del cliente en modal (`?cliente=`), datos editables en el lugar; la URL vieja abre el modal.
 - [x] **F130.3** Ficha del servicio en modal (`?servicio=`), responsable directo, "Más… › Editar fechas y plazo", cifras, classroom, camino; la URL vieja abre el modal. Lo del portal solo si el producto tiene portal.
-- [ ] **F131** Responsive (390, 768, 1100, 1440; claro y oscuro) con `scripts/check-responsive.mjs` (sin dependencias, decisión de Wendy del 11/11).
+- [ ] **F131** Responsive (390, 768, 1100, 1440; claro y oscuro) con `scripts/verify-responsive.mjs` (sin dependencias, decisión de Wendy del 11/11).
 - [x] **F122** Listas en lugar de claves en Automatizaciones (`servicePickerOptions`, aviso y bloqueo al publicar).
 - [x] **F125** Botones del camino (`ref.button`, `ref.show_response`, `svc_item` en la agenda) con la migración de `journey_item_ref_problems`.
 - [x] **F127.8** Campo Link en Formularios.
@@ -52,7 +52,7 @@ Por qué tres y no una: el esquema del portal está cerrado (la pantalla no pued
 - **F130.0:** `components/page-header.tsx` suma lugares con nombre que se dibujan siempre en el mismo orden (`view`, `quickFilter`, `search`, `group`, `more`, `primary`); en el teléfono `primary` queda arriba y el resto pasa a la franja con scroll. Nuevos `components/ui/topbar-more-menu.tsx` (⋯) y `quick-filter-menu.tsx`. Test `lib/ui/topbar-placement.test.ts`, un caso por pantalla.
 - **F130.1:** `lib/services/screens/clients-list.ts` (`clientsListView`, puro con test) y su carga; `?modo=tablero` (se sigue leyendo `vista=tablero`); vista por usuario con `table_views` (#220).
 - **F130.2/3:** `components/services/records/*` (modal con pila, Esc y foco), `loadClientRecord` / `loadServiceRecord`, redirecciones de `/clientes/c/[id]` y `/clientes/s/[id]`, cifras puras en `lib/services/screens/record-figures.ts` (`nextPaymentView`, `attendanceRateView`, `classroomProgressView`), `datesEditPlan` con `set-dates.cases.json`.
-- **F131:** arreglos de CSS y `scripts/check-responsive.mjs` contra la app local con un negocio de prueba `zz-test-`; capturas en `docs/capturas-a2/`.
+- **F131:** arreglos de CSS y `scripts/verify-responsive.mjs` contra la app local con un negocio de prueba `zz-test-`; capturas en `docs/capturas-a2/`.
 - **F122:** `servicePickerOptions` (puro con test), selects en `ServiceActionPanel`, filtros de los disparadores de Servicios en `TriggerPanel`, `serviceKeyProblems` en `publishFlow`.
 - **F125:** `refProblems` + `defaultButtonLabel`, casos nuevos en `journey-template.cases.json` (que ahora también corren contra SQL en `verify-services`), el drawer del paso y `svc_item` en `pickUtm` y el booker.
 - **F127.8:** tipo `link` en Formularios (editor, página pública, validación, respuestas, CSV), sin base.

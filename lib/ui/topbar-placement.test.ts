@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  * Comisiones) las pestañas de la pagina y la barra de herramientas van en la barra superior (`PageHeader`), nunca
  * adentro del contenido. Un caso por pantalla: lo que la pantalla le pasa a la barra y lo que su contenido NO puede
  * dibujar. La comprobacion en el navegador (que los controles queden adentro de `[data-topbar]`) la hace
- * `scripts/check-responsive.mjs`.
+ * `scripts/verify-responsive.mjs`.
  */
 
 const root = resolve(__dirname, "../..");

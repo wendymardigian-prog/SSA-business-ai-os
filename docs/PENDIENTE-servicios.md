@@ -14,7 +14,7 @@ Formato: **qué quedó · por qué · qué se decidió**.
 - **Solo dos campos piden una clave a mano** (`itemKey`, `phaseKey` de `ServiceActionPanel`). Los disparadores de Servicios no tienen panel de filtros. El plano nombra filtros de "sesión" y "sección" que `serviceEventMatches` no mira. · Se ofrecen los que ya mira (producto, variante, fase, paso, días).
 - **`journey-template.cases.json` no corría contra SQL** aunque su comentario lo decía. · Se suma a `verify-services`.
 - **El drawer del paso no tiene selector de `complete_on` para formularios ni elección de clase, módulo o sección.** · Fuera de A2: no se agranda el alcance.
-- **No hay Playwright.** · Decisión de Wendy (11/11): script propio sin dependencias que maneja el Chrome instalado (`scripts/check-responsive.mjs`).
+- **No hay Playwright.** · Decisión de Wendy (11/11): script propio sin dependencias que maneja el Chrome instalado (`scripts/verify-responsive.mjs`).
 - **El prototipo a 390 px no se reacomoda** (es un dibujo de escritorio). · En el teléfono mandan las reglas de F131.
 
 ## Decisiones de F130 (11/11)
@@ -28,6 +28,20 @@ Formato: **qué quedó · por qué · qué se decidió**.
 - **Clientes › Servicios sigue con su tabla de A1 (en `LEGACY`)** y «Guardar vista» se guarda en el navegador, por persona (`useSavedView`). · Pasarla a `DataTable` (y a las vistas de la base) queda para otra tanda.
 - **Los links rotos de A1**: «Ver venta» (`/dashboard/ventas?venta=`) y «Tarea en Tareas» (`?tarea=`) no abrían nada. Ahora van a `/dashboard/ventas/<id>` y `?task=`.
 - **La columna «Puntos 30 días» de la tabla** es A3: en A2 la tabla lleva «Último ingreso» (solo si algún producto tiene portal).
+
+## Punto de partida de los verify (11/11, antes de tocar nada)
+
+Corridos de a uno con el candado, sobre `origin/main` 35f204e. Cuatro ya fallaban y **no son de A2**; al cerrar tienen que fallar igual, no peor:
+
+- **`verify-forms`**: compara la huella de `create_booking` con la vieja. La `00358` (agenda: nombre del contacto) la cambió a propósito y el script no se actualizó. · Actualizar la huella esperada en `verify-forms.mjs` (otra tanda: no es de este módulo).
+- **`verify-rls`**: «un Member LEE la base de conocimiento». La `00314` (auditoría de seguridad) cerró eso a propósito y el caso quedó con lo de antes. · Invertir el caso (otra tanda).
+- **`verify-servicios-migracion`**: corte de la CLI de Supabase en medio de la corrida (conexión), no una regla. · Se repite al cerrar.
+- **`verify-auth-settings`**: devuelve 1 a propósito mientras el registro público siga prendido en el panel (pendiente de la auditoría de seguridad).
+
+## Lo que encontró el chequeo responsive (F131)
+
+- **La pantalla de un programa se caía entera** (Portal › programa): la página del servidor llamaba `intentHref`, que vivía en un archivo `"use client"`. Ni el typecheck, ni el build, ni los tests lo veían. · `intentHref` pasa a `lib/ui/url-intent.ts` y `lib/ui/client-boundary.test.ts` recorre todas las páginas y falla si una importa algo que no es un componente de un archivo de cliente.
+- **El lienzo de flujos no tiene `PageHeader`** (es un editor de pantalla completa con su barra propia). · El chequeo mide los controles de la franja de arriba del lienzo en vez de la barra superior.
 
 ## Corrida frenada en S02 (8/11/2026) — resuelto
 
