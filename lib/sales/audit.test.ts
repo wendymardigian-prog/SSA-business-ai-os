@@ -18,7 +18,7 @@ describe("las acciones de Ventas que se auditan tienen etiqueta en el historial"
     "lib/sales/payments-core.ts",
     "lib/jobs/handlers/payments-overdue-sweep.ts",
     "lib/jobs/handlers/sales-contact-eval.ts",
-    "supabase/migrations/00162_sales_payments.sql",
+    "supabase/migrations/00162_sales_payments.sql", // @plantilla-quitar(proyecto)
   ];
   for (const file of sources) {
     it(file, () => {
