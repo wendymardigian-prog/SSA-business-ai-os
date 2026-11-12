@@ -25,6 +25,17 @@ export function decideAiFailure(error: unknown, retry: number): AiFailureDecisio
   return { action: "retry", delayMs: AI_RETRY_DELAYS_MS[retry], nextRetry: retry + 1 };
 }
 
+/**
+ * Si el rechazo es por la clave o la cuenta (401, 403 o un mensaje que lo dice). Solo en ese caso
+ * tiene sentido mandar a la persona a revisar la conexión: un 400 por el pedido no se arregla ahí.
+ */
+export function isAuthFailure(error: unknown): boolean {
+  const classified = classifyPublishError(error);
+  if (classified.code === 401 || classified.code === 403) return true;
+  const lower = classified.message.toLowerCase();
+  return ["invalid x-api-key", "invalid api key", "invalid_api_key", "authentication", "unauthorized", "permission"].some((needle) => lower.includes(needle));
+}
+
 /** Un error con esta marca no se reintenta nunca (la respuesta del modelo se cortó por largo). */
 export function isTruncated(error: unknown): boolean {
   return error instanceof Error && error.name === "TruncatedOutputError";
