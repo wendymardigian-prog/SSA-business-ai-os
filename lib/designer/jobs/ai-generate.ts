@@ -37,7 +37,7 @@ import { allowedFontsFor, loadWorkspaceContext, resolveStyle, type DesignerWorks
 import { budgetBlockMessage } from "../ai/cost";
 import { hasAnswer, recentHistory, type MessageRow } from "../ai/conversation";
 import { sanitizeAiDoc } from "../ai/doc-sanitize";
-import { decideAiFailure, isTruncated } from "../ai/retry";
+import { decideAiFailure, isAuthFailure, isTruncated } from "../ai/retry";
 import { insertVersion, loadTarget, saveDocWithRev, type TargetRow } from "../ai/db";
 import { enqueueContentSyncIfLinked } from "../content-sync";
 import { keptManualNotice, mergeAiPatch } from "../ai/merge";
@@ -138,7 +138,8 @@ async function loadAttachments(db: Db, workspaceId: string, paths: { path: strin
 
 function failureText(error: unknown, permanent: boolean): string {
   if (isTruncated(error)) return "La respuesta de la IA quedó demasiado larga y se cortó. Probá pidiendo menos cosas a la vez.";
-  if (permanent) return "El proveedor de IA rechazó el pedido. Revisá la conexión de la IA en Configuración e intentá de nuevo.";
+  if (permanent && isAuthFailure(error)) return "El proveedor de IA rechazó el pedido. Revisá la conexión de la IA en Configuración e intentá de nuevo.";
+  if (permanent) return "La IA no pudo procesar este pedido. Probá de nuevo; si vuelve a pasar, avisá al equipo técnico.";
   return "La IA no respondió después de varios intentos. Probá de nuevo en un rato.";
 }
 

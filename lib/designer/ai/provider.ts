@@ -9,6 +9,11 @@
  *   tests pasan un doble y ninguna lógica del módulo conoce al proveedor. La
  *   real (`aiSdkDesignerGenerate`) usa `generateObject` con salida validada por
  *   Zod y manda las imágenes como `{ type: "image", image: bytes, mediaType }`.
+ * - Con Anthropic se pide la salida por una herramienta JSON (`jsonTool`), no
+ *   la salida estructurada nativa: la nativa acepta hasta 24 campos opcionales
+ *   en el esquema y el documento del Diseñador tiene más (11/11/2026, Anthropic
+ *   rechazaba cada pedido con «too many optional parameters (40)»). La respuesta
+ *   se sigue validando con Zod, así que no se pierde ninguna garantía.
  *
  * Solo servidor.
  */
@@ -56,6 +61,12 @@ export class TruncatedOutputError extends Error {
   }
 }
 
+/**
+ * Opciones por proveedor que viajan en cada pedido del Diseñador. Los proveedores que no son
+ * Anthropic ignoran la clave `anthropic`.
+ */
+export const DESIGNER_PROVIDER_OPTIONS = { anthropic: { structuredOutputMode: "jsonTool" } } as const;
+
 /** `DesignerGenerate` con el AI SDK. */
 export function aiSdkDesignerGenerate(model: LanguageModel): DesignerGenerate {
   return async <T>(args: DesignerGenerateArgs<T>) => {
@@ -71,6 +82,7 @@ export function aiSdkDesignerGenerate(model: LanguageModel): DesignerGenerate {
         ],
         schema: args.schema,
         maxOutputTokens: args.maxOutputTokens ?? 12_000,
+        providerOptions: DESIGNER_PROVIDER_OPTIONS,
       });
       return { object: result.object as T, usage: result.usage };
     } catch (error) {
