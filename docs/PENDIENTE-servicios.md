@@ -17,6 +17,18 @@ Formato: **qué quedó · por qué · qué se decidió**.
 - **No hay Playwright.** · Decisión de Wendy (11/11): script propio sin dependencias que maneja el Chrome instalado (`scripts/check-responsive.mjs`).
 - **El prototipo a 390 px no se reacomoda** (es un dibujo de escritorio). · En el teléfono mandan las reglas de F131.
 
+## Decisiones de F130 (11/11)
+
+- **Las fichas se abren por la URL y las arma el servidor** (`?cliente=` / `?servicio=` sobre `/dashboard/clientes` y `/dashboard/clientes/lista`, `components/services/records/`). · Así se reusa todo lo que ya armaba la página de la ficha (accesos, certificado, asistente) con la sesión de quien mira. · Los links viejos `/clientes/c/<id>` y `/clientes/s/<id>?tab=` redirigen (están en `PAGES_WITHOUT_HEADER`). `serviceHref` / `clientHref` (`lib/services/screens/record-url.ts`) son los únicos que arman esos links.
+- **"Empresa" no está en la cabecera del cliente.** · `contacts` no tiene esa columna y A2 no suma columnas. · Si un negocio la necesita, va como campo personalizado o en una corrida con su migración.
+- **"Invitar / Ver como estudiante"** quedan en la tarjeta del portal de la ficha del cliente (la de A1, con sus permisos), no como botones sueltos de la cabecera. Solo aparece si alguno de sus productos tiene portal.
+- **"Marcar asistió"** sigue en Portal › programa › Calendario: la ficha muestra las últimas clases con su estado (la acción pide la fecha y la sesión, que viven en el calendario).
+- **Reto (bloque de la ficha)**: no se dibuja; su control semanal es F127.5 (A3). "Empezar el Reto" sigue en el camino.
+- **Clientes › Clientes usa la tabla común (`DataTable`) con vistas guardadas en la base (#220, `table_key = service_clients`)**: «la vista se recuerda por usuario» es la vista predeterminada de cada persona. Ordenar es un menú de la barra («Ordenar»): `DataTable` no ordena por el encabezado.
+- **Clientes › Servicios sigue con su tabla de A1 (en `LEGACY`)** y «Guardar vista» se guarda en el navegador, por persona (`useSavedView`). · Pasarla a `DataTable` (y a las vistas de la base) queda para otra tanda.
+- **Los links rotos de A1**: «Ver venta» (`/dashboard/ventas?venta=`) y «Tarea en Tareas» (`?tarea=`) no abrían nada. Ahora van a `/dashboard/ventas/<id>` y `?task=`.
+- **La columna «Puntos 30 días» de la tabla** es A3: en A2 la tabla lleva «Último ingreso» (solo si algún producto tiene portal).
+
 ## Corrida frenada en S02 (8/11/2026) — resuelto
 
 **Qué pasó.** La `00331` (S02) agrega la clave foránea `form_submissions.service_id → app_servicio.services` (y la de `contract_signatures.service_id`), como pide el §8 del plano. Al correr `verify-forms` justo después, el caso «con un link válido la respuesta va al contacto del link…» se cortó: el link firmado de un formulario puede llevar un `service_id` (existe desde la 00150, F20), y si ese servicio no existe la base rechaza el guardado con `23503` y **la respuesta se pierde** (`save_failed`). Antes de la 00331 se guardaba igual. Hoy no existe ningún servicio, así que cualquier link firmado con un `service_id` perdería respuestas.

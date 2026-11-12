@@ -151,6 +151,18 @@ export async function cancelService(serviceId: string, reason: string): Promise<
   return res;
 }
 
+/** «Más… › Editar fechas y plazo» (Servicios A2, F130.3): inicio y fin con motivo; la base recalcula plazos y semáforo. */
+export async function setServiceDates(serviceId: string, input: { startsOn: string; endsOn: string | null; reason: string }): Promise<SvcResult<{ starts_on: string; ends_on: string | null; items_recalculated: number; accesses: number }>> {
+  const ctx = await getPermissionAction("services.extend");
+  if (!ctx) return NOT_ALLOWED;
+  const res = await svcRpc<{ starts_on: string; ends_on: string | null; items_recalculated: number; accesses: number }>(ctx.supabase, "svc_set_dates", {
+    p_service_id: serviceId,
+    p: { starts_on: input.startsOn, ends_on: input.endsOn, reason: input.reason },
+  });
+  if (res.ok) refresh(serviceId);
+  return res;
+}
+
 export async function setServiceOwner(serviceId: string, userId: string): Promise<SvcResult<null>> {
   const ctx = await getPermissionAction("services.change_owner");
   if (!ctx) return NOT_ALLOWED;

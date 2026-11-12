@@ -1,7 +1,7 @@
 "use client";
 // @plantilla-quitar(servicios)
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { reviewSubmission } from "@/lib/actions/program";
 import type { ReviewItem } from "@/lib/program/load-review";
@@ -69,7 +69,7 @@ export function ReviewList({ items, canReview, timeZone, filter }: { items: Revi
   );
 }
 
-function ReviewDrawer({ item, canReview, onClose, onDone }: { item: ReviewItem; canReview: boolean; onClose: () => void; onDone: () => void }) {
+export function ReviewDrawer({ item, canReview, onClose, onDone }: { item: ReviewItem; canReview: boolean; onClose: () => void; onDone: () => void }) {
   const [comment, setComment] = useState(item.reviewComment ?? "");
   const [note, setNote] = useState(item.internalNote ?? "");
   const scale = item.grading?.enabled ? item.grading.scale ?? "pass" : null;
@@ -77,6 +77,17 @@ function ReviewDrawer({ item, canReview, onClose, onDone }: { item: ReviewItem; 
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const editable = canReview && item.formType === "activity";
+  // Esc cierra el drawer primero (está encima de la ficha del servicio o de Por revisar).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
 
   function submit(status: "reviewed" | "needs_changes") {
     setError(null);
