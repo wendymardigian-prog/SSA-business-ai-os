@@ -85,7 +85,7 @@ Antes de las que reescriben funciones, las definiciones de la base van a `docs/s
 - [x] **F158** Disparadores relativo y periódico; acción «Enviar a Slack»
 
 **Cierre**
-- [ ] `verify-*` de A1 y A2 contra `punto-de-partida-a4.json`, huellas, módulo apagado, `verify-responsive`, revisión visual, docs y PR (sin merge)
+- [x] `verify-*` de A1 y A2 contra `punto-de-partida-a4.json` (54 de 55 igual o mejor; `student-schema` arreglado), huellas, módulo apagado, `verify-responsive` (218 de 218), revisión visual, docs y PR #227 (sin merge). Detalle en PENDIENTE (A4 › Cierre).
 
 ---
 
