@@ -19,7 +19,7 @@ export const PROTECTED_FUNCTIONS = [
     sig: "public.create_booking(uuid,uuid,uuid,timestamp with time zone,timestamp with time zone,text,text,text,text,text,text,text,text,jsonb,text,jsonb,text,text,uuid,jsonb,text,uuid,uuid,jsonb,text)",
     // La agenda reescribe el nombre del contacto salvo edicion manual: este es el hash vigente.
     md5: "b9e1eef82fe3b5660f7a1dc879b5087f", // @plantilla-quitar(formularios,webhooks)
-    // @plantilla-sin(formularios,webhooks): md5: "9cea40abb3b027400f1bb2700bafc132",
+    // @plantilla-sin(formularios,webhooks): md5: "132afdfd6b0b1ec38ab6efefda928bac",
   },
   { name: "create_sale", sig: "public.create_sale(jsonb,uuid)", md5: "adb766e6d657bf55db42779c7c53bcb3" }, // @plantilla-quitar(ventas)
   // Reglas, nombre exacto y parecido: este es el hash vigente.
