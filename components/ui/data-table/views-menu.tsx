@@ -49,7 +49,7 @@ export function ViewsMenu(props: ViewsMenuProps) {
   return (
     <Popover
       label="Vistas"
-      triggerClassName={`relative flex h-8 max-w-[11rem] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-medium transition-colors ${active ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60"}`}
+      triggerClassName={`relative flex h-8 max-w-[11rem] max-topbar:h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-medium transition-colors ${active ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60"}`}
       trigger={
         <>
           <Bookmark className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />

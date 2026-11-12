@@ -105,6 +105,8 @@ async function seed() {
   sql(`UPDATE public.product_variants SET journey_template = ${jlit(journey)}, journey_template_rev = journey_template_rev + 1,
        portal_settings = ${jlit({ v: 1, enabled: true, sections: [{ section: "program", included: true, opens: { type: "service_start" }, until: { type: "service" } }] })}, portal_settings_rev = portal_settings_rev + 1
        WHERE id = ${lit(variant.id)}`);
+  sql(`UPDATE public.product_variants SET service_settings = ${jlit({ v: 1, mode: "create", when: { rule: "any_payment", enabled_at: new Date(Date.now() - 60_000).toISOString() }, confirm: false, start: "payment_date",
+       owner: { mode: "round_robin", members: [userId], fallback_user_id: userId }, renewal: "new_linked" })}, service_settings_rev = service_settings_rev + 1 WHERE id = ${lit(variant.id)}`);
   sql(`UPDATE public.products SET portal_enabled = true WHERE id = ${lit(prod.id)}`);
   sql(`WITH m AS (INSERT INTO app_servicio.program_items (workspace_id, product_id, kind, title, position, status)
          VALUES (${lit(ws)}, ${lit(prod.id)}, 'module', 'zz-test Fundamentos', 1, 'active') RETURNING id)
@@ -226,21 +228,37 @@ const MEASURE = `(() => {
   const visible = (el) => { const r = el.getBoundingClientRect(); const st = getComputedStyle(el); return r.width > 0 && r.height > 0 && st.visibility !== "hidden" && st.display !== "none"; };
   const name = (el) => (el.getAttribute("aria-label") || el.textContent || el.tagName).trim().replace(/\\s+/g, " ").slice(0, 40);
   const bar = document.querySelector("header[data-topbar]");
+  // Un control afuera DENTRO de una franja que se desliza de costado (las pestañas, la barra del lienzo) se alcanza
+  // deslizando: no es una falla, siempre que la franja misma entre en la pantalla.
+  const inScroller = (el) => {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const ox = getComputedStyle(p).overflowX;
+      if ((ox === "auto" || ox === "scroll") && p.scrollWidth > p.clientWidth) {
+        const r = p.getBoundingClientRect();
+        return r.left >= -1 && r.right <= vw + 1;
+      }
+    }
+    return false;
+  };
   const outside = [];
   if (bar) for (const el of bar.querySelectorAll("a, button, input, select")) {
     if (!visible(el)) continue;
     const r = el.getBoundingClientRect();
-    if (r.right > vw + 1 || r.left < -1) outside.push(name(el));
+    if ((r.right > vw + 1 || r.left < -1) && !inScroller(el)) outside.push(name(el));
   }
   // Sin PageHeader (el lienzo de flujos), los controles de la franja de arriba.
   const outsideTop = [];
   if (!bar) for (const el of document.querySelectorAll("main a, main button, main input, main select")) {
     if (!visible(el)) continue;
     const r = el.getBoundingClientRect();
-    if (r.top < 120 && (r.right > vw + 1 || r.left < -1)) outsideTop.push(name(el));
+    if (r.top < 120 && (r.right > vw + 1 || r.left < -1) && !inScroller(el)) outsideTop.push(name(el));
   }
   const small = [];
-  if (vw < 768) for (const el of document.querySelectorAll("header[data-topbar] a, header[data-topbar] button, [data-topbar-strip] a, [data-topbar-strip] button, [data-record-modal] button, [data-record-modal] a")) {
+  const modalEl = document.querySelector("[data-record-modal]");
+  const touchSel = modalEl ? "[data-record-modal] button, [data-record-modal] a" : "header[data-topbar] a, header[data-topbar] button, [data-topbar-strip] a, [data-topbar-strip] button";
+  if (vw < 768) for (const el of document.querySelectorAll(touchSel)) {
+    // Un link dentro de un texto (un email, un nombre) no es un boton: se mide lo que se toca solo.
+    if (el.tagName === "A" && getComputedStyle(el).display === "inline") continue;
     if (!visible(el)) continue;
     const r = el.getBoundingClientRect();
     if (r.height < 36 || r.width < 24) small.push(name(el) + " (" + Math.round(r.width) + "x" + Math.round(r.height) + ")");
@@ -285,6 +303,7 @@ async function main() {
       { key: "productos", path: "/dashboard/settings/productos" },
       { key: "producto", path: `/dashboard/settings/productos/${data.productId}` },
       { key: "variante-camino", path: `/dashboard/settings/productos/${data.productId}/variantes/${data.variantId}` },
+      { key: "variante-paso", path: `/dashboard/settings/productos/${data.productId}/variantes/${data.variantId}`, clickText: "Subir el diagnóstico" },
       // El lienzo es un editor de pantalla completa con su barra propia (no PageHeader).
       { key: "flujo-servicios", path: `/dashboard/flows/${data.flowId}`, ownBar: true },
       { key: "formularios", path: "/dashboard/formularios" },
@@ -312,6 +331,11 @@ async function main() {
           await page("Page.navigate", { url: `${BASE}${p.path}` });
           await loaded;
           await sleep(1500);
+          if (p.clickText) {
+            const clicked = await evaluate(page, `(() => { const el = [...document.querySelectorAll("button, [role=button], a")].find((e) => (e.textContent || "").includes(${JSON.stringify(p.clickText)})); if (!el) return false; el.click(); return true; })()`);
+            if (!clicked) failures.push(`${label}: no encontré «${p.clickText}» para abrirlo`);
+            await sleep(800);
+          }
           const m = await evaluate(page, MEASURE).catch((e) => ({ error: e.message }));
           if (m.error) {
             failures.push(`${label}: no se pudo medir (${m.error})`);

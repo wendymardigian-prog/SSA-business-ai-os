@@ -63,7 +63,7 @@ export function InfoTooltip({ text, label = "Más información" }: { text: strin
         onMouseLeave={hide}
         onFocus={show}
         onBlur={hide}
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full max-topbar:-m-2.5 max-topbar:h-10 max-topbar:w-10 text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
       >
         <Info className="h-4 w-4" aria-hidden />
       </button>

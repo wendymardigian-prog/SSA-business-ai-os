@@ -41,7 +41,14 @@ Corridos de a uno con el candado, sobre `origin/main` 35f204e. Cuatro ya fallaba
 ## Lo que encontró el chequeo responsive (F131)
 
 - **La pantalla de un programa se caía entera** (Portal › programa): la página del servidor llamaba `intentHref`, que vivía en un archivo `"use client"`. Ni el typecheck, ni el build, ni los tests lo veían. · `intentHref` pasa a `lib/ui/url-intent.ts` y `lib/ui/client-boundary.test.ts` recorre todas las páginas y falla si una importa algo que no es un componente de un archivo de cliente.
-- **El lienzo de flujos no tiene `PageHeader`** (es un editor de pantalla completa con su barra propia). · El chequeo mide los controles de la franja de arriba del lienzo en vez de la barra superior.
+- **El lienzo de flujos no tiene `PageHeader`** (es un editor de pantalla completa con su barra propia). · El chequeo mide los controles de la franja de arriba del lienzo en vez de la barra superior. Debajo de 1100 px sus botones quedaban afuera: ahora la parte derecha se desliza de costado y el nombre se achica.
+- **La barra decidía por el ancho de la ventana, no por el de la barra**: con el menú lateral abierto, a 1100 px Clientes dejaba «Vistas», «Columnas» y «Nuevo servicio» cortados. · Las pantallas con los lugares fijos de A2 deciden con container queries (`@container` sobre la barra: 900 px, o 1180 con `filtersBreakpoint="wide"`). El botón principal queda siempre arriba. Las demás pantallas siguen con su lógica de siempre.
+- **Agenda**: a 390 y 768 px «Agendar» y la configuración quedaban afuera. · El selector Lista/Kanban/Calendario pasa del lugar `left` al lugar `view` y, si no entra, baja a la franja.
+- **Un título largo en el teléfono** («Grabaciones de llamadas») dejaba la campana afuera. · Debajo de 860 px el título se achica y se corta con «…».
+- **La cabecera de la ficha del servicio en el teléfono**: los botones dejaban el nombre en «zz…». · En el teléfono el nombre ocupa su renglón y los botones bajan.
+- **Tocables de 32 px en el teléfono**: pestañas, filtros, vista, buscador, «Vistas», el período, «Volver» (`BackLink`), las pestañas y botones del editor de formularios y el ⓘ de la barra pasan a 40 px debajo de 860 px (`max-topbar:h-10`), en todas las pantallas. · Las flechas «Volver» que arma cada pantalla a mano (no `BackLink`) siguen en 28 px: se anota y no se tocan una por una.
+- **Avisos que quedan en el teléfono (no fallan)**: dentro de las fichas, el lápiz de `InlineField` (22 px), los botones de la tarjeta del portal de A1 (34 px), «Columnas» de la tabla, «Nuevo formulario» y las flechas «Volver» armadas a mano (28 px). · Se anotan; el resultado final fue **186 de 186 en verde** (12/11). Las capturas (13 MB) no se commitean: se regeneran con el script.
+- **Las variantes de un producto tienen sus pestañas (Camino, Servicio, Portal, Precio) dentro del contenido.** · Están dentro de Ajustes, que ya usa la fila de pestañas de la barra para sus secciones; es un segundo nivel. Queda como está.
 
 ## Corrida frenada en S02 (8/11/2026) — resuelto
 

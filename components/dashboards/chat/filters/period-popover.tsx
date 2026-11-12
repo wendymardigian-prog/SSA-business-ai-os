@@ -114,7 +114,7 @@ export function PeriodPopover<P extends string>({
         aria-expanded={open}
         onClick={toggle}
         className={cn(
-          "flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-[13px] font-medium transition-colors",
+          "flex h-8 max-topbar:h-10 items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-[13px] font-medium transition-colors",
           urlCivil ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
         )}
       >

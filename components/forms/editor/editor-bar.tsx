@@ -105,7 +105,7 @@ export function EditorBar({
     <nav aria-label="Secciones del formulario" className="flex shrink-0 items-center gap-0.5 rounded-lg bg-muted p-0.5">
       {view.tabs.map((tab) => {
         const className = cn(
-          "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-[13px] font-medium transition-colors",
+          "inline-flex h-7 max-topbar:h-10 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-[13px] font-medium transition-colors",
           tab.active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
         );
         const content = (
@@ -191,7 +191,7 @@ export function EditorBar({
       title="Métricas"
       aria-current={view.metrics.active ? "page" : undefined}
       className={cn(
-        "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors",
+        "inline-flex h-8 max-topbar:h-10 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors",
         view.metrics.active ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-input bg-background hover:border-muted-foreground/60",
       )}
     >
@@ -213,7 +213,7 @@ export function EditorBar({
         type="button"
         onClick={onPublish ?? (() => publishAlone(false))}
         disabled={busy}
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+        className="inline-flex h-8 max-topbar:h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
       >
         {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
         {publish.label}
@@ -225,7 +225,7 @@ export function EditorBar({
       type="button"
       onClick={onPreview}
       title="Vista previa"
-      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] font-medium hover:border-muted-foreground/60"
+      className="inline-flex h-8 max-topbar:h-10 shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] font-medium hover:border-muted-foreground/60"
     >
       <Eye className="h-4 w-4" aria-hidden />
       <span className="hidden min-[1320px]:inline">Vista previa</span>

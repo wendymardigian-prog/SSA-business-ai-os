@@ -106,7 +106,7 @@ export default async function PortalPage({ searchParams }: { searchParams: Promi
       periodFilter = (
         <nav className="flex items-center gap-1 text-xs" aria-label="Período de las métricas">
           {([7, 30] as const).map((d) => (
-            <Link key={d} href={`/dashboard/portal?tab=programas&dias=${d}`} aria-current={d === days ? "page" : undefined} className={cn("inline-flex h-8 items-center whitespace-nowrap rounded-full border px-3", d === days ? "border-primary-edge bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground")}>
+            <Link key={d} href={`/dashboard/portal?tab=programas&dias=${d}`} aria-current={d === days ? "page" : undefined} className={cn("inline-flex h-8 max-topbar:h-10 items-center whitespace-nowrap rounded-full border px-3", d === days ? "border-primary-edge bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground")}>
               Últimos {d} días
             </Link>
           ))}

@@ -108,6 +108,56 @@ export function PageHeader({
       {primary}
     </>
   ) : null;
+  // Las pantallas con los lugares fijos (A2) deciden por el ancho de la BARRA, no de la ventana: con el menu lateral
+  // abierto, a 1100 px la barra mide 860 y Clientes dejaba «Vistas», «Columnas» y «Nuevo servicio» cortados.
+  const usesSlots = [view, quickFilter, search, group, more, primary].some(Boolean);
+  if (usesSlots) {
+    return (
+      <div className="@container flex-shrink-0">
+        <header data-topbar="" className="flex h-14 items-center gap-1.5 border-b border-border px-3 md:gap-2 md:px-6">
+          {chrome && <MobileMenuButton chrome={chrome} />}
+          {backHref}
+          {titleSlot ?? (
+            <>
+              <h1 className="min-w-0 truncate text-base font-semibold [flex-shrink:0.01]">{shownTitle}</h1>
+              {shownTooltip && <InfoTooltip text={shownTooltip} />}
+            </>
+          )}
+          {left}
+          {tabs && <div className="hidden min-w-0 [flex-shrink:0.1] items-center overflow-x-auto [scrollbar-width:none] topbar:flex [&::-webkit-scrollbar]:hidden">{tabs}</div>}
+          <div className="min-w-0 flex-1" />
+          {/* Clases completas: Tailwind genera lo que lee en el codigo. */}
+          {slots && <div className={wide ? "hidden shrink-0 items-center gap-2 @min-[1180px]:flex" : "hidden shrink-0 items-center gap-2 @min-[900px]:flex"}>{slots}</div>}
+          {/* El boton principal (y las acciones) siempre arriba, a cualquier ancho. */}
+          {actions && <div className="flex shrink-0 items-center gap-1 topbar:gap-2">{actions}</div>}
+          {chrome && (
+            <div className="flex shrink-0 items-center gap-1 topbar:hidden">
+              <MobileChromeActions chrome={chrome} />
+            </div>
+          )}
+        </header>
+        {tabs && (
+          <div data-topbar-strip="" className="flex h-12 items-center gap-2 overflow-x-auto border-b border-border px-3 topbar:hidden">
+            {tabs}
+            {tabsExtra}
+          </div>
+        )}
+        {slots && (
+          <div
+            data-topbar-strip=""
+            className={cn(
+              // Abajo de 860 (ventana) los menus son `fixed`: la franja se desplaza de costado. Desde 860 son
+              // `absolute` y un overflow los cortaria: la franja no se desplaza y, si no entra, baja de renglon.
+              "flex min-h-12 items-center gap-2 overflow-x-auto border-b border-border px-3 topbar:flex-wrap topbar:overflow-visible topbar:py-2 md:px-6",
+              wide ? "@min-[1180px]:hidden" : "@min-[900px]:hidden",
+            )}
+          >
+            {slots}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -117,10 +167,11 @@ export function PageHeader({
         {backHref}
         {titleSlot ?? (
           <>
-            {/* El titulo de una pantalla (el de `route`, siempre corto) no se achica: antes se desplazan las pestañas.
-                Sin esto, con pestañas y filtros quedaba en cero a 900 px. Un titulo propio (una ficha de detalle, que
-                puede ser largo) se achica ultimo y se corta con "…". */}
-            <h1 className={cn("truncate text-base font-semibold", title === undefined && meta ? "shrink-0" : "[flex-shrink:0.01]")}>{shownTitle}</h1>
+            {/* El titulo de una pantalla (el de `route`, siempre corto) no se achica en la computadora: antes se
+                desplazan las pestañas. Sin esto, con pestañas y filtros quedaba en cero a 900 px. En el celular si se
+                achica (no hay pestañas arriba): «Grabaciones de llamadas» dejaba la campana afuera a 390 px. Un titulo
+                propio (una ficha de detalle, que puede ser largo) se achica ultimo y se corta con "…". */}
+            <h1 className={cn("min-w-0 truncate text-base font-semibold", title === undefined && meta ? "[flex-shrink:0.01] topbar:shrink-0" : "[flex-shrink:0.01]")}>{shownTitle}</h1>
             {shownTooltip && <InfoTooltip text={shownTooltip} />}
           </>
         )}
