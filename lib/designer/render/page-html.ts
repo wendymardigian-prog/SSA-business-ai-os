@@ -333,6 +333,9 @@ function renderElement(el: DesignElement, zIndex: number, opts: RenderOptions, w
   }
 }
 
+/** Lo que el render del editor prohíbe adentro del iframe (defensa extra al `sandbox`): scripts, plugins, formularios y `<base>`. */
+export const EDIT_CSP = "script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+
 /**
  * La página `pageIndex` del documento como HTML estático. `public` y `export`
  * reemplazan las variables por sus valores (una variable sin valor queda vacía);
@@ -394,6 +397,8 @@ export function renderPageHTML(doc: DesignDoc, pageIndex: number, opts: RenderOp
   return [
     `<!doctype html><html lang="es"><head><meta charset="utf-8">`,
     `<meta name="viewport" content="width=device-width, initial-scale=1">`,
+    // En el editor el iframe deja leer su contenido (para ubicar cada texto): además del `sandbox`, nada de código adentro.
+    opts.mode === "edit" ? `<meta http-equiv="Content-Security-Policy" content="${EDIT_CSP}">` : "",
     google ? `<link rel="stylesheet" href="${escapeHtml(google)}">` : "",
     `<style>${styles}</style></head>`,
     `<body><div class="dz-page" data-format="${doc.format}" data-page="${escapeHtml(page.id)}">${layers}${elements}</div></body></html>`,

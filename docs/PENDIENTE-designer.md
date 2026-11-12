@@ -96,6 +96,11 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - **Por qué:** quitarlas rompería muchas landings hechas con imágenes de un CDN; bajarlas al importar es otro trabajo (y otro riesgo: pedidos a sitios ajenos desde el servidor).
 - **Qué se decidió:** se dejan. Si molesta, al cargar se bajan con `safeFetch` (con tope) y pasan a `asset:`.
 
+### Una persona edita los TEXTOS de un HTML cargado (12/11/2026)
+- **Qué quedó:** el mensaje al subir un archivo decía «Tocá cualquier texto para editarlo», pero solo la IA podía cambiarlos (el iframe ignoraba los clics y Capas mostraba un solo bloque). Ahora un clic elige el texto, doble clic lo escribe y Capas lista los textos del bloque.
+- **Cómo:** el iframe del lienzo pasó a `sandbox="allow-same-origin"` (nunca `allow-scripts`) para leer su contenido, con `EDIT_CSP` en el render de edición. El link público no cambió.
+- **Sigue pendiente:** reemplazar imágenes de adentro (logo, firma) y cambiar estilos (color, tamaño) de un texto cargado.
+
 ### La IA cambia los TEXTOS de un HTML cargado, no su CSS
 - **Qué quedó:** F42 pide que la IA pueda editar «textos y estilos» de una página cargada. Se construyó la parte de textos (`updateText`, nodo por nodo, siempre como texto plano y limpio); los estilos (el CSS del archivo) no.
 - **Por qué:** dejar que la IA reescriba CSS de un archivo ajeno abre otra puerta (CSS que oculta o tapa contenido, `url()` hacia afuera) y pide su propia limpieza y pruebas; los textos son el 90 % de los pedidos.

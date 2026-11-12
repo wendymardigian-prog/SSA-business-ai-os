@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DesignDoc, DesignElement, DesignPage } from "../doc/schema";
-import { backgroundLayers, cssText, elementStyle, renderPageHTML, renderText, stripActiveContent, stripActiveCss, toReactStyle } from "./page-html";
+import { backgroundLayers, cssText, EDIT_CSP, elementStyle, renderPageHTML, renderText, stripActiveContent, stripActiveCss, toReactStyle } from "./page-html";
 
 const assetUrl = (p: string) => `https://storage.test/firmado/${p}`;
 const text = (id: string, extra: Partial<Extract<DesignElement, { type: "text" }>> = {}): DesignElement => ({
@@ -183,6 +183,20 @@ describe("fondo (backgroundLayers)", () => {
   it("degradé con su ángulo", () => {
     const [base] = backgroundLayers({ id: "pg_x00003", elements: [], background: { type: "gradient", gradient: { from: "#000000", to: "#ffffff", angle: 135 } } });
     expect(base.style.background).toBe("linear-gradient(135deg, #000000, #ffffff)");
+  });
+});
+
+describe("el render del editor prohíbe código adentro del iframe", () => {
+  it("solo en modo edit lleva la política que bloquea scripts", () => {
+    const d = doc(SAMPLES);
+    const edit = renderPageHTML(d, 0, { mode: "edit", assetUrl });
+    expect(edit).toContain(`<meta http-equiv="Content-Security-Policy" content="${EDIT_CSP}">`);
+    expect(EDIT_CSP).toContain("script-src 'none'");
+    for (const mode of ["public", "export"] as const) expect(renderPageHTML(d, 0, { mode, assetUrl })).not.toContain("Content-Security-Policy");
+  });
+
+  it("conserva las marcas de los textos cargados (las usa el lienzo para ubicarlos)", () => {
+    expect(renderPageHTML(doc(SAMPLES), 0, { mode: "edit", assetUrl })).toContain('data-tx="t1"');
   });
 });
 

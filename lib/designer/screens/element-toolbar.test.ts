@@ -45,6 +45,13 @@ describe("barra del elemento (F21)", () => {
     expect(controls(image, true)).not.toContain("variable");
   });
 
+  it("en un HTML cargado, «Insertar variable» aparece solo mientras se escribe uno de sus textos (y en plantillas)", () => {
+    const html = { type: "html" as const };
+    expect(toolbarFor(html, true).flatMap((g) => g.controls)).not.toContain("variable");
+    expect(toolbarFor(html, false, { htmlTextEditing: true }).flatMap((g) => g.controls)).not.toContain("variable");
+    expect(toolbarFor(html, true, { htmlTextEditing: true }).find((g) => g.id === "style")!.controls).toEqual(["variable", "opacity"]);
+  });
+
   it("una imagen: reemplazar, ajuste, esquinas y opacidad", () => {
     expect(toolbarFor(image, false).find((g) => g.id === "style")!.controls).toEqual(["replace", "fit", "radius", "opacity"]);
     expect(controls(image)).not.toContain("font");
