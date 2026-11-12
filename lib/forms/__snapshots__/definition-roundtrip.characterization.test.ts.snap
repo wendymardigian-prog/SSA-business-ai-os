@@ -78,6 +78,15 @@ exports[`caracterizacion: las operaciones del builder > agregar un campo de cada
     },
     "count": 18,
   },
+  "link": {
+    "added": {
+      "key": "link",
+      "label": "Link",
+      "required": false,
+      "type": "link",
+    },
+    "count": 18,
+  },
   "long_text": {
     "added": {
       "key": "texto_largo",

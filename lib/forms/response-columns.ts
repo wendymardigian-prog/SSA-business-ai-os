@@ -74,6 +74,7 @@ export function responseColumnDefs(answers: readonly ResponseColumn[]): Response
       defaultVisible: true,
       removed: column.removed,
       hint: column.removed ? "Este campo ya no está en el formulario" : undefined,
+      link: column.type === "link" || undefined,
       value: (row) => cellFor(row, column),
     };
     if (column.key !== phoneKey) return [def];

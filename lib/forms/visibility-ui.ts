@@ -15,6 +15,7 @@ const BY_TYPE: Record<FormFieldType, ConditionOperator[]> = {
   hidden: TEXT,
   social: TEXT,
   number: NUMERIC,
+  link: TEXT,
   rating: NUMERIC,
   nps: NUMERIC,
   date: ["is", "gt", "gte", "lt", "lte", "is_empty", "is_not_empty"],

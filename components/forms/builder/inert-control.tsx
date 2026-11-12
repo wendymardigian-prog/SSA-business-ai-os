@@ -8,7 +8,7 @@ import type { FormField } from "@/lib/forms/fields";
  * (plano formularios-ui, F9). Solo da la idea de como queda. Server-safe, sin estado.
  */
 
-const DEFAULT_HINT: Partial<Record<FormField["type"], string>> = { email: "nombre@correo.com", phone: "+54 9 11 1234 5678", number: "0" };
+const DEFAULT_HINT: Partial<Record<FormField["type"], string>> = { email: "nombre@correo.com", phone: "+54 9 11 1234 5678", number: "0", link: "https://" };
 
 const box = "w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground";
 

@@ -235,7 +235,13 @@ export function SubmissionDetail({
                             ))}
                           </ul>
                         ) : (
-                          answerToText(answer.value) || <span className="text-muted-foreground">—</span>
+                          answer.type === "link" && typeof answer.value === "string" && /^https:\/\/\S+$/i.test(answer.value) ? (
+                            <a href={answer.value} target="_blank" rel="noopener noreferrer" className="break-all text-primary-ink underline-offset-2 hover:underline">
+                              {answer.value}
+                            </a>
+                          ) : (
+                            answerToText(answer.value) || <span className="text-muted-foreground">—</span>
+                          )
                         )}
                       </dd>
                     </div>

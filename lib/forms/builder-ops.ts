@@ -61,7 +61,7 @@ function structuredCloneField<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-const TEXT_LIKE: readonly FormFieldType[] = ["short_text", "long_text", "email", "phone", "number", "social"];
+const TEXT_LIKE: readonly FormFieldType[] = ["short_text", "long_text", "email", "phone", "number", "social", "link"];
 
 function withoutConditionsOn(visibility: VisibilityConfig | undefined, key: string): VisibilityConfig | undefined {
   if (!visibility) return undefined;

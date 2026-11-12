@@ -166,6 +166,8 @@ export function targetAccepts(
       case "short_text":
       case "hidden":
         return customType === "text" || customType === "url" || customType === "email";
+      case "link":
+        return customType === "url" || customType === "text";
       default:
         return false;
     }
@@ -251,6 +253,7 @@ const FORM_TYPE_NAME: Record<FormFieldType, string> = {
   email: "email",
   phone: "teléfono",
   number: "número",
+  link: "link",
   single_select: "selección única",
   multi_select: "selección múltiple",
   date: "fecha",

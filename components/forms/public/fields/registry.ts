@@ -4,11 +4,11 @@ import { ConsentField } from "./consent-field";
 import { MultiSelectField, SingleSelectField } from "./choice-field";
 import { FileField } from "./file-field";
 import { NpsField, RatingField } from "./scale-field";
-import { DateField, EmailField, LongTextField, NumberField, PhoneField, ShortTextField, SocialField } from "./text-field";
+import { DateField, EmailField, LinkField, LongTextField, NumberField, PhoneField, ShortTextField, SocialField } from "./text-field";
 import type { FieldProps } from "./shared";
 
 /**
- * Un componente por tipo de campo. Los 14 tipos están acá (un test recorre la
+ * Un componente por tipo de campo. Los 15 tipos están acá (un test recorre la
  * lista): `hidden` es `null` a propósito, porque un campo oculto no tiene
  * interfaz; su valor sale de la URL, de la atribución o del servidor.
  */
@@ -27,4 +27,5 @@ export const FIELD_RENDERERS: Record<FormFieldType, ComponentType<FieldProps> | 
   consent: ConsentField,
   hidden: null,
   social: SocialField,
+  link: LinkField,
 };

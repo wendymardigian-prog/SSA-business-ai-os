@@ -15,7 +15,7 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.10, parte "Corrid
 - [ ] **F131** Responsive (390, 768, 1100, 1440; claro y oscuro) con `scripts/check-responsive.mjs` (sin dependencias, decisión de Wendy del 11/11).
 - [x] **F122** Listas en lugar de claves en Automatizaciones (`servicePickerOptions`, aviso y bloqueo al publicar).
 - [x] **F125** Botones del camino (`ref.button`, `ref.show_response`, `svc_item` en la agenda) con la migración de `journey_item_ref_problems`.
-- [ ] **F127.8** Campo Link en Formularios.
+- [x] **F127.8** Campo Link en Formularios.
 - [ ] **F124** Los avisos de Servicios en las preferencias de notificaciones.
 - [ ] Cierre: build, lint, `verify-*` de A1, huellas, revisión visual y PR (sin merge).
 
@@ -24,6 +24,8 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.10, parte "Corrid
   - F122 (11/11): `lib/services/service-picker.ts` (`servicePickerOptions`, listas, `staleKeyMessage`, `serviceKeyProblems`) con su test; `ServiceActionPanel` elige de listas y el panel nuevo `ServiceTriggerPanel` da los filtros de producto, variante, fase, paso y días; `publishFlow` frena una clave que ya no existe (y no publica si no puede leer los caminos). `lib/services/no-typed-keys.test.ts` recorre el módulo.
 
   - F125 (11/11): `ref.button` y `ref.show_response` en `refProblems` y en `journey_item_ref_problems` (00363, aplicada y registrada; los 37 casos de `journey-template.cases.json`, 19 nuevos, iguales en SQL; antes de aplicarla ninguna plantilla guardada quedaba inválida y después tampoco). Drawer del paso con el interruptor, texto, link, destino y vista previa, y «El cliente puede ver su respuesta». `svc_item` de la URL de la agenda a `bookings.utm` (`pickUtm`, solo uuid). `verify-services --bloque a2` (casos del camino y de fechas contra SQL, `svc_set_dates`, las lecturas de la 00361 y la reserva con `svc_item`).
+
+  - F127.8 (11/11): `link` en `FORM_FIELD_TYPES` y todos sus catálogos, `LinkField` público, `validLink` (servidor y navegador) con su test, prefill, mapeo a campo personalizado url o texto, y el link que se abre en pestaña nueva en la tabla y el detalle de las respuestas. Sin base.
 
 ## Punto de partida (11/11/2026)
 
