@@ -172,18 +172,31 @@ export interface CallFilters {
   desde: string;
   hasta: string;
   q: string;
+  /**
+   * Servicios A4 (F136): un servicio (uuid), «Por revisar» (`review`) o «Sin servicio» (`sin`: solo del área Servicio,
+   * sin tipo Clase). Solo se usa con el módulo prendido.
+   */
+  servicio: string;
+  /** Servicios A4 (F141): solo las cargadas a mano. */
+  manual: boolean;
   pagina: number;
 }
 
 export const EMPTY_FILTERS: CallFilters = {
   closer: "", contacto: "", area: "", tipo: "", resultado: "", estado: "", vinculo: "",
   closerMin: null, closerMax: null, leadMin: null, leadMax: null,
-  desde: "", hasta: "", q: "", pagina: 1,
+  desde: "", hasta: "", q: "", servicio: "", manual: false, pagina: 1,
 };
+
+/** Los valores especiales del filtro Servicio (F136). */
+export const SERVICE_FILTER_REVIEW = "review";
+export const SERVICE_FILTER_NONE = "sin";
 
 export interface FilterContext {
   /** Los closers que existen: un id inventado en la URL se ignora. */
   closerIds: Iterable<string>;
+  /** Servicios A4: con el módulo apagado, el filtro de servicio se ignora. */
+  servicesOn?: boolean;
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
@@ -227,15 +240,22 @@ export function parseCallFilters(sp: SearchParams, ctx: FilterContext): CallFilt
     desde: dateParam(sp.desde),
     hasta: dateParam(sp.hasta),
     q: sanitizeSearch(firstParam(sp.q), 80),
+    servicio: ctx.servicesOn ? serviceParam(firstParam(sp.servicio)) : "",
+    manual: firstParam(sp.manual) === "1",
     pagina: pickPage(sp.pagina),
   };
+}
+
+function serviceParam(raw: string): string {
+  if (raw === SERVICE_FILTER_REVIEW || raw === SERVICE_FILTER_NONE) return raw;
+  return UUID_PARAM.test(raw) ? raw : "";
 }
 
 /** Los filtros activos (sin contar la pagina), para el contador del boton. */
 export function countActiveCallFilters(f: CallFilters): number {
   return [
     f.closer, f.contacto, f.area, f.tipo, f.resultado, f.estado, f.vinculo, f.desde, f.hasta, f.q,
-    f.closerMin, f.closerMax, f.leadMin, f.leadMax,
+    f.closerMin, f.closerMax, f.leadMin, f.leadMax, f.servicio, f.manual ? "1" : "",
   ].filter((v) => v !== "" && v !== null).length;
 }
 
@@ -246,6 +266,7 @@ export function callFiltersToParams(f: CallFilters): URLSearchParams {
   put("closer", f.closer); put("contacto", f.contacto); put("area", f.area); put("tipo", f.tipo); put("resultado", f.resultado); put("estado", f.estado);
   put("vinculo", f.vinculo); put("cmin", f.closerMin); put("cmax", f.closerMax);
   put("lmin", f.leadMin); put("lmax", f.leadMax); put("desde", f.desde); put("hasta", f.hasta); put("q", f.q);
+  put("servicio", f.servicio); if (f.manual) p.set("manual", "1");
   if (f.pagina > 1) p.set("pagina", String(f.pagina));
   return p;
 }
@@ -264,6 +285,12 @@ export interface ApplyOptions {
   timeZone: string;
   /** Contactos cuyo nombre coincide con la busqueda (los resuelve el servidor con la RLS). */
   searchContactIds?: string[];
+  /**
+   * Para «Sin servicio» (F136): el área Servicio y el tipo Clase (ids de `booking_categories`). Sin el área, el filtro
+   * no trae nada (no hay reuniones de servicio que mostrar).
+   */
+  serviceAreaId?: string | null;
+  classTypeId?: string | null;
 }
 
 /**
@@ -293,6 +320,13 @@ export function applyCallFilters<Q extends FilterableQuery<Q>>(query: Q, f: Call
     const [y, m, d] = f.hasta.split("-").map(Number);
     q = q.lte("recorded_at", endOfDay(y, m, d, opts.timeZone).toISOString());
   }
+  if (f.servicio === SERVICE_FILTER_REVIEW) q = q.eq("service_link", "review");
+  else if (f.servicio === SERVICE_FILTER_NONE) {
+    // Las del área Servicio sin servicio, que no son de tipo Clase.
+    q = q.eq("area_id", opts.serviceAreaId ?? "00000000-0000-0000-0000-000000000000").is("service_id", null);
+    if (opts.classTypeId) q = q.or(`category_id.is.null,category_id.neq.${opts.classTypeId}`);
+  } else if (f.servicio) q = q.eq("service_id", f.servicio);
+  if (f.manual) q = q.not("summary->manual", "is", null);
   if (f.q) {
     const parts = [`title.ilike.%${f.q}%`];
     const ids = (opts.searchContactIds ?? []).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
@@ -305,6 +339,40 @@ export function applyCallFilters<Q extends FilterableQuery<Q>>(query: Q, f: Call
 /** Las columnas que lee la lista (nunca la transcripcion ni el analisis entero). */
 export const CALL_LIST_COLUMNS =
   "id, title, recorded_at, duration_seconds, recorded_by_user_id, recorded_by_email, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, classification_source, classification_rule, classification_confidence, analysis_status, analysis_status_reason, closer_score, lead_score, lead_qualification, outcome, has_open_alerts, source, link_method";
+
+/** Con el módulo de Servicios prendido (Servicios A4, F136): suma el servicio y su vínculo. */
+export const CALL_LIST_SERVICE_COLUMNS = ", service_id, service_link";
+
+/**
+ * Las columnas de la tabla de Grabaciones, en orden. Servicio aparece solo con el módulo prendido y se puede ocultar.
+ * `hideable` = la persona la puede ocultar desde «Columnas».
+ */
+export type CallListColumn = { key: string; label: string; hideable: boolean };
+
+export function callListColumns(opts: { servicesOn: boolean }): CallListColumn[] {
+  const base: CallListColumn[] = [
+    { key: "lead", label: "Lead / llamada", hideable: false },
+    { key: "fecha", label: "Fecha", hideable: false },
+    { key: "duracion", label: "Duración", hideable: false },
+    { key: "grabo", label: "Quien grabó", hideable: false },
+    { key: "tipo", label: "Tipo", hideable: false },
+  ];
+  if (opts.servicesOn) base.push({ key: "servicio", label: "Servicio", hideable: true });
+  base.push(
+    { key: "resultado", label: "Resultado", hideable: false },
+    { key: "closer", label: "Puntaje closer", hideable: false },
+    { key: "lead_score", label: "Puntaje lead", hideable: false },
+    { key: "estado", label: "Estado", hideable: false },
+    { key: "alertas", label: "", hideable: false },
+  );
+  return base;
+}
+
+/** Lo que muestra la celda Servicio: el servicio (producto · variante), «Por revisar» o vacío. */
+export function serviceCellLabel(link: string | null, serviceLabel: string | null): { text: string; review: boolean } {
+  if (link === "review") return { text: "Por revisar", review: true };
+  return { text: serviceLabel ?? "", review: false };
+}
 
 // ── Columnas visibles (vistas guardadas por persona) ──────────────────────
 

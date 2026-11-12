@@ -27,6 +27,8 @@ const IDS = [
   "postproxy",
   "resend",
   "resend_inbound",
+  // Slack (Servicios A4, F133), cambio aprobado: el bot del negocio para los avisos.
+  "slack",
   "threads",
   "voyage",
   "zernio",

@@ -19,7 +19,7 @@ import { DesignGeneratePanel } from "./DesignGeneratePanel"; // @plantilla-quita
 import { PrivateReplyPanel } from "./PrivateReplyPanel";
 import type { AttributionPanelContext } from "./SendMessagePanel";
 import { SendEmailPanel } from "./SendEmailPanel";
-import { CancelBookingPanel, NotifyTeamPanel, SetBookingStatusPanel } from "./ExtraActionPanels";
+import { CancelBookingPanel, NotifyTeamPanel, SendSlackPanel, SetBookingStatusPanel } from "./ExtraActionPanels";
 import { VariableChips } from "./variable-chips";
 import { ServiceActionPanel } from "./ServiceActionPanel"; // @plantilla-quitar(servicios)
 import type { ServiceActionType } from "@/lib/flow-engine/nodes/service-action-detail"; // @plantilla-quitar(servicios)
@@ -140,6 +140,8 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
     // Antes estos tres no tenian panel en el lienzo: decia "No configuration available" y el paso no hacia nada.
     case "notify_team" as NodeType:
       return <NotifyTeamPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
+    case "send_slack" as NodeType:
+      return <SendSlackPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
     case "cancel_booking" as NodeType:
       return <CancelBookingPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
     case "set_booking_status" as NodeType:

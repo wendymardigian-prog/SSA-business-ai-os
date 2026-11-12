@@ -18,14 +18,15 @@ describe("filterSections", () => {
     expect(result.map((g) => g.section)).toEqual(["connections", "ai"]);
     // Cambio aprobado (conexion de Resend): "Resend (email entrante)" quedo oculta.
     // + «Meta: API de Conversiones» (00328).
-    expect(result.flatMap((g) => g.providers).length).toBe(14);
+    // + Slack (Servicios A4, F133).
+    expect(result.flatMap((g) => g.providers).length).toBe(15);
   });
 
   it("un chip solo filtra Conexiones; Inteligencia artificial no se toca", () => {
     const result = filterSections(sections, statusOf({}), { chip: "mensajeria", onlyAttention: false });
     const bySection = Object.fromEntries(result.map((g) => [g.section, g.providers.map((p) => p.id)]));
 
-    expect(bySection.connections).toEqual(["zernio", "evolution"]);
+    expect(bySection.connections).toEqual(["zernio", "evolution", "slack"]);
     // La seccion de IA sigue entera, sin filtrar por el chip.
     expect(bySection.ai?.length).toBe(5);
   });
@@ -82,7 +83,7 @@ describe("filterSections", () => {
 describe("countByChip", () => {
   it("cuenta las cards de Conexiones por chip, sin tocar IA", () => {
     const counts = countByChip(sections);
-    expect(counts.mensajeria).toBe(2); // zernio, evolution
+    expect(counts.mensajeria).toBe(3); // zernio, evolution y slack (Servicios A4)
     expect(counts.publicacion).toBe(5); // zernio, postproxy, linkedin, threads, google
     expect(counts.anuncios).toBe(2); // meta y meta_capi (00328)
     expect(counts.email).toBe(1); // resend (cambio aprobado: la entrante quedo oculta en la tarjeta Resend)

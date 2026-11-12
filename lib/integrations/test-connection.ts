@@ -22,6 +22,7 @@ import { fetchAdAccounts } from "@/lib/meta/accounts";
 import { checkAiProviderKey } from "./ai-key-check";
 import { probeResendKey } from "@/lib/email/resend-api";
 import { probeCapiPixel } from "@/lib/meta/capi/send";
+import { authTest as slackAuthTest } from "./slack";
 
 export type ConnectionTest =
   | {
@@ -102,6 +103,19 @@ export async function testConnection(input: TestInput): Promise<ConnectionTest> 
         ok: true,
         detail: probe.name ? `Conectado al Pixel «${probe.name}».` : "Conectado al Pixel.",
         ...(probe.name ? { config: { pixel_name: probe.name } } : {}),
+      };
+    }
+
+    // Slack (Servicios A4, F133): `auth.test` con el token del bot. Si responde mal, no se guarda.
+    case "slack": {
+      const token = (input.secrets.bot_token ?? "").trim();
+      if (!token) return { ok: true };
+      const r = await slackAuthTest(token, input.fetchImpl);
+      if (!r.ok) return { ok: false, error: r.error };
+      return {
+        ok: true,
+        detail: r.team ? `Conectado al espacio de trabajo «${r.team}».` : "Conectado a Slack.",
+        ...(r.team ? { config: { team_name: r.team } } : {}),
       };
     }
 

@@ -1,0 +1,326 @@
+{
+  "_comment": "Casos de relativeDue (Servicios A4, F158). Corren contra la gemela TS (lib/services/relative-triggers.ts) y contra app_servicio.svc_relative_due (verify-services --bloque a4). Fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "7 días después del inicio (1/11): el 8/11 emite",
+      "input": {
+        "kind": "relative",
+        "anchor": "service_start",
+        "offset_days": 7,
+        "status": "active",
+        "today": "2026-11-08",
+        "anchor_on": "2026-11-01"
+      },
+      "expected": {
+        "due": true,
+        "day": "2026-11-08",
+        "phase_day": null
+      }
+    },
+    {
+      "name": "7 días después del inicio: el 7/11 no",
+      "input": {
+        "kind": "relative",
+        "anchor": "service_start",
+        "offset_days": 7,
+        "status": "active",
+        "today": "2026-11-07",
+        "anchor_on": "2026-11-01"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "7 días después del inicio: el 9/11 no (no recupera)",
+      "input": {
+        "kind": "relative",
+        "anchor": "service_start",
+        "offset_days": 7,
+        "status": "active",
+        "today": "2026-11-09",
+        "anchor_on": "2026-11-01"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "3 días antes del fin (15/11): el 12/11 emite",
+      "input": {
+        "kind": "relative",
+        "anchor": "service_end",
+        "offset_days": -3,
+        "status": "active",
+        "today": "2026-11-12",
+        "anchor_on": "2026-11-15"
+      },
+      "expected": {
+        "due": true,
+        "day": "2026-11-12",
+        "phase_day": null
+      }
+    },
+    {
+      "name": "el mismo día del ancla (0 días)",
+      "input": {
+        "kind": "relative",
+        "anchor": "service_start",
+        "offset_days": 0,
+        "status": "active",
+        "today": "2026-11-01",
+        "anchor_on": "2026-11-01"
+      },
+      "expected": {
+        "due": true,
+        "day": "2026-11-01",
+        "phase_day": null
+      }
+    },
+    {
+      "name": "un ancla que no ocurrió (fin sin fecha) no emite",
+      "input": {
+        "kind": "relative",
+        "anchor": "service_end",
+        "offset_days": 7,
+        "status": "active",
+        "today": "2026-11-08",
+        "anchor_on": null
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "un servicio pausado no emite",
+      "input": {
+        "kind": "relative",
+        "anchor": "service_start",
+        "offset_days": 7,
+        "status": "paused",
+        "today": "2026-11-08",
+        "anchor_on": "2026-11-01"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "un servicio cancelado no emite",
+      "input": {
+        "kind": "relative",
+        "anchor": "service_start",
+        "offset_days": 7,
+        "status": "cancelled",
+        "today": "2026-11-08",
+        "anchor_on": "2026-11-01"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "desplazamiento fuera de rango no emite",
+      "input": {
+        "kind": "relative",
+        "anchor": "service_start",
+        "offset_days": 400,
+        "status": "active",
+        "today": "2026-11-08",
+        "anchor_on": "2025-10-04"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "paso completado hace 2 días con +2",
+      "input": {
+        "kind": "relative",
+        "anchor": "item_completed",
+        "offset_days": 2,
+        "status": "active",
+        "today": "2026-11-10",
+        "anchor_on": "2026-11-08"
+      },
+      "expected": {
+        "due": true,
+        "day": "2026-11-10",
+        "phase_day": null
+      }
+    },
+    {
+      "name": "cada 7 días en la fase: el día 7 (8/11) emite",
+      "input": {
+        "kind": "periodic",
+        "every_days": 7,
+        "status": "active",
+        "today": "2026-11-08",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_implem",
+        "current_phase_started_on": "2026-11-01"
+      },
+      "expected": {
+        "due": true,
+        "day": "2026-11-08",
+        "phase_day": 7
+      }
+    },
+    {
+      "name": "cada 7 días: el día 0 (1/11) no",
+      "input": {
+        "kind": "periodic",
+        "every_days": 7,
+        "status": "active",
+        "today": "2026-11-01",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_implem",
+        "current_phase_started_on": "2026-11-01"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "cada 7 días: el día 14 (15/11) emite",
+      "input": {
+        "kind": "periodic",
+        "every_days": 7,
+        "status": "active",
+        "today": "2026-11-15",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_implem",
+        "current_phase_started_on": "2026-11-01"
+      },
+      "expected": {
+        "due": true,
+        "day": "2026-11-15",
+        "phase_day": 14
+      }
+    },
+    {
+      "name": "cada 7 días: el día 10 no",
+      "input": {
+        "kind": "periodic",
+        "every_days": 7,
+        "status": "active",
+        "today": "2026-11-11",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_implem",
+        "current_phase_started_on": "2026-11-01"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "si cambió de fase, no emite",
+      "input": {
+        "kind": "periodic",
+        "every_days": 7,
+        "status": "active",
+        "today": "2026-11-15",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_otra01",
+        "current_phase_started_on": "2026-11-01"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "con 5 días de pausa (la fase empezó corrida al 6/11) emite el 13/11",
+      "input": {
+        "kind": "periodic",
+        "every_days": 7,
+        "status": "active",
+        "today": "2026-11-13",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_implem",
+        "current_phase_started_on": "2026-11-06"
+      },
+      "expected": {
+        "due": true,
+        "day": "2026-11-13",
+        "phase_day": 7
+      }
+    },
+    {
+      "name": "con 5 días de pausa, el 8/11 no",
+      "input": {
+        "kind": "periodic",
+        "every_days": 7,
+        "status": "active",
+        "today": "2026-11-08",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_implem",
+        "current_phase_started_on": "2026-11-06"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "pausado no emite",
+      "input": {
+        "kind": "periodic",
+        "every_days": 7,
+        "status": "paused",
+        "today": "2026-11-08",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_implem",
+        "current_phase_started_on": "2026-11-01"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "cada 1 día: el día 1 emite",
+      "input": {
+        "kind": "periodic",
+        "every_days": 1,
+        "status": "active",
+        "today": "2026-11-02",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_implem",
+        "current_phase_started_on": "2026-11-01"
+      },
+      "expected": {
+        "due": true,
+        "day": "2026-11-02",
+        "phase_day": 1
+      }
+    },
+    {
+      "name": "cada 91 días no es válido",
+      "input": {
+        "kind": "periodic",
+        "every_days": 91,
+        "status": "active",
+        "today": "2027-01-31",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_implem",
+        "current_phase_started_on": "2026-11-01"
+      },
+      "expected": {
+        "due": false
+      }
+    },
+    {
+      "name": "la fase no empezó: no emite",
+      "input": {
+        "kind": "periodic",
+        "every_days": 7,
+        "status": "active",
+        "today": "2026-11-08",
+        "phase_key": "ph_implem",
+        "current_phase_key": "ph_implem",
+        "current_phase_started_on": null
+      },
+      "expected": {
+        "due": false
+      }
+    }
+  ]
+}

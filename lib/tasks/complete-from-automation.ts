@@ -31,7 +31,8 @@ export interface CompleteFromAutomationInput {
   actor: { label: string; flowId?: string | null; runId?: string | null; nodeId?: string | null };
 }
 
-export type CompleteFromAutomationResult = { ok: true; completed: string[] } | { ok: false; message: string };
+/** `blocked`: las que no se completaron porque su paso del camino está bloqueado o pide evidencia (Servicios A4, F153). */
+export type CompleteFromAutomationResult = { ok: true; completed: string[]; blocked?: Array<{ id: string; reason: string }> } | { ok: false; message: string };
 
 export async function completeTasksFromAutomation(db: Db, input: CompleteFromAutomationInput): Promise<CompleteFromAutomationResult> {
   try {
@@ -72,6 +73,7 @@ export async function completeTasksFromAutomation(db: Db, input: CompleteFromAut
     }
 
     const completed: string[] = [];
+    const blocked: Array<{ id: string; reason: string }> = [];
     for (const task of candidates) {
       // El candado: solo se completa si sigue abierta (otra ejecucion o una persona pudo adelantarse).
       const { data: done, error: updateError } = await db
@@ -84,7 +86,9 @@ export async function completeTasksFromAutomation(db: Db, input: CompleteFromAut
         .select(TASK_COLUMNS)
         .maybeSingle();
       if (updateError) {
-        console.error("[tareas] no pude completar la tarea:", updateError.message);
+        // El paso del camino de la tarea todavía no se puede completar: queda el motivo, no es un error.
+        if (updateError.code === "SV033" || updateError.code === "SV034") blocked.push({ id: task.id, reason: updateError.message });
+        else console.error("[tareas] no pude completar la tarea:", updateError.message);
         continue;
       }
       if (!done) continue;
@@ -117,7 +121,7 @@ export async function completeTasksFromAutomation(db: Db, input: CompleteFromAut
       // Como una persona: dispara `task_completed`. No frena nada si falla.
       await emitTaskEvent(db, "task_completed", row, null);
     }
-    return { ok: true, completed };
+    return { ok: true, completed, ...(blocked.length ? { blocked } : {}) };
   } catch (err) {
     console.error("[tareas] error al completar tareas desde una automatizacion:", err instanceof Error ? err.message : String(err));
     return { ok: false, message: err instanceof Error ? err.message : String(err) };

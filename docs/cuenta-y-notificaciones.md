@@ -79,6 +79,14 @@ Cada aviso nuevo encola un job `notification_deliver` (trigger de la 00275, que 
 
 El aviso de "canal desconectado" ya no manda su propio email desde `notifyWorkspaceAdmins`: lo manda el job, y por defecto le sigue llegando a Owner/Admin.
 
+## Slack (Servicios A4, noviembre 2026)
+
+Con Slack conectado (Ajustes › Integraciones › Slack: el token del bot en Vault), cada persona carga su ID de Slack
+en Mi cuenta (U… o W…) y la columna **Slack** aparece en Notificaciones (apagada por defecto). La entrega es el mismo
+job `notification_deliver`, con el mismo tope de 10 minutos. Un token revocado deja el error en la integración y avisa
+a Owner y Admin. Avisos nuevos: `mentioned` (te mencionaron en un comentario), `call_service_review`,
+`call_missing_recording`, `call_proposals_pending`, `call_note` y `svc_capacity_full`.
+
 ## Migraciones
 
 | Migración | Qué hace | Cuándo se aplica |

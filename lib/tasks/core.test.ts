@@ -18,7 +18,7 @@ const T3 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const task = (over: Partial<TaskRow> = {}): TaskRow => ({
   id: T1, workspace_id: WS, title: "Enviar propuesta", description: null, status: "pending", priority: "normal",
   start_date: null, due_date: "2026-10-20", due_time: null, duration_minutes: null, completed_at: null, owner_id: ME, follower_ids: [], project: null, project_key: null,
-  blocked_by: [], contact_id: null, conversation_id: null, source: "manual", source_ref: null, position: 0, created_by: ME,
+  blocked_by: [], contact_id: null, conversation_id: null, source: "manual", source_ref: null, service_id: null, call_id: null, checklist: [], position: 0, created_by: ME,
   created_at: "2026-10-01T10:00:00.000000+00:00", updated_at: "2026-10-01T10:00:00.123456+00:00", deleted_at: null, ...over,
 });
 

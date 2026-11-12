@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyCallFilters, callFiltersToParams, callTypeLabel, countActiveCallFilters, EMPTY_FILTERS, estimateBatch, groupRows,
   isNonSaleRow, isSaleCallType, mergeColumns, parseCallFilters, parseSavedViews, sortRows, typeDeciderText, weekStartKey, type CallFilters,
-  callScopeLabel,
+  callScopeLabel, callListColumns, serviceCellLabel,
 } from "./list";
 
 const CLOSER = "11111111-1111-4111-8111-111111111111";
@@ -174,5 +174,51 @@ describe("callScopeLabel", () => {
     expect(callScopeLabel("own", "owner")).toBe("Todas las del equipo");
     expect(callScopeLabel("areas", "member")).toContain("tus áreas");
     expect(callScopeLabel("own", "member")).toBe("Las tuyas y las de tus contactos");
+  });
+});
+
+describe("Servicio en Grabaciones (Servicios A4, F136 y F141)", () => {
+  const AREA = "22222222-2222-4222-8222-222222222222";
+  const CLASE = "33333333-3333-4333-8333-333333333333";
+  const SVC = "44444444-4444-4444-8444-444444444444";
+
+  it("servicio=review trae solo las «Por revisar»", () => {
+    const { q, calls } = recorder();
+    applyCallFilters(q, { ...EMPTY_FILTERS, servicio: "review" }, { timeZone: "UTC" });
+    expect(calls).toContainEqual(["eq", "service_link", "review"]);
+  });
+  it("servicio=sin trae las del área Servicio sin servicio y que no son Clase", () => {
+    const { q, calls } = recorder();
+    applyCallFilters(q, { ...EMPTY_FILTERS, servicio: "sin" }, { timeZone: "UTC", serviceAreaId: AREA, classTypeId: CLASE });
+    expect(calls).toContainEqual(["eq", "area_id", AREA]);
+    expect(calls).toContainEqual(["is", "service_id", null]);
+    expect(calls).toContainEqual(["or", `category_id.is.null,category_id.neq.${CLASE}`]);
+  });
+  it("un servicio puntual filtra por service_id", () => {
+    const { q, calls } = recorder();
+    applyCallFilters(q, { ...EMPTY_FILTERS, servicio: SVC }, { timeZone: "UTC" });
+    expect(calls).toContainEqual(["eq", "service_id", SVC]);
+  });
+  it("«Cargadas a mano» mira summary.manual", () => {
+    const { q, calls } = recorder();
+    applyCallFilters(q, { ...EMPTY_FILTERS, manual: true }, { timeZone: "UTC" });
+    expect(calls).toContainEqual(["not", "summary->manual", "is", null]);
+  });
+  it("con el módulo apagado el filtro de servicio se ignora; prendido acepta review, sin o un uuid", () => {
+    expect(parseCallFilters({ servicio: "review" }, ctx).servicio).toBe("");
+    expect(parseCallFilters({ servicio: "review" }, { ...ctx, servicesOn: true }).servicio).toBe("review");
+    expect(parseCallFilters({ servicio: SVC }, { ...ctx, servicesOn: true }).servicio).toBe(SVC);
+    expect(parseCallFilters({ servicio: "cualquiera" }, { ...ctx, servicesOn: true }).servicio).toBe("");
+    expect(callFiltersToParams({ ...EMPTY_FILTERS, servicio: "review", manual: true }).toString()).toBe("servicio=review&manual=1");
+  });
+  it("callListColumns: sin el módulo no hay columna Servicio; con el módulo, se puede ocultar", () => {
+    expect(callListColumns({ servicesOn: false }).map((c) => c.key)).not.toContain("servicio");
+    const on = callListColumns({ servicesOn: true });
+    expect(on.find((c) => c.key === "servicio")).toEqual({ key: "servicio", label: "Servicio", hideable: true });
+  });
+  it("la celda dice «Por revisar» o el servicio", () => {
+    expect(serviceCellLabel("review", null)).toEqual({ text: "Por revisar", review: true });
+    expect(serviceCellLabel("auto", "Mentoría · Plan anual")).toEqual({ text: "Mentoría · Plan anual", review: false });
+    expect(serviceCellLabel(null, null)).toEqual({ text: "", review: false });
   });
 });

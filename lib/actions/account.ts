@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient as createPlainClient } from "@supabase/supabase-js";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isOwnAvatarPath, userAvatarPath, userAvatarPublicUrl, USER_AVATARS_BUCKET } from "@/lib/account/avatar";
-import { effectiveWhatsApp, parseAvatarDataUrl, parseContactInput, parseDisplayName, parsePasswordChange } from "@/lib/account/validation";
+import { effectiveWhatsApp, parseAvatarDataUrl, parseContactInput, parseDisplayName, parsePasswordChange, parseSlackUserId } from "@/lib/account/validation";
 import { getWorkspace } from "@/lib/workspace";
 import { checkLimit } from "@/lib/antispam/rate-limit";
 import { sendTeamWhatsApp } from "@/lib/notifications/team-whatsapp";
@@ -89,6 +89,25 @@ export async function updateMyContact(input: {
 
   revalidatePath("/dashboard/cuenta");
   return { ok: true, phone: parsed.value.phone, whatsappPhone: parsed.value.whatsapp_phone };
+}
+
+/** El ID de Slack de la persona (Servicios A4, F133). Vacío lo borra. Sale de la sesión, nunca del navegador. */
+export async function updateMySlackId(input: { slackUserId: string }): Promise<{ ok: true; slackUserId: string | null } | { ok: false; error: string }> {
+  const parsed = parseSlackUserId(input.slackUserId);
+  if (!parsed.ok) return parsed;
+
+  const ctx = await sessionUser();
+  if (!ctx) return { ok: false, error: NO_SESSION };
+
+  const { error } = await ctx.supabase
+    .from("user_profiles")
+    .upsert({ user_id: ctx.user.id, slack_user_id: parsed.value }, { onConflict: "user_id" });
+  if (error) {
+    console.error("[cuenta] no pude guardar el ID de Slack:", error.message);
+    return { ok: false, error: "No pude guardar tu ID de Slack. Probá de nuevo." };
+  }
+  revalidatePath("/dashboard/cuenta");
+  return { ok: true, slackUserId: parsed.value };
 }
 
 /** Sube una foto nueva (data URL ya recortada por la pantalla, validada por sus bytes). */

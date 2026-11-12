@@ -16,11 +16,11 @@ import { ProductCardsView } from "@/components/services/products/product-cards-v
  * permiso entra, y un admin al que se lo sacaron no. La RLS lo repite.
  */
 export default async function ProductosSettingsPage() {
-  const { workspace, supabase } = await requirePermission("products.manage");
+  const { workspace, supabase, can } = await requirePermission("products.manage");
   // @plantilla-desde(servicios)
   // Con el modulo de Servicios prendido: tarjetas por producto (F114). Apagado, la lista de siempre.
   if (isModuleEnabled(workspace as { services_enabled?: boolean | null })) {
-    return <ProductCardsView products={await loadServiceProducts(supabase, workspace.id)} />;
+    return <ProductCardsView products={await loadServiceProducts(supabase, workspace.id)} canConfigure={can("services.configure")} />;
   }
   // @plantilla-hasta(servicios)
   const rows = await loadProductList(supabase, workspace.id);

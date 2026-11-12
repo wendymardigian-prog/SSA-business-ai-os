@@ -30,6 +30,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "call_analyze", // @plantilla-quitar(llamadas)
       "call_classify", // @plantilla-quitar(llamadas)
       "call_index_knowledge", // @plantilla-quitar(llamadas)
+      // Servicios A4 (F139): el barrido horario de reuniones de servicio sin grabación. // @plantilla-quitar(servicios)
+      "call_missing_recording_sweep", // @plantilla-quitar(servicios)
       "call_summary", // @plantilla-quitar(llamadas)
       // Atribución orgánica (Extra I, AO1): el vínculo retroactivo de comentarios.
       "comment_backfill",

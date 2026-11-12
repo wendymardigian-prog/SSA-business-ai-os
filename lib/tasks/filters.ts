@@ -40,6 +40,9 @@ export function matchesFilters(task: TaskRow, state: TasksViewState, ctx: Filter
 
   if (state.priority.length > 0 && !state.priority.includes(task.priority)) return false;
   if (state.source.length > 0 && !state.source.includes(task.source)) return false;
+  // Servicios A4 (F152): «Con servicio» y «Con reunión» (si se eligen las dos, tiene que tener las dos).
+  if (state.linked.includes("service") && !task.service_id) return false;
+  if (state.linked.includes("call") && !task.call_id) return false;
   if (state.overdue && !isOverdue(task, ctx.today, ctx.zones)) return false;
   if (state.blocked && !isBlocked(task, ctx.byId)) return false;
 

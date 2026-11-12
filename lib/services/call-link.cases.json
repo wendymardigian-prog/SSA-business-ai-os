@@ -1,0 +1,635 @@
+{
+  "_comment": "Casos de callLinkPlan (Servicios A4, F135; decisión 481). Corren contra la gemela TS (lib/services/call-link.ts) y contra app_servicio.svc_call_link_plan (verify-services --bloque a4). Fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "lo manual no se toca",
+      "input": {
+        "current_link": "manual",
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "keep"
+      }
+    },
+    {
+      "name": "sin contacto: sin servicio y sin intento",
+      "input": {
+        "current_link": null,
+        "has_contact": false,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": null,
+        "link": null
+      }
+    },
+    {
+      "name": "otra área (Ventas): no se vincula sola",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "ventas",
+        "type_key": "ventas.cierre",
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": null,
+        "link": null
+      }
+    },
+    {
+      "name": "tipo Clase: nunca se vincula sola",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": "servicio.clase",
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": null,
+        "link": null
+      }
+    },
+    {
+      "name": "sin área pero con un tipo de Servicio (no Clase): cuenta como Servicio",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": null,
+        "type_key": "servicio.seguimiento",
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": "11111111-1111-4111-8111-111111111111",
+        "link": "auto"
+      }
+    },
+    {
+      "name": "sin área ni tipo: no se vincula",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": null,
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": null,
+        "link": null
+      }
+    },
+    {
+      "name": "un solo servicio activo que cubre la fecha: auto",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": "11111111-1111-4111-8111-111111111111",
+        "link": "auto"
+      }
+    },
+    {
+      "name": "la agenda trae el paso de un servicio de este contacto: booking (gana aunque haya otros)",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": "22222222-2222-4222-8222-222222222222",
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          },
+          {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": "22222222-2222-4222-8222-222222222222",
+        "link": "booking"
+      }
+    },
+    {
+      "name": "dos servicios activos sin desempate: por revisar",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          },
+          {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": null,
+        "link": "review"
+      }
+    },
+    {
+      "name": "dos servicios: gana el único con un paso Reunión del tipo de la agenda",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": [
+              "ffffffff-ffff-4fff-8fff-ffffffffffff"
+            ]
+          },
+          {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": [
+              "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": "22222222-2222-4222-8222-222222222222",
+        "link": "auto"
+      }
+    },
+    {
+      "name": "dos servicios con el mismo tipo de reunión: por revisar",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": [
+              "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+            ]
+          },
+          {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": [
+              "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": null,
+        "link": "review"
+      }
+    },
+    {
+      "name": "dos servicios y la reunión sin agenda: por revisar",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": [
+              "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+            ]
+          },
+          {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": null,
+        "link": "review"
+      }
+    },
+    {
+      "name": "un servicio cancelado no cuenta",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "cancelled",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          },
+          {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": "22222222-2222-4222-8222-222222222222",
+        "link": "auto"
+      }
+    },
+    {
+      "name": "ninguno cubre la fecha (terminó antes): sin servicio",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2027-03-01",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": null,
+        "link": null
+      }
+    },
+    {
+      "name": "empieza después de la reunión: no cuenta",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-10-20",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": null,
+        "link": null
+      }
+    },
+    {
+      "name": "sin fecha de fin: cubre",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2028-01-01",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": null,
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": "11111111-1111-4111-8111-111111111111",
+        "link": "auto"
+      }
+    },
+    {
+      "name": "pendiente de confirmar (sin fechas): cuenta",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "pending_confirmation",
+            "starts_on": null,
+            "ends_on": null,
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": "11111111-1111-4111-8111-111111111111",
+        "link": "auto"
+      }
+    },
+    {
+      "name": "el último día del período cubre",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2027-01-31",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": "11111111-1111-4111-8111-111111111111",
+        "link": "auto"
+      }
+    },
+    {
+      "name": "un completado que cubre la fecha cuenta",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "completed",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": "11111111-1111-4111-8111-111111111111",
+        "link": "auto"
+      }
+    },
+    {
+      "name": "por revisar se puede recalcular (no es manual)",
+      "input": {
+        "current_link": "review",
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": "11111111-1111-4111-8111-111111111111",
+        "link": "auto"
+      }
+    },
+    {
+      "name": "tres servicios, dos con el tipo: por revisar",
+      "input": {
+        "current_link": null,
+        "has_contact": true,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        "candidates": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": [
+              "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+            ]
+          },
+          {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": [
+              "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+            ]
+          },
+          {
+            "id": "33333333-3333-4333-8333-333333333333",
+            "status": "active",
+            "starts_on": "2026-11-01",
+            "ends_on": "2027-01-31",
+            "booking_event_type_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "action": "set",
+        "service_id": null,
+        "link": "review"
+      }
+    },
+    {
+      "name": "ninguno candidato y sin contacto pero manual: se respeta",
+      "input": {
+        "current_link": "manual",
+        "has_contact": false,
+        "area_key": "servicio",
+        "type_key": null,
+        "booking_item_service_id": null,
+        "recorded_on": "2026-11-10",
+        "event_type_id": null,
+        "candidates": []
+      },
+      "expected": {
+        "action": "keep"
+      }
+    }
+  ]
+}

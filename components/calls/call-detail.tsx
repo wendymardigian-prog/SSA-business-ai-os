@@ -1,4 +1,10 @@
 "use client";
+import { CallServiceChip, ManualSummaryCard, type CallServiceInfo } from "@/components/calls/call-service"; // @plantilla-quitar(servicios)
+import type { ManualSummary } from "@/lib/calls/manual-summary";
+import { CallProposals } from "@/components/calls/call-proposals"; // @plantilla-quitar(servicios)
+import type { Proposal } from "@/lib/calls/proposals";
+import { CommentThread } from "@/components/team-comments/comment-thread";
+import { EMPTY_ACTIVITY, type ActivityEntry } from "@/lib/calls/activity";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AlertTriangle, ExternalLink, Info, Loader2, Tag, Video } from "lucide-react";
@@ -55,6 +61,21 @@ export interface CallDetailData extends TabsData {
   suggestions: CategorySuggestions;
   /** Por que el boton Analizar no se puede usar (null = se puede). */
   analyzeDisabledReason: string | null;
+  /** Servicios A4 (F136): el servicio de la reunión, con el módulo prendido. */
+  service?: CallServiceInfo | null; // @plantilla-quitar(servicios)
+  /** Servicios A4 (F141): lo cargado a mano (o null), y si se muestra la tarjeta. */
+  manual?: ManualSummary | null;
+  showManual?: boolean;
+  /** F155: puede crear tareas desde los próximos pasos (`tasks.edit`). */
+  canCreateTasks?: boolean;
+  /** Servicios A4 (F143): las propuestas del analizador y los nombres de los pasos pendientes. */
+  proposals?: Proposal[];
+  pendingStepNames?: Record<string, string>;
+  /** F145: lo que pasó (vínculo, propuestas, carga a mano), las menciones sin leer y la pestaña de entrada. */
+  activity?: ActivityEntry[];
+  unreadMentions?: number;
+  permissions?: string[];
+  initialTab?: "actividad" | null;
 }
 
 const BANNER_TONE = {
@@ -80,7 +101,8 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
   const router = useRouter();
   const timeZone = useViewerTimezone();
   const isDesktop = useIsDesktop();
-  const [tab, setTab] = useState<DetailTab | "transcripcion">("resumen");
+  const [tab, setTab] = useState<DetailTab | "transcripcion" | "actividad">(data.initialTab ?? "resumen");
+  const [unread, setUnread] = useState(data.unreadMentions ?? 0);
   const jumpRef = useRef<((timestamp: string) => void) | null>(null);
   const a = readAnalysis(data.analysis);
   const quotes = a.quotes;
@@ -95,11 +117,13 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
 
   // El formato general no tiene lead, resultado de venta ni temperatura.
   const general = a.shape === "general";
-  const tabs: Array<{ value: DetailTab | "transcripcion"; label: string }> = [
+  const tabs: Array<{ value: DetailTab | "transcripcion" | "actividad"; label: string }> = [
     { value: "resumen", label: "Resumen" },
     { value: "closer", label: general ? "Quien atendió" : "Closer" },
     ...(general ? [] : [{ value: "lead" as const, label: "Lead" }]),
     { value: "tecnico", label: "Técnico" },
+    // F145: la Actividad (comentarios y lo que pasó), con el número de menciones sin leer.
+    { value: "actividad" as const, label: unread > 0 ? `Actividad (${unread})` : "Actividad" },
     ...(isDesktop ? [] : [{ value: "transcripcion" as const, label: "Transcripción" }]),
   ];
   const activeTab = (isDesktop && tab === "transcripcion") || (general && tab === "lead") ? "resumen" : tab;
@@ -152,6 +176,7 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
                 {canRegenerate && <RegenerateButton callId={data.callId} hasEdits={data.status === "analyzed" && JSON.stringify(data.analysis) !== JSON.stringify(data.analysisAi)} />}
                 <ContactLink callId={data.callId} contact={data.contact} canEdit={canEdit} />
                 <BookingLink callId={data.callId} booking={data.booking} canEdit={canEdit} />
+                {data.service && <CallServiceChip callId={data.callId} info={data.service} />} {/* @plantilla-quitar(servicios) */}
                 {data.source === "fathom" && (data.shareUrl || data.fathomUrl) && (
                   <a href={(data.shareUrl || data.fathomUrl) as string} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs hover:bg-muted">
                     <Video className="h-3 w-3" aria-hidden /> Ver en Fathom <ExternalLink className="h-3 w-3" aria-hidden />
@@ -179,6 +204,11 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
                 </div>
               </div>
             )}
+
+            {data.showManual && <ManualSummaryCard callId={data.callId} manual={data.manual ?? null} canEdit={canEdit} canCreateTask={canEdit && (data.canCreateTasks ?? false)} />} {/* @plantilla-quitar(servicios) */}
+            {data.proposals && data.proposals.length > 0 && (
+              <CallProposals callId={data.callId} proposals={data.proposals} canEdit={canEdit} permissions={data.permissions ?? []} pendingStepNames={data.pendingStepNames ?? {}} />
+            )} {/* @plantilla-quitar(servicios) */}
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {!general && (
@@ -211,6 +241,19 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
               {activeTab === "lead" && <LeadTab data={{ ...data, emptyMessage: view.emptyMessage }} />}
               {activeTab === "tecnico" && <TechTab data={data} />}
               {activeTab === "transcripcion" && <CallTranscript lines={data.lines} quotes={quotes} jumpRef={jumpRef} />}
+              {activeTab === "actividad" && (
+                <CommentThread
+                  entityType="call"
+                  entityId={data.callId}
+                  emptyText={EMPTY_ACTIVITY}
+                  onMentionsRead={() => setUnread(0)}
+                  extra={(data.activity ?? []).map((e) => ({
+                    id: e.id,
+                    at: e.at,
+                    node: <p className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">{e.text}</p>,
+                  }))}
+                />
+              )}
             </Tabs>
           </div>
 

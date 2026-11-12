@@ -32,7 +32,7 @@ async function safely<T>(label: string, read: () => Promise<T>, fallback: T): Pr
 
 /** Con el cliente de servicio: son lecturas de configuracion del negocio, ya autorizadas por quien llama. */
 export async function loadAutomationCapabilities(service: Db, workspaceId: string): Promise<Capabilities> {
-  const [email, ai, channels, agents, metaCapi] = await Promise.all([
+  const [email, ai, channels, agents, metaCapi, slack] = await Promise.all([
     safely("el email", () => isEmailConfigured(service, workspaceId), ALL_CONNECTED.email),
     safely("las IAs", async () => (await listConnectedAiProviders(workspaceId, service)).length > 0, ALL_CONNECTED.ai),
     safely(
@@ -77,7 +77,17 @@ export async function loadAutomationCapabilities(service: Db, workspaceId: strin
       },
       ALL_CONNECTED.meta_capi,
     ),
+    // Slack (Servicios A4, F158): la integración activa (el token lo prueba el guardado).
+    safely(
+      "Slack",
+      async () => {
+        const { data, error } = await service.from("integration_configs").select("is_active").eq("workspace_id", workspaceId).eq("type", "slack" as never).eq("provider", "slack").maybeSingle();
+        if (error) throw new Error(error.message);
+        return (data as { is_active?: boolean } | null)?.is_active === true;
+      },
+      ALL_CONNECTED.slack,
+    ),
   ]);
 
-  return { email, whatsapp_channel: channels.whatsapp, ai, agent: agents, channel: channels.any, meta_capi: metaCapi };
+  return { email, whatsapp_channel: channels.whatsapp, ai, agent: agents, channel: channels.any, meta_capi: metaCapi, slack };
 }

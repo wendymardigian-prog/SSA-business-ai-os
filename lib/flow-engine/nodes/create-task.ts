@@ -20,6 +20,8 @@ import { todayInputValue } from "@/lib/dates";
 import { addDays, isDateOnly } from "@/lib/tasks/dates";
 import { createTaskFromAutomation, resolveContactResponsible, resolveSaleResponsible } from "@/lib/tasks/create-from-automation";
 import { TASK_LIMITS, TASK_PRIORITIES, type TaskPriority } from "@/lib/tasks/types";
+import { serviceOwnerOf } from "./service-owner"; // @plantilla-quitar(servicios)
+import { pickServiceOwnerTarget } from "@/lib/services/service-owner-target"; // @plantilla-quitar(servicios)
 
 export interface CreateTaskNodeData {
   title?: string;
@@ -28,8 +30,10 @@ export interface CreateTaskNodeData {
    * `none`: sin responsable. `user`: la persona de `ownerId`. `member`: quien envio el reporte. `seller`: el vendedor de la
    * venta (si no, el setter). `contact_assigned`: la persona asignada al contacto (vendedor, setter o su conversacion).
    */
-  owner?: "none" | "user" | "member" | "seller" | "contact_assigned";
+  owner?: "none" | "user" | "member" | "seller" | "contact_assigned" | "service_owner";
   ownerId?: string;
+  /** Con `service_owner` (Servicios A4, F157): a quién va si el servicio no tiene responsable. Obligatorio al publicar. */
+  ownerFallbackId?: string;
   followerIds?: string[];
   project?: string;
   priority?: TaskPriority;
@@ -113,6 +117,15 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     let ownerId = resolveOwner(data, context.memberUserId);
     if (data.owner === "seller") ownerId = await resolveSaleResponsible(supabase, { workspaceId: context.workspaceId, saleId: saleIdOf(vars) });
     else if (data.owner === "contact_assigned") ownerId = await resolveContactResponsible(supabase, { workspaceId: context.workspaceId, contactId: context.contactId });
+    // @plantilla-desde(servicios)
+    else if (data.owner === "service_owner") {
+      const owner = await serviceOwnerOf(supabase, context.workspaceId, context.contactId, vars);
+      const ids = [owner, data.ownerFallbackId].filter((x): x is string => typeof x === "string" && !!x);
+      const { data: rows } = ids.length ? await supabase.from("workspace_members").select("user_id").eq("workspace_id", context.workspaceId).in("user_id", ids) : { data: [] };
+      const team = new Set((rows ?? []).map((r) => r.user_id));
+      ownerId = pickServiceOwnerTarget(owner, data.ownerFallbackId ?? null, (id) => team.has(id)).userId;
+    }
+    // @plantilla-hasta(servicios)
 
     const key = resolveSourceKey(data.sourceKey, vars);
     if (data.sourceKey?.trim() && !key) {

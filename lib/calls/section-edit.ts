@@ -81,7 +81,7 @@ export interface DerivedColumns {
 export function deriveColumns(analysis: unknown, rubric: ScoringRubric | null, callType: string | null, transcript: string): DerivedColumns {
   const a = isObj(analysis) ? analysis : {};
   // Sin tipo: se analizo con un analizador propio y su rubrica se usa entera.
-  const scores = computeScoresWithRubric(a, rubric, callType ? analyzerCallType(callType) : null);
+  const scores = computeScoresWithRubric(a, rubric, callType ? analyzerCallType(callType) : null, transcript);
   const resultado = isObj(a.resultado) ? a.resultado : {};
   const objecion = isObj(a.objecion) ? a.objecion : {};
   const outcome = str(resultado.categoria);

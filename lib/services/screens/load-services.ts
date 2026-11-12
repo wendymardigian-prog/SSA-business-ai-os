@@ -180,12 +180,12 @@ export async function loadService(supabase: Db, workspaceId: string, serviceId: 
   if (!data) return null;
   const [phases, items] = await Promise.all([
     svcSchema(supabase).from("service_phases").select("id, template_key, name, position, status, duration_days, yellow_day, red_day, started_at, completed_at, challenge, awaiting_start").eq("service_id", serviceId).order("position"),
-    svcSchema(supabase).from("service_items").select("id, phase_id, template_key, kind, name, required, status, due_on, due_at, completed_at, completed_source, task_id, needs_attention, is_recurring_template, parent_item_id, occurrence_index, position").eq("service_id", serviceId).order("position"),
+    svcSchema(supabase).from("service_items").select("id, phase_id, template_key, kind, name, required, status, due_on, due_at, completed_at, completed_source, task_id, needs_attention, is_recurring_template, parent_item_id, occurrence_index, position, ref, evidence").eq("service_id", serviceId).order("position"),
   ]);
   return {
     service: data as ServiceRow & Record<string, unknown>,
     phases: (phases.data ?? []) as Array<{ id: string; template_key: string; name: string; position: number; status: string; duration_days: number | null; yellow_day: number | null; red_day: number | null; started_at: string | null; completed_at: string | null; challenge: unknown; awaiting_start: boolean }>,
-    items: (items.data ?? []) as Array<{ id: string; phase_id: string; template_key: string; kind: string; name: string; required: boolean; status: string; due_on: string | null; due_at: string | null; completed_at: string | null; completed_source: string | null; task_id: string | null; needs_attention: boolean; is_recurring_template: boolean; parent_item_id: string | null; occurrence_index: number | null; position: number }>,
+    items: (items.data ?? []) as Array<{ id: string; phase_id: string; template_key: string; kind: string; name: string; required: boolean; status: string; due_on: string | null; due_at: string | null; completed_at: string | null; completed_source: string | null; task_id: string | null; needs_attention: boolean; is_recurring_template: boolean; parent_item_id: string | null; occurrence_index: number | null; position: number; ref: Record<string, unknown> | null; evidence: unknown }>,
   };
 }
 

@@ -6,6 +6,7 @@ import {
   parseDisplayName,
   parseNewPassword,
   parsePasswordChange,
+  parseSlackUserId,
 } from "./validation";
 import { isOwnAvatarPath, userAvatarPath } from "./avatar";
 
@@ -104,5 +105,18 @@ describe("rutas de la foto", () => {
     expect(isOwnAvatarPath("u1", "u2/x.jpg")).toBe(false);
     expect(isOwnAvatarPath("u1", "u1/../u2/x.jpg")).toBe(false);
     expect(isOwnAvatarPath("u1", null)).toBe(false);
+  });
+});
+
+describe("parseSlackUserId (Servicios A4, F133)", () => {
+  it("acepta U… o W… y lo pasa a mayúsculas; vacío lo borra", () => {
+    expect(parseSlackUserId(" u012ab3cd ")).toEqual({ ok: true, value: "U012AB3CD" });
+    expect(parseSlackUserId("W99")).toEqual({ ok: true, value: "W99" });
+    expect(parseSlackUserId("")).toEqual({ ok: true, value: null });
+  });
+  it("rechaza lo que no cumple el formato", () => {
+    expect(parseSlackUserId("C012AB3CD").ok).toBe(false);
+    expect(parseSlackUserId("juan").ok).toBe(false);
+    expect(parseSlackUserId("U-12").ok).toBe(false);
   });
 });

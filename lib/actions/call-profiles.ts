@@ -35,6 +35,8 @@ export interface SaveCallProfileInput {
   autoKnowledge: boolean;
   /** El texto del editor. Si no cambio, no se crea una version. */
   instructions?: string;
+  /** Servicios A4 (F142, F144): «Proponer acciones» y «Proponer siempre un mensaje». Sin esto, no se toca. */
+  proposals?: { enabled: boolean; client_message: boolean };
 }
 
 function refresh(): void {
@@ -80,6 +82,10 @@ export async function saveCallProfile(input: SaveCallProfileInput): Promise<Call
     auto_summary: input.autoSummary === true,
     auto_memory: input.autoMemory === true,
     auto_knowledge: input.autoKnowledge === true,
+    // Solo el formato general propone; el mensaje necesita las propuestas prendidas.
+    ...(input.proposals
+      ? { proposals: { enabled: input.shape === "general" && input.proposals.enabled === true, client_message: input.shape === "general" && input.proposals.enabled === true && input.proposals.client_message === true } as unknown as Json }
+      : {}),
     updated_by: ctx.user.id,
     updated_at: new Date().toISOString(),
   };

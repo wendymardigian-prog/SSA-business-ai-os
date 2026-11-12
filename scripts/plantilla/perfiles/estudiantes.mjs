@@ -31,6 +31,11 @@ export const MODULES = {
       "lib/actions/call-profiles.test.ts",
       "lib/actions/call-proposals.ts",
       "lib/actions/call-proposals.test.ts",
+      // Servicios A4 (F135 a F145): reuniones con servicio, propuestas, el contador del menú y la grabación que falta.
+      "lib/actions/call-action-proposals.ts",
+      "lib/actions/calls-badge.ts",
+      "lib/actions/calls-service.ts",
+      "lib/jobs/handlers/call-missing-recording.ts",
       "lib/actions/call-task-settings.ts",
       "lib/actions/call-task-settings.test.ts",
       "lib/actions/calls-edit.ts",
@@ -290,6 +295,11 @@ export const MODULES = {
       "components/flow-builder/panels/service-key-select.tsx",
       "components/flow-builder/panels/use-service-picker.ts",
       "lib/actions/service-picker.ts",
+      // Servicios A4: topes de cartera, evidencia del paso, el servicio dentro de la tarea y «el responsable del servicio».
+      "lib/actions/service-capacity.ts",
+      "lib/actions/service-evidence.ts",
+      "lib/actions/task-service.ts",
+      "lib/flow-engine/nodes/service-owner.ts",
       "lib/ui/topbar-placement.test.ts",
       "lib/notifications/service-types.test.ts",
       "scripts/verify-services.mjs",

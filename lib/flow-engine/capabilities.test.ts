@@ -26,7 +26,7 @@ beforeEach(() => {
 
 describe("que conexiones tiene el negocio", () => {
   it("un negocio vacio no tiene nada conectado", async () => {
-    expect(await loadAutomationCapabilities(world({ email: false }), WS)).toEqual({ email: false, whatsapp_channel: false, ai: false, agent: false, channel: false, meta_capi: false });
+    expect(await loadAutomationCapabilities(world({ email: false }), WS)).toEqual({ email: false, whatsapp_channel: false, ai: false, agent: false, channel: false, meta_capi: false, slack: false });
   });
 
   it("email: Resend activo", async () => {

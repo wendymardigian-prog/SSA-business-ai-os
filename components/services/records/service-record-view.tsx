@@ -4,7 +4,7 @@
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Loader2, MoreHorizontal, Square } from "lucide-react";
+import { AlertTriangle, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Loader2, Lock, MoreHorizontal, Paperclip, Square } from "lucide-react";
 import { completeServiceItem, confirmService, resumeService, setServiceDates, setServiceOwner, startServiceChallenge, uncompleteServiceItem } from "@/lib/actions/services";
 import { serviceActions, type ServiceActionKey } from "@/lib/services/screens/service";
 import { LIGHT_LABELS, STATUS_LABELS, type Light, type ServiceStatus } from "@/lib/services/screens/list";
@@ -22,6 +22,9 @@ import { LightDot } from "@/components/services/clients/services-list-view";
 import { cn } from "@/lib/utils";
 import { rememberRecordOpener } from "./record-modal";
 import { ServiceActionDialog } from "./service-action-dialog";
+import { SidePanel } from "@/components/tasks/overlay";
+import { EvidenceBox } from "@/components/services/evidence-box";
+import type { EvidenceEntry, EvidenceRule } from "@/lib/services/evidence";
 
 export interface ServiceRecordStep {
   id: string;
@@ -34,10 +37,20 @@ export interface ServiceRecordStep {
   taskId: string | null;
   needsAttention: boolean;
   occurrence: number | null;
+  /** A4 (F146): «Desde el 13/11» o «Después de: …», y el texto de por qué no se puede tildar. */
+  lock: { label: string; message: string } | null;
+  /** A4 (F147). */
+  evidenceRule: EvidenceRule | null;
+  evidence: EvidenceEntry[];
+  evidenceMissing: boolean;
 }
 
 export interface ServiceRecordData {
   id: string;
+  /** Quien mira (A4: quitar la evidencia propia). */
+  viewerId: string | null;
+  /** A4 (F151): «Supera su tope (N de M)» por persona, para asignar a mano (no frena). */
+  capacityNotes: Record<string, string>;
   contactId: string;
   contactName: string;
   productName: string;
@@ -211,6 +224,7 @@ export function ServiceRecordHeader({ data, today, members, permissions }: { dat
                   {members.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name}
+                      {m.id !== data.ownerId && data.capacityNotes[m.id] ? ` · ${data.capacityNotes[m.id]}` : ""}
                     </option>
                   ))}
                 </select>
@@ -350,6 +364,7 @@ export function ServiceRecordView({
   accesses,
   certificate,
   assistantCard,
+  meetings,
 }: {
   data: ServiceRecordData;
   tab: ServiceRecordTab;
@@ -360,6 +375,8 @@ export function ServiceRecordView({
   accesses: ReactNode;
   certificate: ReactNode;
   assistantCard: ReactNode;
+  /** Servicios A4 (F137): el bloque Reuniones. */
+  meetings?: ReactNode;
 }) {
   const router = useRouter();
   const can = (k: string) => permissions.includes(k);
@@ -495,6 +512,8 @@ export function ServiceRecordView({
         {data.hasPortal && <ClassroomBlock classroom={data.classroom} />}
 
         {certificate}
+
+        {meetings}
 
         {data.hasPortal && accesses && (
           <Collapsible id="record-accesos" title="Accesos al portal" hint="Qué tiene abierto y hasta cuándo" open={openAccesses} onToggle={setOpenAccesses}>
@@ -706,6 +725,8 @@ function JourneyColumn({
   const current = data.phases.find((p) => p.status === "in_progress")?.id ?? null;
   const [open, setOpen] = useState<Set<string>>(new Set(current ? [current] : []));
   const [changing, setChanging] = useState(false);
+  const [panel, setPanel] = useState<string | null>(null);
+  const panelItem = panel ? data.phases.flatMap((p) => p.items).find((i) => i.id === panel) ?? null : null;
   if (data.phases.length === 0) return <p className="text-sm text-muted-foreground">Esta variante no tenía camino cuando se creó el servicio.</p>;
   return (
     <div className="space-y-2">
@@ -763,14 +784,22 @@ function JourneyColumn({
                       return (
                         <li key={it.id} className="flex items-center gap-2 text-sm">
                           <span className="min-w-0 flex-1">
-                            <span className={cn("block truncate", isDone && "text-muted-foreground line-through")}>
+                            <button type="button" onClick={() => setPanel(it.id)} className={cn("block max-w-full truncate text-left hover:underline", isDone && "text-muted-foreground line-through")}>
+                              {it.lock && <Lock className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-muted-foreground" aria-label="Bloqueado" />}
                               {it.name}
                               {it.occurrence ? ` · ${it.occurrence}` : ""}
                               {!it.required && <span className="ml-1 text-xs text-muted-foreground">(opcional)</span>}
-                            </span>
+                            </button>
                             <span className={cn("block text-xs", late ? "text-bad" : "text-muted-foreground")}>
                               {isDone ? "Completado" : late ? `Vencido · ${fmtShort(it.dueOn)}` : it.dueOn ? `Vence ${fmtShort(it.dueOn)}` : "Sin plazo"}
                               {it.needsAttention && <span className="ml-1 text-warn">· Requiere atención</span>}
+                              {it.lock && <span className="ml-1">· {it.lock.label}</span>}
+                              {it.evidence.length > 0 && (
+                                <span className="ml-1 inline-flex items-center gap-0.5">
+                                  · <Paperclip className="h-3 w-3" aria-hidden /> {it.evidence.length}
+                                </span>
+                              )}
+                              {it.evidenceMissing && <span className="ml-1 text-warn">· Falta la evidencia</span>}
                               {it.taskId && (
                                 <>
                                   {" · "}
@@ -783,8 +812,13 @@ function JourneyColumn({
                           </span>
                           <button
                             type="button"
-                            disabled={!canToggle || pending}
-                            onClick={() => run(() => (isDone ? uncompleteServiceItem(it.id, data.id) : completeServiceItem(it.id, data.id)))}
+                            disabled={!canToggle || pending || (!isDone && it.lock !== null)}
+                            title={!isDone && it.lock ? it.lock.message : undefined}
+                            onClick={() => {
+                              // A4: sin la evidencia que pide, el tilde abre el paso para adjuntarla.
+                              if (!isDone && it.evidenceMissing) return setPanel(it.id);
+                              run(() => (isDone ? uncompleteServiceItem(it.id, data.id) : completeServiceItem(it.id, data.id)));
+                            }}
                             aria-label={isDone ? `Destildar «${it.name}»` : `Tildar «${it.name}»`}
                             aria-pressed={isDone}
                             className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40 md:h-8 md:w-8"
@@ -807,6 +841,44 @@ function JourneyColumn({
         </button>
       )}
       {changing && <ServiceActionDialog action="change_phase" serviceId={data.id} phases={data.phases} onClose={() => setChanging(false)} />}
+      {panelItem && <ItemPanel item={panelItem} viewerId={data.viewerId} can={can} onClose={() => setPanel(null)} />}
     </div>
+  );
+}
+
+/** El paso abierto en la ficha (A4): estado, candado, evidencia y su tarea. */
+function ItemPanel({ item, viewerId, can, onClose }: { item: ServiceRecordStep; viewerId: string | null; can: (k: string) => boolean; onClose: () => void }) {
+  const isDone = item.status === "completed";
+  return (
+    <SidePanel label={`Paso «${item.name}»`} onClose={onClose} header={<p className="truncate text-sm font-semibold">{item.name}</p>}>
+      <div className="space-y-4 p-4 text-sm">
+        <p className="text-muted-foreground">
+          {isDone ? "Completado" : item.dueOn ? `Vence ${fmtShort(item.dueOn)}` : "Sin plazo"}
+          {item.taskId && (
+            <>
+              {" · "}
+              <Link href={`/dashboard/tareas?task=${item.taskId}`} className="text-primary-ink hover:underline">
+                Ver la tarea
+              </Link>
+            </>
+          )}
+        </p>
+        {item.lock && !isDone && (
+          <p className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+            <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            {item.lock.message}
+          </p>
+        )}
+        <EvidenceBox
+          itemId={item.id}
+          entries={item.evidence}
+          rule={item.evidenceRule}
+          itemStatus={item.status}
+          viewerId={viewerId}
+          canAdd={can("services.items")}
+          missing={item.evidenceMissing}
+        />
+      </div>
+    </SidePanel>
   );
 }

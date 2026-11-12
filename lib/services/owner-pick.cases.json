@@ -219,6 +219,285 @@
         "userId": null,
         "usedFallback": true
       }
+    },
+    {
+      "name": "A4 · sin topes cargados elige igual que antes",
+      "input": {
+        "mode": "round_robin",
+        "userId": null,
+        "members": [
+          "u-ana",
+          "u-beto"
+        ],
+        "activeCounts": {
+          "u-ana": 1,
+          "u-beto": 3
+        },
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ],
+        "capacity": {},
+        "loadCounts": {
+          "u-ana": 9
+        }
+      },
+      "expected": {
+        "userId": "u-ana",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "A4 · A en su tope (2 de 2), B sin tope: va a B",
+      "input": {
+        "mode": "round_robin",
+        "userId": null,
+        "members": [
+          "u-ana",
+          "u-beto"
+        ],
+        "activeCounts": {
+          "u-ana": 1,
+          "u-beto": 3
+        },
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ],
+        "capacity": {
+          "u-ana": 2
+        },
+        "loadCounts": {
+          "u-ana": 2,
+          "u-beto": 7
+        }
+      },
+      "expected": {
+        "userId": "u-beto",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "A4 · A por debajo de su tope sigue recibiendo",
+      "input": {
+        "mode": "round_robin",
+        "userId": null,
+        "members": [
+          "u-ana",
+          "u-beto"
+        ],
+        "activeCounts": {
+          "u-ana": 1,
+          "u-beto": 3
+        },
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ],
+        "capacity": {
+          "u-ana": 3
+        },
+        "loadCounts": {
+          "u-ana": 2
+        }
+      },
+      "expected": {
+        "userId": "u-ana",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "A4 · todos en su tope: el respaldo y el aviso",
+      "input": {
+        "mode": "round_robin",
+        "userId": null,
+        "members": [
+          "u-ana",
+          "u-beto"
+        ],
+        "activeCounts": {
+          "u-ana": 1,
+          "u-beto": 3
+        },
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ],
+        "capacity": {
+          "u-ana": 2,
+          "u-beto": 3
+        },
+        "loadCounts": {
+          "u-ana": 2,
+          "u-beto": 3
+        }
+      },
+      "expected": {
+        "userId": "u-resp",
+        "usedFallback": true,
+        "capacityFull": true
+      }
+    },
+    {
+      "name": "A4 · el tope no frena la persona fija",
+      "input": {
+        "mode": "fixed",
+        "userId": "u-ana",
+        "members": [
+          "u-ana",
+          "u-beto"
+        ],
+        "activeCounts": {
+          "u-ana": 1,
+          "u-beto": 3
+        },
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ],
+        "capacity": {
+          "u-ana": 1
+        },
+        "loadCounts": {
+          "u-ana": 5
+        }
+      },
+      "expected": {
+        "userId": "u-ana",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "A4 · condiciones: la persona de la condición llena pasa al reparto",
+      "input": {
+        "mode": "conditions",
+        "userId": null,
+        "members": [
+          "u-ana",
+          "u-beto"
+        ],
+        "activeCounts": {
+          "u-ana": 1,
+          "u-beto": 3
+        },
+        "lastAssignedAt": {},
+        "conditionUserId": "u-ana",
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ],
+        "capacity": {
+          "u-ana": 1
+        },
+        "loadCounts": {
+          "u-ana": 1
+        }
+      },
+      "expected": {
+        "userId": "u-beto",
+        "usedFallback": false
+      }
+    },
+    {
+      "name": "A4 · sin reparto ni respaldo y todos llenos: nadie, con el aviso",
+      "input": {
+        "mode": "round_robin",
+        "userId": null,
+        "members": [
+          "u-ana",
+          "u-beto"
+        ],
+        "activeCounts": {
+          "u-ana": 1,
+          "u-beto": 3
+        },
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": null,
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ],
+        "capacity": {
+          "u-ana": 0,
+          "u-beto": 0
+        },
+        "loadCounts": {}
+      },
+      "expected": {
+        "userId": null,
+        "usedFallback": true,
+        "capacityFull": true
+      }
+    },
+    {
+      "name": "A4 · el respaldo por un miembro que se fue no avisa de topes",
+      "input": {
+        "mode": "round_robin",
+        "userId": null,
+        "members": [
+          "u-ido"
+        ],
+        "activeCounts": {
+          "u-ana": 1,
+          "u-beto": 3
+        },
+        "lastAssignedAt": {},
+        "conditionUserId": null,
+        "conditionMembers": null,
+        "previousOwner": null,
+        "fallback": "u-resp",
+        "activeMembers": [
+          "u-ana",
+          "u-beto",
+          "u-resp"
+        ],
+        "capacity": {
+          "u-ana": 1
+        },
+        "loadCounts": {}
+      },
+      "expected": {
+        "userId": "u-resp",
+        "usedFallback": true
+      }
     }
   ]
 }

@@ -11,6 +11,7 @@ import { BarChart3, Flag, CalendarPlus, CirclePause, Award,
   ArrowRightLeft,
   UserCheck,
   Bell,
+  Hash,
   Shuffle,
   Hourglass,
   Cog,
@@ -188,6 +189,7 @@ const actionConfig: Record<
   qualify_lead: { icon: Gauge, label: "Calificar lead", color: "bg-gray-500" },
   enrollSequence: { icon: ListOrdered, label: "Inscribir en secuencia", color: "bg-gray-500" },
   notify_team: { icon: Bell, label: "Avisar en la campana", color: "bg-gray-500" },
+  send_slack: { icon: Hash, label: "Enviar a Slack", color: "bg-gray-500" },
   cancel_booking: { icon: CalendarX, label: "Cancelar la reunión", color: "bg-gray-500" },
   set_booking_status: { icon: CalendarCheck, label: "Cambiar estado de la reunión", color: "bg-gray-500" },
   mark_payment_paid: { icon: BadgeDollarSign, label: "Marcar pago como cobrado", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
@@ -209,6 +211,7 @@ const OWNER_LABELS: Record<string, string> = {
   member: "Quien envió el reporte", // @plantilla-quitar(formularios)
   seller: "Vendedor de la venta", // @plantilla-quitar(ventas)
   contact_assigned: "Asignada al contacto",
+  service_owner: "Responsable del servicio", // @plantilla-quitar(servicios)
 };
 
 /** La segunda linea de la tarjeta de «Crear tarea»: quien queda a cargo y la clave de origen.  @plantilla-quitar(tareas) */

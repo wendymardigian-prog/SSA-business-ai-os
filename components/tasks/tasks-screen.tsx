@@ -109,7 +109,7 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
   const layout = useTasksLayout();
   const mine = useMemo(() => summarizeMine(tasks, today, currentUserId, zones), [tasks, today, currentUserId, zones]);
   const limit = visibleLimit(sorted.length, loadedMore);
-  const groups = useMemo(() => groupRows(sorted.slice(0, limit), state.group), [sorted, limit, state.group]);
+  const groups = useMemo(() => groupRows(sorted.slice(0, limit), state.group, today), [sorted, limit, state.group, today]);
 
   const source = useMemo(() => ({ flowNames: new Map(Object.entries(flowNames)) }), [flowNames]);
   const env: CellEnv = useMemo(() => ({ members, memberNames, projects, today, zones, canEdit, source }), [members, memberNames, projects, today, zones, canEdit, source]);

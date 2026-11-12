@@ -941,6 +941,567 @@
         ]
       },
       "expected": []
+    },
+    {
+      "name": "A4 · Reunión «cuando hay grabación» es válida",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_reun01",
+                "kind": "booking",
+                "name": "Quincenal",
+                "ref": {
+                  "event_type_id": "11111111-2222-4333-8444-555555555555",
+                  "complete_on": "recorded"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "A4 · «cuando hay grabación» en una tarea se rechaza",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "team_task",
+                "name": "Tarea",
+                "ref": {
+                  "complete_on": "recorded"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Tarea»: «cuando hay grabación» es solo para pasos Reunión"
+      ]
+    },
+    {
+      "name": "A4 · bloqueo desde el inicio de la fase",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "team_task",
+                "name": "Tarea",
+                "ref": {
+                  "lock": {
+                    "from": "phase_start",
+                    "days": 3
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "A4 · bloqueo con días de más se rechaza",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "team_task",
+                "name": "Tarea",
+                "ref": {
+                  "lock": {
+                    "from": "phase_start",
+                    "days": 400
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Tarea»: el bloqueo no es válido"
+      ]
+    },
+    {
+      "name": "A4 · bloqueo con un ancla desconocida se rechaza",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "team_task",
+                "name": "Tarea",
+                "ref": {
+                  "lock": {
+                    "from": "item_completed",
+                    "days": 3
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Tarea»: el bloqueo no es válido"
+      ]
+    },
+    {
+      "name": "A4 · bloqueo hasta un paso anterior",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_prim01",
+                "kind": "team_task",
+                "name": "Primero"
+              },
+              {
+                "key": "it_segu01",
+                "kind": "team_task",
+                "name": "Segundo",
+                "ref": {
+                  "lock": {
+                    "after_item_key": "it_prim01"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "A4 · bloqueo hasta un paso posterior se rechaza",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_prim01",
+                "kind": "team_task",
+                "name": "Primero",
+                "ref": {
+                  "lock": {
+                    "after_item_key": "it_segu01"
+                  }
+                }
+              },
+              {
+                "key": "it_segu01",
+                "kind": "team_task",
+                "name": "Segundo"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Primero»: un paso solo puede esperar a uno anterior"
+      ]
+    },
+    {
+      "name": "A4 · bloqueo hasta sí mismo se rechaza",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_prim01",
+                "kind": "team_task",
+                "name": "Primero",
+                "ref": {
+                  "lock": {
+                    "after_item_key": "it_prim01"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Primero»: un paso solo puede esperar a uno anterior"
+      ]
+    },
+    {
+      "name": "A4 · evidencia en una tarea",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "team_task",
+                "name": "Tarea",
+                "ref": {
+                  "evidence": {
+                    "required": true,
+                    "kinds": [
+                      "file",
+                      "note"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "A4 · evidencia en una casilla",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_casi01",
+                "kind": "checkbox",
+                "name": "Casilla",
+                "ref": {
+                  "evidence": {
+                    "required": true,
+                    "kinds": [
+                      "link"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "A4 · evidencia sin tipos se rechaza",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "team_task",
+                "name": "Tarea",
+                "ref": {
+                  "evidence": {
+                    "required": true,
+                    "kinds": []
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Tarea»: elegí qué evidencia pide"
+      ]
+    },
+    {
+      "name": "A4 · evidencia con un tipo raro se rechaza",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "team_task",
+                "name": "Tarea",
+                "ref": {
+                  "evidence": {
+                    "required": true,
+                    "kinds": [
+                      "video"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Tarea»: elegí qué evidencia pide"
+      ]
+    },
+    {
+      "name": "A4 · evidencia en un paso de formulario se rechaza (el formulario ya es la evidencia)",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_form01",
+                "kind": "form",
+                "name": "Formulario",
+                "ref": {
+                  "form_id": "11111111-2222-4333-8444-555555555555",
+                  "evidence": {
+                    "required": true,
+                    "kinds": [
+                      "file"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Formulario»: la evidencia es solo para tareas y casillas"
+      ]
+    },
+    {
+      "name": "A4 · checklist en una tarea",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "team_task",
+                "name": "Tarea",
+                "ref": {
+                  "checklist": [
+                    "Uno",
+                    "Dos",
+                    "Tres"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "A4 · checklist en una tarea del cliente",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "student_task",
+                "name": "Tarea",
+                "ref": {
+                  "checklist": [
+                    "Uno"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "A4 · checklist de más de 20 puntos se rechaza",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "team_task",
+                "name": "Tarea",
+                "ref": {
+                  "checklist": [
+                    "P0",
+                    "P1",
+                    "P2",
+                    "P3",
+                    "P4",
+                    "P5",
+                    "P6",
+                    "P7",
+                    "P8",
+                    "P9",
+                    "P10",
+                    "P11",
+                    "P12",
+                    "P13",
+                    "P14",
+                    "P15",
+                    "P16",
+                    "P17",
+                    "P18",
+                    "P19",
+                    "P20"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Tarea»: el checklist tiene hasta 20 puntos de hasta 200 caracteres"
+      ]
+    },
+    {
+      "name": "A4 · checklist con un punto vacío se rechaza",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_tare01",
+                "kind": "team_task",
+                "name": "Tarea",
+                "ref": {
+                  "checklist": [
+                    "Uno",
+                    "  "
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Tarea»: el checklist tiene hasta 20 puntos de hasta 200 caracteres"
+      ]
+    },
+    {
+      "name": "A4 · checklist en una casilla se rechaza",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_casi01",
+                "kind": "checkbox",
+                "name": "Casilla",
+                "ref": {
+                  "checklist": [
+                    "Uno"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Casilla»: el checklist es solo para tareas"
+      ]
+    },
+    {
+      "name": "A4 · bloqueo, evidencia y checklist juntos",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_a4test",
+            "name": "Fase",
+            "items": [
+              {
+                "key": "it_prim01",
+                "kind": "team_task",
+                "name": "Primero"
+              },
+              {
+                "key": "it_segu01",
+                "kind": "team_task",
+                "name": "Segundo",
+                "ref": {
+                  "lock": {
+                    "after_item_key": "it_prim01"
+                  },
+                  "evidence": {
+                    "required": true,
+                    "kinds": [
+                      "file",
+                      "link",
+                      "note"
+                    ]
+                  },
+                  "checklist": [
+                    "Revisar"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
     }
   ]
 }

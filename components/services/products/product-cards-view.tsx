@@ -14,6 +14,7 @@ import { ActionError } from "@/components/contacts/ui";
 import { ContentDialog, DialogField, fieldInput } from "@/components/content/dialog";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { CapacityButton } from "./capacity-panel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -21,13 +22,13 @@ import { cn } from "@/lib/utils";
  * sus variantes, el rango de precios, los servicios activos y cuántas variantes tienen camino, y la tarjeta
  * «Nuevo producto». Con el módulo apagado la página sigue mostrando la lista de siempre.
  */
-export function ProductCardsView({ products }: { products: ServiceProduct[] }) {
+export function ProductCardsView({ products, canConfigure = false }: { products: ServiceProduct[]; canConfigure?: boolean }) {
   const [creating, setCreating] = useState(false);
   const cards = products.map(productCardView);
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Productos" tooltip="Lo que vende el negocio. Cada variante decide si crea un servicio, su camino y su portal." tabs={<SettingsTabs />} />
+      <PageHeader title="Productos" tooltip="Lo que vende el negocio. Cada variante decide si crea un servicio, su camino y su portal." tabs={<SettingsTabs />} more={canConfigure ? <CapacityButton /> : undefined} />
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

@@ -28,11 +28,13 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
       context.noteStep?.({ status: "skipped", reason: "No se pudo saber qué tarea completar." });
       return;
     }
-    await completeTasksFromAutomation(supabase, {
+    const res = await completeTasksFromAutomation(supabase, {
       workspaceId: context.workspaceId,
       sourceRef: key,
       actor: { label: "Automatización", flowId: context.flowId, runId: sessionId, nodeId: node.id },
     });
+    // Servicios A4 (F153): la tarea de un paso bloqueado o sin evidencia no se cierra; el paso lo dice.
+    if (res.ok && res.completed.length === 0 && res.blocked?.length) context.noteStep?.({ status: "skipped", reason: res.blocked[0].reason });
   } catch (error) {
     console.error("[tareas] el nodo «Completar tarea» fallo:", error instanceof Error ? error.message : String(error));
     context.noteStep?.({ status: "failed", reason: error });

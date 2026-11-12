@@ -14,6 +14,19 @@ import { categoryGroups, legacyRuleTargets, type CategoryGroup } from "./catalog
 import type { DefaultInstructions } from "./profile-form";
 import type { CallAnalysisProfile } from "./profiles";
 import { loadCallProfiles } from "./profiles-load";
+import { readProposalsConfig, type ProposalsConfig } from "./proposals";
+
+/** «Proponer acciones» de cada analizador. Tolerante: si la columna no está, ninguno propone. */
+async function loadProfileProposals(service: { from: (t: string) => unknown }, workspaceId: string): Promise<Record<string, ProposalsConfig>> {
+  try {
+    const q = service.from("call_analysis_profiles") as { select: (c: string) => { eq: (k: string, v: string) => { is: (k: string, v: null) => Promise<{ data: unknown; error: unknown }> } } };
+    const { data, error } = await q.select("id, proposals").eq("workspace_id", workspaceId).is("archived_at", null);
+    if (error) return {};
+    return Object.fromEntries(((data ?? []) as Array<{ id: string; proposals: unknown }>).map((r) => [r.id, readProposalsConfig(r.proposals)]));
+  } catch {
+    return {};
+  }
+}
 import { resolveCallTaskSettings, type CallAnalysisSettings, type CallClassificationSettings, type CallTaskKey } from "./task-settings";
 
 type Db = SupabaseClient<Database>;
@@ -37,6 +50,8 @@ export type CallConfigData =
       /** Las areas y los tipos de Ventas: su analizador arranca en el formato de ventas. */
       salesCategoryIds: string[];
       profiles: CallAnalysisProfile[];
+      /** Servicios A4 (F142): «Proponer acciones» por analizador (id → config). Vacío si no se pudo leer. */
+      profileProposals?: Record<string, ProposalsConfig>;
       /** El historial de instrucciones de cada analizador, de la version mas nueva a la mas vieja. */
       profileVersions: Record<string, TaskPromptVersion[]>;
       defaultInstructions: DefaultInstructions;
@@ -106,6 +121,7 @@ export async function loadCallConfig(args: {
     salesCategoryIds,
     profiles,
     profileVersions,
+    profileProposals: await loadProfileProposals(args.service, args.workspaceId),
     defaultInstructions: { sales: salesDefault.text, general: CALL_ANALYSIS_GENERAL_DEFAULT_INSTRUCTIONS },
     categoryProposals: proposals,
     testableCalls: (calls.data ?? []).map((c) => ({ id: c.id, title: c.title, recordedAt: c.recorded_at, closerScore: c.closer_score, categoryId: c.category_id, areaId: c.area_id })),

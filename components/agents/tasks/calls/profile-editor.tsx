@@ -33,6 +33,9 @@ export function ProfileEditor({ data, target, profile, onClose }: { data: Data; 
   const [form, setForm] = useState<ProfileForm>(() => initialProfileForm(profile, activeText(data, profile), defaultShape, data.defaultInstructions));
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
+  // Servicios A4 (F142, F144): nacen apagados.
+  const initialProposals = (profile && "profileProposals" in data ? (data as { profileProposals?: Record<string, { enabled: boolean; client_message: boolean }> }).profileProposals?.[profile.id] : undefined) ?? { enabled: false, client_message: false };
+  const [proposals, setProposals] = useState(initialProposals);
 
   const problems = validateProfileRubric(form.rubric, form.shape);
   const patch = (p: Partial<ProfileForm>) => {
@@ -64,6 +67,7 @@ export function ProfileEditor({ data, target, profile, onClose }: { data: Data; 
         autoMemory: form.autoMemory,
         autoKnowledge: form.autoKnowledge,
         instructions: form.instructions,
+        proposals,
       });
       if (!result.ok) return setMessage({ tone: "error", text: result.error });
       setMessage({ tone: "success", text: `Analizador guardado. La rúbrica está en la versión ${result.rubricVersion}.` });
@@ -179,6 +183,26 @@ export function ProfileEditor({ data, target, profile, onClose }: { data: Data; 
           </div>
         ))}
       </div>
+
+      {form.shape === "general" && (
+        <div className="space-y-2">
+          <h4 className="text-xs font-semibold">Propuestas</h4>
+          <div className="flex items-start gap-3">
+            <Switch checked={proposals.enabled} onChange={(v) => { setMessage(null); setProposals({ enabled: v, client_message: v ? proposals.client_message : false }); }} disabled={readOnly} label="Proponer acciones" />
+            <span>
+              <span className="block text-sm font-medium">Proponer acciones</span>
+              <span className="block text-xs text-muted-foreground">Tareas, completar un paso del servicio y avisos al equipo. Nada se hace solo: una persona aprueba, edita o descarta cada una.</span>
+            </span>
+          </div>
+          <div className="flex items-start gap-3">
+            <Switch checked={proposals.client_message} onChange={(v) => { setMessage(null); setProposals({ ...proposals, client_message: v }); }} disabled={readOnly || !proposals.enabled} label="Proponer siempre un mensaje para el cliente" />
+            <span>
+              <span className="block text-sm font-medium">Proponer siempre un mensaje para el cliente</span>
+              <span className="block text-xs text-muted-foreground">Un WhatsApp con el resumen y los próximos pasos, en el tono de las instrucciones. Sale solo cuando alguien lo aprueba.</span>
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-2">
         <h4 className="text-xs font-semibold">Rúbrica</h4>

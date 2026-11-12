@@ -58,6 +58,7 @@ export function CreateTaskPanel({ data: raw, onChange, availableVariables }: { d
           <option value="member">Quien envió el reporte (flujos de fin de día)</option>
           <option value="seller">Vendedor de la venta (si no hay, el setter)</option>
           <option value="contact_assigned">Persona asignada al contacto</option>
+          <option value="service_owner">El responsable del servicio</option> {/* @plantilla-quitar(servicios) */}
         </select>
         {owner === "user" && (
           <select aria-label="Persona responsable" value={data.ownerId ?? ""} onChange={(e) => set({ ownerId: e.target.value })} className={`${inputClass} mt-2`}>
@@ -67,6 +68,18 @@ export function CreateTaskPanel({ data: raw, onChange, availableVariables }: { d
         )}
         {owner === "seller" && <p className="mt-1.5 text-xs text-muted-foreground">Usa la venta que disparó el flujo (flujos de ventas y pagos). Sin vendedor, va el setter.</p>}
         {owner === "contact_assigned" && <p className="mt-1.5 text-xs text-muted-foreground">Va su vendedor; si no tiene, su setter; si no, quien tiene asignada su conversación más reciente.</p>}
+        {/* @plantilla-desde(servicios) */}
+        {owner === "service_owner" && (
+          <>
+            <p className="mt-1.5 text-xs text-muted-foreground">El del servicio que disparó el flujo o, si no, el activo más reciente del contacto.</p>
+            <label htmlFor="ct-owner-fallback" className={`${labelClass} mt-2`}>Si el servicio no tiene responsable</label>
+            <select id="ct-owner-fallback" value={data.ownerFallbackId ?? ""} onChange={(e) => set({ ownerFallbackId: e.target.value })} className={inputClass}>
+              <option value="">{members === null ? "Cargando…" : "Elegí una persona (obligatorio)"}</option>
+              {(members ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </>
+        )}
+        {/* @plantilla-hasta(servicios) */}
         <p className="mt-1.5 text-xs text-muted-foreground">Si no queda nadie, o la persona ya no es del equipo, la tarea queda sin responsable y se avisa a cada Owner y Admin.</p>
       </div>
 

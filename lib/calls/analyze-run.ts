@@ -35,6 +35,9 @@ import { resolveProfile } from "./profiles";
 import { loadCallProfiles } from "./profiles-load";
 import { summaryEligibility } from "./summary";
 import { resolveCallTaskSettings } from "./task-settings";
+import { transcriptText } from "./transcript-text";
+import { loadProposalsSetup } from "./proposals-setup";
+import { mergeOnRegenerate, normalizeProposals, readProposals, type ProposalAction } from "./proposals";
 
 type Db = SupabaseClient<Database>;
 
@@ -127,6 +130,19 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
     return fail(db, callId, "error", model.message ?? "No hay un proveedor de IA conectado", "ai_error");
   }
 
+  // Servicios A4 (F142): si el analizador propone acciones, el contexto del servicio. Si algo no se puede leer, no
+  // propone nada y el análisis sigue como siempre.
+  const { data: extra } = await db.from("calls").select("service_id, proposals").eq("id", callId).maybeSingle();
+  const extraRow = (extra ?? null) as { service_id?: string | null; proposals?: unknown } | null;
+  const proposalsSetup = await loadProposalsSetup(db, {
+    workspaceId,
+    profileId: profile.id,
+    shape: profile.shape,
+    transcriptChars: transcriptText(call.transcript).length,
+    contactId: call.contact_id,
+    serviceId: extraRow?.service_id ?? null,
+  });
+
   const run = await openAiRun(db, {
     workspaceId,
     source: "call_analysis",
@@ -150,6 +166,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
     instructions: instructions.text,
     extraContext: payload.extraContext,
     generate,
+    proposals: proposalsSetup.instructions ? { instructions: proposalsSetup.instructions } : null,
   });
 
   if (!result.ok) {
@@ -178,8 +195,19 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
   const closed = await run.close({ status: "responded" });
 
   const modelLabel = model.provider && model.modelId ? `${model.provider}/${model.modelId}` : "modelo";
+  // Las acciones propuestas no son parte del análisis: van a `calls.proposals` (F142).
+  const { acciones, ...analysisOnly } = result.analysis as unknown as Record<string, unknown> & { acciones?: ProposalAction[] };
+  const fresh = proposalsSetup.instructions
+    ? normalizeProposals(acciones ?? [], {
+        hasContact: Boolean(call.contact_id),
+        pendingItemKeys: proposalsSetup.pendingItemKeys,
+        clientMessage: proposalsSetup.config.client_message,
+        summary: typeof analysisOnly.resumen === "string" ? analysisOnly.resumen : null,
+        nextSteps: Array.isArray(analysisOnly.proximos_pasos) ? (analysisOnly.proximos_pasos as string[]) : null,
+      }, () => randomUUID())
+    : [];
   const stored = buildStoredAnalysis({
-    analysis: result.analysis as unknown as Record<string, unknown>,
+    analysis: analysisOnly,
     scores: result.scores,
     transcriptText: result.transcriptText,
     model: modelLabel,
@@ -228,6 +256,31 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
     })
     .eq("id", callId);
   if (writeError) return fail(db, callId, "error", "No pude guardar el análisis", null);
+
+  // Las propuestas (F142): solo se reemplazan las pendientes. Aparte del análisis: si falla, el análisis queda igual.
+  // Solo se escribe si hay algo que cambiar: sin propuestas nuevas ni pendientes viejas, la reunión queda como siempre.
+  if (extraRow && (fresh.length > 0 || readProposals(extraRow.proposals).some((p) => p.status === "pending"))) {
+    const merged = mergeOnRegenerate(extraRow.proposals, fresh);
+    const { error: propError } = await db.from("calls").update({ proposals: merged as unknown as Json }).eq("id", callId);
+    if (propError) console.error("[propuestas] no pude guardarlas:", propError.message);
+    else if (fresh.length > 0) {
+      // Avisa al responsable del servicio (o a quien grabó, si no hay servicio).
+      const { data: rec } = await db.from("calls").select("recorded_by_user_id").eq("id", callId).maybeSingle();
+      const to = proposalsSetup.serviceOwnerId ?? (rec as { recorded_by_user_id?: string | null } | null)?.recorded_by_user_id ?? null;
+      if (to) {
+        await db.from("notifications").insert({
+          workspace_id: workspaceId,
+          type: "call_proposals_pending",
+          title: fresh.length === 1 ? "Hay una propuesta para aprobar" : `Hay ${fresh.length} propuestas para aprobar`,
+          body: call.title,
+          entity_type: "call",
+          entity_id: callId,
+          recipient_id: to,
+          metadata: {},
+        });
+      }
+    }
+  }
 
   const audit = {
     supabase: db,

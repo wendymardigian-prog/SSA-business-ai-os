@@ -27,12 +27,13 @@ import { designGenerateProblem, hasDesignStepBefore, isDesignGenerateNode, type 
 import { isDesignAttachment, parseEmailAttachments } from "@/lib/email/attachment-limits";
 // @plantilla-hasta(disenador)
 import { designFlowFormProblem } from "@/lib/designer/automation/flow-template"; // @plantilla-quitar(disenador)
+import { serviceOwnerFallbackProblem } from "@/lib/services/service-owner-target"; // @plantilla-quitar(servicios)
 
-export type Requirement = "email" | "whatsapp_channel" | "ai" | "agent" | "channel" | "meta_capi";
+export type Requirement = "email" | "whatsapp_channel" | "ai" | "agent" | "channel" | "meta_capi" | "slack";
 export type Capabilities = Record<Requirement, boolean>;
 
 /** Todo conectado: lo que se usa cuando no se sabe (una pantalla que no cargo las conexiones no bloquea nada). */
-export const ALL_CONNECTED: Capabilities = { email: true, whatsapp_channel: true, ai: true, agent: true, channel: true, meta_capi: true };
+export const ALL_CONNECTED: Capabilities = { email: true, whatsapp_channel: true, ai: true, agent: true, channel: true, meta_capi: true, slack: true };
 
 export interface RequirementInfo {
   /** Lo que falta, corto: "Email (Resend)". */
@@ -50,6 +51,7 @@ export const REQUIREMENT_INFO: Record<Requirement, RequirementInfo> = {
   agent: { label: "Un agente de IA", href: "/dashboard/agents", cta: "Ir a Agentes IA" },
   channel: { label: "Un canal de mensajería (Instagram, WhatsApp o email)", href: "/dashboard/settings/integrations", cta: "Conectar un canal" },
   meta_capi: { label: "La API de Conversiones de Meta", href: "/dashboard/settings/integrations/meta_capi", cta: "Conectar la API de Conversiones" },
+  slack: { label: "Slack conectado", href: "/dashboard/settings/integrations/slack", cta: "Conectar Slack" },
 };
 
 /** Por tipo canonico del registro (no por el `type` del canvas: un nodo "action" lo resuelve `canonicalNodeType`). */
@@ -65,6 +67,7 @@ export const NODE_REQUIREMENTS: Readonly<Record<string, readonly Requirement[]>>
   sendMessage: ["channel"],
   sendAsset: ["channel"],
   send_meta_event: ["meta_capi"],
+  send_slack: ["slack"],
 };
 
 /** El nombre de las acciones con requisitos, para decir cual esta bloqueada sin importar el registro. */
@@ -80,6 +83,7 @@ const NODE_NAMES: Readonly<Record<string, string>> = {
   sendMessage: "Enviar mensaje",
   sendAsset: "Enviar recurso",
   send_meta_event: "Enviar evento a Meta",
+  send_slack: "Enviar a Slack",
 };
 
 export function requirementsOfType(type: string): readonly Requirement[] {
@@ -193,6 +197,11 @@ export function configProblems(nodes: GraphNodeLike[], edges: GraphEdgeLike[]): 
       continue;
     }
     // @plantilla-hasta(disenador)
+    // @plantilla-desde(servicios)
+    // «El responsable del servicio» sin plan B (Servicios A4, F157).
+    const ownerProblem = serviceOwnerFallbackProblem({ type: canonicalNodeType({ type: String(node.type ?? ""), data: node.data }), data: node.data });
+    if (ownerProblem) problems.add(ownerProblem);
+    // @plantilla-hasta(servicios)
     // «Enviar WhatsApp a un número» con un horario de envío mal armado (de 21:00 a 08:00, o horas que no son horas).
     if ((node.data as { actionType?: string } | undefined)?.actionType === "send_whatsapp_number" || node.type === "send_whatsapp_number") {
       const windowProblem = sendWindowProblem(node.data as SendWindowData | undefined);

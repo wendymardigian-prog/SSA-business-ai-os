@@ -1,5 +1,5 @@
 /**
- * El job `notification_deliver`: manda un aviso por email y/o WhatsApp a quien
+ * El job `notification_deliver`: manda un aviso por email, WhatsApp y/o Slack a quien
  * lo eligio en Mi cuenta → Notificaciones. Lo encola el trigger de la 00275 al
  * insertarse cada aviso. Fino a proposito: las reglas viven en
  * `lib/notifications/deliver.ts`.
@@ -22,6 +22,10 @@ import { accountTabHref } from "@/lib/account/tabs";
 import { dbDeliverDeps, deliverNotification, type DeliverDeps, type DeliveryNotification } from "@/lib/notifications/deliver";
 import { emailConfigured, loadTeamAlertsChannel, type TeamAlertsChannel } from "@/lib/notifications/team-alerts";
 import { sendTeamWhatsApp } from "@/lib/notifications/team-whatsapp";
+import { readSecret } from "@/lib/vault";
+import { SECRET_NAMES } from "@/lib/secret-names";
+import { postMessage as postSlackMessage, slackNotificationText } from "@/lib/integrations/slack";
+import { notifyIntegrationAttention } from "@/lib/notifications/integration-alerts";
 
 type Db = SupabaseClient<Database>;
 
@@ -41,6 +45,23 @@ export function realDeliverDeps(db: Db): DeliverDeps {
   const base = dbDeliverDeps(db);
   const brandCache = new Map<string, { name: string; brand: Brand }>();
   const channelCache = new Map<string, TeamAlertsChannel | null>();
+  const slackCache = new Map<string, boolean>();
+
+  /** Si el negocio conectó Slack (la fila activa). Leer el token se hace recién al mandar. */
+  async function slackConnected(workspaceId: string): Promise<boolean> {
+    const cached = slackCache.get(workspaceId);
+    if (cached !== undefined) return cached;
+    const { data } = await db
+      .from("integration_configs")
+      .select("is_active")
+      .eq("workspace_id", workspaceId)
+      .eq("type", "slack")
+      .eq("provider", "slack")
+      .maybeSingle();
+    const on = Boolean(data?.is_active);
+    slackCache.set(workspaceId, on);
+    return on;
+  }
 
   async function brandOf(workspaceId: string) {
     const cached = brandCache.get(workspaceId);
@@ -56,9 +77,13 @@ export function realDeliverDeps(db: Db): DeliverDeps {
   return {
     ...base,
     async channelsAvailable(workspaceId) {
-      const [email, channel] = await Promise.all([emailConfigured(db, workspaceId), loadTeamAlertsChannel(db, workspaceId)]);
+      const [email, channel, slack] = await Promise.all([
+        emailConfigured(db, workspaceId),
+        loadTeamAlertsChannel(db, workspaceId),
+        slackConnected(workspaceId),
+      ]);
       channelCache.set(workspaceId, channel);
-      return { email, whatsapp: Boolean(channel) };
+      return { email, whatsapp: Boolean(channel), slack };
     },
     async sendEmail(n, to, link) {
       const brand = await brandOf(n.workspace_id);
@@ -91,6 +116,36 @@ export function realDeliverDeps(db: Db): DeliverDeps {
       // El numero de avisos llego a su tope de la hora: se reagenda para cuando se libera, sin gastar un intento.
       if (result.reason === "rate_limited") return { ok: false, retryable: true, retryAt: result.retryAt };
       return { ok: false, retryable: result.retryable };
+    },
+    async sendSlack(n, to, link) {
+      // Slack (Servicios A4, F133). Nunca se loguea el token ni el ID.
+      let token: string | null = null;
+      try {
+        token = await readSecret(db, n.workspace_id, SECRET_NAMES.slackBotToken);
+      } catch {
+        return { ok: false, retryable: true };
+      }
+      if (!token) return { ok: false, retryable: false };
+      const result = await postSlackMessage(token, to, slackNotificationText({ title: n.title, body: n.body, url: absolute(link) }));
+      if (result.ok) return { ok: true };
+      if (result.invalidToken) {
+        // Token inválido: la tarjeta queda con el error y Owner/Admin reciben un aviso (con su ventana de repetición).
+        await db
+          .from("integration_configs")
+          .update({ last_error: "Slack rechazó el token del bot." })
+          .eq("workspace_id", n.workspace_id)
+          .eq("type", "slack")
+          .eq("provider", "slack");
+        await notifyIntegrationAttention({
+          supabase: db,
+          workspaceId: n.workspace_id,
+          providerId: "slack",
+          providerLabel: "Slack",
+          cause: "revoked",
+          detail: "Slack rechazó el token del bot: los avisos por Slack no salen hasta que lo vuelvas a conectar.",
+        }).catch(() => undefined);
+      }
+      return { ok: false, retryable: result.temporary };
     },
     async scheduleRetry(id, attempt, runAt) {
       try {

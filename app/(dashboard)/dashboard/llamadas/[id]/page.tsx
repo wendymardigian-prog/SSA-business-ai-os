@@ -18,6 +18,13 @@ import type { CallObjection } from "@/components/calls/section-tools";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import type { CallAnalysisStatus, CallAttendee, CallTranscriptLine } from "@/lib/types/database";
+import { manualSummaryOf } from "@/lib/calls/manual-summary";
+import { readProposals } from "@/lib/calls/proposals";
+import { ACTIVITY_ACTIONS, activityEntries, type CallAuditRow } from "@/lib/calls/activity";
+import { svcSchema } from "@/lib/services/db";
+import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
+import { loadCallServiceInfo } from "@/lib/calls/service-detail-load"; // @plantilla-quitar(servicios)
+import type { CallServiceInfo } from "@/components/calls/call-service"; // @plantilla-quitar(servicios)
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +34,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * La ficha de una llamada (F13). Se lee con el cliente del usuario: si la RLS
  * no deja ver la llamada, es un 404 (no se confirma que exista).
  */
-export default async function LlamadaPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LlamadaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<{ tab?: string }> }) {
   const ctx = await getPermissionContext();
   if (!ctx.can("calls.view")) redirect("/dashboard");
   const { id } = await params;
@@ -38,7 +45,7 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
   const { data: call } = await supabase
     .from("calls")
     .select(
-      "id, source, title, recorded_at, duration_seconds, fathom_url, share_url, recorded_by_user_id, recorded_by_email, attendees, transcript, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, analyzed_category_id, classification_source, classification_rule, classification_confidence, analysis_status, analysis_status_reason, analysis_error, analysis, closer_score, lead_score, outcome, analysis_model, analysis_prompt_version, rubric_version, analysis_run_id, analyzed_at, quotes_total, quotes_verified, archived_at, analysis_ai, objections, summary, summary_status, memory_status, knowledge_document_id",
+      "id, source, title, recorded_at, duration_seconds, fathom_url, share_url, recorded_by_user_id, recorded_by_email, attendees, transcript, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, analyzed_category_id, classification_source, classification_rule, classification_confidence, analysis_status, analysis_status_reason, analysis_error, analysis, closer_score, lead_score, outcome, analysis_model, analysis_prompt_version, rubric_version, analysis_run_id, analyzed_at, quotes_total, quotes_verified, archived_at, analysis_ai, objections, summary, summary_status, memory_status, knowledge_document_id, service_id, service_link, proposals",
     )
     .eq("id", id)
     .eq("workspace_id", workspace.id)
@@ -162,7 +169,60 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
     suggestions: Object.fromEntries(Object.entries(taskSettings.call_analysis.categories.accepted).map(([group, list]) => [group, list.filter((c) => !c.archivado)])),
     analyzeDisabledReason: !verdict.ok ? (verdict.reason ?? null) : null,
     uses: view.analysisAvailable ? uses : undefined,
+    manual: manualSummaryOf(call.summary),
+    // «Cargar a mano» (F141): en una reunión sin análisis, o si ya tiene algo cargado.
+    showManual: manualSummaryOf(call.summary) !== null || (status !== "analyzed" && status !== "analyzing" && status !== "classifying"),
+    canCreateTasks: ctx.can("tasks.edit"),
   };
+  // @plantilla-desde(servicios)
+  let serviceInfo: CallServiceInfo | null = null;
+  if (isModuleEnabled(workspace as { services_enabled?: boolean | null })) {
+    const row = call as unknown as { service_id: string | null; service_link: string | null };
+    serviceInfo = await loadCallServiceInfo(service, {
+      workspaceId: workspace.id,
+      contactId: call.contact_id,
+      recordedAt: call.recorded_at,
+      timeZone: workspace.timezone || "UTC",
+      serviceId: row.service_id,
+      link: row.service_link,
+      canChange: canEdit,
+    });
+  }
+  data.service = serviceInfo;
+  // @plantilla-hasta(servicios)
+
+  // F143 y F145: las propuestas, la actividad y las menciones sin leer de esta reunión.
+  const callExtra = call as unknown as { proposals?: unknown; service_id?: string | null };
+  data.proposals = readProposals(callExtra.proposals);
+  data.permissions = ctx.permissions.keys;
+  if (callExtra.service_id && data.proposals.some((p) => p.type === "paso")) {
+    const { data: items } = await svcSchema(service).from("service_items").select("template_key, name").eq("service_id", callExtra.service_id).limit(200);
+    data.pendingStepNames = Object.fromEntries(((items ?? []) as Array<{ template_key: string | null; name: string }>).filter((i) => i.template_key).map((i) => [i.template_key as string, i.name]));
+  }
+  const [{ data: auditRows }, { count: unreadMentions }] = await Promise.all([
+    supabase
+      .from("audit_log")
+      .select("id, action, performed_at, performed_by, actor_type, changes, metadata")
+      .eq("workspace_id", workspace.id)
+      .eq("entity_type", "call")
+      .eq("entity_id", call.id)
+      .in("action", [...ACTIVITY_ACTIONS])
+      .order("performed_at", { ascending: true })
+      .limit(200),
+    supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", workspace.id)
+      .eq("recipient_id", ctx.user.id)
+      .eq("type", "mentioned")
+      .eq("entity_id", call.id)
+      .is("read_at", null),
+  ]);
+  const serviceLabelMap: Record<string, string> = serviceInfo ? Object.fromEntries(serviceInfo.options.filter((o) => o.id).map((o) => [o.id as string, o.label])) : {};
+  data.activity = activityEntries((auditRows ?? []) as unknown as CallAuditRow[], Object.fromEntries(members.map((m) => [m.userId, m.name])), serviceLabelMap);
+  data.unreadMentions = unreadMentions ?? 0;
+  const sp = searchParams ? await searchParams : {};
+  data.initialTab = sp.tab === "actividad" ? "actividad" : null;
 
   return <CallDetail data={data} view={view} canEdit={canEdit} />;
 }

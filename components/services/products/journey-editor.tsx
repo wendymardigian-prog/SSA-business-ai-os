@@ -3,12 +3,14 @@
 
 import { useRef, useState, useTransition, type DragEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, GripVertical, Loader2, Plus, Save, Trash2 } from "lucide-react";
-import { saveJourneyTemplate } from "@/lib/actions/services";
+import { ArrowDown, ArrowUp, Copy, GripVertical, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { copyDuplicatedWorkflows, saveJourneyTemplate } from "@/lib/actions/services";
 import { ITEM_KINDS, ITEM_KIND_LABELS, type ItemKind } from "@/lib/services/availability";
 import { FUTURE_VISIBILITY, buttonDestination, defaultButtonLabel, type JourneyItem, type JourneyPhase, type JourneyTemplate } from "@/lib/services/journey-template";
 import {
   addItem,
+  duplicateItem,
+  duplicatePhase,
   addPhase,
   buttonEditorState,
   visibilityPatch,
@@ -33,6 +35,7 @@ import { SidePanel } from "@/components/tasks/overlay";
 import type { NamedOption } from "./service-settings-panel";
 import { groupBySlot, type PathWorkflow } from "@/lib/services/screens/workflow-chips";
 import { WorkflowSlot } from "./workflow-slot";
+import { StepRulesSection } from "./step-rules-section";
 
 const input = "h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge";
 const label = "mb-1.5 flex items-center gap-1 text-xs font-semibold text-foreground";
@@ -89,6 +92,8 @@ export function JourneyEditor({
   const [t, setT] = useState<JourneyTemplate>(() => initial ?? { v: 1, phases: [] });
   const [dirty, setDirty] = useState(false);
   const [openItem, setOpenItem] = useState<string | null>(null);
+  // A4 (F149): lo duplicado sin guardar (original → copia), para copiar sus workflows en pausa al guardar.
+  const [copies, setCopies] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -110,7 +115,14 @@ export function JourneyEditor({
       if (res.data.status === "invalid") return setError((res.data.problems ?? []).join(" · "));
       setDirty(false);
       const paused = (res.data as { pausedWorkflows?: number }).pausedWorkflows ?? 0;
-      setNotice(paused > 0 ? `Guardado. Se pausaron ${paused} workflow(s) de pasos o fases que ya no están en el camino.` : "Guardado. Vale para los servicios nuevos.");
+      let copiedText = "";
+      if (canEditFlows && Object.keys(copies).length > 0) {
+        const c = await copyDuplicatedWorkflows(variantId, copies);
+        if (c.ok && c.data.copied > 0) copiedText = ` Se copiaron ${c.data.copied} workflow(s) en pausa.`;
+        else if (!c.ok) copiedText = " No se pudieron copiar los workflows de lo duplicado.";
+      }
+      setCopies({});
+      setNotice((paused > 0 ? `Guardado. Se pausaron ${paused} workflow(s) de pasos o fases que ya no están en el camino.` : "Guardado. Vale para los servicios nuevos.") + copiedText);
       router.refresh();
     });
   }
@@ -163,6 +175,11 @@ export function JourneyEditor({
               total={t.phases.length}
               onChange={(patch) => change(updatePhase(t, ph.key, patch))}
               onMove={(d) => change(nudgePhase(t, ph.key, d))}
+              onDuplicate={() => {
+                const r = duplicatePhase(t, ph.key);
+                change(r.template);
+                setCopies((c) => ({ ...c, ...r.keyMap, [ph.key]: r.key }));
+              }}
               onRemove={() => {
                 const r = removePhase(t, ph.key);
                 change(r.template);
@@ -201,8 +218,31 @@ export function JourneyEditor({
                   <button type="button" className={iconBtn} aria-label={`Bajar «${it.name}»`} onClick={() => change(nudgeItem(t, it.key, 1))}>
                     <ArrowDown className="h-3.5 w-3.5" aria-hidden />
                   </button>
+                  <button
+                    type="button"
+                    className={iconBtn}
+                    aria-label={`Duplicar «${it.name}»`}
+                    title="Duplicar el paso"
+                    onClick={() => {
+                      const r = duplicateItem(t, it.key);
+                      change(r.template);
+                      setCopies((c) => ({ ...c, ...r.keyMap }));
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5" aria-hidden />
+                  </button>
                   <div className="basis-full">
                     <WorkflowSlot variantId={variantId} slot={`item:${it.key}`} title={`Al completar «${it.name}»`} workflows={slots.get(`item:${it.key}`) ?? []} canEdit={canEditFlows} compact />
+                    <WorkflowSlot
+                      variantId={variantId}
+                      slot={`completes:${it.key}`}
+                      title={`Completa «${it.name}»`}
+                      workflows={slots.get(`completes:${it.key}`) ?? []}
+                      canEdit={canEditFlows && !dirty}
+                      compact
+                      lead="Lo completan"
+                      addLabel="Workflow que lo complete"
+                    />
                   </div>
                 </li>
               ))}
@@ -301,6 +341,7 @@ function PhaseHeader({
   total,
   onChange,
   onMove,
+  onDuplicate,
   onRemove,
   onDragStart,
 }: {
@@ -309,6 +350,7 @@ function PhaseHeader({
   total: number;
   onChange: (patch: Partial<JourneyPhase>) => void;
   onMove: (d: -1 | 1) => void;
+  onDuplicate: () => void;
   onRemove: () => void;
   onDragStart: () => void;
 }) {
@@ -328,6 +370,9 @@ function PhaseHeader({
         </button>
         <button type="button" className={iconBtn} disabled={index === total - 1} aria-label={`Bajar la fase «${phase.name}»`} onClick={() => onMove(1)}>
           <ArrowDown className="h-4 w-4" aria-hidden />
+        </button>
+        <button type="button" className={iconBtn} aria-label={`Duplicar la fase «${phase.name}»`} title="Duplicar la fase" onClick={onDuplicate}>
+          <Copy className="h-4 w-4" aria-hidden />
         </button>
         <button type="button" className={iconBtn} aria-label={`Borrar la fase «${phase.name}»`} onClick={onRemove}>
           <Trash2 className="h-4 w-4" aria-hidden />
@@ -496,6 +541,7 @@ function ItemDrawer({
               <select id="it-complete" value={(ref.complete_on as string) ?? "booked"} onChange={(e) => setRef({ complete_on: e.target.value })} className={input}>
                 <option value="booked">Al agendar</option>
                 <option value="attended">Cuando asistió</option>
+              <option value="recorded">Cuando hay grabación</option>
               </select>
             </div>
           </div>
@@ -621,6 +667,8 @@ function ItemDrawer({
             Lo ve el cliente
           </label>
         </div>
+
+        <StepRulesSection item={item} before={before} onRef={(next) => onChange({ ref: next })} />
 
         <ButtonSection item={item} onChange={onChange} issues={issues} />
       </div>

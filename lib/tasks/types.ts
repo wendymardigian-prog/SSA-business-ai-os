@@ -9,7 +9,7 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 export const TASK_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
-export const TASK_SOURCES = ["manual", "flow", "agent", "cx"] as const;
+export const TASK_SOURCES = ["manual", "flow", "agent", "cx", "call"] as const;
 export type TaskSource = (typeof TASK_SOURCES)[number];
 
 /** Un bloqueante y los dias de distancia que tenia entre los dos vencimientos al vincularlos. */
@@ -46,6 +46,11 @@ export type TaskRow = {
   conversation_id: string | null;
   source: TaskSource;
   source_ref: string | null;
+  /** Servicios A4 (00368, F152): el servicio y la reunión de la tarea. Los escribe solo el servidor. */
+  service_id: string | null;
+  call_id: string | null;
+  /** [{ id, text, done, done_by?, done_at? }] hasta 30 (F153). No impide completar. */
+  checklist: unknown;
   position: number;
   created_by: string | null;
   created_at: string;

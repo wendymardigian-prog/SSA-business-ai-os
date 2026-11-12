@@ -114,18 +114,52 @@ export function quoteInTranscript(quote: string | null | undefined, transcript: 
 
 /** Rubrica minima para puntuar (misma forma que `Rubric` de rubric.ts, sin pedirle el resto). */
 export interface ScoringRubric {
-  closer: { clave: string; peso: number; aplica_a?: string[]; archivado?: boolean }[];
+  closer: { clave: string; peso: number; aplica_a?: string[]; archivado?: boolean; subtracts?: true }[];
   lead: { clave: string; peso: number; archivado?: boolean }[];
 }
 
+/**
+ * El puntaje con criterios que restan (F140): el de siempre sobre los criterios que suman, menos el peso (relativo) de
+ * cada criterio que resta y que pasó (puntaje 3 o más) CON una cita que está en la transcripción. Nunca baja de 0.
+ * Sin criterios que restan, es exactamente `closerScore`.
+ */
+export function closerScoreWithPenalties(
+  items: Obj[],
+  penalties: Array<{ peso: number; puntaje: unknown; cita: unknown }>,
+  transcriptText: string | null,
+): number | null {
+  const base = closerScore(items);
+  if (penalties.length === 0 || base === null) return base;
+  let w = 0;
+  for (const r of items) {
+    const s = Number(r.puntaje);
+    if (!Number.isFinite(s) || s < 1 || s > 5) continue;
+    w += Number(r.peso) > 0 ? Number(r.peso) : 1;
+  }
+  if (w <= 0) return base;
+  let minus = 0;
+  for (const p of penalties) {
+    const s = Number(p.puntaje);
+    if (!Number.isFinite(s) || s < 3) continue;
+    if (!transcriptText || !quoteInTranscript(typeof p.cita === "string" ? p.cita : null, transcriptText)) continue;
+    minus += p.peso > 0 ? p.peso : 1;
+  }
+  return Math.max(0, Math.round(base - (minus / w) * 100));
+}
+
 /** Puntajes usando los pesos y el «Aplica a» de la rúbrica publicada. */
-export function computeScoresWithRubric(analysis: unknown, rubric: ScoringRubric | null, callType: string | null): AnalysisScores {
+export function computeScoresWithRubric(analysis: unknown, rubric: ScoringRubric | null, callType: string | null, transcriptText: string | null = null): AnalysisScores {
   const base = computeScores(analysis);
   if (!rubric) return base;
   const a = isObj(analysis) ? analysis : {};
-  const cw = new Map(rubric.closer.filter((c) => !c.archivado && (!callType || !c.aplica_a || c.aplica_a.includes(callType))).map((c) => [c.clave, c.peso]));
+  const applies = rubric.closer.filter((c) => !c.archivado && (!callType || !c.aplica_a || c.aplica_a.includes(callType)));
+  const cw = new Map(applies.filter((c) => !c.subtracts).map((c) => [c.clave, c.peso]));
+  const sw = new Map(applies.filter((c) => c.subtracts).map((c) => [c.clave, c.peso]));
   const items = Array.isArray(a.rubrica)
     ? a.rubrica.filter(isObj).filter((r) => cw.has(String(r.codigo))).map((r) => ({ ...r, peso: cw.get(String(r.codigo)) }))
+    : [];
+  const penalties = Array.isArray(a.rubrica)
+    ? a.rubrica.filter(isObj).filter((r) => sw.has(String(r.codigo))).map((r) => ({ peso: sw.get(String(r.codigo)) ?? 1, puntaje: r.puntaje, cita: r.cita }))
     : [];
   const lw = new Map(rubric.lead.filter((c) => !c.archivado).map((c) => [c.clave, c.peso]));
   const lead = isObj(a.lead) ? a.lead : {};
@@ -138,7 +172,7 @@ export function computeScoresWithRubric(analysis: unknown, rubric: ScoringRubric
     ls += v * w; lt += w;
   }
   return {
-    closer_score: items.length ? closerScore(items) : base.closer_score,
+    closer_score: items.length ? closerScoreWithPenalties(items, penalties, transcriptText) : base.closer_score,
     lead_score: lt > 0 ? Math.round((ls / lt) * 100) : base.lead_score,
     has_open_alerts: base.has_open_alerts,
   };

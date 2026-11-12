@@ -77,6 +77,9 @@ export const createTaskSchema = z
     project: project.optional(),
     contact_id: uuid.nullable().optional(),
     conversation_id: uuid.nullable().optional(),
+    // Servicios A4 (F152): el servicio (del mismo contacto) y la reunión. Los valida y escribe el servidor.
+    service_id: uuid.nullable().optional(),
+    call_id: uuid.nullable().optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -106,6 +109,8 @@ export const updateTaskSchema = z
     project: project.optional(),
     contact_id: uuid.nullable().optional(),
     conversation_id: uuid.nullable().optional(),
+    service_id: uuid.nullable().optional(),
+    call_id: uuid.nullable().optional(),
     position: z.number().finite("La posición no es válida.").optional(),
   })
   .strict()

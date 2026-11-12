@@ -194,6 +194,8 @@ describe("catalogo extendido (F1)", () => {
       "meta",
       // La API de Conversiones de Meta (00328).
       "meta_capi",
+      // Slack (Servicios A4, F133), cambio aprobado.
+      "slack",
       // Cambio aprobado (conexion de Resend): "resend_inbound" oculta.
       "resend",
     ]);

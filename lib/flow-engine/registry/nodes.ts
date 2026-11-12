@@ -31,6 +31,7 @@ import { createTaskNode } from "../nodes/create-task"; // @plantilla-quitar(tare
 import { completeTaskNode } from "../nodes/complete-task"; // @plantilla-quitar(tareas)
 import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
 import { sendMetaEventNode } from "../nodes/send-meta-event";
+import { sendSlackNode } from "../nodes/send-slack";
 import { serviceActionNodes } from "../nodes/service-actions"; // @plantilla-quitar(servicios)
 import { sendPollNode } from "../nodes/send-poll";
 import { sendToGroupNode } from "../nodes/send-to-group";
@@ -89,6 +90,7 @@ registerNode(completeTaskNode);
 registerNode(sendWhatsAppNumberNode);
 // La API de Conversiones de Meta (00328): «Enviar evento a Meta».
 registerNode(sendMetaEventNode);
+registerNode(sendSlackNode);
 // Grupos de WhatsApp: una encuesta a un grupo activado (sus votos pueden disparar otro flujo).
 registerNode(sendPollNode);
 registerNode(sendToGroupNode);

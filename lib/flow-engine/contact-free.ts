@@ -24,6 +24,7 @@ export const CONTACT_FREE_NODE_TYPES = [
   "notify_team",
   "send_email",
   "send_poll",
+  "send_slack",
   "send_to_group",
   "send_whatsapp_number",
   "upsert_contact", // @plantilla-quitar(webhooks)

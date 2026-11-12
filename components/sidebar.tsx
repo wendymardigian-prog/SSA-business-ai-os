@@ -55,6 +55,7 @@ import { useHtmlClass, useHtmlClassesWithPrefix } from "@/components/use-html-cl
 import { setSharedNavFavorites, useNavFavorites } from "@/components/nav-favorites-store";
 import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 import { useDraftCounts } from "@/components/drafts/use-draft-counts";
+import { CallsProposalsBadge } from "@/components/calls/calls-proposals-badge"; // @plantilla-quitar(servicios)
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
 import type { Database } from "@/lib/types/database";
 
@@ -399,6 +400,7 @@ export function NavLinks({
                       <LinkPending className="ml-auto collapsed:hidden" />
                     </Link>
                     {badge && <DraftBadge counts={badge} onNavigate={onNavigate} />}
+                    {item.href === "/dashboard/llamadas" && <CallsProposalsBadge />} {/* @plantilla-quitar(servicios) */}
                     {section.collapsible && section.title && (
                       <PinButton
                         itemName={item.name}

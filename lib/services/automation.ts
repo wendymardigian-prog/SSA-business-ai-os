@@ -36,6 +36,9 @@ export const SERVICE_TRIGGER_TYPES = [
   "certificate_issued",
   "portal_access_expiring",
   "portal_access_expired",
+  // A4 (F158): los emite el barrido diario, uno por disparador, servicio y día (00372).
+  "service_relative",
+  "service_phase_periodic",
 ] as const;
 export type ServiceTriggerType = (typeof SERVICE_TRIGGER_TYPES)[number];
 
@@ -66,7 +69,12 @@ export const SERVICE_TRIGGER_LABELS: Record<ServiceTriggerType, { label: string;
   certificate_issued: { label: "Se emitió un certificado", description: "Cuando se genera el certificado del servicio" },
   portal_access_expiring: { label: "Un acceso al portal está por vencer", description: "Antes de que venza un acceso" },
   portal_access_expired: { label: "Venció un acceso al portal", description: "Cuando un acceso llega a su fin" },
+  service_relative: { label: "Días antes o después de…", description: "Del inicio, el fin o la creación del servicio, de una fase o de completar un paso" },
+  service_phase_periodic: { label: "Cada N días en una fase", description: "Mientras el servicio esté en esa fase (sin contar las pausas)" },
 };
+
+/** Los dos que emite el barrido para UN disparador: el evento lleva su `trigger_id` (A4, F158). */
+export const PER_TRIGGER_SERVICE_TYPES = ["service_relative", "service_phase_periodic"] as const;
 
 export interface ServiceTriggerConfig {
   product_id?: string | null;
@@ -89,15 +97,21 @@ export interface ServiceEventPayload {
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 
-/** Si el evento pasa los filtros de la regla. Un filtro vacio deja pasar todo. */
-export function serviceEventMatches(config: unknown, payload: unknown): boolean {
+/**
+ * Si el evento pasa los filtros de la regla. Un filtro vacio deja pasar todo. Los relativos y periodicos (A4) ya
+ * vienen hechos para UN disparador: pasan solo si el evento es de ese disparador (`trigger_id`).
+ */
+export function serviceEventMatches(config: unknown, payload: unknown, triggerId?: string | null): boolean {
   const c = (config ?? {}) as ServiceTriggerConfig;
   const p = (payload ?? {}) as ServiceEventPayload;
+  if (typeof p.trigger_id === "string") return !!triggerId && p.trigger_id === triggerId;
   if (str(c.product_id) && c.product_id !== p.product_id) return false;
   if (str(c.variant_id) && c.variant_id !== p.variant_id) return false;
   if (str(c.phase_key) && c.phase_key !== p.phase_key) return false;
   if (str(c.item_key) && c.item_key !== p.item_key) return false;
-  if (typeof c.days_before === "number" && typeof p.days_before === "number" && c.days_before !== p.days_before) return false;
+  // «Termina en N días»: el editor guarda `days_before` y el barrido viejo emitía `days` (A4 lo arregla: manda los dos).
+  const eventDays = typeof p.days_before === "number" ? p.days_before : typeof p.days === "number" ? p.days : null;
+  if (typeof c.days_before === "number" && eventDays !== null && c.days_before !== eventDays) return false;
   return true;
 }
 

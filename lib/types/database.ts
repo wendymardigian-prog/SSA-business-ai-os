@@ -56,7 +56,9 @@ export type IntegrationType =
   | "social_network"
   | "publishing_service"
   | "google"
-  | "meta";
+  | "meta"
+  // Servicios A4 (00365): el bot de Slack del negocio para los avisos y la acción «Enviar a Slack».
+  | "slack";
 
 /** Proveedores que se conectan por OAuth con la app propia del negocio (00082). */
 export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar" | "fathom"; // @plantilla-quitar(llamadas)
@@ -362,6 +364,10 @@ export type CallRow = {
   memory_applied_at: string | null;
   ideas_created_at: string | null;
   knowledge_document_id: string | null;
+  /** Servicios A4 (00366): el servicio de la reunión (sin clave foránea), cómo quedó vinculada y las propuestas del analizador. */
+  service_id?: string | null;
+  service_link?: "auto" | "booking" | "manual" | "review" | null;
+  proposals?: Json;
   objections: Json;
   raw_payload: Json | null;
   created_by: string | null;
@@ -645,6 +651,19 @@ export type AuditAction =
   | "task.deleted" // @plantilla-quitar(tareas)
   | "call.objection_resolved" // @plantilla-quitar(llamadas)
   | "call.archived" // @plantilla-quitar(llamadas)
+  /** Servicios A4: el vínculo de una reunión con su servicio (F135), sus propuestas (F143) y la carga a mano (F141). */
+  | "call.service_linked" // @plantilla-quitar(servicios)
+  | "call.proposal_approved" // @plantilla-quitar(servicios)
+  | "call.proposal_edited" // @plantilla-quitar(servicios)
+  | "call.proposal_discarded" // @plantilla-quitar(servicios)
+  | "call.proposal_failed" // @plantilla-quitar(servicios)
+  | "call.manual_summary" // @plantilla-quitar(servicios)
+  /** Servicios A4: el aviso de reunión sin grabación (F139), la evidencia de un paso (F147) y los topes de cartera (F151). */
+  | "svc.call_missing_recording" // @plantilla-quitar(servicios)
+  | "svc.evidence_added" // @plantilla-quitar(servicios)
+  | "svc.evidence_removed" // @plantilla-quitar(servicios)
+  | "svc.capacity_changed" // @plantilla-quitar(servicios)
+  | "svc.task_closed_by_service" // @plantilla-quitar(servicios)
   /** Extra I, MP: los metodos de pago del negocio (entity workspace) y la correccion de la comision de un pago.  @plantilla-quitar(ventas) */
   | "payment_methods.updated" // @plantilla-quitar(ventas)
   | "payment.fee_corrected" // @plantilla-quitar(ventas)
@@ -1013,6 +1032,8 @@ export type TriggerType =
   | "certificate_issued" // @plantilla-quitar(servicios)
   | "portal_access_expiring" // @plantilla-quitar(servicios)
   | "portal_access_expired" // @plantilla-quitar(servicios)
+  | "service_relative" // @plantilla-quitar(servicios)
+  | "service_phase_periodic" // @plantilla-quitar(servicios)
   | "affiliate_lead_created" // @plantilla-quitar(ventas)
   | "affiliate_sale_created" // @plantilla-quitar(ventas)
   | "affiliate_assignment_expired" // @plantilla-quitar(ventas)
@@ -3430,6 +3451,26 @@ export interface Database {
         Relationships: [];
       };
       /** 00273: datos personales de cada persona del equipo (solo su propia fila). */
+      /** 00364 (Servicios A4, F132): comentarios con @menciones de tareas y reuniones. Se escribe solo con las funciones. */
+      comments: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          entity_type: string;
+          entity_id: string;
+          kind: string;
+          author_id: string | null;
+          body: string;
+          mentions: string[];
+          visibility: string;
+          edited_at: string | null;
+          deleted_at: string | null;
+          created_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
       table_views: {
         Row: {
           id: string;
@@ -3465,6 +3506,7 @@ export interface Database {
           phone: string | null;
           whatsapp_phone: string | null;
           whatsapp_same_as_phone: boolean;
+          slack_user_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -3474,6 +3516,7 @@ export interface Database {
           phone?: string | null;
           whatsapp_phone?: string | null;
           whatsapp_same_as_phone?: boolean;
+          slack_user_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -3482,6 +3525,7 @@ export interface Database {
           phone?: string | null;
           whatsapp_phone?: string | null;
           whatsapp_same_as_phone?: boolean;
+          slack_user_id?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -4494,6 +4538,8 @@ export interface Database {
           auto_summary: boolean;
           auto_memory: boolean;
           auto_knowledge: boolean;
+          /** Servicios A4 (00366): {enabled, client_message}. Nace apagado. */
+          proposals?: Json;
           active_prompt_version: number | null;
           archived_at: string | null;
           created_by: string | null;
@@ -4512,6 +4558,7 @@ export interface Database {
           auto_summary?: boolean;
           auto_memory?: boolean;
           auto_knowledge?: boolean;
+          proposals?: Json;
           active_prompt_version?: number | null;
           archived_at?: string | null;
           created_by?: string | null;
@@ -7108,6 +7155,15 @@ export interface Database {
     };
     Functions: {
       /** Vistas de tablas (00360): crea o edita una vista. Compartir es de Owner/Admin. */
+      /** Comentarios (00364): escribir, editar y borrar lo propio; la lista del `@`. Miran la visibilidad con la sesión. */
+      post_comment: { Args: { p_entity_type: string; p_entity_id: string; p_body: string; p_mentions?: string[] }; Returns: string };
+      edit_comment: { Args: { p_id: string; p_body: string; p_mentions?: string[] }; Returns: undefined };
+      delete_comment: { Args: { p_id: string }; Returns: undefined };
+      comment_mention_candidates: { Args: { p_entity_type: string; p_entity_id: string }; Returns: Array<{ user_id: string }> };
+      can_see_comment_entity: { Args: { p_entity_type: string; p_entity_id: string }; Returns: boolean };
+      /** Propuestas de una reunión (00366): reclamar una (pending|failed -> executing) y cambiar una. Solo service_role. */
+      call_proposal_claim: { Args: { p_call_id: string; p_proposal_id: string }; Returns: boolean };
+      call_proposal_patch: { Args: { p_call_id: string; p_proposal_id: string; p_patch: Json }; Returns: Json };
       save_table_view: {
         Args: { p_id: string | null; p_workspace: string; p_table_key: string; p_name: string; p_config: Json; p_visibility?: string; p_member_ids?: string[] | null };
         Returns: string;

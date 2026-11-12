@@ -183,6 +183,50 @@ describe("deliverNotification", () => {
   });
 });
 
+describe("deliverNotification · Slack (Servicios A4, F133)", () => {
+  const slackRecipient: Recipient = { userId: ANA, email: "ana@x.com", whatsapp: null, slack: "U0ANA123", prefs: { bookings: { slack: true } } };
+
+  it("con Slack prendido y el ID cargado, llama una vez al envío de Slack con su ID", async () => {
+    const sendSlack = vi.fn(async () => ({ ok: true }));
+    const d = deps({ recipients: [slackRecipient], channelsAvailable: vi.fn(async () => ({ email: true, whatsapp: true, slack: true })), sendSlack });
+    const out = await deliverNotification(d, "n1");
+    expect(out).toEqual({ status: "done", sent: 1, skipped: 0, retry: false });
+    expect(sendSlack).toHaveBeenCalledTimes(1);
+    expect(sendSlack).toHaveBeenCalledWith(expect.objectContaining({ id: "n1" }), "U0ANA123", "/dashboard/agenda?agenda=b1");
+    expect(d.markDelivered).toHaveBeenCalledWith("n1", `${ANA}:slack`, NOW.toISOString());
+    expect(d.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("con Slack desconectado o sin ID no lo llama (la campana sale igual)", async () => {
+    const sendSlack = vi.fn(async () => ({ ok: true }));
+    const off = deps({ recipients: [slackRecipient], channelsAvailable: vi.fn(async () => ({ email: true, whatsapp: true, slack: false })), sendSlack });
+    expect(await deliverNotification(off, "n1")).toMatchObject({ sent: 0, skipped: 1 });
+    const noId = deps({ recipients: [{ ...slackRecipient, slack: null }], channelsAvailable: vi.fn(async () => ({ email: true, whatsapp: true, slack: true })), sendSlack });
+    expect(await deliverNotification(noId, "n1")).toMatchObject({ sent: 0, skipped: 1 });
+    expect(sendSlack).not.toHaveBeenCalled();
+  });
+
+  it("dos avisos del mismo tipo en 10 minutos: uno solo por Slack", async () => {
+    const sendSlack = vi.fn(async () => ({ ok: true }));
+    const d = deps({
+      recipients: [slackRecipient],
+      channelsAvailable: vi.fn(async () => ({ email: true, whatsapp: true, slack: true })),
+      sendSlack,
+      recentDeliveries: vi.fn(async () => [{ [`${ANA}:slack`]: "2026-10-30T14:55:00Z" }]),
+    });
+    expect(await deliverNotification(d, "n1")).toMatchObject({ sent: 0, skipped: 1 });
+    expect(sendSlack).not.toHaveBeenCalled();
+  });
+
+  it("un error de red de Slack se reintenta; un rechazo, no", async () => {
+    const temp = deps({ recipients: [slackRecipient], channelsAvailable: vi.fn(async () => ({ email: true, whatsapp: true, slack: true })), sendSlack: vi.fn(async () => ({ ok: false, retryable: true })) });
+    expect(await deliverNotification(temp, "n1")).toMatchObject({ retry: true });
+    expect(temp.scheduleRetry).toHaveBeenCalledTimes(1);
+    const hard = deps({ recipients: [slackRecipient], channelsAvailable: vi.fn(async () => ({ email: true, whatsapp: true, slack: true })), sendSlack: vi.fn(async () => ({ ok: false, retryable: false })) });
+    expect(await deliverNotification(hard, "n1")).toMatchObject({ retry: false, skipped: 1 });
+  });
+});
+
 describe("deliveryRecipients", () => {
   it("la persona concreta, o los admins sin repetir", async () => {
     const d = deps({ loadAdminIds: vi.fn(async () => [ANA, ANA, BRUNO]) });

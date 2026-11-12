@@ -264,6 +264,13 @@ export const CALL_ACTION_LABELS: Record<Extract<AuditAction, `call.${string}`>, 
   "call.objection": "objetó una sección del análisis",
   "call.objection_resolved": "resolvió una objeción",
   "call.archived": "archivó la llamada",
+  // Servicios A4.
+  "call.service_linked": "cambió el servicio de la reunión", // @plantilla-quitar(servicios)
+  "call.proposal_approved": "aprobó una propuesta", // @plantilla-quitar(servicios)
+  "call.proposal_edited": "editó y aprobó una propuesta", // @plantilla-quitar(servicios)
+  "call.proposal_discarded": "descartó una propuesta", // @plantilla-quitar(servicios)
+  "call.proposal_failed": "no se pudo hacer una propuesta", // @plantilla-quitar(servicios)
+  "call.manual_summary": "cargó la reunión a mano", // @plantilla-quitar(servicios)
 };
 // @plantilla-hasta(llamadas)
 

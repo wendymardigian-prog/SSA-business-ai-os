@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { CategoryGroup } from "@/lib/calls/catalog";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { ChevronLeft, ChevronRight, Link2, Loader2, Phone, Plus, RefreshCw, Settings, SlidersHorizontal, Sparkles, Star, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
@@ -26,6 +26,7 @@ import {
   typeDeciderText,
   type CallFilters,
   type SavedView,
+  callListColumns,
 } from "@/lib/calls/list";
 import { statusLabel } from "@/lib/calls/status";
 import type { CallAnalysisStatus } from "@/lib/types/database";
@@ -57,6 +58,12 @@ export interface CallListRow {
   hasOpenAlerts: boolean;
   hasBooking: boolean;
   source: string;
+  /** Servicios A4 (F136): el servicio de la reunión (producto · variante), «Por revisar» o nada. */
+  serviceLabel?: string | null;
+  serviceLink?: string | null;
+  serviceId?: string | null;
+  /** F141: cargada a mano. */
+  manual?: boolean;
 }
 
 interface Props {
@@ -89,6 +96,8 @@ interface Props {
   nudgeConnect: boolean;
   /** Servicios (F65): las grabaciones de esta página que ya están en el portal, y si puede agregarlas. */
   portal?: { inPortal: string[]; canAdd: boolean } | null; // @plantilla-quitar(servicios)
+  /** Servicios A4 (F136): con el módulo prendido, la columna y el filtro Servicio y el aviso «por revisar». */
+  services?: { on: boolean; reviewCount: number; filterLabel: string | null } | null;
 }
 
 // El almacenamiento del navegador puede no estar (ventana privada, datos bloqueados): la lista sigue andando sin vistas guardadas.
@@ -158,6 +167,15 @@ export function CallsList(props: Props) {
   // Lo elegido cuenta solo si sigue en la pagina: cambiar de filtro o de pagina no arrastra nada a ciegas.
   const [selected, setSelected] = useState<string[]>([]);
   const selectedOnPage = selected.filter((id) => rows.some((r) => r.id === id));
+
+  // Servicios A4 (F136): la columna Servicio aparece solo con el módulo prendido y se puede ocultar (por persona).
+  const servicesOn = Boolean(props.services?.on);
+  // Lo lee del navegador con el mismo almacén que las vistas guardadas: el servidor dibuja la columna y, si la persona la
+  // ocultó, se oculta al hidratar.
+  const hideService = useSyncExternalStore(subscribeViews, () => readViews("calls:hide-service") === "1", () => false);
+  const showService = servicesOn && !hideService;
+  const columns = callListColumns({ servicesOn }).filter((c) => c.key !== "servicio" || showService);
+  const toggleServiceColumn = (hidden: boolean) => writeViews("calls:hide-service", hidden ? "1" : "0");
 
   function saveView() {
     const name = viewName.trim();
@@ -277,6 +295,36 @@ export function CallsList(props: Props) {
                 {ANALYSIS_STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
               </select>
             </Field>
+            {props.services?.on && (
+              <Field label="Servicio">
+                <select
+                  className={selectClass}
+                  value={filters.servicio === "review" || filters.servicio === "sin" || filters.servicio === "" ? filters.servicio : "uno"}
+                  onChange={(e) => go({ servicio: e.target.value === "uno" ? filters.servicio : e.target.value })}
+                >
+                  <option value="">Todos</option>
+                  <option value="review">Por revisar</option>
+                  <option value="sin">Sin servicio (área Servicio)</option>
+                  {filters.servicio && filters.servicio !== "review" && filters.servicio !== "sin" && (
+                    <option value="uno">{props.services.filterLabel ?? "Un servicio"}</option>
+                  )}
+                </select>
+              </Field>
+            )}
+            {servicesOn && (
+              <Field label="Columnas">
+                <label className="flex h-9 items-center gap-2 text-sm">
+                  <input type="checkbox" checked={!hideService} onChange={(e) => toggleServiceColumn(!e.target.checked)} className="h-4 w-4" />
+                  Mostrar la columna Servicio
+                </label>
+              </Field>
+            )}
+            <Field label="Cargadas a mano">
+              <label className="flex h-9 items-center gap-2 text-sm">
+                <input type="checkbox" checked={filters.manual} onChange={(e) => go({ manual: e.target.checked })} className="h-4 w-4" />
+                Solo las cargadas a mano
+              </label>
+            </Field>
             <Field label="Vinculación">
               <select className={selectClass} value={filters.vinculo} onChange={(e) => go({ vinculo: e.target.value as CallFilters["vinculo"] })}>
                 <option value="">Todas</option>
@@ -378,6 +426,18 @@ export function CallsList(props: Props) {
             <button type="button" onClick={() => go({ area: UNCLASSIFIED_AREA, tipo: "" })} className="font-medium text-primary-ink underline-offset-2 hover:underline">Ver y clasificar</button>
           </div>
         )}
+        {props.services?.on && props.services.reviewCount > 0 && filters.servicio !== "review" && (
+          <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+            <span>{props.services.reviewCount === 1 ? "1 reunión por revisar" : `${props.services.reviewCount} reuniones por revisar`}: el cliente tiene más de un servicio posible.</span>
+            <button type="button" onClick={() => go({ servicio: "review" })} className="font-medium text-primary-ink underline-offset-2 hover:underline">Ver y elegir el servicio</button>
+          </div>
+        )}
+        {props.services?.on && filters.servicio && filters.servicio !== "review" && filters.servicio !== "sin" && (
+          <p role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-4 py-2 text-sm">
+            <span>Mostrando solo las reuniones de <strong>{props.services.filterLabel ?? "este servicio"}</strong>.</span>
+            <button type="button" onClick={() => go({ servicio: "" })} className="font-medium text-primary-ink underline-offset-2 hover:underline">Ver todas</button>
+          </p>
+        )}
         {props.nudgeConnect && (
           <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm">
             <span>Si grabás tus llamadas con Fathom, conectalo y entran solas.</span>
@@ -427,8 +487,8 @@ export function CallsList(props: Props) {
                             />
                           </th>
                         )}
-                        {["Lead / llamada", "Fecha", "Duración", "Quien grabó", "Tipo", "Resultado", "Puntaje", "Lead", "Estado", ""].map((h, i) => (
-                          <th key={i} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{i === 6 ? "Puntaje closer" : i === 7 ? "Puntaje lead" : h}</th>
+                        {columns.map((c) => (
+                          <th key={c.key} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{c.label}</th>
                         ))}
                         {props.portal && <th scope="col" className="whitespace-nowrap px-3 py-2 font-medium">En el portal</th>} {/* @plantilla-quitar(servicios) */}
                       </tr>
@@ -454,7 +514,13 @@ export function CallsList(props: Props) {
                             <td className="whitespace-nowrap px-3 py-2">{r.closerName ?? "—"}</td>
                             <td className="px-3 py-2" title={typeDeciderText({ classification_source: r.classificationSource, classification_rule: r.classificationRule, classification_confidence: r.classificationConfidence }) ?? undefined}>
                               <TypeChip type={r.callType} label={r.categoryLabel} needsReview={r.status === "needs_review"} />
+                              {r.manual && <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Cargada a mano</span>}
                             </td>
+                            {showService && (
+                              <td className="max-w-[200px] px-3 py-2">
+                                <ServiceCell link={r.serviceLink ?? null} label={r.serviceLabel ?? null} />
+                              </td>
+                            )}
                             <td className="px-3 py-2"><OutcomeChip outcome={r.outcome} /></td>
                             <td className="px-3 py-2"><ScoreCell score={r.closerScore} label="Puntaje del closer" /></td>
                             <td className="px-3 py-2">
@@ -496,6 +562,7 @@ export function CallsList(props: Props) {
                         <p className="mt-1 text-xs text-muted-foreground">{formatCallDate(r.recordedAt, timeZone)} · {formatDuration(r.durationSeconds)}{r.closerName ? ` · ${r.closerName}` : ""}</p>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <TypeChip type={r.callType} label={r.categoryLabel} needsReview={r.status === "needs_review"} />
+                          {showService && (r.serviceLink === "review" || r.serviceLabel) && <ServiceCell link={r.serviceLink ?? null} label={r.serviceLabel ?? null} />}
                           <StatusChip status={r.status} />
                           <OutcomeChip outcome={r.outcome} />
                           {r.closerScore !== null && <span className="inline-flex items-center gap-1 text-xs">Closer <ScoreCell score={r.closerScore} /></span>}
@@ -624,4 +691,13 @@ function EmptyState(props: Props & { onImport: () => void }) {
       <p className="mt-1 text-sm text-muted-foreground">Se consulta Fathom cada 10 minutos.</p>
     </div>
   );
+}
+
+/** La celda Servicio (Servicios A4, F136): el servicio, «Por revisar» en ámbar, o un guion. */
+function ServiceCell({ link, label }: { link: string | null; label: string | null }) {
+  if (link === "review") {
+    return <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-300">Por revisar</span>;
+  }
+  if (!label) return <span className="text-muted-foreground">—</span>;
+  return <span className="block truncate text-xs" title={label}>{label}</span>;
 }

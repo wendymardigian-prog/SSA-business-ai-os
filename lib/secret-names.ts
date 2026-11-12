@@ -65,6 +65,9 @@ export const SECRET_NAMES = {
   /** Token de la API de Conversiones de Meta (00328): solo manda eventos a un Pixel. Se genera en Events Manager. */
   metaCapiToken: "meta_capi_token",
 
+  // ── Slack (Servicios A4, F133) ─────────────────────────────────────────────
+  slackBotToken: "slack_bot_token",
+
   // ── Formularios ──────────────────────────────────────────────────────────  @plantilla-quitar(formularios)
   /** Firma los links de formulario por contacto (HMAC). Se genera la primera vez.  @plantilla-quitar(formularios) */
   formsLinkSecret: "forms_link_secret", // @plantilla-quitar(formularios)

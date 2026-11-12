@@ -8,13 +8,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import "@/lib/flow-engine/registry";
 import { getNodeByType } from "@/lib/flow-engine/registry/registry";
 import { SERVICE_TRIGGER_TYPES } from "../automation";
-import { chipsFor, slotOf, triggerOf, type CanvasEdgeLike, type CanvasNodeLike, type PathWorkflow } from "./workflow-chips";
+import { chipsFor, completedItemKeys, slotOf, triggerOf, type CanvasEdgeLike, type CanvasNodeLike, type PathSlot, type PathWorkflow } from "./workflow-chips";
 
 type Db = SupabaseClient<any, any, any>;
 
 const labelFor = (type: string) => getNodeByType(type)?.label ?? type;
 
-export async function loadPathWorkflows(supabase: Db, workspaceId: string, variantId: string): Promise<PathWorkflow[]> {
+export async function loadPathWorkflows(supabase: Db, workspaceId: string, variantId: string, itemKeys: Set<string> = new Set()): Promise<PathWorkflow[]> {
   const { data: flows, error } = await supabase.from("flows").select("id, name, status, nodes, draft_nodes, edges, draft_edges").eq("workspace_id", workspaceId);
   if (error) {
     console.error("[servicios] no pude leer las automatizaciones del camino:", error.message);
@@ -26,18 +26,22 @@ export async function loadPathWorkflows(supabase: Db, workspaceId: string, varia
       const nodes = ((Array.isArray(f.draft_nodes) ? f.draft_nodes : f.nodes) ?? []) as CanvasNodeLike[];
       const edges = ((Array.isArray(f.draft_edges) ? f.draft_edges : f.edges) ?? []) as CanvasEdgeLike[];
       const trigger = triggerOf(nodes);
-      if (!trigger || !serviceTypes.has(String(trigger.triggerType))) return null;
-      const slot = slotOf(variantId, trigger);
-      return slot ? { id: f.id as string, name: f.name as string, status: f.status as string, slot, chips: chipsFor(nodes, edges, labelFor) } : null;
+      const base = { id: f.id as string, name: f.name as string, status: f.status as string, chips: chipsFor(nodes, edges, labelFor) };
+      const out: Array<typeof base & { slot: PathSlot }> = [];
+      const slot = trigger && serviceTypes.has(String(trigger.triggerType)) ? slotOf(variantId, trigger) : null;
+      if (slot) out.push({ ...base, slot });
+      // A4 (F150): «Lo completan». Solo los pasos de ESTE camino (las claves son únicas: no se cruzan entre variantes).
+      for (const key of completedItemKeys(nodes)) if (itemKeys.has(key)) out.push({ ...base, slot: `completes:${key}` });
+      return out;
     })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
+    .flat();
   if (mine.length === 0) return [];
 
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
   const { data: sessions } = await supabase
     .from("flow_sessions")
     .select("id, flow_id, status")
-    .in("flow_id", mine.map((m) => m.id))
+    .in("flow_id", [...new Set(mine.map((m) => m.id))])
     .gte("created_at", since);
   const list = (sessions ?? []) as Array<{ id: string; flow_id: string; status: string }>;
   const failedSessions = new Set<string>();
@@ -45,6 +49,7 @@ export async function loadPathWorkflows(supabase: Db, workspaceId: string, varia
     const { data: steps } = await supabase.from("flow_session_steps").select("session_id").in("session_id", list.map((s) => s.id).slice(0, 1000)).eq("status", "failed");
     for (const s of (steps ?? []) as Array<{ session_id: string }>) failedSessions.add(s.session_id);
   }
+  // Un flujo puede estar en dos lugares (su disparador y «Lo completan»): las cuentas se piden una vez por flujo.
   return mine.map((m) => {
     const own = list.filter((s) => s.flow_id === m.id);
     return {

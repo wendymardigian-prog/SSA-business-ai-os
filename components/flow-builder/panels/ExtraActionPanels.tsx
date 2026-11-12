@@ -36,9 +36,25 @@ export function NotifyTeamPanel({ data, onChange, availableVariables }: PanelPro
           <option value="users">Personas elegidas</option>
           <option value="reporter">Quien envió el reporte (flujos de fin de día)</option> {/* @plantilla-quitar(formularios) */}
           <option value="both">Quien envió el reporte y personas elegidas</option> {/* @plantilla-quitar(formularios) */}
+          <option value="service_owner">El responsable del servicio</option> {/* @plantilla-quitar(servicios) */}
         </select>
       </div>
-      {to !== "reporter" && (
+      {/* @plantilla-desde(servicios) */}
+      {to === "service_owner" && (
+        <div>
+          <label htmlFor="nt-fallback" className={labelClass}>Si el servicio no tiene responsable</label>
+          <select id="nt-fallback" value={String(data.fallbackUserId ?? "")} onChange={(e) => onChange({ ...data, fallbackUserId: e.target.value })} className={inputClass}>
+            <option value="">{members === null ? "Cargando…" : "Elegí una persona (obligatorio)"}</option>
+            {(members ?? []).map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {/* @plantilla-hasta(servicios) */}
+      {to !== "reporter" && to !== "service_owner" && (
         <fieldset>
           <legend className={labelClass}>Personas del equipo</legend>
           {members === null ? (
@@ -115,6 +131,60 @@ export function SetBookingStatusPanel({ data, onChange }: PanelProps) {
           ))}
         </select>
         <p className="mt-1.5 text-xs text-muted-foreground">Sin estado el paso no hace nada. Para cancelar, usá «Cancelar la reunión».</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * «Enviar a Slack» en el lienzo (Servicios A4, F158): a un canal (su ID o #nombre) o, por mensaje directo, a una
+ * persona del equipo que cargó su ID de Slack en Mi cuenta.
+ */
+export function SendSlackPanel({ data, onChange, availableVariables }: PanelProps) {
+  const [members, setMembers] = useState<Array<{ id: string; name: string }> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadTeamMemberOptions()
+      .then((o) => alive && setMembers(o.members))
+      .catch(() => alive && setMembers([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const target = String(data.target ?? "channel");
+  return (
+    <div className="space-y-4">
+      <div>
+        <label htmlFor="sl-target" className={labelClass}>A dónde</label>
+        <select id="sl-target" value={target} onChange={(e) => onChange({ ...data, target: e.target.value })} className={inputClass}>
+          <option value="channel">Un canal de Slack</option>
+          <option value="person">Una persona del equipo (mensaje directo)</option>
+        </select>
+      </div>
+      {target === "channel" ? (
+        <div>
+          <label htmlFor="sl-channel" className={labelClass}>Canal</label>
+          <input id="sl-channel" value={String(data.channel ?? "")} onChange={(e) => onChange({ ...data, channel: e.target.value.trim() })} placeholder="C0123ABCD o #ventas" className={inputClass} />
+          <p className="mt-1.5 text-xs text-muted-foreground">El bot de Slack tiene que estar invitado al canal.</p>
+        </div>
+      ) : (
+        <div>
+          <label htmlFor="sl-user" className={labelClass}>Persona</label>
+          <select id="sl-user" value={String(data.userId ?? "")} onChange={(e) => onChange({ ...data, userId: e.target.value })} className={inputClass}>
+            <option value="">{members === null ? "Cargando…" : "Elegí una persona"}</option>
+            {(members ?? []).map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-xs text-muted-foreground">Le llega solo si cargó su ID de Slack en Mi cuenta.</p>
+        </div>
+      )}
+      <div>
+        <label htmlFor="sl-text" className={labelClass}>Mensaje</label>
+        <textarea id="sl-text" rows={4} maxLength={3000} value={String(data.text ?? "")} onChange={(e) => onChange({ ...data, text: e.target.value })} placeholder="Nuevo cliente: {{contact.display_name}}" className={inputClass} />
+        <VariableChips variables={availableVariables} onInsert={(token) => onChange({ ...data, text: `${String(data.text ?? "")}${token}` })} />
       </div>
     </div>
   );

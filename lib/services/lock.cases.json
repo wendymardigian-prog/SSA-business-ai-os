@@ -1,0 +1,298 @@
+{
+  "_comment": "Casos de lockPlan (Servicios A4, F146). Corren contra la gemela TS (lib/services/lock.ts) y contra app_servicio.svc_lock_plan (verify-services --bloque a4). Fechas civiles YYYY-MM-DD.",
+  "cases": [
+    {
+      "name": "sin bloqueo",
+      "input": {
+        "lock": null,
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-12",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": false,
+        "until": null,
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "bloqueo vacío o raro no bloquea",
+      "input": {
+        "lock": {
+          "from": "nunca",
+          "days": 3
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-12",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": false,
+        "until": null,
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "3 días desde el inicio de la fase: el 12/11 todavía no (fase empezó el 10/11)",
+      "input": {
+        "lock": {
+          "from": "phase_start",
+          "days": 3
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-12",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": true,
+        "until": "2026-11-13",
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "3 días desde el inicio de la fase: el 13/11 ya se puede",
+      "input": {
+        "lock": {
+          "from": "phase_start",
+          "days": 3
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-13",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": false,
+        "until": null,
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "el 14/11 también",
+      "input": {
+        "lock": {
+          "from": "phase_start",
+          "days": 3
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-14",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": false,
+        "until": null,
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "0 días desde el inicio de la fase: se puede ese mismo día",
+      "input": {
+        "lock": {
+          "from": "phase_start",
+          "days": 0
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-10",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": false,
+        "until": null,
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "la fase no empezó: bloqueado sin fecha",
+      "input": {
+        "lock": {
+          "from": "phase_start",
+          "days": 3
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": null
+        },
+        "today": "2026-11-12",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": true,
+        "until": null,
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "desde la creación del servicio",
+      "input": {
+        "lock": {
+          "from": "service_created",
+          "days": 15
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-12",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": true,
+        "until": "2026-11-16",
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "desde el inicio del servicio: ya pasó",
+      "input": {
+        "lock": {
+          "from": "service_start",
+          "days": 5
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-12",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": false,
+        "until": null,
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "el servicio no arrancó: bloqueado sin fecha",
+      "input": {
+        "lock": {
+          "from": "service_start",
+          "days": 5
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": null,
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-12",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": true,
+        "until": null,
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "cuando se complete A: A pendiente",
+      "input": {
+        "lock": {
+          "after_item_key": "it_aaaaaa"
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-12",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": true,
+        "until": null,
+        "waiting_item_key": "it_aaaaaa"
+      }
+    },
+    {
+      "name": "cuando se complete A: A completo",
+      "input": {
+        "lock": {
+          "after_item_key": "it_aaaaaa"
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-12",
+        "completedKeys": [
+          "it_bbbbbb",
+          "it_aaaaaa"
+        ]
+      },
+      "expected": {
+        "locked": false,
+        "until": null,
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "365 días desde el inicio",
+      "input": {
+        "lock": {
+          "from": "service_start",
+          "days": 365
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-12",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": true,
+        "until": "2027-11-03",
+        "waiting_item_key": null
+      }
+    },
+    {
+      "name": "después de un paso y con fecha: gana el paso (forma de paso)",
+      "input": {
+        "lock": {
+          "after_item_key": "it_cccccc",
+          "from": "phase_start",
+          "days": 1
+        },
+        "anchors": {
+          "serviceCreated": "2026-11-01",
+          "serviceStart": "2026-11-03",
+          "phaseStart": "2026-11-10"
+        },
+        "today": "2026-11-12",
+        "completedKeys": []
+      },
+      "expected": {
+        "locked": true,
+        "until": null,
+        "waiting_item_key": "it_cccccc"
+      }
+    }
+  ]
+}
