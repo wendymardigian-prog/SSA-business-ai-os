@@ -803,6 +803,210 @@ try {
     check(anonFn === false, "ninguna función nueva la ejecuta anon");
   }
 
+  // ── A4: reuniones, propuestas, camino, tareas y automatizaciones (00364 a 00372) ─────────────────────
+  if (run("a4")) {
+    const runCasesA4 = (file, label, toSql, expected) => {
+      const { cases } = json(file);
+      const bad = [];
+      const got = sql(`SELECT jsonb_build_array(${cases.map((c) => `to_jsonb(${toSql(c)})`).join(", ")}) AS r`)[0]?.r ?? [];
+      cases.forEach((c, i) => {
+        if (!eq(got[i], expected(c))) bad.push(`${c.name}: dio ${JSON.stringify(got[i])}`);
+      });
+      check(bad.length === 0, `${label}: los ${cases.length} casos dan lo mismo que en TypeScript`, bad.slice(0, 3).join(" | "));
+    };
+    const has = (fn) => sql(`SELECT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname || '.' || p.proname = ${lit(fn)}) AS ok`)[0]?.ok === true;
+
+    console.log("\na4 · Casos compartidos (gemelas SQL = TS)");
+    if (has("app_servicio.svc_call_link_plan")) runCasesA4("lib/services/call-link.cases.json", "svc_call_link_plan (F135)", (c) => `app_servicio.svc_call_link_plan(${jlit(c.input)})`, (c) => c.expected);
+    if (has("app_servicio.svc_lock_plan")) runCasesA4("lib/services/lock.cases.json", "svc_lock_plan (F146)", (c) => `app_servicio.svc_lock_plan(${jlit(c.input)})`, (c) => c.expected);
+    if (has("app_servicio.svc_relative_due")) runCasesA4("lib/services/relative-triggers.cases.json", "svc_relative_due (F158)", (c) => `app_servicio.svc_relative_due(${jlit(c.input)})`, (c) => c.expected);
+    // Las versiones nuevas de estas dos llegan con la 00371 y la 00369: antes, la base tiene las de A1 y los casos de A4 no aplican.
+    if (has("app_servicio.svc_at_capacity")) runCasesA4("lib/services/owner-pick.cases.json", "svc_owner_pick_plan con topes (F151)", (c) => `app_servicio.svc_owner_pick_plan(${jlit(c.input)})`, (c) => c.expected);
+    if (has("app_servicio.svc_lock_plan")) runCasesA4("lib/services/journey-template.cases.json", "validate_journey_template (bloqueo, evidencia, checklist, grabación)", (c) => `app_servicio.validate_journey_template(${jlit(c.template)}, NULL)`, (c) => c.expected);
+
+    if (has("app_servicio.call_link_hook")) {
+      console.log("\na4 · La reunión guarda su servicio (F135) y el paso «cuando hay grabación» (F138)");
+      sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+      const { data: areaS } = await svc.from("booking_categories").insert({ workspace_id: ws.id, name: "zz-test Servicio A4", system_key: null }).select("id").single();
+      // Las claves de sistema son únicas por negocio: se reusa la del negocio de prueba si ya está, o se crea.
+      let area = sql(`SELECT id FROM public.booking_categories WHERE workspace_id = ${lit(ws.id)} AND system_key = 'servicio'`)[0]?.id;
+      if (!area) area = sql(`INSERT INTO public.booking_categories (workspace_id, name, system_key, is_system) VALUES (${lit(ws.id)}, 'zz-test Servicio', 'servicio', true) RETURNING id`)[0]?.id;
+      let clase = sql(`SELECT id FROM public.booking_categories WHERE workspace_id = ${lit(ws.id)} AND system_key = 'servicio.clase'`)[0]?.id;
+      if (!clase) clase = sql(`INSERT INTO public.booking_categories (workspace_id, parent_id, name, system_key, is_system) VALUES (${lit(ws.id)}, ${lit(area)}, 'zz-test Clase', 'servicio.clase', true) RETURNING id`)[0]?.id;
+      let ventas = sql(`SELECT id FROM public.booking_categories WHERE workspace_id = ${lit(ws.id)} AND system_key = 'ventas'`)[0]?.id;
+      if (!ventas) ventas = sql(`INSERT INTO public.booking_categories (workspace_id, name, system_key, is_system) VALUES (${lit(ws.id)}, 'zz-test Ventas', 'ventas', true) RETURNING id`)[0]?.id;
+      void areaS;
+      const { data: evR } = await svc.from("event_types").insert({ workspace_id: ws.id, category_id: area, owner_user_id: owner.id, title: "zz-test Quincenal", slug: `zz-test-quincenal-${Date.now()}` }).select("id").single();
+      const vR = await mkVariant("zz-test Con reunión grabada");
+      sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [{ key: "ph_reuni1", name: "Seguimiento", advance: "manual", items: [
+        { key: "it_reuni1", kind: "booking", name: "Quincenal", ref: { event_type_id: evR.id, complete_on: "attended" } },
+      ] }] })}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vR.id)}`);
+      // El motor (F138) se prueba poniendo «cuando hay grabación» en el paso del servicio: la regla de guardado de la
+      // plantilla es del bloque 4 (00369) y se prueba con los casos de journey-template.
+      const newSvc = (contactId, variantId) => {
+        const id = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(contactId)}, 'variant_id', ${lit(variantId)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
+        sql(`UPDATE app_servicio.service_items SET ref = ref || '{"complete_on":"recorded"}'::jsonb WHERE service_id = ${lit(id)} AND kind = 'booking'`);
+        return id;
+      };
+      const insertCall = (extra) => sql(`INSERT INTO public.calls (workspace_id, source, title, recorded_at, recorded_by_user_id, contact_id, area_id, category_id, booking_id)
+        VALUES (${lit(ws.id)}, 'manual', 'zz-test reunión', now(), ${lit(owner.id)}, ${extra.contact ? lit(extra.contact) : "NULL"}, ${extra.area ? lit(extra.area) : "NULL"}, ${extra.category ? lit(extra.category) : "NULL"}, ${extra.booking ? lit(extra.booking) : "NULL"}) RETURNING id`)[0]?.id;
+      const linkOf = (id) => sql(`SELECT service_id, service_link FROM public.calls WHERE id = ${lit(id)}`)[0];
+
+      const c1 = await newContact("un servicio");
+      const s1 = newSvc(c1.id, vR.id);
+      const k1 = insertCall({ contact: c1.id, area });
+      check(linkOf(k1)?.service_id === s1 && linkOf(k1)?.service_link === "auto", "un solo servicio activo: la grabación del área Servicio queda unida (auto)", JSON.stringify(linkOf(k1)));
+
+      const kClase = insertCall({ contact: c1.id, area, category: clase });
+      check(linkOf(kClase)?.service_id === null && linkOf(kClase)?.service_link === null, "una de tipo Clase NO se vincula sola", JSON.stringify(linkOf(kClase)));
+      const kVentas = insertCall({ contact: c1.id, area: ventas });
+      check(linkOf(kVentas)?.service_id === null, "una del área Ventas NO se vincula sola");
+
+      const c2 = await newContact("dos servicios");
+      const sA = newSvc(c2.id, vR.id);
+      const vOtro = await mkVariant("zz-test Otro");
+      const sB = newSvc(c2.id, vOtro.id);
+      const kRev = insertCall({ contact: c2.id, area });
+      check(linkOf(kRev)?.service_id === null && linkOf(kRev)?.service_link === "review", "dos servicios sin desempate: «Por revisar»", JSON.stringify(linkOf(kRev)));
+      sql(`UPDATE public.calls SET recorded_at = recorded_at + interval '1 second' WHERE id = ${lit(kRev)}`);
+      const nRev = sql(`SELECT count(*)::int n FROM public.notifications WHERE type = 'call_service_review' AND entity_id = ${lit(kRev)} AND recipient_id = ${lit(owner.id)}`)[0]?.n;
+      check(nRev === 1, "un solo aviso call_service_review por reunión (aunque se recalcule)", `dio ${nRev}`);
+
+      const itemB = sql(`SELECT id FROM app_servicio.service_items WHERE service_id = ${lit(sA)} LIMIT 1`)[0]?.id;
+      const start = new Date(Date.now() - 3 * 3_600_000);
+      const { data: bk } = await svc.from("bookings").insert({ workspace_id: ws.id, uid: `zz-test-${randomUUID()}`, event_type_id: evR.id, host_user_id: owner.id, contact_id: c2.id, title: "zz-test Quincenal",
+        start_at: start.toISOString(), end_at: new Date(start.getTime() + 1_800_000).toISOString(), origin: "public_page", status: "scheduled", utm: { svc_item: itemB } }).select("id").single();
+      const kBk = insertCall({ contact: c2.id, area, booking: bk.id });
+      check(linkOf(kBk)?.service_id === sA && linkOf(kBk)?.service_link === "booking", "la agenda con el paso de un servicio del contacto gana (booking)", JSON.stringify(linkOf(kBk)));
+      const itemSt = sql(`SELECT status, completed_source FROM app_servicio.service_items WHERE id = ${lit(itemB)}`)[0];
+      check(itemSt?.status === "completed" && itemSt?.completed_source === "call", "el paso Reunión «cuando hay grabación» queda completo con completed_source = call", JSON.stringify(itemSt));
+      const otherItem = sql(`SELECT status FROM app_servicio.service_items WHERE service_id = ${lit(sB)} LIMIT 1`)[0]?.status;
+      check(otherItem !== "completed", "la grabación de un servicio NO completa el paso del otro servicio del mismo contacto");
+
+      // Manual: no lo pisa lo automático.
+      sql(`UPDATE public.calls SET service_id = ${lit(sB)}, service_link = 'manual' WHERE id = ${lit(kBk)}`);
+      sql(`UPDATE public.calls SET booking_id = NULL WHERE id = ${lit(kBk)}`);
+      check(linkOf(kBk)?.service_id === sB && linkOf(kBk)?.service_link === "manual", "vinculada a mano: cambiar la agenda no cambia el servicio", JSON.stringify(linkOf(kBk)));
+
+      // No se presentó: no completa.
+      const c3 = await newContact("no show");
+      const s3 = newSvc(c3.id, vR.id);
+      // Otra hora que la reunión de arriba: el mismo anfitrión no puede tener dos a la vez (bookings_no_overlap).
+      const start3 = new Date(Date.now() - 6 * 3_600_000);
+      const { data: bk3 } = await svc.from("bookings").insert({ workspace_id: ws.id, uid: `zz-test-${randomUUID()}`, event_type_id: evR.id, host_user_id: owner.id, contact_id: c3.id, title: "zz-test Quincenal",
+        start_at: start3.toISOString(), end_at: new Date(start3.getTime() + 1_800_000).toISOString(), origin: "public_page", status: "scheduled" }).select("id").single();
+      const k3 = sql(`INSERT INTO public.calls (workspace_id, source, title, recorded_at, contact_id, area_id, booking_id, no_show) VALUES (${lit(ws.id)}, 'manual', 'zz-test no show', now(), ${lit(c3.id)}, ${lit(area)}, ${lit(bk3.id)}, true) RETURNING id`)[0]?.id;
+      check(linkOf(k3)?.service_id === s3, "la reunión «no se presentó» igual queda unida a su servicio");
+      check(sql(`SELECT status FROM app_servicio.service_items WHERE service_id = ${lit(s3)} LIMIT 1`)[0]?.status === "pending", "con «no se presentó» el paso NO se completa");
+
+      // El enganche nunca tumba la grabación.
+      const broken = sql(`BEGIN;
+        ALTER TABLE app_servicio.service_items RENAME TO service_items_zz_roto;
+        INSERT INTO public.calls (workspace_id, source, title, recorded_at, contact_id, area_id) VALUES (${lit(ws.id)}, 'manual', 'zz-test con el modulo roto', now(), ${lit(c1.id)}, ${lit(area)});
+        SELECT count(*)::int AS n FROM public.calls WHERE workspace_id = ${lit(ws.id)} AND title = 'zz-test con el modulo roto';
+        ROLLBACK;`);
+      check(broken.at(-1)?.n === 1 || broken[0]?.n === 1, "con una tabla del módulo rota, la grabación se guarda igual", JSON.stringify(broken));
+
+      // Módulo apagado: nada.
+      sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, false)`);
+      const kOff = insertCall({ contact: c1.id, area });
+      check(linkOf(kOff)?.service_id === null && linkOf(kOff)?.service_link === null, "con el módulo apagado, calls se comporta como hoy (sin vínculo)");
+      sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+    }
+
+    if (has("app_servicio.task_guard")) {
+      console.log("\na4 · Bloqueo, evidencia, checklist, la guardia de tareas y el cierre (F146, F147, F148, F153, F156)");
+      sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+      const vL = await mkVariant("zz-test Con candado");
+      sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [{ key: "ph_lock01", name: "Arranque", advance: "manual", items: [
+        { key: "it_lock01", kind: "team_task", name: "Revisar el plan", assignee: "owner", ref: { lock: { from: "phase_start", days: 30 } } },
+        { key: "it_evid01", kind: "team_task", name: "Subir la captura", assignee: "owner", ref: { evidence: { required: true, kinds: ["link", "note"] }, checklist: ["Uno", "Dos"] } },
+      ] }] })}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vL.id)}`);
+      const mkLocked = async (t) => {
+        const c = await newContact(t);
+        return sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(c.id)}, 'variant_id', ${lit(vL.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
+      };
+      const itemOf = (sid, key) => sql(`SELECT id, status, task_id FROM app_servicio.service_items WHERE service_id = ${lit(sid)} AND template_key = ${lit(key)}`)[0];
+      const taskStatus = (id) => sql(`SELECT status FROM public.tasks WHERE id = ${lit(id)}`)[0]?.status;
+
+      const sL = await mkLocked("candado");
+      const lock = itemOf(sL, "it_lock01");
+      const evid = itemOf(sL, "it_evid01");
+      check(!!lock?.task_id && !!evid?.task_id, "los pasos de equipo crean su tarea", JSON.stringify({ lock, evid }));
+
+      // F146: tildar a mano un paso bloqueado -> SV033 con el texto listo.
+      const byHand = asUser(owner.id, `SELECT app_servicio.svc_complete_item(${lit(lock.id)}) r`);
+      check(!byHand.ok && byHand.code === "SV033" && /se puede completar desde/.test(byHand.error), "tildar un paso bloqueado da SV033 con la fecha", byHand.error?.slice(0, 160));
+      // F153: completar su tarea también se frena, y la tarea queda como estaba.
+      const tLock = sqlErr(`UPDATE public.tasks SET status = 'completed' WHERE id = ${lit(lock.task_id)}`) ?? "";
+      check(/SV033/.test(tLock) && taskStatus(lock.task_id) !== "completed", "la tarea de un paso bloqueado no se completa (SV033)", tLock.slice(0, 160));
+
+      // F148: el checklist del paso viaja a la tarea.
+      const cl = sql(`SELECT checklist FROM public.tasks WHERE id = ${lit(evid.task_id)}`)[0]?.checklist ?? [];
+      check(Array.isArray(cl) && cl.length === 2 && cl.every((x) => x.done === false && typeof x.id === "string"), "el checklist del paso nace en la tarea", JSON.stringify(cl));
+      check(sql(`SELECT service_id FROM public.tasks WHERE id = ${lit(evid.task_id)}`)[0]?.service_id === sL, "la tarea del paso lleva su servicio");
+
+      // F147: sin la evidencia que pide no se completa (SV034); con un link, sí.
+      const tEvid = sqlErr(`UPDATE public.tasks SET status = 'completed' WHERE id = ${lit(evid.task_id)}`) ?? "";
+      check(/SV034/.test(tEvid), "la tarea de un paso sin su evidencia no se completa (SV034)", tEvid.slice(0, 160));
+      const badKind = await rpcAs(owner, "svc_add_evidence", { p_item_id: evid.id, p_entry: { kind: "link", url: "http://sin-https.test" } });
+      check(!!badKind.error, "un link sin https:// se rechaza", badKind.error ?? "");
+      const added = await rpcAs(owner, "svc_add_evidence", { p_item_id: evid.id, p_entry: { kind: "link", url: "https://ejemplo.test/captura" } });
+      check(!added.error && added.data?.kind === "link" && added.data?.by === owner.id, "adjuntar un link queda como evidencia de quien lo sube", added.error ?? JSON.stringify(added.data));
+      const fromOutside = await rpcAs(outsider, "svc_add_evidence", { p_item_id: evid.id, p_entry: { kind: "note", text: "x" } });
+      check(!!fromOutside.error, "alguien de otro negocio no adjunta nada", fromOutside.error ?? "");
+      const tEvid2 = sqlErr(`UPDATE public.tasks SET status = 'completed' WHERE id = ${lit(evid.task_id)}`);
+      check(tEvid2 === null && itemOf(sL, "it_evid01")?.status === "completed", "con la evidencia, la tarea se completa y el paso también", (tEvid2 ?? "").slice(0, 160));
+      const lateRemove = await rpcAs(owner, "svc_remove_evidence", { p_item_id: evid.id, p_evidence_id: added.data?.id });
+      check(!!lateRemove.error, "con el paso completo, la evidencia ya no se quita", lateRemove.error ?? "");
+
+      // Una tarea común nunca pasa por la guardia.
+      const manual = sql(`INSERT INTO public.tasks (workspace_id, title, source, created_by) VALUES (${lit(ws.id)}, 'zz-test común', 'manual', ${lit(owner.id)}) RETURNING id`)[0]?.id;
+      check(sqlErr(`UPDATE public.tasks SET status = 'completed' WHERE id = ${lit(manual)}`) === null, "una tarea común se completa como siempre");
+
+      // F156: cancelar el servicio cierra sus tareas abiertas del camino, con un comentario de sistema; el paso no cambia.
+      const sC = await mkLocked("cancelar");
+      const lockC = itemOf(sC, "it_lock01");
+      sql(`UPDATE app_servicio.services SET status = 'cancelled', cancel_reason = 'zz-test' WHERE id = ${lit(sC)}`);
+      check(taskStatus(lockC.task_id) === "completed", "cancelar el servicio cierra su tarea abierta (aunque el paso esté bloqueado)");
+      check(itemOf(sC, "it_lock01")?.status === "pending", "el paso NO se completa al cerrar la tarea");
+      const sysComment = sql(`SELECT body FROM public.comments WHERE entity_type = 'task' AND entity_id = ${lit(lockC.task_id)} AND kind = 'system'`)[0]?.body ?? "";
+      check(/servicio se canceló/.test(sysComment), "queda el comentario «Cerrada: el servicio se canceló.»", sysComment);
+
+      // Con el módulo apagado, la guardia no actúa: la tarea del paso bloqueado se completa y el paso no se toca.
+      const sOff = await mkLocked("apagado");
+      const lockOff = itemOf(sOff, "it_lock01");
+      sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, false)`);
+      const tOff = sqlErr(`UPDATE public.tasks SET status = 'completed' WHERE id = ${lit(lockOff.task_id)}`);
+      check(tOff === null && taskStatus(lockOff.task_id) === "completed", "con el módulo apagado, Tareas anda como hoy (la guardia no actúa)", (tOff ?? "").slice(0, 160));
+      check(itemOf(sOff, "it_lock01")?.status === "pending", "y el paso no se toca");
+      sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+    }
+  }
+
+  if (run("a4") && sql(`SELECT to_regprocedure('app_servicio.svc_relative_due(jsonb)') IS NOT NULL AS ok`)[0]?.ok) {
+    console.log("\na4 · Disparadores relativo y periódico en el barrido diario (F158)");
+    sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+    const vRel = await mkVariant("zz-test Relativo");
+    const cRel = await newContact("relativo");
+    const sRel = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cRel.id)}, 'variant_id', ${lit(vRel.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
+    sql(`UPDATE app_servicio.services SET is_test = false WHERE id = ${lit(sRel)}`);
+    const flowRel = sql(`INSERT INTO public.flows (workspace_id, name) VALUES (${lit(ws.id)}, 'zz-test relativo') RETURNING id`)[0]?.id;
+    const tRel = sql(`INSERT INTO public.triggers (workspace_id, flow_id, type, config, is_active) VALUES (${lit(ws.id)}, ${lit(flowRel)}, 'service_relative', ${jlit({ anchor: "service_start", offset_days: 0, variant_id: vRel.id })}, true) RETURNING id`)[0]?.id;
+    // Uno roto a propósito (sin ancla ni días): no emite y no frena el resto del barrido.
+    sql(`INSERT INTO public.triggers (workspace_id, flow_id, type, config, is_active) VALUES (${lit(ws.id)}, ${lit(flowRel)}, 'service_relative', ${jlit({ anchor: "nada", offset_days: "x" })}, true)`);
+    const events = () => sql(`SELECT count(*)::int n FROM public.automation_events WHERE workspace_id = ${lit(ws.id)} AND event_type = 'service_relative' AND payload ->> 'service_id' = ${lit(sRel)} AND payload ->> 'trigger_id' = ${lit(tRel)}`)[0]?.n;
+    const r1 = sql(`SELECT app_servicio.svc_daily_run(${lit(ws.id)}) r`)[0]?.r ?? {};
+    check(events() === 1, "«El día del inicio del servicio» emite una vez para su disparador", JSON.stringify(r1));
+    check(Array.isArray(r1.errors) && !r1.errors.some((e) => String(e).startsWith("relative")), "un disparador mal armado no rompe el paso del barrido", JSON.stringify(r1.errors));
+    sql(`SELECT app_servicio.svc_daily_run(${lit(ws.id)})`);
+    check(events() === 1, "correr el barrido dos veces el mismo día no repite el evento");
+    sql(`UPDATE app_servicio.services SET status = 'paused', paused_at = now() WHERE id = ${lit(sRel)}`);
+    sql(`DELETE FROM public.automation_events WHERE workspace_id = ${lit(ws.id)} AND event_type = 'service_relative' AND payload ->> 'service_id' = ${lit(sRel)}`);
+    sql(`SELECT app_servicio.svc_daily_run(${lit(ws.id)})`);
+    check(events() === 0, "un servicio pausado no emite");
+  }
+
   console.log("\nHuellas de las funciones protegidas");
   checkProtectedFunctions(sql, check);
 } catch (e) {

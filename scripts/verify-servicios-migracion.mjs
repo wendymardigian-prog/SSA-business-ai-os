@@ -17,6 +17,7 @@
  *   node scripts/verify-servicios-migracion.mjs --s S01        una migracion
  *   node scripts/verify-servicios-migracion.mjs --s S01,S02    varias
  *   node scripts/verify-servicios-migracion.mjs --todas        las que ya estan aplicadas
+ *   node scripts/verify-servicios-migracion.mjs --a4 M1        una migracion de la Corrida A4 (M1 a M9, §20.3)
  *
  * No escribe nada: no necesita el candado (igual se puede correr con el).
  */
@@ -24,7 +25,7 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dbTargetArgs } from "./lib/db-target.mjs";
 import { checkProtectedFunctions } from "./protected-functions.mjs";
-import { SPECS, OLD_CHECK_VALUES, MODULE_ON_EXEMPT } from "./verify-servicios-migracion.spec.mjs";
+import { SPECS, OLD_CHECK_VALUES, MODULE_ON_EXEMPT, A4_SPECS, RAISES_ON_PURPOSE } from "./verify-servicios-migracion.spec.mjs";
 
 const repoFile = (path) => new URL(`../${path}`, import.meta.url);
 
@@ -48,6 +49,8 @@ const lit = (v) => `'${String(v).replace(/'/g, "''")}'`;
 
 function parseArgs(argv) {
   const i = argv.indexOf("--s");
+  const a4 = argv.indexOf("--a4");
+  if (a4 >= 0 && argv[a4 + 1]) return { all: false, ids: argv[a4 + 1].split(",").map((s) => `A4${s.trim().toUpperCase()}`) };
   if (argv.includes("--todas")) return { all: true, ids: [] };
   if (i >= 0 && argv[i + 1]) return { all: false, ids: argv[i + 1].split(",").map((s) => s.trim().toUpperCase()) };
   console.error("Uso: --s S01[,S02] o --todas");
@@ -197,7 +200,9 @@ function verifyGlobal() {
     if (MODULE_ON_EXEMPT.includes(h.tgname) || seen.has(h.tgname + h.proname)) continue;
     seen.add(h.tgname + h.proname);
     check(/app_servicio\.module_on\s*\(/.test(h.def), `${h.tgname} sale sin hacer nada con el modulo apagado (llama a app_servicio.module_on)`);
-    check(/EXCEPTION\s+WHEN\s+OTHERS/i.test(h.def), `${h.tgname} no hace fallar lo que lo dispara (EXCEPTION WHEN OTHERS)`);
+    if (!RAISES_ON_PURPOSE.includes(h.tgname)) {
+      check(/EXCEPTION\s+WHEN\s+OTHERS/i.test(h.def), `${h.tgname} no hace fallar lo que lo dispara (EXCEPTION WHEN OTHERS)`);
+    }
     // Un tipo de tabla del modulo en el DECLARE se resuelve al entrar, ANTES del bloque que atrapa los errores:
     // un problema con esa tabla haria fallar la operacion de BAIOS. Se declara `record` (lo atrapo verify-services sv2).
     const declare = (h.def.match(/\bDECLARE\b([\s\S]*?)\bBEGIN\b/i)?.[1] ?? "").replace(/--.*$/gm, "");
@@ -226,12 +231,17 @@ try {
     const applied = sql(`SELECT name FROM supabase_migrations.schema_migrations`).map((r) => r.name);
     targets = Object.keys(SPECS).filter((id) => applied.some((n) => n.startsWith(SPECS[id].file.replace(/\.sql$/, ""))));
   }
+  const ALL_SPECS = { ...SPECS, ...Object.fromEntries(Object.entries(A4_SPECS).map(([k, v]) => [`A4${k}`, v])) };
+  if (all) {
+    const applied = sql(`SELECT name FROM supabase_migrations.schema_migrations`).map((r) => r.name);
+    for (const [k, v] of Object.entries(A4_SPECS)) if (applied.some((n) => n.startsWith(v.file.replace(/\.sql$/, "")))) targets.push(`A4${k}`);
+  }
   for (const id of targets) {
-    if (!SPECS[id]) {
+    if (!ALL_SPECS[id]) {
       fail(`no hay caso para ${id}`);
       continue;
     }
-    verifySpec(id, SPECS[id]);
+    verifySpec(id, ALL_SPECS[id]);
   }
   verifyGlobal();
 } catch (e) {

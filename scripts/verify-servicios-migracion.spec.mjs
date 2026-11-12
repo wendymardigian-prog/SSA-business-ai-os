@@ -40,6 +40,13 @@ export const MODULE_ON_EXEMPT = [
   "trg_app_servicio_tutor_agent_guard",
 ];
 
+/**
+ * Servicios A4: triggers del modulo que LANZAN su error a proposito (la regla que se pidio). Igual salen con el modulo
+ * apagado (llaman a module_on), pero no envuelven todo en EXCEPTION WHEN OTHERS: la guardia de completar tareas (F153)
+ * tiene que frenar la tarea de un paso bloqueado o sin evidencia.
+ */
+export const RAISES_ON_PURPOSE = ["trg_app_servicio_task_guard"];
+
 export const SPECS = {
   S01: {
     file: "00330_app_servicio_core.sql",
@@ -229,5 +236,92 @@ export const SPECS = {
     title: "Fusion de contactos y cron diario del servicio",
     functions: ["app_servicio.merge_contacts_hook", "private.enqueue_svc_daily", "app_servicio.svc_daily_run", "app_servicio.assistant_set_own_limit", "app_servicio.program_card_metrics"],
     triggers: ["app_servicio.service_phases:trg_app_servicio_phase_certificate"],
+  },
+};
+
+/**
+ * Servicios A4 (§20.3). Las claves son las del plano (A4-M1 a A4-M9); el archivo, el numero real (se aplicaron en el
+ * orden en que las usa cada bloque). `node scripts/verify-servicios-migracion.mjs --a4 M1`.
+ */
+export const A4_SPECS = {
+  M1: {
+    file: "00364_comments.sql",
+    title: "Comentarios con @menciones (public.comments)",
+    tables: ["public.comments"],
+    functions: ["public.post_comment", "public.edit_comment", "public.delete_comment", "public.comment_mention_candidates", "public.can_see_comment_entity", "private.comment_system", "private.comment_entity_visible_to", "private.comment_filter_mentions", "private.comment_notify_mentions"],
+    policies: ["public.comments:comments_select"],
+    sqlChecks: [
+      { label: "comments no tiene politicas de escritura", query: `SELECT NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='comments' AND cmd IN ('INSERT','UPDATE','DELETE','ALL')) AS ok` },
+      { label: "authenticated solo puede leer comments (sin INSERT/UPDATE/DELETE/TRUNCATE)", query: `SELECT has_table_privilege('authenticated','public.comments','SELECT') AND NOT has_table_privilege('authenticated','public.comments','INSERT') AND NOT has_table_privilege('authenticated','public.comments','UPDATE') AND NOT has_table_privilege('authenticated','public.comments','DELETE') AND NOT has_table_privilege('authenticated','public.comments','TRUNCATE') AS ok` },
+      { label: "comment_system no la ejecuta authenticated", query: `SELECT NOT has_function_privilege('authenticated','private.comment_system(uuid,text,uuid,text)','EXECUTE') AS ok` },
+    ],
+  },
+  M9: {
+    file: "00365_slack.sql",
+    title: "Slack: user_profiles.slack_user_id e integration_configs.type + slack",
+    columns: ["user_profiles:slack_user_id"],
+    checks: [{ name: "integration_configs_type_check", adds: ["channel", "ai_provider", "email_provider", "social_network", "publishing_service", "google", "meta", "slack"] }],
+    sqlChecks: [{ label: "el CHECK del ID de Slack existe", query: `SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='user_profiles_slack_user_id_check') AS ok` }],
+  },
+  M2: {
+    file: "00366_calls_service_proposals.sql",
+    title: "Reuniones con servicio y propuestas (calls, call_analysis_profiles)",
+    columns: ["calls:service_id", "calls:service_link", "calls:proposals", "call_analysis_profiles:proposals"],
+    functions: ["public.call_proposal_claim", "public.call_proposal_patch"],
+    sqlChecks: [
+      { label: "call_proposal_claim solo para el servidor", query: `SELECT NOT has_function_privilege('authenticated','public.call_proposal_claim(uuid,text)','EXECUTE') AND has_function_privilege('service_role','public.call_proposal_claim(uuid,text)','EXECUTE') AS ok` },
+      { label: "calls.service_id sin clave foranea (regla del 8/11)", query: `SELECT NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum = ANY(c.conkey) WHERE c.conrelid='public.calls'::regclass AND c.contype='f' AND a.attname='service_id') AS ok` },
+      { label: "los analizadores nacen sin proponer", query: `SELECT NOT EXISTS (SELECT 1 FROM public.call_analysis_profiles WHERE (proposals->>'enabled')::boolean IS TRUE) AS ok` },
+    ],
+  },
+  M6: {
+    file: "00367_calls_service_link_hook.sql",
+    title: "Enganche del modulo en calls, paso «cuando hay grabacion» y barrido horario",
+    functions: ["app_servicio.svc_call_link_plan", "app_servicio.svc_call_link_apply", "app_servicio.svc_call_complete_recorded", "app_servicio.call_link_hook", "private.enqueue_call_missing_recording"],
+    triggers: ["public.calls:trg_app_servicio_call_link"],
+    sqlChecks: [{ label: "el cron call-missing-recording esta programado", query: `SELECT EXISTS (SELECT 1 FROM cron.job WHERE jobname='call-missing-recording' AND active) AS ok` }],
+  },
+  M3: {
+    file: "00368_tasks_service_call_checklist.sql",
+    title: "Tareas con servicio, reunion y checklist; origen 'call'",
+    columns: ["tasks:service_id", "tasks:call_id", "tasks:checklist"],
+    sqlChecks: [
+      { label: "tasks.source acepta los de siempre y 'call'", query: `SELECT pg_get_constraintdef(oid) LIKE '%''manual''%' AND pg_get_constraintdef(oid) LIKE '%''cx''%' AND pg_get_constraintdef(oid) LIKE '%''call''%' AS ok FROM pg_constraint WHERE conname='tasks_source_check'` },
+      { label: "las tareas del camino tienen su servicio (consulta de control)", query: `SELECT count(*) = 0 AS ok FROM public.tasks WHERE source='cx' AND source_ref LIKE 'svc_item:%' AND service_id IS NULL AND deleted_at IS NULL` },
+      { label: "tasks.service_id sin clave foranea (regla del 8/11)", query: `SELECT NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum = ANY(c.conkey) WHERE c.conrelid='public.tasks'::regclass AND c.contype='f' AND a.attname='service_id') AS ok` },
+      { label: "el indice unico uq_tasks_auto_source_open no cambio", query: `SELECT indexdef LIKE '%(workspace_id, source, source_ref)%' AND indexdef LIKE '%''flow''%' AND indexdef LIKE '%''agent''%' AND indexdef NOT LIKE '%''call''%' AS ok FROM pg_indexes WHERE indexname='uq_tasks_auto_source_open'` },
+    ],
+  },
+  M4: {
+    file: "00369_service_items_lock_evidence.sql",
+    title: "Bloqueo, evidencia y checklist del camino",
+    columns: ["app_servicio.service_items:evidence"],
+    buckets: ["service-evidence"],
+    functions: ["app_servicio.svc_item_lock_state", "app_servicio.svc_lock_plan", "app_servicio.svc_add_evidence", "app_servicio.svc_remove_evidence", "app_servicio.validate_journey_template", "app_servicio.journey_item_ref_problems", "app_servicio.svc_complete_item", "app_servicio.svc_ensure_task", "app_servicio.svc_mark_item"],
+    sqlChecks: [
+      { label: "los ayudantes del candado y la evidencia son solo del servidor", query: `SELECT NOT has_function_privilege('authenticated','app_servicio.svc_item_lock_state(uuid)','EXECUTE') AND NOT has_function_privilege('authenticated','app_servicio.svc_item_evidence_missing(uuid)','EXECUTE') AND NOT has_function_privilege('authenticated','app_servicio.svc_assert_completable(uuid)','EXECUTE') AS ok` },
+      { label: "agregar y quitar evidencia: la sesion si, anon no", query: `SELECT has_function_privilege('authenticated','app_servicio.svc_add_evidence(uuid,jsonb)','EXECUTE') AND NOT has_function_privilege('anon','app_servicio.svc_add_evidence(uuid,jsonb)','EXECUTE') AS ok` },
+      { label: "el bucket service-evidence es privado", query: `SELECT NOT public AS ok FROM storage.buckets WHERE id='service-evidence'` },
+    ],
+  },
+  M5: {
+    file: "00370_task_guard_service_close.sql",
+    title: "Guardia de completar tareas y cierre de tareas al terminar el servicio",
+    functions: ["app_servicio.task_guard", "app_servicio.service_close_tasks_hook", "app_servicio.task_hook"],
+    triggers: ["public.tasks:trg_app_servicio_task_guard", "app_servicio.services:trg_app_servicio_close_tasks"],
+  },
+  M8: {
+    file: "00371_service_capacity.sql",
+    title: "Topes de cartera por persona",
+    columns: ["workspaces:service_team_settings", "workspaces:service_team_settings_rev"],
+    functions: ["app_servicio.svc_owner_pick_plan", "app_servicio.svc_owner_loads", "app_servicio.svc_at_capacity"],
+    sqlChecks: [{ label: "svc_owner_loads solo para el servidor", query: `SELECT NOT has_function_privilege('authenticated','app_servicio.svc_owner_loads(uuid)','EXECUTE') AS ok` }],
+  },
+  M7: {
+    file: "00372_service_relative_triggers.sql",
+    title: "Disparadores relativo y periodico; svc_daily_run",
+    functions: ["app_servicio.svc_relative_due", "app_servicio.svc_daily_run"],
+    checks: [{ name: "triggers_type_check", adds: ["service_relative", "service_phase_periodic"] }],
+    sqlChecks: [{ label: "svc_relative_due solo para el servidor", query: `SELECT NOT has_function_privilege('authenticated','app_servicio.svc_relative_due(jsonb)','EXECUTE') AS ok` }],
   },
 };
