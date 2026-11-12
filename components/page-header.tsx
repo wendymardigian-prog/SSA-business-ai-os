@@ -34,6 +34,12 @@ export function PageHeader({
   titleSlot,
   tabs,
   tabsExtra,
+  view,
+  quickFilter,
+  search,
+  group,
+  more,
+  primary,
 }: {
   /**
    * La ruta de la pantalla. De ahi salen el titulo y la explicacion
@@ -74,6 +80,20 @@ export function PageHeader({
   tabs?: ReactNode;
   /** Lo que acompaña a las pestañas SOLO en la segunda fila del celular (estado, Metricas…): en la computadora ya va a la derecha. */
   tabsExtra?: ReactNode;
+  /**
+   * Los lugares fijos de la barra (Servicios A2, F130.0). Se dibujan SIEMPRE en este orden a la derecha:
+   * vista (Tabla | Tablero), filtro rapido, buscador, "Agrupar: …", el menu ⋯ y el boton principal. Asi cada pantalla
+   * que los usa queda igual que las demas sin tener que acordarse del orden. En el celular el boton principal sigue
+   * arriba (siempre visible) y el resto baja a la franja que se desplaza de costado, junto a `filters`.
+   * `filters` (los demas filtros de la pantalla) va despues del filtro rapido y antes del buscador; `right` (acciones
+   * de siempre) va antes del boton principal. Las pantallas que no usan los lugares fijos quedan como estaban.
+   */
+  view?: ReactNode;
+  quickFilter?: ReactNode;
+  search?: ReactNode;
+  group?: ReactNode;
+  more?: ReactNode;
+  primary?: ReactNode;
 }) {
   const chrome = useDashboardChrome();
   const meta = route ? PAGE_META[route] : undefined;
@@ -81,11 +101,18 @@ export function PageHeader({
   const shownTooltip = tooltip ?? meta?.tooltip;
   // Las clases van completas y no interpoladas: Tailwind genera lo que lee en el codigo.
   const wide = filtersBreakpoint === "wide";
+  const slots = toolbarSlots({ filters, view, quickFilter, search, group, more });
+  const actions = right || primary ? (
+    <>
+      {right}
+      {primary}
+    </>
+  ) : null;
 
   return (
     <>
       {/* gap-1.5 en el celular: con el menu, las vistas, los botones, los borradores y la campana, 2 px por hueco eran los que dejaban la campana cortada contra el borde en un telefono de 375 px. */}
-      <header className="flex h-14 flex-shrink-0 items-center gap-1.5 border-b border-border px-3 md:gap-2 md:px-6">
+      <header data-topbar="" className="flex h-14 flex-shrink-0 items-center gap-1.5 border-b border-border px-3 md:gap-2 md:px-6">
         {chrome && <MobileMenuButton chrome={chrome} />}
         {backHref}
         {titleSlot ?? (
@@ -105,12 +132,12 @@ export function PageHeader({
             los botones. Sin esto un boton con "+" y texto se partia en dos
             renglones y el ultimo quedaba cortado contra el borde. */}
         <div className={wide ? "hidden shrink-0 items-center gap-2 topbar-wide:flex" : "hidden shrink-0 items-center gap-2 topbar:flex"}>
-          {filters}
-          {right}
+          {slots}
+          {actions}
         </div>
-        {/* En el celular a la derecha solo entran la campana y los borradores. */}
+        {/* En el celular a la derecha solo entran el boton principal, la campana y los borradores. */}
         <div className={wide ? "flex shrink-0 items-center gap-1 topbar-wide:hidden" : "flex shrink-0 items-center gap-1 topbar:hidden"}>
-          {right}
+          {actions}
           {chrome && <MobileChromeActions chrome={chrome} />}
         </div>
       </header>
@@ -124,13 +151,14 @@ export function PageHeader({
         siempre.
       */}
       {tabs && (
-        <div className="flex h-12 flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border px-3 topbar:hidden">
+        <div data-topbar-strip="" className="flex h-12 flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border px-3 topbar:hidden">
           {tabs}
           {tabsExtra}
         </div>
       )}
-      {filters && (
+      {slots && (
         <div
+          data-topbar-strip=""
           className={
             wide
               ? // `topbar:overflow-visible`: entre 860 y 1080 los menus de los filtros son `absolute`
@@ -139,9 +167,28 @@ export function PageHeader({
               : "flex h-12 flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border px-3 topbar:hidden"
           }
         >
-          {filters}
+          {slots}
         </div>
       )}
+    </>
+  );
+}
+
+/**
+ * Lo que va a la derecha de la barra (y a la franja del celular), en el orden fijo. `null` si no hay nada, asi la
+ * franja no se dibuja vacia.
+ */
+function toolbarSlots(s: { filters?: ReactNode; view?: ReactNode; quickFilter?: ReactNode; search?: ReactNode; group?: ReactNode; more?: ReactNode }): ReactNode {
+  const parts = [s.view, s.quickFilter, s.filters, s.search, s.group, s.more];
+  if (!parts.some(Boolean)) return null;
+  return (
+    <>
+      {s.view}
+      {s.quickFilter}
+      {s.filters}
+      {s.search}
+      {s.group}
+      {s.more}
     </>
   );
 }

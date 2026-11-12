@@ -11,6 +11,8 @@ import { ReviewList } from "@/components/services/portal/review-list";
 import { TopbarTabs } from "@/components/ui/topbar-tabs";
 import { SettingsLinkButton } from "@/components/ui/settings-link-button";
 import { loadReviewItems } from "@/lib/program/load-review";
+import { REVIEW_FILTERS, parseReviewFilter, reviewFilterCounts } from "@/lib/program/review";
+import { UrlQuickFilterMenu } from "@/components/ui/topbar-controls";
 import { countPendingSubmissions, loadUnansweredComments, pendingReviewTotal } from "@/lib/portal-admin/review-count";
 import { svcRpc } from "@/lib/services/db";
 import { cardMetricViews, parseMetricDays, type CardMetrics } from "@/lib/portal-admin/card-metrics";
@@ -26,7 +28,7 @@ export const dynamic = "force-dynamic";
  * de la barra (`/dashboard/portal/ajustes`); el link viejo `?tab=ajustes` lleva ahí. Pide alguna clave del portal;
  * cada pestaña la suya. Con el módulo apagado, 404. Se lee con la sesión de quien mira.
  */
-export default async function PortalPage({ searchParams }: { searchParams: Promise<{ tab?: string; estudiante?: string; dias?: string; programa?: string }> }) {
+export default async function PortalPage({ searchParams }: { searchParams: Promise<{ tab?: string; estudiante?: string; dias?: string; programa?: string; filtro?: string }> }) {
   const ctx = await requireAnyPermission(["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "submissions.review", "community.view"]);
   const { workspace, supabase } = ctx;
   if (!moduleShows("route.portal", { servicesEnabled: isModuleEnabled(workspace as { services_enabled?: boolean | null }) })) notFound();
@@ -52,13 +54,18 @@ export default async function PortalPage({ searchParams }: { searchParams: Promi
   let body: React.ReactNode;
   let addButton: React.ReactNode = null;
   let periodFilter: React.ReactNode = null;
+  let quickFilter: React.ReactNode = null;
   if (tab.key === "revisar") {
     // Por revisar (F57): las entregas de todos los programas, leídas con el cliente de servicio después del permiso.
     const items = await loadReviewItems(service, workspace.id, { contactId: sp.estudiante && /^[0-9a-f-]{36}$/i.test(sp.estudiante) ? sp.estudiante : null, productId: sp.programa && /^[0-9a-f-]{36}$/i.test(sp.programa) ? sp.programa : null });
+    // El filtro de las entregas va en la barra superior (Servicios A2), con el conteo de cada opción.
+    const filter = parseReviewFilter(sp.filtro);
+    const counts = reviewFilterCounts(items);
+    quickFilter = <UrlQuickFilterMenu param="filtro" value={filter} allKey="pending" label="Entregas" options={REVIEW_FILTERS.map((f) => ({ key: f.key, label: f.label, count: counts[f.key] }))} />;
     // Comentarios (F111): lo sin contestar de la comunidad y de las clases, por programa (con community.view).
     body = (
       <div className="space-y-6">
-        <ReviewList items={items} canReview={ctx.can("submissions.review")} timeZone={await resolveViewerTimezone((workspace as { timezone?: string }).timezone)} />
+        <ReviewList items={items} filter={filter} canReview={ctx.can("submissions.review")} timeZone={await resolveViewerTimezone((workspace as { timezone?: string }).timezone)} />
         {ctx.can("community.view") && (
           <section aria-labelledby="comentarios" className="space-y-2">
             <h2 id="comentarios" className="text-sm font-semibold">Comentarios</h2>
@@ -156,6 +163,7 @@ export default async function PortalPage({ searchParams }: { searchParams: Promi
           />
         }
         filters={periodFilter}
+        quickFilter={quickFilter}
         right={
           <>
             {canSettings && <SettingsLinkButton href="/dashboard/portal/ajustes" label="Ajustes del portal" />}

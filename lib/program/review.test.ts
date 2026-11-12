@@ -1,6 +1,6 @@
 // @plantilla-quitar(servicios)
 import { describe, expect, it } from "vitest";
-import { matchesReviewFilter, reviewRowView, type ReviewSubmission } from "./review";
+import { REVIEW_FILTERS, matchesReviewFilter, parseReviewFilter, reviewFilterCounts, reviewRowView, type ReviewSubmission } from "./review";
 
 const base: ReviewSubmission = { id: "s", formType: "activity", reviewStatus: "pending", grade: null, gradingEnabled: false, createdAt: "2026-11-08T00:00:00Z" };
 
@@ -20,5 +20,25 @@ describe("Por revisar", () => {
     expect(matchesReviewFilter({ ...base, formType: "quiz" }, "pending")).toBe(false);
     expect(matchesReviewFilter({ ...base, formType: "quiz" }, "quiz")).toBe(true);
     expect(matchesReviewFilter({ ...base, reviewStatus: "reviewed" }, "reviewed")).toBe(true);
+  });
+});
+
+
+describe("Por revisar: el filtro rapido de la barra (Servicios A2)", () => {
+  const base = { formType: "activity", reviewStatus: null, gradingEnabled: false, grade: null } as never;
+  it("lee ?filtro= y cae a pendientes con lo que no conoce", () => {
+    expect(parseReviewFilter("reviewed")).toBe("reviewed");
+    expect(parseReviewFilter("otra")).toBe("pending");
+    expect(parseReviewFilter(undefined)).toBe("pending");
+  });
+  it("cuenta cada opcion con la misma regla que filtra", () => {
+    const items = [
+      { ...(base as object), reviewStatus: "pending" },
+      { ...(base as object), reviewStatus: "reviewed" },
+      { ...(base as object), formType: "quiz", reviewStatus: "graded" },
+    ] as never[];
+    const c = reviewFilterCounts(items);
+    expect(c).toEqual({ pending: 1, needs_changes: 0, reviewed: 1, quiz: 1, all: 3 });
+    expect(REVIEW_FILTERS.map((f) => f.key)).toEqual(["pending", "needs_changes", "reviewed", "quiz", "all"]);
   });
 });

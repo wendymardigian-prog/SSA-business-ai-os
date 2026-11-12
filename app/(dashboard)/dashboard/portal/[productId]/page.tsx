@@ -20,6 +20,11 @@ import { ProgramAssistant, type AssistantUsage, type TutorKnowledge } from "@/co
 import { svcSchema } from "@/lib/services/db";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { PortalFormInitial } from "@/components/services/portal/portal-form-editor";
+import { LinkQuickFilterMenu, LinkViewToggle, PrimaryButton, TopbarMoreMenu, type MoreAction } from "@/components/ui/topbar-controls";
+import { MonthNav } from "@/components/ui/month-nav";
+import { intentHref } from "@/components/ui/use-url-intent";
+import { communityQuickOptions, communityQuickValue } from "@/lib/program/community";
+import { shiftMonth } from "@/lib/program/calendar-view";
 
 export const dynamic = "force-dynamic";
 
@@ -160,6 +165,47 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   const unanswered = ctx.can("community.view") ? await svcRpc<{ unanswered?: number }>(supabase, "community_item_counts", { p_product_id: productId }) : null;
   const unansweredCount = unanswered?.ok ? Number(unanswered.data?.unanswered ?? 0) || 0 : 0;
 
+  // Los controles de cada pestaña van en la barra superior (Servicios A2, F130.0); el contenido solo los recibe por la URL.
+  const base = `/dashboard/portal/${p.id}`;
+  const calView = sp.vista === "mes" || sp.vista === "series" || sp.vista === "grilla" ? sp.vista : "lista";
+  const calMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.mes ?? "") ? (sp.mes as string) : new Date().toISOString().slice(0, 7);
+  const calHref = (v: string, extra: Record<string, string> = {}) => `${base}?${new URLSearchParams({ tab: "calendario", vista: v, mes: calMonth, ...extra })}`;
+  let view: React.ReactNode = null;
+  let quickFilter: React.ReactNode = null;
+  let filters: React.ReactNode = null;
+  let primary: React.ReactNode = null;
+  const moreActions: MoreAction[] = [];
+  if (tab === "contenido" && ctx.can("program.manage")) {
+    primary = <PrimaryButton label="Nuevo módulo" text="Módulo" href={intentHref(`${base}?tab=contenido`, "nuevo", "modulo")} />;
+  } else if (tab === "calendario") {
+    view = (
+      <LinkViewToggle
+        label="Vistas del calendario"
+        value={calView}
+        options={[
+          { value: "lista", label: "Lista", href: calHref("lista") },
+          { value: "mes", label: "Mes", href: calHref("mes") },
+          { value: "series", label: "Recurrentes", href: calHref("series") },
+        ]}
+      />
+    );
+    if (calView === "mes") filters = <MonthNav prevHref={calHref("mes", { mes: shiftMonth(calMonth, -1) })} nextHref={calHref("mes", { mes: shiftMonth(calMonth, 1) })} todayHref={calHref("mes", { mes: new Date().toISOString().slice(0, 7) })} />;
+    if (ctx.can("live_sessions.manage")) primary = <PrimaryButton label={calView === "series" ? "Nueva sesión recurrente" : "Nueva sesión"} text={calView === "series" ? "Sesión recurrente" : "Sesión"} href={intentHref(calHref(calView), "nuevo", "sesion")} />;
+  } else if (tab === "comunidad" && ctx.can("community.view")) {
+    const filter = sp.filtro === "sin-contestar" ? "unanswered" : sp.filtro === "reportados" ? "reported" : "all";
+    const space = sp.espacio && /^[a-z0-9_]{1,40}$/.test(sp.espacio) ? sp.espacio : null;
+    const counts = await svcRpc<{ unanswered?: number; reported?: number }>(supabase, "community_item_counts", { p_product_id: productId });
+    quickFilter = (
+      <LinkQuickFilterMenu
+        label="Mostrar"
+        value={communityQuickValue(filter, space)}
+        allKey="all"
+        options={communityQuickOptions({ base, spaces: programSpaces(p.portal_settings), counts: { unanswered: counts.ok ? Number(counts.data?.unanswered ?? 0) : 0, reported: counts.ok ? Number(counts.data?.reported ?? 0) : 0 } })}
+      />
+    );
+    if (ctx.can("community.spaces")) moreActions.push({ key: "espacios", label: "Espacios de la comunidad", href: intentHref(`${base}?tab=comunidad`, "espacios", "1") });
+  }
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -179,7 +225,12 @@ export default async function PortalProgramPage({ params, searchParams }: { para
             }))}
           />
         }
+        view={view}
+        quickFilter={quickFilter}
+        filters={filters}
+        more={<TopbarMoreMenu actions={moreActions} />}
         right={<SettingsLinkButton href={`/dashboard/portal/${p.id}/ajustes`} label="Ajustes del programa" />}
+        primary={primary}
       />
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-6 md:px-8">

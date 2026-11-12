@@ -1,7 +1,7 @@
 // @plantilla-quitar(servicios)
 import { describe, expect, it } from "vitest";
 import cases from "./community.cases.json";
-import { canPost, DEFAULT_SPACES, lessonCommentsOn, programSpaces, spaceKeyFor, spacesIssues, type CanPostInput } from "./community";
+import { canPost, communityQuickOptions, communityQuickValue, DEFAULT_SPACES, lessonCommentsOn, programSpaces, spaceKeyFor, spacesIssues, type CanPostInput } from "./community";
 
 describe("canPost: casos compartidos con la base", () => {
   it.each(cases.cases.map((c) => [c.name, c] as const))("%s", (_n, c) => {
@@ -29,5 +29,24 @@ describe("espacios", () => {
     expect(spaceKeyFor("Preguntas técnicas", [])).toBe("preguntas_tecnicas");
     expect(spaceKeyFor("General", ["general"])).toBe("general_2");
     expect(spaceKeyFor("Clases", [])).toBe("clases_1");
+  });
+});
+
+
+describe("Comunidad: el filtro rapido de la barra (Servicios A2)", () => {
+  const spaces = [
+    { key: "general", name: "General", team_only: false, archived: false },
+    { key: "viejo", name: "Viejo", team_only: false, archived: true },
+  ] as never;
+  it("ofrece Todo, Sin contestar, Reportados, los espacios vivos y Clases, con su link", () => {
+    const o = communityQuickOptions({ base: "/dashboard/portal/p1", spaces, counts: { unanswered: 3, reported: 1 } });
+    expect(o.map((x) => x.key)).toEqual(["all", "unanswered", "reported", "esp:general", "esp:clases"]);
+    expect(o[1]).toMatchObject({ count: 3, href: "/dashboard/portal/p1?tab=comunidad&filtro=sin-contestar" });
+    expect(o[3].href).toBe("/dashboard/portal/p1?tab=comunidad&espacio=general");
+  });
+  it("un filtro gana sobre un espacio", () => {
+    expect(communityQuickValue("unanswered", "general")).toBe("unanswered");
+    expect(communityQuickValue("all", "general")).toBe("esp:general");
+    expect(communityQuickValue("all", null)).toBe("all");
   });
 });
