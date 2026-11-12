@@ -184,6 +184,11 @@ export const MODULES = {
       "components/flow-builder/panels/CompleteTaskPanel.tsx",
       "components/settings/payment-tasks-card.tsx",
       "components/scheduling/bookings/calendar-tasks.tsx",
+      // Comentarios del equipo (Servicios A4, F132): solo los usan Tareas y Llamadas, y en este perfil no viaja
+      // ninguno de los dos. La poda saca la tabla `comments` y sus funciones.
+      "lib/team-comments",
+      "components/team-comments",
+      "lib/actions/team-comments.ts",
       "components/scheduling/bookings/calendar-grid.tasks.test.ts",
       "lib/actions/tasks.ts",
       "lib/actions/tasks.test.ts",

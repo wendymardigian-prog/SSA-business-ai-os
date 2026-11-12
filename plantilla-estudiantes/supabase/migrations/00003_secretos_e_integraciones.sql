@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS public.integration_configs (
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
   last_event_at timestamp with time zone,
   CONSTRAINT integration_configs_pkey PRIMARY KEY (id),
-  CONSTRAINT integration_configs_type_check CHECK ((type = ANY (ARRAY['channel'::text, 'ai_provider'::text, 'email_provider'::text, 'social_network'::text, 'publishing_service'::text, 'google'::text, 'meta'::text]))),
+  CONSTRAINT integration_configs_type_check CHECK ((type = ANY (ARRAY['channel'::text, 'ai_provider'::text, 'email_provider'::text, 'social_network'::text, 'publishing_service'::text, 'google'::text, 'meta'::text, 'slack'::text]))),
   CONSTRAINT integration_configs_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
 ALTER TABLE public.integration_configs ENABLE ROW LEVEL SECURITY;
