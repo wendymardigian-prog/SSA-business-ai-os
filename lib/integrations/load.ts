@@ -267,10 +267,9 @@ export async function loadIntegrations(supabase: Db, workspaceId: string): Promi
  */
 function webhookUrls(): Record<string, string> {
   const urls: Record<string, string> = {};
-  for (const [id, channel] of [
-    ["zernio", "zernio"],
-    ["evolution", "evolution"],
-  ] as const) {
+  // Evolution no esta: el sistema registra su webhook solo al conectar el numero (`setWebhook`), y mostrar una
+  // direccion "para pegar" hacia pensar que habia que configurarla a mano en el panel de Evolution.
+  for (const [id, channel] of [["zernio", "zernio"]] as const) {
     try {
       urls[id] = channelWebhookUrl(channel);
     } catch {

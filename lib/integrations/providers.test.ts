@@ -364,3 +364,27 @@ describe("una direccion atada a un secreto (Evolution)", () => {
     expect(validateConfig("evolution", { api_url: "https://evolution.example.test" }).ok).toBe(true);
   });
 });
+
+describe("el prefijo de la instancia de Evolution", () => {
+  const base = { api_url: "https://evolution.example.test" };
+
+  it("acepta letras, numeros y guiones", () => {
+    expect(validateConfig("evolution", { ...base, instance_prefix: "ab-1" }).ok).toBe(true);
+  });
+
+  it("rechaza espacios: el prefijo va dentro del nombre de la instancia", () => {
+    const result = validateConfig("evolution", { ...base, instance_prefix: "AB 1" });
+    expect(result.ok).toBe(false);
+  });
+
+  it("vacio sigue siendo valido (usa el de siempre)", () => {
+    expect(validateConfig("evolution", { ...base, instance_prefix: "" }).ok).toBe(true);
+  });
+});
+
+describe("el token del webhook de Evolution", () => {
+  it("se puede generar desde la pantalla", () => {
+    const field = getProvider("evolution")!.secretFields!.find((f) => f.key === "webhook_token");
+    expect(field?.generatable).toBe(true);
+  });
+});
