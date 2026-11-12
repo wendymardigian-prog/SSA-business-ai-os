@@ -48,7 +48,28 @@ Está en la guía de instalación (sección "Más adelante — Cómo recibir act
 2. Nunca se actualiza sola. Cuando quiere, abre Claude Code en su carpeta y pide traer las actualizaciones de `upstream/main` y mezclarlas con su copia.
 3. La primera vez git se queja de "historias no relacionadas" (su copia nació de "Use this template"): se usa `--allow-unrelated-histories`. Desde la segunda vez ya no pasa.
 4. Aplica en su Supabase solo las migraciones nuevas (las que aparecen en `supabase/migrations/` después de mezclar). Con la CLI: `supabase db push`. Sin la CLI: las junta en un solo archivo y lo pega en el SQL Editor. Nunca de a una por el conector. Si armó la base pegando `ALL_MIGRATIONS.sql` y nunca usó la CLI, antes de `db push` hay que marcar las anteriores como aplicadas con `supabase migration repair`.
+   **La primera vez que trae la versión con las migraciones consolidadas** (ver abajo), antes de `db push` corre `node scripts/migraciones-compactadas.mjs` y, si está de acuerdo, `--aplicar`.
 5. Sube los cambios a su GitHub y Railway publica solo.
+
+## Las migraciones consolidadas (12/11/2026)
+
+A los clientes ya no les viajan las ~360 migraciones del proyecto, sino **una foto de la base hasta la `00363`**: 24 archivos por área (`00000_permisos_por_defecto` a `00023_archivos`), donde cada tabla y cada función nacen en su forma final. Las migraciones del proyecto **posteriores** al corte (desde la `00364`) viajan como siempre, una por una, encima de la foto. El proyecto (y su base de producción) sigue con todas las suyas: esto es solo lo que se exporta.
+
+| Pieza | Para qué |
+|---|---|
+| `plantilla-clientes/supabase/migrations/` | La foto. Se commitea y **no se regenera** en cada actualización: está congelada en el corte. |
+| `scripts/plantilla/areas-clientes.mjs` | Las 24 áreas: las 17 de estudiantes más Ventas, Formularios, Tareas, Grabaciones, Finanzas, Diseñador IA y Servicios. |
+| `scripts/plantilla/db-profiles.mjs` (`clientes`) | Esquemas (con `app_servicio` y `app_servicio_portal`), sin poda ni limpieza de historia, corte `upTo: 363` y puertos 557xx/558xx. |
+| `scripts/plantilla/client-baseline.mjs` | Lo que hace el export: cambia las migraciones de la copia por la foto + las posteriores, escribe `supabase/historial-migraciones.json`, regenera `ALL_MIGRATIONS.sql` y saca los tests que leen una migración vieja por su nombre (`CLIENT_EXCLUDED_TESTS`) o solo su bloque marcado `@plantilla-…(proyecto)` (`CLIENT_MARKED_TESTS`). |
+| `scripts/migraciones-compactadas.mjs` | Viaja a cada cliente. Pone al día el **historial** de una base instalada antes de la foto (saca las versiones viejas que ya no están como archivo; nunca una propia del cliente). Sin `--aplicar` solo explica. Si a la base le faltan migraciones anteriores al corte, frena y pide primero el tag `v-historial-completo`. No toca ninguna tabla ni dato. |
+
+Los números de la foto (`00000` a `00023`) son a propósito los mismos que ya tienen anotados los clientes viejos: para su base, esas versiones ya están aplicadas, y el script solo saca las otras 335.
+
+**Cómo se verificó** (y cómo se vuelve a verificar): `node scripts/verify-template-schema.mjs --perfil=clientes --generate` arma la base de referencia con las migraciones hasta el corte, regenera la foto, la instala en otra base vacía y compara las dos objeto por objeto (tablas, columnas, restricciones, índices, funciones con su texto exacto, permisos, políticas, disparadores, cron, buckets, Realtime y las filas con las que nace): **0 diferencias**. Necesita Docker, como la de estudiantes.
+
+**Mover el corte más adelante** (si algún día se quiere volver a juntar lo nuevo): subir `upTo` en `db-profiles.mjs` y `CLIENT_BASELINE_CUT` en `client-baseline.mjs` (tienen que ser iguales), sumar las tablas y funciones nuevas a `areas-clientes.mjs`, regenerar con el verificador y marcar en BAIOS un tag con la versión anterior. Los números de los archivos de la foto **no cambian nunca** (y siempre tienen que ser menores que el corte). Un cliente viejo vuelve a correr `migraciones-compactadas.mjs`.
+
+**Una migración nueva del proyecto no necesita nada especial**: viaja sola, encima de la foto.
 
 ## Cosas a cuidar
 

@@ -19,6 +19,10 @@
  * Sin --out, el destino es "../template-export" (carpeta hermana del repo).
  * @plantilla-desde(proyecto)
  *
+ * Sin perfil es la plantilla de CLIENTES: sus migraciones no son las del repo sino la foto
+ * consolidada (plantilla-clientes/supabase/migrations) mas las posteriores al corte (ver
+ * scripts/plantilla/client-baseline.mjs).
+ *
  * Con --perfil=<nombre> (por ejemplo `--perfil=estudiantes`) exporta una plantilla SIN
  * algunos modulos: despues de la copia aplica el perfil de scripts/plantilla/perfiles/
  * (ver scripts/plantilla/export-profile.mjs), corre los controles (tsc, eslint, vitest,
@@ -68,7 +72,9 @@ function isExcluded(relPath) {
   // en la copia: lee sus carpetas desde el repo.
   if (relPath === "scripts/plantilla" || relPath.startsWith("scripts/plantilla/")) return true;
   if (relPath === "plantilla-estudiantes" || relPath.startsWith("plantilla-estudiantes/")) return true;
+  if (relPath === "plantilla-clientes" || relPath.startsWith("plantilla-clientes/")) return true;
   if (relPath === "scripts/verify-student-schema.mjs") return true;
+  if (relPath === "scripts/verify-template-schema.mjs") return true;
   if (relPath === "scripts/template-files/estudiantes" || relPath.startsWith("scripts/template-files/estudiantes/")) return true;
   // El aviso de "actualizar la plantilla" despues de un merge (hook de Claude Code) es de
   // quien mantiene este repo: ni la configuracion que lo activa ni su script van al cliente.
@@ -285,6 +291,13 @@ async function main() {
       },
     });
     process.exit(ok ? 0 : 1);
+  }
+
+  // La plantilla de clientes: la foto de la base en vez de las migraciones del repo.
+  if (existsSync(join(REPO_ROOT, "scripts/plantilla/client-baseline.mjs"))) {
+    const { applyClientBaseline } = await import("./plantilla/client-baseline.mjs");
+    const generated = applyClientBaseline({ repo: REPO_ROOT, dest: DEST });
+    console.log(`Migraciones consolidadas: ${generated.length - 1} archivos de la foto, mas las posteriores al corte.`);
   }
   // @plantilla-hasta(proyecto)
 

@@ -46,13 +46,18 @@ describe("export-template: qué se copia y qué no", () => {
   });
 
   it("no copia docs internos, material del proyecto, .env ni .git original", () => {
-    for (const p of ["docs", "claude", "BITACORA.md", ".claude/hooks/baios-reminder.mjs", "scripts/sync-template.mjs", "scripts/plantilla", "plantilla-estudiantes", "scripts/verify-student-schema.mjs", "scripts/template-files/estudiantes", ".env", ".env.local", ".claude/worktrees", "node_modules", ".next"]) {
+    for (const p of ["docs", "claude", "BITACORA.md", ".claude/hooks/baios-reminder.mjs", "scripts/sync-template.mjs", "scripts/plantilla", "plantilla-estudiantes", "plantilla-clientes", "scripts/verify-student-schema.mjs", "scripts/verify-template-schema.mjs", "scripts/template-files/estudiantes", ".env", ".env.local", ".claude/worktrees", "node_modules", ".next"]) {
       expect(existsSync(join(dest, p)), p).toBe(false);
     }
   });
 
-  it("todo lo copiado es un archivo que git sigue en el repo (nada sin seguimiento ni ignorado)", () => {
+  it("todo lo copiado es un archivo que git sigue en el repo (nada sin seguimiento ni ignorado)", async () => {
     const tracked = new Set(gitLsFiles(process.cwd()));
+    // @plantilla-desde(proyecto)
+    // La foto de la base y la lista de las migraciones viejas salen de plantilla-clientes/.
+    const { clientBaselineFiles } = await import("./plantilla/client-baseline.mjs");
+    for (const rel of clientBaselineFiles(process.cwd())) tracked.add(rel);
+    // @plantilla-hasta(proyecto)
     const extra = walk(dest).filter((rel) => !tracked.has(rel));
     expect(extra).toEqual([]);
   });
@@ -229,3 +234,45 @@ describe("export-template: solo copia lo que git sigue", () => {
     );
   });
 });
+
+// @plantilla-desde(proyecto)
+describe("export-template: la base consolidada de la plantilla de clientes", () => {
+  it("las migraciones son la foto mas las posteriores al corte, sin ninguna vieja", async () => {
+    const { CLIENT_BASELINE_CUT, CLIENT_BASELINE_DIR, numberedMigrations } = await import("./plantilla/client-baseline.mjs");
+    const foto = numberedMigrations(join(process.cwd(), CLIENT_BASELINE_DIR)).map((m: { file: string }) => m.file);
+    const after = numberedMigrations(join(process.cwd(), "supabase/migrations"))
+      .filter((m: { n: number }) => m.n > CLIENT_BASELINE_CUT)
+      .map((m: { file: string }) => m.file);
+    const copied = numberedMigrations(join(dest, "supabase/migrations")).map((m: { file: string }) => m.file);
+    expect(copied).toEqual([...foto, ...after]);
+    for (const file of foto) {
+      expect(readFileSync(join(dest, "supabase/migrations", file), "utf8"), file).toBe(readFileSync(join(process.cwd(), CLIENT_BASELINE_DIR, file), "utf8"));
+    }
+  });
+
+  it("ALL_MIGRATIONS.sql junta lo que quedo en la carpeta, en orden", () => {
+    const bundle = readFileSync(join(dest, "supabase/migrations/ALL_MIGRATIONS.sql"), "utf8");
+    expect(bundle).toContain("-- MIGRATION 0: PERMISOS POR DEFECTO");
+    expect(bundle).toContain("-- MIGRATION 23: ARCHIVOS");
+    expect(bundle).not.toContain("-- MIGRATION 1: INITIAL SCHEMA");
+  });
+
+  it("lleva la lista de las migraciones viejas para los clientes que instalaron antes", async () => {
+    const { historyManifest, HISTORY_FILE } = await import("./plantilla/client-baseline.mjs");
+    const manifest = JSON.parse(readFileSync(join(dest, HISTORY_FILE), "utf8"));
+    expect(manifest).toEqual(historyManifest(process.cwd()));
+    expect(manifest.historicas[0]).toEqual({ version: "00000", name: "default_privileges" });
+    expect(existsSync(join(dest, "scripts/migraciones-compactadas.mjs"))).toBe(true);
+  });
+
+  it("los tests que leen una migracion vieja por su nombre no viajan, o viajan sin ese bloque", async () => {
+    const { CLIENT_EXCLUDED_TESTS, CLIENT_MARKED_TESTS } = await import("./plantilla/client-baseline.mjs");
+    for (const rel of CLIENT_EXCLUDED_TESTS) expect(existsSync(join(dest, rel)), rel).toBe(false);
+    for (const rel of CLIENT_MARKED_TESTS) {
+      const text = readFileSync(join(dest, rel), "utf8");
+      expect(text, rel).not.toMatch(/@plantilla-(desde|hasta|quitar)\(proyecto\)/);
+      expect(text, rel).not.toMatch(/supabase\/migrations\/\d{5}_/);
+    }
+  });
+});
+// @plantilla-hasta(proyecto)

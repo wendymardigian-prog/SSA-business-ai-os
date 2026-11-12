@@ -130,6 +130,10 @@ try {
       .split("\0")
       .filter(Boolean),
   );
+  // Lo que arma la base consolidada (la foto y la lista de las viejas) no esta en git en ese
+  // lugar: sale de plantilla-clientes/ (ver scripts/plantilla/client-baseline.mjs).
+  const { clientBaselineFiles } = await import("./plantilla/client-baseline.mjs");
+  for (const rel of clientBaselineFiles(REPO_ROOT)) tracked.add(rel);
   const untracked = exportedFiles(exported).filter((rel) => !tracked.has(rel));
   if (untracked.length > 0) {
     rmSync(tmp, { recursive: true, force: true });

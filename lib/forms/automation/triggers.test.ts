@@ -106,6 +106,7 @@ describe("piezas", () => {
   });
 });
 
+// @plantilla-desde(proyecto)
 describe("el CHECK de triggers.type (migración 00155)", () => {
   it("contiene todos los tipos de antes (incluidos los de Llamadas) más los tres de Formularios", async () => {
     const { readFileSync } = await import("node:fs");
@@ -119,3 +120,4 @@ describe("el CHECK de triggers.type (migración 00155)", () => {
     for (const type of [...BEFORE, ...FORM_TRIGGER_TYPES]) expect(body, type).toContain(`'${type}'`);
   });
 });
+// @plantilla-hasta(proyecto)

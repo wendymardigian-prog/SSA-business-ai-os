@@ -224,6 +224,8 @@ Preguntale si quiere dejarlo preparado.
 - **Si dice que sí:** pedile el link del repositorio original, el que tenía el botón verde "Use this template" (no el de su copia). Agregalo con `git remote add upstream <link>` y probá el acceso con `git fetch upstream`. Si falla por permisos, explicale que necesita tener aceptada la invitación a ese repositorio y que puede pedirla. Contale que, cuando quiera actualizar, alcanza con pedirte "traé las actualizaciones": la guía de instalación tiene el pedido exacto.
 - **Si dice que no:** perfecto. Contale que puede prepararlo cuando quiera, pidiéndoselo a Claude Code.
 
+**Más adelante, cuando pida traer las actualizaciones:** después de mezclar `upstream/main` y ANTES de `supabase db push`, si existe `supabase/historial-migraciones.json` corré `node scripts/migraciones-compactadas.mjs`. Una actualización juntó las migraciones viejas en pocos archivos, y en una base instalada antes hay que poner al día su historial (la lista de "migraciones aplicadas"). El script explica qué haría. No cambia ninguna tabla ni ningún dato. Contáselo en simple y, con su sí, corrélo con `--aplicar`. Si dice que a la base le faltan migraciones, seguí lo que indica: primero se trae la versión anterior (tag `v-historial-completo`). Si dice que no hay nada que hacer, seguí con `db push` como siempre.
+
 ## Cierre
 
 Hacé un resumen corto con checks de lo que quedó funcionando:
