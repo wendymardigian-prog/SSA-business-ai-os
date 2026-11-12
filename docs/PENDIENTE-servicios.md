@@ -1,4 +1,21 @@
-# PENDIENTE — Servicios v12, Corrida A1
+# PENDIENTE — Servicios v12
+
+# A2 (desde el 11/11/2026)
+
+Formato: **qué quedó · por qué · qué se decidió**.
+
+## Lo que encontró la exploración (regla aplicada)
+
+- **La barra superior es `PageHeader` con props** (`left`, `tabs`, `filters`, `right`), no un portal ni un contexto. Le faltaba un lugar para ⋯ y un orden fijo. · Se extiende con lugares con nombre; las pantallas de otros módulos siguen con sus props de siempre.
+- **`?vista=` ya lo usan las vistas guardadas (#220)** y Clientes lo usaba para tabla o tablero. · Clientes pasa a `?modo=tablero`; `vista=tablero` se sigue entendiendo.
+- **No existe ninguna función para editar fechas y plazo** (solo `svc_activate`, `svc_extend`, `svc_resume`). · Migración nueva con su gemela TS y casos.
+- **El avance del classroom, la asistencia de una persona y el último ingreso al portal viven en el esquema cerrado del portal.** `live_attendance_overview` pide `attendance.manage` y llega a 120 días. · Migración de solo lectura, con el permiso mirado adentro.
+- **Los avisos `svc_*` no están en `NOTIFICATION_TYPES`** (los escribe solo SQL; `deliver.ts` los descarta como `unknown_type`, así que nunca salieron por email). · Se suman con solo campana por defecto, así nadie recibe nada distinto hasta que lo elija.
+- **Solo dos campos piden una clave a mano** (`itemKey`, `phaseKey` de `ServiceActionPanel`). Los disparadores de Servicios no tienen panel de filtros. El plano nombra filtros de "sesión" y "sección" que `serviceEventMatches` no mira. · Se ofrecen los que ya mira (producto, variante, fase, paso, días).
+- **`journey-template.cases.json` no corría contra SQL** aunque su comentario lo decía. · Se suma a `verify-services`.
+- **El drawer del paso no tiene selector de `complete_on` para formularios ni elección de clase, módulo o sección.** · Fuera de A2: no se agranda el alcance.
+- **No hay Playwright.** · Decisión de Wendy (11/11): script propio sin dependencias que maneja el Chrome instalado (`scripts/check-responsive.mjs`).
+- **El prototipo a 390 px no se reacomoda** (es un dibujo de escritorio). · En el teléfono mandan las reglas de F131.
 
 ## Corrida frenada en S02 (8/11/2026) — resuelto
 
