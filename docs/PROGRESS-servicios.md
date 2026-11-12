@@ -16,7 +16,7 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.10, parte "Corrid
 - [x] **F122** Listas en lugar de claves en Automatizaciones (`servicePickerOptions`, aviso y bloqueo al publicar).
 - [x] **F125** Botones del camino (`ref.button`, `ref.show_response`, `svc_item` en la agenda) con la migración de `journey_item_ref_problems`.
 - [x] **F127.8** Campo Link en Formularios.
-- [ ] **F124** Los avisos de Servicios en las preferencias de notificaciones.
+- [x] **F124** Los avisos de Servicios en las preferencias de notificaciones.
 - [ ] Cierre: build, lint, `verify-*` de A1, huellas, revisión visual y PR (sin merge).
 
   - F130 (11/11): `PageHeader` con lugares fijos y `topbar-controls`; Portal, programa y Comisiones sin controles en el contenido (`lib/ui/topbar-placement.test.ts`, 7 pantallas). Fichas en `components/services/records/`, lógica pura en `lib/services/screens/{record-url,record-figures,service-record,client-record,clients-list,saved-view}.ts` y `lib/services/set-dates.ts`. 00361 y 00362 aplicadas y registradas (17 casos de `set-dates.cases.json` iguales en SQL). Decisiones en PENDIENTE (A2). Revisión visual y responsive: con F131.
@@ -26,6 +26,8 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.10, parte "Corrid
   - F125 (11/11): `ref.button` y `ref.show_response` en `refProblems` y en `journey_item_ref_problems` (00363, aplicada y registrada; los 37 casos de `journey-template.cases.json`, 19 nuevos, iguales en SQL; antes de aplicarla ninguna plantilla guardada quedaba inválida y después tampoco). Drawer del paso con el interruptor, texto, link, destino y vista previa, y «El cliente puede ver su respuesta». `svc_item` de la URL de la agenda a `bookings.utm` (`pickUtm`, solo uuid). `verify-services --bloque a2` (casos del camino y de fechas contra SQL, `svc_set_dates`, las lecturas de la 00361 y la reserva con `svc_item`).
 
   - F127.8 (11/11): `link` en `FORM_FIELD_TYPES` y todos sus catálogos, `LinkField` público, `validLink` (servidor y navegador) con su test, prefill, mapeo a campo personalizado url o texto, y el link que se abre en pestaña nueva en la tabla y el detalle de las respuestas. Sin base.
+
+  - F124 (11/11): los 11 avisos `svc_*` (y `commission_unassigned`, que tampoco estaba) en `NOTIFICATION_TYPES`, con su definición y link (`service` abre la ficha en Clientes, `sale` la venta), y en la sección nueva «Servicios y portal» de las preferencias, con solo campana por defecto (nadie recibe nada distinto hasta que lo elija). `lib/notifications/service-types.test.ts` falla si la base escribe un aviso del módulo que no está en el catálogo.
 
 ## Punto de partida (11/11/2026)
 

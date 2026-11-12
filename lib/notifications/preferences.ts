@@ -32,6 +32,7 @@ export const NOTIFICATION_SECTIONS = [
   { key: "agenda", title: "Agenda" },
   { key: "contenido", title: "Contenido" },
   { key: "ventas", title: "Ventas y finanzas" }, // @plantilla-quitar(ventas)
+  { key: "servicios", title: "Servicios y portal" }, // @plantilla-quitar(servicios)
   { key: "formularios", title: "Formularios y reportes" }, // @plantilla-quitar(formularios)
   { key: "ia", title: "Agente IA y gasto" },
   { key: "integraciones", title: "Canales e integraciones" },
@@ -217,7 +218,55 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     audience: ADMINS,
     defaults: BELL,
   },
+  {
+    key: "commission_unassigned",
+    section: "ventas",
+    label: "Una comisión quedó sin persona",
+    description: "La persona del rol de comisión ya no está en el equipo: hay que reasignar el rol en esa venta.",
+    types: ["commission_unassigned"],
+    audience: ADMINS,
+    defaults: BELL,
+  },
   // @plantilla-hasta(comisiones)
+  // @plantilla-desde(servicios)
+  // ── Servicios (Servicios A2, F124). Solo campana por defecto: es lo que pasaba antes de estar en el catálogo. ──
+  {
+    key: "svc_assigned",
+    section: "servicios",
+    label: "Te dejaron a cargo de un servicio",
+    description: "Te eligieron como responsable de un servicio, a mano o por la regla de la variante.",
+    types: ["svc_owner_assigned"],
+    audience: ALL,
+    defaults: BELL,
+  },
+  {
+    key: "svc_sale",
+    section: "servicios",
+    label: "Cambios en la venta de un servicio",
+    description: "La venta de un servicio cambió o se canceló, se revirtió un pago, o alguien compró una renovación sin servicio anterior.",
+    types: ["svc_sale_changed", "svc_sale_closed", "svc_extension_sale_closed", "svc_payment_reverted", "svc_renewal_without_previous"],
+    audience: ALL,
+    defaults: BELL,
+  },
+  {
+    key: "svc_owner",
+    section: "servicios",
+    label: "Servicios sin su responsable",
+    description: "Alguien con servicios a cargo dejó el equipo, o un servicio quedó a nombre de la persona de respaldo.",
+    types: ["svc_owner_departed", "svc_owner_fallback"],
+    audience: ADMINS,
+    defaults: BELL,
+  },
+  {
+    key: "svc_attention",
+    section: "servicios",
+    label: "Algo de Servicios necesita una mirada",
+    description: "Algo automático no se pudo hacer, llegó una respuesta que no completó ningún paso o quedaron dos servicios del mismo producto al unir contactos.",
+    types: ["svc_hook_failed", "svc_item_unmatched", "svc_merge_two_services"],
+    audience: ALL,
+    defaults: BELL,
+  },
+  // @plantilla-hasta(servicios)
   // @plantilla-desde(finanzas)
   {
     key: "finance_alerts",

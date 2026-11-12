@@ -290,6 +290,8 @@ export const MODULES = {
       "components/flow-builder/panels/service-key-select.tsx",
       "components/flow-builder/panels/use-service-picker.ts",
       "lib/actions/service-picker.ts",
+      "lib/ui/topbar-placement.test.ts",
+      "lib/notifications/service-types.test.ts",
       "scripts/verify-services.mjs",
       "scripts/verify-portal-schema.mjs",
       "scripts/verify-program/verify-ce.ts",
