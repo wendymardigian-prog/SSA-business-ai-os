@@ -13,13 +13,15 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.10, parte "Corrid
 - [x] **F130.2** Ficha del cliente en modal (`?cliente=`), datos editables en el lugar; la URL vieja abre el modal.
 - [x] **F130.3** Ficha del servicio en modal (`?servicio=`), responsable directo, "Más… › Editar fechas y plazo", cifras, classroom, camino; la URL vieja abre el modal. Lo del portal solo si el producto tiene portal.
 - [ ] **F131** Responsive (390, 768, 1100, 1440; claro y oscuro) con `scripts/check-responsive.mjs` (sin dependencias, decisión de Wendy del 11/11).
-- [ ] **F122** Listas en lugar de claves en Automatizaciones (`servicePickerOptions`, aviso y bloqueo al publicar).
+- [x] **F122** Listas en lugar de claves en Automatizaciones (`servicePickerOptions`, aviso y bloqueo al publicar).
 - [ ] **F125** Botones del camino (`ref.button`, `ref.show_response`, `svc_item` en la agenda) con la migración de `journey_item_ref_problems`.
 - [ ] **F127.8** Campo Link en Formularios.
 - [ ] **F124** Los avisos de Servicios en las preferencias de notificaciones.
 - [ ] Cierre: build, lint, `verify-*` de A1, huellas, revisión visual y PR (sin merge).
 
   - F130 (11/11): `PageHeader` con lugares fijos y `topbar-controls`; Portal, programa y Comisiones sin controles en el contenido (`lib/ui/topbar-placement.test.ts`, 7 pantallas). Fichas en `components/services/records/`, lógica pura en `lib/services/screens/{record-url,record-figures,service-record,client-record,clients-list,saved-view}.ts` y `lib/services/set-dates.ts`. 00361 y 00362 aplicadas y registradas (17 casos de `set-dates.cases.json` iguales en SQL). Decisiones en PENDIENTE (A2). Revisión visual y responsive: con F131.
+
+  - F122 (11/11): `lib/services/service-picker.ts` (`servicePickerOptions`, listas, `staleKeyMessage`, `serviceKeyProblems`) con su test; `ServiceActionPanel` elige de listas y el panel nuevo `ServiceTriggerPanel` da los filtros de producto, variante, fase, paso y días; `publishFlow` frena una clave que ya no existe (y no publica si no puede leer los caminos). `lib/services/no-typed-keys.test.ts` recorre el módulo.
 
 ## Punto de partida (11/11/2026)
 

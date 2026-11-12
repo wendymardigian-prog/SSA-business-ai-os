@@ -17,6 +17,7 @@ import { WhatsappGroupTriggerPanel } from "./WhatsappGroupTriggerPanel";
 import { ScheduledTriggerPanel } from "./ScheduledTriggerPanel";
 import { CommentScopePicker } from "./CommentScopePicker";
 import { SalesTriggerPanel } from "./SalesTriggerPanel"; // @plantilla-quitar(ventas)
+import { ServiceTriggerPanel, isServiceTrigger } from "./ServiceTriggerPanel"; // @plantilla-quitar(servicios)
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
 import { ONCE_PER_CONTACT_DETAIL, ONCE_PER_CONTACT_TITLE, supportsOncePerContact } from "@/lib/flow-engine/once-per-contact";
 
@@ -202,6 +203,9 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
       {/* @plantilla-desde(ventas) */}
       {SALES_TRIGGERS.includes(triggerType) && <SalesTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
       {/* @plantilla-hasta(ventas) */}
+      {/* @plantilla-desde(servicios) */}
+      {isServiceTrigger(triggerType) && <ServiceTriggerPanel triggerType={triggerType} data={data as Record<string, unknown>} onChange={onChange as (d: Record<string, unknown>) => void} />}
+      {/* @plantilla-hasta(servicios) */}
 
       {/* Keywords Section */}
       {showKeywords && (

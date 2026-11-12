@@ -4,6 +4,8 @@
 import { useEffect, useState } from "react";
 import { loadSalesTriggerOptions } from "@/lib/actions/sales-automation";
 import type { ServiceActionData, ServiceActionType } from "@/lib/flow-engine/nodes/service-action-detail";
+import { ServiceKeySelect, ServiceVariantSelect } from "./service-key-select";
+import { useServicePicker } from "./use-service-picker";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -12,10 +14,12 @@ const hintClass = "mt-1 text-[11px] text-muted-foreground";
 /**
  * El panel de las cinco acciones de Servicios (F25). Todas actúan sobre el servicio que trae el evento o, si no trae
  * ninguno, el activo más reciente del contacto (del producto elegido, si se elige uno). El paso y la fase se eligen
- * por su clave (la que se ve en el Camino del cliente de la variante).
+ * de una lista con su nombre (F122): producto › variante › fase o paso. Se guarda la clave como siempre; la variante
+ * solo acota la lista (`variantId`, que el motor no lee).
  */
 export function ServiceActionPanel({ type, data: raw, onChange }: { type: ServiceActionType; data: Record<string, unknown>; onChange: (data: Record<string, unknown>) => void }) {
-  const data = raw as ServiceActionData & Record<string, unknown>;
+  const data = raw as ServiceActionData & Record<string, unknown> & { variantId?: string | null };
+  const picker = useServicePicker();
   const [products, setProducts] = useState<Array<{ id: string; name: string }> | null>(null);
 
   useEffect(() => {
@@ -34,7 +38,7 @@ export function ServiceActionPanel({ type, data: raw, onChange }: { type: Servic
     <div className="space-y-4">
       <div>
         <label htmlFor="svc-product" className={labelClass}>Sobre qué servicio</label>
-        <select id="svc-product" value={data.productId ?? ""} onChange={(e) => set({ productId: e.target.value || null })} className={inputClass}>
+        <select id="svc-product" value={data.productId ?? ""} onChange={(e) => onChange({ ...data, productId: e.target.value || null, variantId: null })} className={inputClass}>
           <option value="">{products === null ? "Cargando…" : "El del evento, o el activo más reciente"}</option>
           {(products ?? []).map((p) => (
             <option key={p.id} value={p.id}>
@@ -45,18 +49,26 @@ export function ServiceActionPanel({ type, data: raw, onChange }: { type: Servic
         <p className={hintClass}>Si el disparador es de un servicio, se usa ese. Si el contacto no tiene uno activo, el paso se saltea y queda anotado.</p>
       </div>
 
+      {(type === "svc_complete_step" || type === "svc_change_phase") && (
+        <div>
+          <label htmlFor="svc-variant" className={labelClass}>Variante</label>
+          <ServiceVariantSelect id="svc-variant" options={picker} productId={data.productId ?? null} value={data.variantId ?? null} onChange={(variantId) => onChange({ ...data, variantId })} />
+          <p className={hintClass}>Solo acota la lista de abajo.</p>
+        </div>
+      )}
+
       {type === "svc_complete_step" && (
         <div>
           <label htmlFor="svc-item" className={labelClass}>Qué paso se completa</label>
-          <input id="svc-item" value={data.itemKey ?? ""} onChange={(e) => set({ itemKey: e.target.value.trim() || null })} placeholder="Clave del paso" className={inputClass} />
-          <p className={hintClass}>La clave del paso en el Camino del cliente. Si ese paso ya está hecho, no pasa nada.</p>
+          <ServiceKeySelect id="svc-item" kind="step" options={picker} scope={{ productId: data.productId ?? null, variantId: data.variantId ?? null }} value={data.itemKey ?? null} onChange={(itemKey) => set({ itemKey })} />
+          <p className={hintClass}>Si ese paso ya está hecho, no pasa nada.</p>
         </div>
       )}
 
       {type === "svc_change_phase" && (
         <div>
           <label htmlFor="svc-phase" className={labelClass}>A qué fase pasa</label>
-          <input id="svc-phase" value={data.phaseKey ?? ""} onChange={(e) => set({ phaseKey: e.target.value.trim() || null })} placeholder="Clave de la fase" className={inputClass} />
+          <ServiceKeySelect id="svc-phase" kind="phase" options={picker} scope={{ productId: data.productId ?? null, variantId: data.variantId ?? null }} value={data.phaseKey ?? null} onChange={(phaseKey) => set({ phaseKey })} />
         </div>
       )}
 
