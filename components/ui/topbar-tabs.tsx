@@ -6,7 +6,7 @@ import { HEADER_TABS_CONTAINER, headerTabClass, tabCountLabel } from "@/lib/ui/t
 
 /**
  * Las pestañas de una pantalla, en la barra superior (`<PageHeader tabs={<TopbarTabs … />} />`). Es el ÚNICO control
- * de pestañas de la barra: Finanzas, Ventas ⇄ Pagos, Ajustes, Clientes, Portal, Afiliados y el resto lo usan (directo
+ * de pestañas de la barra: Ajustes, Equipo/Roles y el resto de las pantallas lo usan (directo
  * o con `HeaderTabs`, que es lo mismo con otros nombres de props).
  *
  * Un control segmentado: fondo gris y la activa en blanco. Son links (cambian la URL) y la activa se anuncia con

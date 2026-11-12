@@ -67,7 +67,7 @@ export function FunnelCard({
           const next = steps[i + 1];
           // La caida solo entre dos pasos que se comparan entre si.
           const showsDrop = next && next.base === step.key && next.percent !== null && next.percent <= 100;
-          // Leads Meta y Leads CRM (y Compras Meta y Ventas) son el mismo paso contado por dos fuentes.
+          // Meta y el CRM cuentan el mismo paso (leads, compras) con dos fuentes distintas.
           const sameStep = next && !showsDrop && next.source === "crm" && step.source === "meta" && i > 0;
           return (
             <div key={step.key} className="flex flex-col items-center gap-0.5">

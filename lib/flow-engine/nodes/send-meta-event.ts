@@ -1,12 +1,12 @@
 /**
  * «Enviar evento a Meta» (00328): le avisa a la API de Conversiones de Meta que pasó algo que vale (un lead, una
- * reunión agendada...). Se arma desde Formularios y Agenda (el editor de pasos) o en el lienzo.
+ * reunión agendada...). Se arma desde el editor de pasos o en el lienzo.
  *
  * El paso NO manda en el momento: anota el evento y lo encola (`lib/meta/capi/run.ts`), y el flujo sigue. Un fallo de
  * Meta nunca frena el flujo; se reintenta solo y el resultado se ve en la tarjeta de la API de Conversiones.
  *
  * Lo que decide solo, sin que la persona lo configure:
- *   - De qué se trata: la respuesta del formulario que disparó el flujo, la reunión, o (en cualquier otro disparador)
+ *   - De qué se trata: lo que disparó el flujo (por ejemplo la reunión), o (en cualquier otro disparador)
  *     solo el contacto.
  *   - El código del evento: el que usó el Pixel de la web (`meta_event_id`) o uno fijo por respuesta, reunión o paso.
  *     Así un reintento, o el mismo flujo corriendo dos veces, no cuenta doble.

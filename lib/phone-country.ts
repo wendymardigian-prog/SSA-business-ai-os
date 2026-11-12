@@ -1,7 +1,7 @@
 /**
  * De qué país es un teléfono, por su prefijo internacional.
  *
- * Puro y sin dependencias: lo usan la tabla de respuestas de un formulario (columna, filtro y
+ * Puro y sin dependencias: lo usan las tablas con teléfono (columna, filtro y
  * agrupar por país) y su CSV. El teléfono se guarda siempre como `+<dígitos>` (E.164), así que el
  * país sale del prefijo: gana el más largo que coincide (+598 es Uruguay, no +59…).
  *

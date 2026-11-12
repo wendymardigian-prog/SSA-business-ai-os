@@ -40,6 +40,9 @@ export async function loadPieceLinkDestinations(): Promise<{ ok: true; destinati
     return { ok: true, destinations: { forms, events } };
   } catch (error) {
     console.error("[contenido] no pude cargar los destinos del link:", error instanceof Error ? error.message : "error desconocido");
+    // @plantilla-desde(formularios)
     return { ok: false, error: "No pude cargar tus formularios y agendas. Podés pegar el link a mano." };
+    // @plantilla-hasta(formularios)
+    // @plantilla-sin(formularios): return { ok: false, error: "No pude cargar tus agendas. Podés pegar el link a mano." };
   }
 }

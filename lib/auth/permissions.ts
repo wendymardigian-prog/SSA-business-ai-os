@@ -194,7 +194,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "payments.manage", module: "sales", label: "Gestionar los pagos", description: "Cobrar, revertir un cobro, agregar una cuota, reprogramar, marcar incobrable y reembolsar." }, // @plantilla-quitar(ventas)
   { key: "products.manage", module: "sales", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." }, // @plantilla-quitar(ventas)
   // @plantilla-sin(ventas): { key: "products.manage", module: "catalogo", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." },
-  // Afiliados y links de producto (Servicios A1, bloque AF): son de BAIOS y viajan con Ventas.
+  // Afiliados y links de producto (Servicios A1, bloque AF): son de BAIOS y viajan juntos.
   { key: "product_links.manage", module: "sales", label: "Administrar los links de los productos", description: "La tarjeta Links de cada producto: agregar, editar, activar y elegir los dos principales." }, // @plantilla-quitar(ventas)
   { key: "affiliates.use", module: "sales", label: "Usar mis links de afiliado", description: "Mis links: su código y los links de los productos para compartir, y sus referidos." }, // @plantilla-quitar(ventas)
   { key: "affiliates.assign", module: "sales", label: "Asignar afiliados a mano", description: "Asignar, cambiar o quitar el afiliado de un contacto o de una venta, con motivo." }, // @plantilla-quitar(ventas)

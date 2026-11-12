@@ -1,5 +1,5 @@
 {
-  "_comment": "Casos compartidos entre public.resolve_meta_match (SQL) y resolveMetaMatch (TS). Cada caso corre contra las dos: scripts/verify-ads-attribution.mjs y lib/attribution/meta-match.test.ts. El catalogo (con sus reglas) es el mismo para todos. Orden (00318): ids -> regla -> nombre exacto -> campaña por nombre unico o parecido -> anuncio por parecido -> unico anuncio del conjunto.",
+  "_comment": "Casos compartidos entre public.resolve_meta_match (SQL) y resolveMetaMatch (TS). Cada caso corre contra las dos: scripts/verify-ads-attribution.mjs y lib/attribution/meta-match.test.ts. El catalogo (con sus reglas) es el mismo para todos. Orden: ids -> regla -> nombre exacto -> campaña por nombre unico o parecido -> anuncio por parecido -> unico anuncio del conjunto.",
   "catalog": {
     "campaigns": [
       {

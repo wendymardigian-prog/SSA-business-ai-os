@@ -21,12 +21,12 @@
  *     nada (con su cola), y se niega con uno enviando, uno con un envio o uno de
  *     otro workspace.
  *
- *   node scripts/verify-broadcasts.mjs --despues-de-00347   # suma el bloque 7
+ *   node scripts/verify-broadcasts.mjs --despues-de-00347   # suma el bloque 7 @plantilla-quitar(proyecto)
  *   - (00355) `reopen_unsent_broadcast`: vuelve a borrador un programado o
  *     pausado sin envios (vacia su cola y los contadores) y se niega con uno
  *     enviando, uno con envios, uno terminado o de otro workspace.
  *
- *   node scripts/verify-broadcasts.mjs --despues-de-00355   # suma el bloque 8
+ *   node scripts/verify-broadcasts.mjs --despues-de-00355   # suma el bloque 8 @plantilla-quitar(proyecto)
  *
  * Crea y borra todo lo suyo (prefijo zz-test-). No se corre a la vez que otro
  * verify-*: comparten prefijo. Tomar el candado /private/tmp/ssa-verify.lock.

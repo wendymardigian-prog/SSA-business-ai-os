@@ -29,7 +29,7 @@ function single(params: RawParams, key: string): string | null {
 
 /**
  * Lee el periodo. Tolerante: lo invalido cae al atajo por defecto (los 30 dias de siempre, salvo que la pantalla
- * pida otro, como Respuestas de un formulario, que arranca en el Historico), y un rango invertido no cuenta como rango.
+ * pida otro, como las que arrancan en el Historico), y un rango invertido no cuenta como rango.
  */
 export function readDashboardPeriod(params: RawParams, defaultPreset: PeriodPreset = DEFAULT_PERIOD): PeriodFilter {
   const rawRange = single(params, "range") ?? single(params, "periodo");

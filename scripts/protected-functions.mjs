@@ -17,12 +17,12 @@ export const PROTECTED_FUNCTIONS = [
   {
     name: "create_booking",
     sig: "public.create_booking(uuid,uuid,uuid,timestamp with time zone,timestamp with time zone,text,text,text,text,text,text,text,text,jsonb,text,jsonb,text,text,uuid,jsonb,text,uuid,uuid,jsonb,text)",
-    // 00358 la cambio a proposito (la agenda reescribe el nombre del contacto salvo edicion manual); la de la 00203 era dc462c28e99c353bbc9ca26198eddd64.
+    // La agenda reescribe el nombre del contacto salvo edicion manual: este es el hash vigente.
     md5: "b9e1eef82fe3b5660f7a1dc879b5087f", // @plantilla-quitar(formularios,webhooks)
     // @plantilla-sin(formularios,webhooks): md5: "9cea40abb3b027400f1bb2700bafc132",
   },
   { name: "create_sale", sig: "public.create_sale(jsonb,uuid)", md5: "adb766e6d657bf55db42779c7c53bcb3" }, // @plantilla-quitar(ventas)
-  // 00318 la cambio a proposito (reglas, nombre exacto y parecido); la de la 00299 era c87fbfe87da5a195a2da5e15ae140394.
+  // Reglas, nombre exacto y parecido: este es el hash vigente.
   { name: "resolve_meta_match", sig: "public.resolve_meta_match(uuid,text,text,text,text,text,text,text)", md5: "e3c54b36e4ea1a1a6ef4b07eb6bd1387" },
 ];
 

@@ -134,7 +134,10 @@ function useDestinations(): DestinationsState {
         setState(res.ok ? { status: "ready", destinations: res.destinations } : { status: "failed", error: res.error });
       })
       .catch(() => {
+        // @plantilla-desde(formularios)
         if (alive) setState({ status: "failed", error: "No pude cargar tus formularios y agendas. Podés pegar el link a mano." });
+        // @plantilla-hasta(formularios)
+        // @plantilla-sin(formularios): if (alive) setState({ status: "failed", error: "No pude cargar tus agendas. Podés pegar el link a mano." });
       });
     return () => {
       alive = false;
@@ -181,6 +184,7 @@ function LinkBuilder({ code, pieceTitle }: { code: string; pieceTitle: string })
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:opacity-60"
               >
                 <option value={CUSTOM_DESTINATION}>{loaded.status === "loading" ? "Cargando…" : "Otro link (lo pego yo)"}</option>
+                {/* @plantilla-desde(formularios) */}
                 {destinations && destinations.forms.length > 0 && (
                   <optgroup label="Formularios">
                     {destinations.forms.map((d) => (
@@ -190,6 +194,7 @@ function LinkBuilder({ code, pieceTitle }: { code: string; pieceTitle: string })
                     ))}
                   </optgroup>
                 )}
+                {/* @plantilla-hasta(formularios) */}
                 {destinations && destinations.events.length > 0 && (
                   <optgroup label="Agendas">
                     {destinations.events.map((d) => (

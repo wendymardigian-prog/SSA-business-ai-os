@@ -6,7 +6,7 @@ import { stepVariables } from "@/lib/sequences/steps";
 import { tidyEmptyNames, EMPTY_NAME_MARK } from "@/lib/templates/fallback";
 
 /**
- * El 8/11/2026 un broadcast saludó «¡Hola Contacto!» a contactos que se llamaban «Contacto de WhatsApp» (el nombre que
+ * Un broadcast saludó «¡Hola Contacto!» a contactos que se llamaban «Contacto de WhatsApp» (el nombre que
  * el sistema les pone cuando WhatsApp no manda el suyo). Estos tests fijan que ningún saludo vuelve a usar un nombre de
  * relleno: ni los flujos, ni las secuencias, ni los broadcasts (estos en `lib/broadcasts/render.test.ts`).
  */
