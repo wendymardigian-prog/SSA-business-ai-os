@@ -188,14 +188,14 @@ export function ServiceRecordHeader({ data, today, members, permissions }: { dat
           <Figure label="Lleva">
             {data.elapsed ? (
               <>
-                <span className="font-semibold">{data.elapsed.day} días</span>
+                <span className="font-semibold">{data.elapsed.day} {data.elapsed.day === 1 ? "día" : "días"}</span>
                 {data.elapsed.total ? <span className="text-muted-foreground"> de {data.elapsed.total}</span> : null}
               </>
             ) : (
               "—"
             )}
           </Figure>
-          <Figure label="Plazo contratado">{durationFromDates(data.startsOn, data.endsOn) ? `${durationFromDates(data.startsOn, data.endsOn)} días` : "Sin fin"}</Figure>
+          <Figure label="Plazo contratado">{durationFromDates(data.startsOn, data.endsOn) ? `${durationFromDates(data.startsOn, data.endsOn)} ${durationFromDates(data.startsOn, data.endsOn) === 1 ? "día" : "días"}` : "Sin fin"}</Figure>
           <Figure label="Fin">{data.endsOn ? fmtDate(data.endsOn) : "Sin fin"}</Figure>
           <Figure label="Responsable">
             {can("services.change_owner") && data.status !== "cancelled" ? (
@@ -617,7 +617,7 @@ function ClassroomBlock({ classroom }: { classroom: ClassroomProgressView | null
         </h3>
         {classroom && (
           <span className="text-xs text-muted-foreground">
-            {classroom.modules.length} módulos · {classroom.lessonsViewed} clases vistas · {classroom.tasksDone} de {classroom.tasksTotal} actividades
+            {classroom.modules.length} {classroom.modules.length === 1 ? "módulo" : "módulos"} · {classroom.lessonsViewed} {classroom.lessonsViewed === 1 ? "clase vista" : "clases vistas"} · {classroom.tasksDone} de {classroom.tasksTotal} actividades
           </span>
         )}
         {classroom && (
