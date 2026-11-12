@@ -98,6 +98,6 @@ describe("destinationHint", () => {
     expect(destinationHint(null)).toMatch(/sin seguimiento/);
     expect(destinationHint({ kind: "event", id: "e", label: "", url: "" })).toMatch(/agende.*atribuida a esta pieza/);
     expect(destinationHint({ kind: "form", id: "f", label: "", url: "" })).toMatch(/complete.*atribuida a esta pieza/);
-    expect(destinationHint({ kind: "form", id: "f", label: "", url: "", noContact: true })).toMatch(/no suma a esta pieza/);
+    expect(destinationHint({ kind: "form", id: "f", label: "", url: "", noContact: true })).toMatch(/no suma a esta pieza/); // @plantilla-quitar(formularios)
   });
 });

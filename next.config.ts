@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  // @plantilla-desde(disenador)
   // Diseñador IA: cargar un .zip de hasta 50 MB (F39) y subir imágenes de hasta 20 MB (F22) son Server Actions, y sin
   // esto rige el tope de 1 MB. 51 MB deja margen para el armado del multipart. Cada acción vuelve a validar el tamaño
   // y los bytes del archivo ANTES de usarlo (`MAX_ZIP_BYTES`, `checkImageUpload`); el tope de acá solo deja llegar.
@@ -23,6 +24,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "51mb",
     },
   },
+  // @plantilla-hasta(disenador)
   // Etapa 4 (§15): las paginas publicas de reserva y el embed se pueden
   // embeber; el resto de la app, no. La regla vive en lib/security-headers.ts.
   async headers() {

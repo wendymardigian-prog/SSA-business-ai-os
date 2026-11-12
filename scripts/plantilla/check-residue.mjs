@@ -93,6 +93,9 @@ const ALLOW = [
   { kind: "function", key: /^private\.meta_touch_utm_counts\(/, tokens: ["formulario"],
     reason: "gemela de lib/attribution: nombra el origen 'form', que en la plantilla ya no aparece (inofensivo)" },
 
+  { kind: "function", key: /^private\.touch_effective_medium\(/, tokens: ["formulario"],
+    reason: "gemela de lib/attribution: nombra los medios 'form' y 'webhook', que en la plantilla ya no aparecen (inofensivo)" },
+
   // Roles: las areas de grabaciones estan cableadas en la logica comun de "no podes dar lo que no
   // tenes" (can_give_role, workspace_roles_grant_check, la politica de insert). Sin Grabaciones nadie
   // tiene ese alcance, asi que no hacen nada; reescribir esas tres en la poda las dejaria desfasadas.

@@ -15,7 +15,7 @@ import { SendPollPanel } from "./SendPollPanel";
 import { InviteToGroupPanel, SendToGroupPanel } from "./SendToGroupPanel";
 import { MetaEventFields } from "@/components/automations/meta-event-fields";
 import type { MetaEventStepData } from "@/lib/meta/capi/events";
-import { DesignGeneratePanel } from "./DesignGeneratePanel";
+import { DesignGeneratePanel } from "./DesignGeneratePanel"; // @plantilla-quitar(disenador)
 import { PrivateReplyPanel } from "./PrivateReplyPanel";
 import type { AttributionPanelContext } from "./SendMessagePanel";
 import { SendEmailPanel } from "./SendEmailPanel";
@@ -106,7 +106,7 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
       return <SendToGroupPanel data={rawData} onChange={onChange} />;
     case "invite_to_group" as NodeType:
       return <InviteToGroupPanel data={rawData} onChange={onChange} />;
-    // API de Conversiones (00328): el mismo formulario que en Formularios y Agenda.
+    // API de Conversiones (00328): el mismo formulario que en el editor de pasos.
     case "send_meta_event" as NodeType:
       return (
         <MetaEventFields
@@ -155,8 +155,10 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
       return <ServiceActionPanel type={actionType as unknown as ServiceActionType} data={rawData} onChange={onChange} />;
     // @plantilla-hasta(servicios)
     // Diseñador IA (F57): una pieza desde una plantilla para el contacto del disparador.
+    // @plantilla-desde(disenador)
     case "designGenerate" as NodeType:
       return <DesignGeneratePanel data={rawData} onChange={onChange} availableVariables={availableVariables} variableLabels={variableLabels} />;
+    // @plantilla-hasta(disenador)
     default:
       return (
         <p className="text-sm text-muted-foreground">

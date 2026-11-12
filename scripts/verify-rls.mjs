@@ -1576,6 +1576,7 @@ try {
         "borrar el contacto NO borra el registro del email: queda sin contacto"); }
   }
 
+  // @plantilla-desde(disenador)
   console.log("\n— Diseñador IA (00319, 00320): lectura por permiso, sin escritura con la sesion, hilos por canal —");
   { const doc = { v: 1, format: "sq", pages: [{ id: "pg_test0001", background: { type: "color", color: "#ffffff" }, elements: [] }] };
     const { data: d } = await svc.from("designs").insert({ workspace_id: ws.id, name: "zz-test diseño rls", format: "sq", doc, origin: "blank" }).select("id").single();
@@ -1604,6 +1605,7 @@ try {
     const { data: wsOtroDis } = await svc.from("workspaces").insert({ name: "zz-test-disenador-ws", slug: `zz-test-disenador-${Date.now()}` }).select("id").single();
     await svc.from("workspace_members").insert({ workspace_id: wsOtroDis.id, user_id: otroDis.id, role: "owner" });
     check(!(await sees(otroDis, "designs", d.id)).seen, "otro workspace NO ve los diseños de este"); }
+  // @plantilla-hasta(disenador)
 
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el

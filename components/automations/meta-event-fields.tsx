@@ -5,8 +5,8 @@ import { META_CURRENCIES, STEP_META_EVENTS, checkStepEventName, isStepEventName,
 
 /**
  * Lo que se configura de «Enviar evento a Meta» (00328): qué evento, el valor (opcional, admite variables), la moneda,
- * el nombre del contenido y, en una reunión, si solo cuentan las que agendó el lead. Lo usan el editor de pasos de
- * Formularios y Agenda y el panel del lienzo: es el mismo paso en los dos lados.
+ * el nombre del contenido y, en una reunión, si solo cuentan las que agendó el lead. Lo usan el editor de pasos
+ * y el panel del lienzo: es el mismo paso en los dos lados.
  *
  * El código del evento y la hora no se configuran: los decide el paso (ver `lib/flow-engine/nodes/send-meta-event.ts`).
  */
@@ -25,7 +25,7 @@ export function MetaEventFields({
   data: MetaEventStepData;
   patch: (next: Partial<MetaEventStepData>) => void;
   disabled?: boolean;
-  /** `show`: en la Agenda. `hint`: en el lienzo, donde puede o no dispararlo una reunión. `hide`: Formularios. */
+  /** `show`: en la Agenda. `hint`: en el lienzo, donde puede o no dispararlo una reunión. `hide`: donde no hay reuniones. */
   bookingToggle: "show" | "hint" | "hide";
   inputClassName: string;
 }) {
@@ -117,7 +117,8 @@ export function MetaEventFields({
           value={String(data.contentName ?? "")}
           disabled={disabled}
           maxLength={200}
-          placeholder="Si lo dejás vacío, va el nombre del formulario o de la reunión"
+          placeholder="Si lo dejás vacío, va el nombre del formulario o de la reunión" // @plantilla-quitar(formularios)
+          // @plantilla-sin(formularios): placeholder="Si lo dejás vacío, va el nombre de la reunión"
           onChange={(e) => patch({ contentName: e.target.value })}
           className={inputClassName}
         />

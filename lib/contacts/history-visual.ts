@@ -83,8 +83,8 @@ const PREFIXES: Array<[prefix: string, category: HistoryCategory]> = [
   ["assignment_rule.", "assign"],
   ["contract.", "form"],
   ["task.", "task"],
-  ["design.", "design"],
-  ["design_template.", "design"],
+  ["design.", "design"], // @plantilla-quitar(disenador)
+  ["design_template.", "design"], // @plantilla-quitar(disenador)
   ["email_", "email"],
   ["qualification", "qualification"],
   ["webhook_endpoint.", "flow"],

@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS public.assignment_rules (
 );
 ALTER TABLE public.assignment_rules ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.assignment_rules IS 'Reglas de asignacion automatica de un contacto: una fila por workspace y kind (setter, vendedor, referido). Arrancan en manual.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.assignment_rules FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.products (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -61,6 +62,7 @@ CREATE TABLE IF NOT EXISTS public.products (
 );
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.products IS 'Catalogo de productos. Un producto no se borra: pasa a inactivo o discontinuado.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.products FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.product_variants (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -95,6 +97,7 @@ ALTER TABLE public.product_variants ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.product_variants IS 'Como se vende un producto: duracion, facturacion y PRECIO. El historial de cambios vive en audit_log.';
 COMMENT ON COLUMN public.product_variants.price IS 'Precio de la variante, siempre en USD. 0 = sin precio. Cada cambio queda en audit_log.';
 COMMENT ON COLUMN public.product_variants.event_date IS 'La fecha fija de un evento. Null en los demas tipos: su duracion empieza el dia que compra cada cliente.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.product_variants FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Funciones

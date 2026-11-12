@@ -34,7 +34,10 @@ import { newPathId, pathsOf } from "@/lib/flow-engine/branch-paths";
 import { pruneBranchEdges } from "@/lib/automations/branch-edit";
 
 import { NodePalette, type PaletteItem } from "./node-palette";
+// @plantilla-desde(servicios)
 import { FlowCapabilitiesProvider, FlowConnectionBanner, FlowModulesProvider, useFlowCapabilities } from "./capabilities-context";
+// @plantilla-hasta(servicios)
+// @plantilla-sin(servicios): import { FlowCapabilitiesProvider, FlowConnectionBanner, useFlowCapabilities } from "./capabilities-context";
 import { FlowMetricsError, FlowMetricsProvider, FlowMetricsToggle } from "./metrics-context";
 import {
   ALL_CONNECTED,
@@ -770,15 +773,22 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
   );
 }
 
+// @plantilla-desde(servicios)
 export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNECTED, servicesEnabled = false }: FlowCanvasProps) {
+// @plantilla-hasta(servicios)
+// @plantilla-sin(servicios): export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNECTED }: FlowCanvasProps) {
   return (
     <ReactFlowProvider>
       <FlowCapabilitiesProvider capabilities={capabilities}>
+        {/* @plantilla-desde(servicios) */}
         <FlowModulesProvider modules={{ services: servicesEnabled }}>
+        {/* @plantilla-hasta(servicios) */}
           <FlowMetricsProvider flowId={flow.id}>
             <FlowCanvasInner flow={flow} attributionDefaults={attributionDefaults} />
           </FlowMetricsProvider>
+        {/* @plantilla-desde(servicios) */}
         </FlowModulesProvider>
+        {/* @plantilla-hasta(servicios) */}
       </FlowCapabilitiesProvider>
     </ReactFlowProvider>
   );

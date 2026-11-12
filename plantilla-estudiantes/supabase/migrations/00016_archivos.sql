@@ -43,8 +43,147 @@ VALUES ('user-avatars', 'user-avatars', true, 2097152, ARRAY['image/jpeg', 'imag
 ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------------------
+-- Funciones
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.can_read_chat_media(p_name text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_uuid  constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+  v_parts text[];
+  v_ws    uuid;
+  v_conv  public.conversations;
+  v_group uuid;
+BEGIN
+  IF p_name IS NULL THEN
+    RETURN false;
+  END IF;
+  v_parts := string_to_array(p_name, '/');
+  -- Un path invalido nunca hace fallar la consulta (un cast roto tumbaria el listado entero): no se lee.
+  IF cardinality(v_parts) < 3 OR v_parts[1] !~* v_uuid THEN
+    RETURN false;
+  END IF;
+  v_ws := v_parts[1]::uuid;
+
+  IF NOT public.is_workspace_member(v_ws) THEN
+    RETURN false;
+  END IF;
+  IF public.is_workspace_admin(v_ws) THEN
+    RETURN true;
+  END IF;
+
+  -- Las carpetas compartidas del negocio: la banca de recursos y la biblioteca de stickers.
+  IF cardinality(v_parts) = 3 AND v_parts[2] IN ('library', 'stickers') THEN
+    RETURN true;
+  END IF;
+
+  -- Un grupo de WhatsApp: <ws>/groups/<grupo>/<archivo>.
+  IF cardinality(v_parts) = 4 AND v_parts[2] = 'groups' AND v_parts[3] ~* v_uuid THEN
+    v_group := v_parts[3]::uuid;
+    IF NOT EXISTS (SELECT 1 FROM public.whatsapp_groups g WHERE g.id = v_group AND g.workspace_id = v_ws) THEN
+      RETURN false;
+    END IF;
+    RETURN COALESCE(public.can_see_whatsapp_group(v_group), false);
+  END IF;
+
+  -- Una conversacion: <ws>/<conversacion>/<archivo>.
+  IF cardinality(v_parts) = 3 AND v_parts[2] ~* v_uuid THEN
+    SELECT * INTO v_conv FROM public.conversations c WHERE c.id = v_parts[2]::uuid AND c.workspace_id = v_ws;
+    IF NOT FOUND THEN
+      RETURN false;
+    END IF;
+    RETURN COALESCE(public.can_see_conversation(v_conv), false);
+  END IF;
+
+  RETURN false;
+END;
+$function$;
+COMMENT ON FUNCTION public.can_read_chat_media(p_name text) IS 'Lectura de un archivo de chat-media: Owner/Admin todo su workspace; un Member, lo de una conversacion que ve (can_see_conversation), un grupo que ve (can_see_whatsapp_group) o las carpetas compartidas library/ y stickers/. Nunca NULL.';
+REVOKE ALL ON FUNCTION public.can_read_chat_media(p_name text) FROM PUBLIC, anon;
+
+CREATE OR REPLACE FUNCTION public.can_read_email_attachment(p_name text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_uuid  constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+  v_parts text[];
+  v_ws    uuid;
+BEGIN
+  IF p_name IS NULL THEN
+    RETURN false;
+  END IF;
+  v_parts := string_to_array(p_name, '/');
+  IF cardinality(v_parts) < 3 OR v_parts[1] !~* v_uuid THEN
+    RETURN false;
+  END IF;
+  v_ws := v_parts[1]::uuid;
+
+  IF NOT public.is_workspace_member(v_ws) THEN
+    RETURN false;
+  END IF;
+  IF public.is_workspace_admin(v_ws) THEN
+    RETURN true;
+  END IF;
+
+  -- <ws>/<id del email>/<n>-<nombre>: el mensaje que trajo ese email, en una conversacion que ve.
+  IF cardinality(v_parts) <> 3 OR v_parts[2] = '' THEN
+    RETURN false;
+  END IF;
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE m.workspace_id = v_ws
+      AND m.platform_message_id = v_parts[2]
+      AND c.workspace_id = v_ws
+      AND COALESCE(public.can_see_conversation(c), false)
+  );
+END;
+$function$;
+COMMENT ON FUNCTION public.can_read_email_attachment(p_name text) IS 'Lectura de un adjunto de email: Owner/Admin todo su workspace; un Member, solo los adjuntos de un email de una conversacion que ve (can_see_conversation). Nunca NULL.';
+REVOKE ALL ON FUNCTION public.can_read_email_attachment(p_name text) FROM PUBLIC, anon;
+
+CREATE OR REPLACE FUNCTION public.can_read_knowledge(p_workspace_id uuid, p_internal_only boolean)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE
+ SET search_path TO ''
+AS $function$
+  SELECT CASE
+    WHEN COALESCE(p_internal_only, false) THEN COALESCE(public.has_permission(p_workspace_id, 'knowledge.edit'), false)
+    ELSE COALESCE(
+      public.has_permission(p_workspace_id, 'knowledge.view')
+        OR public.has_permission(p_workspace_id, 'knowledge.edit')
+        OR public.has_permission(p_workspace_id, 'agents.view'),
+      false
+    )
+  END;
+$function$;
+COMMENT ON FUNCTION public.can_read_knowledge(p_workspace_id uuid, p_internal_only boolean) IS 'Quien lee un documento de Conocimiento: uno interno, solo knowledge.edit (Owner/Admin siempre); uno que no es interno, knowledge.view, knowledge.edit o agents.view. Nunca NULL.';
+REVOKE ALL ON FUNCTION public.can_read_knowledge(p_workspace_id uuid, p_internal_only boolean) FROM PUBLIC, anon;
+
+-- ----------------------------------------------------------------------------
 -- Reglas de acceso (RLS)
 -- ----------------------------------------------------------------------------
+
+DO $$ BEGIN
+  CREATE POLICY knowledge_base_select ON public.knowledge_base FOR SELECT TO authenticated
+    USING (public.can_read_knowledge(workspace_id, internal_only));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY knowledge_chunks_select ON public.knowledge_chunks FOR SELECT TO authenticated
+    USING ((EXISTS ( SELECT 1
+   FROM public.knowledge_base kb
+  WHERE ((kb.id = knowledge_chunks.document_id) AND (kb.workspace_id = knowledge_chunks.workspace_id) AND public.can_read_knowledge(kb.workspace_id, kb.internal_only)))));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE POLICY ad_creatives_select ON storage.objects FOR SELECT TO public
@@ -72,8 +211,8 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE POLICY chat_media_select ON storage.objects FOR SELECT TO public
-    USING (((bucket_id = 'chat-media'::text) AND public.is_workspace_member(((storage.foldername(name))[1])::uuid)));
+  CREATE POLICY chat_media_select ON storage.objects FOR SELECT TO authenticated
+    USING (((bucket_id = 'chat-media'::text) AND public.can_read_chat_media(name)));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
@@ -97,6 +236,6 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE POLICY email_attachments_select ON storage.objects FOR SELECT TO public
-    USING (((bucket_id = 'email-attachments'::text) AND public.is_workspace_member(((storage.foldername(name))[1])::uuid)));
+  CREATE POLICY email_attachments_select ON storage.objects FOR SELECT TO authenticated
+    USING (((bucket_id = 'email-attachments'::text) AND public.can_read_email_attachment(name)));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;

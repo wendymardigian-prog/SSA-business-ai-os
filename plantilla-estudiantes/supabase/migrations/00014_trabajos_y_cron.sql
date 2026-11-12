@@ -7,7 +7,11 @@
 --
 -- Casi todos los cron llaman a una ruta /api/cron/<nombre> de la app con
 -- private.call_app_cron, que lee la URL de la app y el secreto del cron desde Vault
--- (se cargan con private.set_system_secret). Los demas corren en la base: las purgas
+-- (se cargan con private.set_system_secret). Los que corren seguido pasan antes por
+-- una guarda (private.call_app_cron_if_work): solo llaman si hay algo que hacer, y
+-- igual una vez cada tanto por seguridad. Los de la misma frecuencia (15 s, 1 min y
+-- 5 min) son un solo trabajo de pg_cron (private.cron_tick_*), con cada parte en su
+-- bloque: una que falla no frena a las otras. Los demas corren en la base: las purgas
 -- de lo borrado (pasados 30 dias) y de lo vencido (mensajes, borradores, eventos, avisos,
 -- historial de cron y de pg_net).
 -- ============================================================================
@@ -15,6 +19,26 @@
 -- ----------------------------------------------------------------------------
 -- Tablas
 -- ----------------------------------------------------------------------------
+
+CREATE UNLOGGED TABLE IF NOT EXISTS private.cron_guard_state (
+  path text NOT NULL,
+  last_called_at timestamp with time zone NOT NULL,
+  called_count bigint DEFAULT 0 NOT NULL,
+  skipped_count bigint DEFAULT 0 NOT NULL,
+  counted_since timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT cron_guard_state_pkey PRIMARY KEY (path)
+);
+COMMENT ON TABLE private.cron_guard_state IS 'Guarda de los cron: ultima llamada a la app y contadores por ruta. UNLOGGED a proposito: sin WAL, y vacia es valida (se llama).';
+
+CREATE UNLOGGED TABLE IF NOT EXISTS private.cron_tick_errors (
+  part text NOT NULL,
+  error_count bigint DEFAULT 0 NOT NULL,
+  last_error_at timestamp with time zone NOT NULL,
+  last_error text NOT NULL,
+  counted_since timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT cron_tick_errors_pkey PRIMARY KEY (part)
+);
+COMMENT ON TABLE private.cron_tick_errors IS 'Errores de las partes de los cron agrupados: cuantos y el ultimo. UNLOGGED a proposito: sin WAL, y se vacia si la base se reinicia.';
 
 CREATE TABLE IF NOT EXISTS private.system_config (
   key text NOT NULL,
@@ -36,6 +60,7 @@ CREATE TABLE IF NOT EXISTS public.rate_limits (
 );
 ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.rate_limits IS 'Tope por IP de los endpoints publicos. La IP va como hash con sal, nunca en texto. Se purga a las 24 h.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.rate_limits FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.scheduled_jobs (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -54,6 +79,7 @@ CREATE TABLE IF NOT EXISTS public.scheduled_jobs (
 ALTER TABLE public.scheduled_jobs ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.scheduled_jobs IS 'Cola interna del motor (delays de flows, entrega de broadcasts). RLS habilitada y SIN POLICIES a proposito: solo el service role entra. No es un descuido — el payload lleva variables de flow y texto de mensajes de los leads, y ninguna pantalla necesita leer esto. Si hace falta exponerla, agregar workspace_id primero.';
 COMMENT ON COLUMN public.scheduled_jobs.dedupe_key IS 'Clave de un job reprogramable. Unica solo entre los pending: un job en processing sale del indice y deja lugar a una ventana nueva.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.scheduled_jobs FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.webhook_events (
   event_id text NOT NULL,
@@ -61,10 +87,50 @@ CREATE TABLE IF NOT EXISTS public.webhook_events (
   CONSTRAINT webhook_events_pkey PRIMARY KEY (event_id)
 );
 ALTER TABLE public.webhook_events ENABLE ROW LEVEL SECURITY;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.webhook_events FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Funciones
 -- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION private.call_app_cron_if_work(p_path text, p_safety interval DEFAULT '00:10:00'::interval)
+ RETURNS bigint
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_work boolean;
+  v_last timestamptz;
+BEGIN
+  BEGIN
+    v_work := private.cron_has_work(p_path, now());
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'cron_has_work(%) fallo, se llama igual: %', p_path, SQLERRM;
+    v_work := NULL;
+  END;
+
+  SELECT s.last_called_at INTO v_last FROM private.cron_guard_state s WHERE s.path = p_path;
+
+  IF NOT private.cron_guard_decide(v_work, v_last, p_safety, now()) THEN
+    UPDATE private.cron_guard_state SET skipped_count = skipped_count + 1 WHERE path = p_path;
+    RETURN NULL;
+  END IF;
+
+  BEGIN
+    INSERT INTO private.cron_guard_state AS s (path, last_called_at, called_count)
+    VALUES (p_path, now(), 1)
+    ON CONFLICT (path) DO UPDATE SET last_called_at = EXCLUDED.last_called_at, called_count = s.called_count + 1;
+  EXCEPTION WHEN OTHERS THEN
+    -- Sin poder anotar la llamada, se llama igual (el proximo tic tambien llamara).
+    RAISE WARNING 'cron_guard_state(%) no se pudo anotar: %', p_path, SQLERRM;
+  END;
+
+  RETURN private.call_app_cron(p_path);
+END;
+$function$;
+COMMENT ON FUNCTION private.call_app_cron_if_work(p_path text, p_safety interval) IS 'Envuelve private.call_app_cron: llama a la app solo si private.cron_has_work dice que hay trabajo, o si paso p_safety desde la ultima llamada.';
+REVOKE ALL ON FUNCTION private.call_app_cron_if_work(p_path text, p_safety interval) FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION private.call_app_cron(p_path text)
  RETURNS bigint
@@ -96,6 +162,451 @@ BEGIN
 END; $function$;
 COMMENT ON FUNCTION private.call_app_cron(p_path text) IS 'Llama a /api/cron/<path> de la app con el CRON_SECRET en el header. Solo rutas de la lista blanca. La usan los jobs de pg_cron.';
 REVOKE ALL ON FUNCTION private.call_app_cron(p_path text) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_guard_decide(p_has_work boolean, p_last_called_at timestamp with time zone, p_safety interval, p_now timestamp with time zone)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT CASE
+    -- Hay trabajo, o la guarda no sabe (NULL: sin guarda o fallo): se llama.
+    WHEN p_has_work IS DISTINCT FROM false THEN true
+    -- Nunca se llamo (o la tabla se vacio), o faltan datos para decidir: se llama.
+    WHEN p_last_called_at IS NULL OR p_safety IS NULL OR p_now IS NULL THEN true
+    -- Una ultima llamada "en el futuro" es un reloj raro: se llama.
+    WHEN p_last_called_at > p_now THEN true
+    -- La llamada de seguridad: paso el intervalo desde la ultima.
+    ELSE p_last_called_at <= p_now - p_safety
+  END
+$function$;
+REVOKE ALL ON FUNCTION private.cron_guard_decide(p_has_work boolean, p_last_called_at timestamp with time zone, p_safety interval, p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_has_work(p_path text, p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+BEGIN
+  RETURN CASE p_path
+    WHEN 'agent-bursts' THEN private.cron_work_agent_bursts(p_now)
+    WHEN 'send-queue' THEN private.cron_work_send_queue(p_now)
+    WHEN 'automation-events' THEN private.cron_work_automation_events(p_now)
+    WHEN 'sequences' THEN private.cron_work_sequences(p_now)
+    WHEN 'content-upload' THEN private.cron_work_content_upload(p_now)
+    WHEN 'jobs' THEN private.cron_work_jobs(p_now)
+    WHEN 'drafts-refresh' THEN private.cron_work_drafts_refresh(p_now)
+    WHEN 'whatsapp-health' THEN private.cron_work_whatsapp_health(p_now)
+    WHEN 'inactivity' THEN private.cron_work_inactivity(p_now)
+    WHEN 'bg-collect' THEN private.cron_work_bg_collect(p_now)
+    ELSE NULL
+  END;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_has_work(p_path text, p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_tick_15_seconds()
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO ''
+ SET lock_timeout TO '10s'
+AS $function$
+BEGIN
+  BEGIN
+    PERFORM private.call_app_cron_if_work('agent-bursts', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('agent-bursts', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('send-queue', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('send-queue', SQLERRM);
+  END;
+END;
+$function$;
+COMMENT ON FUNCTION private.cron_tick_15_seconds() IS 'Cron every-15-seconds: agent-bursts y send-queue, cada uno por su guarda y en su bloque.';
+REVOKE ALL ON FUNCTION private.cron_tick_15_seconds() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_tick_5_minutes()
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO ''
+ SET lock_timeout TO '10s'
+AS $function$
+BEGIN
+  -- Primero se vencen los borradores cuya ventana ya cerro: los avisos y la
+  -- guarda de drafts-refresh, que van despues, ya no los ven.
+  BEGIN
+    PERFORM private.sweep_agent_drafts();
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('agent-drafts-sweep', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.alert_draft_windows();
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('draft-window-alerts', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('drafts-refresh', interval '1 hour');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('drafts-refresh', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('whatsapp-health', interval '1 hour');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('whatsapp-health', SQLERRM);
+  END;
+END;
+$function$;
+COMMENT ON FUNCTION private.cron_tick_5_minutes() IS 'Cron every-5-minutes: sweep_agent_drafts, alert_draft_windows, drafts-refresh y whatsapp-health, cada uno en su bloque.';
+REVOKE ALL ON FUNCTION private.cron_tick_5_minutes() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_tick_minute()
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO ''
+ SET lock_timeout TO '10s'
+AS $function$
+BEGIN
+  BEGIN
+    PERFORM private.call_app_cron_if_work('automation-events', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('automation-events', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('jobs', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('jobs', SQLERRM);
+  END;
+
+  BEGIN
+    PERFORM private.call_app_cron_if_work('sequences', interval '10 minutes');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM private.cron_tick_note_error('sequences', SQLERRM);
+  END;
+END;
+$function$;
+COMMENT ON FUNCTION private.cron_tick_minute() IS 'Cron every-minute: automation-events, jobs y sequences, cada uno por su guarda y en su bloque.';
+REVOKE ALL ON FUNCTION private.cron_tick_minute() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_tick_note_error(p_part text, p_error text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  RAISE WARNING 'cron %: %', p_part, p_error;
+  BEGIN
+    INSERT INTO private.cron_tick_errors AS e (part, error_count, last_error_at, last_error)
+    VALUES (p_part, 1, now(), left(COALESCE(p_error, '(sin mensaje)'), 500))
+    ON CONFLICT (part) DO UPDATE
+      SET error_count = e.error_count + 1, last_error_at = EXCLUDED.last_error_at, last_error = EXCLUDED.last_error;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'cron_tick_errors(%) no se pudo anotar: %', p_part, SQLERRM;
+  END;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_tick_note_error(p_part text, p_error text) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_agent_bursts(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+BEGIN
+  -- Turnos del agente vencidos (la cola de la ruta).
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'pending' AND j.type = 'agent_burst' AND j.run_at <= v_now
+  ) THEN RETURN true; END IF;
+
+  -- Turnos trabados en processing (expireStuckJobs, STALE_CLAIM_MS = 6 min).
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'processing' AND j.type = 'agent_burst' AND j.claimed_at < v_now - interval '6 minutes'
+  ) THEN RETURN true; END IF;
+
+  -- Corridas de IA abiertas de un proceso que murio, de CUALQUIER origen
+  -- (closeStaleRuns en lib/ai/run.ts, 10 minutos).
+  IF EXISTS (
+    SELECT 1 FROM public.agent_runs r
+    WHERE r.status = 'running' AND r.created_at < v_now - interval '10 minutes'
+  ) THEN RETURN true; END IF;
+
+  RETURN false;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_agent_bursts(p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_automation_events(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+BEGIN
+  -- La cola de eventos sin procesar (incluye los que esperan el link de Meet).
+  RETURN EXISTS (
+    SELECT 1 FROM public.automation_events e
+    WHERE e.processed_at IS NULL AND e.created_at <= p_now + interval '5 seconds'
+  );
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_automation_events(p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_bg_collect(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT false
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_bg_collect(p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_content_upload(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'pending'
+      AND j.type IN ('content_upload', 'content_provider_schedule')
+      AND j.run_at <= v_now
+  ) THEN RETURN true; END IF;
+
+  -- Reclamados que quedaron colgados (STALE_CLAIM_MS = 10 min), o sin fecha de reclamo.
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'processing'
+      AND j.type IN ('content_upload', 'content_provider_schedule')
+      AND j.run_at <= v_now
+      AND (j.claimed_at IS NULL OR j.claimed_at < v_now - interval '10 minutes')
+  ) THEN RETURN true; END IF;
+
+  RETURN false;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_content_upload(p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_drafts_refresh(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.agent_drafts d
+    WHERE d.status IN ('pending', 'failed') AND d.created_at <= p_now + interval '5 seconds'
+  );
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_drafts_refresh(p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_inactivity(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.triggers t
+    JOIN public.flows f ON f.id = t.flow_id
+    WHERE t.type = 'inactivity'
+      AND t.is_active
+      AND f.status = 'published'
+      AND t.created_at <= p_now + interval '5 seconds'
+  );
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_inactivity(p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_jobs_extra(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+BEGIN
+  RETURN false;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_jobs_extra(p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_jobs(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+  v_agent record;
+BEGIN
+  -- La cola general: pendientes vencidos y reclamos viejos (STALE_INVOCATION_MS = 5 min)
+  -- o sin fecha de reclamo. Sin los turnos del agente ni las subidas largas, que
+  -- tienen su propia ruta.
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'pending'
+      AND j.run_at <= v_now
+      AND j.type NOT IN ('agent_burst', 'content_upload')
+  ) THEN RETURN true; END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.scheduled_jobs j
+    WHERE j.status = 'processing'
+      AND j.run_at <= v_now
+      AND j.type NOT IN ('agent_burst', 'content_upload')
+      AND (j.claimed_at IS NULL OR j.claimed_at < v_now - interval '5 minutes')
+  ) THEN RETURN true; END IF;
+
+  -- Documentos de Conocimiento borrados hace mas de 30 dias (purgeDeletedKnowledgeDocuments).
+  IF EXISTS (
+    SELECT 1 FROM public.knowledge_base k
+    WHERE k.deleted_at IS NOT NULL AND k.deleted_at < v_now - interval '30 days'
+  ) THEN RETURN true; END IF;
+
+  -- Publicaciones colgadas en "publicando" (sweepStuckPublications, STUCK_AFTER_MINUTES = 30).
+  IF EXISTS (
+    SELECT 1 FROM public.social_posts p
+    WHERE p.status = 'publishing' AND p.updated_at < v_now - interval '30 minutes' AND p.deleted_at IS NULL
+  ) THEN RETURN true; END IF;
+
+  -- Agendadas en el proveedor cuya hora paso (reconcileProviderSchedules, RECONCILE_AFTER_MINUTES = 15).
+  IF EXISTS (
+    SELECT 1 FROM public.social_posts p
+    WHERE p.status = 'scheduled'
+      AND p.publisher_ref IS NOT NULL
+      AND p.scheduled_at < v_now - interval '15 minutes'
+      AND p.deleted_at IS NULL
+  ) THEN RETURN true; END IF;
+
+  -- Transcripciones colgadas (reapStuckTranscriptions, STUCK_TRANSCRIPT_MS = 10 min).
+  IF EXISTS (
+    SELECT 1 FROM public.messages m
+    WHERE m.transcript_status = 'pending' AND m.transcript_started_at < v_now - interval '10 minutes'
+  ) THEN RETURN true; END IF;
+
+  -- Cierre por inactividad (sweepInactiveConversations): la MISMA consulta que
+  -- usa la app, por cada agente prendido con canales. La app ademas filtra por
+  -- tipo de agente: aca se pregunta de mas, nunca de menos.
+  -- SWEEP_MAX_AGE_DAYS = 14 y el default de close_after_inactive_hours = 12
+  -- (lib/agent/closing.ts y lib/agent/config.ts).
+  FOR v_agent IN
+    SELECT a.workspace_id, a.enabled_channel_ids, COALESCE(a.close_after_inactive_hours, 12) AS hours
+    FROM public.agents a
+    WHERE a.deleted_at IS NULL
+      AND a.is_enabled
+      AND cardinality(a.enabled_channel_ids) > 0
+      AND a.created_at <= v_now
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM public.closable_inactive_conversations(
+        v_agent.workspace_id,
+        v_agent.enabled_channel_ids,
+        v_now - make_interval(hours => v_agent.hours),
+        p_now - interval '14 days',
+        v_now,
+        1
+      )
+    ) THEN RETURN true; END IF;
+  END LOOP;
+
+  RETURN private.cron_work_jobs_extra(p_now);
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_jobs(p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_send_queue(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+BEGIN
+  -- Destinatarios que quedaron `sending` (reapStaleSending, STALE_SENDING_MS = 5 min).
+  IF EXISTS (
+    SELECT 1 FROM public.broadcast_recipients r
+    WHERE r.status = 'sending' AND r.claimed_at < v_now - interval '5 minutes'
+  ) THEN RETURN true; END IF;
+
+  -- Broadcasts programados cuya hora llego (activateScheduled).
+  IF EXISTS (
+    SELECT 1 FROM public.broadcasts b
+    WHERE b.status = 'scheduled' AND b.scheduled_for <= v_now
+  ) THEN RETURN true; END IF;
+
+  -- Broadcasts enviandose cuyo carril puede trabajar (runLane): sin carril
+  -- todavia (lo crea), o sin pausa y con next_send_at ya cumplido. Un carril
+  -- pausado o esperando no hace nada hasta su hora.
+  IF EXISTS (
+    SELECT 1
+    FROM public.broadcasts b
+    LEFT JOIN public.channel_send_lanes l ON l.channel_id = b.channel_id
+    WHERE b.status = 'sending'
+      AND b.channel_id IS NOT NULL
+      AND b.created_at <= v_now
+      AND (l.channel_id IS NULL OR (l.paused_at IS NULL AND (l.next_send_at IS NULL OR l.next_send_at <= v_now)))
+  ) THEN RETURN true; END IF;
+
+  RETURN false;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_send_queue(p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_sequences(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_now timestamptz := p_now + interval '5 seconds';
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.sequence_enrollments e
+    WHERE e.status = 'active'
+      AND e.next_step_at IS NOT NULL
+      AND e.next_step_at <= v_now
+      AND (e.locked_at IS NULL OR e.locked_at < v_now - interval '5 minutes')
+  );
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_sequences(p_now timestamp with time zone) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.cron_work_whatsapp_health(p_now timestamp with time zone DEFAULT now())
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.channels c
+    WHERE c.provider = 'evolution' AND c.evolution_instance IS NOT NULL AND c.created_at <= p_now + interval '5 seconds'
+  );
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.cron_work_whatsapp_health(p_now timestamp with time zone) FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION private.purge_cron_run_details(p_retention_days integer DEFAULT 3)
  RETURNS integer
@@ -150,6 +661,29 @@ END;
 $function$;
 COMMENT ON FUNCTION private.purge_pg_net_responses(p_retention_days integer) IS 'Borra las respuestas HTTP viejas que guarda pg_net. Sin esto net._http_response crece sin techo.';
 REVOKE ALL ON FUNCTION private.purge_pg_net_responses(p_retention_days integer) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.purge_scheduled_jobs(p_done_days integer DEFAULT 30, p_failed_days integer DEFAULT 90)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_deleted integer := 0;
+BEGIN
+  DELETE FROM public.scheduled_jobs j
+  WHERE (
+      j.status IN ('completed', 'cancelled')
+      AND GREATEST(j.created_at, j.run_at) < now() - make_interval(days => GREATEST(COALESCE(p_done_days, 30), 7))
+    ) OR (
+      j.status = 'failed'
+      AND GREATEST(j.created_at, j.run_at) < now() - make_interval(days => GREATEST(COALESCE(p_failed_days, 90), 30))
+    );
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.purge_scheduled_jobs(p_done_days integer, p_failed_days integer) FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION public.bump_rate_limit(p_key text, p_window_start timestamp with time zone)
  RETURNS integer
@@ -317,7 +851,7 @@ BEGIN
   RETURN v_deleted;
 END;
 $function$;
-COMMENT ON FUNCTION public.purge_read_notifications(p_retention_days integer) IS 'Borra las notificaciones LEIDAS de mas de N dias. Las no leidas no se tocan nunca. La llama el cron diario.';
+COMMENT ON FUNCTION public.purge_read_notifications(p_retention_days integer) IS 'Borra las notificaciones LEIDAS de mas de N dias. Las no leidas de mas de 60 dias las borra purge_stale_unread_notifications. La llama el cron diario.';
 REVOKE ALL ON FUNCTION public.purge_read_notifications(p_retention_days integer) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.purge_send_windows(p_retention_days integer DEFAULT 2)
@@ -392,6 +926,27 @@ END;
 $function$;
 COMMENT ON FUNCTION public.purge_soft_deleted(p_retention_days integer) IS 'Borra de verdad lo que lleva mas de N dias marcado como eliminado. La llama el cron diario /api/cron/purge-deleted.';
 REVOKE ALL ON FUNCTION public.purge_soft_deleted(p_retention_days integer) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.purge_stale_unread_notifications(p_retention_days integer DEFAULT 60)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_deleted integer := 0;
+BEGIN
+  -- Nunca menos de 30 dias: un aviso de la semana pasada sin leer todavia sirve.
+  DELETE FROM public.notifications
+  WHERE read_at IS NULL
+    AND created_at < now() - make_interval(days => GREATEST(p_retention_days, 30));
+
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$function$;
+COMMENT ON FUNCTION public.purge_stale_unread_notifications(p_retention_days integer) IS 'Borra las notificaciones SIN LEER de mas de N dias (minimo 30). Las leidas las borra purge_read_notifications. La llama el cron diario purge-notifications.';
+REVOKE ALL ON FUNCTION public.purge_stale_unread_notifications(p_retention_days integer) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.purge_trigger_fires(p_retention_days integer DEFAULT 90)
  RETURNS integer
@@ -548,27 +1103,24 @@ ON CONFLICT (key) DO NOTHING;
 -- Cron (pg_cron)
 -- ----------------------------------------------------------------------------
 
-SELECT cron.schedule('agent-bursts', '15 seconds', 'SELECT private.call_app_cron(''agent-bursts'')');
-
-SELECT cron.schedule('agent-drafts-sweep', '*/5 * * * *', 'SELECT private.sweep_agent_drafts()');
-
-SELECT cron.schedule('automation-events', '* * * * *', 'SELECT private.call_app_cron(''automation-events'')');
-
-SELECT cron.schedule('bg-collect', '*/15 * * * *', 'SELECT private.call_app_cron(''bg-collect'')');
+SELECT cron.schedule('bg-collect', '*/15 * * * *', 'SELECT private.call_app_cron_if_work(''bg-collect'', interval ''1 day'')');
 
 SELECT cron.schedule('bg-dispatch', '*/15 * * * *', 'SELECT private.call_app_cron(''bg-dispatch'')');
 
 SELECT cron.schedule('content-media-cleanup', '50 5 * * *', 'SELECT private.call_app_cron(''content-media-cleanup'')');
 
-SELECT cron.schedule('content-upload', '*/2 * * * *', 'SELECT private.call_app_cron(''content-upload'');');
+SELECT cron.schedule('content-upload', '*/2 * * * *', 'SELECT private.call_app_cron_if_work(''content-upload'', interval ''10 minutes'')');
 
-SELECT cron.schedule('draft-window-alerts', '*/5 * * * *', 'SELECT private.alert_draft_windows()');
+SELECT cron.schedule('every-15-seconds', '15 seconds', 'SELECT private.cron_tick_15_seconds()');
 
-SELECT cron.schedule('drafts-refresh', '*/5 * * * *', 'SELECT private.call_app_cron(''drafts-refresh'')');
+SELECT cron.schedule('every-5-minutes', '3-59/5 * * * *', 'SELECT private.cron_tick_5_minutes()');
 
-SELECT cron.schedule('inactivity', '*/15 * * * *', 'SELECT private.call_app_cron(''inactivity'')');
+SELECT cron.schedule('every-minute', '* * * * *', 'SELECT private.cron_tick_minute()');
 
-SELECT cron.schedule('jobs', '* * * * *', 'SELECT private.call_app_cron(''jobs'')');
+SELECT cron.schedule('inactivity', '*/15 * * * *', 'SELECT private.call_app_cron_if_work(''inactivity'', interval ''2 hours'')');
+
+SELECT cron.schedule('meta-capi-cleanup', '23 4 * * *', 'DELETE FROM public.meta_capi_request_context WHERE created_at < now() - interval ''8 days'';
+    DELETE FROM public.meta_capi_events WHERE created_at < now() - interval ''180 days'' AND status <> ''pending'';');
 
 SELECT cron.schedule('metrics-sync', '30 * * * *', 'SELECT private.call_app_cron(''metrics-sync'')');
 
@@ -578,24 +1130,20 @@ SELECT cron.schedule('purge-agent-steps', '10 5 * * *', 'SELECT public.purge_age
 
 SELECT cron.schedule('purge-automation-events', '40 4 * * *', 'SELECT public.purge_automation_events(7)');
 
-SELECT cron.schedule('purge-cron-runs', '20 5 * * *', 'SELECT private.purge_cron_run_details(3)');
+SELECT cron.schedule('purge-cron-runs', '20 5 * * *', 'SELECT private.purge_cron_run_details(1)');
 
 SELECT cron.schedule('purge-deleted', '0 4 * * *', 'SELECT public.purge_soft_deleted(30)');
 
 SELECT cron.schedule('purge-messages', '0 5 * * *', 'SELECT public.purge_old_messages(12)');
 
-SELECT cron.schedule('purge-notifications', '50 4 * * *', 'SELECT public.purge_read_notifications(60)');
+SELECT cron.schedule('purge-notifications', '50 4 * * *', 'SELECT public.purge_read_notifications(60), public.purge_stale_unread_notifications(60)');
 
 SELECT cron.schedule('purge-pg-net', '10 * * * *', 'SELECT private.purge_pg_net_responses(1)');
+
+SELECT cron.schedule('purge-scheduled-jobs', '35 4 * * *', 'SELECT private.purge_scheduled_jobs(30, 90)');
 
 SELECT cron.schedule('purge-send-windows', '20 4 * * *', 'SELECT public.purge_send_windows(2)');
 
 SELECT cron.schedule('purge-trigger-fires', '30 4 * * *', 'SELECT public.purge_trigger_fires(90)');
 
-SELECT cron.schedule('send-queue', '15 seconds', 'SELECT private.call_app_cron(''send-queue'')');
-
-SELECT cron.schedule('sequences', '* * * * *', 'SELECT private.call_app_cron(''sequences'')');
-
 SELECT cron.schedule('social-token-refresh', '40 4 * * 1', 'SELECT private.call_app_cron(''social-token-refresh'')');
-
-SELECT cron.schedule('whatsapp-health', '*/5 * * * *', 'SELECT private.call_app_cron(''whatsapp-health'')');

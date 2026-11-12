@@ -17,7 +17,7 @@
  */
 
 import type { ConditionFieldSpec } from "./condition-eval";
-import { designGenerateOutputs } from "@/lib/designer/automation/node-config";
+import { designGenerateOutputs } from "@/lib/designer/automation/node-config"; // @plantilla-quitar(disenador)
 
 /** Un nodo como lo guarda el canvas. */
 export interface RawFlowNode {
@@ -72,7 +72,7 @@ const OUTPUTS: Record<string, (data: never) => ConditionFieldSpec[]> = {
   aiResponse: aiResponseOutputs as (data: never) => ConditionFieldSpec[],
   upsert_contact: upsertContactOutputs as (data: never) => ConditionFieldSpec[], // @plantilla-quitar(webhooks)
   // Diseñador IA (F58): `design.*` del paso «Generar desde plantilla».
-  designGenerate: designGenerateOutputs as (data: never) => ConditionFieldSpec[],
+  designGenerate: designGenerateOutputs as (data: never) => ConditionFieldSpec[], // @plantilla-quitar(disenador)
 };
 
 /** Los tipos de nodo que aportan campos (para el test que lo cruza con el registro). */

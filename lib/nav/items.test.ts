@@ -125,7 +125,7 @@ describe("Agenda en el menu (F8)", () => {
     // que aca no se pasa: un viewer sin flags no lo ve.
     // Cambio aprobado M12: el Member de sistema gana «Diseñador IA» (designer.view).
     expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas", "Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA"]); // @plantilla-quitar(llamadas,ventas,finanzas,comisiones,tareas,formularios)
-    // @plantilla-sin(llamadas,ventas,finanzas,comisiones,tareas,formularios): expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Automatizaciones", "Diseñador IA", "Agentes IA"]);
+    // @plantilla-sin(llamadas,ventas,finanzas,comisiones,tareas,formularios): expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Automatizaciones", "Agentes IA"]);
     // (cambio aprobado M9: «Finanzas» se suma al Member de sistema, que tiene commissions.view) // @plantilla-quitar(comisiones)
     // Sin ningun permiso (y sin banderas), no queda nada.
     expect(visibleNavItems(NAV_ITEMS, { permissionKeys: [] }).map((i) => i.name)).toEqual([]);
@@ -262,7 +262,7 @@ describe("grupos del menu (bloque N, N1)", () => {
     expect(vacios.map((g) => g.id), "estos grupos no tienen ni un item").toEqual([]);
   });
 
-  // Cambio aprobado (9/11/2026): se suma «Servicio al cliente» entre Ventas y Herramientas.
+  // Se suma «Servicio al cliente» entre Ventas y Herramientas. // @plantilla-quitar(ventas)
   it("el orden de los grupos es: inicio, adquisicion, ventas, servicio, herramientas", () => {
     expect(NAV_GROUPS.map((g) => g.id)).toEqual(["inicio", "adquisicion", "ventas", "servicio", "herramientas"]); // @plantilla-quitar(ventas)
     // @plantilla-sin(ventas): expect(NAV_GROUPS.map((g) => g.id)).toEqual(["inicio", "adquisicion", "ventas", "herramientas"]);
@@ -293,11 +293,11 @@ describe("grupos del menu (bloque N, N1)", () => {
       ["adquisicion", ["Contenido", "Social", "Anuncios"]],
       ["ventas", ["Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas"]], // Extra I: Finanzas al final del grupo // @plantilla-quitar(llamadas,ventas,finanzas,comisiones)
       // @plantilla-sin(llamadas,ventas,finanzas,comisiones): ["ventas", ["Contactos", "Agenda"]],
-      // Cambio aprobado (9/11/2026): Clientes, Portal y Afiliados pasan de Ventas a «Servicio al cliente».
+      // Clientes, Portal y Afiliados van en «Servicio al cliente», no en Ventas. // @plantilla-quitar(ventas)
       ["servicio", ["Clientes", "Portal", "Afiliados"]], // @plantilla-quitar(ventas,servicios)
-      // Diseñador IA: después de Formularios.
+      // Diseñador IA: después de Formularios. // @plantilla-quitar(formularios)
       ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA", "Ajustes"]], // @plantilla-quitar(tareas,formularios)
-      // @plantilla-sin(tareas,formularios): ["herramientas", ["Automatizaciones", "Diseñador IA", "Agentes IA", "Ajustes"]],
+      // @plantilla-sin(tareas,formularios): ["herramientas", ["Automatizaciones", "Agentes IA", "Ajustes"]],
     ]);
   });
 

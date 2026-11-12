@@ -9,7 +9,7 @@
  *      (cron.use_background_workers = off) y escribe tres veces en ese
  *      historial: por eso desde la 00350 los de la misma frecuencia son un
  *      solo trabajo (lib/cron/ticks.json).
- *   2. Llamadas a la app: por cada ruta, cuantas llamo y cuantas salteo la
+ *   2. Pedidos a la app: por cada ruta, cuantas llamo y cuantas salteo la
  *      guarda (private.cron_guard_state, desde la 00327; antes de la 00327 cada
  *      corrida era una llamada), y en que trabajo de pg_cron corre.
  *   2b. Los errores de las partes de un trabajo agrupado

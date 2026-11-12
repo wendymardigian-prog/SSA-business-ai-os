@@ -25,7 +25,8 @@ export function isStepEventName(name: string): boolean {
 export function checkStepEventName(name: unknown): { ok: true; name: string } | { ok: false; error: string } {
   const value = typeof name === "string" ? name.trim() : "";
   if (!value) return { ok: false, error: "Elegí qué evento se manda a Meta." };
-  if (value === PURCHASE_EVENT) return { ok: false, error: "La compra (Purchase) se manda sola con cada pago cobrado: elegí otro evento." };
+  if (value === PURCHASE_EVENT) return { ok: false, error: "La compra (Purchase) se manda sola con cada pago cobrado: elegí otro evento." }; // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): if (value === PURCHASE_EVENT) return { ok: false, error: "El evento Purchase no se ofrece en este paso: elegí otro evento." };
   if (isStepEventName(value) || CUSTOM_EVENT_RE.test(value)) return { ok: true, name: value };
   return { ok: false, error: "El nombre del evento solo puede tener letras, números, espacios y «_» (hasta 50)." };
 }

@@ -8,7 +8,7 @@
  *     5 y 15 minutos, y después deja el evento `failed` con el motivo, que se ve en la tarjeta.
  *   - Un evento se manda una sola vez: el índice único (workspace, evento, código) de `meta_capi_events`.
  *   - Los datos de la persona se leen AL MANDAR (frescos) y nunca se guardan ni se loguean.
- *   - Todo con el cliente de servicio: quien encola ya es el servidor (el motor de flujos, el trigger de pagos).
+ *   - Todo con el cliente de servicio: quien encola ya es el servidor (el motor de flujos o un trigger de la base).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -324,7 +324,7 @@ export async function loadFacts(db: Db, row: EventRow): Promise<Facts> {
       };
     }
   }
-  // Un origen que esta instalacion no tiene (la plantilla sin Formularios o sin Ventas).
+  // Un origen que esta instalacion no tiene (una instalación que no lo trae).
   return { ok: false, reason: "source_missing" };
 }
 

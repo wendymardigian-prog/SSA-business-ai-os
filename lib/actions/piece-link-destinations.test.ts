@@ -50,7 +50,8 @@ describe("loadPieceLinkDestinations", () => {
     expect(await loadPieceLinkDestinations()).toEqual({
       ok: true,
       destinations: {
-        forms: [{ kind: "form", id: "f-1", label: "Aplicación", url: "https://links.negocio.com/f/aplicacion" }],
+        forms: [{ kind: "form", id: "f-1", label: "Aplicación", url: "https://links.negocio.com/f/aplicacion" }], // @plantilla-quitar(formularios)
+        // @plantilla-sin(formularios): forms: [],
         events: [{ kind: "event", id: "e-1", label: "Llamada", url: "https://links.negocio.com/calendario/ana/ventas" }],
       },
     });

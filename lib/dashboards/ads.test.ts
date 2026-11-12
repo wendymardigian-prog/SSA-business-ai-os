@@ -64,7 +64,7 @@ describe("dividir sin mentir (F56)", () => {
 });
 
 describe("la frecuencia de las tarjetas", () => {
-  // Las cifras de frecuencia son las del 6/11/2026; las impresiones y el alcance son de ejemplo y dan esa misma division.
+  // Las cifras son de ejemplo: la frecuencia, las impresiones y el alcance dan esa misma division.
   const stored = (impressions: number, reach: number) => [row({ date: "2026-11-05", impressions, reach })];
 
   it("el dashboard mostraba 1,71 cuando Meta daba 1,87", () => {

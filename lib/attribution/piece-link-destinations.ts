@@ -5,8 +5,7 @@
  * Funciona porque `/f/<slug>` y `/calendario/<usuario>/<evento>` leen los UTM de la URL y el toque guarda
  * `utm_content`: el trigger `contact_touches_content_code` lo reconoce como el código de la pieza.
  *
- * Vive en `lib/attribution` y no en `lib/forms`: la plantilla de estudiantes no tiene Formularios y sí Agenda. La parte
- * de formularios está en `lib/forms/link-destinations.ts`.
+ * Vive en `lib/attribution`, aparte de la parte que lee formularios, para que lo use quien tiene Agenda sin ellos.
  *
  * Modulo PURO.
  */
@@ -86,8 +85,10 @@ export function destinationUrl(destination: PieceLinkDestination | null, typed: 
 export function destinationHint(destination: PieceLinkDestination | null): string {
   if (!destination) return "Es un link sin seguimiento: como no hay un contacto, solo agrega los parámetros y no registra el clic.";
   if (destination.kind === "event") return "Cuando alguien agende por este link, la reunión queda atribuida a esta pieza.";
+  // @plantilla-desde(formularios)
   if (destination.noContact) {
     return "Este formulario no vincula las respuestas con contactos: la respuesta guarda los parámetros, pero no suma a esta pieza.";
   }
+  // @plantilla-hasta(formularios)
   return "Cuando alguien lo complete por este link, la respuesta queda atribuida a esta pieza.";
 }

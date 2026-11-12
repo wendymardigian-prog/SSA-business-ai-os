@@ -9,8 +9,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { CHAT_MEDIA_BUCKET, extensionForMime, safeFilename } from "@/lib/chat-media/bucket";
 import { FILE_KINDS } from "@/lib/response-assets/kind";
-import { DESIGN_RENDERS_BUCKET } from "@/lib/designer/storage";
+import { DESIGN_RENDERS_BUCKET } from "@/lib/designer/storage"; // @plantilla-quitar(disenador)
+// @plantilla-desde(disenador)
 import { assetAttachments, isDesignAttachment, MAX_EMAIL_ATTACHMENT_BYTES, MAX_EMAIL_ATTACHMENTS, type AssetAttachmentRef, type EmailAttachmentRef } from "./attachment-limits";
+// @plantilla-hasta(disenador)
+// @plantilla-sin(disenador): import { assetAttachments, MAX_EMAIL_ATTACHMENT_BYTES, MAX_EMAIL_ATTACHMENTS, type AssetAttachmentRef, type EmailAttachmentRef } from "./attachment-limits";
 
 export interface LoadedEmailAttachments {
   files: Array<{ filename: string; content: string }>;
@@ -23,10 +26,12 @@ export interface LoadedEmailAttachments {
   designProblem?: "missing" | "not_ready" | "failed";
 }
 
+// @plantilla-desde(disenador)
 /** El nombre del PDF de un diseño: el nombre del diseño, legible ("constancia-ana-perez.pdf"). */
 function designPdfName(name: string): string {
   return `${safeFilename(name.replace(/\.[a-z0-9]{2,5}$/i, ""), "diseno")}.pdf`;
 }
+// @plantilla-hasta(disenador)
 
 /**
  * Carga los adjuntos de un paso «Enviar email». Los recursos de la banca, como siempre; el PDF del diseño (F59), de la
@@ -37,6 +42,7 @@ export async function loadEmailAttachments(
   args: { workspaceId: string; refs: EmailAttachmentRef[]; designId?: string | null },
 ): Promise<LoadedEmailAttachments> {
   const loaded = await loadAssetAttachments(supabase, { workspaceId: args.workspaceId, refs: assetAttachments(args.refs) });
+  // @plantilla-desde(disenador)
   if (!args.refs.some(isDesignAttachment)) return loaded;
 
   if (!args.designId) return { ...loaded, designProblem: "missing" };
@@ -66,6 +72,8 @@ export async function loadEmailAttachments(
     return { ...loaded, missing: [...loaded.missing, row.name] };
   }
   return { ...loaded, files: [...loaded.files, { filename: designPdfName(row.name), content: bytes.toString("base64") }] };
+  // @plantilla-hasta(disenador)
+  // @plantilla-sin(disenador): return loaded;
 }
 
 /** Los recursos de la banca (lo de siempre, sin cambios: lo fija `attachments-characterization.test.ts`). */

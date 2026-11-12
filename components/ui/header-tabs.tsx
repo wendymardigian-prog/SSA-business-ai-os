@@ -4,7 +4,7 @@ export { headerTabClass } from "@/lib/ui/topbar-tabs";
 
 /**
  * Las pestañas de la barra superior con props de lista (`items`). Es `TopbarTabs` (el único control de pestañas de
- * la barra) con otro nombre: lo usan Finanzas, Ventas ⇄ Pagos, Ajustes y Equipo/Roles.
+ * la barra) con otro nombre: lo usan Ajustes, Equipo/Roles y otras pantallas.
  */
 export type HeaderTabItem = TopbarTab;
 

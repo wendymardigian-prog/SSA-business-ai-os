@@ -7,18 +7,22 @@ Un sistema operativo para tu negocio: CRM, bandeja multicanal (WhatsApp, Instagr
 ## Qué trae
 
 - **Bandeja multicanal**: WhatsApp (Evolution API), Instagram (Zernio) y email, con adjuntos, notas de voz transcriptas, reacciones, stickers y registro de llamadas de WhatsApp. Un solo menú de filtros y búsqueda por nombre, teléfono, email o usuario.
-- **Grupos de WhatsApp**: verlos y escribir en la bandeja, encuestas, guardar como contacto a quien se une y automatizaciones cuando alguien se une, reacciona o vota.
+- **Grupos y comunidades de WhatsApp**: todos los grupos del número en la bandeja, escribir, encuestas (con quién votó cada opción), guardar como contacto a quien se une, configurar y crear grupos desde el sistema, los pasos «Enviar al grupo» e «Invitar a un grupo», y automatizaciones cuando alguien se une, reacciona o vota. Gráfico diario de mensajes por número.
 - **Historial de WhatsApp**: revisar e importar las conversaciones que Evolution tiene guardadas.
 - **Contactos (CRM)**: tabla y Kanban con los mismos filtros, columnas a elección, etiquetas, campos personalizados, importación por CSV, estados de setter y de vendedor, producto de interés, fusión de duplicados y las marcas «Conocido» y «Cliente».
 - **Emails**: suscripción por dirección, baja en un clic, rebotes y quejas, tope diario, calentamiento del dominio y freno automático del marketing, y resultados de cada envío.
 - **Asignación**: setter y vendedor de cada lead (a mano o por reglas) y responsable de cada chat.
 - **Banca de recursos**: textos, audios, videos, imágenes, archivos y enlaces listos para mandar desde la bandeja, los flujos o el agente.
-- **Broadcasts**: envíos por WhatsApp o email a los filtros de Contactos, con variables, variantes y una cola con ritmo por número.
-- **Secuencias y automatizaciones**: un editor visual de flujos con condiciones, y el historial de cada ejecución, paso por paso.
+- **Broadcasts**: envíos por WhatsApp o email a los filtros de Contactos, con variables, variantes y una cola con ritmo por número. Se puede editar uno programado o pausado, borrar uno que nunca mandó nada y filtrar la lista por estado. Un solo tope por hora por número de WhatsApp y un aviso del riesgo de bloqueo al conectar por Evolution.
+- **Secuencias y automatizaciones**: un editor visual de flujos con condiciones, el disparador «En una fecha y hora» (programar sin contacto, con el aviso de zona horaria), automatizaciones de comentarios con métricas por paso, y el historial de cada ejecución, paso por paso.
 - **Agentes IA**: con tu propia clave de OpenAI, Anthropic o Google; tareas de IA en segundo plano (clasificar, resumir) y una base de conocimiento.
-- **Agenda**: conectada a Google Calendar (también funciona sin calendario), con página pública de reservas, Google Meet, un embed para cualquier web y la zona horaria de cada persona.
+- **Agenda**: conectada a Google Calendar (también funciona sin calendario), con página pública de reservas, Google Meet, un embed para cualquier web y la zona horaria de cada persona. La tabla de reuniones tiene columnas ajustables, estado clickeable y un panel lateral con las notas y el lugar guardados solos.
 - **Contenido y publicación**: ideas, piezas y publicación en Instagram, TikTok, YouTube, LinkedIn y Threads; métricas en Social.
-- **Dashboards**: Chat, Contenido, Anuncios de Meta (con la tabla Meta vs CRM), Agenda y uno unificado. **Anuncios** también tiene su pantalla propia en el menú.
+- **Dashboards**: Chat, Contenido, Anuncios de Meta (con la tabla Meta vs CRM), Agenda y uno unificado. **Anuncios** también tiene su pantalla propia en el menú: filtros en la barra superior, ordenar y fijar columnas, semáforo de métricas, conciliación de anuncios sin vincular (reglas, parecido y propuesta con IA), video y transcripción de cada anuncio y un embudo que sigue el objetivo de la campaña.
+- **API de Conversiones de Meta**: manda leads y reuniones desde el servidor (también con el paso «Enviar evento a Meta»), sin duplicar los del Pixel.
+- **Calificación del lead**: un nivel del 1 al 5 por contacto, con nombre y rúbrica configurables, que se cambia a mano, con el paso «Calificar lead» o con el agente.
+- **Menú y barra superior**: buscador, filtros y pestañas de cada pantalla siempre arriba, secciones colapsables y una pantalla favorita por sección.
+- **Bandeja al día**: un mensaje que sale reabre una conversación cerrada, los mensajes de WhatsApp borrados para todos se ven como «Mensaje eliminado», y el dashboard de Chat carga mucho más rápido.
 - **Catálogo de productos**, **equipo con roles y permisos**, **invitaciones** con la marca del negocio, y **Mi cuenta** (perfil, foto y qué avisos recibe cada persona, por campana, email o WhatsApp).
 - **Varios negocios en la misma instalación**, cada uno con su marca.
 

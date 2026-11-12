@@ -84,7 +84,17 @@ const DEFAULT_PRIVILEGES_SQL = (() => {
   const src = readFileSync(join(repo, "supabase", "migrations", "00000_default_privileges.sql"), "utf8");
   const at = src.indexOf("DO $$");
   if (at === -1) throw new Error("00000_default_privileges.sql no tiene el bloque DO");
-  return src.slice(at).trimEnd() + "\n";
+  // Los permisos por defecto de las tablas nuevas ya no incluyen TRUNCATE, TRIGGER ni REFERENCES para anon y
+  // authenticated: lo cambia la migracion de seguridad 00315 (paso 1b). La plantilla lo lleva desde el principio.
+  const secDir = join(repo, "supabase", "migrations");
+  const secFile = readdirSync(secDir).find((f) => f.startsWith("00315_"));
+  if (!secFile) throw new Error("No encuentro la migracion 00315 (permisos por defecto de las tablas nuevas)");
+  const sec = readFileSync(join(secDir, secFile), "utf8");
+  const from = sec.indexOf("DO $$", sec.indexOf("1b. Las que se creen"));
+  const to = sec.indexOf("$$;", from + 5);
+  if (from === -1 || to === -1) throw new Error("La 00315 no tiene el bloque DO del paso 1b");
+  const revoke = sec.slice(from, to + 3);
+  return src.slice(at).trimEnd() + "\n\n-- Despues: a las tablas nuevas no se les da TRUNCATE, TRIGGER ni REFERENCES para anon y authenticated.\n" + revoke + "\n";
 })();
 
 const TABLE_PRIVS = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"];
@@ -132,7 +142,7 @@ const tables = await q(
 );
 for (const t of tables) {
   if (t.kind !== "r") die(`${t.schema}.${t.name}: tipo de relacion '${t.kind}' no soportado (solo tablas comunes).`);
-  if (t.reloptions || t.persistence !== "p") die(`${t.schema}.${t.name}: opciones de tabla no soportadas (${t.reloptions}, ${t.persistence}).`);
+  if (t.reloptions || !["p", "u"].includes(t.persistence)) die(`${t.schema}.${t.name}: opciones de tabla no soportadas (${t.reloptions}, ${t.persistence}).`);
   if (t.replident !== "d") die(`${t.schema}.${t.name}: REPLICA IDENTITY '${t.replident}' no soportada.`);
 }
 const tableByOid = new Map(tables.map((t) => [t.oid, t]));
@@ -309,8 +319,11 @@ for (const t of Object.keys(SEEDS)) {
   const rows = await q(`select * from ${t} order by 1`);
   seedRows[t] = { cols, rows };
 }
+// Estado de tiempo de ejecucion: lo escribe el cron de la guarda mientras la base esta prendida. No es una semilla.
+const RUNTIME_STATE = new Set(["private.cron_guard_state", "private.cron_tick_errors"]);
 // Toda tabla con filas tiene que estar en SEEDS (si no, la plantilla no la reproduce).
 for (const t of tables) {
+  if (RUNTIME_STATE.has(`${t.schema}.${t.name}`)) continue;
   const { rows } = await client.query(`select count(*)::int as n from ${t.qname}`);
   if (rows[0].n > 0 && !SEEDS[`${t.schema}.${t.name}`]) die(`${t.schema}.${t.name} tiene ${rows[0].n} filas y no esta en SEEDS.`);
 }
@@ -520,7 +533,7 @@ for (const t of tables) {
   }
   const cons = constraints.filter((c) => c.rel === t.oid && !separateFk.has(c.oid));
   for (const c of cons) lines.push(`  CONSTRAINT ${c.qname} ${c.type === "c" ? restoreBetween(c.def) : c.def}`);
-  const parts = [`CREATE TABLE IF NOT EXISTS ${t.qname} (\n${lines.join(",\n")}\n);`];
+  const parts = [`CREATE ${t.persistence === "u" ? "UNLOGGED " : ""}TABLE IF NOT EXISTS ${t.qname} (\n${lines.join(",\n")}\n);`];
   if (t.rls) parts.push(`ALTER TABLE ${t.qname} ENABLE ROW LEVEL SECURITY;`);
   if (t.force_rls) parts.push(`ALTER TABLE ${t.qname} FORCE ROW LEVEL SECURITY;`);
   const comments = [commentSql("TABLE", t.qname, t.comment)];
@@ -813,7 +826,7 @@ for (const f of readdirSync(join(repo, "supabase", "seeds")).filter((f) => f.end
 }
 const config = readFileSync(join(repo, "supabase", "config.toml"), "utf8");
 const SEED_CONFIG = `\n# Los seeds (precios de los modelos de IA) no se cargan solos: se corren a mano despues de crear\n# el primer usuario (ver el README). Sin esto, \`supabase db reset\` avisa que falta supabase/seed.sql.\n[db.seed]\nenabled = false\n`;
-writeFileSync(join(outDir, "config.toml"), `project_id = "plantilla-estudiantes"\n\n` + config.replace(/^project_id\s*=.*\n/m, "") + SEED_CONFIG);
+writeFileSync(join(outDir, "config.toml"), `project_id = "plantilla-estudiantes"\n\n` + config.replace(/^project_id\s*=.*\n/m, "").replace(/^schemas\s*=.*$/m, 'schemas = ["public"]') + SEED_CONFIG);
 console.log(`\nEscrito en ${outDir}`);
 
 // Los seeds: ver SEED_REWRITES (arriba).

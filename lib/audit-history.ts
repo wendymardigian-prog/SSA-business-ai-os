@@ -414,6 +414,7 @@ export const SALE_ACTION_LABELS: Record<
   "payment.fee_corrected": "corrigió la comisión del procesador del pago", // @plantilla-quitar(ventas)
 };
 
+// @plantilla-desde(disenador)
 /** Etiquetas de las acciones del Diseñador IA (entity design / design_template), para <Historial/> y la ficha. */
 export const DESIGN_ACTION_LABELS: Record<Extract<AuditAction, `design.${string}` | `design_template.${string}`>, string> = {
   "design.created": "creó el diseño",
@@ -437,3 +438,4 @@ export const DESIGN_ACTION_LABELS: Record<Extract<AuditAction, `design.${string}
   "design_template.archived": "archivó la plantilla",
   "design_template.automation_created": "creó una automatización con la plantilla",
 };
+// @plantilla-hasta(disenador)

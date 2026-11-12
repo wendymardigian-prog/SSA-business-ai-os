@@ -19,9 +19,9 @@ import {
 
 /**
  * El formulario del paso «Calificar lead» (00329). Lo comparten el editor de
- * pasos (Formularios y Agenda) y el panel del lienzo. Las reglas usan el mismo
+ * pasos y el panel del lienzo. Las reglas usan el mismo
  * constructor de condiciones que «Condiciones», con los campos de ese punto del
- * flujo (las respuestas del formulario, la reunión, el contacto…).
+ * flujo (lo que lo disparó, la reunión, el contacto…).
  */
 
 const POINT_OPTIONS = Array.from({ length: POINTS_MAX - POINTS_MIN + 1 }, (_, i) => POINTS_MIN + i).filter((n) => n !== 0);

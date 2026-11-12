@@ -31,3 +31,28 @@ BEGIN
   END IF;
 END
 $$;
+
+-- Despues: a las tablas nuevas no se les da TRUNCATE, TRIGGER ni REFERENCES para anon y authenticated.
+DO $$
+DECLARE
+  roles constant text := 'anon, authenticated';
+BEGIN
+  EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM ' || roles;
+
+  IF current_user <> 'postgres' THEN
+    BEGIN
+      EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM ' || roles;
+    EXCEPTION WHEN insufficient_privilege THEN
+      RAISE NOTICE 'No se pudo cambiar el acceso por defecto del rol postgres: se cambio solo el del rol actual (%).', current_user;
+    END;
+  END IF;
+
+  IF current_user <> 'supabase_admin' AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+    BEGIN
+      EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM ' || roles;
+    EXCEPTION WHEN insufficient_privilege THEN
+      RAISE NOTICE 'El acceso por defecto de supabase_admin no se puede cambiar desde %: queda como esta.', current_user;
+    END;
+  END IF;
+END
+$$;

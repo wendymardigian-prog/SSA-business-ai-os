@@ -78,6 +78,7 @@ COMMENT ON COLUMN public.response_assets.preview_path IS 'Solo videos: la miniat
 COMMENT ON COLUMN public.response_assets.caption IS 'image | video | file: el texto que acompaña al archivo cuando se manda. Lo ve el contacto.';
 COMMENT ON COLUMN public.response_assets.usage_count IS 'Cuantas veces se mando. Lo suma touch_response_asset.';
 COMMENT ON COLUMN public.response_assets.last_used_at IS 'Cuando se mando por ultima vez. Ordena el widget del chat.';
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.response_assets FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Funciones

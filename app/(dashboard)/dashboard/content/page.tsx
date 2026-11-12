@@ -20,7 +20,7 @@ import { authorshipLine } from "@/lib/content/classification";
 import { countUsage, tagFor } from "@/lib/content/taxonomy";
 import { loadPaidPieceIds } from "@/lib/meta/content-ads-load";
 import { loadContentTaxonomy } from "@/lib/content/load-taxonomy";
-import { loadDesignedPieceIds } from "@/lib/content/load-designed";
+import { loadDesignedPieceIds } from "@/lib/content/load-designed"; // @plantilla-quitar(disenador)
 import type { ContentPostStatus } from "@/lib/types/database";
 
 /**
@@ -84,7 +84,7 @@ export default async function ContentPage({
   const canPublish = can("content.publish");
   const canUseAi = can("content.ai");
   const canSeePaid = can("dashboards.ads.view");
-  const canSeeDesigns = can("designer.view");
+  const canSeeDesigns = can("designer.view"); // @plantilla-quitar(disenador)
 
   // La zona de QUIEN MIRA: en esta se ve y se escribe la hora de una pieza
   // (lib/dates.ts). Tiene que ser la misma que usan loadPiece y movePieceToDay.
@@ -118,7 +118,10 @@ export default async function ContentPage({
     // Las piezas con algun anuncio vinculado (A2): se leen con la sesion, asi que quien no puede ver anuncios no ve el indicador.
     canSeePaid ? loadPaidPieceIds(supabase, workspace.id) : Promise.resolve(new Set<string>()),
     // Las piezas con un diseño del Diseñador IA vinculado (DS8): el destello de la tarjeta, solo para quien puede ver diseños.
+    // @plantilla-desde(disenador)
     canSeeDesigns ? loadDesignedPieceIds(supabase, workspace.id) : Promise.resolve(new Set<string>()),
+    // @plantilla-hasta(disenador)
+    // @plantilla-sin(disenador): Promise.resolve(new Set<string>()),
   ]);
 
   const publicationsByPost = new Map<string, Array<{ platform: string; status: string | null; at: string | null }>>();

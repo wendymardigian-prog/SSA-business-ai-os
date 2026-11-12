@@ -6,7 +6,7 @@
 -- como tiene que quedar la plantilla: sin Llamadas (Fathom), Formularios (con el
 -- reporte de fin de dia y los contratos), Ventas (ventas y pagos, con Afiliados),
 -- Tareas, Finanzas (gastos, gastos que se repiten y proveedores), Comisiones,
--- Webhooks entrantes ni Servicios (servicios, portal y tutor: seccion 7).
+-- Webhooks entrantes, Servicios (servicios, portal y tutor: seccion 7) ni Disenador IA (seccion 8).
 --
 -- Se QUEDAN, aunque nacieron junto con esos modulos:
 --   - El catalogo de productos (products y product_variants) y su historial.
@@ -661,7 +661,7 @@ ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check
     'keyword', 'postback', 'quick_reply', 'welcome', 'default', 'comment_keyword', 'new_contact', 'crm_event',
     'inactivity', 'email_received', 'booking_created', 'booking_rescheduled', 'booking_cancelled', 'booking_updated',
     'booking_ended', 'booking_status_changed', 'booking_before_start', 'booking_after_end', 'booking_after_created',
-    'whatsapp_group_joined', 'whatsapp_group_reaction', 'whatsapp_group_poll_vote'
+    'whatsapp_group_joined', 'whatsapp_group_reaction', 'whatsapp_group_poll_vote', 'scheduled_time'
   ]::text[]));
 
 -- Origen de una corrida de IA: sin las tareas de Llamadas.
@@ -713,6 +713,15 @@ ALTER TABLE public.automation_events ADD CONSTRAINT automation_events_contact_or
 ALTER TABLE public.flow_sessions DROP CONSTRAINT flow_sessions_contact_or_source;
 ALTER TABLE public.flow_sessions ADD CONSTRAINT flow_sessions_contact_or_source
   CHECK (contact_id IS NOT NULL OR member_user_id IS NOT NULL OR source_type IS NOT NULL);
+
+-- API de Conversiones de Meta (00328): sin los eventos de un formulario ni de un pago (no existen en la
+-- plantilla). Quedan los de una reunion agendada y los que manda un paso de automatizacion (contacto).
+ALTER TABLE public.meta_capi_events DROP CONSTRAINT meta_capi_events_source_type_check;
+ALTER TABLE public.meta_capi_events ADD CONSTRAINT meta_capi_events_source_type_check
+  CHECK (source_type = ANY (ARRAY['booking', 'contact']::text[]));
+ALTER TABLE public.meta_capi_request_context DROP CONSTRAINT meta_capi_request_context_source_type_check;
+ALTER TABLE public.meta_capi_request_context ADD CONSTRAINT meta_capi_request_context_source_type_check
+  CHECK (source_type = ANY (ARRAY['booking']::text[]));
 
 -- 1.7 Politicas que se quedan, sin las claves de los modulos.
 
@@ -797,6 +806,34 @@ DROP POLICY contract_signatures_select ON public.contract_signatures;
 DROP POLICY sales_select ON public.sales;
 DROP POLICY tasks_select ON public.tasks;
 DROP POLICY tasks_update ON public.tasks;
+
+-- 2.6 Servicios, primera parte: los disparadores del modulo que viven en tablas que se quedan, y los de
+-- afiliados. Se buscan por nombre en el catalogo (asi no se olvida ninguno).
+DO $poda$
+DECLARE
+  t record;
+BEGIN
+  FOR t IN SELECT tg.tgname, c.oid::regclass::text AS tbl
+             FROM pg_trigger tg JOIN pg_class c ON c.oid = tg.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE NOT tg.tgisinternal AND n.nspname = 'public'
+              AND (tg.tgname LIKE 'trg\_app\_servicio\_%' OR tg.tgname LIKE 'trg\_affiliate\_%' OR tg.tgname = 'trg_product_links_guard') LOOP
+    EXECUTE format('DROP TRIGGER %I ON %s', t.tgname, t.tbl);
+  END LOOP;
+END $poda$;
+
+-- 2.7 Servicios: cron, storage y politicas.
+SELECT cron.unschedule(jobname) FROM cron.job WHERE jobname IN ('svc-daily', 'affiliates-daily');
+SET LOCAL storage.allow_delete_query = 'true';
+DELETE FROM storage.buckets WHERE id IN ('portal-avatars', 'program-resources', 'community-media');
+DROP POLICY IF EXISTS ai_threads_select_portal ON public.ai_threads;
+DROP POLICY IF EXISTS audit_log_select_services ON public.audit_log;
+
+-- 2.8 Los esquemas de Servicios, enteros (con CASCADE a proposito: no tienen nada que se quede). Van ANTES de
+-- las tablas del paso 5 porque sus llaves foraneas apuntan a tasks, sales, forms y calls.
+DROP SCHEMA IF EXISTS app_servicio_proyectos CASCADE;
+DROP SCHEMA IF EXISTS app_servicio_portal CASCADE;
+DROP SCHEMA IF EXISTS app_servicio CASCADE;
+
 
 -- ============================================================================
 -- 3. Columnas de los modulos en tablas que se quedan
@@ -942,6 +979,7 @@ DROP FUNCTION private.payments_fee_spec_from_snapshot();
 DROP FUNCTION private.payments_validate_method();
 DROP FUNCTION private.payments_mark_customer(); -- el cliente se marca a mano (sin Ventas no hay cobros)
 DROP FUNCTION private.enqueue_payments_overdue_sweep();
+DROP FUNCTION private.enqueue_meta_capi_purchase(); -- el Purchase de la API de Conversiones salia de un pago
 DROP FUNCTION public.ads_crm_metrics(p_level text, p_since date, p_until date, p_ad_account_id text, p_workspace_id uuid); -- version 1, reemplazada por la v2
 
 -- Tareas.
@@ -991,34 +1029,14 @@ DROP FUNCTION public.receive_inbound_webhook(p_row jsonb, p_duplicate_window_sec
 -- ============================================================================
 -- 7. Servicios (Corrida A1) y Afiliados (siguen a Ventas)
 -- ============================================================================
--- Sin probar contra una base todavia: correr check-residue en una base de prueba
--- antes de usarla (ver docs/PENDIENTE-servicios.md).
-
--- 7.1 Los disparadores del modulo que viven en tablas que se quedan, y los de
--- afiliados. Se buscan por nombre en el catalogo (asi no se olvida ninguno).
-DO $poda$
-DECLARE
-  t record;
-BEGIN
-  FOR t IN SELECT tg.tgname, c.oid::regclass::text AS tbl
-             FROM pg_trigger tg JOIN pg_class c ON c.oid = tg.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE NOT tg.tgisinternal AND n.nspname = 'public'
-              AND (tg.tgname LIKE 'trg\_app\_servicio\_%' OR tg.tgname LIKE 'trg\_affiliate\_%' OR tg.tgname = 'trg_product_links_guard') LOOP
-    EXECUTE format('DROP TRIGGER %I ON %s', t.tgname, t.tbl);
-  END LOOP;
-END $poda$;
-
--- 7.2 Cron, storage y politicas.
-SELECT cron.unschedule(jobname) FROM cron.job WHERE jobname IN ('svc-daily', 'affiliates-daily');
-SET LOCAL storage.allow_delete_query = 'true';
-DELETE FROM storage.buckets WHERE id IN ('portal-avatars', 'program-resources', 'community-media');
-DROP POLICY IF EXISTS ai_threads_select_portal ON public.ai_threads;
-DROP POLICY IF EXISTS audit_log_select_services ON public.audit_log;
+-- Servicios: los pasos 2.6 a 2.8 (disparadores, cron, storage y los esquemas) corren antes de las tablas del
+-- paso 5; las columnas y funciones de abajo (7.3 a 7.5) van despues.
 
 -- 7.3 La lista de origenes de una corrida con agente: sin el tutor del portal.
 ALTER TABLE public.agent_runs DROP CONSTRAINT agent_runs_agent_only_for_agent_sources;
 ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_agent_only_for_agent_sources
   CHECK (agent_id IS NULL OR source = ANY (ARRAY['agent', 'conversation_summary', 'content_copy']::text[]));
+DROP INDEX public.idx_agent_runs_portal_tutor; -- el indice de las corridas del tutor del portal
 
 -- 7.4 Columnas del modulo y de afiliados en tablas que se quedan.
 ALTER TABLE public.workspaces DROP COLUMN services_enabled;
@@ -1064,9 +1082,47 @@ BEGIN
   END LOOP;
 END $poda$;
 
--- 7.6 Los esquemas del modulo, enteros (F90: con CASCADE a proposito; no tienen nada que se quede).
-DROP SCHEMA IF EXISTS app_servicio_proyectos CASCADE;
-DROP SCHEMA IF EXISTS app_servicio_portal CASCADE;
-DROP SCHEMA IF EXISTS app_servicio CASCADE;
+-- ============================================================================
+-- 8. Diseñador IA (no viaja)
+-- ============================================================================
+-- Disenos, plantillas, generaciones, el link publico /d/<codigo> y las conversaciones con una IA
+-- (ai_threads y ai_messages: solo las usaban el Disenador y el tutor del portal, que tampoco viaja).
+-- Va despues de Servicios: sus esquemas (app_servicio) apuntaban a design_templates. La 00323 (el id del
+-- video de un anuncio y su transcripcion) NO es de este modulo: se queda.
+
+-- 8.1 Los disparadores que viven en tablas que se quedan (contacts y workspaces).
+DROP TRIGGER contacts_designs_on_merge ON public.contacts;
+DROP TRIGGER workspaces_design_settings_check ON public.workspaces;
+
+-- 8.2 La limpieza diaria de versiones y exportaciones.
+SELECT cron.unschedule(jobname) FROM cron.job WHERE jobname = 'design-cleanup';
+
+-- 8.3 Los dos buckets privados y sus politicas de lectura (vacios en una base nueva).
+DROP POLICY design_assets_select ON storage.objects;
+DROP POLICY design_renders_select ON storage.objects;
+SET LOCAL storage.allow_delete_query = 'true';
+DELETE FROM storage.buckets WHERE id IN ('design-assets', 'design-renders');
+
+-- 8.4 Los ajustes del Disenador del negocio (estilos propios, fuentes y paleta).
+ALTER TABLE public.workspaces DROP COLUMN design_settings;
+
+-- 8.5 Las tablas, en una sola orden (design_versions y designs se apuntan con design_templates; ai_messages con ai_threads).
+DROP TABLE
+  public.ai_messages,
+  public.ai_threads,
+  public.design_versions,
+  public.designs,
+  public.design_templates;
+
+-- 8.6 Las funciones: los validadores, el codigo del link, el link publico, la fusion de contactos y la limpieza.
+DROP FUNCTION public.workspaces_design_settings_check();
+DROP FUNCTION public.validate_design_settings(p jsonb);
+DROP FUNCTION public.design_doc_check();
+DROP FUNCTION public.validate_design_doc(p jsonb);
+DROP FUNCTION public.designs_set_code();
+DROP FUNCTION public.design_public_get(p_code text);
+DROP FUNCTION public.contacts_designs_on_merge();
+DROP FUNCTION private.design_new_code();
+DROP FUNCTION private.enqueue_design_cleanup(p_now timestamp with time zone);
 
 COMMIT;
