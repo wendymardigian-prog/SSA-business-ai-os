@@ -373,4 +373,61 @@ describe("«No mandar si ya le escribiste»", () => {
     await run({ ...data, skipIfTeamWrote: false });
     expect(sendText).toHaveBeenCalledTimes(1);
   });
+
+  it("cuenta las horas antes de que arrancara si se las pusiste (le pasaste el link y agendó al rato)", async () => {
+    db = world({ conversations, flow_sessions: sessions, messages: [msg("external", "2026-11-12T19:30:00.000Z")] });
+    await run({ ...data, teamWroteHoursBefore: 1 });
+    expect(sendText).not.toHaveBeenCalled();
+    expect(events("node_skipped")).toEqual([expect.objectContaining({ metadata: expect.objectContaining({ team_wrote: true }) })]);
+  });
+
+  it("lo de antes de esas horas no frena", async () => {
+    db = world({ conversations, flow_sessions: sessions, messages: [msg("external", "2026-11-12T18:30:00.000Z")] });
+    await run({ ...data, teamWroteHoursBefore: 1 });
+    expect(sendText).toHaveBeenCalledTimes(1);
+  });
+
+  it("la misma persona guardada dos veces (+52 y +521): si le escribiste en el otro contacto, tampoco sale", async () => {
+    db = world({
+      contacts: [
+        { id: "c-agenda", workspace_id: WS, phone: "+525511112222", do_not_contact: false },
+        { id: "c-wpp", workspace_id: WS, phone: "+5215511112222", do_not_contact: false },
+      ],
+      conversations: [{ id: "conv-wpp", workspace_id: WS, channel_id: CH, contact_id: "c-wpp", platform: "whatsapp" }],
+      flow_sessions: sessions,
+      messages: [{ id: "m1", conversation_id: "conv-wpp", direction: "outbound", origin: "external", created_at: "2026-11-12T20:30:00.000Z" }],
+    });
+    await run({ ...data, fixedPhone: "+52 55 1111 2222" });
+    expect(sendText).not.toHaveBeenCalled();
+    expect(events("node_skipped")).toEqual([expect.objectContaining({ contact_id: "c-agenda", metadata: expect.objectContaining({ team_wrote: true }) })]);
+  });
+
+  it("un número que no es de ningún contacto pero le escribiste con el otro formato: tampoco sale", async () => {
+    db = world({
+      contacts: [{ id: "c-wpp", workspace_id: WS, phone: "+5491133334444", do_not_contact: false }],
+      conversations: [{ id: "conv-wpp", workspace_id: WS, channel_id: CH, contact_id: "c-wpp", platform: "whatsapp" }],
+      flow_sessions: sessions,
+      messages: [{ id: "m1", conversation_id: "conv-wpp", direction: "outbound", origin: "user", created_at: "2026-11-12T20:30:00.000Z" }],
+    });
+    await run({ ...data, fixedPhone: "+54 11 3333 4444" });
+    expect(sendText).not.toHaveBeenCalled();
+  });
+});
+
+describe("phoneVariants y lookbackFrom (puros)", async () => {
+  const { phoneVariants, lookbackFrom, normalizeHoursBefore } = await import("../team-wrote");
+  it("México y Argentina con y sin el dígito del celular; los demás países tal cual", () => {
+    expect(phoneVariants("+525511112222").sort()).toEqual(["+525511112222", "+5215511112222"].sort());
+    expect(phoneVariants("+5215511112222").sort()).toEqual(["+525511112222", "+5215511112222"].sort());
+    expect(phoneVariants("+5491133334444").sort()).toEqual(["+541133334444", "+5491133334444"].sort());
+    expect(phoneVariants("+573001234567")).toEqual(["+573001234567"]);
+    expect(phoneVariants("")).toEqual([]);
+  });
+  it("las horas antes restan al arranque; vacío, negativo o basura es 0; tope una semana", () => {
+    expect(lookbackFrom("2026-11-12T20:00:00.000Z", 2)).toBe("2026-11-12T18:00:00.000Z");
+    expect(lookbackFrom("2026-11-12T20:00:00.000Z", undefined)).toBe("2026-11-12T20:00:00.000Z");
+    expect(normalizeHoursBefore(-3)).toBe(0);
+    expect(normalizeHoursBefore("abc")).toBe(0);
+    expect(normalizeHoursBefore(1000)).toBe(168);
+  });
 });
