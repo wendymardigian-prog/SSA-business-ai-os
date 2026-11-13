@@ -9,6 +9,7 @@ import {
   toEvolutionNumber,
   normalizeGroupJid,
 } from "./phone";
+import { phoneCanonical, phoneVariants } from "./phone";
 
 describe("normalizePhone", () => {
   it("deja siempre +<digitos>, sin importar como venga escrito", () => {
@@ -100,5 +101,27 @@ describe("normalizeGroupJid", () => {
     expect(normalizeGroupJid("98765432101234@lid")).toBeNull();
     expect(normalizeGroupJid("abc@g.us")).toBeNull();
     expect(normalizeGroupJid(null)).toBeNull();
+  });
+});
+
+describe("phoneVariants y phoneCanonical (00373)", () => {
+  it("México: +52 y +521 son el mismo número", () => {
+    expect(phoneVariants("+525511112222")).toEqual(["+525511112222", "+5215511112222"]);
+    expect(phoneVariants("+52 1 55 1111 2222")).toEqual(["+5215511112222", "+525511112222"]);
+    expect(phoneCanonical("+5215511112222")).toBe("+525511112222");
+    expect(phoneCanonical("+525511112222")).toBe("+525511112222");
+  });
+  it("Argentina: +54 y +549 son el mismo número", () => {
+    expect(phoneVariants("+5491133334444")).toEqual(["+5491133334444", "+541133334444"]);
+    expect(phoneVariants("+541133334444")).toEqual(["+541133334444", "+5491133334444"]);
+    expect(phoneCanonical("+5491133334444")).toBe("+541133334444");
+  });
+  it("otros países, largos distintos o vacío: una sola forma o ninguna", () => {
+    expect(phoneVariants("+573001234567")).toEqual(["+573001234567"]);
+    expect(phoneVariants("+52551111222")).toEqual(["+52551111222"]);
+    expect(phoneVariants("+549112233")).toEqual(["+549112233"]);
+    expect(phoneVariants("")).toEqual([]);
+    expect(phoneVariants(null)).toEqual([]);
+    expect(phoneCanonical("+50688887777")).toBe("+50688887777");
   });
 });

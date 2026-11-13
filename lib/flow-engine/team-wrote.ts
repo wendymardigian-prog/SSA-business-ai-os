@@ -14,26 +14,11 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import { phoneVariants } from "@/lib/phone";
+
+export { phoneVariants };
 
 export const TEAM_ORIGINS = ["external", "user"] as const;
-
-/**
- * Las formas en que se puede haber guardado el mismo número. WhatsApp y los formularios a veces lo escriben distinto:
- *   - México: +52 55… y +521 55… (el «1» del celular viejo).
- *   - Argentina: +54 11… y +549 11… (el «9» del celular).
- * Pasó el 13/11/2026: la agenda guardó el número con +52 y el WhatsApp con +521, dos contactos para la misma persona.
- */
-export function phoneVariants(phone: string | null | undefined): string[] {
-  const digits = (phone ?? "").replace(/\D/g, "");
-  if (digits.length < 8) return [];
-  const out = new Set<string>([`+${digits}`]);
-  const pairs: Array<[string, string]> = [["52", "521"], ["54", "549"]];
-  for (const [short, long] of pairs) {
-    if (digits.startsWith(long) && digits.length === long.length + 10) out.add(`+${short}${digits.slice(long.length)}`);
-    else if (digits.startsWith(short) && !digits.startsWith(long) && digits.length === short.length + 10) out.add(`+${long}${digits.slice(short.length)}`);
-  }
-  return [...out];
-}
 
 /**
  * true si alguien del equipo le escribió por WhatsApp desde `since`; null si no se pudo mirar.

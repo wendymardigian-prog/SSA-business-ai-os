@@ -182,6 +182,27 @@ $ens$;`;
     for (const r of rows) check((r.n ?? null) === ts(r.raw), `normalize_phone(${JSON.stringify(r.raw)}) = ${JSON.stringify(ts(r.raw))}`, `base: ${JSON.stringify(r.n)}`);
   }
 
+  console.log("\n— phone_variants y phone_canonical contra la regla (00373) —");
+  {
+    // Copia literal de `phoneVariants` / `phoneCanonical` (lib/phone.ts; sus casos corren en vitest).
+    const variants = (p) => {
+      if (/^\+521\d{10}$/.test(p)) return [p, `+52${p.slice(4)}`];
+      if (/^\+52\d{10}$/.test(p)) return [p, `+521${p.slice(3)}`];
+      if (/^\+549\d{10}$/.test(p)) return [p, `+54${p.slice(4)}`];
+      if (/^\+54\d{10}$/.test(p)) return [p, `+549${p.slice(3)}`];
+      return [p];
+    };
+    const canonical = (p) => (/^\+521\d{10}$/.test(p) || /^\+549\d{10}$/.test(p) ? `+5${p[2]}${p.slice(4)}` : p);
+    const phones = ["+525511112222", "+5215511112222", "+5491133334444", "+541133334444", "+573001234567", "+52551111222", "+549112233", "+50688887777"];
+    const values = phones.map((p, i) => `(${i}, '${p}')`).join(",");
+    const rows = sql(`SELECT t.i, t.p, public.phone_variants(t.p) AS v, public.phone_canonical(t.p) AS c FROM (VALUES ${values}) AS t(i, p) ORDER BY t.i`);
+    for (const r of rows) {
+      const got = typeof r.v === "string" ? r.v.replace(/^\{|\}$/g, "").split(",") : r.v;
+      check(JSON.stringify(got) === JSON.stringify(variants(r.p)), `phone_variants(${r.p})`, `base: ${JSON.stringify(r.v)}`);
+      check(r.c === canonical(r.p), `phone_canonical(${r.p})`, `base: ${JSON.stringify(r.c)}`);
+    }
+  }
+
   console.log("\n— Los casos compartidos de identidad (TS ↔ SQL) —");
   {
     const shared = JSON.parse(readFileSync("lib/contacts/identity.cases.json", "utf8")).cases;
@@ -216,6 +237,13 @@ $ens$;`;
     const other = await central(ws2, { phone: p1 });
     check(other.status === "created" && other.contact_id !== created.contact_id, "otro workspace con el mismo telefono: otro contacto");
     await svc.from("contacts").delete().eq("workspace_id", ws2);
+    // 00373: la misma persona de México con y sin el «1» del celular es UN contacto (número de prueba, 55 0000 NNNN).
+    const mx = `+52550000${String(stamp).slice(-4)}`;
+    const mxCreated = await central(ws, { phone: mx }, { display_name: "Mx Uno" });
+    const mxWa = await central(ws, { whatsapp_phone: `+521${mx.slice(3)}` });
+    check(mxWa.status === "found" && mxWa.contact_id === mxCreated.contact_id, "+521 encuentra al contacto guardado con +52");
+    const mxBack = await central(ws, { phone: `+521${mx.slice(3)}` }, {}, "find_only");
+    check(mxBack.contact_id === mxCreated.contact_id, "y al revés, con el teléfono");
   }
 
   console.log("\n— Redes sociales —");

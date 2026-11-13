@@ -101,3 +101,27 @@ export function toEvolutionNumber(phoneOrJid: string | null | undefined): string
   const phone = phoneOrJid.includes("@") ? jidToPhone(phoneOrJid) : normalizePhone(phoneOrJid);
   return phone ? phone.slice(1) : null;
 }
+
+/**
+ * Las formas en que se puede haber guardado el mismo número (incluido el mismo), para buscar un contacto.
+ * Gemela de `public.phone_variants` (00373). Solo por largo:
+ *   - México: +521 + 10 dígitos <-> +52 + 10 dígitos (el «1» del celular).
+ *   - Argentina: +549 + 10 dígitos <-> +54 + 10 dígitos (el «9» del celular).
+ * Cualquier otro número tiene una sola forma. Lo que no es un número normalizado («+<dígitos>») no tiene ninguna.
+ */
+export function phoneVariants(phone: string | null | undefined): string[] {
+  const p = normalizePhone(phone);
+  if (!p) return [];
+  if (/^\+521\d{10}$/.test(p)) return [p, `+52${p.slice(4)}`];
+  if (/^\+52\d{10}$/.test(p)) return [p, `+521${p.slice(3)}`];
+  if (/^\+549\d{10}$/.test(p)) return [p, `+54${p.slice(4)}`];
+  if (/^\+54\d{10}$/.test(p)) return [p, `+549${p.slice(3)}`];
+  return [p];
+}
+
+/** Una forma fija por número (la corta: +52…, +54…), para el bloqueo. Gemela de `public.phone_canonical` (00373). */
+export function phoneCanonical(phone: string): string {
+  if (/^\+521\d{10}$/.test(phone)) return `+52${phone.slice(4)}`;
+  if (/^\+549\d{10}$/.test(phone)) return `+54${phone.slice(4)}`;
+  return phone;
+}
