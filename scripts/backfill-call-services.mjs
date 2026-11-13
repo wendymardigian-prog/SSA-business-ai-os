@@ -7,7 +7,7 @@
  * manual, de los negocios con el modulo prendido.
  *
  *   node scripts/backfill-call-services.mjs --dry-run    # no escribe nada: lo corre en una transaccion que se deshace
- *   node scripts/backfill-call-services.mjs --aplicar    # lo aplica (lo corre Wendy si quiere)
+ *   node scripts/backfill-call-services.mjs --aplicar    # lo aplica (lo corre quien administra el negocio, si quiere)
  *
  * Con --aplicar, una reunion con varios servicios posibles queda «Por revisar» y avisa (`call_service_review`), igual
  * que una nueva. Nunca pisa un vinculo manual.
