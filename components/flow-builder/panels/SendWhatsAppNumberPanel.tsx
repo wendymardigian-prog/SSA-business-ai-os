@@ -151,6 +151,18 @@ export function SendWhatsAppNumberPanel({
         )}
       </div>
 
+      <div>
+        <label className="flex items-center gap-2 text-xs font-semibold text-foreground">
+          <input type="checkbox" checked={data.skipIfTeamWrote === true} onChange={(e) => set({ skipIfTeamWrote: e.target.checked })} />
+          No mandar si ya le escribiste
+        </label>
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          {data.skipIfTeamWrote === true
+            ? "Si alguien del equipo le escribió por WhatsApp (desde el teléfono o la bandeja) después de que arrancó la automatización, este mensaje no sale. Se mira justo antes de mandar."
+            : "Apagado, el mensaje sale aunque ya le hayas escrito."}
+        </p>
+      </div>
+
       {availableVariables && availableVariables.length > 0 && (
         <div>
           <p className="text-[11px] text-muted-foreground/70">Tocá una variable para agregarla {target === "toVariable" && mode === "variable" ? "al número" : "al mensaje"}.</p>
