@@ -13,7 +13,7 @@ import { snapshotText } from "@/lib/sales/sale-text"; // @plantilla-quitar(venta
 import { loadWizardConfig } from "@/lib/sales/wizard/load"; // @plantilla-quitar(ventas)
 import { ORIGIN_LABELS } from "@/lib/scheduling/agenda-filters";
 import { publicBaseUrl, bookingPublicUrl } from "@/lib/scheduling/public-url";
-import { answersOf, historyText, snapshotLabel } from "@/lib/scheduling/booking-detail-view";
+import { answersOf, contactChatsSummary, historyText, snapshotLabel } from "@/lib/scheduling/booking-detail-view";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import type { BookingField } from "@/lib/scheduling/types";
 import type { BookingDetailData } from "@/components/scheduling/bookings/detail-panel";
@@ -63,22 +63,21 @@ export async function loadBookingDetail(bookingId: string): Promise<BookingDetai
   if (!detail || detail.booking.workspace_id !== ctx.workspace.id) return null;
   const booking = detail.booking;
 
-  // El chat de WhatsApp de este contacto, para el boton «Abrir chat» de sus respuestas. Con la sesion de quien mira:
-  // la RLS decide si puede ver la conversacion. Si algo falla, simplemente no hay boton hacia el chat.
-  // Se pide a la vez que el toque de atribucion (no se espera aca).
-  const whatsappChatPromise = ctx.supabase
+  // Los chats de WhatsApp y de email de este contacto: el boton de sus respuestas abre el mas reciente y muestra cuantos
+  // mensajes hay sin leer. Con la sesion de quien mira: la RLS decide que conversaciones ve (y por lo tanto que
+  // cuenta). Si algo falla, simplemente no hay boton hacia el chat ni numero. Se pide a la vez que el toque de
+  // atribucion (no se espera aca).
+  const chatsPromise = ctx.supabase
     .from("conversations")
-    .select("id")
+    .select("id, platform, unread_count, last_message_at")
     .eq("workspace_id", ctx.workspace.id)
     .eq("contact_id", booking.contact_id)
-    .eq("platform", "whatsapp")
+    .in("platform", ["whatsapp", "email"])
     .is("deleted_at", null)
     .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle()
     .then(
-      (r) => (r.error ? null : ((r.data?.id as string | undefined) ?? null)),
-      () => null,
+      (r) => contactChatsSummary(r.error ? [] : (r.data ?? [])),
+      () => contactChatsSummary([]),
     );
   const publicBase = publicBaseUrl(ctx.workspace as { scheduling_public_base_url?: string | null });
 
@@ -86,7 +85,7 @@ export async function loadBookingDetail(bookingId: string): Promise<BookingDetai
   const matches = await loadBookingMatches(service, ctx.workspace.id, [{ id: booking.id, contactId: booking.contact_id, createdAt: booking.created_at }]);
   const calls = await callsPromise; // @plantilla-quitar(llamadas)
   const sales = await salesPromise; // @plantilla-quitar(ventas)
-  const whatsappChat = await whatsappChatPromise;
+  const chats = await chatsPromise;
 
   const lastTouches = (await loadBookingLastTouches(service, ctx.supabase, ctx.workspace.id, [booking.id]))[booking.id] ?? [];
 
@@ -127,7 +126,11 @@ export async function loadBookingDetail(bookingId: string): Promise<BookingDetai
     contactName: detail.contact?.display_name ?? booking.booker_name ?? null,
     bookerEmail: booking.booker_email,
     bookerPhone: booking.booker_phone,
-    whatsappConversationId: whatsappChat,
+    whatsappConversationId: chats.whatsapp.conversationId,
+    whatsappUnread: chats.whatsapp.unread,
+    emailConversationId: chats.email.conversationId,
+    emailUnread: chats.email.unread,
+    hasGoogleEvent: Boolean(booking.google_event_id),
     responses: answersOf(booking.responses, (detail.event?.booking_fields as BookingField[] | null) ?? []),
     internalNotes: booking.internal_notes,
     locationType: booking.location_type,

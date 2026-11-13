@@ -309,6 +309,83 @@ describe("handleBookingGoogleSync · reasignar (Agenda v2)", () => {
   });
 });
 
+describe("handleBookingGoogleSync · reasignar con reunión nueva", () => {
+  const NUEVO = "user-2";
+  const OLD = { old_connection_id: "conn-1", old_calendar_id: "cal-1", old_event_id: "gev-1" };
+
+  /** La agenda ya es del nuevo anfitrión; el evento de Google sigue siendo el del anterior. */
+  function rehostWorld(booking: Record<string, unknown> = {}) {
+    const db = world({ host_user_id: NUEVO, google_event_id: "gev-1", google_connection_id: "conn-1", google_calendar_id: "cal-1", meet_url: "https://meet.google.com/vie-jaaa-aaa", ...booking });
+    db.tables.scheduling_profiles.push({ workspace_id: WS, user_id: NUEVO, default_destination_calendar_id: "cal-2" });
+    db.tables.calendars.push({ id: "cal-2", workspace_id: WS, user_id: NUEVO, connection_id: "conn-2", external_calendar_id: "lucia@ejemplo.com", is_active: true, can_write: true, access_role: "owner", is_primary: true });
+    return db;
+  }
+
+  it("crea la nueva en el calendario del nuevo anfitrión, guarda el Meet nuevo y borra la anterior con la cuenta vieja", async () => {
+    const db = rehostWorld();
+    const order: string[] = [];
+    createEvent.mockImplementation(async () => {
+      order.push("create");
+      return { eventId: "gev-2", iCalUID: "gev-2@google.com", meetUrl: "https://meet.google.com/nue-vooo-ooo" };
+    });
+    deleteEvent.mockImplementation(async () => {
+      order.push("delete");
+    });
+
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "rehost", ...OLD }));
+
+    expect(order).toEqual(["create", "delete"]);
+    const [, connectionId, externalId, body] = createEvent.mock.calls[0];
+    expect(connectionId).toBe("conn-2");
+    expect(externalId).toBe("lucia@ejemplo.com");
+    expect(body).toMatchObject({ attendeeEmail: "juan@ejemplo.com", location: { kind: "google_meet" } });
+    expect(deleteEvent).toHaveBeenCalledWith(expect.anything(), "conn-1", "ana@ejemplo.com", "gev-1");
+
+    const booking = db.rows("bookings")[0];
+    expect(booking).toMatchObject({ google_event_id: "gev-2", google_connection_id: "conn-2", google_calendar_id: "cal-2", meet_url: "https://meet.google.com/nue-vooo-ooo", google_sync_status: "synced" });
+  });
+
+  it("el destino propio del evento es del anfitrión anterior: usa el calendario por defecto del nuevo", async () => {
+    const db = rehostWorld();
+    db.tables.event_types[0].destination_calendar_id = "cal-1";
+    createEvent.mockResolvedValue({ eventId: "gev-2", iCalUID: "gev-2@google.com", meetUrl: null });
+
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "rehost", ...OLD }));
+
+    expect(createEvent.mock.calls[0][1]).toBe("conn-2");
+  });
+
+  it("un reintento después de crear no vuelve a crear: solo termina de borrar", async () => {
+    const db = rehostWorld({ google_event_id: "gev-2", google_connection_id: "conn-2", google_calendar_id: "cal-2" });
+
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "rehost", ...OLD, attempt: 1 }));
+
+    expect(createEvent).not.toHaveBeenCalled();
+    expect(deleteEvent).toHaveBeenCalledWith(expect.anything(), "conn-1", "ana@ejemplo.com", "gev-1");
+  });
+
+  it("si el nuevo no tiene calendario, no borra la anterior y queda fallida", async () => {
+    const db = world({ host_user_id: NUEVO, google_event_id: "gev-1", google_connection_id: "conn-1", google_calendar_id: "cal-1" });
+
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "rehost", ...OLD }));
+
+    expect(createEvent).not.toHaveBeenCalled();
+    expect(deleteEvent).not.toHaveBeenCalled();
+    expect(db.rows("bookings")[0].google_sync_status).toBe("failed");
+    expect(db.rows("bookings")[0].google_event_id).toBe("gev-1");
+  });
+
+  it("si el espacio estaba liberado, la reunión nueva también queda «Disponible»", async () => {
+    const db = rehostWorld({ slot_released_at: "2026-09-30T12:00:00.000Z" });
+    createEvent.mockResolvedValue({ eventId: "gev-2", iCalUID: "gev-2@google.com", meetUrl: null });
+    updateEvent.mockResolvedValue({ meetUrl: null });
+
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "rehost", ...OLD }));
+
+    expect(updateEvent).toHaveBeenCalledWith(expect.anything(), "conn-2", "lucia@ejemplo.com", "gev-2", { transparency: "transparent", sendUpdates: "none" });
+  });
+});
+
 describe("handleBookingEnded", () => {
   it("emite booking_ended con el evento y el anfitrion", async () => {
     const db = world();

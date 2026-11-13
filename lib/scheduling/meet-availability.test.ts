@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canCreateMeet, meetAvailableFor, type MeetContext } from "./meet-availability";
+import { canCreateMeet, meetAvailableFor, ownEventDestination, type MeetContext } from "./meet-availability";
 
 const EVENTS = "https://www.googleapis.com/auth/calendar.events";
 
@@ -53,5 +53,22 @@ describe("canCreateMeet", () => {
   it("sin destino o sin cuenta: no", () => {
     expect(canCreateMeet(null, { id: "c", status: "active", granted_scopes: [EVENTS] })).toBe(false);
     expect(canCreateMeet({ id: "x", name: "x", access_role: "writer", check_conflicts: false, is_active: true }, null)).toBe(false);
+  });
+});
+
+describe("ownEventDestination (reasignar con reunión nueva)", () => {
+  const ctx: MeetContext = {
+    calendars: [
+      { id: "cal-a", user_id: "u-a", connection_id: "conn-a", name: "A", access_role: "owner", check_conflicts: true, is_active: true },
+      { id: "cal-b", user_id: "u-b", connection_id: "conn-b", name: "B", access_role: "owner", check_conflicts: true, is_active: true },
+    ],
+    connections: [],
+    defaultDestinationByUser: new Map(),
+  };
+
+  it("el destino del evento cuenta solo si es un calendario de esa persona", () => {
+    expect(ownEventDestination(ctx, "u-a", "cal-a")).toBe("cal-a");
+    expect(ownEventDestination(ctx, "u-b", "cal-a")).toBeNull();
+    expect(ownEventDestination(ctx, "u-b", null)).toBeNull();
   });
 });

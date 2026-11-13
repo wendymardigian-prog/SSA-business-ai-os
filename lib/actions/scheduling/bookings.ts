@@ -184,7 +184,9 @@ export async function occupyBookingSlotAsHost(input: { bookingId: string }): Pro
 }
 
 /**
- * Reasignar el anfitrión de una agenda (Agenda v2), sin avisarle al invitado.
+ * Reasignar el anfitrión de una agenda (Agenda v2): con el mismo evento y el
+ * mismo Meet ("keep", el invitado no se entera) o con una reunión nueva en el
+ * calendario del nuevo anfitrión ("recreate").
  *
  * Alcance total nomás (Owner/Admin): reasignar es tocar la agenda de otra
  * persona, no solo la propia.
@@ -193,6 +195,7 @@ export async function reassignBookingHostAsHost(input: {
   bookingId: string;
   newHostUserId: string;
   transferAssignment?: boolean;
+  mode?: "keep" | "recreate";
 }): Promise<BookingActionResult> {
   const found = await visibleBooking(input.bookingId);
   if (found.error !== undefined) return { ok: false, error: found.error };
@@ -210,6 +213,7 @@ export async function reassignBookingHostAsHost(input: {
     newHostName: newHost.name,
     actorUserId: ctx.user.id,
     transferAssignment: input.transferAssignment,
+    mode: input.mode === "recreate" ? "recreate" : "keep",
   });
   if (!result.ok) return { ok: false, error: result.message };
   revalidatePath(PATH);

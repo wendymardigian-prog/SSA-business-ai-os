@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answersOf, bookingDetailsPatch } from "./booking-detail-view";
+import { answersOf, bookingDetailsPatch, contactChatsSummary } from "./booking-detail-view";
 import type { BookingField } from "./types";
 
 const field = (over: Partial<BookingField> & Pick<BookingField, "identifier" | "type" | "label">): BookingField => ({
@@ -61,5 +61,22 @@ describe("bookingDetailsPatch: solo lo que de verdad cambió", () => {
   });
   it("un campo que no se manda no se toca", () => {
     expect(bookingDetailsPatch(current, {})).toEqual({});
+  });
+});
+
+describe("contactChatsSummary", () => {
+  it("el chat más reciente de cada canal y la suma de no leídos", () => {
+    const summary = contactChatsSummary([
+      { id: "c-wa-nuevo", platform: "whatsapp", unread_count: 2 },
+      { id: "c-mail", platform: "email", unread_count: 1 },
+      { id: "c-wa-viejo", platform: "whatsapp", unread_count: 3 },
+    ]);
+    expect(summary.whatsapp).toEqual({ conversationId: "c-wa-nuevo", unread: 5 });
+    expect(summary.email).toEqual({ conversationId: "c-mail", unread: 1 });
+  });
+
+  it("sin chats: sin id y en cero (un null o un negativo no suman)", () => {
+    expect(contactChatsSummary([])).toEqual({ whatsapp: { conversationId: null, unread: 0 }, email: { conversationId: null, unread: 0 } });
+    expect(contactChatsSummary([{ id: "c-1", platform: "whatsapp", unread_count: null }, { id: "c-2", platform: "whatsapp", unread_count: -1 }]).whatsapp.unread).toBe(0);
   });
 });

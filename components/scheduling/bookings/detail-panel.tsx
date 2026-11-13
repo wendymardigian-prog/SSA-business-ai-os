@@ -19,7 +19,7 @@ import type { BookingTouchView } from "@/lib/attribution/last-touches";
 import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Mail, MessageCircle, Video, X } from "lucide-react";
+import { ChevronDown, Loader2, Mail, MessageCircle, Video, X } from "lucide-react";
 import { Tip } from "@/components/ui/tooltip";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { useAutosave, type AutosaveStatus } from "./use-autosave";
@@ -34,6 +34,7 @@ import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/form
 import { categoryTree, type CategoryRow } from "@/lib/scheduling/categories";
 import { meetJoinHref, waitingForMeet } from "@/lib/scheduling/meet-link";
 import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, getBookingMeetState, occupyBookingSlotAsHost, reassignBookingHostAsHost, releaseBookingSlotAsHost, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
+import { startBookingWhatsappChat } from "@/lib/actions/scheduling/booking-whatsapp";
 import { StatusChip, SlotReleasedChip, statusDotClass } from "./status-chip";
 import { CallSectionList } from "@/components/calls/call-section-list"; // @plantilla-quitar(llamadas)
 import type { CallSectionRow } from "@/lib/calls/contact-section"; // @plantilla-quitar(llamadas)
@@ -60,6 +61,14 @@ export interface BookingDetailData {
   responses: BookingAnswer[];
   /** El chat de WhatsApp de este contacto en la bandeja (el más reciente), si hay uno y quien mira puede verlo. */
   whatsappConversationId: string | null;
+  /** Mensajes sin leer en sus chats de WhatsApp que quien mira puede ver. */
+  whatsappUnread: number;
+  /** Su conversación de email en la bandeja (la más reciente), si hay y quien mira puede verla. */
+  emailConversationId: string | null;
+  /** Emails suyos sin leer en la bandeja que quien mira puede ver. */
+  emailUnread: number;
+  /** Si la reunión ya tiene evento en Google: sin él no hay nada que recrear al reasignar. */
+  hasGoogleEvent: boolean;
   internalNotes: string | null;
   locationType: string | null;
   locationText: string | null;
@@ -129,13 +138,103 @@ const ICON_BUTTON = "inline-grid h-6 w-6 shrink-0 place-items-center rounded-md 
 /** Un valor que se toca para elegir otro (categoria, anfitrion): se lee como texto, con una flechita. */
 const VALUE_TRIGGER = "-mx-1.5 max-w-full gap-1 px-1.5 py-0.5 text-left hover:bg-muted";
 
+/** El número de no leídos encima de un botón de icono (WhatsApp, email). */
+function UnreadBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="pointer-events-none absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-white" aria-hidden>
+      {count > 9 ? "9+" : count}
+    </span>
+  );
+}
+
+const unreadText = (count: number) => (count === 1 ? "1 mensaje sin leer" : `${count} mensajes sin leer`);
+
 /**
- * Lo que se puede hacer con una respuesta de teléfono o de email: ir al chat de WhatsApp de esa persona (en la misma
- * app, si ya hay uno) o escribirle un email. Se decide por el TIPO de la pregunta, nunca por cómo se ve el texto.
+ * El teléfono del invitado sin chat de WhatsApp en el sistema: lo abre (Evolution comprueba que el número tiene
+ * WhatsApp) y lleva a la bandeja con ese chat. Con más de un número del negocio, pregunta desde cuál.
  */
-function AnswerActions({ answer, whatsappConversationId }: { answer: BookingAnswer; whatsappConversationId: string | null }) {
+function StartWhatsappButton({ bookingId }: { bookingId: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [choices, setChoices] = useState<Array<{ id: string; label: string }> | null>(null);
+  // El error se muestra al lado del botón: el cartel de errores del panel queda arriba, fuera de la vista.
+  const [error, setError] = useState<string | null>(null);
+
+  const open = (channelId?: string) => {
+    setError(null);
+    start(async () => {
+      const result = await startBookingWhatsappChat({ bookingId, channelId: channelId ?? null });
+      if (!result.ok) {
+        setChoices(null);
+        setError(result.error);
+        return;
+      }
+      if ("pickChannel" in result) {
+        setChoices(result.pickChannel);
+        return;
+      }
+      setChoices(null);
+      router.push(`/dashboard/inbox?c=${result.conversationId}`);
+    });
+  };
+
+  return (
+    <span className="relative">
+      <Tip content="Todavía no hay un chat de WhatsApp con este contacto. Lo abre en la bandeja para que le escribas.">
+        <button type="button" onClick={() => open()} disabled={pending} aria-label="Iniciar un chat de WhatsApp con este contacto" className={`${ICON_BUTTON} disabled:opacity-60`}>
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <MessageCircle className="h-3.5 w-3.5" aria-hidden />}
+        </button>
+      </Tip>
+      {error && (
+        <span role="alert" className="absolute right-0 top-7 z-10 flex w-56 items-start gap-2 rounded-lg border border-destructive/40 bg-popover p-2 text-xs text-destructive shadow-lg">
+          <span className="min-w-0 flex-1">{error}</span>
+          <button type="button" onClick={() => setError(null)} aria-label="Cerrar" className="shrink-0 text-muted-foreground hover:text-foreground">
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </span>
+      )}
+      {choices && (
+        <span role="menu" aria-label="¿Desde qué número?" className="absolute right-0 top-7 z-10 flex w-56 flex-col rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-lg">
+          <span className="px-2 pb-0.5 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">¿Desde qué número?</span>
+          {choices.map((c) => (
+            <button key={c.id} type="button" role="menuitem" disabled={pending} onClick={() => open(c.id)} className="truncate rounded-md px-2 py-1.5 text-left hover:bg-accent disabled:opacity-60">
+              {c.label}
+            </button>
+          ))}
+          <button type="button" onClick={() => setChoices(null)} className="rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent">
+            Cancelar
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Lo que se puede hacer con una respuesta de teléfono o de email: ir al chat de WhatsApp o al email de esa persona en
+ * la bandeja (si ya hay uno; con el número de no leídos), abrir el chat de WhatsApp si todavía no hay, o escribirle un
+ * email desde el programa de correo. Se decide por el TIPO de la pregunta, nunca por cómo se ve el texto.
+ */
+function AnswerActions({ answer, booking }: { answer: BookingAnswer; booking: BookingDetailData }) {
   if (answer.kind === "email") {
     if (!/^[^\s@]+@[^\s@]+$/.test(answer.value.trim())) return null;
+    // El email de la bandeja es del contacto: solo corresponde al email propio del invitado.
+    if (answer.own && booking.emailConversationId) {
+      const unread = booking.emailUnread;
+      return (
+        <Tip content={unread > 0 ? `Abre en la bandeja los emails de este contacto (${unreadText(unread)}).` : "Abre en la bandeja los emails de este contacto."}>
+          <Link
+            href={`/dashboard/inbox?c=${booking.emailConversationId}`}
+            aria-label={unread > 0 ? `Abrir los emails de este contacto, ${unreadText(unread)}` : "Abrir los emails de este contacto"}
+            className={`relative ${ICON_BUTTON}`}
+          >
+            <Mail className="h-3.5 w-3.5" aria-hidden />
+            <UnreadBadge count={unread} />
+          </Link>
+        </Tip>
+      );
+    }
     return (
       <Tip content="Abre tu programa de correo para escribirle a este email.">
         <a href={`mailto:${answer.value.trim()}`} aria-label={`Escribir un email a ${answer.value}`} className={ICON_BUTTON}>
@@ -146,19 +245,26 @@ function AnswerActions({ answer, whatsappConversationId }: { answer: BookingAnsw
   }
   if (answer.kind === "phone") {
     // El chat de la bandeja es del contacto: solo corresponde al teléfono propio del invitado, no a otro número que escribió.
-    if (answer.own && whatsappConversationId) {
+    if (answer.own && booking.whatsappConversationId) {
+      const unread = booking.whatsappUnread;
       return (
-        <Tip content="Abre en la bandeja el chat de WhatsApp con este contacto.">
-          <Link href={`/dashboard/inbox?c=${whatsappConversationId}`} aria-label="Abrir el chat de WhatsApp" className={ICON_BUTTON}>
+        <Tip content={unread > 0 ? `Abre en la bandeja el chat de WhatsApp con este contacto (${unreadText(unread)}).` : "Abre en la bandeja el chat de WhatsApp con este contacto."}>
+          <Link
+            href={`/dashboard/inbox?c=${booking.whatsappConversationId}`}
+            aria-label={unread > 0 ? `Abrir el chat de WhatsApp, ${unreadText(unread)}` : "Abrir el chat de WhatsApp"}
+            className={`relative ${ICON_BUTTON}`}
+          >
             <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+            <UnreadBadge count={unread} />
           </Link>
         </Tip>
       );
     }
     const url = getDmLink("whatsapp", answer.value).url;
     if (!url || answer.value.replace(/\D/g, "").length < 7) return null;
+    if (answer.own && booking.contactId) return <StartWhatsappButton bookingId={booking.id} />;
     return (
-      <Tip content={answer.own ? "Todavía no hay un chat de WhatsApp con este contacto en el sistema. Abre WhatsApp con este número en otra pestaña." : "Abre WhatsApp con este número en otra pestaña."}>
+      <Tip content="Abre WhatsApp con este número en otra pestaña.">
         <a href={url} target="_blank" rel="noopener noreferrer" aria-label="Abrir WhatsApp con este número" className={ICON_BUTTON}>
           <MessageCircle className="h-3.5 w-3.5" aria-hidden />
         </a>
@@ -213,7 +319,7 @@ export function BookingDetailPanel({
   /** Owner/Admin con alcance total (Agenda v2): solo ellos pueden reasignar. */
   canReassign: boolean;
   /** Quién tiene perfil de agenda, para elegir a quién reasignar. Sin el anfitrión actual. */
-  hostOptions: Array<{ userId: string; label: string; hasGoogle: boolean }>;
+  hostOptions: Array<{ userId: string; label: string; hasGoogle: boolean; canRecreate: boolean }>;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -224,6 +330,7 @@ export function BookingDetailPanel({
   const [newHostId, setNewHostId] = useState("");
   const reassignRef = useRef<HTMLDivElement>(null);
   const [transferAssignment, setTransferAssignment] = useState(true);
+  const [reassignMode, setReassignMode] = useState<"keep" | "recreate">("keep");
   const [reason, setReason] = useState("");
   const [details, setDetails] = useState({ notes: booking.internalNotes ?? "", location: booking.locationText ?? "" });
   const isMeet = booking.locationType === "google_meet";
@@ -415,9 +522,40 @@ export function BookingDetailPanel({
                 <input type="checkbox" checked={transferAssignment} onChange={(e) => setTransferAssignment(e.target.checked)} />
                 También pasarle los leads asignados (si el closer o el setter era {booking.hostName})
               </label>
-              <p className="mt-2 text-xs text-muted-foreground">
-                El invitado no se entera: sigue viendo el mismo link de Meet. La nueva persona aparece confirmada en su calendario.
-              </p>
+              {booking.hasGoogleEvent ? (
+                (() => {
+                  const target = hostOptions.find((h) => h.userId === newHostId);
+                  const canRecreate = target?.canRecreate ?? false;
+                  const mode = canRecreate ? reassignMode : "keep";
+                  return (
+                    <fieldset className="mt-2 flex flex-col gap-2 text-xs">
+                      <legend className="sr-only">Qué pasa con la reunión en Google</legend>
+                      <label className="flex items-start gap-2">
+                        <input type="radio" name="reassign-mode" className="mt-0.5" checked={mode === "keep"} onChange={() => setReassignMode("keep")} />
+                        <span>
+                          <span className="font-medium text-foreground">Mantener la misma reunión</span>
+                          <span className="block text-muted-foreground">El invitado no se entera: sigue con el mismo link de Meet. La nueva persona aparece confirmada en su calendario.</span>
+                        </span>
+                      </label>
+                      <label className={`flex items-start gap-2 ${canRecreate ? "" : "opacity-60"}`}>
+                        <input type="radio" name="reassign-mode" className="mt-0.5" disabled={!canRecreate} checked={mode === "recreate"} onChange={() => setReassignMode("recreate")} />
+                        <span>
+                          <span className="font-medium text-foreground">Crear una nueva en el calendario de {target?.label ?? "la nueva persona"}</span>
+                          <span className="block text-muted-foreground">
+                            {canRecreate
+                              ? `Se crea igual, con un link de ${isMeet ? "Meet" : "invitación"} nuevo a su nombre. Google le manda al invitado la cancelación de la anterior y la invitación nueva. Los recordatorios usan el link nuevo.`
+                              : "No se puede: esa persona no tiene un Google Calendar conectado donde crearla."}
+                          </span>
+                        </span>
+                      </label>
+                    </fieldset>
+                  );
+                })()
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  El invitado no se entera. Esta reunión no tiene evento en Google Calendar, así que allá no hay nada que cambiar.
+                </p>
+              )}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
@@ -432,7 +570,13 @@ export function BookingDetailPanel({
                 <button
                   type="button"
                   disabled={pending || !newHostId}
-                  onClick={() => run(() => reassignBookingHostAsHost({ bookingId: booking.id, newHostUserId: newHostId, transferAssignment }), "Agenda reasignada")}
+                  onClick={() => {
+                    const recreate = booking.hasGoogleEvent && reassignMode === "recreate" && hostOptions.find((h) => h.userId === newHostId)?.canRecreate === true;
+                    run(
+                      () => reassignBookingHostAsHost({ bookingId: booking.id, newHostUserId: newHostId, transferAssignment, mode: recreate ? "recreate" : "keep" }),
+                      recreate ? "Agenda reasignada: se está creando la reunión nueva" : "Agenda reasignada",
+                    );
+                  }}
                   className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
                 >
                   {pending ? "Reasignando…" : "Reasignar"}
@@ -667,7 +811,7 @@ export function BookingDetailPanel({
                     <dt className="text-xs font-medium">{r.label}</dt>
                     <dd className="flex items-start gap-2 text-muted-foreground">
                       <span className="min-w-0 flex-1 break-words">{r.value}</span>
-                      <AnswerActions answer={r} whatsappConversationId={booking.whatsappConversationId} />
+                      <AnswerActions answer={r} booking={booking} />
                     </dd>
                   </div>
                 ))}
