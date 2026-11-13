@@ -25,19 +25,28 @@ export type ProbeActionResult =
   | { ok: true; message: string; verified: boolean }
   | { ok: false; error: string };
 
-export async function probeYouTubeUpload(): Promise<ProbeActionResult> {
+/**
+ * `channelId` = que canal probar (00374: puede haber varios). Sin pasar, el
+ * unico que haya; con varios hay que decir cual.
+ */
+export async function probeYouTubeUpload(channelId?: string | null): Promise<ProbeActionResult> {
   const { workspace, user, supabase } = await requirePermission("integrations.manage");
 
-  const { data: account } = await supabase
+  let query = supabase
     .from("social_accounts")
-    .select("id, publishers")
+    .select("id, publishers, external_id")
     .eq("workspace_id", workspace.id)
-    .eq("platform", "youtube")
-    .maybeSingle();
+    .eq("platform", "youtube");
+  if (channelId) query = query.eq("external_id", channelId);
+  const { data: accounts } = await query.limit(2);
 
-  if (!account) {
+  if (!accounts || accounts.length === 0) {
     return { ok: false, error: "No hay una cuenta de YouTube conectada" };
   }
+  if (accounts.length > 1) {
+    return { ok: false, error: "Hay varios canales de YouTube: elegí cuál probar" };
+  }
+  const account = accounts[0];
 
   const service = await createServiceClient();
 
@@ -46,6 +55,7 @@ export async function probeYouTubeUpload(): Promise<ProbeActionResult> {
     credentials = await credentialsForPublisher(service, {
       publisherId: "youtube_api",
       workspaceId: workspace.id,
+      accountRef: account.external_id,
     });
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "No pude leer el token" };

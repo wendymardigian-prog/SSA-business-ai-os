@@ -148,6 +148,8 @@ export function verifyState(
 /** A donde se puede volver despues de conectar. */
 const REDIRECT_ALLOWLIST = [
   "/dashboard/settings/integrations",
+  // Google (00374): YouTube y Drive se conectan desde la pestaña Cuentas de su detalle.
+  "/dashboard/settings/integrations/google",
   "/dashboard/channels",
   "/dashboard/social",
   "/dashboard/content",

@@ -1,11 +1,11 @@
 ---
-description: Guiar la conexión de los servicios externos (Google Calendar/Meet/YouTube, WhatsApp, Instagram, Resend, IA, render) y armar la guía con las direcciones de esta instalación.
+description: Guiar la conexión de los servicios externos (Google Calendar/Meet/YouTube/Drive, WhatsApp, Instagram, Resend, IA, render) y armar la guía con las direcciones de esta instalación.
 disable-model-invocation: true
 ---
 
 # Conectar servicios externos
 
-Estás corriendo este comando porque alguien quiere conectar su sistema con un servicio externo: Google (Calendar, Meet, YouTube y, más adelante, Drive), WhatsApp, Instagram, el email (Resend), la inteligencia artificial o el servicio de render del Diseñador IA. La guía completa, con direcciones de ejemplo, está en `guias/conexiones.md`. Tu trabajo es:
+Estás corriendo este comando porque alguien quiere conectar su sistema con un servicio externo: Google (Calendar, Meet, YouTube y Drive), WhatsApp, Instagram, el email (Resend), la inteligencia artificial o el servicio de render del Diseñador IA. La guía completa, con direcciones de ejemplo, está en `guias/conexiones.md`. Tu trabajo es:
 
 1. armarle esa misma guía con las direcciones de SU instalación;
 2. acompañarlo, de a un paso, en la conexión que elija.
@@ -48,7 +48,7 @@ Normalizá lo que te den: minúsculas, sin `https://`, sin barra final ni ruta. 
 
 Preguntale qué quiere conectar ahora, con estas opciones y lo que suma cada una:
 
-- **Google**: agendar con Google Calendar y links de Meet; YouTube.
+- **Google**: agendar con Google Calendar y links de Meet; YouTube (uno o varios canales); importar archivos de Drive a Recursos.
 - **WhatsApp**: la bandeja de WhatsApp, por QR.
 - **Instagram**: mensajes directos y comentarios.
 - **Email (Resend)**: las invitaciones y los avisos desde su dominio.
@@ -62,7 +62,7 @@ Si no sabe por dónde empezar: Email primero (sin remitente no salen ni las invi
 
 Seguí la sección de su guía personalizada, de a un paso, con estas reglas:
 
-- **Google**: preguntá primero si todo el equipo usa cuentas de Google Workspace de la empresa (decide Interna o Externa). Si la persona no es **Propietario** del proyecto de Google Cloud («No tienes permisos suficientes»), no sigas adivinando: ofrecé el atajo (que el Propietario le dé el rol) o el pedido para ChatGPT o Claude de la guía, ya con sus datos, para que se lo pase al dueño. Insistí en que hacen falta las DOS direcciones de retorno: `…/api/oauth/google_calendar/callback` (calendario) y `…/api/oauth/google/callback` (YouTube). Cuando cree el cliente, avisale antes: «Ahora Google te va a mostrar el secreto. No me lo pases: copialo y pegalo directo en la tarjeta Google (YouTube) del sistema».
+- **Google**: preguntá primero si todo el equipo usa cuentas de Google Workspace de la empresa (decide Interna o Externa). Si la persona no es **Propietario** del proyecto de Google Cloud («No tienes permisos suficientes»), no sigas adivinando: ofrecé el atajo (que el Propietario le dé el rol) o el pedido para ChatGPT o Claude de la guía, ya con sus datos, para que se lo pase al dueño. Insistí en que hacen falta las TRES direcciones de retorno: `…/api/oauth/google_calendar/callback` (calendario), `…/api/oauth/google/callback` (YouTube) y `…/api/oauth/google_drive/callback` (Drive). Cuando cree el cliente, avisale antes: «Ahora Google te va a mostrar el secreto. No me lo pases: copialo y pegalo directo en la tarjeta Google del sistema». Si va a usar Drive, también hacen falta la clave de API (restringida a la Google Picker API) y el número del proyecto: se pegan en la misma tarjeta.
 - **WhatsApp**: el «Token del webhook» se genera con el botón **Generar** de la tarjeta; no se copia de Evolution.
 - **Instagram**: el «Secreto del webhook» de la tarjeta de Zernio queda vacío.
 - **Resend**: sin remitente elegido no sale ningún email; recordalo al final.

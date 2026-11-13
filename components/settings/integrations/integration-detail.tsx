@@ -40,7 +40,6 @@ export function IntegrationDetail({
   channels,
   metaAccounts,
   metaIgUsername,
-  youtubeVerifiedAt,
   socialAccounts,
   activityEntries,
   readOnly = false,
@@ -53,7 +52,6 @@ export function IntegrationDetail({
   channels: Channel[];
   metaAccounts: AdAccount[];
   metaIgUsername: string | null;
-  youtubeVerifiedAt: string | null;
   socialAccounts: SocialAccountRow[];
   activityEntries: ActivityEntry[];
   /** Solo mira: sin formulario de credenciales ni cuentas (le falta `integrations.manage` / `channels.manage`). */
@@ -169,9 +167,9 @@ export function IntegrationDetail({
             channels={channels}
             metaAccounts={metaAccounts}
             metaIgUsername={metaIgUsername}
-            youtubeVerifiedAt={youtubeVerifiedAt}
             calendarPeople={data.calendarPeople ?? 0}
-            youtubeConnected={Boolean(data.oauth)}
+            google={data.google}
+            googleCredentialsReady={["client_id", "client_secret"].every((k) => data.storedSecretKeys.includes(k))}
             socialAccounts={socialAccounts}
           />
         )}

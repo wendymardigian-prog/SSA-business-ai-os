@@ -76,6 +76,12 @@ export interface OAuthAdapter {
   perUser?: boolean;
   /** El permiso que exige iniciarla cuando es por persona. */
   requiredPermission?: string;
+  /**
+   * Del workspace pero con VARIAS cuentas (YouTube, 00374): cada cuenta
+   * externa es su propia fila y su propio prefijo en Vault. Conectar otro
+   * canal suma uno; reconectar el mismo actualiza su fila.
+   */
+  multiAccount?: boolean;
   /** Los permisos que se piden. */
   scopes: string[];
   /**

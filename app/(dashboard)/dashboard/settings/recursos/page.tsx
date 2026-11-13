@@ -29,6 +29,7 @@ export default async function RecursosPage() {
       // ninguna clave de Ajustes (el Member de sistema) lo rebotarian. Recursos no cuenta: la ve cualquiera.
       showSettingsTabs={visibleSettingsTabs(ctx.can).some((t) => t.permissions !== undefined)}
       workspaceName={ctx.workspace.name}
+      canConfigureIntegrations={ctx.can("integrations.manage")}
     />
   );
 }

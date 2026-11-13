@@ -99,7 +99,12 @@ export interface AccountSources {
   postproxyConnected: boolean;
   /** El perfil de YouTube dentro de Postproxy, si la prueba lo encontro (A11). */
   postproxyProfileId?: string | null;
-  google: ConnectionSource | null;
+  /**
+   * Los canales de YouTube conectados por OAuth, del mas antiguo al mas nuevo
+   * (00374: puede haber varios). Uno solo o null se aceptan igual, que es como
+   * lo pasaban los llamadores de antes.
+   */
+  google: ConnectionSource[] | ConnectionSource | null;
   linkedin: ConnectionSource | null;
   threads: ConnectionSource | null;
   existing: ExistingAccount[];
@@ -183,6 +188,132 @@ function keepDecisions(fresh: PublisherEntry[], old: PublisherEntry[]): Publishe
       manually_enabled: e.manually_enabled || before.manually_enabled,
     };
   });
+}
+
+type Finish = (
+  platform: SocialPlatform,
+  fresh: PublisherEntry[],
+  data: Omit<ComputedAccount, "platform" | "publishers" | "defaultPublisher" | "defaultChanged" | "existingId">,
+  row?: ExistingAccount,
+) => void;
+
+/** La API oficial de YouTube para UN canal, segun como esta su conexion. */
+function youtubeApiEntry(connection: ConnectionSource): PublisherEntry {
+  const upload = canUploadToYouTube(connection.granted_scopes);
+  if (!upload.ok) return entry("youtube_api", "unavailable", { status_reason: upload.reason ?? null });
+  if (connection.status !== "active") {
+    return entry("youtube_api", "unavailable", {
+      account_ref: connection.external_account_id,
+      status_reason: "La conexion con Google necesita atencion.",
+    });
+  }
+  // "unverified" y no "available": subir con la API oficial puede dejar el
+  // video en privado hasta que Google audite la app, y eso se sabe recien al
+  // probarlo (F38).
+  return entry("youtube_api", "unverified", {
+    account_ref: connection.external_account_id,
+    status_reason: "Todavia no se probo una publicacion directa.",
+  });
+}
+
+/**
+ * Las cuentas de YouTube (00374): una por canal conectado.
+ *
+ * - Cada canal es su fila, identificada por el id del canal (`external_id`).
+ *   La fila de antes de la 00374 puede no tenerlo: la toma el primer canal.
+ * - Postproxy publica en UN perfil de YouTube: queda en la cuenta que ya lo
+ *   tenia, o en el canal mas antiguo. Sin canales, es una cuenta sola.
+ * - Un canal que se desconecto no se borra: su cuenta queda con la API
+ *   "no disponible" (como las de Zernio), y reconectarlo la deja como estaba.
+ */
+function computeYouTube(sources: AccountSources, finish: Finish): void {
+  const channels = (Array.isArray(sources.google) ? sources.google : sources.google ? [sources.google] : []).filter(
+    (c) => Boolean(c.external_account_id),
+  );
+  const rows = sources.existing.filter((e) => e.platform === "youtube");
+  const used = new Set<ExistingAccount>();
+
+  const postproxy: PublisherEntry | null = sources.postproxyConnected
+    ? sources.postproxyProfileId
+      ? entry("postproxy", "available", { account_ref: sources.postproxyProfileId })
+      : entry("postproxy", "unavailable", {
+          // Sin perfil no se puede publicar: Postproxy acepta el pedido y no lo
+          // manda a ningun lado (A11).
+          status_reason:
+            "Postproxy no tiene ninguna cuenta de YouTube conectada. Conectala ahi y volve a guardar la clave.",
+        })
+    : null;
+  const postproxyHost = rows.find((r) => previous(r).entries.some((e) => e.publisher === "postproxy"));
+  let postproxyPlaced = false;
+
+  channels.forEach((channel, index) => {
+    const row =
+      rows.find((r) => !used.has(r) && r.external_id === channel.external_account_id) ??
+      rows.find((r) => !used.has(r) && !r.external_id);
+    if (row) used.add(row);
+
+    const fresh: PublisherEntry[] = [];
+    const hostsPostproxy = postproxy && (postproxyHost ? row === postproxyHost : index === 0);
+    if (hostsPostproxy) {
+      fresh.push(postproxy);
+      postproxyPlaced = true;
+    }
+    fresh.push(youtubeApiEntry(channel));
+
+    finish(
+      "youtube",
+      fresh,
+      {
+        externalId: channel.external_account_id,
+        // El @ lo escribe la lectura de metricas (lo trae la API del canal):
+        // recalcular las cuentas no lo borra.
+        username: row?.username ?? null,
+        displayName: channel.account_label ?? "YouTube",
+        channelId: null,
+      },
+      row,
+    );
+  });
+
+  // Las cuentas cuyo canal ya no esta conectado.
+  for (const row of rows) {
+    if (used.has(row)) continue;
+    const before = previous(row);
+    const hadApi = before.entries.some((e) => e.publisher === "youtube_api");
+    const hostsPostproxy = Boolean(postproxy) && !postproxyPlaced && (row === postproxyHost || !postproxyHost);
+    if (!hadApi && !hostsPostproxy) continue;
+
+    const fresh: PublisherEntry[] = [];
+    if (hostsPostproxy && postproxy) {
+      fresh.push(postproxy);
+      postproxyPlaced = true;
+    }
+    if (hadApi) {
+      fresh.push(
+        entry("youtube_api", "unavailable", {
+          account_ref: before.entries.find((e) => e.publisher === "youtube_api")?.account_ref ?? row.external_id ?? null,
+          status_reason: "Este canal no esta conectado. Conectalo de nuevo en Integraciones → Google.",
+        }),
+      );
+    }
+
+    finish(
+      "youtube",
+      fresh,
+      {
+        externalId: row.external_id ?? null,
+        username: row.username ?? null,
+        displayName: row.display_name ?? "YouTube",
+        channelId: row.channel_id ?? null,
+      },
+      row,
+    );
+  }
+
+  // Solo Postproxy, sin ninguna cuenta de YouTube todavia.
+  if (postproxy && !postproxyPlaced) {
+    finish("youtube", [postproxy], { externalId: null, username: null, displayName: "YouTube", channelId: null });
+  }
 }
 
 export function computeAccounts(sources: AccountSources): ComputedAccounts {
@@ -344,60 +475,8 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
     }
   }
 
-  // ── YouTube: puede tener dos caminos a la vez ────────────────────────────
-  const youtube: PublisherEntry[] = [];
-  if (sources.postproxyConnected) {
-    // Sin perfil no se puede publicar: Postproxy acepta el pedido y no lo
-    // manda a ningun lado (A11).
-    youtube.push(
-      sources.postproxyProfileId
-        ? entry("postproxy", "available", { account_ref: sources.postproxyProfileId })
-        : entry("postproxy", "unavailable", {
-            status_reason:
-              "Postproxy no tiene ninguna cuenta de YouTube conectada. Conectala ahi y volve a guardar la clave.",
-          }),
-    );
-  }
-
-  if (sources.google) {
-    const upload = canUploadToYouTube(sources.google.granted_scopes);
-    if (!upload.ok) {
-      youtube.push(entry("youtube_api", "unavailable", { status_reason: upload.reason ?? null }));
-    } else if (sources.google.status !== "active") {
-      youtube.push(
-        entry("youtube_api", "unavailable", {
-          status_reason: "La conexion con Google necesita atencion.",
-        }),
-      );
-    } else {
-      // "unverified" y no "available": subir con la API oficial puede dejar el
-      // video en privado hasta que Google audite la app, y eso se sabe recien
-      // al probarlo (F38).
-      youtube.push(
-        entry("youtube_api", "unverified", {
-          account_ref: sources.google.external_account_id,
-          status_reason: "Todavia no se probo una publicacion directa.",
-        }),
-      );
-    }
-  }
-
-  if (youtube.length > 0) {
-    const youtubeRow = sources.existing.find((e) => e.platform === "youtube");
-    finish(
-      "youtube",
-      youtube,
-      {
-        externalId: sources.google?.external_account_id ?? null,
-        // El @ lo escribe la lectura de metricas (lo trae la API del canal):
-        // recalcular las cuentas no lo borra.
-        username: youtubeRow?.username ?? null,
-        displayName: sources.google?.account_label ?? "YouTube",
-        channelId: null,
-      },
-      youtubeRow,
-    );
-  }
+  // ── YouTube: una cuenta por canal, y Postproxy en una de ellas ───────────
+  computeYouTube(sources, finish);
 
   // ── LinkedIn y Threads: un solo camino, el suyo ──────────────────────────
   for (const [platform, connection, publisher] of [
@@ -461,7 +540,9 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
       .from("oauth_connections")
       .select("provider, status, granted_scopes, external_account_id, account_label")
       .eq("workspace_id", workspaceId)
-      .is("user_id", null),
+      .is("user_id", null)
+      // Del mas antiguo al mas nuevo: el primer canal de YouTube es el de siempre.
+      .order("created_at", { ascending: true }),
     supabase
       .from("integration_configs")
       .select("provider, is_active, config")
@@ -477,15 +558,15 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
   const activeBefore = new Set((existing.data ?? []).filter((row) => row.is_active).map((row) => row.id));
   const newAccountIds: string[] = [];
 
+  const toSource = (row: NonNullable<typeof connections.data>[number]): ConnectionSource => ({
+    status: row.status,
+    granted_scopes: row.granted_scopes ?? [],
+    external_account_id: row.external_account_id,
+    account_label: row.account_label,
+  });
   const connectionOf = (provider: string): ConnectionSource | null => {
     const row = (connections.data ?? []).find((c) => c.provider === provider);
-    if (!row) return null;
-    return {
-      status: row.status,
-      granted_scopes: row.granted_scopes ?? [],
-      external_account_id: row.external_account_id,
-      account_label: row.account_label,
-    };
+    return row ? toSource(row) : null;
   };
 
   const computed = computeAccounts({
@@ -500,7 +581,8 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
         | { youtube_profile_id?: string }
         | null
         | undefined)?.youtube_profile_id ?? null,
-    google: connectionOf("google"),
+    // Todos los canales de YouTube (00374). Un canal revocado no publica: su cuenta queda "no disponible".
+    google: (connections.data ?? []).filter((c) => c.provider === "google" && c.status !== "revoked").map(toSource),
     linkedin: connectionOf("linkedin"),
     threads: connectionOf("threads"),
     existing: (existing.data ?? []) as ExistingAccount[],

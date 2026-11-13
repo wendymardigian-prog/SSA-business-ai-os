@@ -349,6 +349,62 @@ describe("volver del proveedor", () => {
   });
 });
 
+describe("varios canales de YouTube en el mismo negocio (00374)", () => {
+  const multi = (): OAuthAdapter => ({ ...adapter, multiAccount: true });
+
+  it("otro canal suma una conexion, con su propio prefijo en Vault", async () => {
+    const database = db();
+    await complete({ adapter: multi() }, database);
+    fetchIdentity.mockResolvedValue({ externalAccountId: "canal-456", label: "Otro canal" });
+    await complete({ adapter: multi() }, database);
+
+    const rows = database.rows("oauth_connections");
+    expect(rows.map((r) => r.external_account_id)).toEqual(["canal-123", "canal-456"]);
+    expect(new Set(rows.map((r) => r.vault_secret_prefix)).size).toBe(2);
+    for (const row of rows) expect(row.vault_secret_prefix).toBe(`oauth_google_${row.id}`);
+  });
+
+  it("reconectar el mismo canal actualiza su fila", async () => {
+    const database = db();
+    await complete({ adapter: multi() }, database);
+    fetchIdentity.mockResolvedValue({ externalAccountId: "canal-123", label: "Canal renombrado" });
+    await complete({ adapter: multi() }, database);
+
+    expect(database.rows("oauth_connections")).toHaveLength(1);
+    expect(database.rows("oauth_connections")[0].account_label).toBe("Canal renombrado");
+  });
+
+  it("el canal conectado antes de la 00374 conserva su prefijo sin id", async () => {
+    const database = memoryDb({
+      oauth_connections: [
+        {
+          id: "conn-viejo",
+          workspace_id: WS,
+          provider: "google",
+          user_id: null,
+          external_account_id: "canal-123",
+          vault_secret_prefix: "oauth_google",
+        },
+      ],
+    });
+    await complete({ adapter: multi() }, database);
+
+    expect(database.rows("oauth_connections")).toHaveLength(1);
+    expect(database.rows("oauth_connections")[0].vault_secret_prefix).toBe("oauth_google");
+    expect(storeSecret.mock.calls.map((c) => c[2])).toContain("oauth_google_access_token");
+  });
+
+  it("sin varias cuentas (LinkedIn, Threads, Drive), otra cuenta reemplaza a la anterior", async () => {
+    const database = db();
+    await complete({}, database);
+    fetchIdentity.mockResolvedValue({ externalAccountId: "canal-456", label: "Otro" });
+    await complete({}, database);
+
+    expect(database.rows("oauth_connections")).toHaveLength(1);
+    expect(database.rows("oauth_connections")[0].external_account_id).toBe("canal-456");
+  });
+});
+
 describe("donde viven los tokens", () => {
   it("una conexion del workspace y una de una persona no comparten prefijo", () => {
     expect(vaultPrefixFor("google", null)).toBe("oauth_google");

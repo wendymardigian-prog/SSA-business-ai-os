@@ -265,8 +265,10 @@ describe("catalogo extendido (F1)", () => {
       const provider = getProvider(id)!;
       expect(provider.connection).toBe("oauth_app");
       expect(provider.secretName).toBeNull();
-      expect(secretFieldsOf(provider)).toHaveLength(2);
-      expect(secretFieldsOf(provider).every((f) => f.required)).toBe(true);
+      // Client ID y Secret, obligatorios. Google suma dos opcionales para elegir archivos de Drive (00374).
+      const required = secretFieldsOf(provider).filter((f) => f.required);
+      expect(required.map((f) => f.key)).toEqual(id === "threads" ? ["app_id", "app_secret"] : ["client_id", "client_secret"]);
+      expect(secretFieldsOf(provider)).toHaveLength(id === "google" ? 4 : 2);
     }
   });
 

@@ -132,7 +132,6 @@ export default async function IntegrationDetailPage({
       channels={channels}
       metaAccounts={loaded.metaAccounts}
       metaIgUsername={loaded.metaIgUsername}
-      youtubeVerifiedAt={loaded.youtubeVerifiedAt}
       socialAccounts={socialAccounts}
       activityEntries={activityEntries}
       readOnly={access === "view"}

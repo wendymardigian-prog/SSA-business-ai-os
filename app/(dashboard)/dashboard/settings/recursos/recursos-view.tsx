@@ -29,6 +29,7 @@ import { AssetThumb } from "@/components/response-assets/asset-thumb";
 import { AssetFilterBar } from "@/components/response-assets/asset-filter-bar";
 import { AssetPreview } from "@/components/response-assets/asset-preview";
 import { AssetFormDialog } from "@/components/response-assets/asset-form-dialog";
+import { DriveImportButton } from "@/components/response-assets/drive-import";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActionError } from "@/components/contacts/ui";
 import { PageHeader } from "@/components/page-header";
@@ -53,11 +54,14 @@ export function RecursosView({
   canManage,
   showSettingsTabs,
   workspaceName,
+  canConfigureIntegrations = false,
 }: {
   assets: BankAsset[];
   canManage: boolean;
   showSettingsTabs: boolean;
   workspaceName: string;
+  /** Puede conectar Google Drive (`integrations.manage`): «Importar de Drive» le ofrece el link (00374). */
+  canConfigureIntegrations?: boolean;
 }) {
   const [filters, setFilters] = useState<AssetFilters>(NO_FILTERS);
   const [page, setPage] = useState(1);
@@ -155,14 +159,17 @@ export function RecursosView({
         }
         right={
           canManage && (
-            <button
-              onClick={() => openNew()}
-              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-              <span className="hidden sm:inline">Nuevo recurso</span>
-              <span className="sr-only sm:hidden">Nuevo recurso</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <DriveImportButton canConfigure={canConfigureIntegrations} />
+              <button
+                onClick={() => openNew()}
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline">Nuevo recurso</span>
+                <span className="sr-only sm:hidden">Nuevo recurso</span>
+              </button>
+            </div>
           )
         }
       />

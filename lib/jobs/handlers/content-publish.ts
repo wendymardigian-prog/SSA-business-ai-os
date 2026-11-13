@@ -51,8 +51,8 @@ export function publishDeps(supabase: Db, workspaceId: string): PublishDeps {
       return urls;
     },
 
-    credentialsFor: ({ publisherId }) =>
-      credentialsForPublisher(supabase, { publisherId, workspaceId }),
+    credentialsFor: ({ publisherId, accountRef }) =>
+      credentialsForPublisher(supabase, { publisherId, workspaceId, accountRef }),
   };
 }
 

@@ -49,6 +49,13 @@ export const SECRET_NAMES = {
   oauthStateSecret: "oauth_state_secret",
   googleClientId: "google_client_id",
   googleClientSecret: "google_client_secret",
+  /**
+   * Del selector de archivos de Google Drive (Picker, 00374): una API key del
+   * proyecto de Google Cloud y el numero del proyecto. No dan acceso a nada
+   * por si solas; sin ellas, Recursos no ofrece importar de Drive.
+   */
+  googleApiKey: "google_api_key",
+  googleProjectNumber: "google_project_number",
   linkedinClientId: "linkedin_client_id",
   linkedinClientSecret: "linkedin_client_secret",
   threadsAppId: "threads_app_id",

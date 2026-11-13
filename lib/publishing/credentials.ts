@@ -25,6 +25,7 @@ import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { PublishError } from "@/lib/jobs/errors";
 import { getOAuthAdapter } from "@/lib/oauth/registry";
 import { needsFreshToken, refreshConnection } from "@/lib/social/refresh-connection";
+import { findWorkspaceConnection } from "@/lib/oauth/workspace-connection";
 import type { PublishCredentials } from "./types";
 
 type Db = SupabaseClient<Database>;
@@ -38,7 +39,16 @@ const OAUTH_PROVIDER: Record<string, OAuthProvider> = {
 
 export async function credentialsForPublisher(
   supabase: Db,
-  params: { publisherId: string; workspaceId: string },
+  params: {
+    publisherId: string;
+    workspaceId: string;
+    /**
+     * La cuenta en el proveedor (`account_ref` del publicador). Con varios
+     * canales de YouTube (00374) es lo que dice con cual publicar; sin pasar,
+     * el canal mas antiguo.
+     */
+    accountRef?: string | null;
+  },
 ): Promise<PublishCredentials> {
   const { publisherId, workspaceId } = params;
 
@@ -69,17 +79,19 @@ export async function credentialsForPublisher(
     throw new PublishError(`No se de donde sacar la clave de "${publisherId}"`, "permanent");
   }
 
-  const { data: connection } = await supabase
-    .from("oauth_connections")
-    .select("id, vault_secret_prefix, status, token_expires_at")
-    .eq("workspace_id", workspaceId)
-    .eq("provider", provider)
-    .is("user_id", null)
-    .maybeSingle();
+  // Solo YouTube tiene varias cuentas: en LinkedIn y Threads la conexion es una.
+  const connection = await findWorkspaceConnection(
+    supabase,
+    workspaceId,
+    provider,
+    provider === "google" ? params.accountRef : null,
+  );
 
   if (!connection) {
     throw new PublishError(
-      `La cuenta de ${provider} no esta conectada. Conectala en Ajustes → Integraciones.`,
+      provider === "google" && params.accountRef
+        ? "Ese canal de YouTube ya no esta conectado. Conectalo de nuevo en Ajustes → Integraciones → Google."
+        : `La cuenta de ${provider} no esta conectada. Conectala en Ajustes → Integraciones.`,
       "permanent",
     );
   }

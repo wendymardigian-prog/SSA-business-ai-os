@@ -57,7 +57,16 @@ export function IntegrationCard({
   // Client ID y Secret guardados, pero nadie autorizo la cuenta todavia: la
   // integracion igual figura "Conectada" (preexistente, no se cambia), pero
   // la card lo dice.
-  const missingAuthorization = provider.connection === "oauth_app" && connected && !data.oauth;
+  // Google (00374) no se "autoriza" una vez: sus credenciales sirven a Calendar
+  // (de cada persona), YouTube y Drive. Lo que se dice es si todavia no hay
+  // ninguna de las tres.
+  const missingAuthorization =
+    provider.id === "google"
+      ? connected &&
+        (data.google?.youtube.length ?? 0) === 0 &&
+        !data.google?.drive &&
+        (data.calendarPeople ?? 0) === 0
+      : provider.connection === "oauth_app" && connected && !data.oauth;
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
@@ -89,7 +98,7 @@ export function IntegrationCard({
 
       {connectedSince && <p className="mt-1 text-[11px] text-muted-foreground">{connectedSince}</p>}
 
-      {data.oauth && (
+      {data.oauth && provider.id !== "google" && (
         <p className="mt-1 text-[11px] text-muted-foreground">
           {[formatOAuthExpiry(data.oauth.tokenExpiresAt, timeZone), formatLastRefreshed(data.oauth.lastRefreshedAt, timeZone)]
             .filter(Boolean)
@@ -98,11 +107,15 @@ export function IntegrationCard({
       )}
 
       {provider.id === "google" && (
-        <GoogleServices youtubeConnected={Boolean(data.oauth)} calendarPeople={data.calendarPeople ?? 0} />
+        <GoogleServices google={data.google} calendarPeople={data.calendarPeople ?? 0} />
       )}
 
       {missingAuthorization && (
-        <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">Falta autorizar la cuenta.</p>
+        <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+          {provider.id === "google"
+            ? "Credenciales guardadas. Conectá YouTube o Drive en Configurar → Cuentas."
+            : "Falta autorizar la cuenta."}
+        </p>
       )}
 
       {data.reasons.length > 0 && (
