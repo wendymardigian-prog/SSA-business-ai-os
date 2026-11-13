@@ -4,6 +4,7 @@
 import { revalidatePath } from "next/cache";
 import { getAnyPermissionAction, getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
+import { findContact } from "@/lib/contacts/find-or-create";
 import { svcRpc, svcSchema, type SvcResult } from "@/lib/services/db";
 import { parseServicesImport } from "@/lib/services/import";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
@@ -374,8 +375,11 @@ export async function importServices(csv: string, commit: boolean): Promise<{ ok
   let created = 0;
   for (const row of parsed.rows) {
     const problems: string[] = [];
-    const contactQ = service.from("contacts").select("id").eq("workspace_id", ws).is("deleted_at", null).limit(1);
-    const { data: contact } = row.email ? await contactQ.eq("email", row.email).maybeSingle() : await contactQ.eq("phone", row.phone ?? "").maybeSingle();
+    // La regla única de contactos (solo busca): normaliza el teléfono y lo encuentra en todas sus formas (+52/+521).
+    const identity = row.email ? { email: row.email } : { phone: row.phone ?? "" };
+    const contact = await findContact(service, { workspaceId: ws, identity })
+      .then((found) => (found.contactId ? { id: found.contactId } : null))
+      .catch(() => null);
     if (!contact) problems.push("no encontré el contacto");
     const { data: product } = await service.from("products").select("id").eq("workspace_id", ws).ilike("name", row.product).limit(1).maybeSingle();
     if (!product) problems.push("no encontré el producto");

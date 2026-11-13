@@ -10,7 +10,7 @@
  * secundario) y los usuarios de Instagram, TikTok, X, LinkedIn y Facebook. NUNCA el nombre.
  */
 
-import { normalizePhone } from "@/lib/phone";
+import { normalizePhone, phoneCanonical } from "@/lib/phone";
 import { linkedinSlug, LINKEDIN_PROFILE_BASE } from "@/lib/contacts/social";
 
 /** Lo que se le pasa a la regla central. Todas las claves son opcionales; las vacias se descartan. */
@@ -117,14 +117,15 @@ export function hasStrongIdentity(identity: NormalizedIdentity): boolean {
 
 /**
  * Las claves de bloqueo, SIEMPRE en el mismo orden (por la clave, comparacion binaria), sin repetidas.
- * El telefono y el WhatsApp comparten tipo `phone`; el email y el secundario, `email`. Dos llamadas con el
+ * El telefono y el WhatsApp comparten tipo `phone` y van en su forma fija (`phoneCanonical`: +52/+521 y
+ * +54/+549 son el mismo bloqueo, 00373); el email y el secundario, `email`. Dos llamadas con el
  * mismo dato comparten al menos un bloqueo; el orden fijo evita el interbloqueo.
  */
 export function identityLockKeys(identity: NormalizedIdentity): string[] {
   const keys: (string | null)[] = [
     identity.channel_id && identity.sender_id ? `channel:${identity.channel_id}:${identity.sender_id}` : null,
-    identity.phone ? `phone:${identity.phone}` : null,
-    identity.whatsapp_phone ? `phone:${identity.whatsapp_phone}` : null,
+    identity.phone ? `phone:${phoneCanonical(identity.phone)}` : null,
+    identity.whatsapp_phone ? `phone:${phoneCanonical(identity.whatsapp_phone)}` : null,
     identity.email ? `email:${identity.email}` : null,
     identity.secondary_email ? `email:${identity.secondary_email}` : null,
     identity.instagram ? `instagram:${identity.instagram}` : null,
