@@ -10,6 +10,7 @@ import { resolveWhatsAppTarget } from "@/lib/flow-engine/whatsapp-target";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { BusinessTimeNote } from "@/components/ui/business-time-note";
 import { DEFAULT_SEND_WINDOW, sendWindowProblem } from "@/lib/flow-engine/send-window";
+import { MAX_HOURS_BEFORE, normalizeHoursBefore } from "@/lib/flow-engine/team-wrote";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -156,11 +157,32 @@ export function SendWhatsAppNumberPanel({
           <input type="checkbox" checked={data.skipIfTeamWrote === true} onChange={(e) => set({ skipIfTeamWrote: e.target.checked })} />
           No mandar si ya le escribiste
         </label>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {data.skipIfTeamWrote === true
-            ? "Si alguien del equipo le escribió por WhatsApp (desde el teléfono o la bandeja) después de que arrancó la automatización, este mensaje no sale. Se mira justo antes de mandar."
-            : "Apagado, el mensaje sale aunque ya le hayas escrito."}
-        </p>
+        {data.skipIfTeamWrote === true ? (
+          <div className="mt-2 space-y-2">
+            <div className="flex items-center gap-2 text-xs text-foreground">
+              <label htmlFor="wa-team-hours-before">Contar también las</label>
+              <input
+                id="wa-team-hours-before"
+                type="number"
+                min={0}
+                max={MAX_HOURS_BEFORE}
+                step={1}
+                value={data.teamWroteHoursBefore ?? ""}
+                onChange={(e) => set({ teamWroteHoursBefore: e.target.value === "" ? undefined : normalizeHoursBefore(e.target.value) })}
+                placeholder="0"
+                className={`${inputClass} w-20`}
+              />
+              <span>horas antes</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {normalizeHoursBefore(data.teamWroteHoursBefore) > 0
+                ? `Si alguien del equipo le escribió por WhatsApp (desde el teléfono o la bandeja) en las ${normalizeHoursBefore(data.teamWroteHoursBefore)} h antes de que arrancara la automatización o después, este mensaje no sale. Lo de antes no cuenta. Se mira justo antes de mandar.`
+                : "Si alguien del equipo le escribió por WhatsApp (desde el teléfono o la bandeja) después de que arrancó la automatización, este mensaje no sale. Lo de antes no cuenta: poné horas para sumar, por ejemplo, el chat en el que le pasaste el link. Se mira justo antes de mandar."}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-1.5 text-xs text-muted-foreground">Apagado, el mensaje sale aunque ya le hayas escrito.</p>
+        )}
       </div>
 
       {availableVariables && availableVariables.length > 0 && (
