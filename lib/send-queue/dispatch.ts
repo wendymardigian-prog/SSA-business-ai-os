@@ -27,7 +27,6 @@ import { isValidTimeZone } from "@/lib/timezone";
 import { recordSend, sendChannelMessage } from "@/lib/flow-engine/send";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { emailSendCapacity, DEFER_MESSAGES, type DeferReason } from "@/lib/email/delivery-guard";
-import { upsertConversation } from "@/lib/inbound";
 import { notifyWorkspaceAdmins } from "@/lib/notifications";
 import { loadBroadcastChannel, type BroadcastChannel } from "@/lib/broadcasts/channels";
 import { loadRenderData } from "@/lib/broadcasts/audience-load";
@@ -36,7 +35,7 @@ import { broadcastVariables, cleanVariants, renderChatMessage, renderEmail } fro
 import type { SendSkipReason } from "@/lib/broadcasts/audience";
 import type { SearchParams } from "@/lib/url-params";
 import { combinePolicies, paceDecision, parseBroadcastPace, pickGapSeconds, type LaneCounts, type SendPolicy } from "./pace";
-import { resolveWhatsappTarget } from "./whatsapp-number";
+import { ensureWhatsappChat } from "@/lib/inbox/start-whatsapp";
 
 type Client = SupabaseClient<Database>;
 type Broadcast = Database["public"]["Tables"]["broadcasts"]["Row"];
@@ -442,45 +441,29 @@ async function deliverWhatsapp(
 }
 
 /**
- * La conversación del contacto en este número. Si nunca escribió (solo tiene
- * teléfono), primero se pregunta si ese número tiene WhatsApp: si no tiene, se
- * saltea sin dejar vínculo ni conversación y sin contar como fallo. Si tiene, se
- * lo vincula al número y se le abre la conversación, así el eco y su respuesta
- * caen en el mismo chat.
+ * La conversación del contacto en este número (`ensureWhatsappChat`): si nunca
+ * escribió (solo tiene teléfono) y ese número no tiene WhatsApp, se saltea sin
+ * dejar vínculo ni conversación y sin contar como fallo.
  */
 async function ensureWhatsappConversation(service: Client, ctx: LaneContext, r: Recipient, preview: string): Promise<string | RecipientOutcome> {
-  const { data: link } = await service
-    .from("contact_channels")
-    .select("contact_id")
-    .eq("channel_id", ctx.channel.id)
-    .eq("contact_id", r.contact_id)
-    .limit(1)
-    .maybeSingle();
-
-  if (!link) {
-    if (!r.target) return { kind: "skipped", reason: "no_phone" };
-    const resolved = await resolveWhatsappTarget(service, ctx.workspaceId, ctx.channel.evolutionInstance, r.target);
-    if (resolved.kind === "no_whatsapp") return { kind: "skipped", reason: "no_whatsapp" };
-    if (resolved.kind === "not_configured") return { kind: "failed", message: "WhatsApp no está configurado en este entorno.", retryable: false, laneFatal: true };
-    if (resolved.kind === "error") return { kind: "failed", message: "No pude comprobar si el número tiene WhatsApp.", retryable: true };
-    const { error } = await service.from("contact_channels").insert({ contact_id: r.contact_id, channel_id: ctx.channel.id, platform_sender_id: resolved.target });
-    if (error) {
-      if (error.code === "23505") return { kind: "skipped", reason: "phone_in_use" };
-      return { kind: "failed", message: "No pude vincular el contacto al número.", retryable: true };
-    }
-  }
-
-  const { data: conv } = await service.from("conversations").select("id").eq("channel_id", ctx.channel.id).eq("contact_id", r.contact_id).maybeSingle();
-  if (conv) return conv.id;
-  const created = await upsertConversation({
-    supabase: service,
-    channel: { id: ctx.channel.id, workspace_id: ctx.workspaceId, platform: "whatsapp" },
+  const result = await ensureWhatsappChat(service, {
+    workspaceId: ctx.workspaceId,
+    channel: { id: ctx.channel.id, evolutionInstance: ctx.channel.evolutionInstance },
     contactId: r.contact_id,
+    phone: r.target,
     preview,
-    at: new Date().toISOString(),
-    incrementUnread: false,
   });
-  return created ? created.id : { kind: "failed", message: "No pude abrir la conversación.", retryable: true };
+  if (result.ok) return result.conversationId;
+  switch (result.reason) {
+    case "no_phone":
+    case "no_whatsapp":
+    case "phone_in_use":
+      return { kind: "skipped", reason: result.reason };
+    case "not_configured":
+      return { kind: "failed", message: result.message, retryable: false, laneFatal: true };
+    case "error":
+      return { kind: "failed", message: result.message, retryable: true };
+  }
 }
 
 const EMAIL_SKIP_TO_REASON: Record<string, SendSkipReason> = {

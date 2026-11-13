@@ -149,7 +149,7 @@ export function BookingsScreen({
   /** Owner/Admin con alcance total (Agenda v2): solo ellos reasignan. */
   canReassign: boolean;
   /** Quién tiene perfil de agenda, para elegir a quién reasignar (incluye al anfitrión actual, se saca al armar el detalle). */
-  reassignHostOptions: Array<{ userId: string; label: string; hasGoogle: boolean }>;
+  reassignHostOptions: Array<{ userId: string; label: string; hasGoogle: boolean; canRecreate: boolean }>;
   /** El vínculo con Meta de cada reunión de la lista. */
   metaLinks: Record<string, MetaLink>;
   /** El «último click» de cada reunión de la lista: los últimos toques antes de agendar. */

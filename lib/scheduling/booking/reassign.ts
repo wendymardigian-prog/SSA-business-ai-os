@@ -1,20 +1,26 @@
 /**
- * Reasignar el anfitrión de una agenda (Agenda v2), sin avisarle al invitado.
+ * Reasignar el anfitrión de una agenda (Agenda v2). Dos modos:
  *
- * Por qué así: Google no deja pasar un evento de una cuenta a otra sin
- * permisos de edición entre calendarios (que normalmente no hay), y
- * borrar+crear le manda mails al invitado. Lo que sí se puede, con la propia
- * conexión del organizador (que sigue siendo quien creó el evento, para
- * siempre): sumar al nuevo anfitrión como invitado confirmado
- * (`responseStatus: "accepted"`), que es justo lo que hace que el evento le
- * aparezca "Ocupado" en su calendario sin que tenga que aceptar nada. El
- * organizador original pasa a "Disponible" en su propia copia
- * (`transparency: "transparent"`): deja de contar como su horario.
+ * - "keep" (por defecto), sin avisarle al invitado. Google no deja pasar un
+ *   evento de una cuenta a otra sin permisos de edición entre calendarios (que
+ *   normalmente no hay). Lo que sí se puede, con la propia conexión del
+ *   organizador (que sigue siendo quien creó el evento, para siempre): sumar
+ *   al nuevo anfitrión como invitado confirmado (`responseStatus: "accepted"`),
+ *   que es justo lo que hace que el evento le aparezca "Ocupado" en su
+ *   calendario sin que tenga que aceptar nada. El organizador original pasa a
+ *   "Disponible" en su propia copia (`transparency: "transparent"`): deja de
+ *   contar como su horario. Mismo link de Meet.
  *
- * Límite a propósito: si se reasigna otra vez, o se vuelve al organizador
- * original, se reconstruye la lista de invitados desde cero (el booker más
- * el anfitrión actual) — no se lee el estado de Google antes de escribir,
- * igual que ya hace el resto de este job.
+ *   Límite a propósito: si se reasigna otra vez, o se vuelve al organizador
+ *   original, se reconstruye la lista de invitados desde cero (el booker más
+ *   el anfitrión actual) — no se lee el estado de Google antes de escribir,
+ *   igual que ya hace el resto de este job.
+ *
+ * - "recreate": una reunión nueva igual en el calendario del nuevo anfitrión
+ *   (Meet nuevo, a su nombre) y se borra la anterior. Google le manda al
+ *   invitado la cancelación de la vieja y la invitación nueva; los avisos del
+ *   sistema leen `meet_url` al salir, así que llevan el link nuevo. Solo si el
+ *   nuevo tiene un calendario de Google donde crearla.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -23,6 +29,9 @@ import { logAudit } from "@/lib/audit";
 import { isActive } from "@/lib/scheduling/booking-status";
 import { syncRelativeJobs } from "@/lib/scheduling/automation/relative";
 import { BOOKING_GOOGLE_SYNC_JOB } from "@/lib/jobs/handlers/booking-sync";
+import { canHostRecreateBooking } from "@/lib/scheduling/data/meet-availability";
+
+export type ReassignMode = "keep" | "recreate";
 
 type Db = SupabaseClient<Database>;
 type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
@@ -36,6 +45,8 @@ export interface ReassignInput {
   actorUserId: string;
   /** El closer/setter del contacto pasa al nuevo SOLO si era el anfitrión original. Default true. */
   transferAssignment?: boolean;
+  /** "keep" (default): mismo evento y mismo Meet. "recreate": reunión nueva en el calendario del nuevo. */
+  mode?: ReassignMode;
   now?: Date;
 }
 
@@ -58,6 +69,13 @@ export async function reassignBookingHost(service: Db, input: ReassignInput): Pr
     .eq("user_id", input.newHostUserId)
     .maybeSingle();
   if (!newProfile) return { ok: false, status: 400, message: "Esa persona todavía no configuró su agenda: no se le puede reasignar." };
+
+  // Sin evento en Google todavía no hay nada que recrear: el create pendiente
+  // ya va a usar el calendario del anfitrión vigente.
+  const mode: ReassignMode = input.mode === "recreate" && booking.google_event_id ? "recreate" : "keep";
+  if (mode === "recreate" && !(await canHostRecreateBooking(service, booking.workspace_id, input.newHostUserId, booking.event_type_id))) {
+    return { ok: false, status: 400, message: "Esa persona no tiene un Google Calendar conectado donde crear la reunión. Elegí «Mantener la misma reunión»." };
+  }
 
   // El mismo choque que impediría la base (bookings_no_overlap), mostrado
   // antes de intentar, con un mensaje claro en vez de un código de error.
@@ -99,6 +117,7 @@ export async function reassignBookingHost(service: Db, input: ReassignInput): Pr
     entityId: booking.id,
     action: "booking.host_changed",
     changes: { host_user_id: { old: oldHostUserId, new: input.newHostUserId } },
+    metadata: { mode },
     performedBy: input.actorUserId,
   });
 
@@ -126,16 +145,27 @@ export async function reassignBookingHost(service: Db, input: ReassignInput): Pr
     console.error("[agenda] no pude reagendar los avisos tras reasignar:", err instanceof Error ? err.message : err);
   }
 
-  if (updated.google_event_id) {
+  if (booking.google_event_id) {
+    const payload =
+      mode === "recreate"
+        ? {
+            booking_id: booking.id,
+            action: "rehost",
+            old_connection_id: booking.google_connection_id,
+            old_calendar_id: booking.google_calendar_id,
+            old_event_id: booking.google_event_id,
+            attempt: 0,
+          }
+        : {
+            booking_id: booking.id,
+            action: "reassign",
+            new_host_email: input.newHostEmail,
+            new_host_name: input.newHostName,
+            attempt: 0,
+          };
     await service.from("scheduled_jobs").insert({
       type: BOOKING_GOOGLE_SYNC_JOB,
-      payload: {
-        booking_id: booking.id,
-        action: "reassign",
-        new_host_email: input.newHostEmail,
-        new_host_name: input.newHostName,
-        attempt: 0,
-      } as unknown as Json,
+      payload: payload as unknown as Json,
       run_at: now.toISOString(),
       status: "pending",
     });

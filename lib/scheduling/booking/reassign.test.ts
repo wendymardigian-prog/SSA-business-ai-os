@@ -5,9 +5,15 @@
  * exclusión de Postgres.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { schedulingWorld, EVENT, HOST } from "@/lib/scheduling/testing/world";
 import { groupOf } from "@/lib/scheduling/booking-status";
+
+// Si la nueva persona tiene dónde crear la reunión nueva ("recreate"): se prueba aparte, en meet-availability.
+const canHostRecreateBooking = vi.fn(async () => true);
+vi.mock("@/lib/scheduling/data/meet-availability", () => ({
+  canHostRecreateBooking: (...args: unknown[]) => canHostRecreateBooking(...(args as [])),
+}));
 
 const { reassignBookingHost } = await import("./reassign");
 
@@ -122,5 +128,42 @@ describe("reassignBookingHost", () => {
     const db = withBooking({ status: "cancelled_other" });
     const result = await reassignBookingHost(db.client, { bookingId: "bk-1", newHostUserId: OTRO, newHostEmail: "lucia@ejemplo.com", newHostName: "Lucía", actorUserId: ACTOR });
     expect(result.ok).toBe(false);
+  });
+
+  describe("con reunión nueva (recreate)", () => {
+    beforeEach(() => {
+      canHostRecreateBooking.mockReset();
+      canHostRecreateBooking.mockResolvedValue(true);
+    });
+
+    it("encola rehost con el evento anterior para borrarlo", async () => {
+      const db = withBooking();
+      const result = await reassignBookingHost(db.client, { bookingId: "bk-1", newHostUserId: OTRO, newHostEmail: "lucia@ejemplo.com", newHostName: "Lucía", actorUserId: ACTOR, mode: "recreate" });
+      expect(result.ok).toBe(true);
+      const job = db.rows("scheduled_jobs").find((j) => j.type === "booking_google_sync");
+      expect(job?.payload).toMatchObject({ action: "rehost", old_connection_id: "conn-1", old_calendar_id: "cal-1", old_event_id: "gev-1" });
+      expect(db.rows("bookings")[0].host_user_id).toBe(OTRO);
+      const audit = db.rows("audit_log").find((a) => a.action === "booking.host_changed");
+      expect(audit?.metadata).toMatchObject({ mode: "recreate" });
+    });
+
+    it("si la nueva persona no tiene dónde crearla, no reasigna nada", async () => {
+      canHostRecreateBooking.mockResolvedValue(false);
+      const db = withBooking();
+      const result = await reassignBookingHost(db.client, { bookingId: "bk-1", newHostUserId: OTRO, newHostEmail: "lucia@ejemplo.com", newHostName: "Lucía", actorUserId: ACTOR, mode: "recreate" });
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("debía fallar");
+      expect(result.message).toContain("Mantener la misma reunión");
+      expect(db.rows("bookings")[0].host_user_id).toBe(HOST);
+      expect(db.rows("scheduled_jobs")).toHaveLength(0);
+    });
+
+    it("sin evento en Google todavía, se comporta como mantener (no hay nada que recrear)", async () => {
+      const db = withBooking({ google_event_id: null });
+      const result = await reassignBookingHost(db.client, { bookingId: "bk-1", newHostUserId: OTRO, newHostEmail: "lucia@ejemplo.com", newHostName: "Lucía", actorUserId: ACTOR, mode: "recreate" });
+      expect(result.ok).toBe(true);
+      expect(canHostRecreateBooking).not.toHaveBeenCalled();
+      expect(db.rows("scheduled_jobs")).toHaveLength(0);
+    });
   });
 });

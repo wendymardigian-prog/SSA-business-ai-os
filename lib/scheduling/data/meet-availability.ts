@@ -9,7 +9,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { meetAvailableFor, type MeetCalendarRow, type MeetConnectionRow, type MeetContext } from "@/lib/scheduling/meet-availability";
+import { meetAvailableFor, ownEventDestination, type MeetCalendarRow, type MeetConnectionRow, type MeetContext } from "@/lib/scheduling/meet-availability";
 
 type Db = SupabaseClient<Database>;
 
@@ -46,4 +46,17 @@ export async function canHostCreateMeet(
 ): Promise<boolean> {
   const ctx = await loadMeetContext(service, workspaceId, [hostUserId]);
   return meetAvailableFor(ctx, hostUserId, eventDestinationId);
+}
+
+/**
+ * Si se le puede crear a esta persona una reunión nueva igual a la de otro
+ * anfitrión (reasignar con reunión nueva): un calendario destino propio que se
+ * pueda escribir, con su cuenta en condiciones. Es lo mismo que pide un Meet.
+ */
+export async function canHostRecreateBooking(service: Db, workspaceId: string, hostUserId: string, eventTypeId: string): Promise<boolean> {
+  const [ctx, { data: event }] = await Promise.all([
+    loadMeetContext(service, workspaceId, [hostUserId]),
+    service.from("event_types").select("destination_calendar_id").eq("id", eventTypeId).maybeSingle(),
+  ]);
+  return meetAvailableFor(ctx, hostUserId, ownEventDestination(ctx, hostUserId, event?.destination_calendar_id ?? null));
 }

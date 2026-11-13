@@ -68,7 +68,7 @@ export function historyText(entry: { action: string; metadata: unknown; changes:
     case "booking.slot_occupied":
       return `${who} volvió a ocupar el espacio`;
     case "booking.host_changed":
-      return `${who} reasignó el anfitrión`;
+      return meta.mode === "recreate" ? `${who} reasignó el anfitrión con una reunión nueva en su calendario` : `${who} reasignó el anfitrión`;
     default:
       return entry.action;
   }
@@ -93,4 +93,21 @@ export function bookingDetailsPatch(
     if (next !== (current.internal_notes ?? null)) patch.internal_notes = next;
   }
   return patch;
+}
+
+export interface ContactChat {
+  conversationId: string | null;
+  unread: number;
+}
+
+/**
+ * Los chats de WhatsApp y de email de un contacto, para los botones de sus respuestas: el más reciente de cada canal
+ * (las filas llegan ordenadas por último mensaje, el más nuevo primero) y la suma de lo que hay sin leer en todos.
+ */
+export function contactChatsSummary(rows: Array<{ id: string; platform: string; unread_count: number | null }>): { whatsapp: ContactChat; email: ContactChat } {
+  const pick = (platform: string): ContactChat => {
+    const own = rows.filter((r) => r.platform === platform);
+    return { conversationId: own[0]?.id ?? null, unread: own.reduce((sum, r) => sum + Math.max(0, r.unread_count ?? 0), 0) };
+  };
+  return { whatsapp: pick("whatsapp"), email: pick("email") };
 }

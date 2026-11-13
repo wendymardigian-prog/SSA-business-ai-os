@@ -35,13 +35,20 @@ export interface SyncPayload {
   /**
    * "release"/"occupy" (Agenda v2): transparency del evento, sin avisar al
    * invitado. "reassign": suma al nuevo anfitrión como invitado confirmado y
-   * libera la copia del organizador, también sin avisar.
+   * libera la copia del organizador, también sin avisar. "rehost": reasignar
+   * creando una reunión nueva en el calendario del nuevo anfitrión (Meet
+   * nuevo) y borrando la anterior con la cuenta de quien la creó; Google le
+   * avisa al invitado las dos cosas.
    */
-  action: "create" | "update" | "delete" | "release" | "occupy" | "reassign";
+  action: "create" | "update" | "delete" | "release" | "occupy" | "reassign" | "rehost";
   attempt?: number;
   /** Solo para "reassign". */
   new_host_email?: string | null;
   new_host_name?: string | null;
+  /** Solo para "rehost": el evento anterior, el que hay que borrar. */
+  old_connection_id?: string | null;
+  old_calendar_id?: string | null;
+  old_event_id?: string | null;
 }
 
 /** Cuando reintentar, o null si ya no hay que reintentar. */
@@ -96,16 +103,30 @@ export function inviteeTimeLine(booking: { start_at: string; booker_timezone?: s
   return formatDateTimeWithZone(booking.start_at, invitee);
 }
 
-/** El calendario destino efectivo de la agenda, con su conexion. */
-async function destinationFor(service: Db, booking: { workspace_id: string; host_user_id: string; event_type_id: string }) {
+/**
+ * El calendario destino efectivo de la agenda, con su conexion.
+ *
+ * `ownEventDestinationOnly` (reasignar con reunión nueva): el destino propio
+ * del evento es un calendario de quien es dueño del evento; si no es uno de
+ * los del anfitrión de la agenda, se usa el destino por defecto de su perfil.
+ */
+async function destinationFor(
+  service: Db,
+  booking: { workspace_id: string; host_user_id: string; event_type_id: string },
+  opts: { ownEventDestinationOnly?: boolean } = {},
+) {
   const [{ data: event }, { data: profile }, calendars] = await Promise.all([
     service.from("event_types").select("destination_calendar_id, conflict_calendar_ids, location_type").eq("id", booking.event_type_id).maybeSingle(),
     service.from("scheduling_profiles").select("default_destination_calendar_id").eq("workspace_id", booking.workspace_id).eq("user_id", booking.host_user_id).maybeSingle(),
     calendarsForResolve(service, booking.workspace_id, booking.host_user_id),
   ]);
   if (!event) return null;
+  const eventDestination =
+    opts.ownEventDestinationOnly && event.destination_calendar_id && !calendars.some((c) => c.id === event.destination_calendar_id)
+      ? null
+      : event.destination_calendar_id;
   const resolved = resolveEventCalendars(
-    { destination_calendar_id: event.destination_calendar_id, conflict_calendar_ids: event.conflict_calendar_ids },
+    { destination_calendar_id: eventDestination, conflict_calendar_ids: event.conflict_calendar_ids },
     profile ? { default_destination_calendar_id: profile.default_destination_calendar_id } : null,
     calendars,
   );
@@ -117,6 +138,46 @@ async function destinationFor(service: Db, booking: { workspace_id: string; host
     .maybeSingle();
   if (!row) return null;
   return { calendarRowId: row.id, connectionId: row.connection_id, externalId: row.external_calendar_id, locationType: event.location_type };
+}
+
+type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
+type Destination = NonNullable<Awaited<ReturnType<typeof destinationFor>>>;
+
+/** Crea el evento de la agenda en `destination` y guarda en la agenda lo que devolvió Google. */
+async function createBookingEvent(service: Db, booking: BookingRow, destination: Destination, manageUrl: string) {
+  const created = await createEvent({ supabase: service }, destination.connectionId, destination.externalId, {
+    bookingUid: booking.uid,
+    summary: booking.title,
+    description: buildDescription({
+      bookerName: booking.booker_name,
+      bookerEmail: booking.booker_email,
+      bookerPhone: booking.booker_phone,
+      responses: (booking.responses as Record<string, unknown>) ?? {},
+      manageUrl,
+      inviteeTime: inviteeTimeLine(booking),
+    }),
+    startUtc: booking.start_at,
+    endUtc: booking.end_at,
+    timeZone: googleEventTimezone(booking),
+    // Una reserva publica pasada del tope de emails por direccion: Google no invita (y no le manda un correo) al
+    // invitado (lib/scheduling/booking/guest-email-limit.ts).
+    attendeeEmail: guestEmailsSuppressed(booking.metadata) ? null : booking.booker_email,
+    attendeeName: booking.booker_name,
+    location: booking.location_type === "google_meet" ? { kind: "google_meet" } : { kind: "manual", text: booking.location_text },
+  });
+  await service
+    .from("bookings")
+    .update({
+      google_connection_id: destination.connectionId,
+      google_calendar_id: destination.calendarRowId,
+      google_event_id: created.eventId,
+      ical_uid: created.iCalUID,
+      meet_url: created.meetUrl,
+      google_sync_status: "synced",
+      google_sync_error: null,
+    })
+    .eq("id", booking.id);
+  return created;
 }
 
 export async function handleBookingGoogleSync(ctx: JobContext): Promise<void> {
@@ -202,6 +263,28 @@ export async function handleBookingGoogleSync(ctx: JobContext): Promise<void> {
         });
       }
       await service.from("bookings").update({ google_sync_status: "synced", google_sync_error: null }).eq("id", booking.id);
+    } else if (payload.action === "rehost") {
+      // Reasignar con reunión nueva. Primero se crea la nueva (así el invitado
+      // nunca se queda sin reunión) y recién después se borra la anterior con
+      // la cuenta de quien la creó. Un reintento que encuentra la agenda ya
+      // apuntando a otro evento no vuelve a crear: solo termina de borrar.
+      const alreadyCreated = Boolean(booking.google_event_id) && booking.google_event_id !== payload.old_event_id;
+      if (!alreadyCreated) {
+        const destination = await destinationFor(service, booking, { ownEventDestinationOnly: true });
+        if (!destination) {
+          // Sin calendario del nuevo anfitrión no se borra la anterior: mejor
+          // una reunión a nombre del anterior que ninguna.
+          throw new GoogleCalendarError("El nuevo anfitrión no tiene un calendario de Google donde crear la reunión", "permanent", null, "no_calendar");
+        }
+        const created = await createBookingEvent(service, booking, destination, manageUrl);
+        if (booking.slot_released_at) {
+          await updateEvent({ supabase: service }, destination.connectionId, destination.externalId, created.eventId, { transparency: "transparent", sendUpdates: "none" });
+        }
+      }
+      if (payload.old_event_id && payload.old_connection_id && payload.old_calendar_id) {
+        const { data: oldCal } = await service.from("calendars").select("external_calendar_id").eq("id", payload.old_calendar_id).maybeSingle();
+        if (oldCal) await deleteEvent({ supabase: service }, payload.old_connection_id, oldCal.external_calendar_id, payload.old_event_id);
+      }
     } else {
       const destination = await destinationFor(service, booking);
       if (!destination) {
@@ -210,38 +293,7 @@ export async function handleBookingGoogleSync(ctx: JobContext): Promise<void> {
         await service.from("bookings").update({ google_sync_status: "not_applicable" }).eq("id", booking.id);
         return;
       }
-      const created = await createEvent({ supabase: service }, destination.connectionId, destination.externalId, {
-        bookingUid: booking.uid,
-        summary: booking.title,
-        description: buildDescription({
-          bookerName: booking.booker_name,
-          bookerEmail: booking.booker_email,
-          bookerPhone: booking.booker_phone,
-          responses: (booking.responses as Record<string, unknown>) ?? {},
-          manageUrl,
-          inviteeTime: inviteeTimeLine(booking),
-        }),
-        startUtc: booking.start_at,
-        endUtc: booking.end_at,
-        timeZone: googleEventTimezone(booking),
-        // Una reserva publica pasada del tope de emails por direccion: Google no invita (y no le manda un correo) al
-        // invitado (lib/scheduling/booking/guest-email-limit.ts).
-        attendeeEmail: guestEmailsSuppressed(booking.metadata) ? null : booking.booker_email,
-        attendeeName: booking.booker_name,
-        location: booking.location_type === "google_meet" ? { kind: "google_meet" } : { kind: "manual", text: booking.location_text },
-      });
-      await service
-        .from("bookings")
-        .update({
-          google_connection_id: destination.connectionId,
-          google_calendar_id: destination.calendarRowId,
-          google_event_id: created.eventId,
-          ical_uid: created.iCalUID,
-          meet_url: created.meetUrl,
-          google_sync_status: "synced",
-          google_sync_error: null,
-        })
-        .eq("id", booking.id);
+      await createBookingEvent(service, booking, destination, manageUrl);
     }
 
     await logAudit({

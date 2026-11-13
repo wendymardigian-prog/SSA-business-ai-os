@@ -55,3 +55,13 @@ export function meetAvailableFor(ctx: MeetContext, userId: string, eventDestinat
   const connection = destination ? (connections.find((c) => c.id === destination.connection_id) ?? null) : null;
   return canCreateMeet(destination, connection);
 }
+
+/**
+ * Reasignar con reunión nueva: el destino propio del evento es un calendario de
+ * quien es dueño del evento. Para otra persona cuenta solo si es suyo; si no,
+ * se usa su destino por defecto (igual que el job, `ownEventDestinationOnly`).
+ */
+export function ownEventDestination(ctx: MeetContext, userId: string, eventDestinationId: string | null): string | null {
+  if (!eventDestinationId) return null;
+  return ctx.calendars.some((c) => c.user_id === userId && c.id === eventDestinationId) ? eventDestinationId : null;
+}

@@ -338,7 +338,13 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       canReassign={ctx.scope("bookings") === "all"}
       reassignHostOptions={[...names.keys()]
         .filter((userId) => usernameByUser.has(userId))
-        .map((userId) => ({ userId, label: names.get(userId) ?? "Sin nombre", hasGoogle: hasGoogleByUser.has(userId) }))}
+        .map((userId) => ({
+          userId,
+          label: names.get(userId) ?? "Sin nombre",
+          hasGoogle: hasGoogleByUser.has(userId),
+          // Reasignar con reunión nueva: un calendario propio donde crearla (el servidor lo recomprueba con el destino del evento).
+          canRecreate: meetAvailableFor(meetContext, userId),
+        }))}
       metaLinks={metaLinks}
       lastTouches={lastTouches}
       canLinkMeta={ctx.can("settings.general")}
