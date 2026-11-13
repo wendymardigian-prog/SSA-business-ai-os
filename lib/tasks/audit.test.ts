@@ -59,6 +59,7 @@ describe("auditoria de tareas (F7)", () => {
     expect(mocks.audit.mock.calls[0][0].changes.follower_ids).toEqual({ old: null, new: OTHER });
   });
 
+  // @plantilla-desde(proyecto)
   it("completar, mover fechas, dependencias y borrar las audita la RPC en la misma transaccion", () => {
     const sql = readFileSync("supabase/migrations/00197_tasks_functions.sql", "utf8");
     for (const action of ["task.completed", "task.date_shifted", "task.blockers_changed", "task.deleted"]) {
@@ -66,6 +67,7 @@ describe("auditoria de tareas (F7)", () => {
     }
     expect(sql).toContain("audit_log_select_tasks");
   });
+  // @plantilla-hasta(proyecto)
 
   it("las acciones de tareas existen en el tipo AuditAction y en el de entidades", () => {
     const types = readFileSync("lib/types/database.ts", "utf8");

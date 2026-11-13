@@ -15,7 +15,8 @@ No se arma a mano: sale de este repo con un comando. Este documento explica las 
 | `scripts/plantilla/build-reference.mjs` | Base de referencia en Supabase local (Docker): todas las migraciones del proyecto + la poda. |
 | `scripts/plantilla/clean-history.mjs` | Saca la historia de los comentarios de la base de referencia (números de migración, fechas, códigos). Solo comentarios. |
 | `scripts/plantilla/generate-migrations.mjs` + `areas.mjs` | Escribe `plantilla-estudiantes/supabase/migrations/` (17 archivos por área) leyendo la base de referencia. |
-| `scripts/verify-student-schema.mjs` | Instala esas migraciones en una base vacía y la compara objeto por objeto con la referencia. Tiene que dar 0 diferencias. |
+| `scripts/verify-student-schema.mjs` | Instala esas migraciones en una base vacía y la compara objeto por objeto con la referencia. Tiene que dar 0 diferencias. Es un atajo de `scripts/verify-template-schema.mjs` (sin `--perfil` es la de estudiantes). |
+| `scripts/plantilla/db-profiles.mjs` | De qué base sale cada plantilla: esquemas, archivo de áreas, poda, corte, puertos y carpeta de salida. Todas las herramientas de arriba reciben `--perfil=estudiantes\|clientes` (sin él, estudiantes). La de clientes usa la misma herramienta sin poda (ver [plantilla-clientes.md](plantilla-clientes.md)). |
 | `scripts/export-template.mjs --perfil=estudiantes` | Arma la copia: borra los módulos, aplica las marcas, limpia la historia de los comentarios del código, pone las migraciones consolidadas y los textos de `scripts/template-files/estudiantes/` (CLAUDE.md, README, `/setup`, `.env.example`). Corre los controles y arma el git solo si todos pasan. |
 
 Los controles del export: tipos (`tsc`), lint, tests, `next build`, nombres propios, historia (en comentarios) y textos visibles que nombren un módulo que no viaja. Cada uno tiene su lista de excepciones con el motivo.

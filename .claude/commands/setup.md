@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 Estás corriendo este comando porque alguien acaba de abrir SU PROPIA copia de este repo (creada desde la plantilla de GitHub) y quiere dejarla funcionando. Tu trabajo es guiar a esa persona, charlando, paso a paso, por el arranque OBLIGATORIO: sin estos pasos el sistema no funciona en producción.
 
-Fuera de este comando, a propósito: crear el primer usuario del sistema y las integraciones opcionales (Instagram/Zernio, WhatsApp/Evolution, Google Calendar, Resend, proveedores de IA). Eso está en la guía de instalación que le compartieron junto con el repo. No lo empieces acá.
+Fuera de este comando, a propósito: crear el primer usuario del sistema y las integraciones opcionales (Instagram/Zernio, WhatsApp/Evolution, Google Calendar, Resend, proveedores de IA). El primer usuario está en la guía de instalación que le compartieron junto con el repo; las integraciones, en `guias/conexiones.md` y en el comando `/conectar`. No lo empieces acá.
 
 ## Cómo comportarte durante todo el comando
 
@@ -114,7 +114,7 @@ Railway es el servicio que va a mantener la app prendida las 24 horas con una di
 5. **Las 5 variables.** Son datos de configuración que la app necesita para funcionar. En Railway: hacer clic en el servicio → pestaña **Variables** → botón **New Variable** (una por una) o **Raw Editor** (pegar todas juntas, una por línea, con el formato `NOMBRE=valor`). **Importante: para copiar las claves de Supabase, que use su navegador de siempre (Chrome, Safari...), NO el Navegador de esta app**: así las claves nunca aparecen en pantallas que vos puedas ver. Ni siquiera le pidas una captura de esas pantallas. Explicale de dónde sale cada una y que las pegue DIRECTO en Railway:
    - `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase → Project Settings → Data API.
    - `SUPABASE_SERVICE_ROLE_KEY`: Supabase → Project Settings → API Keys → service_role. Es la más sensible (salta todos los permisos de la base): nunca por chat.
-   - `NEXT_PUBLIC_APP_URL`: el dominio del punto 3. Si el negocio ya tiene un dominio propio (por ejemplo `sistema.suempresa.com`), mejor ese: es el que van a ver en todos los links. Si lo suma después: agregarlo en Railway (Settings → Networking → Custom Domain), cambiar esta variable a `https://<dominio>`, sumar `https://<dominio>/**` en las Redirect URLs de Supabase Auth (paso 4) y, si usa Google Calendar, la dirección `https://<dominio>/api/oauth/google/callback` en su cliente OAuth de Google. Quien entre por el dominio de Railway termina en el propio solo.
+   - `NEXT_PUBLIC_APP_URL`: el dominio del punto 3. Si el negocio ya tiene un dominio propio (por ejemplo `sistema.suempresa.com`), mejor ese: es el que van a ver en todos los links. Si lo suma después: agregarlo en Railway (Settings → Networking → Custom Domain), cambiar esta variable a `https://<dominio>`, sumar `https://<dominio>/**` en las Redirect URLs de Supabase Auth (paso 4) y, si usa Google, las dos direcciones de retorno en su cliente OAuth de Google: `https://<dominio>/api/oauth/google_calendar/callback` (Calendar) y `https://<dominio>/api/oauth/google/callback` (YouTube). La lista completa de qué cambiar está en `guias/conexiones.md`, «Si cambiás de dominio». Quien entre por el dominio de Railway termina en el propio solo.
    - `CRON_SECRET`: el valor del punto 4.
 
    **Una sexta, recomendada: `RATE_LIMIT_SALT`** (la "sal" con la que se cifran las IP en los topes de las páginas públicas, como la agenda: así una misma persona no puede mandar cientos de pedidos). Sin ella el sistema usa una derivada del `CRON_SECRET`, que funciona, pero conviene que sea propia. Es una cadena al azar que nadie tiene que recordar, así que la genera una orden y va directo al portapapeles, sin mostrarse en pantalla. Dale la orden para que la pegue en el panel Terminal:
@@ -224,6 +224,8 @@ Preguntale si quiere dejarlo preparado.
 - **Si dice que sí:** pedile el link del repositorio original, el que tenía el botón verde "Use this template" (no el de su copia). Agregalo con `git remote add upstream <link>` y probá el acceso con `git fetch upstream`. Si falla por permisos, explicale que necesita tener aceptada la invitación a ese repositorio y que puede pedirla. Contale que, cuando quiera actualizar, alcanza con pedirte "traé las actualizaciones": la guía de instalación tiene el pedido exacto.
 - **Si dice que no:** perfecto. Contale que puede prepararlo cuando quiera, pidiéndoselo a Claude Code.
 
+**Más adelante, cuando pida traer las actualizaciones:** después de mezclar `upstream/main` y ANTES de `supabase db push`, si existe `supabase/historial-migraciones.json` corré `node scripts/migraciones-compactadas.mjs`. Una actualización juntó las migraciones viejas en pocos archivos, y en una base instalada antes hay que poner al día su historial (la lista de "migraciones aplicadas"). El script explica qué haría. No cambia ninguna tabla ni ningún dato. Contáselo en simple y, con su sí, corrélo con `--aplicar`. Si dice que a la base le faltan migraciones, seguí lo que indica: primero se trae la versión anterior (tag `v-historial-completo`). Si dice que no hay nada que hacer, seguí con `db push` como siempre.
+
 ## Cierre
 
 Hacé un resumen corto con checks de lo que quedó funcionando:
@@ -235,7 +237,7 @@ Hacé un resumen corto con checks de lo que quedó funcionando:
 - El render del Diseñador IA: conectado (con `/health` en verde) o salteado, según lo que eligió.
 - Actualizaciones: preparadas o no, según lo que eligió.
 
-Después explicale qué falta y dónde está. Primero, crear su primer usuario (Supabase → Authentication → Users → Add user, con "Auto Confirm User"; o `scripts/create-owner.mjs` si prefiere la terminal) y las integraciones opcionales. Todo eso está en la guía de instalación.
+Después explicale qué falta y dónde está. Primero, crear su primer usuario (Supabase → Authentication → Users → Add user, con "Auto Confirm User"; o `scripts/create-owner.mjs` si prefiere la terminal) y las integraciones opcionales. El primer usuario está en la guía de instalación. Para conectar Google, WhatsApp, Instagram, el email, la IA o el render, que abra una sesión nueva y escriba `/conectar`: le arma la guía con sus direcciones y lo acompaña (la guía con ejemplos está en `guias/conexiones.md`).
 
 **Un último paso que necesita al primer usuario: los precios de los modelos de IA.** No viajan en las migraciones: están en `supabase/seeds/00_model_pricing.sql` y `01_transcription_pricing.sql` (son chicos y se pueden correr más de una vez sin duplicar nada). Sin ellos, todo lo que gasta IA queda con el costo vacío y los topes de gasto no pueden funcionar. Cargan precios para cada espacio de trabajo que exista, así que hay que correrlos DESPUÉS de crear el primer usuario. Si en este momento ya lo creó (`select count(*) from public.workspaces;` da 1 o más), cargalos vos con el conector, uno por vez, después de confirmar el proyecto como en el paso 1. Si todavía no lo creó, decile que cuando lo haga vuelva y te pida "cargá los precios de los modelos de IA", y que la guía de instalación también se lo recuerda.
 

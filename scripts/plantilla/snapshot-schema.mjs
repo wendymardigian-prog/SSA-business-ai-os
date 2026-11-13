@@ -1,18 +1,20 @@
 #!/usr/bin/env node
 // Foto de la estructura de una base, objeto por objeto, para comparar dos bases.
 //
-//   node scripts/plantilla/snapshot-schema.mjs --db-url=postgresql://... [--out=archivo.json]
+//   node scripts/plantilla/snapshot-schema.mjs --db-url=postgresql://... [--out=archivo.json] [--perfil=estudiantes|clientes]
 //
 // Sirve para probar que las migraciones consolidadas de la plantilla de
 // estudiantes crean EXACTAMENTE la misma base que la de referencia (todas las
 // migraciones del proyecto + la poda). Cada linea es un objeto con su forma:
 // si dos fotos son iguales, las dos bases son iguales en todo lo que importa.
 //
-// Mira solo lo nuestro: los esquemas public y private, las politicas y los
+// Mira solo lo nuestro: los esquemas del perfil (public y private; en la de clientes
+// tambien los de Servicios, ver db-profiles.mjs), las politicas y los
 // buckets de storage, los cron, la publicacion de realtime y las extensiones.
 // No mira auth, realtime, vault ni los esquemas internos de Supabase.
 import pg from "pg";
 import { writeFileSync } from "node:fs";
+import { dbProfileFromArgs } from "./db-profiles.mjs";
 
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const dbUrl = arg("db-url");
@@ -21,7 +23,7 @@ if (!dbUrl) {
   process.exit(1);
 }
 
-const SCHEMAS = ["public", "private"];
+const SCHEMAS = dbProfileFromArgs().schemas;
 const ROLES = ["anon", "authenticated", "service_role"];
 
 // Cada consulta devuelve filas con una clave `k` (que identifica el objeto) y

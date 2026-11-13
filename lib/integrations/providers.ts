@@ -148,6 +148,11 @@ export interface SecretField {
   /** Prefijo esperado, cuando el proveedor tiene uno estable. */
   keyPrefix?: string;
   minLength?: number;
+  /**
+   * El valor no lo entrega el proveedor: lo inventa quien configura (Evolution: el token del webhook). La UI muestra
+   * un boton "Generar" que lo crea al azar en el navegador.
+   */
+  generatable?: boolean;
 }
 
 /**
@@ -300,7 +305,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       {
         key: "api_key",
         label: "API key del servidor",
-        hint: "La clave global que configuraste en tu Evolution (AUTHENTICATION_API_KEY).",
+        hint: "La clave maestra de tu Evolution, no la de una instancia. Esta en Railway: tu servicio de Evolution, pestaña Variables, AUTHENTICATION_API_KEY. Es la misma con la que entras al panel de Evolution.",
         secretName: SECRET_NAMES.evolutionApiKey,
         required: true,
         minLength: 8,
@@ -308,10 +313,11 @@ export const PROVIDERS: ProviderDefinition[] = [
       {
         key: "webhook_token",
         label: "Token del webhook",
-        hint: "Viaja en cada mensaje que Evolution nos manda. La URL es publica, asi que sin token entraria cualquiera.",
+        hint: "No se copia de Evolution: es una contraseña que inventas vos. Toca Generar y listo. Al conectar el numero, el sistema se la pasa a Evolution solo, y asi solo entran los mensajes de tu servidor.",
         secretName: SECRET_NAMES.evolutionWebhookToken,
         required: true,
         minLength: 16,
+        generatable: true,
       },
     ],
     configFields: [
@@ -332,10 +338,15 @@ export const PROVIDERS: ProviderDefinition[] = [
       {
         key: "instance_prefix",
         label: "Prefijo de la instancia",
-        hint: "Con que empieza el nombre de la instancia de este sistema en tu servidor.",
+        hint: "No tiene que coincidir con nada de Evolution ni hace falta crear una instancia a mano: el sistema crea la suya (prefijo-codigo) cuando conectas el numero en Cuentas. Solo letras, numeros y guiones.",
         placeholder: "ssa",
         required: false,
         defaultValue: "ssa",
+        // Va dentro del nombre de la instancia, que viaja en la URL de cada pedido a Evolution.
+        validate: (value) =>
+          /^[A-Za-z0-9_-]+$/.test(value.trim())
+            ? null
+            : "El prefijo va sin espacios ni simbolos: solo letras, numeros y guiones (por ejemplo rer)",
       },
     ],
     docsUrl: "https://doc.evolution-api.com",

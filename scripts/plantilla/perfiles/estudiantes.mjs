@@ -448,7 +448,17 @@ export const TEMPLATE_FILES = "scripts/template-files/estudiantes";
  * Carpetas de herramientas de quien mantiene la plantilla: no son parte de lo que se
  * exporta y no se revisan como codigo de la app.
  */
-export const TOOLING = ["scripts/plantilla", "plantilla-estudiantes", "scripts/verify-student-schema.mjs"];
+export const TOOLING = [
+  "scripts/plantilla",
+  "plantilla-estudiantes",
+  "scripts/verify-student-schema.mjs",
+  "scripts/verify-template-schema.mjs",
+  // La foto de la base de la plantilla de CLIENTES y el script que pone al dia el historial de
+  // un cliente que instalo antes de ella: la de estudiantes se reinstala de cero.
+  "plantilla-clientes",
+  "scripts/migraciones-compactadas.mjs",
+  "scripts/migraciones-compactadas.test.ts",
+];
 
 const norm = (p) => p.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "");
 const under = (p, base) => p === base || p.startsWith(base + "/");

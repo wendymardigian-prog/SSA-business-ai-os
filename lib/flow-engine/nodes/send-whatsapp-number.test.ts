@@ -337,3 +337,40 @@ describe("horario de envío", () => {
     expect(sendText).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("«No mandar si ya le escribiste»", () => {
+  const START = "2026-11-12T20:00:00.000Z";
+  const data = { to: "fixed" as const, fixedPhone: "+54 9 11 2233-4455", channelId: CH, text: "Hola, vi que agendaste", skipIfTeamWrote: true };
+  const conversations = [{ id: "conv-ana", workspace_id: WS, channel_id: CH, contact_id: "c-ana", platform: "whatsapp" }];
+  const sessions = [{ id: "sess-1", created_at: START }];
+  const msg = (origin: string, created_at: string, direction = "outbound") => ({ id: `m-${origin}-${created_at}`, conversation_id: "conv-ana", direction, origin, created_at });
+
+  it("si le escribiste desde el teléfono después de que arrancó, no sale y queda el motivo", async () => {
+    db = world({ conversations, flow_sessions: sessions, messages: [msg("external", "2026-11-12T20:30:00.000Z")] });
+    await run(data);
+    expect(sendText).not.toHaveBeenCalled();
+    expect(events("node_skipped")).toEqual([expect.objectContaining({ contact_id: "c-ana", metadata: expect.objectContaining({ team_wrote: true }) })]);
+  });
+
+  it("lo mismo si le escribieron desde la bandeja", async () => {
+    db = world({ conversations, flow_sessions: sessions, messages: [msg("user", "2026-11-12T20:05:00.000Z")] });
+    await run(data);
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it("no frenan: lo que escribiste antes de que arrancara, automatizaciones, difusiones, el agente ni lo que escribió el contacto", async () => {
+    db = world({
+      conversations,
+      flow_sessions: sessions,
+      messages: [msg("external", "2026-11-12T19:59:00.000Z"), msg("flow", "2026-11-12T20:10:00.000Z"), msg("broadcast", "2026-11-12T20:11:00.000Z"), msg("agent", "2026-11-12T20:12:00.000Z"), msg("external", "2026-11-12T20:13:00.000Z", "inbound")],
+    });
+    await run(data);
+    expect(sendText).toHaveBeenCalledTimes(1);
+  });
+
+  it("con la opción apagada sale aunque ya le hayas escrito", async () => {
+    db = world({ conversations, flow_sessions: sessions, messages: [msg("external", "2026-11-12T20:30:00.000Z")] });
+    await run({ ...data, skipIfTeamWrote: false });
+    expect(sendText).toHaveBeenCalledTimes(1);
+  });
+});

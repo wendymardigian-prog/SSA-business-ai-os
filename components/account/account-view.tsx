@@ -7,7 +7,7 @@ import { ACCOUNT_TABS, accountTabHref, parseAccountTab, type AccountTab } from "
 import { cn } from "@/lib/utils";
 
 /**
- * Mi cuenta: dos pestañas (Perfil y Notificaciones). La elegida vive en
+ * Mi cuenta: Perfil, Notificaciones y Conexiones. La elegida vive en
  * `?tab=` y se cambia con `history.pushState`, sin pedirle la pagina al
  * servidor: las dos ya vinieron dibujadas.
  */
@@ -15,10 +15,13 @@ export function AccountView({
   initialTab,
   profile,
   notifications,
+  connections,
 }: {
   initialTab: AccountTab;
   profile: ReactNode;
   notifications: ReactNode;
+  /** El Google Calendar y el Fathom propios (antes «Mis conexiones» en Integraciones). */
+  connections: ReactNode;
 }) {
   // La pestaña sale SIEMPRE de la URL: Next sincroniza `useSearchParams` con
   // `history.pushState`, asi que cambiar de pestaña, el atras del navegador y
@@ -65,6 +68,7 @@ export function AccountView({
         <div className="mx-auto w-full max-w-2xl">
           <div hidden={tab !== "perfil"}>{profile}</div>
           <div hidden={tab !== "notificaciones"}>{notifications}</div>
+          <div hidden={tab !== "conexiones"}>{connections}</div>
         </div>
       </div>
     </>

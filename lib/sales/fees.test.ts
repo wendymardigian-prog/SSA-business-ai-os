@@ -66,6 +66,7 @@ describe("métodos de pago", () => {
   });
 });
 
+// @plantilla-desde(proyecto)
 describe("paridad con el CHECK de payments.payment_method (00162)", () => {
   it("las claves de la migración son exactamente las de la constante", async () => {
     const { readFileSync } = await import("node:fs");
@@ -76,6 +77,7 @@ describe("paridad con el CHECK de payments.payment_method (00162)", () => {
     expect(keys).toEqual([...PAYMENT_METHOD_KEYS]);
   });
 });
+// @plantilla-hasta(proyecto)
 
 describe("Extra I, MP: tope, desglose y lista del negocio", () => {
   it("la comisión nunca supera el monto cobrado", () => {

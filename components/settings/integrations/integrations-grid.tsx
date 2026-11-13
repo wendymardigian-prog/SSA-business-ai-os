@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
@@ -13,13 +14,19 @@ import {
 } from "@/lib/integrations/providers";
 import { filterSections, countByChip } from "@/lib/integrations/grid-filter";
 import { IntegrationCard } from "./integration-card";
-import { CHANNEL_PROVIDER_IDS, type IntegrationSections } from "@/lib/integrations/sections";
+import { sectionOfProvider, type IntegrationSections } from "@/lib/integrations/sections";
+import { BUSINESS_ORDER, orderCards } from "@/lib/integrations/card-order";
+import { accountTabHref } from "@/lib/account/tabs";
 import type { IntegrationCardData } from "./types";
 
 /**
  * La pantalla de integraciones (F2, Bloque G).
  *
- * Dos secciones con chips de tipo (G1), cards que navegan al detalle en vez
+ * Dos secciones (12/11/2026): Integraciones del negocio (canales incluidos) e
+ * Inteligencia artificial; las conectadas primero (lib/integrations/card-order.ts).
+ * Las conexiones personales viven en Mi cuenta → Conexiones.
+ *
+ * Chips de tipo (G1), cards que navegan al detalle en vez
  * de abrir un modal (G2, G5), y la franja de primera conexion (G8). El chip y
  * "Requiere atencion" viven en la URL (`?tipo=`, `?atencion=1`): sobreviven
  * la ida y vuelta al detalle de una integracion.
@@ -31,8 +38,8 @@ export function IntegrationsGrid({
   integrations,
   fathom, // @plantilla-quitar(llamadas)
   fathomNeedsAttention = false, // @plantilla-quitar(llamadas)
-  extra,
-  mine,
+  fathomConnected = false, // @plantilla-quitar(llamadas)
+  tail,
   access,
 }: {
   integrations: Record<string, IntegrationCardData>;
@@ -42,10 +49,9 @@ export function IntegrationsGrid({
    * @plantilla-quitar(llamadas) */
   fathom?: React.ReactNode; // @plantilla-quitar(llamadas)
   fathomNeedsAttention?: boolean; // @plantilla-quitar(llamadas)
-  /** Cards propias que no pasan por el catalogo (Webhooks): se muestran sin filtros activos. */
-  extra?: React.ReactNode;
-  /** «Mis conexiones»: las conexiones personales (Google Calendar y otras) de la propia persona. Lo ve todo el equipo. */
-  mine?: React.ReactNode;
+  fathomConnected?: boolean; // @plantilla-quitar(llamadas)
+  /** Cards propias que no pasan por el catalogo (Sitio web, Webhooks): al final del negocio, sin filtros activos. */
+  tail?: React.ReactNode;
   /** Que puede hacer en Canales y en Integraciones del negocio (lib/integrations/sections.ts). */
   access: Pick<IntegrationSections, "channels" | "business">;
 }) {
@@ -77,22 +83,38 @@ export function IntegrationsGrid({
     [integrations, chip, onlyAttention],
   );
 
-  // Canales por un lado; el resto (conexiones del negocio e IA) por el otro.
-  const channelProviders = useMemo(
-    () => sections.flatMap((section) => section.providers).filter((p) => CHANNEL_PROVIDER_IDS.includes(p.id)),
-    [sections],
-  );
-  const businessSections = useMemo(
-    () =>
-      sections
-        .map((section) => ({ ...section, providers: section.providers.filter((p) => !CHANNEL_PROVIDER_IDS.includes(p.id)) }))
-        .filter((section) => section.providers.length > 0),
-    [sections],
-  );
-  const hasShared = access.channels !== null || access.business !== null;
+  // Dos secciones (decision del 12/11/2026): Integraciones del negocio (canales incluidos) e Inteligencia artificial.
+  // Cada card se muestra si la persona tiene acceso a SU parte (canales o negocio), con el mismo permiso de siempre.
+  const visible = (providerId: string) => access[sectionOfProvider(providerId)] !== null;
+  const connectedOf = (providerId: string) => (integrations[providerId]?.status ?? "not_connected") !== "not_connected";
 
   // Fathom no tiene chip: aparece con "Todos" y, con "Requiere atencion", solo si la necesita.  @plantilla-quitar(llamadas)
   const showFathom = Boolean(fathom) && chip === null && (!onlyAttention || fathomNeedsAttention); // @plantilla-quitar(llamadas)
+
+  // Son pocas cards: se ordenan en cada pintada, sin memo.
+  const cards: { id: string; connected: boolean; node: React.ReactNode }[] = sections
+    .filter((section) => section.section !== "ai")
+    .flatMap((section) => section.providers)
+    .filter((provider) => visible(provider.id))
+    .map((provider) => ({
+      id: provider.id,
+      connected: connectedOf(provider.id),
+      node: <IntegrationCard key={provider.id} provider={provider} data={integrations[provider.id]} detailHref={detailHrefFor(provider.id)} />,
+    }));
+  if (showFathom) cards.push({ id: "fathom", connected: fathomConnected, node: <div key="fathom" className="contents">{fathom}</div> }); // @plantilla-quitar(llamadas)
+  const businessCards = orderCards(cards, BUSINESS_ORDER);
+
+  const aiProviders = orderCards(
+    sections
+      .filter((section) => section.section === "ai")
+      .flatMap((section) => section.providers)
+      .filter((provider) => visible(provider.id))
+      .map((provider) => ({ id: provider.id, connected: connectedOf(provider.id), provider })),
+  );
+
+  const hasShared = access.channels !== null || access.business !== null;
+  // Sitio web y Webhooks: siempre al final, sin filtros activos.
+  const showTail = Boolean(tail) && access.business !== null && chip === null && !onlyAttention;
   const nothingConnectedYet = !Object.values(integrations).some((data) => data.status !== "not_connected");
 
   function detailHrefFor(providerId: string): string {
@@ -147,69 +169,54 @@ export function IntegrationsGrid({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         <div className="mx-auto max-w-6xl space-y-10">
-          {/* Mis conexiones: de cada persona, no del negocio */}
-          {mine && (
-            <section aria-labelledby="mis-conexiones">
-              <h2 id="mis-conexiones" className="text-sm font-semibold">Mis conexiones</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Tu propio Google Calendar y tu propio Fathom. Nadie más ve ni toca lo tuyo.</p> {/* @plantilla-quitar(llamadas) */}
-              {/* @plantilla-sin(llamadas): <p className="mt-1 text-xs text-muted-foreground">Tu propio Google Calendar. Nadie más ve ni toca lo tuyo.</p> */}
-              <div className="mt-3 space-y-4">{mine}</div>
-            </section>
+          {!hasShared && (
+            <p className="text-sm text-muted-foreground">
+              Las integraciones del negocio las maneja un admin. Tu propio Google Calendar y tu Fathom se conectan en{" "}
+              <Link href={accountTabHref("conexiones")} className="text-primary-ink underline-offset-2 hover:underline">
+                Mi cuenta → Conexiones
+              </Link>
+              .
+            </p>
           )}
 
-          {/* Canales */}
-          {access.channels && channelProviders.length > 0 && (
-            <section aria-labelledby="canales">
-              <div className="flex items-center gap-2">
-                <h2 id="canales" className="text-sm font-semibold">Canales</h2>
-                {access.channels === "view" && <ReadOnlyBadge />}
-              </div>
-              <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {channelProviders.map((provider) => (
-                  <IntegrationCard key={provider.id} provider={provider} data={integrations[provider.id]} detailHref={detailHrefFor(provider.id)} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Integraciones del negocio */}
-          {access.business && (
+          {/* Integraciones del negocio: canales, email, redes, Fathom, y al final Sitio web y Webhooks */}
+          {hasShared && (
             <section aria-labelledby="negocio">
               <div className="flex items-center gap-2">
                 <h2 id="negocio" className="text-sm font-semibold">Integraciones del negocio</h2>
-                {access.business === "view" && <ReadOnlyBadge />}
+                {access.business !== "edit" && access.channels !== "edit" && <ReadOnlyBadge />}
               </div>
-              {businessSections.length === 0 && !showFathom ? ( // @plantilla-quitar(llamadas)
-              // @plantilla-sin(llamadas): {businessSections.length === 0 ? (
+              {businessCards.length === 0 && !showTail ? (
                 <p className="mt-3 text-sm text-muted-foreground">
                   {onlyAttention ? "Todo en orden: ninguna integración necesita que hagas nada." : "No hay integraciones de este tipo."}
                 </p>
               ) : (
-                <div className="mt-3 space-y-8">
+                <>
                   {/* Sin nada conectado no se arma una tarjeta grande ni se recomienda nada: una linea y las tarjetas. */}
                   {nothingConnectedYet && !onlyAttention && chip === null && (
-                    <p className="text-xs text-muted-foreground">Todavía no conectaste nada.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Todavía no conectaste nada.</p>
                   )}
-                  {businessSections.map((section, index) => (
-                    <div key={section.section}>
-                      <h3 className="text-xs font-semibold text-muted-foreground">{section.label}</h3>
-                      <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        {section.providers.map((provider) => (
-                          <IntegrationCard key={provider.id} provider={provider} data={integrations[provider.id]} detailHref={detailHrefFor(provider.id)} />
-                        ))}
-                        {/* Fathom va con las demas conexiones, en la primera seccion (Conexiones).  @plantilla-quitar(llamadas) */}
-                        {index === 0 && showFathom && fathom} {/* @plantilla-quitar(llamadas) */}
-                      </div>
-                    </div>
-                  ))}
-                  {/* @plantilla-desde(llamadas) */}
-                  {businessSections.length === 0 && showFathom && (
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{fathom}</div>
-                  )}
-                  {/* @plantilla-hasta(llamadas) */}
-                  {extra && chip === null && !onlyAttention && <div aria-label="Otras conexiones">{extra}</div>}
-                </div>
+                  <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {businessCards.map((card) => card.node)}
+                    {showTail && tail}
+                  </div>
+                </>
               )}
+            </section>
+          )}
+
+          {/* Inteligencia artificial */}
+          {access.business && aiProviders.length > 0 && (
+            <section aria-labelledby="ia">
+              <div className="flex items-center gap-2">
+                <h2 id="ia" className="text-sm font-semibold">Inteligencia artificial</h2>
+                {access.business === "view" && <ReadOnlyBadge />}
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {aiProviders.map(({ provider }) => (
+                  <IntegrationCard key={provider.id} provider={provider} data={integrations[provider.id]} detailHref={detailHrefFor(provider.id)} />
+                ))}
+              </div>
             </section>
           )}
         </div>

@@ -28,6 +28,7 @@ import { WHATSAPP_HOURLY_LIMIT } from "@/lib/channels/whatsapp-limits";
 import { deferFlowNode } from "../defer-node";
 import { sendWindowOf, windowOpening } from "../send-window";
 import { businessTimeZone } from "@/lib/scheduled-flows/jobs";
+import { sessionStartedAt, teamWroteOnWhatsAppSince } from "../team-wrote";
 
 export interface SendWhatsAppNumberData {
   to?: "fixed" | "variable";
@@ -45,6 +46,12 @@ export interface SendWhatsAppNumberData {
   windowEnabled?: boolean;
   windowFrom?: string;
   windowTo?: string;
+  /**
+   * «No mandar si alguien del equipo ya le escribió por WhatsApp desde que arrancó la automatización» (desde el
+   * teléfono o desde la bandeja). Se mira al momento de mandar, también cuando el paso esperó al horario de envío.
+   * Ver `team-wrote.ts`. Apagado = sale siempre, como antes.
+   */
+  skipIfTeamWrote?: boolean;
 }
 
 export const SEND_WHATSAPP_NUMBER_TYPE = "send_whatsapp_number";
@@ -141,6 +148,17 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
 
     const { data: conversation } = await supabase.from("conversations").select("id").eq("channel_id", channel.id).eq("contact_id", contactId).maybeSingle();
     conversationId = conversation?.id ?? null;
+
+    // 4b. «No mandar si ya le escribiste»: se mira AHORA (después del horario de envío), así lo que escribiste mientras
+    //     el paso esperaba también cuenta. Sin saber desde cuándo (simulador) no se frena nada.
+    if (data.skipIfTeamWrote) {
+      const since = await sessionStartedAt(supabase, sessionId);
+      if (since) {
+        const wrote = await teamWroteOnWhatsAppSince(supabase, { workspaceId: context.workspaceId, contactId, since });
+        if (wrote === null) return skip("No pude comprobar si alguien del equipo ya le escribió, así que no se mandó.", { contact_id: contactId });
+        if (wrote) return skip("Alguien del equipo ya le escribió por WhatsApp desde que empezó la automatización: no se mandó.", { contact_id: contactId, team_wrote: true });
+      }
+    }
   }
 
   // 5. Nunca dos veces: la reserva (sesión + paso + número) va ANTES de mandar y de pedir lugar en el tope.

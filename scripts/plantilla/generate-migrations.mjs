@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // Escribe las migraciones de la plantilla de estudiantes a partir de la base de referencia.
 //
-//   node scripts/plantilla/generate-migrations.mjs [--db-url=postgresql://...] [--out=carpeta] [--check]
+//   node scripts/plantilla/generate-migrations.mjs [--perfil=estudiantes|clientes] [--db-url=postgresql://...] [--out=carpeta] [--check]
+//
+// El perfil (db-profiles.mjs) dice que esquemas se leen, que archivo de areas se usa y
+// adonde se escribe. Sin --perfil, "estudiantes".
 //
 // La base de referencia es la que arma build-reference.mjs (todas las migraciones del
 // proyecto + la poda), ya limpia de historia con clean-history.mjs. Este script lee su
@@ -25,18 +28,24 @@ import pg from "pg";
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AREAS, OVERRIDES } from "./areas.mjs";
 import { lexSql, stripComments, cleanComment } from "./clean-history.mjs";
+import { dbProfileFromArgs, dbUrlOf } from "./db-profiles.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "..", "..");
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const flag = (name) => process.argv.includes(`--${name}`);
 
-const dbUrl = arg("db-url") ?? "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
-const outDir = resolve(arg("out") ?? join(repo, "plantilla-estudiantes", "supabase"));
+const profile = dbProfileFromArgs();
+const { AREAS, OVERRIDES } = await import(profile.areas);
+const dbUrl = arg("db-url") ?? dbUrlOf(profile.ref);
+const outDir = resolve(arg("out") ?? join(repo, profile.outDir));
 const checkOnly = flag("check");
-const SCHEMAS = ["public", "private"];
+const SCHEMAS = profile.schemas;
+// Los esquemas propios ademas de public (private y, en la de clientes, los de Servicios).
+const OWN_SCHEMAS = SCHEMAS.filter((s) => s !== "public");
+// Para las expresiones que buscan "esquema.nombre" en el texto de una funcion o un cron.
+const SCHEMA_ALT = SCHEMAS.join("|");
 const APP_ROLES = ["anon", "authenticated", "service_role"];
 
 // Extensiones que crea el sistema (las demas ya vienen con Supabase). Se escriben igual
@@ -309,7 +318,19 @@ const schemaInfo = await q(
   `select n.nspname as name, pg_get_userbyid(n.nspowner) as owner, obj_description(n.oid, 'pg_namespace') as comment,
           (select string_agg(x.grantee::regrole::text || ':' || x.privilege_type, ',' order by 1)
              from aclexplode(n.nspacl) x where x.grantee <> n.nspowner) as grants
-     from pg_namespace n where n.nspname = 'private'`,
+     from pg_namespace n where n.nspname = any($1) order by array_position($1, n.nspname)`,
+  [OWN_SCHEMAS],
+);
+// Permisos por defecto propios de un esquema (ALTER DEFAULT PRIVILEGES ... IN SCHEMA).
+// Se reproducen tal cual y cuentan como el punto de partida de los permisos de lo que se
+// crea en ese esquema. En public los da la 00000 (ver defaultTablePrivs).
+const schemaDefaultAcl = await q(
+  `select n.nspname as schema, pg_get_userbyid(d.defaclrole) as role, d.defaclobjtype::text as objtype,
+          case when x.grantee = 0 then 'PUBLIC' else x.grantee::regrole::text end as grantee, x.privilege_type as priv
+     from pg_default_acl d join pg_namespace n on n.oid = d.defaclnamespace, aclexplode(d.defaclacl) x
+    where n.nspname = any($1)
+    order by 1, 2, 3, 4, 5`,
+  [OWN_SCHEMAS],
 );
 
 const seedRows = {};
@@ -413,21 +434,21 @@ function textDeps(f) {
   const code = codeOnly(f.src).toLowerCase();
   const resolveTable = (schema, name) => tableNames.get(`${schema ?? "public"}.${name}`);
   if (f.lang === "sql") {
-    for (const m of code.matchAll(/\b(?:from|join|update|into|table|using)\s+(?:only\s+)?(?:(public|private)\s*\.\s*)?([a-z_][a-z0-9_]*)/g)) {
+    for (const m of code.matchAll(new RegExp(`\\b(?:from|join|update|into|table|using)\\s+(?:only\\s+)?(?:(${SCHEMA_ALT})\\s*\\.\\s*)?([a-z_][a-z0-9_]*)`, "g"))) {
       const t = resolveTable(m[1], m[2]);
       if (t) out.add(tid(t.oid));
     }
-    for (const m of code.matchAll(/\b(?:(public|private)\s*\.\s*)?([a-z_][a-z0-9_]*)\s*\(/g)) {
+    for (const m of code.matchAll(new RegExp(`\\b(?:(${SCHEMA_ALT})\\s*\\.\\s*)?([a-z_][a-z0-9_]*)\\s*\\(`, "g"))) {
       for (const g of fnNames.get(`${m[1] ?? "public"}.${m[2]}`) ?? []) if (g.oid !== f.oid) out.add(fid(g.oid));
     }
   } else if (f.lang === "plpgsql") {
     const decl = /\bdeclare\b([\s\S]*?)\bbegin\b/.exec(code);
     if (decl) {
-      for (const m of decl[1].matchAll(/(?:(public|private)\s*\.\s*)?([a-z_][a-z0-9_]*)(?:\s*\.\s*[a-z_][a-z0-9_]*)?\s*%\s*(?:row)?type/g)) {
+      for (const m of decl[1].matchAll(new RegExp(`(?:(${SCHEMA_ALT})\\s*\\.\\s*)?([a-z_][a-z0-9_]*)(?:\\s*\\.\\s*[a-z_][a-z0-9_]*)?\\s*%\\s*(?:row)?type`, "g"))) {
         const t = resolveTable(m[1], m[2]);
         if (t) out.add(tid(t.oid));
       }
-      for (const m of decl[1].matchAll(/(?:^|;)\s*[a-z_][a-z0-9_]*\s+(?:constant\s+)?(?:(public|private)\s*\.\s*)?([a-z_][a-z0-9_]*)\s*(?:\[\s*\])?\s*(?:;|:=|default|not\b)/g)) {
+      for (const m of decl[1].matchAll(new RegExp(`(?:^|;)\\s*[a-z_][a-z0-9_]*\\s+(?:constant\\s+)?(?:(${SCHEMA_ALT})\\s*\\.\\s*)?([a-z_][a-z0-9_]*)\\s*(?:\\[\\s*\\])?\\s*(?:;|:=|default|not\\b)`, "g"))) {
         const t = resolveTable(m[1], m[2]);
         if (t) out.add(tid(t.oid));
       }
@@ -446,13 +467,23 @@ const commentSql = (kind, target, text) => (text ? `COMMENT ON ${kind} ${target}
 function defaultTablePrivs(schema) {
   const m = new Map();
   for (const r of [...APP_ROLES, "PUBLIC"]) m.set(r, new Set(schema === "public" && r !== "PUBLIC" ? TABLE_PRIVS : []));
+  addSchemaDefaults(m, schema, "r");
   return m;
 }
 function defaultFnPrivs(schema) {
   const m = new Map();
   m.set("PUBLIC", new Set(["EXECUTE"]));
   for (const r of APP_ROLES) m.set(r, new Set(schema === "public" ? ["EXECUTE"] : []));
+  addSchemaDefaults(m, schema, "f");
   return m;
+}
+// Lo que suman los permisos por defecto propios del esquema (lo crea postgres).
+function addSchemaDefaults(m, schema, objtype) {
+  for (const d of schemaDefaultAcl) {
+    if (d.schema !== schema || d.objtype !== objtype || d.role !== "postgres") continue;
+    if (!m.has(d.grantee)) m.set(d.grantee, new Set());
+    m.get(d.grantee).add(d.priv);
+  }
 }
 function aclStatements(objKind, target, defaults, actual) {
   // actual: Map role -> Set(privs) (solo PUBLIC y los tres roles de la app)
@@ -673,7 +704,7 @@ for (const j of cronJobs) {
   let sql = `SELECT cron.schedule(${lit(j.jobname)}, ${lit(j.schedule)}, ${lit(j.command)});`;
   if (!j.active) sql += `\nSELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname = ${lit(j.jobname)}), active := false);`;
   const d = new Set();
-  for (const m of j.command.toLowerCase().matchAll(/\b(public|private)\.([a-z_][a-z0-9_]*)\s*\(/g)) {
+  for (const m of j.command.toLowerCase().matchAll(new RegExp(`\\b(${SCHEMA_ALT})\\.([a-z_][a-z0-9_]*)\\s*\\(`, "g"))) {
     for (const g of fnNames.get(`${m[1]}.${m[2]}`) ?? []) d.add(fid(g.oid));
   }
   addNode({ id: `cron:${j.jobname}`, kind: "cron", area: cronArea, name: j.jobname, sql, deps: d });
@@ -703,17 +734,40 @@ for (const b of buckets) {
     lines.push(`CREATE EXTENSION IF NOT EXISTS ${e.name}${e.schema ? ` WITH SCHEMA ${e.schema}` : ""};`);
   }
   addNode({ id: "ext", kind: "ext", area: extArea, name: "extensiones", sql: lines.join("\n") });
-  const s = schemaInfo[0];
-  if (!s) die("No existe el esquema private.");
-  if (s.owner !== "postgres" || s.grants) die(`El esquema private tiene permisos no soportados (${s.grants}).`);
-  const parts = ["CREATE SCHEMA IF NOT EXISTS private;"];
-  if (s.comment) parts.push(commentSql("SCHEMA", "private", s.comment));
-  addNode({ id: "schema:private", kind: "schema", area: extArea, name: "private", sql: parts.join("\n") });
+  for (const name of OWN_SCHEMAS) {
+    const s = schemaInfo.find((x) => x.name === name);
+    if (!s) die(`No existe el esquema ${name}.`);
+    if (s.owner !== "postgres") die(`El esquema ${name} tiene otro duenio (${s.owner}).`);
+    const parts = [`CREATE SCHEMA IF NOT EXISTS ${name};`];
+    if (s.comment) parts.push(commentSql("SCHEMA", name, s.comment));
+    // Permisos del esquema (USAGE, CREATE) para los roles de la app.
+    const byPriv = new Map();
+    for (const g of (s.grants ?? "").split(",").filter(Boolean)) {
+      const [role, priv] = g.split(":");
+      if (!APP_ROLES.includes(role)) die(`El esquema ${name} le da ${priv} a ${role} (no soportado).`);
+      byPriv.set(priv, [...(byPriv.get(priv) ?? []), role]);
+    }
+    for (const [priv, roles] of byPriv) parts.push(`GRANT ${priv} ON SCHEMA ${name} TO ${roles.join(", ")};`);
+    // Permisos por defecto del esquema.
+    const byTarget = new Map();
+    for (const d of schemaDefaultAcl.filter((d) => d.schema === name)) {
+      if (d.role !== "postgres") die(`Permisos por defecto de ${d.role} en ${name}: no soportados.`);
+      const kind = { r: "TABLES", f: "FUNCTIONS", S: "SEQUENCES" }[d.objtype];
+      if (!kind) die(`Permisos por defecto de tipo '${d.objtype}' en ${name}: no soportados.`);
+      const k = `${kind}|${d.grantee}`;
+      byTarget.set(k, [...(byTarget.get(k) ?? []), d.priv]);
+    }
+    for (const [k, privs] of byTarget) {
+      const [kind, grantee] = k.split("|");
+      parts.push(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${name} GRANT ${privs.join(", ")} ON ${kind} TO ${grantee};`);
+    }
+    addNode({ id: `schema:${name}`, kind: "schema", area: extArea, name, sql: parts.join("\n") });
+  }
 }
-// Todo lo que vive en private depende del esquema.
+// Todo lo que vive en un esquema propio depende del esquema.
 for (const n of nodes.values()) {
   if (n.kind === "ext" || n.kind === "schema") continue;
-  if (/^private\./.test(n.name)) n.deps.add("schema:private");
+  for (const name of OWN_SCHEMAS) if (n.name.startsWith(`${name}.`)) n.deps.add(`schema:${name}`);
   n.deps.add("ext");
 }
 
@@ -816,7 +870,11 @@ for (let a = 0; a < AREAS.length; a++) {
   writeFileSync(join(migrationsDir, `${area.file}.sql`), out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n");
 }
 
-// Seeds y config.
+// Seeds y config (la plantilla de clientes usa los del proyecto, tal cual).
+if (!profile.writeSeedsAndConfig) {
+  console.log(`\nEscrito en ${migrationsDir}`);
+  process.exit(0);
+}
 const seedsDir = join(outDir, "seeds");
 rmSync(seedsDir, { recursive: true, force: true });
 mkdirSync(seedsDir, { recursive: true });
