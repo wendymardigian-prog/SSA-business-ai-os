@@ -214,6 +214,8 @@ describe("los tres tipos nuevos estan registrados", () => {
       "service_item_completed", // @plantilla-quitar(servicios)
       "service_item_overdue", // @plantilla-quitar(servicios)
       "service_light_changed", // @plantilla-quitar(servicios)
+      "service_relative", // @plantilla-quitar(servicios)
+      "service_phase_periodic", // @plantilla-quitar(servicios)
       "program_lesson_completed", // @plantilla-quitar(servicios)
       "program_module_completed", // @plantilla-quitar(servicios)
       "quiz_passed", // @plantilla-quitar(servicios)

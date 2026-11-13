@@ -3,7 +3,7 @@ import { callDisplayLabel, categoryGroups, legacyCallTypeFor, readCategorySnapsh
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { redirect } from "next/navigation";
-import { applyCallFilters, CALL_LIST_COLUMNS, callScopeLabel, PAGE_SIZE, parseCallFilters } from "@/lib/calls/list";
+import { applyCallFilters, CALL_LIST_COLUMNS, CALL_LIST_SERVICE_COLUMNS, callScopeLabel, PAGE_SIZE, parseCallFilters } from "@/lib/calls/list";
 import { pickConnection, shouldNudgeToConnect } from "@/lib/fathom/connection-state";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
@@ -11,6 +11,8 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import type { CallAnalysisStatus } from "@/lib/types/database";
 import { loadCallsPortalState } from "@/lib/program/calls-portal"; // @plantilla-quitar(servicios)
+import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
+import { loadServiceCategoryIds, loadServiceLabels } from "@/lib/calls/service-labels"; // @plantilla-quitar(servicios)
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +33,12 @@ export default async function LlamadasPage({
 
   const timeZone = await resolveViewerTimezone(workspace.timezone);
   const members = await getWorkspaceMembers(workspace.id);
-  const filters = parseCallFilters(sp, { closerIds: members.map((m) => m.userId) });
+  // Servicios A4 (F136): con el módulo prendido, el servicio de cada reunión, su filtro y «por revisar».
+  let servicesOn = false;
+  servicesOn = isModuleEnabled(workspace as { services_enabled?: boolean | null }); // @plantilla-quitar(servicios)
+  const filters = parseCallFilters(sp, { closerIds: members.map((m) => m.userId), servicesOn });
+  let serviceCats: { areaId: string | null; classId: string | null } = { areaId: null, classId: null };
+  if (servicesOn && filters.servicio === "sin") serviceCats = await loadServiceCategoryIds(supabase, workspace.id); // @plantilla-quitar(servicios)
 
   // La busqueda mira el titulo y los contactos que coinciden (los que esta persona ve).
   let searchContactIds: string[] = [];
@@ -47,8 +54,8 @@ export default async function LlamadasPage({
   }
 
   const from = (filters.pagina - 1) * PAGE_SIZE;
-  const base = supabase.from("calls").select(CALL_LIST_COLUMNS, { count: "exact" }).eq("workspace_id", workspace.id);
-  const { data, count, error } = await applyCallFilters(base, filters, { timeZone, searchContactIds })
+  const base = supabase.from("calls").select(`${CALL_LIST_COLUMNS}, manual_summary:summary->manual${servicesOn ? CALL_LIST_SERVICE_COLUMNS : ""}`, { count: "exact" }).eq("workspace_id", workspace.id);
+  const { data, count, error } = await applyCallFilters(base, filters, { timeZone, searchContactIds, serviceAreaId: serviceCats.areaId, classTypeId: serviceCats.classId })
     .order("recorded_at", { ascending: false })
     .range(from, from + PAGE_SIZE - 1);
 
@@ -59,9 +66,15 @@ export default async function LlamadasPage({
     : { data: [] as Array<{ id: string; display_name: string | null; email: string | null }> };
   const contactName = new Map((contacts ?? []).map((c) => [c.id, c.display_name || c.email || "Sin nombre"]));
   const memberName = new Map(members.map((m) => [m.userId, m.name]));
+  const service = await createServiceClient();
+  let serviceLabels = new Map<string, { label: string }>();
+  if (servicesOn) {
+    const serviceIds = raw.map((r) => r.service_id as string | null).filter((x): x is string => Boolean(x));
+    if (filters.servicio && filters.servicio !== "review" && filters.servicio !== "sin") serviceIds.push(filters.servicio);
+    serviceLabels = await loadServiceLabels(service, workspace.id, serviceIds); // @plantilla-quitar(servicios)
+  }
 
   // Para los estados vacios y el aviso de "conecta tu Fathom".
-  const service = await createServiceClient();
   const [{ count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: outcomes }, { count: pendingCount }, categoryRows, { count: unclassifiedCount }] = await Promise.all([
     supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null),
     service.from("oauth_connections").select("status").eq("workspace_id", workspace.id).eq("provider", "fathom").neq("status", "revoked"),
@@ -98,6 +111,10 @@ export default async function LlamadasPage({
     hasOpenAlerts: r.has_open_alerts === true,
     hasBooking: !!r.booking_id,
     source: r.source as string,
+    serviceId: (r.service_id as string | null | undefined) ?? null,
+    serviceLink: (r.service_link as string | null | undefined) ?? null,
+    serviceLabel: r.service_id ? serviceLabels.get(r.service_id as string)?.label ?? null : null,
+    manual: r.manual_summary !== null && r.manual_summary !== undefined && r.analysis_status !== "done",
   }));
 
   // Si la lista viene filtrada por un contacto, su nombre (solo si quien mira lo ve).
@@ -108,6 +125,10 @@ export default async function LlamadasPage({
   }
 
   const portal = await loadCallsPortalState(ctx, rows.map((r) => r.id)); // @plantilla-quitar(servicios)
+  // «N reuniones por revisar» (las que esta persona ve: la RLS decide).
+  const reviewCount = servicesOn
+    ? (await supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("service_link", "review").is("archived_at", null)).count ?? 0
+    : 0;
   const hasApp = secretNames.includes(SECRET_NAMES.fathomClientId) && secretNames.includes(SECRET_NAMES.fathomClientSecret);
   const myConnection = pickConnection(mine ?? []);
   const hasLiveConnection = !!myConnection && (myConnection.status === "active" || myConnection.status === "attention");
@@ -137,6 +158,7 @@ export default async function LlamadasPage({
       hasLiveConnection={hasLiveConnection}
       nudgeConnect={shouldNudgeToConnect({ hasLiveConnection, hasApp })}
       portal={portal} // @plantilla-quitar(servicios)
+      services={servicesOn ? { on: true, reviewCount, filterLabel: filters.servicio ? serviceLabels.get(filters.servicio)?.label ?? null : null } : null}
     />
   );
 }

@@ -780,7 +780,8 @@ DROP TRIGGER workspaces_commission_settings_guard ON public.workspaces;
 -- 2.2 Tareas programadas (pg_cron) de los modulos.
 SELECT cron.unschedule(jobname)
   FROM cron.job
- WHERE jobname IN ('fathom-sync', 'payments-overdue-enqueue', 'eod-reminders-enqueue', 'tasks-due-enqueue', 'finance-daily');
+ WHERE jobname IN ('fathom-sync', 'payments-overdue-enqueue', 'eod-reminders-enqueue', 'tasks-due-enqueue', 'finance-daily',
+                   'call-missing-recording'); -- la ultima: Servicios A4 (00367), reuniones de servicio sin grabacion
 
 -- 2.3 Storage: la politica de los comprobantes de gastos y los cuatro buckets
 -- de los modulos (vacios en una base nueva). Supabase no deja borrar filas de
@@ -824,7 +825,7 @@ END $poda$;
 -- 2.7 Servicios: cron, storage y politicas.
 SELECT cron.unschedule(jobname) FROM cron.job WHERE jobname IN ('svc-daily', 'affiliates-daily');
 SET LOCAL storage.allow_delete_query = 'true';
-DELETE FROM storage.buckets WHERE id IN ('portal-avatars', 'program-resources', 'community-media');
+DELETE FROM storage.buckets WHERE id IN ('portal-avatars', 'program-resources', 'community-media', 'service-evidence');
 DROP POLICY IF EXISTS ai_threads_select_portal ON public.ai_threads;
 DROP POLICY IF EXISTS audit_log_select_services ON public.audit_log;
 
@@ -899,6 +900,7 @@ DROP FUNCTION public.can_see_commission(c public.commissions);
 DROP FUNCTION public.can_see_form_submission(s public.form_submissions);
 DROP FUNCTION public.can_see_sale(s public.sales);
 DROP FUNCTION public.can_see_task(t public.tasks);
+DROP FUNCTION private.comment_notify_mentions(p_comment public.comments, p_users uuid[]); -- comentarios (00364)
 DROP FUNCTION public.payments_event_payload(p public.payments);
 DROP FUNCTION public.sales_event_payload(s public.sales);
 DROP FUNCTION public.commission_amount_cents(p_rule public.commission_rules, p_facts jsonb);
@@ -931,7 +933,8 @@ DROP TABLE
   public.commissions,
   public.commission_rules,
   public.webhook_endpoints,
-  public.inbound_webhooks;
+  public.inbound_webhooks,
+  public.comments; -- comentarios del equipo (00364): solo de tareas y llamadas
 
 -- ============================================================================
 -- 6. El resto de las funciones de los modulos
@@ -1026,6 +1029,22 @@ DROP FUNCTION private.cm_sale_person(p_payee text, p_facts jsonb);
 -- Webhooks entrantes.
 DROP FUNCTION public.receive_inbound_webhook(p_row jsonb, p_duplicate_window_seconds integer);
 
+-- Comentarios del equipo (Servicios A4, 00364): solo existen para tareas y llamadas.
+DROP FUNCTION private.comment_entity_workspace(p_entity_type text, p_entity_id uuid);
+DROP FUNCTION public.can_see_comment_entity(p_entity_type text, p_entity_id uuid);
+DROP FUNCTION private.comment_entity_visible_to(p_user_id uuid, p_entity_type text, p_entity_id uuid);
+DROP FUNCTION private.comment_filter_mentions(p_ws uuid, p_entity_type text, p_entity_id uuid, p_author uuid, p_mentions uuid[]);
+DROP FUNCTION public.post_comment(p_entity_type text, p_entity_id uuid, p_body text, p_mentions uuid[]);
+DROP FUNCTION public.edit_comment(p_id uuid, p_body text, p_mentions uuid[]);
+DROP FUNCTION public.delete_comment(p_id uuid);
+DROP FUNCTION public.comment_mention_candidates(p_entity_type text, p_entity_id uuid);
+DROP FUNCTION private.comment_system(p_workspace_id uuid, p_entity_type text, p_entity_id uuid, p_body text);
+
+-- Llamadas, Servicios A4 (00366, 00367): propuestas del analizador y la reunion sin grabacion.
+DROP FUNCTION public.call_proposal_claim(p_call_id uuid, p_proposal_id text);
+DROP FUNCTION public.call_proposal_patch(p_call_id uuid, p_proposal_id text, p_patch jsonb);
+DROP FUNCTION private.enqueue_call_missing_recording(p_now timestamp with time zone);
+
 -- ============================================================================
 -- 7. Servicios (Corrida A1) y Afiliados (siguen a Ventas)
 -- ============================================================================
@@ -1040,6 +1059,8 @@ DROP INDEX public.idx_agent_runs_portal_tutor; -- el indice de las corridas del 
 
 -- 7.4 Columnas del modulo y de afiliados en tablas que se quedan.
 ALTER TABLE public.workspaces DROP COLUMN services_enabled;
+ALTER TABLE public.workspaces DROP COLUMN service_team_settings;     -- topes de cartera (A4, 00371)
+ALTER TABLE public.workspaces DROP COLUMN service_team_settings_rev;
 ALTER TABLE public.workspaces DROP COLUMN portal_settings;
 ALTER TABLE public.workspaces DROP COLUMN portal_settings_rev;
 ALTER TABLE public.workspaces DROP COLUMN affiliate_settings;

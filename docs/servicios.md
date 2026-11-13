@@ -74,6 +74,48 @@ el panel solo lo configura, lo valida (gemelas `refProblems` / `app_servicio.jou
   uuid (`pickUtm`); `booking_hook` completa ESE paso (si es del mismo contacto), no el primero del mismo tipo de
   reunión. `create_booking` no cambió.
 
+## Bloqueo, evidencia, checklist y duplicar (Servicios A4, F146 a F149)
+
+Todo vive dentro de `ref` del paso (se copia al servicio como el botón de A2):
+
+- **«Se puede completar desde»** (`ref.lock`): unos días después de la creación, el inicio del servicio o el inicio
+  de la fase, o cuando se complete un paso ANTERIOR. Gemelas `lockPlan` (`lib/services/lock.ts`) y
+  `app_servicio.svc_lock_plan`, con `lock.cases.json`. Antes de eso, tildar a mano, completar su tarea o una
+  automatización dan **SV033** con el texto listo («Este paso se puede completar desde el 13/11.»). Lo que hace el
+  cliente (un formulario, una reunión, una clase) completa igual y queda `svc.item_completed_while_locked`.
+- **«Pide evidencia»** (`ref.evidence`, pasos de tarea y checkbox): una captura o un PDF (bucket privado
+  `service-evidence`, validado por los bytes, hasta 10 MB), un link `https://` o una nota. Sin la evidencia que
+  pide, el paso no se completa (**SV034**). La guardan `svc_add_evidence` / `svc_remove_evidence` con la sesión
+  (quien atiende el servicio o quien edita la tarea del paso); solo se quita lo propio y con el paso pendiente.
+- **Checklist** (`ref.checklist`, hasta 20 puntos): viaja a la tarea del paso (`tasks.checklist`). No impide
+  completar.
+- **Duplicar** una fase o un paso: claves nuevas, la copia justo después; sus workflows se copian en pausa al guardar.
+- **«Lo completan»**: debajo de cada paso, las automatizaciones con «Completar paso» de ese paso, y
+  «+ Workflow que lo complete».
+
+## Reuniones del servicio (Servicios A4, F135 a F139)
+
+Una grabación se une sola a su servicio (`app_servicio.svc_call_link_apply`, gemela `callLinkPlan` con
+`call-link.cases.json`): por la reunión de un paso, por el área «Servicio» o el tipo «Clase» y el contacto. Con más de
+un candidato queda «Por revisar» y avisa `call_service_review`; lo vinculado a mano (`service_link = manual`) no lo
+rehace nada. La ficha del servicio tiene el bloque «Reuniones» (agenda + grabación, con su estado) y un paso Reunión
+puede completarse «Cuando hay grabación». Una reunión que terminó hace 2 a 26 h sin grabación avisa una vez
+(`call_missing_recording`, cron `call-missing-recording`). Para las reuniones viejas:
+`node scripts/backfill-call-services.mjs --dry-run` (y `--aplicar`).
+
+## Topes de cartera (Servicios A4, F151)
+
+Ajustes › Productos › «Reparto de clientes» (`services.configure`): el tope de servicios a cargo de cada persona
+(activos, pausados o por confirmar, de todos los productos). El reparto equitativo y las condiciones saltean a quien
+llegó a su tope; si todos llegaron, va al respaldo de la variante y avisa `svc_capacity_full`. Sin topes, el reparto
+elige igual que antes. Asignar a mano no se frena: dice «Supera su tope».
+
+## Cerrar las tareas al terminar (Servicios A4, F156)
+
+Cuando un servicio se cancela, termina o se renueva, sus tareas abiertas del camino se cierran con un comentario de
+sistema («Cerrada: el servicio se canceló.») y su entrada en el historial. Los pasos no cambian. Pausar no cierra
+nada.
+
 ## El semáforo
 
 `svc_compute_light` (gemela `lib/services/light.ts`, ≥ 28 casos): verde, amarillo o rojo según los pasos
@@ -91,7 +133,9 @@ encola un job `svc_daily` por negocio con el módulo prendido, desde las 02:00 d
 corre `app_servicio.svc_daily_run(negocio)`, cada paso en su bloque: repeticiones y Retos de fecha fija, pasos
 vencidos (`service_item_overdue`), semáforo, accesos que se abren y mora, renovados que llegan a su fin (pasan a
 `renewed`), accesos por vencer y vencidos, «faltó» a una clase en vivo, «reanudar sola», servicios que empiezan
-(`service_started`), «está por terminar» (N días, los N de los disparadores activos) y la purga de la comunidad.
+(`service_started`), «está por terminar» (N días, los N de los disparadores activos; desde A4 lee `days_before`, que es
+lo que guarda el editor), los disparadores relativos y periódicos (A4, F158: uno por disparador, servicio y día) y la
+purga de la comunidad.
 Si un paso falla, el job lanza al final. Dos veces el mismo día no duplica nada.
 
 ## Certificados
@@ -106,9 +150,11 @@ lo encola la base al abrirse la fase (`svc_certificate_issue`).
 
 ## Automatizaciones
 
-26 disparadores de contacto (`lib/flow-engine/registry/service-triggers.ts`) y 6 acciones
+28 disparadores de contacto (`lib/flow-engine/registry/service-triggers.ts`; A4 suma «Días antes o después de…» y
+«Cada N días en una fase», gemela `relativeDue` / `svc_relative_due`) y 6 acciones
 (`lib/flow-engine/nodes/service-actions.ts`: completar un paso, cambiar de fase, empezar el Reto, extender,
-pausar, emitir certificado). Ver [flow-registry.md](flow-registry.md).
+pausar, emitir certificado). «Crear tarea» y «Avisar en la campana» pueden ir a «el responsable del servicio», con un
+plan B obligatorio. Ver [flow-registry.md](flow-registry.md).
 
 ## Fusión de contactos
 
@@ -121,7 +167,8 @@ otra se suspende con sus sesiones revocadas. Dos servicios activos del mismo pro
 
 ```
 node scripts/verify-servicios-migracion.mjs --todas   # cada migración S01-S16: objetos, RLS, permisos, CHECK y triggers
-node scripts/verify-services.mjs                      # sv1, sv2, prd, ac
+node scripts/verify-services.mjs                      # sv1, sv2, prd, ac, a2, a4
+node scripts/verify-comments.mjs                      # comentarios del equipo con @menciones (A4)
 node scripts/verify-program.mjs                       # pr, ev, ca, ce (vite-node, render simulado), co, ia, x
 node scripts/verify-affiliates.mjs
 node scripts/verify-portal-schema.mjs                 # el esquema del portal cerrado

@@ -1,5 +1,6 @@
 /**
- * La entrega por email y WhatsApp de un aviso (Mi cuenta → Notificaciones, 00274/00275).
+ * La entrega por email, WhatsApp y Slack de un aviso (Mi cuenta → Notificaciones, 00274/00275; Slack desde
+ * Servicios A4, F133).
  *
  * Cada aviso que entra a `notifications` encola un job `notification_deliver`
  * (trigger de la 00275). Aca, para ese aviso:
@@ -21,7 +22,9 @@
  * - **Tope anti-spam**: a una persona, por un mismo evento y una misma cosa,
  *   como mucho un email y un WhatsApp cada 10 minutos (la campana sigue igual).
  * - Un aviso de hace mas de 24 horas ya no se manda (llegaria tarde).
- * - Nunca se loguea un email ni un telefono.
+ * - Slack: un mensaje directo al ID de Slack de la persona (Mi cuenta), con el bot del negocio. Sin Slack
+ *   conectado o sin ID, se saltea sin error. Mismas reglas de tope y de reintento que el resto.
+ * - Nunca se loguea un email, un telefono ni un ID de Slack.
  *
  * Las dependencias se inyectan: el test lo corre con espias, sin red.
  */
@@ -54,6 +57,8 @@ export interface Recipient {
   userId: string;
   email: string | null;
   whatsapp: string | null;
+  /** El ID de Slack de la persona (Mi cuenta), o null. */
+  slack?: string | null;
   prefs: unknown;
 }
 
@@ -76,9 +81,11 @@ export interface DeliverDeps {
   /** Los `delivered` de los avisos del mismo evento y la misma cosa en la ventana del tope. */
   recentDeliveries(n: DeliveryNotification, types: readonly string[], since: Date): Promise<Array<Record<string, unknown>>>;
   /** Qué canales puede usar el negocio. */
-  channelsAvailable(workspaceId: string): Promise<{ email: boolean; whatsapp: boolean }>;
+  channelsAvailable(workspaceId: string): Promise<{ email: boolean; whatsapp: boolean; slack?: boolean }>;
   sendEmail(n: DeliveryNotification, to: string, link: string | null): Promise<ChannelSendResult>;
   sendWhatsApp(n: DeliveryNotification, to: string, link: string | null): Promise<ChannelSendResult>;
+  /** Un mensaje directo de Slack al ID de la persona. Opcional: sin esto, Slack nunca sale. */
+  sendSlack?(n: DeliveryNotification, to: string, link: string | null): Promise<ChannelSendResult>;
   /** Anota un envio hecho (en el momento, para que un reintento no lo repita). */
   markDelivered(id: string, key: string, at: string): Promise<void>;
   scheduleRetry(id: string, attempt: number, runAt: Date): Promise<void>;
@@ -119,7 +126,7 @@ export async function deliverNotification(deps: DeliverDeps, notificationId: str
   // Lo que quiere cada persona, antes de mirar nada mas: casi siempre nadie quiere nada fuera de la campana.
   const wanted = recipients
     .map((r) => ({ r, prefs: resolveEventPrefs(parseStoredPrefs(r.prefs), event) }))
-    .filter(({ prefs }) => prefs.email || prefs.whatsapp);
+    .filter(({ prefs }) => prefs.email || prefs.whatsapp || prefs.slack);
   if (wanted.length === 0) return { status: "done", sent: 0, skipped: 0, retry: false };
 
   const available = await deps.channelsAvailable(n.workspace_id);
@@ -135,12 +142,13 @@ export async function deliverNotification(deps: DeliverDeps, notificationId: str
   let deferUntil: Date | null = null;
 
   for (const { r, prefs } of wanted) {
-    for (const channel of ["email", "whatsapp"] as const) {
+    for (const channel of ["email", "whatsapp", "slack"] as const) {
       if (!prefs[channel]) continue;
       const key = deliveredKey(r.userId, channel);
       if (alreadyHere[key]) continue; // ya salio en un intento anterior
-      const to = channel === "email" ? r.email : r.whatsapp;
-      if (!available[channel] || !to) {
+      const to = channel === "email" ? r.email : channel === "whatsapp" ? r.whatsapp : (r.slack ?? null);
+      const can = channel === "slack" ? Boolean(available.slack) && Boolean(deps.sendSlack) : available[channel];
+      if (!can || !to) {
         skipped++;
         continue;
       }
@@ -149,7 +157,12 @@ export async function deliverNotification(deps: DeliverDeps, notificationId: str
         skipped++;
         continue;
       }
-      const result = channel === "email" ? await deps.sendEmail(n, to, rawLink) : await deps.sendWhatsApp(n, to, rawLink);
+      const result =
+        channel === "email"
+          ? await deps.sendEmail(n, to, rawLink)
+          : channel === "whatsapp"
+            ? await deps.sendWhatsApp(n, to, rawLink)
+            : await deps.sendSlack!(n, to, rawLink);
       if (result.ok) {
         sent++;
         await deps.markDelivered(n.id, key, now.toISOString());
@@ -206,7 +219,7 @@ export function dbDeliverDeps(db: Db) {
     async loadRecipients(workspaceId: string, userIds: string[]): Promise<Recipient[]> {
       const [{ data: members, error: mError }, { data: profiles, error: pError }, { data: prefs, error: prError }] = await Promise.all([
         db.rpc("workspace_member_profiles", { p_workspace_id: workspaceId }),
-        db.from("user_profiles").select("user_id, phone, whatsapp_phone, whatsapp_same_as_phone").in("user_id", userIds),
+        db.from("user_profiles").select("user_id, phone, whatsapp_phone, whatsapp_same_as_phone, slack_user_id").in("user_id", userIds),
         db.from("user_preferences").select("user_id, notification_prefs").in("user_id", userIds),
       ]);
       if (mError) throw new Error(`no pude leer el equipo: ${mError.message}`);
@@ -218,7 +231,7 @@ export function dbDeliverDeps(db: Db) {
       return userIds.map((userId) => {
         const p = profileOf.get(userId);
         const whatsapp = p ? (p.whatsapp_same_as_phone ? p.phone : p.whatsapp_phone) : null;
-        return { userId, email: emailOf.get(userId) ?? null, whatsapp: whatsapp ?? null, prefs: prefsOf.get(userId) ?? {} };
+        return { userId, email: emailOf.get(userId) ?? null, whatsapp: whatsapp ?? null, slack: p?.slack_user_id ?? null, prefs: prefsOf.get(userId) ?? {} };
       });
     },
     async recentDeliveries(n: DeliveryNotification, types: readonly string[], since: Date): Promise<Array<Record<string, unknown>>> {

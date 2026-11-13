@@ -90,6 +90,8 @@ const DISCOVERED_CONFIG_KEYS = [
   ...RESEND_CONNECTION_CONFIG_KEYS,
   // La API de Conversiones (00328): «Mandar cada pago cobrado como compra» y el nombre del Pixel. Mismo motivo.
   ...META_CAPI_OWN_CONFIG_KEYS,
+  // Slack (Servicios A4): el nombre del espacio de trabajo que devolvio `auth.test`.
+  "team_name",
 ] as const;
 
 function discoveredConfigOf(previous: unknown): Record<string, Json> {

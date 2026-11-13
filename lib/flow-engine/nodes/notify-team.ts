@@ -12,11 +12,15 @@ import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import type { FlowExecutionContext } from "../types";
 import { interpolateVariables } from "../interpolate";
 import { createNotification } from "@/lib/notifications/create";
+import { serviceOwnerOf } from "./service-owner"; // @plantilla-quitar(servicios)
+import { pickServiceOwnerTarget } from "@/lib/services/service-owner-target"; // @plantilla-quitar(servicios)
 
 export interface NotifyTeamNodeData {
   /** `users`: las elegidas. `reporter`: quien envió el reporte. `both`: las dos. */
-  to?: "users" | "reporter" | "both";
+  to?: "users" | "reporter" | "both" | "service_owner";
   userIds?: string[];
+  /** Con `service_owner` (Servicios A4, F157): a quién va si el servicio no tiene responsable. */
+  fallbackUserId?: string;
   title?: string;
   body?: string;
 }
@@ -43,7 +47,17 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Noti
     return;
   }
 
-  const wanted = notifyRecipients(data, context.memberUserId);
+  let wanted = notifyRecipients(data, context.memberUserId);
+  // @plantilla-desde(servicios)
+  if (data.to === "service_owner") {
+    const owner = await serviceOwnerOf(supabase, context.workspaceId, context.contactId, vars);
+    const ids = [owner, data.fallbackUserId].filter((x): x is string => typeof x === "string" && !!x);
+    const { data: rows } = ids.length ? await supabase.from("workspace_members").select("user_id").eq("workspace_id", context.workspaceId).in("user_id", ids) : { data: [] };
+    const team = new Set((rows ?? []).map((r) => r.user_id));
+    const picked = pickServiceOwnerTarget(owner, data.fallbackUserId ?? null, (id) => team.has(id)).userId;
+    wanted = picked ? [picked] : [];
+  }
+  // @plantilla-hasta(servicios)
   if (wanted.length === 0) {
     context.noteStep?.({ status: "skipped", reason: "No hay a quién avisarle." });
     return;

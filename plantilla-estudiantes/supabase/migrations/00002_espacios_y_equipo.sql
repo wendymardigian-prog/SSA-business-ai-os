@@ -44,15 +44,18 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   whatsapp_same_as_phone boolean DEFAULT true NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  slack_user_id text,
   CONSTRAINT user_profiles_pkey PRIMARY KEY (user_id),
   CONSTRAINT user_profiles_avatar_path_check CHECK (((avatar_path IS NULL) OR (avatar_path ~~ ((user_id)::text || '/%'::text)))),
   CONSTRAINT user_profiles_phone_check CHECK (((phone IS NULL) OR (phone ~ '^\+[0-9]{8,15}$'::text))),
+  CONSTRAINT user_profiles_slack_user_id_check CHECK (((slack_user_id IS NULL) OR (slack_user_id ~ '^[UW][A-Z0-9]{2,}$'::text))),
   CONSTRAINT user_profiles_whatsapp_phone_check CHECK (((whatsapp_phone IS NULL) OR (whatsapp_phone ~ '^\+[0-9]{8,15}$'::text))),
   CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.user_profiles IS 'Datos personales de cada persona del equipo (foto, telefono, WhatsApp), iguales en todos los negocios. El nombre sigue en auth.users.user_metadata.full_name.';
 COMMENT ON COLUMN public.user_profiles.whatsapp_phone IS 'WhatsApp para los avisos que la persona elija. Solo se usa si whatsapp_same_as_phone es false; si no, vale phone.';
+COMMENT ON COLUMN public.user_profiles.slack_user_id IS 'El ID de Slack de la persona (U… o W…) para los avisos por mensaje directo. NULL = sin cargar.';
 REVOKE ALL ON TABLE public.user_profiles FROM anon;
 REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.user_profiles FROM authenticated;
 

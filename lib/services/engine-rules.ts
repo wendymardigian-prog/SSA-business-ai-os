@@ -264,13 +264,27 @@ export interface OwnerPickInput {
   fallback: string | null;
   /** Personas que hoy son miembros del negocio. */
   activeMembers: string[];
+  /**
+   * Servicios A4 (F151): el tope de cartera de cada persona (vacío = sin tope) y cuántos servicios tiene hoy a cargo
+   * (activos, pausados o por confirmar, de TODOS los productos). Sin topes, elige exactamente igual que antes.
+   */
+  capacity?: Record<string, number>;
+  loadCounts?: Record<string, number>;
 }
 export interface OwnerPick {
   userId: string | null;
   usedFallback: boolean;
+  /** Solo si quedó en el respaldo porque todos los del reparto llegaron a su tope (aviso `svc_capacity_full`). */
+  capacityFull?: true;
+}
+/** Si la persona llegó a su tope de cartera. */
+export function atCapacity(i: Pick<OwnerPickInput, "capacity" | "loadCounts">, u: string): boolean {
+  const cap = i.capacity?.[u];
+  if (cap === undefined || cap === null) return false;
+  return (i.loadCounts?.[u] ?? 0) >= cap;
 }
 function roundRobin(members: string[], i: OwnerPickInput): string | null {
-  const live = members.filter((m) => i.activeMembers.includes(m));
+  const live = members.filter((m) => i.activeMembers.includes(m) && !atCapacity(i, m));
   if (live.length === 0) return null;
   return [...live].sort((a, b) => {
     const ca = i.activeCounts[a] ?? 0;
@@ -290,9 +304,14 @@ export function pickOwner(i: OwnerPickInput): OwnerPick {
   else if (i.mode === "previous") chosen = live(i.previousOwner);
   else if (i.mode === "conditions") {
     chosen = live(i.conditionUserId);
+    if (chosen && atCapacity(i, chosen)) chosen = null;
     if (!chosen && i.conditionMembers) chosen = roundRobin(i.conditionMembers, i);
     if (!chosen && i.members.length > 0) chosen = roundRobin(i.members, i);
   }
   if (chosen) return { userId: chosen, usedFallback: false };
+  // Si sin los topes hubiera habido alguien, el respaldo fue por los topes: se avisa.
+  const hadCapacity = i.capacity && Object.keys(i.capacity).length > 0;
+  const withoutCaps = hadCapacity && (i.mode === "round_robin" || i.mode === "conditions") ? pickOwner({ ...i, capacity: {} }) : null;
+  if (withoutCaps && !withoutCaps.usedFallback) return { userId: live(i.fallback), usedFallback: true, capacityFull: true };
   return { userId: live(i.fallback), usedFallback: true };
 }

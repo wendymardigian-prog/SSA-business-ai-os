@@ -310,6 +310,11 @@ async function main() {
       { key: "formulario-editor", path: `/dashboard/formularios/${data.formId}` },
       { key: "formulario-respuestas", path: `/dashboard/formularios/${data.formId}/respuestas` },
       { key: "agenda", path: "/dashboard/agenda" },
+      // Servicios A4: Tareas (agrupar por vencimiento, filtro «Vínculo»), Mi cuenta con Slack y las grabaciones con servicio.
+      { key: "tareas", path: "/dashboard/tareas" },
+      { key: "tareas-por-vencimiento", path: "/dashboard/tareas?group=due" },
+      { key: "grabaciones-por-revisar", path: "/dashboard/llamadas?servicio=review" },
+      { key: "mi-cuenta-avisos", path: "/dashboard/cuenta?tab=notificaciones" },
     ].filter((p) => !ONLY || p.key.includes(ONLY));
 
     browser = await launchChrome();

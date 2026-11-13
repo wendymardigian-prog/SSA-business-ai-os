@@ -48,6 +48,8 @@ const NODOS_DE_ACCION = [
   // Grupos y comunidades de WhatsApp (00344).
   "send_to_group",
   "invite_to_group",
+  // «Enviar a Slack» (Servicios A4, F158).
+  "send_slack",
 ] as const;
 
 describe("registro de nodos", () => {
@@ -67,10 +69,11 @@ describe("registro de nodos", () => {
     // + `send_meta_event` ("Enviar evento a Meta", API de Conversiones, 00328).
     // + `qualify_lead` ("Calificar lead", 00329).
     // + `send_to_group` y `invite_to_group` ("Enviar al grupo", "Invitar a un grupo", 00344).
+    // + `send_slack` ("Enviar a Slack", Servicios A4, F158).
     // + las seis acciones de Servicios (svc_complete_step, svc_change_phase, svc_start_challenge, svc_extend_service,
     //   svc_pause_service; Servicios A1, F25; y svc_issue_certificate, bloque CE).  @plantilla-quitar(servicios)
-    expect(listNodes()).toHaveLength(44); // @plantilla-quitar(ventas,webhooks,tareas,servicios,disenador)
-    // @plantilla-sin(ventas,webhooks,tareas,disenador): expect(listNodes()).toHaveLength(31);
+    expect(listNodes()).toHaveLength(45); // @plantilla-quitar(ventas,webhooks,tareas,servicios,disenador)
+    // @plantilla-sin(ventas,webhooks,tareas,disenador): expect(listNodes()).toHaveLength(32);
   });
 
   it.each(NODOS_DE_ACCION)(

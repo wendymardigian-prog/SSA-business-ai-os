@@ -45,3 +45,7 @@ export function dateOfInstant(iso: string, timeZone: string): string {
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
+
+/** Lo más lejos que «Crear tarea» pone un vencimiento («en N días»). Vive acá y no en el nodo para que el panel del
+ * lienzo (navegador) no importe el nodo, que arrastra código de servidor. */
+export const MAX_DUE_DAYS = 365;

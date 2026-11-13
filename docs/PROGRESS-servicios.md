@@ -1,4 +1,93 @@
-# PROGRESS — Servicios v12 (Corridas A1 y A2)
+# PROGRESS — Servicios v12 (Corridas A1, A2 y A4)
+
+# Corrida A4 (rama `feat/servicios-a4`, desde el 12/11/2026)
+
+Plano: §20 de `claude/v12/requerimientos-v12-servicios.md` v1.11 (decisiones 476 a 481, F132 a F158). Lo común con RER: reuniones unidas al servicio, propuestas del analizador, camino (bloqueo, evidencia, checklist), tareas, automatizaciones y avisos (Slack). Lo que no entra: §20.6 y «Funcionalidades que no se construyen ahora».
+
+**Para retomar:** esta sección, la sección «A4» de `docs/PENDIENTE-servicios.md` y `docs/servicios/punto-de-partida-a4.json`. Después de cada funcionalidad: suite completa (vitest, tsc, lint) y commit.
+
+## Diferencias con el plano (confirmadas en el código el 12/11)
+
+- **SV030 y SV031 ya existen** (`svc_extend_plan`): bloqueo = **SV033**, evidencia = **SV034**.
+- **`service_ending_soon` nunca disparó**: la pantalla guarda `days_before` y `svc_daily_run` lee `days`. En producción hay 0 disparadores de ese tipo. Se arregla en la reescritura de `svc_daily_run` (M7): lee los dos.
+- **No hay `lib/services/owner-pick.ts`**: la gemela del reparto es `pickOwner` (`engine-rules.ts`), casos en `owner-pick.cases.json`.
+- **`task_hook` no mira el estado del servicio**: M5 lo reescribe (servicio activo o pausado), como pide F156. Cambia a propósito también `svc_mark_item` (anota «completado estando bloqueado»).
+- **`integration_alert` no existe**: es `integration_attention`, con la causa nueva `invalid_token`.
+- **No hay `client_ref` en los mensajes**: el reintento de un mensaje aprobado reusa su mensaje fallido (`retryOf`). La bandeja no chequea la ventana de 24 h (Evolution no tiene ventana): «la regla de siempre».
+- **No hay regla de «transcripción muy corta»**: se crea `MIN_PROPOSAL_TRANSCRIPT_CHARS = 600`.
+- **No hay `callListColumns()`** ni contadores genéricos en el menú: se crean.
+- **`calls.summary` no tiene `source`**: lo cargado a mano va en `summary.manual` y el resumen automático lo conserva.
+- **La ficha del servicio no tiene drawer del paso**: candado y evidencia en la fila del paso, con un panel lateral nuevo.
+
+## Migraciones (A4)
+
+Se aplican en el orden en que las usa cada bloque, numeradas sin saltear (Slack se usa en el bloque 1; las columnas de tareas, en las propuestas y en el camino):
+
+| Orden | Número | Plano | Qué | Bloque |
+|---|---|---|---|---|
+| 1 | 00364 | M1 | `public.comments` y sus funciones | A4.1 |
+| 2 | 00365 | M9 | `user_profiles.slack_user_id`; `integration_configs.type` + `slack` | A4.1 |
+| 3 | 00366 | M2 | `calls.service_id/service_link/proposals`; `call_analysis_profiles.proposals`; `call_proposal_claim` | A4.2 |
+| 4 | 00367 | M6 | Enganche del módulo en `calls` (`svc_call_link_plan`), paso «cuando hay grabación», barrido horario de reuniones sin grabación | A4.2 |
+| 5 | 00368 | M3 | `tasks.service_id/call_id/checklist`; `tasks.source` + `call`; backfill de `service_id` en las tareas del camino | A4.3 |
+| 6 | 00369 | M4 | `service_items.evidence`, bucket `service-evidence`, reglas del camino, completar a mano, `svc_ensure_task`, bloqueo y evidencia | A4.4 |
+| 7 | 00370 | M5 | Guardia de completar tareas; cierre de tareas al terminar el servicio; `task_hook` | A4.4 |
+| 8 | 00371 | M8 | Topes de cartera en el reparto | A4.4 |
+| 9 | 00372 | M7 | Disparadores relativo y periódico en `svc_daily_run` | A4.6 |
+
+Antes de las que reescriben funciones, las definiciones de la base van a `docs/servicios/definiciones-viejas-a4.sql`.
+
+**Estado (12/11/2026 UTC):** las nueve **aplicadas y registradas**, cada una después de ensayarla en una transacción que se deshizo sola y con su `verify-servicios-migracion --a4 M<n>` en verde: 00364 (`20261112144929`), 00365 (`…145055`), 00366 (`…145256`), 00367 (`…145301`, corregida el mismo día: una comparación con NULL dejaba vincular una reunión sin área ni tipo; el SQL registrado es el corregido), 00368 (`…150607`, el relleno no tocó ninguna fila), 00369 (`…151026`), 00370 (`…151140`), 00371 (`…151146`) y 00372 (`…152911`). Las definiciones viejas guardadas coinciden con las huellas del punto de partida.
+
+**Verificado:** `verify-comments`, `verify-services` (a4, sv2, prd), `verify-calls`, `verify-scheduling`, `verify-tasks` y `verify-flow-runs` en verde después de cada migración. `verify-services --bloque a4` prueba contra la base las gemelas (call-link 22, lock 14, relativos 21, reparto 17, camino 56 casos), el vínculo de reuniones, el candado (SV033), la evidencia (SV034), el checklist en la tarea, la guardia de tareas, el cierre al cancelar, el módulo apagado y el barrido de los disparadores relativos. Suite: vitest, tsc y lint (0 errores, 37 avisos como el punto de partida).
+
+**Revisión visual (tu sesión, navegador integrado, 1440 y 390 px, claro y oscuro):** Tareas agrupadas por vencimiento y el panel con Checklist y Comentarios; Grabaciones (sin grabaciones en el negocio: estado vacío); Productos con «Reparto de clientes»; Mi cuenta › Notificaciones (sin Slack conectado, la columna no aparece); el editor del camino (duplicar, «Lo completan», «Se puede completar desde», «Evidencia»). Se corrigió «después de el inicio» y el estilo de esos títulos. Sin errores en consola ni en el servidor.
+
+## Checklist (A4)
+
+**A4.1 · Comentarios y avisos**
+- [x] **F132** Comentarios con @menciones (`public.comments`, `CommentThread`, `verify-comments`)
+- [x] **F133** Slack como canal de avisos (tarjeta, ID en Mi cuenta, columna Slack, `deliver`)
+- [x] **F134** Avisos nuevos (`mentioned`, `call_service_review`, `call_missing_recording`, `call_proposals_pending`, `svc_capacity_full`, `call_note`)
+
+**A4.2 · Reuniones unidas al servicio**
+- [x] **F135** La reunión guarda su servicio (`call-link` con gemela SQL)
+- [x] **F136** Servicio en Grabaciones (columna, filtro, «por revisar», cabecera)
+- [x] **F137** Bloque «Reuniones» en la ficha del servicio, «Vincular las reuniones de este servicio», `backfill-call-services`
+- [x] **F138** Paso Reunión «cuando hay grabación» (motor en A4.2, regla de guardado en A4.4)
+- [x] **F139** Aviso de reunión sin grabación (barrido horario)
+- [x] **F140** Criterio de rúbrica que resta
+- [x] **F141** Cargar una reunión a mano
+
+**A4.3 · Propuestas del analizador**
+- [x] **F142** El analizador propone acciones
+- [x] **F143** Aprobar, editar o descartar (una sola vez)
+- [x] **F144** Mensaje para el cliente (al aprobar, de a uno)
+- [x] **F145** Actividad de la reunión y contador del menú
+
+**A4.4 · Camino y servicio**
+- [x] **F146** Paso bloqueado hasta una fecha o hasta otro paso
+- [x] **F147** Paso que pide evidencia
+- [x] **F148** Checklist del paso
+- [x] **F149** Duplicar fases y pasos
+- [x] **F150** Workflows que completan el paso
+- [x] **F151** Tope de cartera por persona
+
+**A4.5 · Tareas**
+- [x] **F152** La tarea se vincula a un servicio y a una reunión
+- [x] **F153** Checklist y evidencia en la tarea (guardia)
+- [x] **F154** Resumen del servicio en la tarea
+- [x] **F155** Crear una tarea desde una reunión
+- [x] **F156** Cierre al terminar el servicio, agrupar por vencimiento, comentarios
+
+**A4.6 · Automatizaciones**
+- [x] **F157** «El responsable del servicio», con alternativa obligatoria
+- [x] **F158** Disparadores relativo y periódico; acción «Enviar a Slack»
+
+**Cierre**
+- [x] `verify-*` de A1 y A2 contra `punto-de-partida-a4.json` (54 de 55 igual o mejor; `student-schema` arreglado), huellas, módulo apagado, `verify-responsive` (218 de 218), revisión visual, docs y PR #227 (sin merge). Detalle en PENDIENTE (A4 › Cierre).
+
+---
 
 # Corrida A2 (rama `feat/servicios-a2`, desde el 11/11/2026)
 

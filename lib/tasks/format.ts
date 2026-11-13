@@ -104,7 +104,7 @@ export function flowIdOf(sourceRef: string | null): string | null {
  * conversacion cuando existe (F26).
  */
 export function formatSource(
-  task: Pick<TaskRow, "source" | "source_ref" | "conversation_id">,
+  task: Pick<TaskRow, "source" | "source_ref" | "conversation_id"> & { call_id?: string | null },
   ctx: SourceContext = {},
 ): SourceInfo {
   switch (task.source as TaskSource) {
@@ -119,6 +119,9 @@ export function formatSource(
       return { label: "Agente", href: task.conversation_id ? `/dashboard/inbox?c=${task.conversation_id}` : null };
     case "cx":
       return { label: "CX", href: null };
+    case "call":
+      // Servicios A4 (F155): la tarea salió de una reunión grabada.
+      return { label: "Reunión", href: task.call_id ? `/dashboard/llamadas/${task.call_id}` : null };
   }
 }
 

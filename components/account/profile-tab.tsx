@@ -4,9 +4,9 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Moon, Sun, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { changeMyPassword, removeMyAvatar, updateMyContact, updateMyName, uploadMyAvatar } from "@/lib/actions/account";
+import { changeMyPassword, removeMyAvatar, updateMyContact, updateMyName, updateMySlackId, uploadMyAvatar } from "@/lib/actions/account";
 import { setViewerTimezone } from "@/lib/actions/user-preferences";
-import { parseContactInput, parseDisplayName, parsePasswordChange, PASSWORD_MIN } from "@/lib/account/validation";
+import { parseContactInput, parseDisplayName, parsePasswordChange, parseSlackUserId, PASSWORD_MIN } from "@/lib/account/validation";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { initialsOf } from "@/lib/shared/people";
 import { useHtmlClass } from "@/components/use-html-class";
@@ -25,6 +25,8 @@ export interface ProfileTabProps {
   timezone: string;
   /** El boton de prueba de WhatsApp, si el negocio ya eligio desde donde se mandan los avisos. */
   whatsappTest?: React.ReactNode;
+  /** El ID de Slack (Servicios A4, F133) y si el negocio conectó Slack. */
+  slack?: { connected: boolean; userId: string | null };
 }
 
 /** Mi cuenta → Perfil: una columna de tarjetas, cada una con su propio guardado. */
@@ -41,6 +43,7 @@ export function ProfileTab(props: ProfileTabProps) {
         whatsappSameAsPhone={props.whatsappSameAsPhone}
         whatsappTest={props.whatsappTest}
       />
+      <SlackCard connected={Boolean(props.slack?.connected)} userId={props.slack?.userId ?? null} />
       <PreferencesCard timezone={props.timezone} />
       <SecurityCard />
     </div>
@@ -226,6 +229,88 @@ function PhotoAndNameCard({ email, name: initialName, avatarUrl: initialUrl }: {
 // ---------------------------------------------------------------------------
 // Telefono y WhatsApp
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Slack (Servicios A4, F133)
+// ---------------------------------------------------------------------------
+
+function SlackCard({ connected, userId }: { connected: boolean; userId: string | null }) {
+  const router = useRouter();
+  const [value, setValue] = useState(userId ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [saving, startSave] = useTransition();
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaved(false);
+    const parsed = parseSlackUserId(value);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+    setError(null);
+    startSave(async () => {
+      const result = await updateMySlackId({ slackUserId: value });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setValue(result.slackUserId ?? "");
+      setSaved(true);
+      router.refresh();
+    });
+  }
+
+  return (
+    <AccountCard
+      id="slack"
+      title="Tu ID de Slack"
+      description={
+        connected
+          ? "Para que los avisos que elijas en Notificaciones te lleguen por mensaje directo de Slack."
+          : "Este negocio todavía no conectó Slack. Podés dejarlo cargado para cuando lo conecte."
+      }
+    >
+      <form onSubmit={onSubmit} className="space-y-3">
+        <div>
+          <label htmlFor="account-slack" className="mb-1 block text-xs font-medium">
+            ID de Slack
+          </label>
+          <input
+            id="account-slack"
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setSaved(false);
+            }}
+            placeholder="U012AB3CD"
+            autoComplete="off"
+            spellCheck={false}
+            className={inputClass}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            En Slack, abrí tu perfil, tocá los tres puntos y elegí «Copiar ID de miembro».{" "}
+            <a
+              href="https://slack.com/help/articles/360052445454"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-foreground underline underline-offset-2"
+            >
+              Cómo encontrarlo
+            </a>
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" className={primaryButtonClass} disabled={saving}>
+            {saving ? "Guardando…" : "Guardar"}
+          </button>
+          <SaveStatus error={error} saved={saved} />
+        </div>
+      </form>
+    </AccountCard>
+  );
+}
 
 function ContactCard({
   phone: initialPhone,

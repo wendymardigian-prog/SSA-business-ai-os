@@ -40,9 +40,9 @@ describe("triggers registrados", () => {
     }
     // + los tres de Formularios, los seis de Ventas, el del reporte de fin de día y el de webhooks (ver abajo),
     // + los dos de Tareas (task_completed, task_overdue), los tres de grupos de WhatsApp y «En una fecha y hora».
-    // + los 26 de Servicios (Servicios A1, 00336) y los 3 de afiliados (00343). Este bloque entero no viaja a la
-    // plantilla (es de Llamadas).
-    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1 + 2 + 3 + 1 + 26 + 3);
+    // + los 26 de Servicios (Servicios A1, 00336), los 3 de afiliados (00343) y los 2 relativos de Servicios A4
+    // (00372). Este bloque entero no viaja a la plantilla (es de Llamadas).
+    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1 + 2 + 3 + 1 + 26 + 3 + 2);
   });
   // @plantilla-hasta(llamadas)
 

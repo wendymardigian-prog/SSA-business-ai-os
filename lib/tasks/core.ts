@@ -54,7 +54,7 @@ async function notify(ctx: TaskCtx, build: () => TaskNotice[]): Promise<void> {
 }
 
 export const TASK_COLUMNS =
-  "id, workspace_id, title, description, status, priority, start_date, due_date, due_time, duration_minutes, completed_at, owner_id, follower_ids, project, project_key, blocked_by, contact_id, conversation_id, source, source_ref, position, created_by, created_at, updated_at, deleted_at";
+  "id, workspace_id, title, description, status, priority, start_date, due_date, due_time, duration_minutes, completed_at, owner_id, follower_ids, project, project_key, blocked_by, contact_id, conversation_id, source, source_ref, service_id, call_id, checklist, position, created_by, created_at, updated_at, deleted_at";
 
 /** Lo que de una tarea se audita cuando cambia. */
 const AUDITED_FIELDS = [
@@ -125,6 +125,36 @@ async function checkLinks(ctx: TaskCtx, contactId: string | null | undefined, co
   return null;
 }
 
+/**
+ * Servicios A4 (F152): el servicio tiene que ser del negocio y DEL CONTACTO de la tarea (y verlo quien lo vincula);
+ * la reunión, una que la persona ve. Con el módulo apagado no hay servicios que vincular.
+ */
+async function checkServiceLinks(ctx: TaskCtx, contactId: string | null, serviceId: string | null | undefined, callId: string | null | undefined): Promise<string | null> {
+  if (serviceId) {
+    if (!contactId) return "Para vincular un servicio, la tarea tiene que tener un contacto.";
+    const { data } = await (ctx.supabase as unknown as { schema: (s: string) => Db }).schema("app_servicio").from("services" as never).select("id, contact_id").eq("id", serviceId).eq("workspace_id", ctx.workspaceId).maybeSingle();
+    const row = data as { contact_id?: string } | null;
+    if (!row) return "No encontramos ese servicio.";
+    if (row.contact_id !== contactId) return "Ese servicio es de otro contacto.";
+  }
+  if (callId) {
+    const { data } = await ctx.supabase.from("calls").select("id").eq("id", callId).eq("workspace_id", ctx.workspaceId).maybeSingle();
+    if (!data) return "No encontramos esa reunión.";
+  }
+  return null;
+}
+
+/** Escribe lo que la sesión no puede (00368: servicio y reunión), después de que la sesión escribió lo suyo. */
+async function writeServerColumns(ctx: TaskCtx, taskId: string, patch: Record<string, unknown>): Promise<TaskRow | null> {
+  if (Object.keys(patch).length === 0) return null;
+  const { data, error } = await ctx.service.from("tasks").update(patch as never).eq("id", taskId).eq("workspace_id", ctx.workspaceId).select(TASK_COLUMNS).maybeSingle();
+  if (error) {
+    console.error("[tareas] no pude vincular el servicio o la reunión:", error.message);
+    return null;
+  }
+  return (data as unknown as TaskRow | null) ?? null;
+}
+
 async function loadVisibleTask(ctx: TaskCtx, taskId: string): Promise<TaskRow | null> {
   const { data } = await ctx.supabase
     .from("tasks")
@@ -149,7 +179,7 @@ export async function createTaskCore(ctx: TaskCtx, raw: unknown): Promise<TaskAc
 
   const peopleError = await checkPeople(ctx, ownerId, followers);
   if (peopleError) return fail("validation", peopleError);
-  const linkError = await checkLinks(ctx, input.contact_id, input.conversation_id);
+  const linkError = (await checkLinks(ctx, input.contact_id, input.conversation_id)) ?? (await checkServiceLinks(ctx, input.contact_id ?? null, input.service_id, input.call_id));
   if (linkError) return fail("validation", linkError);
 
   const row = {
@@ -176,7 +206,11 @@ export async function createTaskCore(ctx: TaskCtx, raw: unknown): Promise<TaskAc
     console.error("[tareas] no pude crear la tarea:", error?.message);
     return fail(error?.code === "42501" ? "forbidden" : "validation", error?.code === "42501" ? "No tenés permiso para crear tareas." : mapDbError(error?.message));
   }
-  const task = data as unknown as TaskRow;
+  let task = data as unknown as TaskRow;
+  const serverCols: Record<string, unknown> = {};
+  if (input.service_id) serverCols.service_id = input.service_id;
+  if (input.call_id) serverCols.call_id = input.call_id;
+  task = (await writeServerColumns(ctx, task.id, serverCols)) ?? task;
 
   await logAudit({
     supabase: ctx.supabase,
@@ -227,6 +261,16 @@ export async function updateTaskCore(ctx: TaskCtx, taskId: string, raw: unknown)
     patch.conversation_id !== undefined && patch.conversation_id !== before.conversation_id ? patch.conversation_id : undefined,
   );
   if (linkError) return fail("validation", linkError);
+  const finalContact = patch.contact_id !== undefined ? patch.contact_id : before.contact_id;
+  const finalService = patch.service_id !== undefined ? patch.service_id : before.service_id;
+  const serviceError = await checkServiceLinks(
+    ctx,
+    finalContact,
+    // Cambiar el contacto también vuelve a mirar el servicio que quedaba.
+    patch.service_id !== undefined || patch.contact_id !== undefined ? finalService : undefined,
+    patch.call_id !== undefined && patch.call_id !== before.call_id ? patch.call_id : undefined,
+  );
+  if (serviceError) return fail("validation", serviceError);
 
   const nextStart = patch.start_date !== undefined ? patch.start_date : before.start_date;
   const nextDue = patch.due_date !== undefined ? patch.due_date : before.due_date;
@@ -250,8 +294,13 @@ export async function updateTaskCore(ctx: TaskCtx, taskId: string, raw: unknown)
     regapped = regap.blockers;
   }
 
-  const { project, ...rest } = patch;
+  const { project, service_id: serviceIdPatch, call_id: callIdPatch, ...rest } = patch;
   const update: Record<string, unknown> = { ...rest };
+  const serverCols: Record<string, unknown> = {};
+  if (serviceIdPatch !== undefined) serverCols.service_id = serviceIdPatch;
+  if (callIdPatch !== undefined) serverCols.call_id = callIdPatch;
+  // Solo servicio o reunión: la sesión igual escribe (sin cambiar nada) para que la RLS diga si puede editarla.
+  if (Object.keys(update).length === 0 && project === undefined) update.title = before.title;
   if (patch.due_date === null) {
     update.due_time = null;
     update.duration_minutes = null;
@@ -281,6 +330,7 @@ export async function updateTaskCore(ctx: TaskCtx, taskId: string, raw: unknown)
   }
   if (!data) return fail("forbidden", FORBIDDEN_MESSAGE);
   let after = data as unknown as TaskRow;
+  after = (await writeServerColumns(ctx, taskId, serverCols)) ?? after;
 
   if (regapped) {
     const { data: regapRow } = await ctx.service
@@ -466,6 +516,9 @@ export async function completeTaskCore(
     p_expected: p_expected as unknown as Json,
   });
   if (error) {
+    // Servicios A4 (F153): la tarea de un paso bloqueado o sin la evidencia que pide no se completa. El texto de la
+    // base ya está en castellano («Este paso se puede completar desde el 13/11.»).
+    if (error.code === "SV033" || error.code === "SV034") return fail("validation", error.message);
     console.error("[tareas] complete_task_with_shifts:", error.message);
     return fail("server", "No pude completar la tarea. Probá de nuevo.");
   }

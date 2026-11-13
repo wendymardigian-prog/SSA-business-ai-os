@@ -11,7 +11,7 @@ import { TASK_PRIORITIES, TASK_SOURCES, TASK_STATUSES, type TaskPriority, type T
 export const VIEW_MODES = ["table", "board"] as const;
 export type TasksViewMode = (typeof VIEW_MODES)[number];
 
-export const GROUP_BYS = ["none", "project", "status"] as const;
+export const GROUP_BYS = ["none", "project", "status", "due"] as const;
 export type GroupBy = (typeof GROUP_BYS)[number];
 
 export const SORT_COLUMNS = ["title", "status", "owner", "due", "priority", "project", "created"] as const;
@@ -25,6 +25,9 @@ export interface SortSpec {
 
 /** Valores especiales de los filtros de persona y de proyecto. */
 export const ME = "me";
+
+export const TASK_LINKS = ["service", "call"] as const;
+export type TaskLink = (typeof TASK_LINKS)[number];
 export const NONE = "none";
 
 export interface TasksViewState {
@@ -40,6 +43,8 @@ export interface TasksViewState {
   overdue: boolean;
   blocked: boolean;
   source: TaskSource[];
+  /** Servicios A4 (F152): las que tienen un servicio y/o una reunión vinculados. */
+  linked: TaskLink[];
   q: string;
   /** null = el orden por defecto (vencimiento, despues prioridad). */
   sort: SortSpec | null;
@@ -60,6 +65,7 @@ export const DEFAULT_VIEW_STATE: TasksViewState = {
   overdue: false,
   blocked: false,
   source: [],
+  linked: [],
   q: "",
   sort: null,
   group: "none",
@@ -117,6 +123,7 @@ export function parseViewState(input: Input): TasksViewState {
     overdue: first(input, "overdue") === "1",
     blocked: first(input, "blocked") === "1",
     source: oneOf(TASK_SOURCES, all(input, "source")),
+    linked: oneOf(TASK_LINKS, all(input, "linked")),
     q,
     sort,
     group: (GROUP_BYS as readonly string[]).includes(group ?? "") ? (group as GroupBy) : "none",
@@ -137,6 +144,7 @@ export function serializeViewState(state: TasksViewState): URLSearchParams {
   if (state.overdue) p.set("overdue", "1");
   if (state.blocked) p.set("blocked", "1");
   for (const v of state.source) p.append("source", v);
+  for (const v of state.linked) p.append("linked", v);
   if (state.q) p.set("q", state.q);
   if (state.sort) p.set("sort", `${state.sort.column}:${state.sort.dir}`);
   if (state.group !== "none") p.set("group", state.group);
@@ -156,6 +164,7 @@ export function countActiveFilters(state: TasksViewState): number {
     (state.overdue ? 1 : 0) +
     (state.blocked ? 1 : 0) +
     (state.source.length > 0 ? 1 : 0) +
+    (state.linked.length > 0 ? 1 : 0) +
     (state.q ? 1 : 0) +
     (state.mine ? 1 : 0)
   );

@@ -96,7 +96,8 @@ export const COMPLETE_ON: Partial<Record<ItemKind, readonly string[]>> = {
   contract: ["submitted"],
   activity: ["submitted", "reviewed", "passed"],
   quiz: ["passed", "finished"],
-  booking: ["booked", "attended"],
+  // Servicios A4 (F138): «cuando hay grabación».
+  booking: ["booked", "attended", "recorded"],
 };
 
 function refProblems(item: JourneyItem, ctx: JourneyContext, nm: string): string[] {
@@ -135,6 +136,55 @@ function refProblems(item: JourneyItem, ctx: JourneyContext, nm: string): string
     if (!(AVAILABLE_SECTIONS as readonly string[]).includes(ref.section as string)) p.push(`«${nm}»: elegí la sección`);
   }
   p.push(...buttonProblems(item, ref, nm));
+  p.push(...a4RefProblems(item, ref, nm));
+  return p;
+}
+
+// ── Servicios A4: bloqueo, evidencia, checklist y «cuando hay grabación» (F138, F146 a F148) ──────────────
+/** Los pasos que pueden pedir evidencia (un formulario ya es la evidencia). */
+export const EVIDENCE_KINDS: readonly ItemKind[] = ["team_task", "student_task", "checkbox"];
+export const EVIDENCE_TYPES = ["file", "link", "note"] as const;
+/** Los pasos que llevan checklist (viaja a su tarea). */
+export const CHECKLIST_KINDS: readonly ItemKind[] = ["team_task", "student_task"];
+export const CHECKLIST_MAX_ITEMS = 20;
+export const CHECKLIST_ITEM_MAX = 200;
+export const LOCK_FROM_VALUES = ["service_created", "service_start", "phase_start"] as const;
+
+/**
+ * `ref.lock`, `ref.evidence`, `ref.checklist` y `complete_on = 'recorded'`. Gemela del final de
+ * `app_servicio.journey_item_ref_problems` (00369): mismos textos, mismo orden. Que el paso del que espera sea
+ * ANTERIOR lo mira `validateJourneyTemplate` (necesita el orden).
+ */
+function a4RefProblems(item: JourneyItem, ref: Record<string, unknown>, nm: string): string[] {
+  const p: string[] = [];
+  if (ref.complete_on === "recorded" && item.kind !== "booking") p.push(`«${nm}»: «cuando hay grabación» es solo para pasos Reunión`);
+  if (has(ref, "lock")) {
+    const l = ref.lock;
+    const isAfter = isObj(l) && typeof l.after_item_key === "string" && ITEM_KEY.test(l.after_item_key) && Object.keys(l).length === 1;
+    const isFrom = isObj(l) && (LOCK_FROM_VALUES as readonly string[]).includes(l.from as string) && isInt(l.days) && (l.days as number) >= 0 && (l.days as number) <= 365 && Object.keys(l).length === 2;
+    if (!isAfter && !isFrom) p.push(`«${nm}»: el bloqueo no es válido`);
+  }
+  if (has(ref, "evidence")) {
+    const e = ref.evidence;
+    if (!EVIDENCE_KINDS.includes(item.kind)) p.push(`«${nm}»: la evidencia es solo para tareas y casillas`);
+    else if (
+      !isObj(e) ||
+      e.required !== true ||
+      !Array.isArray(e.kinds) ||
+      e.kinds.length === 0 ||
+      e.kinds.some((k) => !(EVIDENCE_TYPES as readonly string[]).includes(k as string)) ||
+      new Set(e.kinds).size !== e.kinds.length
+    ) {
+      p.push(`«${nm}»: elegí qué evidencia pide`);
+    }
+  }
+  if (has(ref, "checklist")) {
+    const c = ref.checklist;
+    if (!CHECKLIST_KINDS.includes(item.kind)) p.push(`«${nm}»: el checklist es solo para tareas`);
+    else if (!Array.isArray(c) || c.length > CHECKLIST_MAX_ITEMS || c.some((x) => typeof x !== "string" || !x.trim() || chars(x) > CHECKLIST_ITEM_MAX)) {
+      p.push(`«${nm}»: el checklist tiene hasta 20 puntos de hasta 200 caracteres`);
+    }
+  }
   return p;
 }
 
@@ -325,6 +375,11 @@ export function validateJourneyTemplate(template: unknown, ctx: JourneyContext =
       if (has(raw, "assignee") && !["student", "owner", "user"].includes(it.assignee as string)) p.push(`«${nm}»: elegí a cargo de quién está`);
       if (it.assignee === "user" && !(typeof it.assignee_user_id === "string" && UUID.test(it.assignee_user_id))) p.push(`«${nm}»: elegí la persona a cargo`);
       p.push(...refProblems(it, ctx, nm));
+      // F146: «cuando se complete otro paso» solo puede esperar a uno ANTERIOR (sin ciclos).
+      const lk = isObj(it.ref) ? (it.ref as Record<string, unknown>).lock : undefined;
+      if (isObj(lk) && typeof lk.after_item_key === "string" && ITEM_KEY.test(lk.after_item_key) && !seenBefore.has(lk.after_item_key)) {
+        p.push(`«${nm}»: un paso solo puede esperar a uno anterior`);
+      }
 
       const due = it.due_rule;
       if (due !== null && due !== undefined) {

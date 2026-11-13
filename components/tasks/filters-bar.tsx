@@ -10,7 +10,7 @@ import { PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_SOURCES, TASK_STA
 import { clearPanelFilters, countPanelFilters, ME, NONE, type GroupBy, type TasksViewState } from "@/lib/tasks/view-state";
 import { cn } from "@/lib/utils";
 
-const SOURCE_LABELS: Record<(typeof TASK_SOURCES)[number], string> = { manual: "Manual", flow: "Flujo", agent: "Agente", cx: "CX" };
+const SOURCE_LABELS: Record<(typeof TASK_SOURCES)[number], string> = { manual: "Manual", flow: "Flujo", agent: "Agente", cx: "CX", call: "Reunión" };
 
 interface Option {
   value: string;
@@ -200,6 +200,7 @@ export function TasksFiltersButton({
           <ChipGroup legend="Estado" options={TASK_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))} selected={state.status} onChange={(v) => set("status", v as TasksViewState["status"])} />
           <ChipGroup legend="Prioridad" options={TASK_PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] }))} selected={state.priority} onChange={(v) => set("priority", v as TasksViewState["priority"])} />
           <ChipGroup legend="Origen" options={TASK_SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] }))} selected={state.source} onChange={(v) => set("source", v as TasksViewState["source"])} />
+          <ChipGroup legend="Vínculo" options={[{ value: "service", label: "Con servicio" }, { value: "call", label: "Con reunión" }]} selected={state.linked} onChange={(v) => set("linked", v as TasksViewState["linked"])} />
 
           <fieldset>
             <legend className="mb-1.5 text-xs font-medium text-muted-foreground">Situación</legend>
@@ -227,6 +228,7 @@ export function TasksFiltersButton({
                 <option value="none">Sin agrupar</option>
                 <option value="project">Por proyecto</option>
                 <option value="status">Por estado</option>
+                <option value="due">Por vencimiento</option>
               </select>
             </label>
           )}

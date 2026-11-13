@@ -122,3 +122,16 @@ export function parseAvatarDataUrl(dataUrl: unknown): AvatarUpload {
   }
   return { ok: false, error: "La foto tiene que ser una imagen PNG, JPG o WEBP" };
 }
+
+/**
+ * El ID de Slack de la persona (Servicios A4, F133): U… o W… (mayúsculas y números). Vacío = sin cargar. El mismo
+ * formato que el CHECK de `user_profiles.slack_user_id` (00365).
+ */
+export function parseSlackUserId(raw: unknown): Parsed<string | null> {
+  const value = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  if (!value) return { ok: true, value: null };
+  if (!/^[UW][A-Z0-9]{2,}$/.test(value)) {
+    return { ok: false, error: "El ID de Slack empieza con U (o W) y sigue con letras y números, por ejemplo U012AB3CD." };
+  }
+  return { ok: true, value };
+}

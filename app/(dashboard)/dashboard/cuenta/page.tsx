@@ -25,11 +25,14 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   // Lo del negocio (si hay email conectado, desde que WhatsApp se avisa): con el
   // cliente de servicio, siempre para el workspace de la sesion. No sale ninguna clave.
   const service = await createServiceClient();
-  const [timezone, hasEmail, alertsChannel] = await Promise.all([
+  const [timezone, hasEmail, alertsChannel, slackRow] = await Promise.all([
     resolveViewerTimezone(workspace.timezone),
     emailConfigured(service, workspace.id),
     loadTeamAlertsChannel(service, workspace.id),
+    // Slack (Servicios A4, F133): solo si está conectado; la columna de Notificaciones aparece con eso.
+    service.from("integration_configs").select("is_active").eq("workspace_id", workspace.id).eq("type", "slack").eq("provider", "slack").maybeSingle(),
   ]);
+  const slack = { connected: Boolean(slackRow.data?.is_active), userId: profile.slackUserId };
 
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
   const fullName = typeof meta.full_name === "string" ? meta.full_name.trim() : "";
@@ -61,6 +64,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           whatsappSameAsPhone={profile.whatsappSameAsPhone}
           timezone={timezone}
           whatsappTest={alertsChannel && whatsappNumber ? <WhatsAppTestButton /> : null}
+          slack={slack}
         />
       }
       notifications={
@@ -69,6 +73,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           initialPrefs={prefs}
           email={{ address: user.email ?? "", configured: hasEmail }}
           whatsapp={{ number: whatsappNumber, channelReady: Boolean(alertsChannel), canConfigure: ctx.can("settings.general") }}
+          slack={slack}
         />
       }
       connections={<ConnectionsTab />}

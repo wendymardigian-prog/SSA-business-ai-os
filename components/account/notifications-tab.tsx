@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Bell, Mail, MessageCircle } from "lucide-react";
+import { Bell, Hash, Mail, MessageCircle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { resetNotificationPrefs, setNotificationPref } from "@/lib/actions/account";
 import { createSaveQueue } from "@/lib/roles/save-queue";
@@ -36,9 +36,11 @@ export interface NotificationsTabProps {
     /** Owner/Admin: puede ir a elegirlo. */
     canConfigure: boolean;
   };
+  /** Slack (Servicios A4, F133): la columna se ve solo si el negocio lo conectó. */
+  slack?: { connected: boolean; userId: string | null };
 }
 
-const ICONS: Record<NotificationChannel, typeof Bell> = { bell: Bell, email: Mail, whatsapp: MessageCircle };
+const ICONS: Record<NotificationChannel, typeof Bell> = { bell: Bell, email: Mail, whatsapp: MessageCircle, slack: Hash };
 
 function browserTimezone(): string | undefined {
   try {
@@ -49,7 +51,7 @@ function browserTimezone(): string | undefined {
 }
 
 /** Mi cuenta → Notificaciones: una tabla por seccion, tres interruptores por fila, guardado al instante. */
-export function NotificationsTab({ sections, initialPrefs, email, whatsapp }: NotificationsTabProps) {
+export function NotificationsTab({ sections, initialPrefs, email, whatsapp, slack }: NotificationsTabProps) {
   const [prefs, setPrefs] = useState<StoredPrefs>(initialPrefs);
   const [pending, setPending] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +60,15 @@ export function NotificationsTab({ sections, initialPrefs, email, whatsapp }: No
   const [queue] = useState(() => createSaveQueue(setPending));
 
   const whatsappReady = whatsapp.channelReady && Boolean(whatsapp.number);
-  const available: Record<NotificationChannel, boolean> = { bell: true, email: email.configured, whatsapp: whatsappReady };
+  const slackConnected = Boolean(slack?.connected);
+  const available: Record<NotificationChannel, boolean> = {
+    bell: true,
+    email: email.configured,
+    whatsapp: whatsappReady,
+    slack: slackConnected && Boolean(slack?.userId),
+  };
+  // La columna Slack solo aparece si el negocio conectó Slack.
+  const channels = NOTIFICATION_CHANNELS.filter((c) => c !== "slack" || slackConnected);
 
   function toggle(eventKey: string, channel: NotificationChannel, value: boolean) {
     const event = eventByKey(eventKey);
@@ -164,6 +174,25 @@ export function NotificationsTab({ sections, initialPrefs, email, whatsapp }: No
               )}
             </span>
           </li>
+          {slackConnected && (
+            <li className="flex items-start gap-2">
+              <Hash className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span>
+                <span className="font-medium">Slack:</span>{" "}
+                {slack?.userId ? (
+                  <>te llegan por mensaje directo.</>
+                ) : (
+                  <span className="text-muted-foreground">
+                    primero cargá tu ID de Slack en{" "}
+                    <Link href={`${accountTabHref("perfil")}#slack`} className="font-medium text-foreground underline underline-offset-2">
+                      Perfil
+                    </Link>
+                    .
+                  </span>
+                )}
+              </span>
+            </li>
+          )}
         </ul>
       </AccountCard>
 
@@ -187,7 +216,7 @@ export function NotificationsTab({ sections, initialPrefs, email, whatsapp }: No
       </div>
 
       {sections.map((section) => (
-        <SectionTable key={section.key} section={section} prefs={prefs} available={available} onToggle={toggle} />
+        <SectionTable key={section.key} section={section} prefs={prefs} available={available} channels={channels} onToggle={toggle} />
       ))}
     </div>
   );
@@ -197,18 +226,20 @@ function SectionTable({
   section,
   prefs,
   available,
+  channels,
   onToggle,
 }: {
   section: NotificationsTabSection;
   prefs: StoredPrefs;
   available: Record<NotificationChannel, boolean>;
+  channels: readonly NotificationChannel[];
   onToggle: (eventKey: string, channel: NotificationChannel, value: boolean) => void;
 }) {
   const rows = useMemo(
     () =>
       section.events.map((e) => {
         const event = eventByKey(e.key);
-        return { ...e, values: event ? resolveEventPrefs(prefs, event) : { bell: true, email: false, whatsapp: false } };
+        return { ...e, values: event ? resolveEventPrefs(prefs, event) : { bell: true, email: false, whatsapp: false, slack: false } };
       }),
     [section.events, prefs],
   );
@@ -220,8 +251,11 @@ function SectionTable({
           {section.title}
         </h2>
         {/* Los nombres de las columnas, una sola vez por tabla (en el celular van con cada interruptor). */}
-        <div className="hidden shrink-0 grid-cols-3 gap-2 text-center text-[11px] font-medium text-muted-foreground sm:grid" aria-hidden="true">
-          {NOTIFICATION_CHANNELS.map((c) => (
+        <div
+          className={cn("hidden shrink-0 gap-2 text-center text-[11px] font-medium text-muted-foreground sm:grid", channels.length === 4 ? "grid-cols-4" : "grid-cols-3")}
+          aria-hidden="true"
+        >
+          {channels.map((c) => (
             <span key={c} className="w-16">
               {CHANNEL_LABELS[c]}
             </span>
@@ -235,8 +269,8 @@ function SectionTable({
               <p className="text-sm font-medium">{row.label}</p>
               <p className="text-xs text-muted-foreground">{row.description}</p>
             </div>
-            <div className="grid shrink-0 grid-cols-3 gap-2">
-              {NOTIFICATION_CHANNELS.map((channel) => {
+            <div className={cn("grid shrink-0 gap-2", channels.length === 4 ? "grid-cols-4" : "grid-cols-3")}>
+              {channels.map((channel) => {
                 const Icon = ICONS[channel];
                 const disabled = !available[channel];
                 return (

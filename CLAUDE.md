@@ -2265,6 +2265,31 @@ node scripts/verify-affiliates.mjs
 node scripts/verify-portal-schema.mjs
 ```
 
+## Corrida A4 (12/11/2026): reuniones, propuestas, camino, tareas y automatizaciones
+
+Comentarios con @menciones, Slack como canal de avisos, reuniones unidas a su servicio, propuestas del analizador que se aprueban, pasos bloqueados o que piden evidencia, checklist, topes de cartera, tareas con servicio y reunión, y disparadores relativos. Avance en `docs/PROGRESS-servicios.md` («Corrida A4»), decisiones en `docs/PENDIENTE-servicios.md` («A4»), punto de partida en `docs/servicios/punto-de-partida-a4.json`. Detalle en [docs/servicios.md](docs/servicios.md), [docs/llamadas.md](docs/llamadas.md), [docs/tareas.md](docs/tareas.md), [docs/flow-registry.md](docs/flow-registry.md) y [docs/cuenta-y-notificaciones.md](docs/cuenta-y-notificaciones.md).
+
+- **Comentarios (`public.comments`, 00364)**: se leen con la visibilidad de su entidad (`can_see_comment_entity`, en `public` porque la política corre con quien lee) y se escriben SOLO por `post_comment` / `edit_comment` / `delete_comment` (CM001 no ve la entidad, CM002 no es suyo). Una mención a quien no ve la entidad se descarta sin avisar. Los del equipo viven en `lib/team-comments/` (`lib/comments/` es Instagram).
+- **Slack**: el token del bot en Vault (`SECRET_NAMES.slackBotToken`), el ID de cada persona en `user_profiles.slack_user_id` (U… o W…). La columna Slack de Notificaciones solo aparece con Slack conectado y nace apagada. Sin dependencias: `fetch` con `fetchImpl` inyectable; los tests nunca llaman a Slack.
+- **Reunión ↔ servicio**: `calls.service_id` (sin clave foránea, regla del 8/11) + `service_link`. Lo decide `svc_call_link_apply` (gemela `callLinkPlan`, `call-link.cases.json`); `manual` no lo pisa nada; con dudas, `review` y un aviso. El enganche sobre `calls` sale con el módulo apagado y nunca tumba la ingesta de Fathom.
+- **Propuestas del analizador**: nada se ejecuta solo. `call_proposal_claim` (pending|failed → executing con la fila bloqueada) para que dos personas no aprueben lo mismo; `call_proposal_patch` cambia una sola. El mensaje aprobado sale por el envío de la bandeja, de a uno, sin cola. Menos de 600 caracteres de transcripción: no se propone.
+- **Bloqueo y evidencia del paso** (en `ref`, 00369): SV033 (bloqueado) y SV034 (falta evidencia), gemelas `lockPlan` / `svc_lock_plan`. `svc_item_lock_state`, `svc_item_evidence_missing` y `svc_assert_completable` son SOLO del servidor. La evidencia la escriben `svc_add_evidence` / `svc_remove_evidence` con la sesión; el archivo va al bucket privado `service-evidence` (validado por bytes) y se abre con un link de 10 minutos.
+- **La guardia de tareas (`app_servicio.task_guard`, 00370) es la ÚNICA excepción** a «los enganches nunca frenan lo que los disparan»: frena completar la tarea de un paso bloqueado o sin evidencia, solo con el módulo prendido, el paso pendiente y el servicio activo o pausado. Cualquier otro error del módulo NO frena la tarea. Cancelar, terminar o renovar un servicio cierra sus tareas abiertas del camino con un comentario de sistema; los pasos no cambian.
+- **Tareas**: `service_id`, `call_id` y `checklist` los escribe SOLO el servidor (00368 no da escritura a la sesión); antes, la sesión reescribe un campo sin cambiarlo para que la RLS diga si puede editar. «Reunión» es un origen (`source = 'call'`).
+- **Topes de cartera** (`workspaces.service_team_settings`, 00371): el reparto saltea a quien llegó a su tope; sin topes elige igual que antes (los casos viejos de `owner-pick.cases.json` no cambian). Asignar a mano no se frena.
+- **Disparadores relativos y periódicos** (00372): los emite `svc_daily_run` una vez por disparador, servicio y día, con `trigger_id`; `serviceEventMatches` solo deja pasar el de ese disparador. «Termina en N días» ahora filtra (`days_before`).
+- **«El responsable del servicio»** en «Crear tarea» y «Avisar en la campana» exige un plan B al publicar. **«Enviar a Slack»** (`send_slack`, requisito `slack`) no necesita contacto.
+- **Con el módulo apagado, Grabaciones, Tareas y Automatizaciones andan como antes** (probado en `verify-services --bloque a4`).
+
+Migraciones `00364` a `00372`, **aplicadas y registradas** el 12/11/2026 UTC, cada una ensayada antes en una transacción que se deshizo sola (la 00367 se corrigió el mismo día; el SQL registrado es el corregido). En un clon nuevo van en orden y **antes** de desplegar el código. **La próxima libre es la `00373`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-comments.mjs
+node scripts/verify-services.mjs --bloque a4
+node scripts/verify-servicios-migracion.mjs --a4 M1   # M1 a M9 (o --todas)
+node scripts/backfill-call-services.mjs --dry-run     # vincular las reuniones viejas (--aplicar para escribir)
+```
+
 # Seguridad
 
 ## Autenticacion y sesiones

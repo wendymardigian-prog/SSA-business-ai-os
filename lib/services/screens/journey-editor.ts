@@ -20,8 +20,8 @@ import type { ItemKind } from "../availability";
 
 const clone = (t: JourneyTemplate): JourneyTemplate => ({ ...t, phases: t.phases.map((ph) => ({ ...ph, items: [...ph.items] })) });
 
-function uniqueKey(t: JourneyTemplate, prefix: "ph" | "it", random: () => number): string {
-  const used = new Set<string>([...t.phases.map((p) => p.key), ...t.phases.flatMap((p) => p.items.map((i) => i.key))]);
+function uniqueKey(t: JourneyTemplate, prefix: "ph" | "it", random: () => number, extra: Set<string> = new Set()): string {
+  const used = new Set<string>([...extra, ...t.phases.map((p) => p.key), ...t.phases.flatMap((p) => p.items.map((i) => i.key))]);
   for (let i = 0; i < 50; i++) {
     const k = newJourneyKey(prefix, random);
     if (!used.has(k)) return k;
@@ -103,6 +103,54 @@ export function moveItem(t: JourneyTemplate, key: string, toPhase: string, to: n
   return next;
 }
 
+/**
+ * Duplicar (A4, F149). La copia va justo después del original, con claves NUEVAS (nunca reusa una: los servicios y
+ * los workflows reconocen cada paso por su clave). Dentro de una fase copiada, el plazo y el bloqueo que apuntan a un
+ * paso de esa misma fase apuntan a su copia. `keyMap` (original → copia) sirve para copiar los workflows.
+ */
+export function duplicateItem(t: JourneyTemplate, key: string, random: () => number = Math.random): { template: JourneyTemplate; key: string; keyMap: Record<string, string> } {
+  const next = clone(t);
+  for (const ph of next.phases) {
+    const i = ph.items.findIndex((it) => it.key === key);
+    if (i < 0) continue;
+    const newKey = uniqueKey(next, "it", random);
+    const orig = ph.items[i];
+    ph.items.splice(i + 1, 0, { ...structuredClone(orig), key: newKey, name: copyName(orig.name) });
+    return { template: next, key: newKey, keyMap: { [key]: newKey } };
+  }
+  return { template: t, key: "", keyMap: {} };
+}
+
+export function duplicatePhase(t: JourneyTemplate, key: string, random: () => number = Math.random): { template: JourneyTemplate; key: string; keyMap: Record<string, string> } {
+  const idx = t.phases.findIndex((p) => p.key === key);
+  if (idx < 0) return { template: t, key: "", keyMap: {} };
+  const next = clone(t);
+  const orig = next.phases[idx];
+  const keyMap: Record<string, string> = {};
+  const extra = new Set<string>();
+  const newPhaseKey = uniqueKey(next, "ph", random, extra);
+  extra.add(newPhaseKey);
+  for (const it of orig.items) {
+    keyMap[it.key] = uniqueKey(next, "it", random, extra);
+    extra.add(keyMap[it.key]);
+  }
+  const remap = (k: string | null | undefined) => (k && keyMap[k]) || k;
+  const items = orig.items.map((it) => {
+    const copy: JourneyItem = { ...structuredClone(it), key: keyMap[it.key] };
+    if (copy.due_rule?.from === "item_completed") copy.due_rule = { ...copy.due_rule, item_key: remap(copy.due_rule.item_key) ?? null };
+    const ref = copy.ref as Record<string, unknown> | undefined;
+    const lock = ref?.lock as { after_item_key?: string } | undefined;
+    if (ref && lock?.after_item_key) copy.ref = { ...ref, lock: { after_item_key: remap(lock.after_item_key) } };
+    return copy;
+  });
+  next.phases.splice(idx + 1, 0, { ...structuredClone({ ...orig, items: [] }), key: newPhaseKey, name: copyName(orig.name), items });
+  return { template: next, key: newPhaseKey, keyMap };
+}
+
+function copyName(name: string): string {
+  return `${name} (copia)`.slice(0, 120);
+}
+
 /** Subir o bajar un lugar (los botones y Alt+↑/↓, la alternativa a arrastrar). Un paso cruza a la fase vecina. */
 export function nudgeItem(t: JourneyTemplate, key: string, delta: -1 | 1): JourneyTemplate {
   const pi = t.phases.findIndex((p) => p.items.some((it) => it.key === key));
@@ -125,11 +173,20 @@ function clearDanglingDue(t: JourneyTemplate, gone: Set<string>): { template: Jo
   const cleared: string[] = [];
   for (const ph of t.phases) {
     ph.items = ph.items.map((it) => {
+      let out = it;
       if (it.due_rule?.from === "item_completed" && it.due_rule.item_key && gone.has(it.due_rule.item_key)) {
         cleared.push(it.name);
-        return { ...it, due_rule: null };
+        out = { ...out, due_rule: null };
       }
-      return it;
+      // A4: «cuando se complete…» de un paso que ya no está deja de bloquear.
+      const lock = (out.ref as Record<string, unknown> | undefined)?.lock as { after_item_key?: string } | undefined;
+      if (lock?.after_item_key && gone.has(lock.after_item_key)) {
+        const ref = { ...(out.ref as Record<string, unknown>) };
+        delete ref.lock;
+        if (!cleared.includes(out.name)) cleared.push(out.name);
+        out = { ...out, ref };
+      }
+      return out;
     });
   }
   return { template: t, clearedDue: cleared };

@@ -29,6 +29,8 @@ export function WorkflowSlot({
   workflows,
   canEdit,
   compact = false,
+  lead,
+  addLabel = "Workflow",
 }: {
   variantId: string;
   slot: PathSlot;
@@ -36,6 +38,9 @@ export function WorkflowSlot({
   workflows: PathWorkflow[];
   canEdit: boolean;
   compact?: boolean;
+  /** Una etiqueta corta delante de la lista en modo compacto (A4: «Lo completan»). */
+  lead?: string;
+  addLabel?: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -51,6 +56,7 @@ export function WorkflowSlot({
   return (
     <div className={cn("space-y-1", compact ? "pl-6" : "")}>
       {!compact && <p className="text-xs font-semibold text-foreground">{title}</p>}
+      {compact && lead && workflows.length > 0 && <p className="text-[11px] font-medium text-muted-foreground">{lead}</p>}
       {workflows.map((w) => (
         <Link
           key={w.id}
@@ -76,7 +82,7 @@ export function WorkflowSlot({
       {canEdit && (
         <button type="button" disabled={pending} onClick={create} className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground">
           {pending ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <Plus className="h-3 w-3" aria-hidden />}
-          Workflow
+          {addLabel}
         </button>
       )}
     </div>

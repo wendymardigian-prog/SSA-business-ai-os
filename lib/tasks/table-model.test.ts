@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { makeTask, taskId } from "./fixtures";
-import { ariaSortOf, buildRows, groupRows, INITIAL_PAGE, isBlocked, isOverdue, nextSort, remainingToLoad, sortRows, visibleLimit } from "./table-model";
+import { ariaSortOf, buildRows, groupRows, INITIAL_PAGE, isBlocked, isOverdue, nextSort, remainingToLoad, sortRows, visibleLimit , type TaskRowView } from "./table-model";
 
 const TODAY = "2026-10-13";
 const members = [{ id: "u1", name: "Ana" }, { id: "u2", name: "Bruno" }];
@@ -182,5 +182,31 @@ describe("la tabla con la zona de quien mira", () => {
     expect(sortRows(rows, { column: "due", dir: "asc" }).map((r) => r.title)).toEqual(["noche", "madrugada", "sin hora"]);
     // Las sin hora van despues en los dos sentidos.
     expect(sortRows(rows, { column: "due", dir: "desc" }).map((r) => r.title)).toEqual(["madrugada", "noche", "sin hora"]);
+  });
+});
+
+describe("agrupar por vencimiento (A4, F156)", () => {
+  it("vencidas, hoy, mañana, la semana, más adelante, sin fecha y completadas; sin grupos vacíos", () => {
+    const mk = (id: string, dueDate: string | null, extra: Partial<TaskRowView> = {}) => ({ id, dueDate, overdue: false, status: "pending", ...extra }) as TaskRowView;
+    const rows = [
+      mk("a", "2026-11-10", { overdue: true }),
+      mk("b", "2026-11-12"),
+      mk("c", "2026-11-13"),
+      mk("d", "2026-11-18"),
+      mk("e", "2026-12-30"),
+      mk("f", null),
+      mk("g", "2026-11-01", { status: "completed" }),
+    ];
+    const g = groupRows(rows, "due", "2026-11-12");
+    expect(g.map((x) => [x.key, x.rows.map((r) => r.id)])).toEqual([
+      ["overdue", ["a"]],
+      ["today", ["b"]],
+      ["tomorrow", ["c"]],
+      ["week", ["d"]],
+      ["later", ["e"]],
+      ["none", ["f"]],
+      ["done", ["g"]],
+    ]);
+    expect(groupRows([mk("x", null)], "due", "2026-11-12").map((x) => x.key)).toEqual(["none"]);
   });
 });

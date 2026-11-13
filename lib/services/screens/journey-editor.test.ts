@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   addItem,
   addPhase,
+  duplicateItem,
+  duplicatePhase,
   itemLightForm,
   journeyEditorIssues,
   journeySummaryText,
@@ -139,5 +141,56 @@ describe("defaultButtonLabel y buttonDestination", () => {
     expect(defaultButtonLabel("team_task")).toBe("Abrir");
     expect(buttonDestination("checkbox")).toMatch(/pestaña nueva/);
     expect(buttonDestination("booking", "attended")).toMatch(/Entrar a la llamada/);
+  });
+});
+
+describe("duplicar (A4, F149)", () => {
+  const base = (): JourneyTemplate => ({
+    v: 1,
+    phases: [
+      {
+        key: "ph_aaaaaa",
+        name: "Arranque",
+        advance: "auto",
+        items: [
+          { key: "it_aaaaaa", kind: "checkbox", name: "Uno" },
+          { key: "it_bbbbbb", kind: "team_task", name: "Dos", due_rule: { from: "item_completed", item_key: "it_aaaaaa", days: 2 }, ref: { lock: { after_item_key: "it_aaaaaa" }, checklist: ["a"] } },
+        ],
+      },
+    ],
+  } as JourneyTemplate);
+  let seed = 0;
+  const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+
+  it("un paso: copia justo después, clave nueva y nombre con (copia)", () => {
+    const r = duplicateItem(base(), "it_bbbbbb", rnd);
+    const items = r.template.phases[0].items;
+    expect(items.map((i) => i.key)).toEqual(["it_aaaaaa", "it_bbbbbb", r.key]);
+    expect(items[2].name).toBe("Dos (copia)");
+    expect(items[2].ref).toEqual(items[1].ref);
+    expect(r.keyMap).toEqual({ it_bbbbbb: r.key });
+  });
+
+  it("una fase: claves nuevas y las referencias internas apuntan a la copia", () => {
+    const r = duplicatePhase(base(), "ph_aaaaaa", rnd);
+    expect(r.template.phases).toHaveLength(2);
+    const copy = r.template.phases[1];
+    expect(copy.key).toBe(r.key);
+    expect(copy.name).toBe("Arranque (copia)");
+    const [a, b] = copy.items;
+    expect(a.key).toBe(r.keyMap.it_aaaaaa);
+    expect(b.due_rule?.item_key).toBe(a.key);
+    expect((b.ref as { lock: { after_item_key: string } }).lock.after_item_key).toBe(a.key);
+    const all = r.template.phases.flatMap((p) => [p.key, ...p.items.map((i) => i.key)]);
+    expect(new Set(all).size).toBe(all.length);
+    // El original no cambió.
+    expect(r.template.phases[0]).toEqual(base().phases[0]);
+  });
+
+  it("borrar el paso del que depende un bloqueo saca el bloqueo", () => {
+    const r = removeItem(base(), "it_aaaaaa");
+    const it = r.template.phases[0].items[0];
+    expect((it.ref as Record<string, unknown>).lock).toBeUndefined();
+    expect(r.clearedDue).toContain("Dos");
   });
 });

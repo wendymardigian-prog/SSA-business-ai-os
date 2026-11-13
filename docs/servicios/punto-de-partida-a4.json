@@ -1,0 +1,296 @@
+{
+  "_comment": "Punto de partida de la Corrida A4 de Servicios (12/11/2026), medido contra produccion knrxjnmx ANTES de aplicar ninguna migracion de A4. md5 de pg_get_functiondef. Las protegidas no pueden cambiar; las de cambia_a_proposito cambian en 00369 a 00372 (sus definiciones viejas estan en definiciones-viejas-a4.sql).",
+  "rama": "feat/servicios-a4",
+  "base": "origin/main 81872c7",
+  "ultima_migracion": "00363_journey_item_button",
+  "proxima_libre": "00364",
+  "vitest": {
+    "archivos": 1535,
+    "tests": 20479,
+    "fallan": 0
+  },
+  "lint": {
+    "errores": 0,
+    "advertencias": 37
+  },
+  "tsc": "sin errores",
+  "build": "ok (con NODE_OPTIONS=--max-old-space-size=8192)",
+  "protegidas": {
+    "record_contact_touch": "2f51ddbf060e31528b89ce7481b38e3d",
+    "find_or_link_contact": "0aee03549e9361626ad4720c4a98254a",
+    "find_contact_for_form": "b7b5605c4a19a27865c7915f57c36fe8",
+    "find_or_create_contact": "a71d6af701ea4460c5309631205de522",
+    "submit_form_response": "78a358d5ac8c4dfebd598bb3f5f91e7c",
+    "create_booking": "b9e1eef82fe3b5660f7a1dc879b5087f",
+    "create_sale": "adb766e6d657bf55db42779c7c53bcb3",
+    "resolve_meta_match": "e3c54b36e4ea1a1a6ef4b07eb6bd1387"
+  },
+  "no_se_tocan": {
+    "get_public_form": "213653eaa67009173e0373a4f6767d7b",
+    "private.call_app_cron": "fa1c8e4243e54277f5787c5d29ad1a7d",
+    "can_see_contact": "e60b52a2ed7d16f666a711532e90c234",
+    "can_see_sale": "94424068c81ba105f69efe5c8b37c9c0",
+    "can_see_task": "366c2d74a3a06ae087bee646e2d18665",
+    "handle_new_user": "616170954fefbf5b9f310c40ca051cb9",
+    "has_permission": "e955f005e8308868bc1e7a48f8d10d52",
+    "merge_contacts": "84aa6447a19d4bd63c798fb7faf02fe4",
+    "commission_payee": "40d4c23557c112a1b50d9e9b3e80a6d1",
+    "generate_commissions_for_payment": "816f311b7c8d1b9c78f28e207d6b2b7f",
+    "private.member_permission_keys": "1db3525c879c7e2d9cb8ca9bedb977f7",
+    "app_servicio.svc_compute_light": "e6fc58d070d1508232a91d799afe0b5e",
+    "app_servicio.svc_set_owner": "d20658e21bd5bcad248d63a537c8f976",
+    "app_servicio.svc_due_date": "d747f0effccccd9f500737d7d5d77e45",
+    "app_servicio.svc_create_service": "1c679c528d8c07df51327dcac0fad9ea",
+    "app_servicio.booking_hook": "252cc834eb7eae87bb1f5e38384774bf"
+  },
+  "cambia_a_proposito": {
+    "app_servicio.validate_journey_template": "a1941c317a937c1825f775d51b7553b9",
+    "app_servicio.journey_item_ref_problems": "101379354c79d20af16545921462e734",
+    "app_servicio.svc_daily_run": "78a2581cbc1223119523b7f10036135d",
+    "app_servicio.svc_owner_pick_plan": "cf7034b27d4e44f66ec6fce8ec2daac0",
+    "app_servicio.svc_owner_pick_rr": "b0875d40fe8d0f42410c8e1c0dd0ad8c",
+    "app_servicio.svc_pick_owner": "7cf953dd5d7967eabd49345f909d07ce",
+    "app_servicio.svc_ensure_task": "06664a7643e7c41117bae0ac06376324",
+    "app_servicio.svc_complete_item": "81f79ba7e493135e4f47966f0a211e1c",
+    "app_servicio.svc_mark_item": "b2e7a21ec716ad6e1624a55b1a09ab5b",
+    "app_servicio.task_hook": "47cd3472e609029a2e2068d1266e6034"
+  },
+  "verify": {
+    "rls": {
+      "exit": 0,
+      "segundos": 132,
+      "flags": "--despues-de-00143 --despues-de-00208 --despues-de-00313 --despues-de-00314"
+    },
+    "roles": {
+      "exit": 0,
+      "segundos": 96,
+      "flags": "--despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212 --despues-de-00249 --despues-de-00301"
+    },
+    "audit-visibility": {
+      "exit": 0,
+      "segundos": 16,
+      "flags": "--despues-de-00168"
+    },
+    "workspace-isolation": {
+      "exit": 0,
+      "segundos": 11,
+      "flags": "--despues-de-00143 --despues-de-00309"
+    },
+    "permissions-matrix": {
+      "exit": 0,
+      "segundos": 215,
+      "flags": "--despues-de-00212"
+    },
+    "sales": {
+      "exit": 0,
+      "segundos": 127
+    },
+    "commissions": {
+      "exit": 0,
+      "segundos": 84,
+      "flags": "--despues-de-00235"
+    },
+    "forms": {
+      "exit": 1,
+      "nota": "falla PREVIA a A4 (también en main limpio): la huella de create_booking que el script espera es la anterior a la 00358, que la cambió a propósito"
+    },
+    "scheduling": {
+      "exit": 0,
+      "segundos": 42,
+      "flags": "--despues-de-00290"
+    },
+    "booking-concurrency": {
+      "exit": 0,
+      "segundos": 9
+    },
+    "tasks": {
+      "exit": 0,
+      "segundos": 160
+    },
+    "contact-merge": {
+      "exit": 0,
+      "segundos": 101
+    },
+    "contacts-single-entry": {
+      "exit": 0,
+      "segundos": 30
+    },
+    "designer": {
+      "exit": 0,
+      "segundos": 226
+    },
+    "calls": {
+      "exit": 0,
+      "segundos": 61,
+      "flags": "--despues-de-00300 --despues-de-00301 --despues-de-00303 --despues-de-00304 --despues-de-00307 --despues-de-00308"
+    },
+    "expenses": {
+      "exit": 0,
+      "segundos": 83,
+      "flags": "--despues-de-00233"
+    },
+    "organic-attribution": {
+      "exit": 1,
+      "segundos": 73,
+      "flags": "--despues-de-00234",
+      "nota": "previa: el orden de los triggers de contact_touches"
+    },
+    "ads-attribution": {
+      "exit": 0,
+      "segundos": 174
+    },
+    "meta-capi": {
+      "exit": 0,
+      "segundos": 11
+    },
+    "cron-guards": {
+      "exit": 0,
+      "segundos": 28,
+      "flags": "--despues-de-00350"
+    },
+    "account": {
+      "exit": 0,
+      "segundos": 9,
+      "flags": "--despues-de-00275"
+    },
+    "attribution": {
+      "exit": 1,
+      "segundos": 22,
+      "nota": "previa, de datos: 4871 de 5008 contactos con first_touch"
+    },
+    "broadcasts": {
+      "exit": 0,
+      "segundos": 11
+    },
+    "chat-awaiting": {
+      "exit": 0,
+      "segundos": 33
+    },
+    "chat-core": {
+      "exit": 0,
+      "segundos": 141
+    },
+    "chat-media": {
+      "exit": 0,
+      "segundos": 42
+    },
+    "contact-pipeline": {
+      "exit": 0,
+      "segundos": 16
+    },
+    "content": {
+      "exit": 0,
+      "segundos": 28,
+      "flags": "--despues-de-00253"
+    },
+    "crm": {
+      "exit": 0,
+      "segundos": 8
+    },
+    "csv-import": {
+      "exit": 0,
+      "segundos": 7
+    },
+    "dashboards": {
+      "exit": 0,
+      "segundos": 14
+    },
+    "email-subscription": {
+      "exit": 0,
+      "segundos": 64
+    },
+    "enrichment": {
+      "exit": 0,
+      "segundos": 8
+    },
+    "eod": {
+      "exit": 0,
+      "segundos": 75
+    },
+    "flow-metrics": {
+      "exit": 0,
+      "segundos": 8
+    },
+    "flow-runs": {
+      "exit": 0,
+      "segundos": 18
+    },
+    "inbound-webhooks": {
+      "exit": 0,
+      "segundos": 47
+    },
+    "inbox-filters": {
+      "exit": 0,
+      "segundos": 12
+    },
+    "knowledge": {
+      "exit": 0,
+      "segundos": 1
+    },
+    "message-persistence": {
+      "exit": 0,
+      "segundos": 7
+    },
+    "optout": {
+      "exit": 0,
+      "segundos": 10
+    },
+    "payment-methods": {
+      "exit": 0,
+      "segundos": 25
+    },
+    "publishing": {
+      "exit": 0,
+      "segundos": 41
+    },
+    "unidentified-contacts": {
+      "exit": 0,
+      "segundos": 13
+    },
+    "whatsapp-groups": {
+      "exit": 0,
+      "segundos": 18
+    },
+    "student-schema": {
+      "exit": 0,
+      "segundos": 171,
+      "nota": "medido de nuevo sobre main limpio: en la rama encontró un error real de la 00365/00368 (array_append), ya corregido"
+    },
+    "services": {
+      "exit": 0,
+      "segundos": 688,
+      "nota": "medido de nuevo sobre una copia limpia de main (en la rama, los casos compartidos nuevos se corrían contra la base vieja)"
+    },
+    "program": {
+      "exit": 1,
+      "segundos": 856,
+      "nota": "falla previa conocida (el test con hora de program: «y emite certificate_issued»)"
+    },
+    "affiliates": {
+      "exit": 0,
+      "segundos": 68
+    },
+    "portal-schema": {
+      "exit": 0,
+      "segundos": 13
+    },
+    "servicios-migracion": {
+      "exit": 0,
+      "segundos": 557,
+      "flags": "--todas"
+    },
+    "auth-settings": {
+      "exit": 1,
+      "segundos": 0,
+      "nota": "previa: el registro público de Supabase sigue prendido (es de panel)"
+    },
+    "table-views": {
+      "exit": 0,
+      "segundos": 18
+    },
+    "contact-qualification": {
+      "exit": 0,
+      "segundos": 25
+    }
+  }
+}

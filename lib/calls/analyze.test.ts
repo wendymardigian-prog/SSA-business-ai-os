@@ -155,3 +155,26 @@ describe("buildAnalysisSystem", () => {
     expect(generate.mock.calls[0][0].prompt).toContain("Ventas · Demo");
   });
 });
+
+describe("propuestas del analizador (Servicios A4, F142)", () => {
+  it("sin propuestas, el formato general pide el esquema de siempre (sin `acciones`) y el mismo pedido", async () => {
+    const generate = vi.fn().mockResolvedValue({ object: { resumen: "r", rubrica: [], feedback: { foco: "", funciono: [], mejorar: [] }, alertas: [] } });
+    await runCallAnalysis(input(generate, { shape: "general" }));
+    const call = generate.mock.calls[0][0] as { schema: { shape: Record<string, unknown> }; system: string };
+    expect("acciones" in call.schema.shape).toBe(false);
+    expect(call.system).not.toMatch(/Acciones para proponer/);
+  });
+  it("con propuestas, suma `acciones` al esquema y las instrucciones al pedido", async () => {
+    const generate = vi.fn().mockResolvedValue({ object: { resumen: "r", rubrica: [], feedback: { foco: "", funciono: [], mejorar: [] }, alertas: [], acciones: [] } });
+    await runCallAnalysis(input(generate, { shape: "general", proposals: { instructions: "## Acciones para proponer (campo `acciones`)" } }));
+    const call = generate.mock.calls[0][0] as { schema: { shape: Record<string, unknown> }; system: string };
+    expect("acciones" in call.schema.shape).toBe(true);
+    expect(call.system).toMatch(/Acciones para proponer/);
+  });
+  it("el formato de ventas nunca propone", async () => {
+    const generate = vi.fn().mockResolvedValue({ object: analysis() });
+    await runCallAnalysis(input(generate, { proposals: { instructions: "## Acciones para proponer" } }));
+    const call = generate.mock.calls[0][0] as { system: string };
+    expect(call.system).not.toMatch(/Acciones para proponer/);
+  });
+});

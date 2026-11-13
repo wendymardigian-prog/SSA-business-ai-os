@@ -568,6 +568,36 @@ export const PROVIDERS: ProviderDefinition[] = [
     docsUrl: "https://business.facebook.com/events_manager2",
   },
 
+  // ── Slack (Servicios A4, F133) ───────────────────────────────────────────
+  // El bot de la app de Slack del negocio: los avisos del equipo por mensaje directo y la acción «Enviar a Slack».
+  // Cada persona carga su ID de Slack en Mi cuenta.
+  {
+    id: "slack",
+    type: "slack",
+    connection: "api_key",
+    section: "connections",
+    types: ["mensajeria"],
+    visible: true,
+    label: "Slack",
+    description:
+      "Manda los avisos del equipo por mensaje directo de Slack y deja usar la acción «Enviar a Slack» en las automatizaciones.",
+    secretName: SECRET_NAMES.slackBotToken,
+    keyPrefix: "xoxb-",
+    minKeyLength: 20,
+    secretFields: [
+      {
+        key: "bot_token",
+        label: "Token del bot (xoxb-…)",
+        hint: "1) En api.slack.com/apps creá una app para tu espacio de trabajo. 2) En «OAuth & Permissions» sumá los permisos chat:write, im:write y users:read e instalala. 3) Copiá el «Bot User OAuth Token», que empieza con xoxb-.",
+        secretName: SECRET_NAMES.slackBotToken,
+        required: true,
+        minLength: 20,
+      },
+    ],
+    configFields: [],
+    docsUrl: "https://api.slack.com/apps",
+  },
+
   // ── Email ────────────────────────────────────────────────────────────────
   // Conexion de Resend (2/11/2026): la recepcion paso a la tarjeta "Resend" (seccion "Recepcion de emails") y el
   // secreto a la seccion "Webhook". Esta definicion queda OCULTA para leer las filas viejas (`providerForConfigRow`,

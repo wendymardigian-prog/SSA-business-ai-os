@@ -70,3 +70,16 @@ describe("esquema del analisis de una llamada", () => {
     expect(parseAnalysis({ ...MINIMO, temperatura: 0 }).ok).toBe(false);
   });
 });
+
+describe("buildGeneralSchema (Servicios A4, F142)", () => {
+  it("sin propuestas es el de siempre; con propuestas acepta hasta 8 acciones", async () => {
+    const { buildGeneralSchema, generalAnalysisSchema } = await import("./analysis-schema");
+    expect(buildGeneralSchema({ proposals: false })).toBe(generalAnalysisSchema);
+    const s = buildGeneralSchema({ proposals: true });
+    const base = { resumen: "r", rubrica: [], feedback: { foco: "", funciono: [], mejorar: [] }, alertas: [] };
+    const a = { tipo: "tarea", titulo: "t", detalle: "d", vence_en_dias: 3, responsable: null, texto: null, item_key: null, para: null };
+    expect(s.safeParse({ ...base, acciones: [a] }).success).toBe(true);
+    expect(s.safeParse({ ...base, acciones: Array.from({ length: 9 }, () => a) }).success).toBe(false);
+    expect(s.safeParse({ ...base, acciones: [{ ...a, tipo: "cambiar_fase" }] }).success).toBe(false);
+  });
+});

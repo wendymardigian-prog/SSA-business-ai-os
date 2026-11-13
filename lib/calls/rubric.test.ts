@@ -101,3 +101,18 @@ describe("buildAnalysisTechnical (la parte fija del prompt)", () => {
     expect(on).toContain("(sin contexto cargado)");
   });
 });
+
+describe("«Resta si pasa» (Servicios A4, F140)", () => {
+  it("ida y vuelta de subtracts en los criterios del closer, nunca en los del lead", () => {
+    const r = normalizeRubric({ version: 2, closer: [{ clave: "promesa", nombre: "Prometer de más", peso: 1, subtracts: true }, { clave: "escucha", nombre: "Escucha", peso: 1 }], lead: [{ clave: "x", nombre: "X", peso: 1, subtracts: true }] });
+    expect(r.closer[0].subtracts).toBe(true);
+    expect("subtracts" in r.closer[1]).toBe(false);
+    expect("subtracts" in r.lead[0]).toBe(false);
+    expect(normalizeRubric(JSON.parse(JSON.stringify(r)))).toEqual(r);
+  });
+  it("prender o apagar «resta» cuenta como un cambio de puntaje", () => {
+    const a = normalizeRubric({ version: 1, closer: [{ clave: "p", nombre: "P", peso: 1 }], lead: [] });
+    const b = normalizeRubric({ version: 1, closer: [{ clave: "p", nombre: "P", peso: 1, subtracts: true }], lead: [] });
+    expect(rubricScoringChanged(a, b)).toBe(true);
+  });
+});

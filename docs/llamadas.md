@@ -284,6 +284,24 @@ Configuración; todas tienen las mismas cinco pestañas que el resto de las tare
 - **Ficha del contacto y detalle de la agenda**: sus llamadas, con link a la
   ficha; "Ver todas" lleva a la lista filtrada por ese contacto.
 
+## Reuniones de servicio y propuestas (Servicios A4, noviembre 2026)
+
+- **Unidas al servicio**: `calls.service_id` + `service_link` (`auto`, `booking`, `manual`, `review`). Lo decide la base
+  al guardar o clasificar la grabación (`svc_call_link_apply`, gemela `callLinkPlan`); con dudas queda «Por revisar».
+  Grabaciones suma la columna y el filtro «Servicio» (solo con el módulo prendido; la columna se puede ocultar) y la
+  franja «N por revisar».
+- **Cargar a mano** una reunión sin análisis (`summary.manual`: resumen, próximos pasos y notas): el resumen automático
+  no la pisa. Desde cada próximo paso, «+ Tarea» (`source = 'call'`, con la reunión, el contacto y el servicio).
+- **Restar puntos** en la rúbrica de cierre: un criterio con «Resta si pasa» descuenta su peso, con piso 0, solo con una
+  cita verificada (`closerScoreWithPenalties`). Los casos de siempre dan igual.
+- **Propuestas de acción** (analizador de formato general, «Proponer acciones»): tareas, un mensaje al cliente, completar
+  un paso o avisar al equipo. **Nada sale solo**: alguien aprueba, edita o descarta (`resolveCallProposal`, reclamo
+  `call_proposal_claim` para que dos personas no aprueben lo mismo). El mensaje aprobado sale en el momento por el
+  envío de siempre de la bandeja; si falla, se reintenta el mismo mensaje. Con menos de 600 caracteres de
+  transcripción no se propone nada. El menú muestra cuántas hay por aprobar.
+- **Actividad**: la pestaña Actividad del detalle junta los comentarios del equipo (con @menciones) y lo que pasó con la
+  reunión.
+
 ## Lo que no se puede romper
 
 - **`audit_log_select` no se reescribe.** El acceso al historial de las llamadas

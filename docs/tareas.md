@@ -142,6 +142,20 @@ política **adicional** (`audit_log_select_tasks`): quien ve la tarea ve su hist
 no se reescribió (`scripts/verify-audit-visibility.mjs` compara antes y después). El drawer lo muestra
 con `<Historial entityType="task">`; la ficha del contacto, en su historial.
 
+## Servicio, reunión, checklist y comentarios (Servicios A4, noviembre 2026)
+
+- **`tasks.service_id` y `tasks.call_id`** (00368): el servicio tiene que ser del mismo contacto; los escribe solo el
+  servidor después de que la sesión pudo editar la tarea. «Reunión» es un origen nuevo (`source = 'call'`). El filtro
+  «Vínculo» deja ver las que tienen servicio o reunión.
+- **Checklist** (`tasks.checklist`, hasta 30 puntos): nace de los puntos del paso del camino y se suman a mano.
+  `changeTaskChecklist` tilda, suma y saca. No impide completar.
+- **El paso del camino manda**: la tarea de un paso bloqueado o sin la evidencia que pide no se completa (SV033 / SV034,
+  con el texto de la base). El panel muestra el candado y deja adjuntar la evidencia. Cuando el servicio se cancela,
+  termina o se renueva, sus tareas abiertas se cierran con un comentario de sistema.
+- **La franja del servicio** dentro de la tarea (producto, fase, avance, responsable, «Ver ficha»).
+- **Agrupar por vencimiento**: vencidas, hoy, mañana, próximos 7 días, más adelante, sin fecha y completadas.
+- **Comentarios** del equipo con @menciones en el panel (`?panel=comentarios` los trae a la vista).
+
 ## Scripts de verificación
 
 ```

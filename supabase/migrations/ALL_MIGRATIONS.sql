@@ -73644,3 +73644,2227 @@ $function$;
 -- Los mismos permisos de siempre (00332): la llama validate_journey_template.
 REVOKE ALL ON FUNCTION app_servicio.journey_item_ref_problems(jsonb, text, uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION app_servicio.journey_item_ref_problems(jsonb, text, uuid, uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 364: COMMENTS
+-- ============================================================
+-- ============================================================
+-- 00364_comments.sql
+-- ============================================================
+-- Servicios A4, F132 (decision 478): comentarios con @menciones en una tabla generica `public.comments`
+-- (tareas y reuniones ahora; fichas y tickets despues sumando un valor al CHECK y una rama a
+-- `public.can_see_comment_entity`). Es de BAIOS, no del modulo de Servicios.
+--
+-- * Se LEE con RLS: un miembro ve un comentario si ve la entidad (`can_see_task_id` / `can_see_call_id`).
+-- * NO hay politicas de escritura: se escribe solo con `post_comment`, `edit_comment` y `delete_comment`
+--   (SECURITY DEFINER, vuelven a mirar la visibilidad con la sesion). CM001 = no ves la entidad; CM002 = no es tuyo.
+-- * Las menciones se filtran: solo quedan las personas del negocio que VEN la entidad, y a cada una le llega el
+--   aviso `mentioned` una vez por comentario, nunca a uno mismo. Para saber si OTRA persona ve la entidad se
+--   evalua la misma funcion de visibilidad con su id (`private.comment_entity_visible_to`), asi no hay una
+--   segunda copia de la regla.
+-- * `private.comment_system(...)` deja un comentario de sistema (sin autor). Lo usa el cierre de tareas al
+--   terminar un servicio (00370).
+--
+-- Aditiva. Como volver atras:
+--   DROP FUNCTION IF EXISTS public.post_comment(text, uuid, text, uuid[]);
+--   DROP FUNCTION IF EXISTS public.edit_comment(uuid, text, uuid[]);
+--   DROP FUNCTION IF EXISTS public.delete_comment(uuid);
+--   DROP FUNCTION IF EXISTS public.comment_mention_candidates(text, uuid);
+--   DROP FUNCTION IF EXISTS private.comment_system(uuid, text, uuid, text);
+--   DROP FUNCTION IF EXISTS private.comment_notify_mentions(public.comments, uuid[]);
+--   DROP FUNCTION IF EXISTS private.comment_entity_visible_to(uuid, text, uuid);
+--   DROP FUNCTION IF EXISTS public.can_see_comment_entity(text, uuid);
+--   DROP FUNCTION IF EXISTS private.comment_entity_workspace(text, uuid);
+--   DROP TABLE IF EXISTS public.comments;
+
+CREATE TABLE IF NOT EXISTS public.comments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  entity_type text NOT NULL,
+  entity_id uuid NOT NULL,
+  kind text NOT NULL DEFAULT 'comment',
+  author_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  body text NOT NULL,
+  mentions uuid[] NOT NULL DEFAULT '{}',
+  visibility text NOT NULL DEFAULT 'internal',
+  edited_at timestamptz,
+  deleted_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'comments_entity_type_check') THEN
+    ALTER TABLE public.comments ADD CONSTRAINT comments_entity_type_check CHECK (entity_type IN ('task', 'call'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'comments_kind_check') THEN
+    ALTER TABLE public.comments ADD CONSTRAINT comments_kind_check CHECK (kind IN ('comment', 'system'));
+  END IF;
+  -- El autor solo puede faltar en un comentario de sistema (o si la persona ya no existe: ON DELETE SET NULL).
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'comments_body_check') THEN
+    ALTER TABLE public.comments ADD CONSTRAINT comments_body_check CHECK (char_length(body) BETWEEN 1 AND 5000);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'comments_system_author_check') THEN
+    ALTER TABLE public.comments ADD CONSTRAINT comments_system_author_check CHECK (kind = 'comment' OR author_id IS NULL);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'comments_mentions_check') THEN
+    ALTER TABLE public.comments ADD CONSTRAINT comments_mentions_check CHECK (cardinality(mentions) <= 20);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'comments_visibility_check') THEN
+    ALTER TABLE public.comments ADD CONSTRAINT comments_visibility_check CHECK (visibility IN ('internal'));
+  END IF;
+END $$;
+
+COMMENT ON TABLE public.comments IS
+  'Comentarios con @menciones (Servicios A4, F132). Se leen con RLS por visibilidad de la entidad; se escriben solo con post_comment/edit_comment/delete_comment. Borrado logico.';
+COMMENT ON COLUMN public.comments.author_id IS 'NULL en un comentario de sistema (kind = system) o si la persona ya no existe.';
+
+CREATE INDEX IF NOT EXISTS idx_comments_entity
+  ON public.comments (workspace_id, entity_type, entity_id, created_at);
+
+ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON public.comments FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.comments TO authenticated;
+GRANT ALL ON public.comments TO service_role;
+
+-- El negocio de la entidad (sin mirar permisos).
+CREATE OR REPLACE FUNCTION private.comment_entity_workspace(p_entity_type text, p_entity_id uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT CASE p_entity_type
+    WHEN 'task' THEN (SELECT t.workspace_id FROM public.tasks t WHERE t.id = p_entity_id AND t.deleted_at IS NULL)
+    WHEN 'call' THEN (SELECT c.workspace_id FROM public.calls c WHERE c.id = p_entity_id)
+    ELSE NULL
+  END;
+$$;
+REVOKE ALL ON FUNCTION private.comment_entity_workspace(text, uuid) FROM PUBLIC, anon, authenticated;
+
+-- Si la sesion ve la entidad. Siempre true o false.
+CREATE OR REPLACE FUNCTION public.can_see_comment_entity(p_entity_type text, p_entity_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE(CASE p_entity_type
+    WHEN 'task' THEN public.can_see_task_id(p_entity_id)
+    WHEN 'call' THEN public.can_see_call_id(p_entity_id)
+    ELSE false
+  END, false);
+$$;
+REVOKE ALL ON FUNCTION public.can_see_comment_entity(text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_see_comment_entity(text, uuid) TO authenticated, service_role;
+
+-- Si OTRA persona ve la entidad: evalua la misma regla con su id como sesion, y deja la sesion como estaba.
+CREATE OR REPLACE FUNCTION private.comment_entity_visible_to(p_user_id uuid, p_entity_type text, p_entity_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_sub text := current_setting('request.jwt.claim.sub', true);
+  v_claims text := current_setting('request.jwt.claims', true);
+  v boolean := false;
+BEGIN
+  IF p_user_id IS NULL THEN RETURN false; END IF;
+  PERFORM set_config('request.jwt.claim.sub', p_user_id::text, true);
+  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', p_user_id, 'role', 'authenticated')::text, true);
+  BEGIN
+    v := public.can_see_comment_entity(p_entity_type, p_entity_id);
+  EXCEPTION WHEN OTHERS THEN
+    v := false;
+  END;
+  PERFORM set_config('request.jwt.claim.sub', COALESCE(v_sub, ''), true);
+  PERFORM set_config('request.jwt.claims', COALESCE(v_claims, ''), true);
+  RETURN COALESCE(v, false);
+END;
+$$;
+REVOKE ALL ON FUNCTION private.comment_entity_visible_to(uuid, text, uuid) FROM PUBLIC, anon, authenticated;
+
+DROP POLICY IF EXISTS comments_select ON public.comments;
+CREATE POLICY comments_select ON public.comments
+  FOR SELECT TO authenticated
+  USING (public.is_workspace_member(workspace_id) AND public.can_see_comment_entity(entity_type, entity_id));
+
+-- Deja solo las menciones de personas del negocio que ven la entidad, sin repetir y sin el autor.
+CREATE OR REPLACE FUNCTION private.comment_filter_mentions(p_ws uuid, p_entity_type text, p_entity_id uuid, p_author uuid, p_mentions uuid[])
+RETURNS uuid[]
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v uuid[] := ARRAY[]::uuid[];
+  u uuid;
+BEGIN
+  FOREACH u IN ARRAY COALESCE(p_mentions, ARRAY[]::uuid[]) LOOP
+    CONTINUE WHEN u IS NULL OR u = p_author OR u = ANY (v);
+    CONTINUE WHEN NOT EXISTS (SELECT 1 FROM public.workspace_members m WHERE m.workspace_id = p_ws AND m.user_id = u);
+    CONTINUE WHEN NOT private.comment_entity_visible_to(u, p_entity_type, p_entity_id);
+    v := v || u;
+    EXIT WHEN cardinality(v) >= 20;
+  END LOOP;
+  RETURN v;
+END;
+$$;
+REVOKE ALL ON FUNCTION private.comment_filter_mentions(uuid, text, uuid, uuid, uuid[]) FROM PUBLIC, anon, authenticated;
+
+-- El aviso `mentioned` a cada mencionada (una vez por comentario). Nunca hace fallar el comentario.
+CREATE OR REPLACE FUNCTION private.comment_notify_mentions(p_comment public.comments, p_users uuid[])
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  u uuid;
+  v_title text := CASE p_comment.entity_type WHEN 'task' THEN 'Te mencionaron en una tarea' ELSE 'Te mencionaron en una reunión' END;
+  v_body text := left(regexp_replace(p_comment.body, '\s+', ' ', 'g'), 160);
+BEGIN
+  FOREACH u IN ARRAY COALESCE(p_users, ARRAY[]::uuid[]) LOOP
+    CONTINUE WHEN EXISTS (
+      SELECT 1 FROM public.notifications n
+      WHERE n.recipient_id = u AND n.type = 'mentioned' AND n.metadata ->> 'comment_id' = p_comment.id::text
+    );
+    INSERT INTO public.notifications (workspace_id, type, title, body, entity_type, entity_id, metadata, recipient_id)
+    VALUES (p_comment.workspace_id, 'mentioned', v_title, v_body, p_comment.entity_type, p_comment.entity_id,
+            jsonb_build_object('comment_id', p_comment.id, 'author_id', p_comment.author_id), u);
+  END LOOP;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'comment_notify_mentions: %', SQLERRM;
+END;
+$$;
+REVOKE ALL ON FUNCTION private.comment_notify_mentions(public.comments, uuid[]) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.post_comment(p_entity_type text, p_entity_id uuid, p_body text, p_mentions uuid[] DEFAULT '{}')
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_ws uuid;
+  v_body text := btrim(COALESCE(p_body, ''));
+  v_row public.comments;
+BEGIN
+  v_ws := private.comment_entity_workspace(p_entity_type, p_entity_id);
+  IF v_uid IS NULL OR v_ws IS NULL OR NOT public.is_workspace_member(v_ws)
+     OR NOT public.can_see_comment_entity(p_entity_type, p_entity_id) THEN
+    RAISE EXCEPTION 'No podés comentar acá.' USING ERRCODE = 'P0001', HINT = 'CM001';
+  END IF;
+  IF char_length(v_body) < 1 OR char_length(v_body) > 5000 THEN
+    RAISE EXCEPTION 'El comentario tiene que tener entre 1 y 5000 caracteres.' USING ERRCODE = 'P0001', HINT = 'CM003';
+  END IF;
+  INSERT INTO public.comments (workspace_id, entity_type, entity_id, kind, author_id, body, mentions)
+  VALUES (v_ws, p_entity_type, p_entity_id, 'comment', v_uid, v_body,
+          private.comment_filter_mentions(v_ws, p_entity_type, p_entity_id, v_uid, p_mentions))
+  RETURNING * INTO v_row;
+  PERFORM private.comment_notify_mentions(v_row, v_row.mentions);
+  RETURN v_row.id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.post_comment(text, uuid, text, uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.post_comment(text, uuid, text, uuid[]) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.edit_comment(p_id uuid, p_body text, p_mentions uuid[] DEFAULT '{}')
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_row public.comments;
+  v_body text := btrim(COALESCE(p_body, ''));
+  v_new uuid[];
+BEGIN
+  SELECT * INTO v_row FROM public.comments c WHERE c.id = p_id AND c.deleted_at IS NULL FOR UPDATE;
+  IF v_row.id IS NULL OR NOT public.can_see_comment_entity(v_row.entity_type, v_row.entity_id) THEN
+    RAISE EXCEPTION 'No podés comentar acá.' USING ERRCODE = 'P0001', HINT = 'CM001';
+  END IF;
+  IF v_row.kind <> 'comment' OR v_row.author_id IS DISTINCT FROM v_uid THEN
+    RAISE EXCEPTION 'Solo podés editar tus comentarios.' USING ERRCODE = 'P0001', HINT = 'CM002';
+  END IF;
+  IF char_length(v_body) < 1 OR char_length(v_body) > 5000 THEN
+    RAISE EXCEPTION 'El comentario tiene que tener entre 1 y 5000 caracteres.' USING ERRCODE = 'P0001', HINT = 'CM003';
+  END IF;
+  v_new := private.comment_filter_mentions(v_row.workspace_id, v_row.entity_type, v_row.entity_id, v_uid, p_mentions);
+  UPDATE public.comments SET body = v_body, mentions = v_new, edited_at = now() WHERE id = p_id RETURNING * INTO v_row;
+  -- Solo a quien se suma con la edicion (el aviso es uno por comentario: lo controla comment_notify_mentions).
+  PERFORM private.comment_notify_mentions(v_row, v_new);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.edit_comment(uuid, text, uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.edit_comment(uuid, text, uuid[]) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.delete_comment(p_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_row public.comments;
+BEGIN
+  SELECT * INTO v_row FROM public.comments c WHERE c.id = p_id AND c.deleted_at IS NULL FOR UPDATE;
+  IF v_row.id IS NULL OR NOT public.can_see_comment_entity(v_row.entity_type, v_row.entity_id) THEN
+    RAISE EXCEPTION 'No podés comentar acá.' USING ERRCODE = 'P0001', HINT = 'CM001';
+  END IF;
+  IF v_row.kind <> 'comment' OR v_row.author_id IS DISTINCT FROM v_uid THEN
+    RAISE EXCEPTION 'Solo podés borrar tus comentarios.' USING ERRCODE = 'P0001', HINT = 'CM002';
+  END IF;
+  UPDATE public.comments SET deleted_at = now() WHERE id = p_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.delete_comment(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.delete_comment(uuid) TO authenticated, service_role;
+
+-- Para el `@`: las personas del negocio que ven la entidad. Solo si la sesion la ve.
+CREATE OR REPLACE FUNCTION public.comment_mention_candidates(p_entity_type text, p_entity_id uuid)
+RETURNS TABLE (user_id uuid)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws uuid := private.comment_entity_workspace(p_entity_type, p_entity_id);
+  r record;
+BEGIN
+  IF auth.uid() IS NULL OR v_ws IS NULL OR NOT public.can_see_comment_entity(p_entity_type, p_entity_id) THEN
+    RETURN;
+  END IF;
+  FOR r IN SELECT m.user_id AS uid FROM public.workspace_members m WHERE m.workspace_id = v_ws LOOP
+    IF r.uid = auth.uid() OR private.comment_entity_visible_to(r.uid, p_entity_type, p_entity_id) THEN
+      user_id := r.uid;
+      RETURN NEXT;
+    END IF;
+  END LOOP;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.comment_mention_candidates(text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.comment_mention_candidates(text, uuid) TO authenticated, service_role;
+
+-- Un comentario de sistema (sin autor). Solo el servidor y los triggers.
+CREATE OR REPLACE FUNCTION private.comment_system(p_workspace_id uuid, p_entity_type text, p_entity_id uuid, p_body text)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_id uuid;
+BEGIN
+  INSERT INTO public.comments (workspace_id, entity_type, entity_id, kind, author_id, body)
+  VALUES (p_workspace_id, p_entity_type, p_entity_id, 'system', NULL, left(btrim(p_body), 5000))
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION private.comment_system(uuid, text, uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.comment_system(uuid, text, uuid, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 365: SLACK
+-- ============================================================
+-- ============================================================
+-- 00365_slack.sql
+-- ============================================================
+-- Servicios A4, F133 y F158 (plano: A4-M9): Slack como canal de avisos y destino de la accion «Enviar a Slack».
+--
+--   * `user_profiles.slack_user_id`: el ID de Slack de cada persona (U… o W…), cargado en Mi cuenta. NULL = sin cargar.
+--     Solo su propia fila, con la RLS de siempre de `user_profiles` (00273).
+--   * `integration_configs.type` suma 'slack' (el token del bot va en Vault, como el resto). El CHECK se arma desde
+--     el que esta EN LA BASE (`pg_get_constraintdef`), sin sacar ningun valor.
+--
+-- Aditiva + amplia un CHECK. Como volver atras (si no hay filas con type = 'slack'; si las hay, borrarlas antes):
+--   ALTER TABLE public.user_profiles DROP COLUMN IF EXISTS slack_user_id;
+--   ALTER TABLE public.integration_configs DROP CONSTRAINT IF EXISTS integration_configs_type_check;
+--   ALTER TABLE public.integration_configs ADD CONSTRAINT integration_configs_type_check
+--     CHECK (type IN ('channel','ai_provider','email_provider','social_network','publishing_service','google','meta'));
+
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS slack_user_id text;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_profiles_slack_user_id_check') THEN
+    ALTER TABLE public.user_profiles
+      ADD CONSTRAINT user_profiles_slack_user_id_check CHECK (slack_user_id IS NULL OR slack_user_id ~ '^[UW][A-Z0-9]{2,}$');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.user_profiles.slack_user_id IS
+  'El ID de Slack de la persona (U… o W…) para los avisos por mensaje directo (Servicios A4, F133). NULL = sin cargar.';
+
+-- El CHECK de integration_configs.type, ampliado desde el vigente (nunca se achica).
+DO $$
+DECLARE
+  v_def text;
+  v_vals text[];
+BEGIN
+  SELECT pg_get_constraintdef(c.oid) INTO v_def
+  FROM pg_constraint c
+  WHERE c.conrelid = 'public.integration_configs'::regclass AND c.conname = 'integration_configs_type_check';
+
+  IF v_def IS NULL THEN
+    v_vals := ARRAY['channel','ai_provider','email_provider','social_network','publishing_service','google','meta'];
+  ELSE
+    SELECT array_agg(m[1] ORDER BY ord) INTO v_vals
+    FROM regexp_matches(v_def, '''([^'']+)''', 'g') WITH ORDINALITY AS t(m, ord);
+  END IF;
+
+  IF 'slack' = ANY (v_vals) THEN
+    RETURN;
+  END IF;
+  v_vals := array_append(v_vals, 'slack');
+
+  ALTER TABLE public.integration_configs DROP CONSTRAINT IF EXISTS integration_configs_type_check;
+  EXECUTE format(
+    'ALTER TABLE public.integration_configs ADD CONSTRAINT integration_configs_type_check CHECK (type = ANY (ARRAY[%s]))',
+    (SELECT string_agg(quote_literal(v) || '::text', ', ') FROM unnest(v_vals) AS v)
+  );
+END $$;
+
+-- ============================================================
+-- MIGRATION 366: CALLS SERVICE PROPOSALS
+-- ============================================================
+-- ============================================================
+-- 00366_calls_service_proposals.sql
+-- ============================================================
+-- Servicios A4 (plano: A4-M2), F135 y F142/F143:
+--
+--   * `calls.service_id` (uuid SIN clave foranea, como `form_submissions.service_id`: lo valida el modulo; una
+--     grabacion nunca falla por el modulo, regla del 8/11), `calls.service_link` (auto | booking | manual | review;
+--     NULL = sin intento) y `calls.proposals` (las propuestas del analizador, `[]` por defecto).
+--   * `call_analysis_profiles.proposals`: «Proponer acciones» y «Proponer siempre un mensaje para el cliente».
+--     Nace APAGADO: ningun analizador empieza a proponer hasta que alguien lo prenda.
+--   * `public.call_proposal_claim(call_id, proposal_id)`: pasa UNA propuesta de `pending` (o `failed`, para
+--     reintentar) a `executing` con la fila de la reunion bloqueada. Si dos personas aprueban a la vez, gana una.
+--     Solo el servidor (`service_role`).
+--   * `public.call_proposal_patch(call_id, proposal_id, patch)`: cambia UNA propuesta (mezcla el patch en ese elemento)
+--     de forma atomica, asi dos personas que resuelven propuestas distintas de la misma reunion no se pisan.
+--
+-- Los datos que ya existen: `service_id` y `service_link` quedan en NULL y `proposals` en `[]`. Las reuniones viejas
+-- no se vinculan solas (boton «Vincular las reuniones de este servicio» y `scripts/backfill-call-services.mjs`).
+--
+-- Aditiva. Como volver atras (nadie lee estas columnas sin el codigo nuevo):
+--   DROP FUNCTION IF EXISTS public.call_proposal_claim(uuid, text);
+--   DROP FUNCTION IF EXISTS public.call_proposal_patch(uuid, text, jsonb);
+--   DROP INDEX IF EXISTS public.idx_calls_service, public.idx_calls_service_review;
+--   ALTER TABLE public.calls DROP COLUMN IF EXISTS service_id, DROP COLUMN IF EXISTS service_link, DROP COLUMN IF EXISTS proposals;
+--   ALTER TABLE public.call_analysis_profiles DROP COLUMN IF EXISTS proposals;
+
+ALTER TABLE public.calls ADD COLUMN IF NOT EXISTS service_id uuid;
+ALTER TABLE public.calls ADD COLUMN IF NOT EXISTS service_link text;
+ALTER TABLE public.calls ADD COLUMN IF NOT EXISTS proposals jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.call_analysis_profiles
+  ADD COLUMN IF NOT EXISTS proposals jsonb NOT NULL DEFAULT '{"enabled": false, "client_message": false}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'calls_service_link_check') THEN
+    ALTER TABLE public.calls ADD CONSTRAINT calls_service_link_check
+      CHECK (service_link IS NULL OR service_link IN ('auto', 'booking', 'manual', 'review'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'calls_proposals_array_check') THEN
+    ALTER TABLE public.calls ADD CONSTRAINT calls_proposals_array_check CHECK (jsonb_typeof(proposals) = 'array');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'call_analysis_profiles_proposals_check') THEN
+    ALTER TABLE public.call_analysis_profiles ADD CONSTRAINT call_analysis_profiles_proposals_check
+      CHECK (jsonb_typeof(proposals) = 'object');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.calls.service_id IS
+  'El servicio de la reunion (Servicios A4, F135). Sin clave foranea a proposito: lo valida el modulo (regla del 8/11).';
+COMMENT ON COLUMN public.calls.service_link IS
+  'Como quedo vinculada: auto (un solo servicio posible), booking (la agenda traia el paso), manual (una persona), review (por revisar). NULL = sin intento.';
+COMMENT ON COLUMN public.calls.proposals IS
+  'Propuestas del analizador (F142): [{id, type, status, original, edited, result, reason, resolved_by, resolved_at}]. Se ejecutan solo al aprobarlas.';
+COMMENT ON COLUMN public.call_analysis_profiles.proposals IS
+  '{enabled, client_message}: si el analizador propone acciones y si propone siempre un mensaje para el cliente (F142, F144). Nace apagado.';
+
+CREATE INDEX IF NOT EXISTS idx_calls_service ON public.calls (workspace_id, service_id) WHERE service_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_calls_service_review ON public.calls (workspace_id) WHERE service_link = 'review';
+
+-- Reclama UNA propuesta para ejecutarla: pending|failed -> executing. true si la tomo esta llamada.
+CREATE OR REPLACE FUNCTION public.call_proposal_claim(p_call_id uuid, p_proposal_id text)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_props jsonb;
+  v_idx int;
+  v_status text;
+BEGIN
+  SELECT c.proposals INTO v_props FROM public.calls c WHERE c.id = p_call_id FOR UPDATE;
+  IF v_props IS NULL OR jsonb_typeof(v_props) <> 'array' THEN RETURN false; END IF;
+  SELECT (o.ord - 1)::int, o.elem ->> 'status' INTO v_idx, v_status
+  FROM jsonb_array_elements(v_props) WITH ORDINALITY AS o(elem, ord)
+  WHERE o.elem ->> 'id' = p_proposal_id
+  LIMIT 1;
+  IF v_idx IS NULL OR v_status NOT IN ('pending', 'failed') THEN RETURN false; END IF;
+  UPDATE public.calls
+     SET proposals = jsonb_set(proposals, ARRAY[v_idx::text, 'status'], '"executing"'::jsonb)
+   WHERE id = p_call_id;
+  RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.call_proposal_claim(uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.call_proposal_claim(uuid, text) TO service_role;
+
+-- Cambia UNA propuesta (mezcla el patch en ese elemento) de forma atomica. Devuelve la propuesta resultante.
+CREATE OR REPLACE FUNCTION public.call_proposal_patch(p_call_id uuid, p_proposal_id text, p_patch jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_props jsonb;
+  v_idx int;
+  v_new jsonb;
+BEGIN
+  IF jsonb_typeof(p_patch) IS DISTINCT FROM 'object' THEN RETURN NULL; END IF;
+  SELECT c.proposals INTO v_props FROM public.calls c WHERE c.id = p_call_id FOR UPDATE;
+  IF v_props IS NULL OR jsonb_typeof(v_props) <> 'array' THEN RETURN NULL; END IF;
+  SELECT (o.ord - 1)::int, o.elem || (p_patch - 'id' - 'type' - 'original') INTO v_idx, v_new
+  FROM jsonb_array_elements(v_props) WITH ORDINALITY AS o(elem, ord)
+  WHERE o.elem ->> 'id' = p_proposal_id
+  LIMIT 1;
+  IF v_idx IS NULL THEN RETURN NULL; END IF;
+  UPDATE public.calls SET proposals = jsonb_set(proposals, ARRAY[v_idx::text], v_new) WHERE id = p_call_id;
+  RETURN v_new;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.call_proposal_patch(uuid, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.call_proposal_patch(uuid, text, jsonb) TO service_role;
+
+-- ============================================================
+-- MIGRATION 367: CALLS SERVICE LINK HOOK
+-- ============================================================
+-- ============================================================
+-- 00367_calls_service_link_hook.sql
+-- ============================================================
+-- Servicios A4 (plano: A4-M6), F135, F138 y F139:
+--
+--   1. `app_servicio.svc_call_link_plan(jsonb)`: a que servicio queda unida una reunion. PURA. Gemela de
+--      `callLinkPlan` (lib/services/call-link.ts), con los casos de `call-link.cases.json` (vitest y
+--      `verify-services --bloque a4`).
+--   2. `app_servicio.call_link_hook()`: AFTER INSERT OR UPDATE OF contact_id, booking_id, area_id, category_id,
+--      recorded_at ON public.calls. Sale al principio con el modulo apagado, declara `record` (no tipos del modulo)
+--      y va en EXCEPTION WHEN OTHERS -> `hook_failed`: NUNCA tumba la ingesta de Fathom ni la clasificacion.
+--      Nunca pisa `service_link = 'manual'`. Deja «Por revisar» con el aviso `call_service_review` una vez por
+--      reunion, y anota cada cambio en `audit_log` (`call.service_linked`).
+--   3. El paso Reunion que se completa «cuando hay grabacion» (`complete_on = 'recorded'`, F138): lo completa el
+--      mismo enganche al quedar vinculada, con `completed_source = 'call'`, salvo «no se presento». Si el paso es de
+--      una fase que todavia no empezo, nace completo (como F17/F18: se miran todas las fases no terminadas).
+--   4. El barrido horario de reuniones sin grabacion (F139): `private.enqueue_call_missing_recording()` encola un
+--      job `call_missing_recording_sweep` por negocio con el modulo prendido y por hora (cron SQL directo, minuto 41,
+--      como `svc-daily`; no pasa por call_app_cron). La regla vive en lib/calls/missing-recording.ts.
+--
+-- Aditiva: un trigger nuevo sobre una tabla en uso, funciones nuevas y un cron. Como volver atras:
+--   DROP TRIGGER IF EXISTS trg_app_servicio_call_link ON public.calls;
+--   DROP FUNCTION IF EXISTS app_servicio.call_link_hook();
+--   DROP FUNCTION IF EXISTS app_servicio.svc_call_link_apply(uuid);
+--   DROP FUNCTION IF EXISTS app_servicio.svc_call_complete_recorded(uuid);
+--   DROP FUNCTION IF EXISTS app_servicio.svc_call_link_plan(jsonb);
+--   SELECT cron.unschedule('call-missing-recording') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'call-missing-recording');
+--   DROP FUNCTION IF EXISTS private.enqueue_call_missing_recording(timestamptz);
+-- No cambia datos por si sola: las reuniones que ya existen siguen sin servicio hasta que algo las toque.
+
+-- ─── 1. La regla (pura) ─────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.svc_call_link_plan(p jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_area text := p ->> 'area_key';
+  v_type text := p ->> 'type_key';
+  v_day text := p ->> 'recorded_on';
+  v_et text := p ->> 'event_type_id';
+  v_service boolean;
+  v_covering jsonb := '[]'::jsonb;
+  v_bytype jsonb := '[]'::jsonb;
+  c jsonb;
+BEGIN
+  IF p ->> 'current_link' = 'manual' THEN
+    RETURN jsonb_build_object('action', 'keep');
+  END IF;
+  -- COALESCE en cada parte: con area y tipo vacios, una comparacion con NULL daria NULL y dejaria pasar la reunion.
+  v_service := COALESCE(v_type, '') <> 'servicio.clase'
+    AND (COALESCE(v_area, '') = 'servicio' OR COALESCE(v_type, '') LIKE 'servicio.%');
+  IF NOT COALESCE((p ->> 'has_contact')::boolean, false) OR NOT v_service THEN
+    RETURN jsonb_build_object('action', 'set', 'service_id', NULL, 'link', NULL);
+  END IF;
+  IF NULLIF(p ->> 'booking_item_service_id', '') IS NOT NULL THEN
+    RETURN jsonb_build_object('action', 'set', 'service_id', p ->> 'booking_item_service_id', 'link', 'booking');
+  END IF;
+  FOR c IN SELECT * FROM jsonb_array_elements(COALESCE(p -> 'candidates', '[]'::jsonb)) LOOP
+    CONTINUE WHEN c ->> 'status' = 'cancelled';
+    IF c ->> 'status' <> 'pending_confirmation' THEN
+      CONTINUE WHEN NULLIF(c ->> 'starts_on', '') IS NOT NULL AND (c ->> 'starts_on') > v_day;
+      CONTINUE WHEN NULLIF(c ->> 'ends_on', '') IS NOT NULL AND v_day > (c ->> 'ends_on');
+    END IF;
+    v_covering := v_covering || jsonb_build_array(c);
+  END LOOP;
+  IF jsonb_array_length(v_covering) = 1 THEN
+    RETURN jsonb_build_object('action', 'set', 'service_id', v_covering -> 0 ->> 'id', 'link', 'auto');
+  END IF;
+  IF jsonb_array_length(v_covering) = 0 THEN
+    RETURN jsonb_build_object('action', 'set', 'service_id', NULL, 'link', NULL);
+  END IF;
+  IF v_et IS NOT NULL THEN
+    SELECT COALESCE(jsonb_agg(e), '[]'::jsonb) INTO v_bytype
+    FROM jsonb_array_elements(v_covering) AS e
+    WHERE COALESCE(e -> 'booking_event_type_ids', '[]'::jsonb) ? v_et;
+    IF jsonb_array_length(v_bytype) = 1 THEN
+      RETURN jsonb_build_object('action', 'set', 'service_id', v_bytype -> 0 ->> 'id', 'link', 'auto');
+    END IF;
+  END IF;
+  RETURN jsonb_build_object('action', 'set', 'service_id', NULL, 'link', 'review');
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_call_link_plan(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_call_link_plan(jsonb) TO service_role;
+
+-- ─── 3. El paso «cuando hay grabacion» ──────────────────────────────────────
+-- Completa los pasos Reunion con complete_on = 'recorded' del servicio vinculado que corresponden a esta grabacion:
+-- la agenda es del tipo de reunion del paso, o trae el `svc_item` de ese paso. Nunca con «no se presento».
+CREATE OR REPLACE FUNCTION app_servicio.svc_call_complete_recorded(p_call_id uuid)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_call record;
+  v_booking record;
+  v_item record;
+  v_svc_item text;
+  v_n integer := 0;
+BEGIN
+  SELECT c.id, c.workspace_id, c.contact_id, c.booking_id, c.service_id, c.no_show
+    INTO v_call FROM public.calls c WHERE c.id = p_call_id;
+  IF v_call.id IS NULL OR v_call.service_id IS NULL OR v_call.booking_id IS NULL OR COALESCE(v_call.no_show, false) THEN
+    RETURN 0;
+  END IF;
+  SELECT b.event_type_id, b.status, b.utm INTO v_booking FROM public.bookings b WHERE b.id = v_call.booking_id;
+  IF v_booking.event_type_id IS NULL OR v_booking.status = 'no_show' THEN RETURN 0; END IF;
+  v_svc_item := CASE WHEN (v_booking.utm ->> 'svc_item') ~* '^[0-9a-f-]{36}$' THEN v_booking.utm ->> 'svc_item' END;
+  FOR v_item IN
+    SELECT i.id
+      FROM app_servicio.service_items i
+      JOIN app_servicio.services s ON s.id = i.service_id
+      JOIN app_servicio.service_phases ph ON ph.id = i.phase_id
+     WHERE s.id = v_call.service_id AND s.workspace_id = v_call.workspace_id AND s.contact_id = v_call.contact_id
+       AND s.status = 'active' AND i.status = 'pending' AND NOT i.is_recurring_template AND i.kind = 'booking'
+       AND i.ref ->> 'complete_on' = 'recorded' AND ph.status <> 'completed'
+       AND (i.ref ->> 'event_type_id' = v_booking.event_type_id::text OR i.id::text = v_svc_item)
+     ORDER BY (ph.status = 'in_progress') DESC, ph.position, i.position
+     LIMIT 1
+  LOOP
+    IF app_servicio.svc_mark_item(v_item.id, 'call', 'system', NULL) THEN v_n := v_n + 1; END IF;
+  END LOOP;
+  RETURN v_n;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_call_complete_recorded(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_call_complete_recorded(uuid) TO service_role;
+
+-- ─── 2. Juntar los datos, decidir y aplicar ─────────────────────────────────
+-- Devuelve el plan aplicado. Lo usan el enganche y el boton «Vincular las reuniones de este servicio».
+CREATE OR REPLACE FUNCTION app_servicio.svc_call_link_apply(p_call_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_call record;
+  v_tz text;
+  v_area text;
+  v_type text;
+  v_et uuid;
+  v_svc_item uuid;
+  v_item_service uuid;
+  v_candidates jsonb;
+  v_plan jsonb;
+  v_new_service uuid;
+  v_new_link text;
+  r record;
+BEGIN
+  SELECT c.id, c.workspace_id, c.contact_id, c.booking_id, c.area_id, c.category_id, c.recorded_at,
+         c.service_id, c.service_link, c.recorded_by_user_id
+    INTO v_call FROM public.calls c WHERE c.id = p_call_id;
+  IF v_call.id IS NULL THEN RETURN NULL; END IF;
+
+  SELECT COALESCE(w.timezone, 'UTC') INTO v_tz FROM public.workspaces w WHERE w.id = v_call.workspace_id;
+  SELECT bc.system_key INTO v_area FROM public.booking_categories bc WHERE bc.id = v_call.area_id;
+  SELECT bc.system_key INTO v_type FROM public.booking_categories bc WHERE bc.id = v_call.category_id;
+
+  IF v_call.booking_id IS NOT NULL THEN
+    SELECT b.event_type_id,
+           CASE WHEN (b.utm ->> 'svc_item') ~* '^[0-9a-f-]{36}$' THEN (b.utm ->> 'svc_item')::uuid END
+      INTO v_et, v_svc_item
+      FROM public.bookings b WHERE b.id = v_call.booking_id;
+  END IF;
+  IF v_svc_item IS NOT NULL AND v_call.contact_id IS NOT NULL THEN
+    SELECT i.service_id INTO v_item_service
+      FROM app_servicio.service_items i JOIN app_servicio.services s ON s.id = i.service_id
+     WHERE i.id = v_svc_item AND s.contact_id = v_call.contact_id AND s.workspace_id = v_call.workspace_id;
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+           'id', s.id, 'status', s.status, 'starts_on', s.starts_on, 'ends_on', s.ends_on,
+           'booking_event_type_ids', COALESCE((
+             SELECT jsonb_agg(DISTINCT it -> 'ref' ->> 'event_type_id')
+               FROM jsonb_array_elements(COALESCE(pv.journey_template -> 'phases', '[]'::jsonb)) AS ph,
+                    jsonb_array_elements(COALESCE(ph -> 'items', '[]'::jsonb)) AS it
+              WHERE it ->> 'kind' = 'booking' AND (it -> 'ref' ->> 'event_type_id') IS NOT NULL), '[]'::jsonb)
+         )), '[]'::jsonb)
+    INTO v_candidates
+    FROM app_servicio.services s
+    LEFT JOIN public.product_variants pv ON pv.id = s.product_variant_id
+   WHERE s.workspace_id = v_call.workspace_id AND s.contact_id = v_call.contact_id AND v_call.contact_id IS NOT NULL;
+
+  v_plan := app_servicio.svc_call_link_plan(jsonb_build_object(
+    'current_link', v_call.service_link,
+    'has_contact', v_call.contact_id IS NOT NULL,
+    'area_key', v_area,
+    'type_key', v_type,
+    'booking_item_service_id', v_item_service,
+    'recorded_on', ((COALESCE(v_call.recorded_at, now())) AT TIME ZONE v_tz)::date::text,
+    'event_type_id', v_et,
+    'candidates', v_candidates));
+
+  IF v_plan ->> 'action' = 'set' THEN
+    v_new_service := NULLIF(v_plan ->> 'service_id', '')::uuid;
+    v_new_link := v_plan ->> 'link';
+    IF v_new_service IS DISTINCT FROM v_call.service_id OR v_new_link IS DISTINCT FROM v_call.service_link THEN
+      UPDATE public.calls SET service_id = v_new_service, service_link = v_new_link WHERE id = v_call.id;
+      PERFORM app_servicio.audit(v_call.workspace_id, 'call', v_call.id, 'call.service_linked',
+        jsonb_build_object('service_id', jsonb_build_object('old', v_call.service_id, 'new', v_new_service),
+                           'service_link', jsonb_build_object('old', v_call.service_link, 'new', v_new_link)), 'system');
+      -- «Por revisar»: un aviso por reunion a quien la grabo y a los responsables de los servicios posibles.
+      IF v_new_link = 'review' AND NOT EXISTS (
+        SELECT 1 FROM public.notifications n WHERE n.type = 'call_service_review' AND n.entity_id = v_call.id
+      ) THEN
+        FOR r IN
+          SELECT DISTINCT u AS uid FROM (
+            SELECT v_call.recorded_by_user_id AS u
+            UNION
+            SELECT s.owner_user_id FROM app_servicio.services s
+             WHERE s.workspace_id = v_call.workspace_id AND s.contact_id = v_call.contact_id AND s.status <> 'cancelled'
+          ) x WHERE u IS NOT NULL
+        LOOP
+          PERFORM app_servicio.notify(v_call.workspace_id, r.uid, 'call_service_review', 'Una reunión quedó por revisar',
+            'El cliente tiene más de un servicio posible: elegí a cuál pertenece la reunión.', 'call', v_call.id, '{}'::jsonb);
+        END LOOP;
+      END IF;
+    END IF;
+  END IF;
+
+  PERFORM app_servicio.svc_call_complete_recorded(v_call.id);
+  RETURN v_plan;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_call_link_apply(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_call_link_apply(uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION app_servicio.call_link_hook()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  -- `record` y no tipos del modulo: un tipo se resuelve al ENTRAR a la funcion, antes del bloque que atrapa los
+  -- errores, y un problema con una tabla del modulo haria fallar la ingesta de BAIOS.
+  v_prev_system text := COALESCE(current_setting('app_servicio.system', true), '');
+BEGIN
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NULL; END IF;
+  BEGIN
+    PERFORM app_servicio.as_system();
+    PERFORM app_servicio.svc_call_link_apply(NEW.id);
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(NEW.workspace_id, 'call', SQLSTATE || ' ' || SQLERRM, NEW.id);
+  END;
+  PERFORM set_config('app_servicio.system', v_prev_system, true);
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.call_link_hook() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_app_servicio_call_link ON public.calls;
+CREATE TRIGGER trg_app_servicio_call_link
+  AFTER INSERT OR UPDATE OF contact_id, booking_id, area_id, category_id, recorded_at ON public.calls
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.call_link_hook();
+
+-- ─── 4. El barrido horario de reuniones sin grabacion (F139) ────────────────
+CREATE OR REPLACE FUNCTION private.enqueue_call_missing_recording(p_now timestamptz DEFAULT now())
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws record;
+  v_key text;
+  v_n integer := 0;
+BEGIN
+  FOR v_ws IN SELECT w.id FROM public.workspaces w WHERE w.services_enabled IS TRUE LOOP
+    BEGIN
+      v_key := 'call_missing_recording:' || v_ws.id::text || ':' || to_char(p_now AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24');
+      CONTINUE WHEN EXISTS (SELECT 1 FROM public.scheduled_jobs j WHERE j.dedupe_key = v_key);
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES ('call_missing_recording_sweep', jsonb_build_object('workspace_id', v_ws.id), p_now, v_key)
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+      IF FOUND THEN v_n := v_n + 1; END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'enqueue_call_missing_recording: no pude encolar el negocio %: %', v_ws.id, SQLERRM;
+    END;
+  END LOOP;
+  RETURN v_n;
+END;
+$$;
+REVOKE ALL ON FUNCTION private.enqueue_call_missing_recording(timestamptz) FROM PUBLIC, anon, authenticated;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'call-missing-recording') THEN PERFORM cron.unschedule('call-missing-recording'); END IF;
+  PERFORM cron.schedule('call-missing-recording', '41 * * * *', $c$SELECT private.enqueue_call_missing_recording()$c$);
+END $$;
+
+-- ============================================================
+-- MIGRATION 368: TASKS SERVICE CALL CHECKLIST
+-- ============================================================
+-- ============================================================
+-- 00368_tasks_service_call_checklist.sql
+-- ============================================================
+-- Servicios A4 (plano: A4-M3), F152, F153 y F155:
+--
+--   * `tasks.service_id` (uuid SIN clave foranea, como `calls.service_id`: lo valida el modulo; una tarea nunca falla
+--     por el modulo, regla del 8/11), `tasks.call_id` (clave foranea a `calls`, ON DELETE SET NULL) y
+--     `tasks.checklist` (`[]`, los puntos del paso del camino y los que se suman a mano; hasta 30).
+--   * El CHECK de `tasks.source` suma 'call' (una tarea que sale de una reunion). Se arma desde el que esta EN LA BASE,
+--     sin sacar ningun valor. El indice unico `uq_tasks_auto_source_open` NO cambia (sigue cubriendo flow y agent).
+--   * Completa `service_id` en las tareas del camino que ya existen (`source = 'cx'`, `source_ref = 'svc_item:<id>'`)
+--     con el servicio de ese paso. Las demas quedan en NULL.
+--   * Las tres columnas nuevas NO se escriben con la sesion: las escribe el servidor (Server Actions con el cliente de
+--     servicio despues de mirar el permiso). `authenticated` las LEE (la RLS de siempre, `can_see_task`).
+--
+-- Modifica estructura (CHECK) y datos (backfill). Como volver atras:
+--   UPDATE public.tasks SET service_id = NULL WHERE source = 'cx';                       -- el backfill
+--   UPDATE public.tasks SET source = 'manual' WHERE source = 'call';                     -- solo si hay alguna
+--   ALTER TABLE public.tasks DROP CONSTRAINT IF EXISTS tasks_source_check;
+--   ALTER TABLE public.tasks ADD CONSTRAINT tasks_source_check CHECK (source IN ('manual','flow','agent','cx'));
+--   DROP INDEX IF EXISTS public.idx_tasks_service, public.idx_tasks_call;
+--   ALTER TABLE public.tasks DROP COLUMN IF EXISTS service_id, DROP COLUMN IF EXISTS call_id, DROP COLUMN IF EXISTS checklist;
+
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS service_id uuid;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS call_id uuid REFERENCES public.calls(id) ON DELETE SET NULL;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS checklist jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tasks_checklist_check') THEN
+    ALTER TABLE public.tasks ADD CONSTRAINT tasks_checklist_check
+      CHECK (jsonb_typeof(checklist) = 'array' AND jsonb_array_length(checklist) <= 30);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.tasks.service_id IS
+  'El servicio de la tarea (Servicios A4, F152). Sin clave foranea a proposito: lo valida el modulo (regla del 8/11).';
+COMMENT ON COLUMN public.tasks.call_id IS 'La reunion de la que sale la tarea (F152, F155).';
+COMMENT ON COLUMN public.tasks.checklist IS '[{id, text, done, done_by?, done_at?}] hasta 30 (F148, F153). No impide completar la tarea.';
+
+-- El CHECK de source, ampliado desde el vigente (nunca se achica).
+DO $$
+DECLARE
+  v_def text;
+  v_vals text[];
+BEGIN
+  SELECT pg_get_constraintdef(c.oid) INTO v_def
+  FROM pg_constraint c
+  WHERE c.conrelid = 'public.tasks'::regclass AND c.conname = 'tasks_source_check';
+  IF v_def IS NULL THEN
+    v_vals := ARRAY['manual','flow','agent','cx'];
+  ELSE
+    SELECT array_agg(m[1] ORDER BY ord) INTO v_vals
+    FROM regexp_matches(v_def, '''([^'']+)''', 'g') WITH ORDINALITY AS t(m, ord);
+  END IF;
+  IF 'call' = ANY (v_vals) THEN RETURN; END IF;
+  v_vals := array_append(v_vals, 'call');
+  ALTER TABLE public.tasks DROP CONSTRAINT IF EXISTS tasks_source_check;
+  EXECUTE format('ALTER TABLE public.tasks ADD CONSTRAINT tasks_source_check CHECK (source = ANY (ARRAY[%s]))',
+    (SELECT string_agg(quote_literal(v) || '::text', ', ') FROM unnest(v_vals) AS v));
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_service ON public.tasks (workspace_id, service_id) WHERE service_id IS NOT NULL AND deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tasks_call ON public.tasks (call_id) WHERE call_id IS NOT NULL;
+
+-- Las tareas del camino que ya existen: el servicio de su paso.
+UPDATE public.tasks t
+   SET service_id = i.service_id
+  FROM app_servicio.service_items i
+ WHERE t.source = 'cx'
+   AND t.source_ref LIKE 'svc\_item:%'
+   AND t.service_id IS NULL
+   AND i.id = substr(t.source_ref, 10)::uuid
+   AND i.workspace_id = t.workspace_id;
+
+-- ============================================================
+-- MIGRATION 369: SERVICE ITEMS LOCK EVIDENCE
+-- ============================================================
+-- ============================================================
+-- 00369_service_items_lock_evidence.sql
+-- ============================================================
+-- Servicios A4 (plano: A4-M4), F138 (regla de guardado), F146, F147 y F148:
+--
+--   * El camino acepta, DENTRO de `ref` (como el boton de A2; se copian solos al servicio):
+--       ref.lock      = {from: service_created|service_start|phase_start, days: 0..365} | {after_item_key}
+--       ref.evidence  = {required: true, kinds: [file|link|note]}         (solo team_task, student_task, checkbox)
+--       ref.checklist = ["texto", ...]                                   (solo team_task, student_task; <= 20 x <= 200)
+--       ref.complete_on = 'recorded'                                     (solo pasos Reunion)
+--     Reescribe `journey_item_ref_problems` (lo de siempre igual + las reglas nuevas al final, mismo orden que
+--     `a4RefProblems` de lib/services/journey-template.ts) y `validate_journey_template` (+ «solo puede esperar a uno
+--     anterior»). Casos en `journey-template.cases.json`, contra TS y SQL.
+--   * `app_servicio.svc_lock_plan(jsonb)`: gemela pura de `lockPlan` (lib/services/lock.ts, `lock.cases.json`).
+--     `svc_item_lock_state(item)` arma la entrada (las fechas con `svc_due_date`, que no se toca).
+--   * `service_items.evidence` = [{id, kind, path?, url?, text?, by, at}] (hasta 10). Bucket privado `service-evidence`
+--     (10 MB, PNG/JPG/WEBP/PDF; sin politicas: lee y escribe el servidor). Se escribe solo con `svc_add_evidence` y
+--     `svc_remove_evidence` (services.items con su alcance, o tasks.edit desde la tarea del paso; solo lo propio y con
+--     el paso pendiente).
+--   * Completar a mano (`svc_complete_item`) y «Completar un paso» de una automatizacion (`svc_mark_item` con source
+--     'automation') respetan el bloqueo (SV033) y la evidencia (SV034): `svc_assert_completable`. Lo que hizo el cliente
+--     (formulario, agenda, grabacion, programa) se completa igual y queda `svc.item_completed_while_locked`.
+--   * `svc_ensure_task`: la tarea del paso nace con su `service_id` y el checklist del paso (sin tildar).
+--   * SV030 y SV031 ya los usa `svc_extend_plan`: el bloqueo es SV033 y la evidencia SV034.
+--
+-- Antes de aplicarla: ningun camino guardado usa lock, evidence, checklist ni 'recorded' (son nuevos), asi que
+-- ninguna variante queda invalida.
+--
+-- Como volver atras: las definiciones viejas de las cinco funciones que reescribe estan en
+-- docs/servicios/definiciones-viejas-a4.sql (copiadas de la base antes de aplicarla): correr esas cinco. Las columnas,
+-- el bucket y las funciones nuevas se pueden dejar (nadie las lee sin el codigo nuevo), o:
+--   DROP FUNCTION IF EXISTS app_servicio.svc_add_evidence(uuid, jsonb), app_servicio.svc_remove_evidence(uuid, uuid),
+--     app_servicio.svc_assert_completable(uuid), app_servicio.svc_item_lock_state(uuid), app_servicio.svc_lock_plan(jsonb),
+--     app_servicio.svc_item_evidence_missing(uuid);
+--   ALTER TABLE app_servicio.service_items DROP COLUMN IF EXISTS evidence;
+--   DELETE FROM storage.buckets WHERE id = 'service-evidence' AND NOT EXISTS (SELECT 1 FROM storage.objects WHERE bucket_id = 'service-evidence');
+
+ALTER TABLE app_servicio.service_items ADD COLUMN IF NOT EXISTS evidence jsonb NOT NULL DEFAULT '[]'::jsonb;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'service_items_evidence_check') THEN
+    ALTER TABLE app_servicio.service_items ADD CONSTRAINT service_items_evidence_check
+      CHECK (jsonb_typeof(evidence) = 'array' AND jsonb_array_length(evidence) <= 10);
+  END IF;
+END $$;
+COMMENT ON COLUMN app_servicio.service_items.evidence IS
+  'La evidencia del paso (Servicios A4, F147): [{id, kind: file|link|note, path?, url?, text?, by, at}], hasta 10. Se escribe con svc_add_evidence / svc_remove_evidence.';
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('service-evidence', 'service-evidence', false, 10485760, ARRAY['image/png','image/jpeg','image/webp','application/pdf'])
+ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = 10485760, allowed_mime_types = ARRAY['image/png','image/jpeg','image/webp','application/pdf'];
+
+-- ─── El bloqueo (pura) ──────────────────────────────────────────────────────
+-- input: {lock, anchors: {serviceCreated, serviceStart, phaseStart}, today, completedKeys}
+CREATE OR REPLACE FUNCTION app_servicio.svc_lock_plan(p jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  l jsonb := p -> 'lock';
+  v_until date;
+  v_unlocked jsonb := jsonb_build_object('locked', false, 'until', NULL, 'waiting_item_key', NULL);
+BEGIN
+  IF l IS NULL OR jsonb_typeof(l) <> 'object' THEN RETURN v_unlocked; END IF;
+  IF jsonb_typeof(l -> 'after_item_key') = 'string' AND (l ->> 'after_item_key') <> '' THEN
+    IF COALESCE(p -> 'completedKeys', '[]'::jsonb) ? (l ->> 'after_item_key') THEN RETURN v_unlocked; END IF;
+    RETURN jsonb_build_object('locked', true, 'until', NULL, 'waiting_item_key', l ->> 'after_item_key');
+  END IF;
+  IF NOT COALESCE(l ->> 'from' = ANY (ARRAY['service_created','service_start','phase_start']), false) THEN RETURN v_unlocked; END IF;
+  v_until := app_servicio.svc_due_date(
+    jsonb_build_object('from', l ->> 'from', 'days', COALESCE(round((l ->> 'days')::numeric)::integer, 0)),
+    jsonb_build_object('serviceCreated', p #>> '{anchors,serviceCreated}', 'serviceStart', p #>> '{anchors,serviceStart}',
+                       'phaseStart', p #>> '{anchors,phaseStart}', 'itemCompleted', NULL));
+  IF v_until IS NULL THEN RETURN jsonb_build_object('locked', true, 'until', NULL, 'waiting_item_key', NULL); END IF;
+  IF (p ->> 'today')::date < v_until THEN
+    RETURN jsonb_build_object('locked', true, 'until', to_char(v_until, 'YYYY-MM-DD'), 'waiting_item_key', NULL);
+  END IF;
+  RETURN v_unlocked;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_lock_plan(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_lock_plan(jsonb) TO service_role;
+
+-- El estado del bloqueo de un paso: {locked, until, waiting_item_key}.
+CREATE OR REPLACE FUNCTION app_servicio.svc_item_lock_state(p_item_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ref jsonb; v_service uuid; v_phase uuid; v_ws uuid;
+  v_created timestamptz; v_start date; v_phase_start timestamptz;
+  v_done jsonb;
+BEGIN
+  SELECT i.ref, i.service_id, i.phase_id, i.workspace_id INTO v_ref, v_service, v_phase, v_ws
+    FROM app_servicio.service_items i WHERE i.id = p_item_id;
+  IF v_ref IS NULL OR jsonb_typeof(v_ref -> 'lock') IS DISTINCT FROM 'object' THEN
+    RETURN jsonb_build_object('locked', false, 'until', NULL, 'waiting_item_key', NULL);
+  END IF;
+  SELECT s.created_at, s.starts_on INTO v_created, v_start FROM app_servicio.services s WHERE s.id = v_service;
+  SELECT ph.started_at INTO v_phase_start FROM app_servicio.service_phases ph WHERE ph.id = v_phase;
+  SELECT COALESCE(jsonb_agg(DISTINCT i.template_key), '[]'::jsonb) INTO v_done
+    FROM app_servicio.service_items i WHERE i.service_id = v_service AND i.status = 'completed' AND i.template_key IS NOT NULL;
+  RETURN app_servicio.svc_lock_plan(jsonb_build_object(
+    'lock', v_ref -> 'lock',
+    'anchors', jsonb_build_object(
+      'serviceCreated', to_char(app_servicio.local_date(v_created, v_ws), 'YYYY-MM-DD'),
+      'serviceStart', to_char(v_start, 'YYYY-MM-DD'),
+      'phaseStart', to_char(app_servicio.local_date(v_phase_start, v_ws), 'YYYY-MM-DD')),
+    'today', to_char(app_servicio.local_date(now(), v_ws), 'YYYY-MM-DD'),
+    'completedKeys', v_done));
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_item_lock_state(uuid) FROM PUBLIC, anon, authenticated;
+-- Solo el servidor: no miran permisos (las llaman las funciones del modulo, que corren como su dueño).
+GRANT EXECUTE ON FUNCTION app_servicio.svc_item_lock_state(uuid) TO service_role;
+
+-- Si al paso le falta la evidencia que pide.
+CREATE OR REPLACE FUNCTION app_servicio.svc_item_evidence_missing(p_item_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE((
+    SELECT i.ref -> 'evidence' ->> 'required' = 'true'
+       AND jsonb_typeof(i.ref -> 'evidence' -> 'kinds') = 'array'
+       AND NOT EXISTS (
+         SELECT 1 FROM jsonb_array_elements(COALESCE(i.evidence, '[]'::jsonb)) e
+          WHERE (i.ref -> 'evidence' -> 'kinds') ? (e ->> 'kind'))
+      FROM app_servicio.service_items i WHERE i.id = p_item_id), false);
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_item_evidence_missing(uuid) FROM PUBLIC, anon, authenticated;
+-- Solo el servidor: no miran permisos (las llaman las funciones del modulo, que corren como su dueño).
+GRANT EXECUTE ON FUNCTION app_servicio.svc_item_evidence_missing(uuid) TO service_role;
+
+-- Frena completar a mano un paso bloqueado (SV033) o que pide evidencia sin tenerla (SV034).
+CREATE OR REPLACE FUNCTION app_servicio.svc_assert_completable(p_item_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_lock jsonb := app_servicio.svc_item_lock_state(p_item_id);
+  v_name text;
+BEGIN
+  IF (v_lock ->> 'locked')::boolean THEN
+    IF v_lock ->> 'waiting_item_key' IS NOT NULL THEN
+      SELECT o.name INTO v_name FROM app_servicio.service_items i JOIN app_servicio.service_items o
+        ON o.service_id = i.service_id AND o.template_key = v_lock ->> 'waiting_item_key'
+       WHERE i.id = p_item_id ORDER BY o.occurrence_index NULLS FIRST LIMIT 1;
+      RAISE EXCEPTION 'Este paso se puede completar cuando se complete «%».', COALESCE(v_name, 'otro paso') USING ERRCODE = 'SV033';
+    ELSIF v_lock ->> 'until' IS NOT NULL THEN
+      RAISE EXCEPTION 'Este paso se puede completar desde el %.', to_char((v_lock ->> 'until')::date, 'DD/MM') USING ERRCODE = 'SV033';
+    ELSE
+      RAISE EXCEPTION 'Este paso todavía no se puede completar.' USING ERRCODE = 'SV033';
+    END IF;
+  END IF;
+  IF app_servicio.svc_item_evidence_missing(p_item_id) THEN
+    RAISE EXCEPTION 'Este paso pide evidencia: adjuntá una captura, un link o una nota.' USING ERRCODE = 'SV034';
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_assert_completable(uuid) FROM PUBLIC, anon, authenticated;
+-- Solo el servidor: no miran permisos (las llaman las funciones del modulo, que corren como su dueño).
+GRANT EXECUTE ON FUNCTION app_servicio.svc_assert_completable(uuid) TO service_role;
+
+-- Quien puede adjuntar o quitar evidencia: services.items con su alcance, o tasks.edit viendo la tarea del paso.
+CREATE OR REPLACE FUNCTION app_servicio.svc_require_evidence_access(p_item_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  it app_servicio.service_items;
+  s app_servicio.services;
+BEGIN
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id;
+  IF it.id IS NULL THEN RAISE EXCEPTION 'No existe el paso' USING ERRCODE = 'SV002'; END IF;
+  SELECT * INTO s FROM app_servicio.services WHERE id = it.service_id;
+  IF NOT public.is_workspace_member(s.workspace_id) THEN RAISE EXCEPTION 'No tenés permiso para hacer esto' USING ERRCODE = 'SV004'; END IF;
+  BEGIN
+    PERFORM app_servicio.svc_require_item(s, it);
+    RETURN;
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+  IF it.task_id IS NOT NULL AND public.can_see_task_id(it.task_id) AND public.can_edit_tasks(s.workspace_id) THEN RETURN; END IF;
+  RAISE EXCEPTION 'No tenés permiso para hacer esto' USING ERRCODE = 'SV004';
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_require_evidence_access(uuid) FROM PUBLIC, anon, authenticated;
+
+-- Adjunta una evidencia (la arma el servidor despues de validar los bytes y subir el archivo). Devuelve la entrada.
+CREATE OR REPLACE FUNCTION app_servicio.svc_add_evidence(p_item_id uuid, p_entry jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  it app_servicio.service_items;
+  v_kind text := p_entry ->> 'kind';
+  v_new jsonb;
+BEGIN
+  PERFORM app_servicio.svc_require_evidence_access(p_item_id);
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id FOR UPDATE;
+  IF it.status <> 'pending' THEN RAISE EXCEPTION 'El paso ya está completo' USING ERRCODE = 'SV002'; END IF;
+  IF jsonb_array_length(COALESCE(it.evidence, '[]'::jsonb)) >= 10 THEN RAISE EXCEPTION 'Un paso tiene hasta 10 evidencias' USING ERRCODE = 'SV001'; END IF;
+  IF v_kind = 'file' THEN
+    IF COALESCE(p_entry ->> 'path', '') NOT LIKE it.workspace_id::text || '/' || it.service_id::text || '/' || it.id::text || '/%'
+       OR (p_entry ->> 'path') LIKE '%..%' THEN
+      RAISE EXCEPTION 'El archivo no es de este paso' USING ERRCODE = 'SV001';
+    END IF;
+    v_new := jsonb_build_object('kind', 'file', 'path', p_entry ->> 'path');
+  ELSIF v_kind = 'link' THEN
+    IF COALESCE(p_entry ->> 'url', '') !~ '^https://\S+$' OR char_length(p_entry ->> 'url') > 2000 THEN
+      RAISE EXCEPTION 'El link tiene que empezar con https://' USING ERRCODE = 'SV001';
+    END IF;
+    v_new := jsonb_build_object('kind', 'link', 'url', p_entry ->> 'url');
+  ELSIF v_kind = 'note' THEN
+    IF btrim(COALESCE(p_entry ->> 'text', '')) = '' OR char_length(p_entry ->> 'text') > 2000 THEN
+      RAISE EXCEPTION 'La nota tiene que tener entre 1 y 2000 caracteres' USING ERRCODE = 'SV001';
+    END IF;
+    v_new := jsonb_build_object('kind', 'note', 'text', btrim(p_entry ->> 'text'));
+  ELSE
+    RAISE EXCEPTION 'Tipo de evidencia desconocido' USING ERRCODE = 'SV001';
+  END IF;
+  v_new := v_new || jsonb_build_object('id', gen_random_uuid(), 'by', auth.uid(), 'at', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'));
+  UPDATE app_servicio.service_items SET evidence = COALESCE(evidence, '[]'::jsonb) || jsonb_build_array(v_new) WHERE id = it.id;
+  PERFORM app_servicio.audit(it.workspace_id, 'service_item', it.id, 'svc.evidence_added',
+    jsonb_build_object('service_id', it.service_id, 'item_key', it.template_key, 'kind', v_kind), 'user');
+  RETURN v_new;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_add_evidence(uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_add_evidence(uuid, jsonb) TO authenticated, service_role;
+
+-- Quita una evidencia: solo la propia y con el paso pendiente. Devuelve la entrada quitada (para borrar el archivo).
+CREATE OR REPLACE FUNCTION app_servicio.svc_remove_evidence(p_item_id uuid, p_evidence_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  it app_servicio.service_items;
+  v_old jsonb;
+BEGIN
+  PERFORM app_servicio.svc_require_evidence_access(p_item_id);
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id FOR UPDATE;
+  IF it.status <> 'pending' THEN RAISE EXCEPTION 'Con el paso completo, la evidencia ya no se quita' USING ERRCODE = 'SV002'; END IF;
+  SELECT e INTO v_old FROM jsonb_array_elements(COALESCE(it.evidence, '[]'::jsonb)) e WHERE e ->> 'id' = p_evidence_id::text LIMIT 1;
+  IF v_old IS NULL THEN RAISE EXCEPTION 'Esa evidencia ya no está' USING ERRCODE = 'SV002'; END IF;
+  IF (v_old ->> 'by') IS DISTINCT FROM auth.uid()::text THEN RAISE EXCEPTION 'Solo podés quitar lo que adjuntaste' USING ERRCODE = 'SV004'; END IF;
+  UPDATE app_servicio.service_items
+     SET evidence = COALESCE((SELECT jsonb_agg(e) FROM jsonb_array_elements(evidence) e WHERE e ->> 'id' <> p_evidence_id::text), '[]'::jsonb)
+   WHERE id = it.id;
+  PERFORM app_servicio.audit(it.workspace_id, 'service_item', it.id, 'svc.evidence_removed',
+    jsonb_build_object('service_id', it.service_id, 'item_key', it.template_key, 'kind', v_old ->> 'kind'), 'user');
+  RETURN v_old;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_remove_evidence(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_remove_evidence(uuid, uuid) TO authenticated, service_role;
+
+-- ─── Las funciones reescritas (las viejas, en docs/servicios/definiciones-viejas-a4.sql) ─────────────
+
+CREATE OR REPLACE FUNCTION app_servicio.journey_item_ref_problems(p_item jsonb, p_nm text, p_ws uuid, p_product uuid)
+ RETURNS text[]
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  v_kind text := p_item ->> 'kind';
+  v_ref jsonb := CASE WHEN jsonb_typeof(p_item -> 'ref') = 'object' THEN p_item -> 'ref' ELSE '{}'::jsonb END;
+  v_co text := v_ref ->> 'complete_on';
+  v_form jsonb;
+  v_want text;
+  v_grading boolean;
+  v_ok boolean;
+  -- F125: el boton y «ver su respuesta».
+  v_link_kind boolean := v_kind = ANY (ARRAY['team_task','student_task','checkbox']);
+  v_btn jsonb;
+  v_label jsonb;
+  v_url jsonb;
+  v_url_ok boolean := false;
+  v_url_bad boolean := false;
+  -- A4 (00369).
+  v_lock jsonb;
+  v_ev jsonb;
+BEGIN
+  IF v_kind = ANY (ARRAY['form','survey','contract','activity','quiz']) THEN
+    IF NOT app_servicio.j_uuid(v_ref -> 'form_id') THEN
+      v := v || format('«%s»: elegí el formulario', p_nm);
+    ELSE
+      IF v_ref ? 'complete_on' AND NOT COALESCE(v_co = ANY (CASE v_kind
+          WHEN 'form' THEN ARRAY['submitted','reviewed'] WHEN 'survey' THEN ARRAY['submitted','reviewed']
+          WHEN 'contract' THEN ARRAY['submitted'] WHEN 'activity' THEN ARRAY['submitted','reviewed','passed']
+          ELSE ARRAY['passed','finished'] END), false) THEN
+        v := v || format('«%s»: elegí cuándo se completa', p_nm);
+      END IF;
+      IF p_ws IS NOT NULL THEN
+        SELECT to_jsonb(f) INTO v_form FROM public.forms f WHERE f.id = (v_ref ->> 'form_id')::uuid AND f.workspace_id = p_ws;
+        IF v_form IS NULL THEN
+          v := v || format('«%s»: el formulario no existe', p_nm);
+        ELSE
+          v_want := CASE v_kind WHEN 'form' THEN 'custom' ELSE v_kind END;
+          IF v_form ->> 'type' IS DISTINCT FROM v_want THEN v := v || format('«%s»: el formulario no es del tipo del paso', p_nm); END IF;
+          IF v_kind IN ('quiz','activity') AND p_product IS NOT NULL AND (v_form ->> 'product_id') IS DISTINCT FROM p_product::text THEN
+            v := v || CASE v_kind WHEN 'quiz' THEN 'la evaluación tiene que ser de este programa' ELSE 'la actividad tiene que ser de este programa' END;
+          END IF;
+          IF v_kind = 'activity' AND v_co = 'passed' THEN
+            SELECT COALESCE((fv.definition #>> '{grading,enabled}')::boolean, false) INTO v_grading
+              FROM public.form_versions fv WHERE fv.id = (v_form ->> 'current_version_id')::uuid;
+            IF NOT COALESCE(v_grading, false) THEN v := v || format('«%s»: «al aprobar» necesita una actividad con calificación', p_nm); END IF;
+          END IF;
+        END IF;
+      END IF;
+    END IF;
+  ELSIF v_kind = 'booking' THEN
+    IF NOT app_servicio.j_uuid(v_ref -> 'event_type_id') THEN
+      v := v || format('«%s»: elegí el tipo de reunión', p_nm);
+    ELSIF p_ws IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.event_types e WHERE e.id = (v_ref ->> 'event_type_id')::uuid AND e.workspace_id = p_ws) THEN
+      v := v || format('«%s»: el tipo de reunión no existe', p_nm);
+    END IF;
+    IF v_ref ? 'complete_on' AND NOT COALESCE(v_co = ANY (ARRAY['booked','attended','recorded']), false) THEN v := v || format('«%s»: elegí cuándo se completa', p_nm); END IF;
+  ELSIF v_kind IN ('program_item','open_module') THEN
+    IF NOT app_servicio.j_uuid(v_ref -> 'program_item_id') THEN
+      v := v || format('«%s»: elegí el módulo o la clase', p_nm);
+    ELSIF p_product IS NOT NULL THEN
+      v_ok := false;
+      IF to_regclass('app_servicio.program_items') IS NOT NULL THEN
+        EXECUTE 'SELECT EXISTS (SELECT 1 FROM app_servicio.program_items WHERE id = $1 AND product_id = $2)'
+          INTO v_ok USING (v_ref ->> 'program_item_id')::uuid, p_product;
+      END IF;
+      IF NOT v_ok THEN v := v || format('«%s»: el módulo o la clase no es de este programa', p_nm); END IF;
+    END IF;
+  ELSIF v_kind = 'certificate' THEN
+    IF NOT app_servicio.j_uuid(v_ref -> 'template_id') THEN
+      v := v || 'Elegí la plantilla del certificado'::text;
+    ELSIF p_ws IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM public.design_templates t WHERE t.id = (v_ref ->> 'template_id')::uuid AND t.workspace_id = p_ws AND t.doc_type = 'certificado'
+    ) THEN
+      v := v || format('«%s»: la plantilla no es de un certificado de este negocio', p_nm);
+    END IF;
+  ELSIF v_kind = 'open_section' THEN
+    IF NOT COALESCE(v_ref ->> 'section' = ANY (ARRAY['program','calendar','challenge','certificate','assistant','community','affiliates']), false) THEN
+      v := v || format('«%s»: elegí la sección', p_nm);
+    END IF;
+  END IF;
+
+  -- ── El boton del paso (F125). Mismo orden que buttonProblems (TS). ──
+  IF v_ref ? 'button' THEN
+    v_btn := v_ref -> 'button';
+    IF jsonb_typeof(v_btn) IS DISTINCT FROM 'object' THEN
+      v := v || format('«%s»: el botón no es válido', p_nm);
+    ELSE
+      v_label := v_btn -> 'label';
+      IF v_label IS NOT NULL AND jsonb_typeof(v_label) <> 'null' AND v_label <> '""'::jsonb THEN
+        IF jsonb_typeof(v_label) <> 'string' OR char_length(v_label #>> '{}') > 40 OR (v_label #>> '{}') ~ '[\r\n]' THEN
+          v := v || format('«%s»: el texto del botón tiene hasta 40 caracteres, en una línea', p_nm);
+        END IF;
+      END IF;
+      v_url := v_btn -> 'url';
+      IF v_url IS NOT NULL AND jsonb_typeof(v_url) <> 'null' AND v_url <> '""'::jsonb THEN
+        IF NOT v_link_kind THEN
+          v := v || format('«%s»: este paso ya lleva a su destino', p_nm);
+        ELSIF jsonb_typeof(v_url) <> 'string' OR (v_url #>> '{}') !~ '^https://\S+$' OR char_length(v_url #>> '{}') > 2000 THEN
+          v := v || format('«%s»: el link del botón tiene que empezar con https:// y no llevar espacios', p_nm);
+          v_url_bad := true;
+        ELSE
+          v_url_ok := true;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+  IF p_item -> 'portal_button' = 'true'::jsonb THEN
+    IF p_item -> 'visible_to_client' = 'false'::jsonb THEN
+      v := v || format('«%s»: para mostrar el botón, el cliente tiene que ver el paso', p_nm);
+    ELSIF v_link_kind AND NOT v_url_ok AND NOT v_url_bad THEN
+      v := v || format('«%s»: pegá el link del botón', p_nm);
+    END IF;
+  END IF;
+  IF v_ref ? 'show_response' THEN
+    IF jsonb_typeof(v_ref -> 'show_response') <> 'boolean' THEN
+      v := v || format('«%s»: «El cliente puede ver su respuesta» no es válido', p_nm);
+    ELSIF NOT (v_kind = ANY (ARRAY['form','survey','activity','quiz','contract'])) THEN
+      v := v || format('«%s»: «El cliente puede ver su respuesta» es solo para pasos con formulario', p_nm);
+    END IF;
+  END IF;
+  -- ── Servicios A4 (00369): bloqueo, evidencia, checklist y «cuando hay grabacion». Mismo orden que a4RefProblems (TS). ──
+  IF v_co = 'recorded' AND v_kind <> 'booking' THEN
+    v := v || format('«%s»: «cuando hay grabación» es solo para pasos Reunión', p_nm);
+  END IF;
+  IF v_ref ? 'lock' THEN
+    v_lock := v_ref -> 'lock';
+    IF NOT (
+         (jsonb_typeof(v_lock) = 'object' AND jsonb_typeof(v_lock -> 'after_item_key') = 'string'
+          AND (v_lock ->> 'after_item_key') ~ '^it_[a-z0-9]{6}$' AND (SELECT count(*) FROM jsonb_object_keys(v_lock)) = 1)
+      OR (jsonb_typeof(v_lock) = 'object' AND COALESCE(v_lock ->> 'from' = ANY (ARRAY['service_created','service_start','phase_start']), false)
+          AND app_servicio.j_int(v_lock -> 'days') AND app_servicio.j_num(v_lock -> 'days') BETWEEN 0 AND 365
+          AND (SELECT count(*) FROM jsonb_object_keys(v_lock)) = 2)
+    ) THEN
+      v := v || format('«%s»: el bloqueo no es válido', p_nm);
+    END IF;
+  END IF;
+  IF v_ref ? 'evidence' THEN
+    v_ev := v_ref -> 'evidence';
+    IF NOT (v_kind = ANY (ARRAY['team_task','student_task','checkbox'])) THEN
+      v := v || format('«%s»: la evidencia es solo para tareas y casillas', p_nm);
+    ELSIF jsonb_typeof(v_ev) IS DISTINCT FROM 'object' OR v_ev -> 'required' IS DISTINCT FROM 'true'::jsonb
+       OR jsonb_typeof(v_ev -> 'kinds') IS DISTINCT FROM 'array' OR jsonb_array_length(v_ev -> 'kinds') = 0
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_ev -> 'kinds') k WHERE NOT COALESCE(k #>> '{}' = ANY (ARRAY['file','link','note']), false) OR jsonb_typeof(k) <> 'string')
+       OR (SELECT count(DISTINCT k #>> '{}') FROM jsonb_array_elements(v_ev -> 'kinds') k) <> jsonb_array_length(v_ev -> 'kinds') THEN
+      v := v || format('«%s»: elegí qué evidencia pide', p_nm);
+    END IF;
+  END IF;
+  IF v_ref ? 'checklist' THEN
+    IF NOT (v_kind = ANY (ARRAY['team_task','student_task'])) THEN
+      v := v || format('«%s»: el checklist es solo para tareas', p_nm);
+    ELSIF jsonb_typeof(v_ref -> 'checklist') IS DISTINCT FROM 'array' OR jsonb_array_length(v_ref -> 'checklist') > 20
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_ref -> 'checklist') c
+                  WHERE jsonb_typeof(c) <> 'string' OR btrim(c #>> '{}') = '' OR char_length(c #>> '{}') > 200) THEN
+      v := v || format('«%s»: el checklist tiene hasta 20 puntos de hasta 200 caracteres', p_nm);
+    END IF;
+  END IF;
+  RETURN v;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION app_servicio.validate_journey_template(p jsonb, p_variant_id uuid DEFAULT NULL::uuid)
+ RETURNS text[]
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  v_ws uuid; v_product uuid;
+  ph jsonb; it jsonb; due jsonb; lt jsonb; ch jsonb; ll jsonb;
+  v_phase_keys text[] := ARRAY[]::text[];
+  v_item_keys text[] := ARRAY[]::text[];
+  v_before text[] := ARRAY[]::text[];
+  v_name text; v_label text; v_nm text; v_key text;
+  y numeric; r numeric; d numeric;
+  v_has_rule boolean;
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN ARRAY['el camino tiene que ser un objeto']; END IF;
+  IF p_variant_id IS NOT NULL THEN
+    SELECT pv.workspace_id, pv.product_id INTO v_ws, v_product FROM public.product_variants pv WHERE pv.id = p_variant_id;
+  END IF;
+  v := v || app_servicio.unknown_keys(p, ARRAY['v','future_visibility','phases']);
+  IF p -> 'v' IS DISTINCT FROM '1'::jsonb THEN v := v || 'versión desconocida'::text; END IF;
+  IF p ? 'future_visibility' AND NOT COALESCE(p ->> 'future_visibility' = ANY (ARRAY['names','names_and_descriptions','hidden']), false) THEN
+    v := v || 'elegí qué ve el cliente de las fases que vienen'::text;
+  END IF;
+  IF jsonb_typeof(p -> 'phases') IS DISTINCT FROM 'array' THEN RETURN v || 'faltan las fases'::text; END IF;
+
+  FOR ph IN SELECT x FROM jsonb_array_elements(p -> 'phases') x LOOP
+    IF jsonb_typeof(ph) <> 'object' THEN v := v || 'hay una fase que no es válida'::text; CONTINUE; END IF;
+    v := v || app_servicio.unknown_keys(ph, ARRAY['key','name','duration_days','yellow_day','red_day','advance','challenge','late_light','items']);
+    v_key := CASE WHEN jsonb_typeof(ph -> 'key') = 'string' THEN ph ->> 'key' END;
+    IF v_key IS NULL OR v_key !~ '^ph_[a-z0-9]{6}$' THEN v := v || 'hay una fase con una clave inválida'::text;
+    ELSIF v_key = ANY (v_phase_keys) THEN v := v || format('la clave %s está repetida', v_key);
+    ELSE v_phase_keys := v_phase_keys || v_key;
+    END IF;
+    v_name := CASE WHEN jsonb_typeof(ph -> 'name') = 'string' THEN btrim(ph ->> 'name') ELSE '' END;
+    IF v_name = '' THEN v := v || 'hay una fase sin nombre'::text; END IF;
+    v_label := CASE WHEN v_name = '' THEN 'la fase' ELSE v_name END;
+    IF NOT (ph -> 'duration_days' IS NULL OR jsonb_typeof(ph -> 'duration_days') = 'null'
+            OR (app_servicio.j_int(ph -> 'duration_days') AND app_servicio.j_num(ph -> 'duration_days') >= 0))
+       OR app_servicio.j_num(ph -> 'duration_days') = 0 THEN
+      v := v || format('«%s»: la duración tiene que ser mayor a cero', v_label);
+    END IF;
+    IF NOT (ph -> 'yellow_day' IS NULL OR jsonb_typeof(ph -> 'yellow_day') = 'null' OR (app_servicio.j_int(ph -> 'yellow_day') AND app_servicio.j_num(ph -> 'yellow_day') >= 0))
+       OR NOT (ph -> 'red_day' IS NULL OR jsonb_typeof(ph -> 'red_day') = 'null' OR (app_servicio.j_int(ph -> 'red_day') AND app_servicio.j_num(ph -> 'red_day') >= 0)) THEN
+      v := v || format('«%s»: los días de amarillo y rojo tienen que ser enteros', v_label);
+    ELSE
+      y := CASE WHEN app_servicio.j_int(ph -> 'yellow_day') THEN app_servicio.j_num(ph -> 'yellow_day') END;
+      r := CASE WHEN app_servicio.j_int(ph -> 'red_day') THEN app_servicio.j_num(ph -> 'red_day') END;
+      d := CASE WHEN app_servicio.j_int(ph -> 'duration_days') THEN app_servicio.j_num(ph -> 'duration_days') END;
+      IF y IS NOT NULL AND r IS NOT NULL AND y >= r THEN v := v || format('«%s»: el amarillo tiene que ser antes que el rojo', v_label); END IF;
+      IF r IS NOT NULL AND d IS NOT NULL AND r > d THEN v := v || format('«%s»: el rojo no puede pasar la duración de la fase', v_label); END IF;
+    END IF;
+    IF ph ? 'advance' AND NOT COALESCE(ph ->> 'advance' = ANY (ARRAY['auto','auto_all','manual']), false) THEN v := v || format('«%s»: elegí cómo avanza', v_label); END IF;
+    ch := ph -> 'challenge';
+    IF ch IS NOT NULL AND jsonb_typeof(ch) <> 'null' THEN
+      IF jsonb_typeof(ch) <> 'object' THEN v := v || format('«%s»: el Reto no es válido', v_label);
+      ELSIF ch -> 'enabled' = 'true'::jsonb THEN
+        IF NOT COALESCE(ch ->> 'start' = ANY (ARRAY['previous_phase','student','automation','fixed_date']), false) THEN v := v || format('«%s»: elegí cómo empieza el Reto', v_label); END IF;
+        IF ch ->> 'start' = 'fixed_date' AND NOT app_servicio.j_date(ch -> 'fixed_date') THEN v := v || format('«%s»: elegí la fecha del Reto', v_label); END IF;
+      END IF;
+    END IF;
+    ll := ph -> 'late_light';
+    IF ll IS NOT NULL AND jsonb_typeof(ll) <> 'null' THEN
+      IF jsonb_typeof(ll) <> 'object' THEN v := v || format('«%s»: el semáforo por entregas no es válido', v_label);
+      ELSIF ll -> 'enabled' = 'true'::jsonb AND NOT (
+        app_servicio.j_int(ll -> 'yellow_at') AND app_servicio.j_num(ll -> 'yellow_at') >= 1
+        AND app_servicio.j_int(ll -> 'red_at') AND app_servicio.j_num(ll -> 'red_at') >= app_servicio.j_num(ll -> 'yellow_at')) THEN
+        v := v || format('«%s»: el rojo por entregas tiene que ser igual o mayor que el amarillo', v_label);
+      END IF;
+    END IF;
+    IF jsonb_typeof(ph -> 'items') IS DISTINCT FROM 'array' THEN v := v || format('«%s»: faltan los pasos', v_label); CONTINUE; END IF;
+
+    FOR it IN SELECT x FROM jsonb_array_elements(ph -> 'items') x LOOP
+      IF jsonb_typeof(it) <> 'object' THEN v := v || format('«%s»: hay un paso que no es válido', v_label); CONTINUE; END IF;
+      v_nm := CASE WHEN jsonb_typeof(it -> 'name') = 'string' THEN it ->> 'name' ELSE 'el paso' END;
+      v := v || app_servicio.unknown_keys(it, ARRAY['key','kind','name','description','required','assignee','assignee_user_id','visible_to_client',
+        'portal_button','ref','due_rule','light','recurrence','late','reminders']);
+      v_key := CASE WHEN jsonb_typeof(it -> 'key') = 'string' THEN it ->> 'key' END;
+      IF v_key IS NULL OR v_key !~ '^it_[a-z0-9]{6}$' THEN v := v || 'hay un paso con una clave inválida'::text;
+      ELSIF v_key = ANY (v_item_keys) THEN v := v || format('la clave %s está repetida', v_key);
+      ELSE v_item_keys := v_item_keys || v_key;
+      END IF;
+      IF NOT COALESCE(it ->> 'kind' = ANY (ARRAY['form','survey','contract','booking','quiz','activity','program_item','team_task','student_task',
+          'certificate','open_section','open_module','checkbox']), false) THEN
+        v := v || format('«%s»: tipo de paso desconocido', v_nm);
+        CONTINUE;
+      END IF;
+      IF NOT (jsonb_typeof(it -> 'name') = 'string' AND btrim(it ->> 'name') <> '') THEN v := v || 'hay un paso sin nombre'::text; END IF;
+      IF it ? 'assignee' AND NOT COALESCE(it ->> 'assignee' = ANY (ARRAY['student','owner','user']), false) THEN v := v || format('«%s»: elegí a cargo de quién está', v_nm); END IF;
+      IF it ->> 'assignee' = 'user' AND NOT app_servicio.j_uuid(it -> 'assignee_user_id') THEN v := v || format('«%s»: elegí la persona a cargo', v_nm); END IF;
+      v := v || app_servicio.journey_item_ref_problems(it, v_nm, v_ws, v_product);
+      -- A4 (F146): «cuando se complete otro paso» solo puede esperar a uno ANTERIOR (sin ciclos).
+      IF jsonb_typeof(it -> 'ref' -> 'lock') = 'object' AND (it -> 'ref' -> 'lock' ->> 'after_item_key') ~ '^it_[a-z0-9]{6}$'
+         AND NOT ((it -> 'ref' -> 'lock' ->> 'after_item_key') = ANY (v_before)) THEN
+        v := v || format('«%s»: un paso solo puede esperar a uno anterior', v_nm);
+      END IF;
+
+      due := it -> 'due_rule';
+      IF due IS NOT NULL AND jsonb_typeof(due) <> 'null' THEN
+        IF jsonb_typeof(due) <> 'object' OR NOT COALESCE(due ->> 'from' = ANY (ARRAY['service_created','service_start','phase_start','item_completed']), false)
+           OR NOT (app_servicio.j_int(due -> 'days') AND app_servicio.j_num(due -> 'days') BETWEEN 0 AND 3650) THEN
+          v := v || format('«%s»: el plazo no es válido', v_nm);
+        ELSIF due ->> 'from' = 'item_completed' THEN
+          IF jsonb_typeof(due -> 'item_key') IS DISTINCT FROM 'string' OR NOT ((due ->> 'item_key') = ANY (v_before)) THEN
+            v := v || 'un paso solo puede depender de uno anterior'::text;
+          END IF;
+        END IF;
+      END IF;
+      v := v || app_servicio.journey_recurrence_problems(it, v_nm);
+      lt := it -> 'light';
+      IF lt IS NOT NULL AND jsonb_typeof(lt) <> 'null' THEN
+        IF jsonb_typeof(lt) <> 'object'
+           OR NOT (lt -> 'yellow_after_days' IS NULL OR jsonb_typeof(lt -> 'yellow_after_days') = 'null' OR (app_servicio.j_int(lt -> 'yellow_after_days') AND app_servicio.j_num(lt -> 'yellow_after_days') >= 0))
+           OR NOT (lt -> 'red_after_days' IS NULL OR jsonb_typeof(lt -> 'red_after_days') = 'null' OR (app_servicio.j_int(lt -> 'red_after_days') AND app_servicio.j_num(lt -> 'red_after_days') >= 0)) THEN
+          v := v || format('«%s»: el semáforo del paso tiene que ser un número de días', v_nm);
+        ELSE
+          v_has_rule := (due IS NOT NULL AND jsonb_typeof(due) <> 'null') OR (it -> 'recurrence' IS NOT NULL AND jsonb_typeof(it -> 'recurrence') <> 'null');
+          IF NOT v_has_rule THEN v := v || format('«%s»: el semáforo del paso necesita un plazo o que se repita', v_nm); END IF;
+          IF app_servicio.j_int(lt -> 'yellow_after_days') AND app_servicio.j_int(lt -> 'red_after_days')
+             AND app_servicio.j_num(lt -> 'red_after_days') < app_servicio.j_num(lt -> 'yellow_after_days') THEN
+            v := v || format('«%s»: el rojo tiene que ser igual o mayor que el amarillo', v_nm);
+          END IF;
+        END IF;
+      END IF;
+      IF v_key IS NOT NULL THEN v_before := v_before || v_key; END IF;
+    END LOOP;
+  END LOOP;
+  RETURN v;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_complete_item(p_item_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  it app_servicio.service_items;
+  s app_servicio.services;
+BEGIN
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id;
+  IF it.id IS NULL THEN RAISE EXCEPTION 'No existe el paso' USING ERRCODE = 'SV002'; END IF;
+  s := app_servicio.svc_get(it.service_id);
+  PERFORM app_servicio.svc_require_item(s, it);
+  -- A4 (F146, F147): un paso bloqueado o que pide evidencia sin tenerla no se completa a mano.
+  PERFORM app_servicio.svc_assert_completable(it.id);
+  RETURN app_servicio.svc_mark_item(it.id, 'manual', 'user', auth.uid());
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_mark_item(p_item_id uuid, p_source text, p_by_kind text, p_by uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  it app_servicio.service_items;
+  s app_servicio.services;
+  ph app_servicio.service_phases;
+  d record;
+BEGIN
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id FOR UPDATE;
+  IF it.id IS NULL OR it.status = 'completed' OR it.is_recurring_template THEN RETURN false; END IF;
+  SELECT * INTO s FROM app_servicio.services WHERE id = it.service_id;
+  SELECT * INTO ph FROM app_servicio.service_phases WHERE id = it.phase_id;
+  -- A4 (F146, F147): «Completar un paso» de una automatizacion respeta el bloqueo y la evidencia (SV033 / SV034).
+  -- Lo que hizo el cliente (formulario, agenda, grabacion, programa) se completa igual y queda anotado.
+  IF p_source = 'automation' THEN
+    PERFORM app_servicio.svc_assert_completable(it.id);
+  ELSIF p_by_kind = 'client' OR p_source = 'call' THEN
+    BEGIN
+      IF (app_servicio.svc_item_lock_state(it.id) ->> 'locked')::boolean THEN
+        PERFORM app_servicio.audit(s.workspace_id, 'service_item', it.id, 'svc.item_completed_while_locked',
+          jsonb_build_object('service_id', s.id, 'item_key', it.template_key, 'source', p_source), 'system');
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'svc_mark_item: no pude anotar el bloqueo: %', SQLERRM;
+    END;
+  END IF;
+  UPDATE app_servicio.service_items
+     SET status = 'completed', completed_at = now(), completed_by_kind = p_by_kind, completed_by = p_by, completed_source = p_source
+   WHERE id = it.id;
+  IF it.task_id IS NOT NULL THEN
+    UPDATE public.tasks SET status = 'completed', completed_at = now() WHERE id = it.task_id AND status <> 'completed';
+  END IF;
+  -- Los pasos que vencen "al completar este" ya tienen fecha.
+  FOR d IN SELECT o.id FROM app_servicio.service_items o
+            WHERE o.service_id = it.service_id AND o.status = 'pending' AND o.due_rule ->> 'from' = 'item_completed'
+              AND o.due_rule ->> 'item_key' = it.template_key LOOP
+    PERFORM app_servicio.svc_compute_due(d.id);
+  END LOOP;
+  PERFORM app_servicio.audit(s.workspace_id, 'service_item', it.id, 'svc.item_completed',
+    jsonb_build_object('service_id', s.id, 'item_key', it.template_key, 'source', p_source), CASE p_by_kind WHEN 'client' THEN 'client' WHEN 'user' THEN 'user' ELSE 'system' END);
+  PERFORM app_servicio.emit(s, 'service_item_completed', jsonb_build_object('phase_key', ph.template_key, 'item_key', it.template_key, 'item_kind', it.kind));
+  IF ph.status = 'in_progress' THEN
+    PERFORM app_servicio.svc_check_open_items(ph.id);
+    PERFORM app_servicio.svc_try_advance_phase(s.id);
+  END IF;
+  PERFORM app_servicio.svc_compute_light(s.id);
+  RETURN true;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_ensure_task(p_item_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  it app_servicio.service_items;
+  s app_servicio.services;
+  v_owner uuid;
+  v_task uuid;
+BEGIN
+  SELECT * INTO it FROM app_servicio.service_items WHERE id = p_item_id FOR UPDATE;
+  IF it.id IS NULL OR it.kind <> 'team_task' OR it.task_id IS NOT NULL OR it.status = 'completed' OR it.is_recurring_template THEN RETURN; END IF;
+  SELECT * INTO s FROM app_servicio.services WHERE id = it.service_id;
+  v_owner := CASE it.assignee WHEN 'user' THEN it.assignee_user_id ELSE s.owner_user_id END;
+  -- A4 (F148, F152): la tarea nace con su servicio y con los puntos del checklist del paso, sin tildar.
+  INSERT INTO public.tasks (workspace_id, title, description, status, priority, due_date, owner_id, contact_id, source, source_ref, created_by,
+                            service_id, checklist)
+  VALUES (s.workspace_id, left(it.name, 200), it.description, 'pending', 'normal',
+          COALESCE(it.due_on, app_servicio.local_date(it.due_at, s.workspace_id)), v_owner, s.contact_id, 'cx', 'svc_item:' || it.id::text, NULL,
+          s.id,
+          COALESCE((SELECT jsonb_agg(jsonb_build_object('id', gen_random_uuid(), 'text', left(btrim(c #>> '{}'), 200), 'done', false) ORDER BY o)
+                      FROM jsonb_array_elements(CASE WHEN jsonb_typeof(it.ref -> 'checklist') = 'array' THEN it.ref -> 'checklist' ELSE '[]'::jsonb END)
+                           WITH ORDINALITY AS t(c, o)
+                     WHERE jsonb_typeof(c) = 'string' AND btrim(c #>> '{}') <> '' AND o <= 30), '[]'::jsonb))
+  RETURNING id INTO v_task;
+  UPDATE app_servicio.service_items SET task_id = v_task WHERE id = it.id;
+  IF v_owner IS NOT NULL THEN
+    PERFORM app_servicio.notify(s.workspace_id, v_owner, 'task_assigned', 'Tenés una tarea nueva', it.name, 'task', v_task,
+                                jsonb_build_object('service_id', s.id));
+  END IF;
+END;
+$function$;
+
+-- ============================================================
+-- MIGRATION 370: TASK GUARD SERVICE CLOSE
+-- ============================================================
+-- ============================================================
+-- 00370_task_guard_service_close.sql
+-- ============================================================
+-- Servicios A4 (plano: A4-M5), F153 y F156 (decision 480):
+--
+--   1. `app_servicio.task_guard()`: BEFORE UPDATE OF status ON public.tasks. Frena completar la tarea de un paso
+--      bloqueado (SV033) o que pide evidencia sin tenerla (SV034). Solo actua con el modulo prendido, en tareas del
+--      camino (`source = 'cx'`, `source_ref = 'svc_item:…'`), con el paso PENDIENTE y el servicio activo o pausado (asi
+--      el cierre de abajo no queda frenado). Es la UNICA excepcion a «los enganches nunca hacen fallar lo que los
+--      dispara», a proposito: es la regla que se pidio. Cualquier otro error del modulo NO frena la tarea (warning).
+--      Una tarea que no es del camino nunca pasa por aca.
+--   2. `app_servicio.service_close_tasks_hook()`: AFTER UPDATE OF status ON app_servicio.services. Al pasar a
+--      cancelled, completed o renewed cierra las tareas abiertas de los pasos de ese servicio (`completed`), con un
+--      comentario de sistema («Cerrada: el servicio se canceló / terminó / se renovó») y su entrada en `audit_log`.
+--      Los pasos NO cambian. Pausar no cierra nada. Reabrir la tarea a mano se puede (no reabre el servicio).
+--   3. Reescribe `app_servicio.task_hook()`: el enganche tarea → paso solo actua con el servicio activo o pausado (si
+--      no, cerrar las tareas al terminar completaria los pasos). La definicion vieja esta en
+--      docs/servicios/definiciones-viejas-a4.sql.
+--
+-- Aditiva (triggers nuevos) + una funcion reescrita. Como volver atras:
+--   DROP TRIGGER IF EXISTS trg_app_servicio_task_guard ON public.tasks;
+--   DROP TRIGGER IF EXISTS trg_app_servicio_close_tasks ON app_servicio.services;
+--   DROP FUNCTION IF EXISTS app_servicio.task_guard(), app_servicio.service_close_tasks_hook();
+--   y correr la definicion vieja de app_servicio.task_hook (docs/servicios/definiciones-viejas-a4.sql).
+-- No cambia datos por si sola. Las tareas que ya cerro el cierre se pueden reabrir a mano.
+
+-- ─── 1. La guardia de completar tareas (F153) ───────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.task_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  -- `record` y no tipos del modulo: un problema con una tabla del modulo no puede frenar una tarea de BAIOS.
+  v_item record;
+BEGIN
+  IF NEW.status IS DISTINCT FROM 'completed' OR OLD.status = 'completed' THEN RETURN NEW; END IF;
+  IF NEW.source IS DISTINCT FROM 'cx' OR NEW.source_ref IS NULL OR NEW.source_ref NOT LIKE 'svc\_item:%' THEN RETURN NEW; END IF;
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NEW; END IF;
+  BEGIN
+    SELECT i.id, i.status, s.status AS service_status INTO v_item
+      FROM app_servicio.service_items i JOIN app_servicio.services s ON s.id = i.service_id
+     WHERE i.id = substr(NEW.source_ref, 10)::uuid AND i.workspace_id = NEW.workspace_id;
+    IF v_item.id IS NULL OR v_item.status <> 'pending' OR v_item.service_status NOT IN ('active', 'paused') THEN RETURN NEW; END IF;
+    PERFORM app_servicio.svc_assert_completable(v_item.id);
+  EXCEPTION
+    WHEN SQLSTATE 'SV033' OR SQLSTATE 'SV034' THEN RAISE;
+    WHEN OTHERS THEN
+      RAISE WARNING 'app_servicio task_guard: %', SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.task_guard() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_app_servicio_task_guard ON public.tasks;
+CREATE TRIGGER trg_app_servicio_task_guard
+  BEFORE UPDATE OF status ON public.tasks
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.task_guard();
+
+-- ─── 2. El cierre de tareas al terminar el servicio (F156, decision 480) ───
+CREATE OR REPLACE FUNCTION app_servicio.service_close_tasks_hook()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  t record;
+  v_text text;
+  v_prev_system text := COALESCE(current_setting('app_servicio.system', true), '');
+BEGIN
+  IF NEW.status IS NOT DISTINCT FROM OLD.status OR NEW.status NOT IN ('cancelled', 'completed', 'renewed') THEN RETURN NULL; END IF;
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NULL; END IF;
+  BEGIN
+    PERFORM app_servicio.as_system();
+    v_text := CASE NEW.status WHEN 'cancelled' THEN 'Cerrada: el servicio se canceló.'
+                              WHEN 'completed' THEN 'Cerrada: el servicio terminó.'
+                              ELSE 'Cerrada: el servicio se renovó.' END;
+    FOR t IN
+      SELECT tk.id, tk.workspace_id
+        FROM public.tasks tk
+        JOIN app_servicio.service_items i ON i.task_id = tk.id
+       WHERE i.service_id = NEW.id AND tk.status <> 'completed' AND tk.deleted_at IS NULL
+         AND tk.source = 'cx' AND tk.source_ref = 'svc_item:' || i.id::text
+    LOOP
+      UPDATE public.tasks SET status = 'completed', completed_at = now() WHERE id = t.id AND status <> 'completed';
+      PERFORM private.comment_system(t.workspace_id, 'task', t.id, v_text);
+      PERFORM app_servicio.audit(t.workspace_id, 'task', t.id, 'svc.task_closed_by_service',
+        jsonb_build_object('service_id', NEW.id, 'service_status', NEW.status), 'system');
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(NEW.workspace_id, 'service_close_tasks', SQLSTATE || ' ' || SQLERRM, NEW.id);
+  END;
+  PERFORM set_config('app_servicio.system', v_prev_system, true);
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.service_close_tasks_hook() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_app_servicio_close_tasks ON app_servicio.services;
+CREATE TRIGGER trg_app_servicio_close_tasks
+  AFTER UPDATE OF status ON app_servicio.services
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.service_close_tasks_hook();
+
+-- ─── 3. El enganche tarea → paso, solo con el servicio activo o pausado (F156) ───
+CREATE OR REPLACE FUNCTION app_servicio.task_hook()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_item uuid;
+  v_prev_system text := COALESCE(current_setting('app_servicio.system', true), '');
+BEGIN
+  IF NEW.source <> 'cx' OR NEW.source_ref IS NULL OR NEW.source_ref NOT LIKE 'svc\_item:%' THEN RETURN NULL; END IF;
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NULL; END IF;
+  BEGIN
+    PERFORM app_servicio.as_system();
+    SELECT i.id INTO v_item FROM app_servicio.service_items i
+      JOIN app_servicio.services s ON s.id = i.service_id
+     WHERE i.id = substr(NEW.source_ref, 10)::uuid AND i.workspace_id = NEW.workspace_id AND i.task_id = NEW.id
+       -- A4 (00370): con el servicio cancelado, terminado o renovado, la tarea no toca el paso.
+       AND s.status IN ('active', 'paused');
+    IF v_item IS NOT NULL THEN
+      IF NEW.status = 'completed' AND OLD.status IS DISTINCT FROM 'completed' THEN
+        PERFORM app_servicio.svc_mark_item(v_item, 'task', 'user', NULL);
+      ELSIF OLD.status = 'completed' AND NEW.status <> 'completed' THEN
+        PERFORM app_servicio.svc_unmark_item(v_item);
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(NEW.workspace_id, 'task', SQLSTATE || ' ' || SQLERRM, NEW.id);
+  END;
+  PERFORM set_config('app_servicio.system', v_prev_system, true);
+  RETURN NULL;
+END;
+$function$;
+
+-- ============================================================
+-- MIGRATION 371: SERVICE CAPACITY
+-- ============================================================
+-- ============================================================
+-- 00371_service_capacity.sql
+-- ============================================================
+-- Servicios A4 (plano: A4-M8), F151: tope de cartera por persona.
+--
+--   * `workspaces.service_team_settings` = {"capacity": {"<user_id>": 1..1000}} y `service_team_settings_rev` (para
+--     no pisar un cambio de otra persona). Vacio = sin topes. Lo escribe el servidor (Ajustes › Productos › «Reparto de
+--     clientes», con `services.configure`).
+--   * Reescribe `svc_owner_pick_rr` y `svc_owner_pick_plan` (gemela de `pickOwner`, lib/services/engine-rules.ts, con
+--     `owner-pick.cases.json`): el reparto equitativo y las condiciones saltean a quien llego a su tope. Si todos
+--     estan llenos, va al respaldo de la variante (F96) y devuelve `capacityFull: true`. **Sin topes cargados elige
+--     exactamente igual que antes** (los casos de siempre siguen iguales). La persona fija y «la anterior» no se frenan.
+--   * Reescribe `svc_pick_owner` para pasarle los topes y cuantos servicios tiene hoy cada persona (activos, pausados o
+--     por confirmar, de todos los productos).
+--   * `app_servicio.capacity_notice_hook()`: AFTER INSERT en app_servicio.services. Si el servicio nacio a nombre del
+--     respaldo por los topes, avisa `svc_capacity_full` a Owner y Admin. Nunca hace fallar el alta.
+--
+-- Las definiciones viejas estan en docs/servicios/definiciones-viejas-a4.sql. Como volver atras: correr las de
+-- svc_owner_pick_rr, svc_owner_pick_plan y svc_pick_owner, y
+--   DROP TRIGGER IF EXISTS trg_app_servicio_capacity_notice ON app_servicio.services;
+--   DROP FUNCTION IF EXISTS app_servicio.capacity_notice_hook(), app_servicio.svc_at_capacity(jsonb, text), app_servicio.svc_owner_loads(uuid);
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS service_team_settings, DROP COLUMN IF EXISTS service_team_settings_rev;
+
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS service_team_settings jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS service_team_settings_rev integer NOT NULL DEFAULT 0;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_service_team_settings_check') THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_service_team_settings_check CHECK (jsonb_typeof(service_team_settings) = 'object');
+  END IF;
+END $$;
+COMMENT ON COLUMN public.workspaces.service_team_settings IS
+  'Servicios A4 (F151): {"capacity": {"<user_id>": n}} el tope de servicios a cargo de cada persona. Vacio = sin topes.';
+
+-- Si la persona llego a su tope (gemela de atCapacity).
+CREATE OR REPLACE FUNCTION app_servicio.svc_at_capacity(p jsonb, p_user text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT CASE WHEN jsonb_typeof(p -> 'capacity' -> p_user) = 'number'
+              THEN COALESCE((p -> 'loadCounts' ->> p_user)::numeric, 0) >= (p -> 'capacity' ->> p_user)::numeric
+              ELSE false END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_at_capacity(jsonb, text) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_owner_pick_rr(p jsonb, p_members jsonb)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT m FROM jsonb_array_elements_text(COALESCE(p_members, '[]'::jsonb)) m
+  WHERE (p -> 'activeMembers') ? m
+    -- A4 (F151): quien llego a su tope no recibe.
+    AND NOT app_servicio.svc_at_capacity(p, m)
+  ORDER BY COALESCE((p -> 'activeCounts' ->> m)::integer, 0), COALESCE(p -> 'lastAssignedAt' ->> m, ''), m
+  LIMIT 1;
+$function$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_owner_pick_plan(p jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v text;
+  live jsonb := COALESCE(p -> 'activeMembers', '[]'::jsonb);
+  v_without jsonb;
+BEGIN
+  CASE p ->> 'mode'
+    WHEN 'fixed' THEN v := CASE WHEN live ? (p ->> 'userId') THEN p ->> 'userId' END;
+    WHEN 'round_robin' THEN v := app_servicio.svc_owner_pick_rr(p, p -> 'members');
+    WHEN 'previous' THEN v := CASE WHEN live ? (p ->> 'previousOwner') THEN p ->> 'previousOwner' END;
+    WHEN 'conditions' THEN
+      v := CASE WHEN live ? (p ->> 'conditionUserId') AND NOT app_servicio.svc_at_capacity(p, p ->> 'conditionUserId') THEN p ->> 'conditionUserId' END;
+      IF v IS NULL AND jsonb_typeof(p -> 'conditionMembers') = 'array' THEN v := app_servicio.svc_owner_pick_rr(p, p -> 'conditionMembers'); END IF;
+      IF v IS NULL AND jsonb_array_length(COALESCE(p -> 'members', '[]'::jsonb)) > 0 THEN v := app_servicio.svc_owner_pick_rr(p, p -> 'members'); END IF;
+    ELSE v := NULL;
+  END CASE;
+  IF v IS NOT NULL THEN RETURN jsonb_build_object('userId', v, 'usedFallback', false); END IF;
+  -- A4 (F151): si sin los topes hubiera habido alguien, el respaldo fue por los topes: se avisa.
+  IF jsonb_typeof(p -> 'capacity') = 'object' AND p -> 'capacity' <> '{}'::jsonb AND p ->> 'mode' IN ('round_robin', 'conditions') THEN
+    v_without := app_servicio.svc_owner_pick_plan(p || jsonb_build_object('capacity', '{}'::jsonb));
+    IF (v_without ->> 'usedFallback')::boolean IS FALSE THEN
+      RETURN jsonb_build_object('userId', CASE WHEN live ? (p ->> 'fallback') THEN p ->> 'fallback' END, 'usedFallback', true, 'capacityFull', true);
+    END IF;
+  END IF;
+  RETURN jsonb_build_object('userId', CASE WHEN live ? (p ->> 'fallback') THEN p ->> 'fallback' END, 'usedFallback', true);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_pick_owner(p_variant_id uuid, p_contact_id uuid, p_previous_owner uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_var public.product_variants;
+  o jsonb;
+  v_live jsonb; v_counts jsonb; v_last jsonb;
+  v_ctx jsonb; r jsonb; v_cond_user text := NULL; v_cond_members jsonb := NULL;
+BEGIN
+  SELECT * INTO v_var FROM public.product_variants WHERE id = p_variant_id;
+  o := COALESCE(v_var.service_settings -> 'owner', '{}'::jsonb);
+  SELECT COALESCE(jsonb_agg(m.user_id::text), '[]'::jsonb) INTO v_live FROM public.workspace_members m WHERE m.workspace_id = v_var.workspace_id;
+  SELECT COALESCE(jsonb_object_agg(owner_user_id::text, n), '{}'::jsonb) INTO v_counts
+    FROM (SELECT s.owner_user_id, count(*) n FROM app_servicio.services s
+          WHERE s.product_id = v_var.product_id AND s.status IN ('active','paused') AND s.owner_user_id IS NOT NULL GROUP BY 1) t;
+  SELECT COALESCE(jsonb_object_agg(owner_user_id::text, last_at), '{}'::jsonb) INTO v_last
+    FROM (SELECT s.owner_user_id, to_char(max(s.created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') last_at FROM app_servicio.services s
+          WHERE s.product_id = v_var.product_id AND s.owner_user_id IS NOT NULL GROUP BY 1) t;
+  IF o ->> 'mode' = 'conditions' THEN
+    v_ctx := app_servicio.svc_contact_context(p_contact_id);
+    FOR r IN SELECT x FROM jsonb_array_elements(COALESCE(o -> 'conditions', '[]'::jsonb)) x LOOP
+      CONTINUE WHEN COALESCE((r ->> 'is_active')::boolean, true) = false;
+      IF app_servicio.svc_conditions_match(r -> 'conditions', v_ctx) THEN
+        IF r #>> '{destination,type}' = 'user' THEN v_cond_user := r #>> '{destination,user_id}';
+        ELSIF r #>> '{destination,type}' = 'round_robin' THEN v_cond_members := r #> '{destination,members}';
+        END IF;
+        EXIT;
+      END IF;
+    END LOOP;
+  END IF;
+  RETURN app_servicio.svc_owner_pick_plan(jsonb_build_object(
+    'mode', o ->> 'mode', 'userId', o ->> 'user_id', 'members', COALESCE(o -> 'members', '[]'::jsonb),
+    'activeCounts', v_counts, 'lastAssignedAt', v_last, 'conditionUserId', v_cond_user, 'conditionMembers', v_cond_members,
+    'previousOwner', p_previous_owner::text, 'fallback', o ->> 'fallback_user_id', 'activeMembers', v_live,
+    -- A4 (F151): los topes de cartera y cuántos servicios tiene hoy cada persona (de TODOS los productos).
+    'capacity', COALESCE((SELECT w.service_team_settings -> 'capacity' FROM public.workspaces w WHERE w.id = v_var.workspace_id), '{}'::jsonb),
+    'loadCounts', (SELECT COALESCE(jsonb_object_agg(owner_user_id::text, n), '{}'::jsonb)
+                     FROM (SELECT s.owner_user_id, count(*) n FROM app_servicio.services s
+                            WHERE s.workspace_id = v_var.workspace_id AND s.status IN ('active','paused','pending_confirmation')
+                              AND s.owner_user_id IS NOT NULL GROUP BY 1) t)));
+END;
+$function$;
+
+-- El aviso de «nadie del reparto tenia lugar». Nunca hace fallar el alta.
+CREATE OR REPLACE FUNCTION app_servicio.capacity_notice_hook()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_pick jsonb;
+BEGIN
+  IF NOT app_servicio.module_on(NEW.workspace_id) THEN RETURN NULL; END IF;
+  IF COALESCE(NEW.flags ->> 'owner_fallback', 'false') <> 'true' OR NEW.product_variant_id IS NULL THEN RETURN NULL; END IF;
+  BEGIN
+    v_pick := app_servicio.svc_pick_owner(NEW.product_variant_id, NEW.contact_id);
+    IF (v_pick ->> 'capacityFull')::boolean IS TRUE THEN
+      PERFORM app_servicio.notify_admins(NEW.workspace_id, 'svc_capacity_full', 'Nadie del reparto tenía lugar',
+        'Todas las personas del reparto llegaron a su tope y el servicio quedó a nombre de la persona de respaldo.',
+        'service', NEW.id, '{}'::jsonb);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM app_servicio.hook_failed(NEW.workspace_id, 'capacity_notice', SQLSTATE || ' ' || SQLERRM, NEW.id);
+  END;
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.capacity_notice_hook() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_app_servicio_capacity_notice ON app_servicio.services;
+CREATE TRIGGER trg_app_servicio_capacity_notice
+  AFTER INSERT ON app_servicio.services
+  FOR EACH ROW EXECUTE FUNCTION app_servicio.capacity_notice_hook();
+
+-- Cuántos servicios tiene hoy cada persona (activos, pausados o por confirmar, de todos los productos), para la
+-- pantalla «Reparto de clientes» y el aviso «Supera su tope» al asignar a mano. Solo el servidor (lo llama después de
+-- chequear el permiso, con el negocio de la sesión).
+CREATE OR REPLACE FUNCTION app_servicio.svc_owner_loads(p_workspace_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE(jsonb_object_agg(owner_user_id::text, n), '{}'::jsonb)
+    FROM (SELECT s.owner_user_id, count(*) n FROM app_servicio.services s
+           WHERE s.workspace_id = p_workspace_id AND s.status IN ('active','paused','pending_confirmation')
+             AND s.owner_user_id IS NOT NULL GROUP BY 1) t;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_owner_loads(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_owner_loads(uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 372: SERVICE RELATIVE TRIGGERS
+-- ============================================================
+-- ============================================================
+-- 00372_service_relative_triggers.sql
+-- ============================================================
+-- Servicios A4 (plano: A4-M7), F158:
+--
+--   * Amplia el CHECK de `triggers.type` con `service_relative` («X dias antes o despues de…») y
+--     `service_phase_periodic` («Cada N dias mientras este en la fase…»). Se arma desde el que esta EN LA BASE, sin sacar
+--     ningun valor (regla del 8/11: la 00321 piso un valor por partir de un archivo viejo).
+--   * `app_servicio.svc_relative_due(jsonb)`: gemela pura de `relativeDue` (lib/services/relative-triggers.ts, con
+--     `relative-triggers.cases.json`). Solo el servidor.
+--   * Reescribe `svc_daily_run`: un paso nuevo, en su propio bloque (si falla no tumba los demas), que emite los dos
+--     disparadores UNA vez por disparador, servicio y dia. Y arregla `service_ending_soon`: la pantalla guarda
+--     `days_before` y el barrido leia `days` (nunca emitio; en produccion habia 0 disparadores de ese tipo); ahora lee los
+--     dos y el evento lleva los dos.
+--
+-- La definicion vieja de svc_daily_run esta en docs/servicios/definiciones-viejas-a4.sql. Como volver atras: correr esa,
+--   DROP FUNCTION IF EXISTS app_servicio.svc_relative_due(jsonb);
+--   y el CHECK sin los dos tipos (si no hay filas de esos tipos; si las hay, borrarlas antes).
+
+-- Guarda: si la base aceptara algun tipo que no esta en la lista de abajo, se aborta (no se saca nada).
+DO $$
+DECLARE
+  v_def text;
+  v_live text[];
+  v_new text[] := ARRAY['keyword', 'postback', 'quick_reply', 'welcome', 'default', 'comment_keyword', 'new_contact', 'crm_event', 'inactivity', 'email_received', 'booking_created', 'booking_rescheduled', 'booking_cancelled', 'booking_updated', 'booking_ended', 'booking_status_changed', 'booking_before_start', 'booking_after_end', 'booking_after_created', 'call_analyzed', 'call_linked', 'form_submitted', 'survey_answered', 'contract_signed', 'sale_created', 'sale_status_changed', 'payment_created', 'payment_status_changed', 'payment_before_due', 'payment_after_due', 'eod_submitted', 'webhook_received', 'task_completed', 'task_overdue', 'whatsapp_group_joined', 'whatsapp_group_reaction', 'whatsapp_group_poll_vote', 'scheduled_time', 'affiliate_assignment_expired', 'affiliate_lead_created', 'affiliate_sale_created', 'certificate_issued', 'challenge_completed', 'challenge_occurrence_due_soon', 'challenge_occurrence_overdue', 'challenge_started', 'live_session_missed', 'portal_access_expired', 'portal_access_expiring', 'program_lesson_completed', 'program_module_completed', 'quiz_failed', 'quiz_passed', 'service_created', 'service_ending_soon', 'service_extended', 'service_item_completed', 'service_item_overdue', 'service_light_changed', 'service_paused', 'service_phase_completed', 'service_phase_started', 'service_resumed', 'service_started', 'service_status_changed', 'task_submission_received', 'task_submission_reviewed', 'service_relative', 'service_phase_periodic'];
+  x text;
+BEGIN
+  SELECT pg_get_constraintdef(c.oid) INTO v_def FROM pg_constraint c
+   WHERE c.conrelid = 'public.triggers'::regclass AND c.conname = 'triggers_type_check';
+  IF v_def IS NULL THEN RETURN; END IF;
+  SELECT array_agg(m[1]) INTO v_live FROM regexp_matches(v_def, '''([^'']+)''', 'g') AS t(m);
+  FOREACH x IN ARRAY COALESCE(v_live, ARRAY[]::text[]) LOOP
+    IF NOT (x = ANY (v_new)) THEN
+      RAISE EXCEPTION 'triggers_type_check acepta % y la lista nueva no: revisar antes de aplicar', x;
+    END IF;
+  END LOOP;
+END $$;
+
+-- ─── CHECK de triggers.type: los vigentes (leidos de la base el 12/11/2026, 67) + los 2 de A4 ───────────────────
+ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (type = ANY (ARRAY['keyword'::text, 'postback'::text, 'quick_reply'::text, 'welcome'::text, 'default'::text, 'comment_keyword'::text, 'new_contact'::text, 'crm_event'::text, 'inactivity'::text, 'email_received'::text, 'booking_created'::text, 'booking_rescheduled'::text, 'booking_cancelled'::text, 'booking_updated'::text, 'booking_ended'::text, 'booking_status_changed'::text, 'booking_before_start'::text, 'booking_after_end'::text, 'booking_after_created'::text, 'call_analyzed'::text, 'call_linked'::text, 'form_submitted'::text, 'survey_answered'::text, 'contract_signed'::text, 'sale_created'::text, 'sale_status_changed'::text, 'payment_created'::text, 'payment_status_changed'::text, 'payment_before_due'::text, 'payment_after_due'::text, 'eod_submitted'::text, 'webhook_received'::text, 'task_completed'::text, 'task_overdue'::text, 'whatsapp_group_joined'::text, 'whatsapp_group_reaction'::text, 'whatsapp_group_poll_vote'::text, 'scheduled_time'::text, 'affiliate_assignment_expired'::text, 'affiliate_lead_created'::text, 'affiliate_sale_created'::text, 'certificate_issued'::text, 'challenge_completed'::text, 'challenge_occurrence_due_soon'::text, 'challenge_occurrence_overdue'::text, 'challenge_started'::text, 'live_session_missed'::text, 'portal_access_expired'::text, 'portal_access_expiring'::text, 'program_lesson_completed'::text, 'program_module_completed'::text, 'quiz_failed'::text, 'quiz_passed'::text, 'service_created'::text, 'service_ending_soon'::text, 'service_extended'::text, 'service_item_completed'::text, 'service_item_overdue'::text, 'service_light_changed'::text, 'service_paused'::text, 'service_phase_completed'::text, 'service_phase_started'::text, 'service_resumed'::text, 'service_started'::text, 'service_status_changed'::text, 'task_submission_received'::text, 'task_submission_reviewed'::text, 'service_relative'::text, 'service_phase_periodic'::text]));
+
+-- La regla (pura). input: {kind, anchor, offset_days, every_days, status, today, anchor_on, phase_key,
+-- current_phase_key, current_phase_started_on}
+CREATE OR REPLACE FUNCTION app_servicio.svc_relative_due(p jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_off numeric;
+  v_every numeric;
+  v_day integer;
+BEGIN
+  IF p ->> 'status' IS DISTINCT FROM 'active' THEN RETURN jsonb_build_object('due', false); END IF;
+  IF p ->> 'kind' = 'relative' THEN
+    IF jsonb_typeof(p -> 'offset_days') <> 'number' OR NULLIF(p ->> 'anchor_on', '') IS NULL THEN RETURN jsonb_build_object('due', false); END IF;
+    v_off := (p ->> 'offset_days')::numeric;
+    IF v_off <> trunc(v_off) OR v_off < -365 OR v_off > 365 THEN RETURN jsonb_build_object('due', false); END IF;
+    IF (p ->> 'anchor_on')::date + v_off::integer = (p ->> 'today')::date THEN
+      RETURN jsonb_build_object('due', true, 'day', p ->> 'today', 'phase_day', NULL);
+    END IF;
+    RETURN jsonb_build_object('due', false);
+  END IF;
+  IF jsonb_typeof(p -> 'every_days') <> 'number' THEN RETURN jsonb_build_object('due', false); END IF;
+  v_every := (p ->> 'every_days')::numeric;
+  IF v_every <> trunc(v_every) OR v_every < 1 OR v_every > 90 THEN RETURN jsonb_build_object('due', false); END IF;
+  IF NULLIF(p ->> 'phase_key', '') IS NULL OR p ->> 'current_phase_key' IS DISTINCT FROM p ->> 'phase_key'
+     OR NULLIF(p ->> 'current_phase_started_on', '') IS NULL THEN
+    RETURN jsonb_build_object('due', false);
+  END IF;
+  v_day := (p ->> 'today')::date - (p ->> 'current_phase_started_on')::date;
+  IF v_day < v_every OR v_day % v_every::integer <> 0 THEN RETURN jsonb_build_object('due', false); END IF;
+  RETURN jsonb_build_object('due', true, 'day', p ->> 'today', 'phase_day', v_day);
+END;
+$$;
+REVOKE ALL ON FUNCTION app_servicio.svc_relative_due(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio.svc_relative_due(jsonb) TO service_role;
+
+CREATE OR REPLACE FUNCTION app_servicio.svc_daily_run(p_workspace_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_today date;
+  v_out jsonb := '{}'::jsonb;
+  v_errors jsonb := '[]'::jsonb;
+  n integer;
+  s app_servicio.services;
+  it record;
+  r record;
+  d integer;
+  -- A4 (00372).
+  v_due jsonb;
+  v_anchor_on date;
+  v_cur_key text;
+  v_cur_start date;
+BEGIN
+  IF NOT app_servicio.module_on(p_workspace_id) THEN RETURN jsonb_build_object('skipped', 'module_off'); END IF;
+  PERFORM app_servicio.as_system();
+  v_today := app_servicio.today_in(p_workspace_id);
+
+  -- Repeticiones (F21) y Retos de fecha fija (F22).
+  BEGIN
+    n := 0;
+    FOR s IN SELECT * FROM app_servicio.services WHERE workspace_id = p_workspace_id AND status = 'active' LOOP
+      PERFORM app_servicio.svc_generate_occurrences(s.id);
+      n := n + app_servicio.svc_open_due_challenges(s.id);
+    END LOOP;
+    v_out := v_out || jsonb_build_object('challenges_opened', n);
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('occurrences: ' || SQLERRM);
+  END;
+
+  -- Pasos vencidos y su evento (F25), una vez por paso.
+  BEGIN
+    n := 0;
+    FOR it IN SELECT i.id, i.service_id, i.template_key, i.name FROM app_servicio.service_items i JOIN app_servicio.services sv ON sv.id = i.service_id
+               WHERE sv.workspace_id = p_workspace_id AND sv.status = 'active' AND NOT sv.is_test AND i.status = 'pending' AND NOT i.is_recurring_template
+                 AND i.due_on IS NOT NULL AND i.due_on < v_today
+                 AND NOT EXISTS (SELECT 1 FROM public.automation_events e WHERE e.workspace_id = p_workspace_id AND e.event_type = 'service_item_overdue'
+                                   AND e.payload ->> 'item_id' = i.id::text) LOOP
+      PERFORM app_servicio.emit_service(it.service_id, 'service_item_overdue', jsonb_build_object('item_id', it.id, 'item_key', it.template_key, 'item_name', it.name));
+      n := n + 1;
+    END LOOP;
+    v_out := v_out || jsonb_build_object('items_overdue', n);
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('overdue: ' || SQLERRM);
+  END;
+
+  -- Semaforo (F24).
+  BEGIN
+    FOR s IN SELECT * FROM app_servicio.services WHERE workspace_id = p_workspace_id AND status IN ('active', 'paused') LOOP
+      PERFORM app_servicio.svc_compute_light(s.id);
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('light: ' || SQLERRM);
+  END;
+
+  -- Accesos que se abren con el tiempo y mora (F39).
+  BEGIN
+    v_out := v_out || jsonb_build_object('access', app_servicio.svc_access_tick(p_workspace_id));
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('access: ' || SQLERRM);
+  END;
+
+  -- Renovados que llegan a su fin (F9): el anterior pasa a «renovado» y lo que el nuevo tambien da pasa al nuevo.
+  BEGIN
+    n := 0;
+    FOR s IN SELECT o.* FROM app_servicio.services o
+              WHERE o.workspace_id = p_workspace_id AND o.status IN ('active', 'paused') AND o.ends_on IS NOT NULL AND o.ends_on < v_today
+                AND EXISTS (SELECT 1 FROM app_servicio.services nx WHERE nx.previous_service_id = o.id AND nx.status IN ('active', 'paused', 'pending_confirmation')) LOOP
+      PERFORM app_servicio.svc_cut_access(s.id, 'renewed');
+      UPDATE app_servicio.services SET status = 'renewed', completed_at = COALESCE(completed_at, now()), updated_at = now() WHERE id = s.id;
+      PERFORM app_servicio.audit(s.workspace_id, 'service', s.id, 'svc.renewed', '{}'::jsonb, 'system');
+      PERFORM app_servicio.emit_service(s.id, 'service_status_changed', jsonb_build_object('previous_status', s.status));
+      n := n + 1;
+    END LOOP;
+    v_out := v_out || jsonb_build_object('renewed_closed', n);
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('renewed: ' || SQLERRM);
+  END;
+
+  -- Accesos por vencer (7 dias) y vencidos (ayer), una vez por acceso.
+  BEGIN
+    n := 0;
+    FOR r IN SELECT a.id, a.service_id, a.section, a.ends_at FROM app_servicio_portal.portal_access a JOIN app_servicio.services sv ON sv.id = a.service_id
+              WHERE a.workspace_id = p_workspace_id AND a.revoked_at IS NULL AND a.ends_at IS NOT NULL AND NOT sv.is_test
+                AND a.ends_at > now() AND a.ends_at <= now() + interval '7 days'
+                AND NOT EXISTS (SELECT 1 FROM public.automation_events e WHERE e.workspace_id = p_workspace_id AND e.event_type = 'portal_access_expiring'
+                                  AND e.payload ->> 'access_id' = a.id::text) LOOP
+      PERFORM app_servicio.emit_service(r.service_id, 'portal_access_expiring', jsonb_build_object('access_id', r.id, 'section', r.section, 'ends_at', r.ends_at));
+      n := n + 1;
+    END LOOP;
+    FOR r IN SELECT a.id, a.service_id, a.section, a.ends_at FROM app_servicio_portal.portal_access a JOIN app_servicio.services sv ON sv.id = a.service_id
+              WHERE a.workspace_id = p_workspace_id AND a.revoked_at IS NULL AND a.ends_at IS NOT NULL AND NOT sv.is_test
+                AND a.ends_at <= now() AND a.ends_at > now() - interval '3 days'
+                AND NOT EXISTS (SELECT 1 FROM public.automation_events e WHERE e.workspace_id = p_workspace_id AND e.event_type = 'portal_access_expired'
+                                  AND e.payload ->> 'access_id' = a.id::text) LOOP
+      PERFORM app_servicio.emit_service(r.service_id, 'portal_access_expired', jsonb_build_object('access_id', r.id, 'section', r.section, 'ends_at', r.ends_at));
+      n := n + 1;
+    END LOOP;
+    v_out := v_out || jsonb_build_object('access_events', n);
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('access_events: ' || SQLERRM);
+  END;
+
+  -- «Faltó» (F61): fechas de ayer con la ventana cerrada, para quien tiene acceso Calendario vigente, la sesion es de su
+  -- variante, el servicio no esta pausado y no tiene asistencia. Una vez por persona, sesion y fecha.
+  BEGIN
+    n := 0;
+    FOR r IN
+      SELECT ls.id AS session_id, (o ->> 'occursOn')::date AS occurs_on, sv.id AS service_id, sv.contact_id
+        FROM app_servicio.live_sessions ls
+        CROSS JOIN LATERAL jsonb_array_elements(app_servicio.live_occurrences_plan(jsonb_build_object(
+          'session', jsonb_build_object('kind', ls.kind, 'weekdays', to_jsonb(ls.weekdays), 'every_weeks', ls.every_weeks, 'starts_on', ls.starts_on,
+                                        'ends_on', ls.ends_on, 'single_at', ls.single_at, 'start_time', to_char(ls.start_time, 'HH24:MI'),
+                                        'duration_minutes', ls.duration_minutes, 'timezone', ls.timezone),
+          'exceptions', COALESCE((SELECT jsonb_agg(jsonb_build_object('occurs_on', x.occurs_on, 'status', x.status, 'moved_to', x.moved_to))
+                                    FROM app_servicio.live_session_dates x WHERE x.live_session_id = ls.id), '[]'::jsonb),
+          'from', v_today - 2, 'to', v_today))) o
+        JOIN app_servicio.services sv ON sv.product_id = ls.product_id AND sv.status = 'active' AND NOT sv.is_test
+       WHERE ls.workspace_id = p_workspace_id AND ls.archived_at IS NULL AND o ->> 'status' <> 'cancelled'
+         AND (o ->> 'endsAt')::timestamptz + interval '30 minutes' < now()
+         AND (ls.variant_ids IS NULL OR sv.product_variant_id = ANY (ls.variant_ids))
+         AND EXISTS (SELECT 1 FROM app_servicio_portal.portal_access a WHERE a.service_id = sv.id AND a.section = 'calendar' AND a.revoked_at IS NULL
+                       AND a.starts_at <= (o ->> 'startsAt')::timestamptz AND (a.ends_at IS NULL OR a.ends_at > (o ->> 'startsAt')::timestamptz))
+         AND NOT EXISTS (SELECT 1 FROM app_servicio_portal.live_attendance la WHERE la.live_session_id = ls.id AND la.occurs_on = (o ->> 'occursOn')::date
+                           AND la.contact_id = sv.contact_id AND la.removed_at IS NULL)
+         AND NOT EXISTS (SELECT 1 FROM public.automation_events e WHERE e.workspace_id = p_workspace_id AND e.event_type = 'live_session_missed'
+                           AND e.contact_id = sv.contact_id AND e.payload ->> 'live_session_id' = ls.id::text AND e.payload ->> 'occurs_on' = (o ->> 'occursOn'))
+    LOOP
+      PERFORM app_servicio.emit_service(r.service_id, 'live_session_missed', jsonb_build_object('live_session_id', r.session_id, 'occurs_on', r.occurs_on::text));
+      n := n + 1;
+    END LOOP;
+    v_out := v_out || jsonb_build_object('missed', n);
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('missed: ' || SQLERRM);
+  END;
+
+  -- «Reanudar sola» (F94).
+  BEGIN
+    n := 0;
+    FOR s IN SELECT * FROM app_servicio.services WHERE workspace_id = p_workspace_id AND status = 'paused' AND pause_resume_on IS NOT NULL AND pause_resume_on <= v_today LOOP
+      PERFORM app_servicio.svc_resume(s.id, '{}'::jsonb);
+      n := n + 1;
+    END LOOP;
+    v_out := v_out || jsonb_build_object('resumed', n);
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('resume: ' || SQLERRM);
+  END;
+
+  -- Servicios que empiezan hoy (F14, F115): `service_started` una vez.
+  BEGIN
+    n := 0;
+    FOR s IN SELECT * FROM app_servicio.services WHERE workspace_id = p_workspace_id AND status = 'active' AND starts_on IS NOT NULL AND starts_on <= v_today
+               AND NOT COALESCE((flags ->> 'started_emitted')::boolean, false) LOOP
+      PERFORM app_servicio.emit(s, 'service_started');
+      UPDATE app_servicio.services SET flags = flags || '{"started_emitted": true}'::jsonb WHERE id = s.id;
+      n := n + 1;
+    END LOOP;
+    v_out := v_out || jsonb_build_object('started', n);
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('started: ' || SQLERRM);
+  END;
+
+  -- `service_ending_soon` (F25): N dias antes de `ends_on`, una vez por servicio y por N. Los N salen de los
+  -- disparadores activos del negocio (si no hay ninguno, no se emite nada).
+  BEGIN
+    n := 0;
+    -- A4 (00372): la pantalla guarda `days_before`; antes se leia solo `days` y el disparador nunca emitia. Se leen los dos.
+    FOR d IN SELECT DISTINCT (COALESCE(t.config -> 'days_before', t.config -> 'days') #>> '{}')::integer FROM public.triggers t
+              WHERE t.workspace_id = p_workspace_id AND t.type = 'service_ending_soon' AND t.is_active
+                AND jsonb_typeof(COALESCE(t.config -> 'days_before', t.config -> 'days')) = 'number'
+                AND (COALESCE(t.config -> 'days_before', t.config -> 'days') #>> '{}')::integer BETWEEN 0 AND 365 LOOP
+      FOR s IN SELECT * FROM app_servicio.services sv WHERE sv.workspace_id = p_workspace_id AND sv.status = 'active' AND NOT sv.is_test
+                 AND sv.ends_on = v_today + d
+                 AND NOT EXISTS (SELECT 1 FROM public.automation_events e WHERE e.workspace_id = p_workspace_id AND e.event_type = 'service_ending_soon'
+                                   AND e.payload ->> 'service_id' = sv.id::text AND e.payload ->> 'days' = d::text) LOOP
+        PERFORM app_servicio.emit(s, 'service_ending_soon', jsonb_build_object('days', d, 'days_before', d));
+        n := n + 1;
+      END LOOP;
+    END LOOP;
+    v_out := v_out || jsonb_build_object('ending_soon', n);
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('ending_soon: ' || SQLERRM);
+  END;
+
+  -- A4 (F158): `service_relative` y `service_phase_periodic`. Lee los disparadores activos de esos tipos y emite UNA
+  -- vez por disparador, servicio y dia. Un servicio pausado o un ancla que no ocurrio no emiten (svc_relative_due).
+  BEGIN
+    n := 0;
+    FOR r IN SELECT t.id, t.type, t.config FROM public.triggers t
+              WHERE t.workspace_id = p_workspace_id AND t.is_active AND t.type IN ('service_relative', 'service_phase_periodic') LOOP
+      FOR s IN SELECT * FROM app_servicio.services sv
+                WHERE sv.workspace_id = p_workspace_id AND sv.status = 'active' AND NOT sv.is_test
+                  AND (NULLIF(r.config ->> 'product_id', '') IS NULL OR sv.product_id::text = r.config ->> 'product_id')
+                  AND (NULLIF(r.config ->> 'variant_id', '') IS NULL OR sv.product_variant_id::text = r.config ->> 'variant_id') LOOP
+        v_cur_key := NULL; v_cur_start := NULL; v_anchor_on := NULL;
+        SELECT ph.template_key, app_servicio.local_date(ph.started_at, s.workspace_id) INTO v_cur_key, v_cur_start
+          FROM app_servicio.service_phases ph WHERE ph.service_id = s.id AND ph.status = 'in_progress' LIMIT 1;
+        IF r.type = 'service_relative' THEN
+          v_anchor_on := CASE r.config ->> 'anchor'
+            WHEN 'service_created' THEN app_servicio.local_date(s.created_at, s.workspace_id)
+            WHEN 'service_start' THEN s.starts_on
+            WHEN 'service_end' THEN s.ends_on
+            WHEN 'phase_start' THEN (SELECT app_servicio.local_date(ph.started_at, s.workspace_id) FROM app_servicio.service_phases ph
+                                      WHERE ph.service_id = s.id AND ph.template_key = r.config ->> 'phase_key' AND ph.started_at IS NOT NULL LIMIT 1)
+            WHEN 'item_completed' THEN (SELECT app_servicio.local_date(min(i.completed_at), s.workspace_id) FROM app_servicio.service_items i
+                                         WHERE i.service_id = s.id AND i.template_key = r.config ->> 'item_key' AND i.status = 'completed')
+          END;
+        END IF;
+        v_due := app_servicio.svc_relative_due(jsonb_build_object(
+          'kind', CASE r.type WHEN 'service_relative' THEN 'relative' ELSE 'periodic' END,
+          'anchor', r.config ->> 'anchor', 'offset_days', r.config -> 'offset_days', 'every_days', r.config -> 'every_days',
+          'status', s.status, 'today', to_char(v_today, 'YYYY-MM-DD'), 'anchor_on', to_char(v_anchor_on, 'YYYY-MM-DD'),
+          'phase_key', r.config ->> 'phase_key', 'current_phase_key', v_cur_key, 'current_phase_started_on', to_char(v_cur_start, 'YYYY-MM-DD')));
+        CONTINUE WHEN NOT COALESCE((v_due ->> 'due')::boolean, false);
+        CONTINUE WHEN EXISTS (SELECT 1 FROM public.automation_events e WHERE e.workspace_id = p_workspace_id AND e.event_type = r.type
+                                AND e.payload ->> 'service_id' = s.id::text AND e.payload ->> 'trigger_id' = r.id::text AND e.payload ->> 'day' = v_due ->> 'day');
+        PERFORM app_servicio.emit(s, r.type, jsonb_build_object('trigger_id', r.id, 'day', v_due ->> 'day', 'phase_day', v_due -> 'phase_day',
+          'anchor', r.config ->> 'anchor', 'offset_days', r.config -> 'offset_days', 'phase_key', r.config ->> 'phase_key', 'item_key', r.config ->> 'item_key'));
+        n := n + 1;
+      END LOOP;
+    END LOOP;
+    v_out := v_out || jsonb_build_object('relative', n);
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('relative: ' || SQLERRM);
+  END;
+
+  -- Purga de la comunidad (F76): lo borrado hace mas de 30 dias.
+  BEGIN
+    DELETE FROM app_servicio_portal.community_posts WHERE workspace_id = p_workspace_id AND deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    v_out := v_out || jsonb_build_object('community_purged', n);
+  EXCEPTION WHEN OTHERS THEN v_errors := v_errors || to_jsonb('community: ' || SQLERRM);
+  END;
+
+  RETURN v_out || jsonb_build_object('errors', v_errors, 'day', v_today);
+END;
+$function$;

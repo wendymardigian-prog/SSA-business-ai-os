@@ -660,6 +660,18 @@ export function simulateFlow(
         break;
       }
 
+      // Servicios A4 (F158): en la simulación no se manda nada a Slack.
+      case "send_slack": {
+        const text = interpolate((data.text as string) || "", variables);
+        steps.push({
+          nodeId: node.id,
+          nodeType: "send_slack",
+          nodeLabel: label,
+          result: { type: "action", actionType: "send_slack", detail: text ? `mandaría a Slack: «${text.slice(0, 80)}»` : "(sin mensaje)" },
+        });
+        break;
+      }
+
       // E15: el aviso al equipo. En la simulación no se crea ninguna notificación.
       case "notify_team": {
         const title = interpolate((data.title as string) || "", variables);

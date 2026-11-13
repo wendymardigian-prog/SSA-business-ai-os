@@ -9,10 +9,12 @@
  *  - `phase_start:<key>`   Al empezar la fase           (service_phase_started, variant_id + phase_key)
  *  - `phase_end:<key>`     Al terminar la fase          (service_phase_completed, variant_id + phase_key)
  *  - `ending`              Antes de terminar el servicio (service_ending_soon, variant_id + days_before)
+ *  - `completes:<key>`     Lo completan (A4, F150): cualquier automatización con un paso «Completar paso» de ese
+ *                          paso, sea cual sea su disparador.
  */
 import { SERVICE_TRIGGER_LABELS, type ServiceTriggerType } from "../automation";
 
-export type PathSlot = "start" | "ending" | `item:${string}` | `phase_start:${string}` | `phase_end:${string}`;
+export type PathSlot = "start" | "ending" | `item:${string}` | `phase_start:${string}` | `phase_end:${string}` | `completes:${string}`;
 
 export interface SlotTrigger {
   triggerType: ServiceTriggerType;
@@ -97,6 +99,56 @@ export function newPathWorkflowNodes(trigger: SlotTrigger): CanvasNodeLike[] {
       data: { triggerType: trigger.triggerType, config: { ...trigger.config }, ...trigger.config },
     },
   ];
+}
+
+/** Los pasos del camino que completa un flujo (sus nodos «Completar paso», A4 F150). */
+export function completedItemKeys(nodes: CanvasNodeLike[]): string[] {
+  const keys = nodes
+    .filter((n) => n.type === "svc_complete_step" && typeof n.data?.itemKey === "string" && n.data.itemKey)
+    .map((n) => n.data!.itemKey as string);
+  return [...new Set(keys)];
+}
+
+/** «+ Workflow que lo complete»: el disparador queda sin elegir y el paso «Completar paso» ya apunta al paso. */
+export function newCompleterWorkflow(itemKey: string, productId: string | null): { nodes: CanvasNodeLike[]; edges: Array<CanvasEdgeLike & { id: string }> } {
+  return {
+    nodes: [
+      { id: "trigger", type: "trigger", data: { triggerType: null } },
+      { id: "complete", type: "svc_complete_step", data: { itemKey, ...(productId ? { productId } : {}) } },
+    ],
+    edges: [{ id: "e-trigger-complete", source: "trigger", target: "complete" }],
+  };
+}
+
+/**
+ * Al duplicar una fase o un paso (A4, F149) sus workflows se copian EN PAUSA: los nodos de la copia apuntan a las
+ * claves nuevas (el filtro del disparador y los «Completar paso»). Devuelve null si el flujo no toca ninguna clave
+ * copiada. Puro.
+ */
+export function remapWorkflowNodes(nodes: CanvasNodeLike[], keyMap: Record<string, string>): CanvasNodeLike[] | null {
+  let touched = false;
+  const swap = (v: unknown) => {
+    if (typeof v === "string" && keyMap[v]) {
+      touched = true;
+      return keyMap[v];
+    }
+    return v;
+  };
+  const out = nodes.map((n) => {
+    const data = { ...(n.data ?? {}) };
+    if (n.type === "trigger") {
+      for (const k of ["item_key", "phase_key"]) if (k in data) data[k] = swap(data[k]);
+      if (data.config && typeof data.config === "object") {
+        const c = { ...(data.config as Record<string, unknown>) };
+        for (const k of ["item_key", "phase_key"]) if (k in c) c[k] = swap(c[k]);
+        data.config = c;
+      }
+    } else if (n.type === "svc_complete_step" && "itemKey" in data) {
+      data.itemKey = swap(data.itemKey);
+    }
+    return { ...n, data };
+  });
+  return touched ? out : null;
 }
 
 export interface PathWorkflow {

@@ -163,8 +163,34 @@ export interface RowGroup {
 export const NO_PROJECT_LABEL = "Sin proyecto";
 
 /** Los grupos conservan el orden que traen las filas. «Sin proyecto» va ultimo. */
-export function groupRows(rows: readonly TaskRowView[], group: GroupBy): RowGroup[] {
+export function groupRows(rows: readonly TaskRowView[], group: GroupBy, today?: string): RowGroup[] {
   if (group === "none") return [{ key: "all", label: "", rows: [...rows], project: null }];
+
+  // Servicios A4 (F156): por vencimiento, con el día que ve quien mira. Los vacíos no aparecen.
+  if (group === "due") {
+    const day = today ?? "";
+    const week = day ? addDaysIso(day, 7) : "";
+    const tomorrow = day ? addDaysIso(day, 1) : "";
+    const bucket = (r: TaskRowView): string => {
+      if (r.status === "completed") return "done";
+      if (!r.dueDate) return "none";
+      if (r.overdue) return "overdue";
+      if (r.dueDate === day) return "today";
+      if (r.dueDate === tomorrow) return "tomorrow";
+      if (week && r.dueDate <= week) return "week";
+      return "later";
+    };
+    const order: Array<[string, string]> = [
+      ["overdue", "Vencidas"],
+      ["today", "Hoy"],
+      ["tomorrow", "Mañana"],
+      ["week", "Próximos 7 días"],
+      ["later", "Más adelante"],
+      ["none", "Sin fecha"],
+      ["done", "Completadas"],
+    ];
+    return order.map(([key, label]) => ({ key, label, rows: rows.filter((r) => bucket(r) === key), project: null })).filter((g) => g.rows.length > 0);
+  }
 
   if (group === "status") {
     return TASK_STATUSES.map((s) => ({ key: s, label: STATUS_LABELS[s], rows: rows.filter((r) => r.status === s), project: null }))
@@ -215,4 +241,8 @@ export function nextSort(current: SortSpec | null, column: SortColumn): SortSpec
 export function ariaSortOf(current: SortSpec | null, column: SortColumn): "ascending" | "descending" | "none" {
   if (!current || current.column !== column) return "none";
   return current.dir === "asc" ? "ascending" : "descending";
+}
+
+function addDaysIso(day: string, n: number): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 }

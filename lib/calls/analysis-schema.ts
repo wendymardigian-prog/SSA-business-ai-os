@@ -13,6 +13,7 @@
  * Los puntajes finales (closer y lead) NO estan: los calcula el codigo.
  */
 import { z } from "zod";
+import { MAX_PROPOSALS, proposalActionSchema } from "./proposals";
 import { OUTCOME_CATEGORIES } from "./rubric";
 
 /** Los estados de una creencia del lead (los que entiende `beliefValue`). */
@@ -106,6 +107,15 @@ export const generalAnalysisSchema = z.object({
 });
 
 export type GeneralCallAnalysis = z.infer<typeof generalAnalysisSchema>;
+
+/**
+ * El formato general con las acciones propuestas (Servicios A4, F142): suma `acciones` (hasta 8) SOLO si el analizador
+ * tiene «Proponer acciones» prendido. Sin eso, el esquema es exactamente el de siempre.
+ */
+export function buildGeneralSchema(opts: { proposals: boolean }) {
+  if (!opts.proposals) return generalAnalysisSchema;
+  return generalAnalysisSchema.extend({ acciones: z.array(proposalActionSchema).max(MAX_PROPOSALS) });
+}
 
 /** Las secciones de texto que el resumen y el contacto usan, sin tener que conocer el esquema entero. */
 export function parseAnalysis(value: unknown): { ok: true; analysis: CallAnalysis } | { ok: false; error: string } {

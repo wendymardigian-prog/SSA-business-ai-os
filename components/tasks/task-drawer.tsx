@@ -22,6 +22,9 @@ import { MemberPicker, MembersMultiPicker, PriorityPicker, ProjectPicker, Status
 import type { TaskActions } from "./use-task-actions";
 import { FloatingPanel } from "@/components/shared/floating";
 import { foldText } from "@/lib/tasks/text";
+import { TaskChecklist } from "./task-checklist";
+import { CommentThread } from "@/components/team-comments/comment-thread";
+import { TaskServiceBlock } from "@/components/services/task-service-block"; // @plantilla-quitar(servicios)
 
 export interface TaskDrawerProps {
   /** `view`: una tarea que existe. `create`: el formulario completo de una tarea nueva. */
@@ -260,6 +263,10 @@ function DrawerBody(props: TaskDrawerProps) {
 
         {!creating && task && (
           <>
+            <TaskChecklist key={task.id} taskId={task.id} initial={task.checklist} canEdit={canEdit} />
+            {/* @plantilla-desde(servicios) */}
+            <TaskServiceBlock taskId={task.id} canEdit={canEdit} version={task.updated_at} />
+            {/* @plantilla-hasta(servicios) */}
             <DependenciesSection
               task={task}
               byId={byId}
@@ -281,6 +288,11 @@ function DrawerBody(props: TaskDrawerProps) {
               <Meta label="Conversación">
                 {task.conversation_id ? <Link href={`/dashboard/inbox?c=${task.conversation_id}`} className="text-primary-ink hover:underline">Abrir</Link> : <span className="text-muted-foreground">Sin conversación</span>}
               </Meta>
+              {task.call_id && (
+                <Meta label="Reunión">
+                  <Link href={`/dashboard/llamadas/${task.call_id}`} className="text-primary-ink hover:underline">Abrir</Link>
+                </Meta>
+              )}
               <Meta label="Creada por">
                 {(() => {
                   const info = formatSource(task, source);
@@ -288,6 +300,9 @@ function DrawerBody(props: TaskDrawerProps) {
                 })()}
               </Meta>
             </div>
+
+            {/* Servicios A4 (F156): los comentarios del equipo, con @menciones. `?panel=comentarios` los trae a la vista. */}
+            <CommentsSection taskId={task.id} canComment={canEdit} />
 
             {showHistory && (
               <Section title="Historial" innerRef={historyRef}>
@@ -527,5 +542,21 @@ function BlockerPicker({
         {options.length === 0 && <li className="px-2 py-2 text-sm text-muted-foreground">No hay tareas para agregar.</li>}
       </ul>
     </FloatingPanel>
+  );
+}
+
+function CommentsSection({ taskId, canComment }: { taskId: string; canComment: boolean }) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get("panel") === "comentarios") ref.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    } catch {
+      // Sin URL legible, el panel queda donde está.
+    }
+  }, [taskId]);
+  return (
+    <Section title="Comentarios" innerRef={ref}>
+      <CommentThread entityType="task" entityId={taskId} canComment={canComment} />
+    </Section>
   );
 }

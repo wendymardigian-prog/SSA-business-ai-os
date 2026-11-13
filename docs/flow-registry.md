@@ -878,6 +878,19 @@ rechaza, como en los demás flujos sin contacto.
 - **Afiliados:** `affiliate_lead_created`, `affiliate_sale_created`, `affiliate_assignment_expired` (ver
   [afiliados.md](afiliados.md)).
 
+## Servicios A4 (noviembre 2026)
+
+- **«Días antes o después de…»** (`service_relative`) y **«Cada N días en una fase»** (`service_phase_periodic`): los emite
+  el barrido diario (`svc_daily_run`), uno por disparador, servicio y día; el evento lleva su `trigger_id` y solo lo
+  toma ese disparador. Reglas puras en `lib/services/relative-triggers.ts` (gemela `svc_relative_due`). Un servicio
+  pausado no emite; no hay recuperación de días pasados.
+- **«Termina en N días»** ya filtra bien: el editor guarda `days_before` y el barrido viejo emitía `days`.
+- **«El responsable del servicio»** en «Crear tarea» y «Avisar en la campana»: el del servicio del evento o el activo
+  más reciente del contacto, con un **plan B obligatorio** al publicar (`serviceOwnerFallbackProblem`).
+- **«Enviar a Slack»** (`send_slack`, sin contacto, requiere Slack conectado): a un canal o, por mensaje directo, a una
+  persona que cargó su ID de Slack en Mi cuenta. Un fallo queda anotado en el paso y no frena el flujo.
+- **«Completar tarea»** deja el motivo cuando la tarea es de un paso bloqueado o sin evidencia.
+
 ## Horario de envío del WhatsApp y vigencia de una reunión (9/11/2026)
 
 Dos cosas que hicieron falta para las series de Admisión (confirmación, recordatorios, no show y cancelada).

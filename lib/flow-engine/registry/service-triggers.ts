@@ -31,7 +31,7 @@ for (const type of SERVICE_TRIGGER_TYPES) {
     sourceType: "contact",
     eventTypes: [type],
 
-    eventMatches: (args) => serviceEventMatches(args.config, args.event.payload),
+    eventMatches: (args) => serviceEventMatches(args.config, args.event.payload, args.trigger.id),
 
     dedupeKeyFor: (args) => serviceDedupeKey(type, args.event.id),
 

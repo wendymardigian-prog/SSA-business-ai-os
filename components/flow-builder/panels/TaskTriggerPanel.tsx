@@ -4,7 +4,7 @@ import { useState } from "react";
 import { normalizeProjectKey } from "@/lib/tasks/project";
 import { TASK_SOURCES } from "@/lib/tasks/types";
 
-const SOURCE_LABELS: Record<(typeof TASK_SOURCES)[number], string> = { manual: "Manual", flow: "Flujo", agent: "Agente", cx: "CX" };
+const SOURCE_LABELS: Record<(typeof TASK_SOURCES)[number], string> = { manual: "Manual", flow: "Flujo", agent: "Agente", cx: "CX", call: "Reunión" };
 
 /**
  * Los filtros de los disparadores de Tareas (F25): proyectos y origenes. Sin elegir nada vale para cualquier tarea. Si la

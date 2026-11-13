@@ -22,6 +22,7 @@ describe("estado de la vista en la URL (F14)", () => {
       overdue: true,
       blocked: true,
       source: ["flow", "agent"],
+      linked: ["service", "call"],
       q: "propuesta cliente",
       sort: { column: "due", dir: "desc" },
       group: "project",

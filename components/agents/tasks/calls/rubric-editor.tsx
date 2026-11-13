@@ -106,6 +106,28 @@ function Column({ side, title, list, readOnly, onChange }: { side: "closer" | "l
                       />
                     </label>
                   ))}
+                  {side === "closer" && (
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(c.subtracts)}
+                        disabled={readOnly || c.archivado}
+                        onChange={(e) => {
+                          const next: Criterion = { ...c };
+                          if (e.target.checked) next.subtracts = true;
+                          else delete next.subtracts;
+                          onChange(list.map((x) => (x.clave === c.clave ? next : x)));
+                        }}
+                        className="mt-0.5 h-4 w-4 rounded border-border"
+                      />
+                      <span>
+                        <span className="font-semibold">Resta si pasa</span>
+                        <span className="block text-muted-foreground">
+                          Por ejemplo: prometer algo fuera de las normas. Si pasó (con una cita de la llamada), descuenta su peso de la nota en vez de sumarlo. No cuenta para el 100.
+                        </span>
+                      </span>
+                    </label>
+                  )}
                   {!readOnly && (
                     <button
                       type="button"

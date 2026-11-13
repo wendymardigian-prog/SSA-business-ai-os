@@ -40,7 +40,7 @@ export default async function VariantSettingsPage({
     moduleOn ? supabase.from("design_templates").select("id, name").eq("workspace_id", workspace.id).eq("doc_type", "certificado").is("archived_at", null).order("name") : Promise.resolve({ data: [] }),
   ]);
   // F117: los workflows del camino se ven con services.configure y el permiso de ver Automatizaciones.
-  const workflows = moduleOn && ctx.can("services.configure") && ctx.can("flows.view") ? await loadPathWorkflows(supabase, workspace.id, variant.id) : [];
+  const workflows = moduleOn && ctx.can("services.configure") && ctx.can("flows.view") ? await loadPathWorkflows(supabase, workspace.id, variant.id, new Set((variant.journeyTemplate?.phases ?? []).flatMap((ph) => ph.items.map((i) => i.key)))) : [];
   const members = team.map((m) => ({ id: m.userId, name: m.name }));
   const copySources = all.flatMap((p) => p.variants.filter((v) => v.id !== variant.id && !v.archived).map((v) => ({ id: v.id, label: `${p.name} › ${v.name}` })));
 

@@ -13,7 +13,7 @@ import { newNonce, wrapUntrusted } from "@/lib/agent/untrusted";
 import type { UsageLike } from "@/lib/ai/run";
 import { isTruncated } from "./ai-retry";
 import type { GenerateFn } from "./ai-generate";
-import { analysisSchema, generalAnalysisSchema, type CallAnalysis, type GeneralCallAnalysis } from "./analysis-schema";
+import { analysisSchema, buildGeneralSchema, type CallAnalysis, type GeneralCallAnalysis } from "./analysis-schema";
 import { sanitizeAnalysisCategories } from "./categories";
 import type { ProfileShape } from "./profiles";
 import { buildAnalysisTechnical, buildGeneralAnalysisTechnical, type CallCategories, type Rubric } from "./rubric";
@@ -42,6 +42,11 @@ export interface RunAnalysisInput {
   extraContext?: string | null;
   generate: GenerateFn;
   nonce?: string;
+  /**
+   * Servicios A4 (F142): si el analizador propone acciones, las instrucciones técnicas de las propuestas
+   * (`buildProposalsInstructions`). Sin esto, el pedido y el esquema son exactamente los de siempre.
+   */
+  proposals?: { instructions: string } | null;
 }
 
 export type AnalysisFailureKind = "truncated" | "schema" | "ai";
@@ -79,7 +84,8 @@ export function buildAnalysisSystem(input: Pick<RunAnalysisInput, "instructions"
 
 export async function runCallAnalysis(input: RunAnalysisInput): Promise<RunAnalysisResult> {
   // Con un analizador por tipo, la rubrica ya es la de ese tipo y se usa entera.
-  const system = buildAnalysisSystem({ ...input, callType: null });
+  const withProposals = input.shape === "general" && Boolean(input.proposals);
+  const system = buildAnalysisSystem({ ...input, callType: null }) + (withProposals ? `\n${input.proposals!.instructions}` : "");
   const fullText = transcriptText(input.call.transcript);
   const nonce = input.nonce ?? newNonce();
 
@@ -96,14 +102,14 @@ export async function runCallAnalysis(input: RunAnalysisInput): Promise<RunAnaly
 
   try {
     if (input.shape === "general") {
-      const result = await input.generate({ system, prompt, schema: generalAnalysisSchema, maxOutputTokens: ANALYZER_MAX_TOKENS });
-      const scores = computeScoresWithRubric(result.object, input.rubric, null);
+      const result = await input.generate({ system, prompt, schema: buildGeneralSchema({ proposals: withProposals }), maxOutputTokens: ANALYZER_MAX_TOKENS });
+      const scores = computeScoresWithRubric(result.object, input.rubric, null, fullText);
       return { ok: true, analysis: result.object, scores, transcriptText: fullText, system, usage: result.usage };
     }
     const result = await input.generate({ system, prompt, schema: analysisSchema, maxOutputTokens: ANALYZER_MAX_TOKENS });
     // Con las categorias nuevas apagadas, lo que no esta en la lista pasa a "otra".
     const analysis = sanitizeAnalysisCategories(result.object, input.categories, input.allowNewCategories);
-    const scores = computeScoresWithRubric(analysis, input.rubric, null);
+    const scores = computeScoresWithRubric(analysis, input.rubric, null, fullText);
     return { ok: true, analysis, scores, transcriptText: fullText, system, usage: result.usage };
   } catch (error) {
     const message = error instanceof Error ? error.message : "error desconocido";

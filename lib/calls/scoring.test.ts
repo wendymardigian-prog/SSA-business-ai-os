@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { closerScore, leadScore, computeScores, setSection, getSection, quoteInTranscript, SECTION_DEPENDENCIES, isAnalysisSection } from './scoring';
+import { closerScore, leadScore, computeScores, computeScoresWithRubric, setSection, getSection, quoteInTranscript, SECTION_DEPENDENCIES, isAnalysisSection } from './scoring';
 
 describe('closerScore', () => {
   it('rúbrica 1–5 → 0–100', () => {
@@ -69,5 +69,48 @@ describe('F21: criterios del plano', () => {
     const rubric = { closer: [], lead: [{ clave: 'a', peso: 50 }, { clave: 'b', peso: 50 }] };
     const an = { lead: { creencias: [{ codigo: 'a', estado: 'Firme' }, { codigo: 'b', estado: 'Parcial' }] } };
     expect(computeScoresWithRubric(an, rubric, 'cierre').lead_score).toBe(75);
+  });
+});
+
+describe("criterios que restan (Servicios A4, F140)", () => {
+  const rubric = {
+    closer: [
+      { clave: "escucha", peso: 1 },
+      { clave: "claridad", peso: 1 },
+      { clave: "promesa", peso: 1, subtracts: true as const },
+    ],
+    lead: [],
+  };
+  const transcript = "El cliente preguntó y yo le dije que le garantizo el triple de ventas en un mes sin falta.";
+  const analysis = (promesa: { puntaje: number; cita?: string }) => ({
+    rubrica: [
+      { codigo: "escucha", puntaje: 5 },
+      { codigo: "claridad", puntaje: 3 },
+      { codigo: "promesa", ...promesa },
+    ],
+  });
+
+  it("un criterio que resta, presente y con cita verificada, baja la nota", () => {
+    const sin = computeScoresWithRubric(analysis({ puntaje: 1 }), rubric, null, transcript).closer_score;
+    const con = computeScoresWithRubric(analysis({ puntaje: 5, cita: "le garantizo el triple de ventas" }), rubric, null, transcript).closer_score;
+    expect(sin).toBe(75);
+    expect(con).toBe(25); // 75 menos la mitad (peso 1 sobre 2 que suman)
+  });
+  it("ausente no cambia nada", () => {
+    expect(computeScoresWithRubric(analysis({ puntaje: 1, cita: "le garantizo el triple" }), rubric, null, transcript).closer_score).toBe(75);
+  });
+  it("sin cita verificada no cuenta (ni sin transcripción)", () => {
+    expect(computeScoresWithRubric(analysis({ puntaje: 5, cita: "una frase que nadie dijo nunca" }), rubric, null, transcript).closer_score).toBe(75);
+    expect(computeScoresWithRubric(analysis({ puntaje: 5, cita: "le garantizo el triple de ventas" }), rubric, null).closer_score).toBe(75);
+  });
+  it("nunca baja de 0", () => {
+    const heavy = { closer: [{ clave: "escucha", peso: 1 }, { clave: "promesa", peso: 5, subtracts: true as const }], lead: [] };
+    const a = { rubrica: [{ codigo: "escucha", puntaje: 3 }, { codigo: "promesa", puntaje: 5, cita: "le garantizo el triple de ventas" }] };
+    expect(computeScoresWithRubric(a, heavy, null, transcript).closer_score).toBe(0);
+  });
+  it("una rúbrica sin criterios que restan da la misma nota de siempre", () => {
+    const plain = { closer: [{ clave: "escucha", peso: 1 }, { clave: "claridad", peso: 1 }], lead: [] };
+    const a = { rubrica: [{ codigo: "escucha", puntaje: 5 }, { codigo: "claridad", puntaje: 3 }] };
+    expect(computeScoresWithRubric(a, plain, null, transcript).closer_score).toBe(computeScoresWithRubric(a, plain, null).closer_score);
   });
 });

@@ -138,7 +138,20 @@ export const NOTIFICATION_TYPES = [
   "svc_item_unmatched",
   /** Al unir dos contactos quedaron dos servicios activos del mismo producto. Va a Owner/Admin. */
   "svc_merge_two_services",
+  // Servicios A4 (F134). Solo campana por defecto.
+  /** Una reunión quedó «Por revisar»: el cliente tiene varios servicios posibles. Va a quien grabó y a los responsables. */
+  "call_service_review",
+  /** Una reunión de servicio agendada terminó hace 2 horas sin grabación. Va al anfitrión y al responsable. */
+  "call_missing_recording",
+  /** El analizador dejó propuestas para aprobar. Va al responsable del servicio (o a quien grabó). */
+  "call_proposals_pending",
+  /** Se aprobó una propuesta de tipo «aviso». Va al responsable del servicio o a quien grabó. */
+  "call_note",
+  /** Nadie del reparto tenía lugar y el servicio quedó a nombre del respaldo. Va a quien configura Servicios. */
+  "svc_capacity_full",
   // @plantilla-hasta(servicios)
+  // Comentarios (Servicios A4, F132): te mencionaron en una tarea o una reunión. Va a la persona mencionada.
+  "mentioned",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -476,7 +489,13 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
   svc_hook_failed: { type: "svc_hook_failed", label: "Algo automático de Servicios no se hizo", tone: "warning" },
   svc_item_unmatched: { type: "svc_item_unmatched", label: "Una respuesta no completó ningún paso", tone: "warning", entity: "form_submission" },
   svc_merge_two_services: { type: "svc_merge_two_services", label: "Dos servicios del mismo producto", tone: "warning", entity: "contact" },
+  call_service_review: { type: "call_service_review", label: "Una reunión quedó por revisar", tone: "warning", entity: "call" },
+  call_missing_recording: { type: "call_missing_recording", label: "Una reunión terminó sin grabación", tone: "warning", entity: "booking" },
+  call_proposals_pending: { type: "call_proposals_pending", label: "Hay propuestas para aprobar", tone: "info", entity: "call" },
+  call_note: { type: "call_note", label: "Aviso de una reunión", tone: "info", entity: "call" },
+  svc_capacity_full: { type: "svc_capacity_full", label: "Nadie del reparto tenía lugar", tone: "warning", entity: "service" },
   // @plantilla-hasta(servicios)
+  mentioned: { type: "mentioned", label: "Te mencionaron", tone: "info" },
   // @plantilla-desde(webhooks)
   webhook_errors: {
     type: "webhook_errors",
@@ -549,7 +568,9 @@ export function linkFor(
       return "/dashboard/llamadas/mi-fathom";
 
     case "call":
-      return entityId ? `/dashboard/llamadas/${entityId}` : "/dashboard/llamadas";
+      // Una mención abre la pestaña Actividad (Servicios A4, F145).
+      if (!entityId) return "/dashboard/llamadas";
+      return metadata?.comment_id ? `/dashboard/llamadas/${entityId}?tab=actividad` : `/dashboard/llamadas/${entityId}`;
     // @plantilla-hasta(llamadas)
 
     // @plantilla-desde(formularios)
@@ -599,7 +620,9 @@ export function linkFor(
     // @plantilla-desde(tareas)
     // Tareas: abre la tarea en su drawer.
     case "task":
-      return entityId ? `/dashboard/tareas?task=${entityId}` : "/dashboard/tareas";
+      // Una mención abre la pestaña Comentarios del panel (Servicios A4, F156).
+      if (!entityId) return "/dashboard/tareas";
+      return metadata?.comment_id ? `/dashboard/tareas?task=${entityId}&panel=comentarios` : `/dashboard/tareas?task=${entityId}`;
     // @plantilla-hasta(tareas)
 
     // @plantilla-desde(webhooks)

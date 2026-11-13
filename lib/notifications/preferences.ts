@@ -10,13 +10,13 @@
  * UN evento: `preferences.test.ts` falla si aparece un tipo nuevo sin evento.
  *
  * Lo que la persona cambio se guarda en `user_preferences.notification_prefs`
- * ({ evento: { bell, email, whatsapp } }); lo que no cambio usa `defaults`.
+ * ({ evento: { bell, email, whatsapp, slack } }); lo que no cambio usa `defaults`. Slack (A4) arranca apagado.
  * Cambiar un default aca cambia lo que reciben todos los que no lo tocaron.
  */
 
 import type { NotificationType } from "./types";
 
-export const NOTIFICATION_CHANNELS = ["bell", "email", "whatsapp"] as const;
+export const NOTIFICATION_CHANNELS = ["bell", "email", "whatsapp", "slack"] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 export type ChannelPrefs = Record<NotificationChannel, boolean>;
 
@@ -24,6 +24,7 @@ export const CHANNEL_LABELS: Record<NotificationChannel, string> = {
   bell: "Campana",
   email: "Email",
   whatsapp: "WhatsApp",
+  slack: "Slack",
 };
 
 export const NOTIFICATION_SECTIONS = [
@@ -61,9 +62,9 @@ export interface NotificationEvent {
 const ALL: NotificationAudience = { kind: "all" };
 const ADMINS: NotificationAudience = { kind: "admins" };
 /** Solo campana: lo de siempre. */
-const BELL: ChannelPrefs = { bell: true, email: false, whatsapp: false };
+const BELL: ChannelPrefs = { bell: true, email: false, whatsapp: false, slack: false };
 /** Lo critico: campana y email. */
-const BELL_EMAIL: ChannelPrefs = { bell: true, email: true, whatsapp: false };
+const BELL_EMAIL: ChannelPrefs = { bell: true, email: true, whatsapp: false, slack: false };
 
 export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
   // ── Chat ──────────────────────────────────────────────────────────────
@@ -133,6 +134,16 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     defaults: BELL,
   },
   // @plantilla-hasta(tareas)
+  // Comentarios (Servicios A4, F132): fuera de las marcas a propósito (es de BAIOS, no del módulo).
+  {
+    key: "mentioned",
+    section: "tareas",
+    label: "Te mencionaron en un comentario",
+    description: "Alguien te mencionó con @ en el comentario de una tarea o de una reunión.",
+    types: ["mentioned"],
+    audience: ALL,
+    defaults: BELL,
+  },
   // ── Agenda ────────────────────────────────────────────────────────────
   {
     key: "bookings",
@@ -266,6 +277,34 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     description: "Algo automático no se pudo hacer, llegó una respuesta que no completó ningún paso o quedaron dos servicios del mismo producto al unir contactos.",
     types: ["svc_hook_failed", "svc_item_unmatched", "svc_merge_two_services"],
     audience: ALL,
+    defaults: BELL,
+  },
+  // Servicios A4 (F134): reuniones de servicio, propuestas del analizador y topes de cartera.
+  {
+    key: "svc_calls",
+    section: "servicios",
+    label: "Reuniones de servicio",
+    description: "Una reunión quedó por revisar (el cliente tiene varios servicios) o terminó sin grabación.",
+    types: ["call_service_review", "call_missing_recording"],
+    audience: ALL,
+    defaults: BELL,
+  },
+  {
+    key: "svc_proposals",
+    section: "servicios",
+    label: "Propuestas y avisos de una reunión",
+    description: "El analizador dejó propuestas para aprobar, o alguien aprobó un aviso para vos.",
+    types: ["call_proposals_pending", "call_note"],
+    audience: ALL,
+    defaults: BELL,
+  },
+  {
+    key: "svc_capacity",
+    section: "servicios",
+    label: "Nadie del reparto tenía lugar",
+    description: "Todas las personas del reparto llegaron a su tope y el servicio quedó a nombre del respaldo.",
+    types: ["svc_capacity_full"],
+    audience: { kind: "admins", permissions: ["services.configure"] },
     defaults: BELL,
   },
   // @plantilla-hasta(servicios)
@@ -429,6 +468,8 @@ export function resolveEventPrefs(stored: StoredPrefs, event: NotificationEvent)
     bell: own.bell ?? event.defaults.bell,
     email: own.email ?? event.defaults.email,
     whatsapp: own.whatsapp ?? event.defaults.whatsapp,
+    // Slack (Servicios A4): apagado por defecto en todos los eventos.
+    slack: own.slack ?? event.defaults.slack ?? false,
   };
 }
 

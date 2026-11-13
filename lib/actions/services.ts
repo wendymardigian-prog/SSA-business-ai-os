@@ -8,7 +8,7 @@ import { svcRpc, svcSchema, type SvcResult } from "@/lib/services/db";
 import { parseServicesImport } from "@/lib/services/import";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { unpublishFlow } from "@/lib/flow-engine/publish";
-import { newPathWorkflowNodes, orphanWorkflows, slotOf, slotTrigger, triggerOf, type CanvasNodeLike, type PathSlot } from "@/lib/services/screens/workflow-chips";
+import { newCompleterWorkflow, newPathWorkflowNodes, orphanWorkflows, remapWorkflowNodes, slotOf, slotTrigger, triggerOf, type CanvasNodeLike, type PathSlot } from "@/lib/services/screens/workflow-chips";
 
 /**
  * Las acciones de Servicios (bloques SV1 y SV2). Cada una pide su clave aca (la pantalla puede
@@ -253,14 +253,64 @@ export async function createPathWorkflow(variantId: string, slot: PathSlot, name
   if (!ctx || !ctx.can("flows.edit")) return NOT_ALLOWED;
   const { data: variant } = await ctx.supabase.from("product_variants").select("id").eq("id", variantId).eq("workspace_id", ctx.workspace.id).maybeSingle();
   if (!variant) return { ok: false, error: { code: null, message: "No encontré la variante.", detail: null } };
-  const nodes = newPathWorkflowNodes(slotTrigger(variantId, slot)).map((n) => ({ ...n, position: { x: 0, y: 0 }, deletable: false }));
+  let nodes: Array<Record<string, unknown>>;
+  let edges: Array<Record<string, unknown>> = [];
+  if (slot.startsWith("completes:")) {
+    // A4 (F150): «+ Workflow que lo complete»: el disparador lo elige la persona; el paso ya apunta al paso.
+    const { data: pv } = await ctx.supabase.from("product_variants").select("product_id").eq("id", variantId).maybeSingle();
+    const w = newCompleterWorkflow(slot.slice(10), (pv as { product_id?: string } | null)?.product_id ?? null);
+    nodes = w.nodes.map((n, i) => ({ ...n, position: { x: 0, y: i * 160 }, ...(n.type === "trigger" ? { deletable: false } : {}) }));
+    edges = w.edges.map((e) => ({ ...e }));
+  } else {
+    nodes = newPathWorkflowNodes(slotTrigger(variantId, slot)).map((n) => ({ ...n, position: { x: 0, y: 0 }, deletable: false }));
+  }
   const { data, error } = await ctx.supabase
     .from("flows")
-    .insert({ workspace_id: ctx.workspace.id, name: name.trim().slice(0, 120) || "Workflow del camino", nodes: nodes as never, edges: [] as never, categories: ["Servicios"] })
+    .insert({ workspace_id: ctx.workspace.id, name: name.trim().slice(0, 120) || "Workflow del camino", nodes: nodes as never, edges: edges as never, categories: ["Servicios"] })
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: { code: null, message: "No se pudo crear la automatización.", detail: null } };
   return { ok: true, data: data.id };
+}
+
+/**
+ * A4 (F149): al guardar un camino con fases o pasos duplicados, copia EN BORRADOR (pausados) los workflows de los
+ * originales, apuntando a las claves nuevas. Con `services.configure` y `flows.edit`; lee con la sesión (la RLS de
+ * `flows`). Solo copia las claves que existen en el camino GUARDADO de la variante.
+ */
+export async function copyDuplicatedWorkflows(variantId: string, keyMap: Record<string, string>): Promise<SvcResult<{ copied: number }>> {
+  const ctx = await getPermissionAction("services.configure");
+  if (!ctx || !ctx.can("flows.edit")) return NOT_ALLOWED;
+  const { data: variant } = await ctx.supabase.from("product_variants").select("id, journey_template").eq("id", variantId).eq("workspace_id", ctx.workspace.id).maybeSingle();
+  if (!variant) return { ok: false, error: { code: null, message: "No encontré la variante.", detail: null } };
+  const tpl = (variant as { journey_template?: { phases?: Array<{ key: string; items?: Array<{ key: string }> }> } }).journey_template;
+  const saved = new Set((tpl?.phases ?? []).flatMap((p) => [p.key, ...(p.items ?? []).map((i) => i.key)]));
+  const map = Object.fromEntries(Object.entries(keyMap).filter(([from, to]) => typeof from === "string" && typeof to === "string" && saved.has(from) && saved.has(to)));
+  if (Object.keys(map).length === 0) return { ok: true, data: { copied: 0 } };
+
+  const { data: flows, error } = await ctx.supabase.from("flows").select("id, name, nodes, draft_nodes, edges, draft_edges, categories").eq("workspace_id", ctx.workspace.id);
+  if (error) return { ok: false, error: { code: null, message: "No pude leer las automatizaciones.", detail: null } };
+  let copied = 0;
+  for (const f of (flows ?? []) as Array<Record<string, unknown>>) {
+    const nodes = ((Array.isArray(f.draft_nodes) ? f.draft_nodes : f.nodes) ?? []) as CanvasNodeLike[];
+    const edges = (Array.isArray(f.draft_edges) ? f.draft_edges : f.edges) ?? [];
+    const trigger = triggerOf(nodes);
+    const slot = trigger ? slotOf(variantId, trigger) : null;
+    // Solo los del camino de ESTA variante o los que completan uno de sus pasos.
+    if (!slot && !nodes.some((n) => n.type === "svc_complete_step")) continue;
+    const remapped = remapWorkflowNodes(nodes, map);
+    if (!remapped) continue;
+    const { error: insErr } = await ctx.supabase.from("flows").insert({
+      workspace_id: ctx.workspace.id,
+      name: `${String(f.name ?? "Workflow")} (copia)`.slice(0, 120),
+      nodes: remapped as never,
+      edges: edges as never,
+      categories: (Array.isArray(f.categories) ? f.categories : ["Servicios"]) as string[],
+    });
+    if (insErr) console.error("[servicios] no pude copiar un workflow del camino:", insErr.message);
+    else copied++;
+  }
+  return { ok: true, data: { copied } };
 }
 
 /** El portal de una variante (F116). La base decide qué parte pide `portal.sections` y cuál `portal.access_rules`. */

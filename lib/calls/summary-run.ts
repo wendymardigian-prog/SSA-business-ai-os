@@ -29,6 +29,7 @@ import { applyMemory, readContactMemory } from "./memory";
 import { enqueueCallJob } from "./queue";
 import { derivedCallType } from "./legacy-type";
 import { ideasFromSummary, memoryApplies, runCallSummary, summaryEligibility } from "./summary";
+import { withManualKept } from "./manual-summary";
 
 type Db = SupabaseClient<Database>;
 
@@ -47,7 +48,7 @@ export interface SummaryDeps {
   generate?: GenerateFn;
 }
 
-const CALL_COLUMNS = "id, workspace_id, title, category_snapshot, no_show, analysis_profile_id, recorded_at, attendees, transcript, contact_id, ideas_created_at";
+const CALL_COLUMNS = "id, workspace_id, title, category_snapshot, no_show, analysis_profile_id, recorded_at, attendees, transcript, contact_id, ideas_created_at, summary";
 
 export async function runCallSummaryJob(deps: SummaryDeps, payload: SummaryJobPayload): Promise<{ outcome: SummaryOutcome }> {
   const { db } = deps;
@@ -169,7 +170,8 @@ export async function runCallSummaryJob(deps: SummaryDeps, payload: SummaryJobPa
   const { error } = await db
     .from("calls")
     .update({
-      summary: { ...summary, generated_at: now.toISOString(), model: modelLabel, prompt_version: instructions.version } as unknown as Json,
+      // Lo que se cargó a mano (Servicios A4, F141) se conserva: vive en `summary.manual`.
+      summary: withManualKept({ ...summary, generated_at: now.toISOString(), model: modelLabel, prompt_version: instructions.version }, (call as { summary?: unknown }).summary) as unknown as Json,
       summary_status: "done",
       memory_status: memoryStatus,
       ...(memoryAppliedAt ? { memory_applied_at: memoryAppliedAt } : {}),

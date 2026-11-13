@@ -163,6 +163,12 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "task.date_shifted": "movió la fecha de una tarea", // @plantilla-quitar(tareas)
   "task.blockers_changed": "cambió las dependencias de una tarea", // @plantilla-quitar(tareas)
   "task.deleted": "borró una tarea", // @plantilla-quitar(tareas)
+  // Servicios A4: no se ven en la ficha de un contacto (son de una agenda, un paso o el negocio); existen por el tipo.
+  "svc.call_missing_recording": "avisó que una reunión terminó sin grabación", // @plantilla-quitar(servicios)
+  "svc.evidence_added": "adjuntó evidencia a un paso", // @plantilla-quitar(servicios)
+  "svc.evidence_removed": "quitó evidencia de un paso", // @plantilla-quitar(servicios)
+  "svc.capacity_changed": "cambió los topes de cartera", // @plantilla-quitar(servicios)
+  "svc.task_closed_by_service": "cerró una tarea al terminar el servicio", // @plantilla-quitar(servicios)
   ...CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
   ...COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
   ...FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)

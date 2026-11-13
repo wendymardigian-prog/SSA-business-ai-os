@@ -26,6 +26,8 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { createFollowupTaskCore, type FollowupOutput } from "@/lib/tasks/followup-core";
 import { fail, success, type TaskActionResult } from "@/lib/tasks/result";
 import type { TaskBlocker, TaskRow } from "@/lib/tasks/types";
+import { checklistOpCore, type ChecklistOp } from "@/lib/tasks/checklist-core";
+import type { ChecklistItem } from "@/lib/tasks/checklist";
 
 /**
  * Acciones de Tareas (Extra A, F8). Una capa fina: pide el permiso, arma el contexto y llama al nucleo
@@ -185,4 +187,9 @@ export async function loadTaskContext(): Promise<TaskActionResult<TaskContextPay
     console.error("[tareas] loadTaskContext:", error instanceof Error ? error.message : String(error));
     return fail("server", "No pude cargar las tareas.");
   }
+}
+
+/** El checklist de una tarea (Servicios A4, F153): tildar, sumar o sacar un punto. */
+export async function changeTaskChecklist(taskId: string, op: ChecklistOp): Promise<TaskActionResult<ChecklistItem[]>> {
+  return run("tasks.edit", "editar tareas", (ctx) => checklistOpCore(ctx, taskId, op));
 }

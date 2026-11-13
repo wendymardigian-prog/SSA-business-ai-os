@@ -3,6 +3,12 @@ import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { contactNames, loadService } from "@/lib/services/screens/load-services";
 import { todayIn } from "@/lib/services/screens/today";
+import { recordStepRules } from "@/lib/services/screens/record-step-rules";
+import { overCapacityNote, readCapacity } from "@/lib/services/screens/capacity";
+import { lockErrorMessage, lockLabel } from "@/lib/services/lock";
+
+const civilShortFmt = new Intl.DateTimeFormat("es", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
+const civilShortDate = (d: string) => civilShortFmt.format(new Date(`${d}T12:00:00Z`));
 import { ServiceAccessesPanel } from "@/components/services/clients/service-accesses-panel";
 import { loadServiceAccesses } from "@/lib/portal-admin/load";
 import { ServiceCertificateCard, type CertificateView } from "@/components/services/clients/service-certificate-card";
@@ -33,8 +39,10 @@ import type { PermissionContext } from "@/lib/auth/guards";
 import { RecordModal } from "./record-modal";
 import { RecordNotFound } from "./record-not-found";
 import { ServiceRecordView, ServiceRecordHeader, type ServiceRecordData } from "./service-record-view";
+import { ServiceMeetingsBlock } from "./service-meetings-block";
+import { loadServiceMeetings } from "@/lib/services/screens/service-meetings-load";
 
-type Ctx = Pick<PermissionContext, "workspace" | "supabase" | "can" | "permissions">;
+type Ctx = Pick<PermissionContext, "workspace" | "supabase" | "can" | "permissions" | "user">;
 
 /**
  * La ficha del servicio en modal (Servicios A2, F130.3). Se arma en el servidor con la sesion de quien mira (la RLS
@@ -172,12 +180,48 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     saleChanged: flags.sale_changed === true,
     saleId: s.sale_id,
   };
-  const stepItems = live.map((i) => ({ id: i.id, phaseId: i.phase_id, name: i.name, kind: i.kind, required: i.required, status: i.status, dueOn: i.due_on, taskId: i.task_id, needsAttention: i.needs_attention, occurrence: i.occurrence_index }));
+  // A4 (F146, F147): el candado y la evidencia de cada paso, con la misma regla que la base.
+  const stepRules = recordStepRules(live, phases, { created_at: s.created_at as string, starts_on: s.starts_on }, today, toLocal);
+  const namesByKey: Record<string, string> = Object.fromEntries(live.filter((i) => i.template_key).map((i) => [i.template_key, i.name]));
+  const stepItems = live.map((i) => {
+    const r = stepRules.get(i.id);
+    return {
+      id: i.id,
+      phaseId: i.phase_id,
+      name: i.name,
+      kind: i.kind,
+      required: i.required,
+      status: i.status,
+      dueOn: i.due_on,
+      taskId: i.task_id,
+      needsAttention: i.needs_attention,
+      occurrence: i.occurrence_index,
+      lock: r?.lock.locked ? { label: lockLabel(r.lock, namesByKey, civilShortDate) ?? "", message: lockErrorMessage(r.lock, namesByKey, civilShortDate) } : null,
+      evidenceRule: r?.evidenceRule ?? null,
+      evidence: r?.evidence ?? [],
+      evidenceMissing: r?.evidenceMissing ?? false,
+    };
+  });
   const saleRow = sale as { id: string; final_amount: number | string | null; created_at: string } | null;
   const installments = pays.filter((p) => p.type !== "refund" && Number(p.amount) > 0 && !["cancelled", "refunded"].includes(p.status));
 
+  // A4 (F151): quién superaría su tope si se lo asigna a mano (solo con permiso de cambiar el responsable).
+  const capacityNotes: Record<string, string> = {};
+  if (ctx.can("services.change_owner")) {
+    const [wsCap, loads] = await Promise.all([
+      service.from("workspaces").select("service_team_settings" as never).eq("id", workspace.id).maybeSingle(),
+      svcRpc<Record<string, number>>(service, "svc_owner_loads", { p_workspace_id: workspace.id }),
+    ]);
+    const capacity = readCapacity((wsCap.data as { service_team_settings?: unknown } | null)?.service_team_settings);
+    for (const m of team) {
+      const note = overCapacityNote(m.userId, capacity, loads.ok ? loads.data ?? {} : {});
+      if (note) capacityNotes[m.userId] = note;
+    }
+  }
   const data: ServiceRecordData = {
     id: s.id,
+    viewerId: ctx.user?.id ?? null,
+    capacityNotes,
     contactId: s.contact_id,
     contactName: names.get(s.contact_id) ?? "Sin nombre",
     productName: s.product_snapshot?.product_name ?? "",
@@ -222,6 +266,19 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     reviews: reviews.slice(0, 20),
   };
 
+  // El bloque Reuniones (Servicios A4, F137): con la sesión de quien mira. No depende del portal.
+  const meetingRows = await loadServiceMeetings(supabase, {
+    workspaceId: workspace.id,
+    serviceId: s.id,
+    contactId: s.contact_id,
+    createdAt: s.created_at as string,
+    endsOn: s.ends_on,
+    itemIds: live.map((i) => i.id),
+  }).catch(() => []);
+  const meetings = ctx.can("calls.view") ? (
+    <ServiceMeetingsBlock serviceId={s.id} rows={meetingRows} userNames={Object.fromEntries(memberLabels(team))} timeZone={timeZone} canLink={ctx.can("calls.edit")} />
+  ) : null;
+
   return (
     <RecordModal label={`Servicio de ${data.contactName}`} size="lg" header={<ServiceRecordHeader data={data} today={today} members={team.map((m) => ({ id: m.userId, name: m.name }))} permissions={ctx.permissions.keys} />}>
       <ServiceRecordView
@@ -234,6 +291,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
         accesses={accesses}
         certificate={certificate}
         assistantCard={assistantCard}
+        meetings={meetings}
       />
     </RecordModal>
   );

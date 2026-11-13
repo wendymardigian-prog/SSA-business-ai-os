@@ -49,17 +49,17 @@ describe("el catalogo de preferencias", () => {
 
 describe("resolver lo que eligio la persona", () => {
   it("sin nada guardado, los defaults", () => {
-    expect(resolveTypePrefs({}, "needs_human")).toEqual({ bell: true, email: true, whatsapp: false });
-    expect(resolveTypePrefs({}, "conversation_assigned")).toEqual({ bell: true, email: false, whatsapp: false });
+    expect(resolveTypePrefs({}, "needs_human")).toEqual({ bell: true, email: true, whatsapp: false, slack: false });
+    expect(resolveTypePrefs({}, "conversation_assigned")).toEqual({ bell: true, email: false, whatsapp: false, slack: false });
   });
 
   it("lo guardado pisa al default canal por canal", () => {
     const stored = parseStoredPrefs({ bookings: { whatsapp: true } });
-    expect(resolveTypePrefs(stored, "booking_cancelled")).toEqual({ bell: true, email: false, whatsapp: true });
+    expect(resolveTypePrefs(stored, "booking_cancelled")).toEqual({ bell: true, email: false, whatsapp: true, slack: false });
   });
 
   it("un tipo desconocido va solo a la campana", () => {
-    expect(resolveTypePrefs({ x: { email: true } }, "tipo_del_futuro")).toEqual({ bell: true, email: false, whatsapp: false });
+    expect(resolveTypePrefs({ x: { email: true } }, "tipo_del_futuro")).toEqual({ bell: true, email: false, whatsapp: false, slack: false });
   });
 
   it("parseStoredPrefs descarta eventos inexistentes y valores que no son booleanos", () => {

@@ -13,6 +13,7 @@ import { BarChart3,
   ArrowRightLeft,
   UserCheck,
   Bell,
+  Hash,
   ListPlus,
   ListChecks,
   Flag,
@@ -322,6 +323,16 @@ const categories: PaletteCategory[] = [
         description: "Un aviso al equipo dentro del sistema",
         synonyms: ["notificacion", "aviso", "equipo"],
         actionType: "notify_team",
+      },
+      // Servicios A4 (F158): un mensaje a un canal de Slack o a una persona del equipo (sirve sin contacto).
+      {
+        type: "action",
+        nodeType: "send_slack",
+        label: "Enviar a Slack",
+        icon: Hash,
+        description: "Un mensaje a un canal de Slack o a una persona del equipo",
+        synonyms: ["slack", "canal", "equipo", "aviso", "mensaje"],
+        actionType: "send_slack",
       },
       // @plantilla-desde(tareas)
       // Tareas (F22): deja una tarea para el equipo (sirve también en flujos sin contacto).

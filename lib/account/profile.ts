@@ -15,6 +15,8 @@ export interface MyProfile {
   phone: string | null;
   whatsappPhone: string | null;
   whatsappSameAsPhone: boolean;
+  /** El ID de Slack para los avisos (Servicios A4, 00365), o null. */
+  slackUserId: string | null;
 }
 
 export const EMPTY_PROFILE: MyProfile = {
@@ -23,6 +25,7 @@ export const EMPTY_PROFILE: MyProfile = {
   phone: null,
   whatsappPhone: null,
   whatsappSameAsPhone: true,
+  slackUserId: null,
 };
 
 export const getMyProfile = cache(async (): Promise<MyProfile> => {
@@ -31,7 +34,7 @@ export const getMyProfile = cache(async (): Promise<MyProfile> => {
 
   const { data, error } = await supabase
     .from("user_profiles")
-    .select("avatar_path, phone, whatsapp_phone, whatsapp_same_as_phone")
+    .select("avatar_path, phone, whatsapp_phone, whatsapp_same_as_phone, slack_user_id")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -48,5 +51,6 @@ export const getMyProfile = cache(async (): Promise<MyProfile> => {
     phone: data.phone,
     whatsappPhone: data.whatsapp_phone,
     whatsappSameAsPhone: data.whatsapp_same_as_phone,
+    slackUserId: data.slack_user_id ?? null,
   };
 });
