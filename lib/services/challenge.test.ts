@@ -1,7 +1,7 @@
 // @plantilla-quitar(servicios)
 import { describe, expect, it } from "vitest";
 import cases from "./challenge.cases.json";
-import { certificateTemplatePick, challengeWeeks, latePlan, recurrenceWindow, startByDate, type LateConfig, type WeekInput, type WindowAnchors } from "./challenge";
+import { certificateTemplatePick, challengeWeeks, itemOnTime, latePlan, recurrenceWindow, startByDate, type LateConfig, type WeekInput, type WindowAnchors } from "./challenge";
 
 describe("desde y hasta cuándo se repite (casos compartidos con la base)", () => {
   for (const c of cases.window) it(c.name, () => expect(recurrenceWindow(c.recurrence as Record<string, unknown>, c.anchors as WindowAnchors)).toEqual(c.expected));
@@ -23,4 +23,15 @@ describe("la plantilla del certificado según si llegó a tiempo", () => {
     expect(certificateTemplatePick(ref, {})).toBe("comun");
   });
   it("sin plantillas por condición, la de siempre", () => expect(certificateTemplatePick({ template_id: "una" }, {})).toBe("una"));
+});
+
+describe("si un paso llegó a tiempo (sin gracia)", () => {
+  const tz = "America/Costa_Rica";
+  it("el mismo día del plazo, en la zona del negocio", () => expect(itemOnTime({ completedAt: "2026-11-11T05:00:00Z", dueOn: "2026-11-10", dueAt: null, timeZone: tz })).toBe(true));
+  it("al día siguiente", () => expect(itemOnTime({ completedAt: "2026-11-11T07:00:00Z", dueOn: "2026-11-10", dueAt: null, timeZone: tz })).toBe(false));
+  it("contra la hora límite", () => expect(itemOnTime({ completedAt: "2026-11-10T10:00:00Z", dueOn: null, dueAt: "2026-11-10T09:00:00Z", timeZone: tz })).toBe(false));
+  it("sin completar no está a tiempo; sin plazo, sí", () => {
+    expect(itemOnTime({ completedAt: null, dueOn: "2026-11-10", dueAt: null, timeZone: tz })).toBe(false);
+    expect(itemOnTime({ completedAt: "2026-11-10T10:00:00Z", dueOn: null, dueAt: null, timeZone: tz })).toBe(true);
+  });
 });

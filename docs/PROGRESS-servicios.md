@@ -15,6 +15,9 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.11 (F126 a F130 y
 - Errores nuevos: SV035 (todavía no se puede cargar), SV036 (ya pasó el plazo), SV037 (faltan aceptar las reglas).
 - `svc_start_challenge_accepting` (solo servidor) es la que va a llamar el portal en B2. `svc_challenge_view` es la lectura del bloque Reto de la ficha.
 - Aviso nuevo `svc_challenge_start_overdue` (una vez por fase, desde el cron diario de siempre).
+- **Pantallas:** en el editor del camino, la fase Reto suma reglas para aceptar (solo «Cuando lo arranca el cliente»), control semanal (mínimo, video y las claves de los campos de horas, link y «Trabado en») y fecha límite; el paso suma «Se repite» (cada, desde, hasta, tope de días) y el atraso (adelantar, acepta tarde, horas y días de gracia); el certificado, «Según si llegó a tiempo» (`components/services/products/challenge-sections.tsx`). En la ficha del servicio, el bloque Reto (`service-challenge-card.tsx`): reglas aceptadas, fecha límite y semanas. Emitir el certificado elige la plantilla con `certificateTemplatePick` + `itemOnTime`.
+- `verify-program --bloque a3` corre también los casos del Reto y del camino contra la base.
+- **Falta de F127:** el filtro «No empezó el Reto a tiempo» en Clientes (va con F130, cuando se toque la tabla) y las funciones `portal_*` (B2).
 
 ## F126 · Entregas de actividades
 - Gemelas `submissionPlan` (lib/program/submission-limits.ts) y `app_servicio.submission_plan`, con `submission-limits.cases.json` (18 casos). `verify-program --bloque a3`.

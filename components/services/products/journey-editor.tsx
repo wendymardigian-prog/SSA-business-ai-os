@@ -36,6 +36,7 @@ import type { NamedOption } from "./service-settings-panel";
 import { groupBySlot, type PathWorkflow } from "@/lib/services/screens/workflow-chips";
 import { WorkflowSlot } from "./workflow-slot";
 import { StepRulesSection } from "./step-rules-section";
+import { CertificateConditions, ChallengeSettings, RepeatSection } from "./challenge-sections";
 
 const input = "h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge";
 const label = "mb-1.5 flex items-center gap-1 text-xs font-semibold text-foreground";
@@ -313,6 +314,9 @@ export function JourneyEditor({
         <ItemDrawer
           item={item}
           before={itemsBefore(t, item.key)}
+          phases={t.phases.map((p) => ({ id: p.key, name: p.name }))}
+          items={t.phases.flatMap((p) => p.items.map((i) => ({ id: i.key, name: i.name })))}
+          ownPhaseKey={t.phases.find((p) => p.items.some((i) => i.key === item.key))?.key ?? ""}
           refs={refs}
           members={members}
           issues={issues}
@@ -429,6 +433,7 @@ function PhaseHeader({
           <option value="fixed_date">En una fecha fija</option>
         </select>
       )}
+      {challengeOn && <ChallengeSettings challenge={phase.challenge as Record<string, unknown>} onChange={(next) => onChange({ challenge: next })} />}
     </div>
   );
 }
@@ -436,6 +441,9 @@ function PhaseHeader({
 function ItemDrawer({
   item,
   before,
+  phases,
+  items,
+  ownPhaseKey,
   refs,
   members,
   issues,
@@ -445,6 +453,10 @@ function ItemDrawer({
 }: {
   item: JourneyItem;
   before: JourneyItem[];
+  /** F127: todas las fases y pasos del camino (la repetición y el certificado pueden nombrar cualquiera). */
+  phases: NamedOption[];
+  items: NamedOption[];
+  ownPhaseKey: string;
   refs: JourneyRefs;
   members: NamedOption[];
   /** Los problemas del camino entero (journeyEditorIssues): el drawer muestra los de su botón. */
@@ -553,6 +565,7 @@ function ItemDrawer({
               <label htmlFor="it-cert" className={label}>
                 Plantilla del certificado
               </label>
+              {!Array.isArray(ref.templates) && (
               <select id="it-cert" value={(ref.template_id as string) ?? ""} onChange={(e) => setRef({ template_id: e.target.value || undefined })} className={input}>
                 <option value="">Elegí…</option>
                 {(refs.certificates ?? []).map((c) => (
@@ -561,6 +574,7 @@ function ItemDrawer({
                   </option>
                 ))}
               </select>
+              )}
               <p className="mt-1 text-[11px] text-muted-foreground">
                 Solo plantillas de tipo Certificado.{" "}
                 <a href="/dashboard/disenos" target="_blank" rel="noopener noreferrer" className="text-primary-ink hover:underline">
@@ -572,6 +586,7 @@ function ItemDrawer({
               <input type="checkbox" checked={ref.auto_issue === true} onChange={(e) => setRef({ auto_issue: e.target.checked })} />
               Emitirlo solo al llegar a este paso
             </label>
+            <CertificateConditions refValue={ref} items={items.filter((i) => i.id !== item.key)} certificates={refs.certificates ?? []} onRef={(next) => onChange({ ref: next })} />
           </div>
         )}
 
@@ -667,6 +682,8 @@ function ItemDrawer({
             Lo ve el cliente
           </label>
         </div>
+
+        <RepeatSection item={item} phases={phases} items={items} ownPhaseKey={ownPhaseKey} onChange={onChange} />
 
         <StepRulesSection item={item} before={before} onRef={(next) => onChange({ ref: next })} />
 

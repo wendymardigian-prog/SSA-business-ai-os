@@ -217,3 +217,16 @@ export function certificateTemplatePick(ref: Record<string, unknown>, onTime: Re
   const fallback = list.find((c) => c && c.else === true);
   return fallback?.template_id ?? (typeof ref.template_id === "string" ? ref.template_id : null);
 }
+
+/**
+ * Si un paso se completó dentro de su plazo, sin días ni horas de gracia (F127.7). Con `dueOn`, alcanza con haberlo
+ * completado ese día o antes en la zona del negocio; sin `dueOn`, contra `dueAt`; sin plazo, cuenta como a tiempo.
+ */
+export function itemOnTime(i: { completedAt: string | null; dueOn: string | null; dueAt: string | null; timeZone: string }): boolean {
+  if (!i.completedAt) return false;
+  const done = new Date(i.completedAt);
+  if (Number.isNaN(done.getTime())) return false;
+  if (i.dueOn) return new Intl.DateTimeFormat("en-CA", { timeZone: i.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(done) <= i.dueOn;
+  if (i.dueAt) return done.getTime() <= new Date(i.dueAt).getTime();
+  return true;
+}

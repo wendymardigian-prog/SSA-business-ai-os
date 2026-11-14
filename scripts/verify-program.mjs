@@ -606,6 +606,23 @@ try {
     const grants = sql(`SELECT has_function_privilege('anon', 'app_servicio.submission_plan(jsonb)', 'EXECUTE') a, has_function_privilege('authenticated', 'app_servicio.submission_plan(jsonb)', 'EXECUTE') u`)[0];
     check(grants && !grants.a && !grants.u, "submission_plan es solo del servidor");
   }
+  // Servicios A3 · F127: Reto genérico (00376). Los mismos casos que lib/services/challenge.test.ts.
+  if (run("a3") && sql(`SELECT to_regprocedure('app_servicio.svc_recurrence_window(jsonb,jsonb)') IS NOT NULL ok`)[0]?.ok === true) {
+    console.log("\na3 · Reto genérico (F127)");
+    const ch = json("lib/services/challenge.cases.json");
+    const runA3 = (list, label, toSql, expected) => {
+      const got = sql(`SELECT jsonb_build_array(${list.map((c) => `to_jsonb(${toSql(c)})`).join(", ")}) AS r`)[0]?.r ?? [];
+      const bad = list.filter((c, i) => !eq(got[i] ?? null, expected(c))).map((c) => c.name);
+      check(bad.length === 0, `${label}: los ${list.length} casos dan lo mismo que en TypeScript`, bad.slice(0, 3).join(" | "));
+    };
+    runA3(ch.window, "svc_recurrence_window", (c) => `app_servicio.svc_recurrence_window(${jlit(c.recurrence)}, ${jlit(c.anchors)})`, (c) => c.expected);
+    runA3(ch.late, "svc_late_plan", (c) => `app_servicio.svc_late_plan(${c.late === null ? "NULL" : jlit(c.late)}, ${lit(c.occursOn)}::date, ${lit(c.dueOn)}::date, ${lit(c.now)}::timestamp)`, (c) => c.expected);
+    runA3(ch.weeks, "svc_challenge_weeks_plan", (c) => `app_servicio.svc_challenge_weeks_plan(${jlit(c.input)})`, (c) => c.expected);
+    runA3(ch.startBy, "svc_challenge_start_by", (c) => `to_char(app_servicio.svc_challenge_start_by(${c.startBy === null ? "NULL" : jlit(c.startBy)}, ${lit(c.serviceStart)}::date, ${lit(c.serviceCreated)}::date), 'YYYY-MM-DD')`, (c) => c.expected);
+    runA3(json("lib/services/recurrence.cases.json").cases, "svc_occurrence_dates (con item_completed y max_days)",
+      (c) => `app_servicio.svc_occurrence_dates(${jlit(c.recurrence)}, ${lit(c.start)}::date, ${lit(c.phaseEnd)}::date, ${lit(c.serviceEnd)}::date, ${lit(c.upTo)}::date)`, (c) => c.expected);
+    runA3(json("lib/services/journey-template.cases.json").cases, "validate_journey_template (con el Reto)", (c) => `app_servicio.validate_journey_template(${jlit(c.template)}, NULL)`, (c) => c.expected);
+  }
 
   if (run("x") && sql(`SELECT to_regprocedure('app_servicio.merge_contacts_hook(uuid,uuid)') IS NOT NULL ok`)[0]?.ok === true) {
     console.log("\nx · Fusión de contactos con datos del módulo (F89)");

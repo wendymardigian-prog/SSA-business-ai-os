@@ -10,6 +10,7 @@ import { createGeneration, VALID_STATUSES } from "@/lib/designer/generate-core";
 import { voidDesignCore } from "@/lib/designer/publishing";
 import type { GeneratedDesign } from "@/lib/designer/extensions";
 import { svcRpc, svcSchema } from "@/lib/services/db";
+import { certificateTemplatePick, itemOnTime } from "@/lib/services/challenge";
 import { canIssueFor, certificateState, isServiceSubject, serviceSubjectRef, SERVICE_SUBJECT_MODULE, type CertificateDesign } from "@/lib/services/certificate";
 
 type Db = SupabaseClient<Database>;
@@ -31,11 +32,31 @@ async function loadService(db: Db, workspaceId: string, serviceId: string): Prom
   return (data as ServiceRow | null) ?? null;
 }
 
-/** La plantilla del paso Certificado del camino del servicio (el pendiente primero). */
+/**
+ * La plantilla del paso Certificado del camino del servicio (el pendiente primero). Con `ref.templates` (F127.7), la
+ * que corresponde según si el paso elegido se completó a tiempo.
+ */
 async function certificateTemplate(db: Db, serviceId: string): Promise<string | null> {
   const { data } = await svcSchema(db).from("service_items").select("ref, status").eq("service_id", serviceId).eq("kind", "certificate").eq("is_recurring_template", false);
-  const rows = ((data ?? []) as Array<{ ref: { template_id?: string } | null; status: string }>).sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending"));
-  return rows.find((r) => typeof r.ref?.template_id === "string")?.ref?.template_id ?? null;
+  const rows = ((data ?? []) as Array<{ ref: Record<string, unknown> | null; status: string }>).sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending"));
+  const row = rows.find((r) => typeof r.ref?.template_id === "string" || Array.isArray(r.ref?.templates));
+  if (!row?.ref) return null;
+  if (!Array.isArray(row.ref.templates)) return certificateTemplatePick(row.ref, {});
+  const keys = (row.ref.templates as Array<{ item_key?: unknown }>).map((c) => c?.item_key).filter((k): k is string => typeof k === "string");
+  const onTime: Record<string, boolean> = {};
+  if (keys.length) {
+    const [{ data: items }, { data: svc }] = await Promise.all([
+      svcSchema(db).from("service_items").select("template_key, completed_at, due_on, due_at").eq("service_id", serviceId).in("template_key", keys).is("parent_item_id", null),
+      svcSchema(db).from("services").select("workspace_id").eq("id", serviceId).maybeSingle(),
+    ]);
+    const ws = (svc as { workspace_id?: string } | null)?.workspace_id;
+    const { data: w } = ws ? await db.from("workspaces").select("timezone").eq("id", ws).maybeSingle() : { data: null };
+    const timeZone = ((w as { timezone?: string | null } | null)?.timezone ?? "UTC") || "UTC";
+    for (const it of (items ?? []) as Array<{ template_key: string; completed_at: string | null; due_on: string | null; due_at: string | null }>) {
+      onTime[it.template_key] = itemOnTime({ completedAt: it.completed_at, dueOn: it.due_on, dueAt: it.due_at, timeZone });
+    }
+  }
+  return certificateTemplatePick(row.ref, onTime);
 }
 
 /** Los certificados de un servicio (las generaciones con el servicio como sujeto y una plantilla de certificado). */

@@ -363,6 +363,7 @@ export function ServiceRecordView({
   permissions,
   accesses,
   certificate,
+  challenge,
   assistantCard,
   meetings,
 }: {
@@ -374,6 +375,8 @@ export function ServiceRecordView({
   permissions: string[];
   accesses: ReactNode;
   certificate: ReactNode;
+  /** Servicios A3 (F127): el bloque Reto. */
+  challenge?: ReactNode;
   assistantCard: ReactNode;
   /** Servicios A4 (F137): el bloque Reuniones. */
   meetings?: ReactNode;
@@ -510,6 +513,8 @@ export function ServiceRecordView({
         )}
 
         {data.hasPortal && <ClassroomBlock classroom={data.classroom} />}
+
+        {challenge}
 
         {certificate}
 

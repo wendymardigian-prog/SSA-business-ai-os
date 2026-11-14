@@ -12,6 +12,7 @@ const civilShortDate = (d: string) => civilShortFmt.format(new Date(`${d}T12:00:
 import { ServiceAccessesPanel } from "@/components/services/clients/service-accesses-panel";
 import { loadServiceAccesses } from "@/lib/portal-admin/load";
 import { ServiceCertificateCard, type CertificateView } from "@/components/services/clients/service-certificate-card";
+import { ServiceChallengeCard, type ChallengeViewData } from "./service-challenge-card";
 import { serviceCertificates } from "@/lib/services/certificate-core";
 import { certificateState } from "@/lib/services/certificate";
 import { loadDesignLinks } from "@/lib/designer/public-links";
@@ -122,6 +123,13 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
         />
       );
     }
+  }
+
+  // F127: el bloque Reto, solo si el camino tiene una fase Reto (la lectura mira el alcance de la sesión).
+  let challengeCard: React.ReactNode = null;
+  if (phases.some((ph) => !!(ph.challenge && (ph.challenge as { enabled?: boolean }).enabled))) {
+    const ch = await svcRpc<ChallengeViewData | null>(supabase, "svc_challenge_view", { p_service_id: s.id });
+    if (ch.ok && ch.data) challengeCard = <ServiceChallengeCard data={ch.data} today={today} timeZone={timeZone} />;
   }
 
   // El certificado: las generaciones con este servicio como sujeto (con el cliente de servicio, del negocio de la sesión).
@@ -290,6 +298,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
         permissions={ctx.permissions.keys}
         accesses={accesses}
         certificate={certificate}
+        challenge={challengeCard}
         assistantCard={assistantCard}
         meetings={meetings}
       />
