@@ -4,7 +4,7 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.11 (F126 a F130 y
 
 | Migración | Qué | Estado |
 |---|---|---|
-| `00375_activity_submission_limits` | F126: `superseded`, `submission_plan`, límites en el enganche, revisar solo la última | Ensayada en producción en una transacción que se deshizo sola (18/18 casos, comportamiento y «sin límites como antes»). **Sin aplicar**: falta confirmar el backup reciente |
+| `00375_activity_submission_limits` | F126: `superseded`, `submission_plan`, límites en el enganche, revisar solo la última | Ensayada en producción en una transacción que se deshizo sola (18/18 casos, comportamiento y «sin límites como antes»). **Aplicada y registrada** el 14/11/2026 UTC (versión `20261114185102`), con el backup del 14/11 09:27 UTC confirmado. Después: CHECK con `superseded`, `submission_plan` solo del servidor, 0 filas reemplazadas, huella de `submit_form_response` igual (`78a358d5…`) |
 | `00376` reto | F127 | Pendiente |
 | `00377` avisos y días activos | F128, decisión 475 | Pendiente |
 | `00378`/`00379` puntos | F129 | Pendiente |
