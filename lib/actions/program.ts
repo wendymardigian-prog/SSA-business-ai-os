@@ -8,6 +8,7 @@ import { svcRpc, svcSchema, type SvcResult } from "@/lib/services/db";
 import { normalizeVideoUrl } from "@/lib/program/video-url";
 import { unlockRuleProblems, type UnlockRule } from "@/lib/program/unlock";
 import { checkDocument, checkHtml, checkImage, checkResource, programPath } from "@/lib/program/lesson";
+import { copiedPath, copyPlan, filePaths } from "@/lib/program/copy";
 import { saveLessonTranscriptCore } from "@/lib/program/transcript-store";
 import { quizDefinitionIssues, type QuizSettings } from "@/lib/program/quiz";
 import { gradingIssues, type GradingDef } from "@/lib/program/grading";
@@ -264,4 +265,80 @@ export async function reviewSubmission(submissionId: string, input: { status: "r
   });
   if (res.ok) revalidatePath("/dashboard/portal");
   return res;
+}
+
+/**
+ * «Copiar a otro programa» (F50): un módulo (con sus submódulos y clases) o una clase, como copias NUEVAS en otro
+ * programa del negocio. Las evaluaciones y actividades se copian como formularios nuevos con el programa de destino; los
+ * archivos, a rutas nuevas. Las copias nacen inactivas y abiertas (la regla de desbloqueo del original puede nombrar
+ * cosas del otro programa). Editar la copia no cambia el original. Crea con la sesión (pide `program.manage`).
+ */
+export async function copyProgramItemToProduct(productId: string, itemId: string, targetProductId: string): Promise<SvcResult<{ count: number }>> {
+  const ctx = await getPermissionAction("program.manage");
+  if (!ctx || !UUID.test(productId) || !UUID.test(itemId) || !UUID.test(targetProductId)) return NOT_ALLOWED;
+  if (productId === targetProductId) return fail("Elegí otro programa");
+  const service = await createServiceClient();
+  const { data: target } = await service.from("products").select("id").eq("id", targetProductId).eq("workspace_id", ctx.workspace.id).maybeSingle();
+  if (!target) return NOT_ALLOWED;
+  const { data: rows } = await svcSchema(ctx.supabase).from("program_items").select("*").eq("product_id", productId).eq("workspace_id", ctx.workspace.id);
+  const all = (rows ?? []) as Array<Record<string, unknown> & { id: string; parent_id: string | null; kind: "module" | "submodule" | "lesson"; position: number }>;
+  const plan = copyPlan(all, itemId).filter((i) => i.status !== "archived");
+  if (plan.length === 0) return NOT_ALLOWED;
+  const db = service as unknown as { from: (t: string) => any; rpc: (f: string, a: Record<string, unknown>) => Promise<{ error: { message: string } | null }> };
+  const map = new Map<string, string>();
+  for (const src of plan) {
+    const created = await svcRpc<string>(ctx.supabase, "program_create_item", {
+      p_product_id: targetProductId,
+      p: { kind: src.kind, lesson_type: src.lesson_type ?? null, title: src.title, description: src.description ?? null, parent_id: src.id === itemId ? null : map.get(src.parent_id ?? "") ?? null },
+    });
+    if (!created.ok || !created.data) return created.ok ? fail("No se pudo copiar. Probá de nuevo.") : created;
+    const newId = created.data;
+    map.set(src.id, newId);
+    // Los archivos, a la carpeta del ítem nuevo.
+    const moved = new Map<string, string>();
+    for (const path of filePaths(src as { document_path?: string | null; cover_path?: string | null; thumbnail_path?: string | null; resources?: unknown })) {
+      const to = copiedPath(path, ctx.workspace.id, targetProductId, newId);
+      const { error } = await service.storage.from("program-resources").copy(path, to);
+      if (error) console.error("[programa] no pude copiar un archivo:", error.message);
+      else moved.set(path, to);
+    }
+    // La evaluación o actividad: un formulario nuevo del programa de destino, con su versión publicada.
+    let formId: string | null = null;
+    if (typeof src.form_id === "string") {
+      const { data: f } = await db.from("forms").select("name, type, draft_definition").eq("id", src.form_id).eq("workspace_id", ctx.workspace.id).maybeSingle();
+      if (f) {
+        const slug = `prog-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+        const { data: nf, error } = await db.from("forms").insert({ workspace_id: ctx.workspace.id, name: f.name, type: f.type, slug, product_id: targetProductId, draft_definition: f.draft_definition, status: "published", created_by: ctx.user.id }).select("id").single();
+        if (!error && nf) {
+          formId = (nf as { id: string }).id;
+          const { error: pubError } = await db.rpc("publish_form_version", { p_form_id: formId, p_actor: ctx.user.id });
+          if (pubError) console.error("[programa] no pude publicar el formulario copiado:", pubError.message);
+        }
+      }
+    }
+    const pathOf = (p: unknown) => (typeof p === "string" ? moved.get(p) ?? null : null);
+    const resources = Array.isArray(src.resources)
+      ? (src.resources as Array<Record<string, unknown>>).map((r) => (typeof r.path === "string" ? { ...r, id: crypto.randomUUID(), path: moved.get(r.path) ?? r.path } : { ...r, id: crypto.randomUUID() }))
+      : [];
+    const upd = await svcRpc<null>(ctx.supabase, "program_update_item", {
+      p_item_id: newId,
+      p: {
+        video_url: src.video_url ?? null,
+        video_embed_url: src.video_embed_url ?? null,
+        duration_seconds: src.duration_seconds ?? null,
+        html_content: src.html_content ?? null,
+        document_path: pathOf(src.document_path),
+        cover_path: pathOf(src.cover_path),
+        thumbnail_path: pathOf(src.thumbnail_path),
+        thumbnail_url: src.thumbnail_url ?? null,
+        resources,
+        comments_enabled: src.comments_enabled !== false,
+        required: src.required !== false,
+        form_id: formId,
+      },
+    });
+    if (!upd.ok) return upd;
+  }
+  refresh(targetProductId);
+  return { ok: true, data: { count: plan.length } };
 }

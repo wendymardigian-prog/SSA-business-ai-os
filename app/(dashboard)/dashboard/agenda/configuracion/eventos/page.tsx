@@ -6,6 +6,7 @@ import { eventDefaults } from "@/lib/scheduling/data/event-context";
 import { publicBaseUrl } from "@/lib/scheduling/public-url";
 import { isSystemOnly } from "@/lib/scheduling/system-only";
 import { EventsView, type EventCard } from "@/components/scheduling/events/events-view";
+import { loadMemberCode } from "@/lib/affiliates/load"; // @plantilla-quitar(ventas)
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,8 @@ export default async function AgendaEventosPage({ searchParams }: { searchParams
     systemOnly: isSystemOnly(e, byUser.get(e.owner_user_id)?.default_destination_calendar_id, activeCalendarIds),
   }));
 
+  // F124: «Copiar con mi código» (el código de afiliado de quien mira, si tiene).
+  const myRefCode = await loadMemberCode(await createServiceClient(), ctx.workspace.id, ctx.user.id); // @plantilla-quitar(ventas)
   return (
     <EventsView
       events={cards}
@@ -70,6 +73,7 @@ export default async function AgendaEventosPage({ searchParams }: { searchParams
       members={members.map((m) => ({ userId: m.userId, label: m.name || m.email, hasGoogle: hasGoogleByUser.has(m.userId) }))}
       targetUserId={targetUserId}
       canManageOthers={canManageOthers}
+      myRefCode={myRefCode} // @plantilla-quitar(ventas)
     />
   );
 }

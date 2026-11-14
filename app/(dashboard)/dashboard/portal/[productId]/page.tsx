@@ -78,7 +78,10 @@ export default async function PortalProgramPage({ params, searchParams }: { para
       return { ...r, hasTranscript: withTranscript.has(r.id), portalForm: f ? { name: f.name, intro: d.intro ?? "", fields: d.fields ?? [], quiz: d.quiz ?? {}, grading: d.grading ?? { enabled: false }, submission: d.submission } : null };
     });
     const counts = await svcRpc<{ by_item?: Record<string, number> }>(supabase, "community_item_counts", { p_product_id: productId });
-    return <ProgramContentEditor productId={productId} rows={rows} canManage={ctx.can("program.manage")} canActivate={ctx.can("program.activate")} commentCounts={counts.ok ? counts.data?.by_item ?? {} : {}} />;
+    // F50: los otros programas del negocio (productos con portal), para «Copiar a otro programa».
+    const { data: progs } = await supabase.from("products").select("id, name").eq("workspace_id", workspace.id).eq("portal_enabled" as never, true as never).neq("id", productId).order("name");
+    const otherPrograms = ((progs ?? []) as Array<{ id: string; name: string }>).map((p) => ({ id: p.id, name: p.name }));
+    return <ProgramContentEditor productId={productId} rows={rows} canManage={ctx.can("program.manage")} canActivate={ctx.can("program.activate")} commentCounts={counts.ok ? counts.data?.by_item ?? {} : {}} otherPrograms={otherPrograms} />;
   }
 
   // Calendario (F58-F63): sesiones, fechas, asistencia y grabaciones, todo en paralelo.

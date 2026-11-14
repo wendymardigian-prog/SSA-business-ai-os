@@ -5,7 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
-import { createProgramItem, reorderProgramItems, saveLessonTranscript, setProgramItemStatus, updateProgramItem, uploadProgramFile, type ProgramUploadKind } from "@/lib/actions/program";
+import { copyProgramItemToProduct, createProgramItem, reorderProgramItems, saveLessonTranscript, setProgramItemStatus, updateProgramItem, uploadProgramFile, type ProgramUploadKind } from "@/lib/actions/program";
 import { buildTree, flattenTree, inactiveDescendants, reorderTree, type ProgramRow, type TreeNode } from "@/lib/program/tree";
 import { LESSON_TYPE_LABELS } from "@/lib/program/lesson";
 import { transcriptFormat } from "@/lib/program/transcript";
@@ -47,6 +47,7 @@ export function ProgramContentEditor({
   canManage,
   canActivate,
   commentCounts = {},
+  otherPrograms = [],
 }: {
   productId: string;
   rows: ContentRow[];
@@ -54,6 +55,8 @@ export function ProgramContentEditor({
   canActivate: boolean;
   /** Comentarios sin contestar por clase (F111, «N comentarios nuevos»). */
   commentCounts?: Record<string, number>;
+  /** F50: los otros programas del negocio, para «Copiar a otro programa». */
+  otherPrograms?: Array<{ id: string; name: string }>;
 }) {
   const router = useRouter();
   const tree = useMemo(() => buildTree(rows), [rows]);
@@ -210,13 +213,13 @@ export function ProgramContentEditor({
       )}
 
       {editing && byId.get(editing) && (
-        <ItemDrawer key={editing} productId={productId} item={byId.get(editing)!} canManage={canManage} canActivate={canActivate} onClose={() => setEditing(null)} />
+        <ItemDrawer key={editing} productId={productId} item={byId.get(editing)!} canManage={canManage} canActivate={canActivate} otherPrograms={otherPrograms} onClose={() => setEditing(null)} />
       )}
     </div>
   );
 }
 
-function ItemDrawer({ productId, item, canManage, canActivate, onClose }: { productId: string; item: ContentRow; canManage: boolean; canActivate: boolean; onClose: () => void }) {
+function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, onClose }: { productId: string; item: ContentRow; canManage: boolean; canActivate: boolean; otherPrograms: Array<{ id: string; name: string }>; onClose: () => void }) {
   const router = useRouter();
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description ?? "");
@@ -409,6 +412,10 @@ function ItemDrawer({ productId, item, canManage, canActivate, onClose }: { prod
           </fieldset>
         )}
 
+        {canManage && item.kind !== "submodule" && otherPrograms.length > 0 && (
+          <CopyToProgram productId={productId} itemId={item.id} programs={otherPrograms} onDone={(text) => setMsg({ kind: "ok", text })} onError={(text) => setMsg({ kind: "error", text })} />
+        )}
+
         {msg && (
           <p role="status" className={msg.kind === "ok" ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>
             {msg.text}
@@ -441,6 +448,40 @@ function ItemDrawer({ productId, item, canManage, canActivate, onClose }: { prod
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** «Copiar a otro programa» (F50): copias nuevas e inactivas en el programa elegido. */
+function CopyToProgram({ productId, itemId, programs, onDone, onError }: { productId: string; itemId: string; programs: Array<{ id: string; name: string }>; onDone: (t: string) => void; onError: (t: string) => void }) {
+  const [target, setTarget] = useState(programs[0]?.id ?? "");
+  const [pending, start] = useTransition();
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-3">
+      <label className="min-w-0 flex-1 text-xs text-muted-foreground">
+        Copiar a otro programa
+        <select className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-2 text-sm text-foreground" value={target} onChange={(e) => setTarget(e.target.value)}>
+          {programs.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        disabled={pending || !target}
+        onClick={() =>
+          start(async () => {
+            const res = await copyProgramItemToProduct(productId, itemId, target);
+            if (!res.ok) return onError(res.error.message);
+            onDone(`Copiado (${res.data.count === 1 ? "1 ítem" : `${res.data.count} ítems`}). La copia quedó inactiva en el otro programa.`);
+          })
+        }
+        className="h-9 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-60"
+      >
+        {pending ? "Copiando…" : "Copiar"}
+      </button>
     </div>
   );
 }

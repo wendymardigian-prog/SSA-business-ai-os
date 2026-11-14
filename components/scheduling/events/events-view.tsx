@@ -12,6 +12,7 @@ import { categoryTree, categoryLabel, resolveCategory, type CategoryRow } from "
 import { EVENT_STATUS_LABELS, SYSTEM_ONLY_WARNING } from "@/lib/scheduling/event-validation";
 import type { EventTypeStatus } from "@/lib/types/database";
 import { deleteEventType, duplicateEventType, setEventStatus } from "@/lib/actions/scheduling/event-types";
+import { withRef } from "@/lib/affiliates/url"; // @plantilla-quitar(ventas)
 
 export interface EventCard {
   id: string;
@@ -45,6 +46,7 @@ export function EventsView({
   members,
   targetUserId,
   canManageOthers,
+  myRefCode = null,
 }: {
   events: EventCard[];
   categories: CategoryRow[];
@@ -57,6 +59,8 @@ export function EventsView({
   members: Array<{ userId: string; label: string; hasGoogle?: boolean }>;
   targetUserId: string | null;
   canManageOthers: boolean;
+  /** F124: el código de afiliado de quien mira; con él, «Copiar con mi código». */
+  myRefCode?: string | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -89,6 +93,13 @@ export function EventsView({
   }
 
   const linkOf = (e: EventCard) => `${publicBase}${e.ownerUsername ?? username}/${e.slug}`;
+  const linkWithCode = (e: EventCard) => {
+    let url = linkOf(e);
+    // @plantilla-desde(ventas)
+    if (myRefCode) url = withRef(url, myRefCode);
+    // @plantilla-hasta(ventas)
+    return url;
+  };
 
   return (
     <ConfigShell
@@ -193,6 +204,9 @@ export function EventsView({
                       <p className="mt-2 truncate rounded-lg bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground" title={linkOf(e)}>{linkOf(e)}</p>
                       <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
                         <button type="button" onClick={() => { navigator.clipboard?.writeText(linkOf(e)); flash("Link copiado"); }} className="rounded-lg border border-border px-2 py-1 hover:bg-muted">Copiar link</button>
+                        {myRefCode && (
+                          <button type="button" onClick={() => { navigator.clipboard?.writeText(linkWithCode(e)); flash("Link con tu código copiado"); }} className="rounded-lg border border-border px-2 py-1 hover:bg-muted">Copiar con mi código</button>
+                        )}
                         <a href={`/calendario/${e.ownerUsername ?? username}/${e.slug}`} target="_blank" rel="noreferrer" className="rounded-lg border border-border px-2 py-1 hover:bg-muted">Vista previa</a>
                         <Link href={`/dashboard/agenda/configuracion/eventos/${e.id}`} className="rounded-lg border border-border px-2 py-1 hover:bg-muted">Editar</Link>
                         <button type="button" disabled={pending} onClick={() => run(() => duplicateEventType(e.id), undefined, () => flash("Evento duplicado"))} className="rounded-lg border border-border px-2 py-1 hover:bg-muted">Duplicar</button>

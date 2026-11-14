@@ -1,5 +1,7 @@
 import { isPortalFormType } from "@/lib/forms/fields"; // @plantilla-quitar(servicios)
 import { requirePermission } from "@/lib/auth/guards";
+import { loadMemberCode } from "@/lib/affiliates/load"; // @plantilla-quitar(ventas)
+import { createServiceClient } from "@/lib/supabase/server"; // @plantilla-quitar(ventas)
 import { publicBaseUrl } from "@/lib/public-url";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { FormsList } from "@/components/forms/list/forms-list";
@@ -114,6 +116,8 @@ export default async function FormulariosPage({ searchParams }: { searchParams: 
     ),
   );
 
+  // F124: «Copiar con mi código» (el código de afiliado de quien mira, si tiene).
+  const myRefCode = await loadMemberCode(await createServiceClient(), workspace.id, ctx.user.id); // @plantilla-quitar(ventas)
   return (
     <FormsList
       rows={rows}
@@ -123,6 +127,7 @@ export default async function FormulariosPage({ searchParams }: { searchParams: 
       publicBase={publicBaseUrl(workspace)}
       timeZone={timeZone}
       nowIso={new Date().toISOString()}
+      myRefCode={myRefCode} // @plantilla-quitar(ventas)
     />
   );
 }
