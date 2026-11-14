@@ -7,6 +7,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { savePortalForm, type PortalFormField } from "@/lib/actions/program";
 import { quizDefinitionIssues, type QuizSettings } from "@/lib/program/quiz";
 import { DEFAULT_PASS_AT, GRADING_SCALES, SCALE_LABELS, WORD_LABELS, WORD_SCALE, gradingIssues, type GradingDef } from "@/lib/program/grading";
+import { DEFAULT_SUBMISSION_LIMITS, submissionLimitsIssues, type SubmissionLimits } from "@/lib/program/submission-limits";
 import { fieldInput } from "@/components/content/dialog";
 
 type Kind = "quiz" | "activity" | "terms";
@@ -17,6 +18,8 @@ export interface PortalFormInitial {
   fields: PortalFormField[];
   quiz: QuizSettings;
   grading: GradingDef;
+  /** Solo actividades (F126). Sin valor, el editor propone los de siempre (antes: sin límite; después: 2). */
+  submission?: SubmissionLimits;
 }
 
 const TYPES: Record<Kind, Array<{ v: PortalFormField["type"]; label: string }>> = {
@@ -33,6 +36,26 @@ const TYPES: Record<Kind, Array<{ v: PortalFormField["type"]; label: string }>> 
   ],
   terms: [{ v: "consent", label: "Compromiso para tildar" }],
 };
+
+/** Ninguna · Número · Sin límite (F126). */
+function LimitPicker({ label, value, disabled, onChange }: { label: string; value: number | null | undefined; disabled: boolean; onChange: (v: number | null) => void }) {
+  const mode = value === null || value === undefined ? "none_limit" : value === 0 ? "zero" : "n";
+  return (
+    <div className="space-y-1">
+      <span className="block text-foreground">{label}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <select className={fieldInput} aria-label={label} value={mode} disabled={disabled} onChange={(e) => onChange(e.target.value === "zero" ? 0 : e.target.value === "n" ? 1 : null)}>
+          <option value="zero">Ninguna</option>
+          <option value="n">Número</option>
+          <option value="none_limit">Sin límite</option>
+        </select>
+        {mode === "n" && (
+          <input type="number" min={1} max={100} aria-label={`${label}: cuántas`} className={`${fieldInput} w-24`} value={value ?? 1} disabled={disabled} onChange={(e) => onChange(Math.max(1, Math.min(100, Math.trunc(Number(e.target.value) || 1))))} />
+        )}
+      </div>
+    </div>
+  );
+}
 
 let keySeq = 0;
 const newKey = (fields: PortalFormField[]) => {
@@ -55,6 +78,7 @@ export function PortalFormEditor({ productId, kind, itemId, initial, canEdit }: 
   const [fields, setFields] = useState<PortalFormField[]>(initial.fields);
   const [quiz, setQuiz] = useState<QuizSettings>({ pass_pct: 70, attempts: 1, show_grade: true, show_correct: false, ...initial.quiz });
   const [grading, setGrading] = useState<GradingDef>({ enabled: false, ...initial.grading });
+  const [submission, setSubmission] = useState<SubmissionLimits>({ ...DEFAULT_SUBMISSION_LIMITS, ...initial.submission });
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [pending, start] = useTransition();
 
@@ -80,11 +104,11 @@ export function PortalFormEditor({ productId, kind, itemId, initial, canEdit }: 
 
   function save() {
     const clean = fields.map((f) => ({ ...f, label: f.label.trim(), options: f.options?.map((o) => o.trim()).filter(Boolean) }));
-    const problems = kind === "quiz" ? quizDefinitionIssues(quiz, clean) : kind === "activity" ? gradingIssues(grading) : [];
+    const problems = kind === "quiz" ? quizDefinitionIssues(quiz, clean) : kind === "activity" ? [...gradingIssues(grading), ...submissionLimitsIssues(submission)] : [];
     if (problems.length) return setMsg({ kind: "error", text: problems.join(". ") });
     setMsg(null);
     start(async () => {
-      const res = await savePortalForm(productId, kind === "terms" ? { kind } : { kind, itemId: itemId as string }, { name, intro, fields: clean, quiz, grading });
+      const res = await savePortalForm(productId, kind === "terms" ? { kind } : { kind, itemId: itemId as string }, { name, intro, fields: clean, quiz, grading, submission });
       if (!res.ok) return setMsg({ kind: "error", text: res.error.message });
       setMsg({ kind: "ok", text: "Guardado y publicado." });
       router.refresh();
@@ -253,6 +277,15 @@ export function PortalFormEditor({ productId, kind, itemId, initial, canEdit }: 
               )}
             </>
           )}
+        </fieldset>
+      )}
+
+      {kind === "activity" && (
+        <fieldset className="space-y-3 rounded-lg border border-border p-3 text-xs text-muted-foreground">
+          <legend className="px-1 font-semibold text-foreground">Entregas</legend>
+          <LimitPicker label="Correcciones antes de la primera revisión" value={submission.before_review} disabled={disabled} onChange={(v) => setSubmission({ ...submission, before_review: v })} />
+          <LimitPicker label="Entregas nuevas después de una revisión" value={submission.after_review} disabled={disabled} onChange={(v) => setSubmission({ ...submission, after_review: v })} />
+          <p>Corregir antes de la revisión reemplaza la entrega anterior. Con «Pedir otra entrega» siempre puede mandar una más, sin contar para este número. Una entrega aprobada no se vuelve a entregar.</p>
         </fieldset>
       )}
 

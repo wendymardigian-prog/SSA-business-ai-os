@@ -1,6 +1,6 @@
 // @plantilla-quitar(servicios)
 import { describe, expect, it } from "vitest";
-import { REVIEW_FILTERS, matchesReviewFilter, parseReviewFilter, reviewFilterCounts, reviewRowView, type ReviewSubmission } from "./review";
+import { REVIEW_FILTERS, isLatestSubmission, matchesReviewFilter, parseReviewFilter, reviewFilterCounts, reviewRowView, submissionHistory, type ReviewSubmission } from "./review";
 
 const base: ReviewSubmission = { id: "s", formType: "activity", reviewStatus: "pending", grade: null, gradingEnabled: false, createdAt: "2026-11-08T00:00:00Z" };
 
@@ -40,5 +40,21 @@ describe("Por revisar: el filtro rapido de la barra (Servicios A2)", () => {
     const c = reviewFilterCounts(items);
     expect(c).toEqual({ pending: 1, needs_changes: 0, reviewed: 1, quiz: 1, all: 3 });
     expect(REVIEW_FILTERS.map((f) => f.key)).toEqual(["pending", "needs_changes", "reviewed", "quiz", "all"]);
+  });
+});
+
+describe("el historial de entregas (F126)", () => {
+  const sub = (id: string, attempt: number, reviewStatus: ReviewSubmission["reviewStatus"], formId = "f1", contactId: string | null = "c1") => ({
+    id, attempt, reviewStatus, formId, contactId, createdAt: "2026-11-14T10:00:00Z", formType: "activity" as const, grade: null, gradingEnabled: false,
+  });
+  const items = [sub("b", 2, "pending"), sub("a", 1, "superseded"), sub("x", 1, "pending", "f2"), sub("y", 1, "pending", "f1", "c2")];
+  it("solo las de esa persona y esa actividad, en orden", () => expect(submissionHistory(items, items[0]).map((i) => i.id)).toEqual(["a", "b"]));
+  it("la última es la que se revisa", () => {
+    expect(isLatestSubmission(items, items[0])).toBe(true);
+    expect(isLatestSubmission([...items, sub("c", 3, "pending")], items[0])).toBe(false);
+  });
+  it("una reemplazada no va en ningún filtro", () => {
+    expect(matchesReviewFilter(items[1], "all")).toBe(false);
+    expect(reviewRowView(items[1])).toMatchObject({ stateLabel: "Reemplazada", action: "view" });
   });
 });

@@ -21,6 +21,8 @@ export interface ReviewItem extends ReviewSubmission {
   reviewComment: string | null;
   internalNote: string | null;
   grading: { enabled?: boolean; scale?: string; pass_at?: unknown } | null;
+  /** La actividad tiene límites de entregas (F126): solo se revisa la última. */
+  limitsConfigured: boolean;
 }
 
 export async function loadReviewItems(service: Db, workspaceId: string, opts: { contactId?: string | null; productId?: string | null } = {}): Promise<ReviewItem[]> {
@@ -83,6 +85,7 @@ export async function loadReviewItems(service: Db, workspaceId: string, opts: { 
         grade: (s.grade as ReviewItem["grade"]) ?? null,
         gradingEnabled: grading?.enabled === true,
         grading,
+        limitsConfigured: !!def.submission && typeof def.submission === "object",
         reviewComment: (s.review_comment as string | null) ?? null,
         internalNote: (s.internal_note as string | null) ?? null,
         createdAt: s.created_at as string,

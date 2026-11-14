@@ -11,6 +11,7 @@ import { checkDocument, checkHtml, checkImage, checkResource, programPath } from
 import { saveLessonTranscriptCore } from "@/lib/program/transcript-store";
 import { quizDefinitionIssues, type QuizSettings } from "@/lib/program/quiz";
 import { gradingIssues, type GradingDef } from "@/lib/program/grading";
+import { DEFAULT_SUBMISSION_LIMITS, limitValue, submissionLimitsIssues, type SubmissionLimits } from "@/lib/program/submission-limits";
 
 /**
  * El contenido del programa (bloque PR). Escribir pide `program.manage`; prender, apagar y archivar,
@@ -170,7 +171,7 @@ const PORTAL_FIELD_TYPES: Record<"quiz" | "activity" | "terms", readonly string[
 export async function savePortalForm(
   productId: string,
   target: { kind: "quiz" | "activity"; itemId: string } | { kind: "terms" },
-  input: { name: string; intro?: string; fields: PortalFormField[]; quiz?: QuizSettings; grading?: GradingDef },
+  input: { name: string; intro?: string; fields: PortalFormField[]; quiz?: QuizSettings; grading?: GradingDef; submission?: SubmissionLimits },
 ): Promise<SvcResult<{ formId: string }>> {
   const ctx = await getPermissionAction(target.kind === "terms" ? "portal.sections" : "program.manage");
   if (!ctx || !UUID.test(productId) || ("itemId" in target && !UUID.test(target.itemId))) return NOT_ALLOWED;
@@ -188,7 +189,7 @@ export async function savePortalForm(
     if (problems.length) return fail(problems.join(". "));
   }
   if (target.kind === "activity") {
-    const problems = gradingIssues(input.grading ?? {});
+    const problems = [...gradingIssues(input.grading ?? {}), ...submissionLimitsIssues(input.submission)];
     if (problems.length) return fail(problems.join(". "));
   }
   const service = await createServiceClient();
@@ -207,7 +208,12 @@ export async function savePortalForm(
     fields: input.fields.map((f) => ({ id: f.key, key: f.key, type: f.type, label: f.label, required: f.required, ...(f.options ? { options: f.options } : {}), ...(f.consentText ? { consentText: f.consentText } : {}) })),
   };
   if (target.kind === "quiz") definition.quiz = input.quiz ?? {};
-  if (target.kind === "activity") definition.grading = input.grading ?? { enabled: false };
+  if (target.kind === "activity") {
+    definition.grading = input.grading ?? { enabled: false };
+    // F126: guardar la actividad deja sus límites escritos (los de siempre si no vinieron).
+    const l = { ...DEFAULT_SUBMISSION_LIMITS, ...(input.submission ?? {}) };
+    definition.submission = { before_review: limitValue(l.before_review), after_review: limitValue(l.after_review) };
+  }
   const name = input.name.trim().slice(0, 120) || (target.kind === "terms" ? "Términos del programa" : "Formulario del programa");
   const db = service as unknown as { from: (t: string) => any; rpc: (f: string, a: Record<string, unknown>) => Promise<{ error: { message: string } | null }> };
   if (formId) {

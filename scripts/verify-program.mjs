@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @plantilla-quitar(servicios)
 /**
- * Verificacion del programa del portal y lo que cuelga de el (Servicios A1): bloques pr, ev, ca, ce, co e ia.
+ * Verificacion del programa del portal y lo que cuelga de el (Servicios A1): bloques pr, ev, ca, ce, co, ia y a3 (entregas de actividades, F126).
  *
  * Corre contra la base real con usuarios de verdad: gemelas SQL = TS con los mismos casos, la estructura del arbol
  * (PR001), lo que incluye cada variante, el desbloqueo por persona, el avance que completa modulos y pasos, la RLS por
@@ -593,6 +593,18 @@ try {
     // El Member de sistema ve solo sus contactos (setter, vendedor o asignado): este no es suyo.
     const seesNone = asUser(member.id, `SELECT count(*)::int n FROM public.ai_threads WHERE contact_id = ${lit(cT.id)} AND channel = 'portal'`).row?.n;
     check(seesOwner === 1 && seesNone === 0, "una conversación del portal la lee quien ve el contacto", `${seesOwner} / ${seesNone}`);
+  }
+
+  // Servicios A3 · F126: entregas de actividades (00375).
+  if (run("a3") && sql(`SELECT to_regprocedure('app_servicio.submission_plan(jsonb)') IS NOT NULL ok`)[0]?.ok === true) {
+    console.log("\na3 · Entregas de actividades (F126)");
+    const list = json("lib/program/submission-limits.cases.json").cases;
+    const got = sql(`SELECT jsonb_build_array(${list.map((c) => `app_servicio.submission_plan(${jlit({ limits: c.limits, history: c.history })})`).join(", ")}) AS r`)[0]?.r ?? [];
+    const bad = list.filter((c, i) => !eq(got[i], c.expected)).map((c) => c.name);
+    check(bad.length === 0, `submission_plan: los ${list.length} casos dan lo mismo que en TypeScript`, bad.slice(0, 3).join(" | "));
+    check(sql(`SELECT pg_get_constraintdef(oid) LIKE '%superseded%' ok FROM pg_constraint WHERE conname = 'form_submissions_review_status_check'`)[0]?.ok === true, "review_status admite 'superseded'");
+    const grants = sql(`SELECT has_function_privilege('anon', 'app_servicio.submission_plan(jsonb)', 'EXECUTE') a, has_function_privilege('authenticated', 'app_servicio.submission_plan(jsonb)', 'EXECUTE') u`)[0];
+    check(grants && !grants.a && !grants.u, "submission_plan es solo del servidor");
   }
 
   if (run("x") && sql(`SELECT to_regprocedure('app_servicio.merge_contacts_hook(uuid,uuid)') IS NOT NULL ok`)[0]?.ok === true) {

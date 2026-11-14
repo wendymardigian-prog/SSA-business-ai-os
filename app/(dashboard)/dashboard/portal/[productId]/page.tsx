@@ -74,8 +74,8 @@ export default async function PortalProgramPage({ params, searchParams }: { para
     const formById = new Map(((forms ?? []) as Array<{ id: string; name: string; draft_definition: Record<string, unknown> }>).map((f) => [f.id, f]));
     const rows = ((items ?? []) as unknown as Array<Omit<ContentRow, "hasTranscript"> & { form_id?: string | null }>).map((r) => {
       const f = r.form_id ? formById.get(r.form_id) : null;
-      const d = (f?.draft_definition ?? {}) as { intro?: string; fields?: PortalFormInitial["fields"]; quiz?: PortalFormInitial["quiz"]; grading?: PortalFormInitial["grading"] };
-      return { ...r, hasTranscript: withTranscript.has(r.id), portalForm: f ? { name: f.name, intro: d.intro ?? "", fields: d.fields ?? [], quiz: d.quiz ?? {}, grading: d.grading ?? { enabled: false } } : null };
+      const d = (f?.draft_definition ?? {}) as { intro?: string; fields?: PortalFormInitial["fields"]; quiz?: PortalFormInitial["quiz"]; grading?: PortalFormInitial["grading"]; submission?: PortalFormInitial["submission"] };
+      return { ...r, hasTranscript: withTranscript.has(r.id), portalForm: f ? { name: f.name, intro: d.intro ?? "", fields: d.fields ?? [], quiz: d.quiz ?? {}, grading: d.grading ?? { enabled: false }, submission: d.submission } : null };
     });
     const counts = await svcRpc<{ by_item?: Record<string, number> }>(supabase, "community_item_counts", { p_product_id: productId });
     return <ProgramContentEditor productId={productId} rows={rows} canManage={ctx.can("program.manage")} canActivate={ctx.can("program.activate")} commentCounts={counts.ok ? counts.data?.by_item ?? {} : {}} />;

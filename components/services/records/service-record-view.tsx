@@ -460,7 +460,7 @@ export function ServiceRecordView({
                 <p className="text-sm text-muted-foreground">Todavía no entregó actividades.</p>
               ) : (
                 <ul className="divide-y divide-border">
-                  {[...pendingReviews, ...data.reviews.filter((r) => !pendingReviews.includes(r)).slice(0, 4)].map((r) => {
+                  {[...pendingReviews, ...data.reviews.filter((r) => !pendingReviews.includes(r) && r.reviewStatus !== "superseded").slice(0, 4)].map((r) => {
                     const v = reviewRowView(r);
                     const isPending = pendingReviews.includes(r);
                     return (
@@ -552,6 +552,8 @@ export function ServiceRecordView({
       {reviewing && (
         <ReviewDrawer
           item={reviewing}
+          history={data.reviews}
+          timeZone={timeZone}
           canReview={can("submissions.review")}
           onClose={() => setReviewing(null)}
           onDone={() => {

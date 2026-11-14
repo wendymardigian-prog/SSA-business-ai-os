@@ -1,3 +1,22 @@
+# Corrida A3 (rama `feat/servicios-a3`, desde el 14/11/2026)
+
+Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.11 (F126 a F130 y el resto de F124) y `claude/v12/cambios-panel-v12-reto-avisos.md`. Decisiones y condiciones de Wendy en `docs/PENDIENTE-servicios.md` («A3»). Orden: F126 → F127 → F128 → F129/F130 → resto de F124.
+
+| Migración | Qué | Estado |
+|---|---|---|
+| `00375_activity_submission_limits` | F126: `superseded`, `submission_plan`, límites en el enganche, revisar solo la última | Ensayada en producción en una transacción que se deshizo sola (18/18 casos, comportamiento y «sin límites como antes»). **Sin aplicar**: falta confirmar el backup reciente |
+| `00376` reto | F127 | Pendiente |
+| `00377` avisos y días activos | F128, decisión 475 | Pendiente |
+| `00378`/`00379` puntos | F129 | Pendiente |
+| `00380` lecturas | F130 | Pendiente |
+
+## F126 · Entregas de actividades
+- Gemelas `submissionPlan` (lib/program/submission-limits.ts) y `app_servicio.submission_plan`, con `submission-limits.cases.json` (18 casos). `verify-program --bloque a3`.
+- Una actividad **sin** `submission` sigue como antes (condición de Wendy). Guardarla en el editor escribe `{before_review: null, after_review: 2}` (o lo elegido).
+- Errores: EV003 (pasó el límite), EV004 (ya aprobada), EV005 (espera la revisión), EV006 (solo se revisa la última).
+- Editor de la actividad: bloque «Entregas» con Ninguna · Número · Sin límite. Por revisar y la ficha: «Pedir otra entrega», historial de la persona en esa actividad, las reemplazadas fuera de la lista.
+- Las entregas se ordenan por `attempt` (con candado por persona y actividad), no solo por fecha.
+
 # PROGRESS — Servicios v12 (Corridas A1, A2 y A4)
 
 # Corrida A4 (rama `feat/servicios-a4`, desde el 12/11/2026)

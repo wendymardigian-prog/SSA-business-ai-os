@@ -1,3 +1,25 @@
+# A3 (desde el 14/11/2026)
+
+Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.11 (F126 a F130 y el resto de F124) y `claude/v12/cambios-panel-v12-reto-avisos.md`. Rama `feat/servicios-a3`.
+
+## Decisiones de F126 (14/11)
+- **Después de la primera revisión, una entrega pendiente no se reemplaza** (EV005, «Tu entrega está esperando la revisión»). El §18 solo habla de reemplazar antes de la primera revisión; reemplazar después cambiaría lo que el equipo ya está mirando.
+- **«Revisada» sin calificación cuenta como aprobada** (no se reentrega), igual que ya completa el paso con `passed`. `after_review` solo se gasta con una revisada que **no aprobó**.
+- **Con límites, solo se revisa la última entrega** (EV006). Sin límites, como antes.
+- El estado de la lista sigue diciendo «A corregir»; el botón dice «Pedir otra entrega».
+
+## Decisiones de Wendy antes de arrancar (14/11)
+- **Avisos del estudiante: sí** a `portal_accounts.notification_prefs` y `notifications_seen_at` (dos columnas, ninguna tabla; mismo criterio que los días activos, decisión 475). Valores por defecto (F252 del portal): resumen semanal **prendido**, «vence hoy» por email **apagado**, lo demás prendido.
+- **«Trabado en» en el reporte diario: sí, campo opcional del formulario del reto** (configuración, no código). En `challenge.weekly` se marca cuál es el campo «trabado» (`stuck_field_key`), igual que el de horas y el de video; el control semanal destaca los días que lo tienen escrito.
+- **Migraciones 00375 a 00380 aprobadas**, con estas condiciones:
+  - **00375 (entregas):** las entregas que ya existen quedan igual (ninguna pasa sola a `superseded`); una actividad sin límites configurados se comporta como hoy; no toca las funciones protegidas de Formularios.
+  - **00376 (reto):** todas las plantillas de camino de la base validan igual que antes; las repeticiones ya creadas no cambian de fecha en ningún servicio; los casos de `recurrence.cases.json` que ya existían dan lo mismo. Incluye `stuck_field_key`.
+  - **00377 (avisos):** el resumen semanal **nace apagado en todos los programas**; se prende recién con el portal en línea (después de B2).
+  - **00378/00379 (puntos):** los puntos **nacen apagados** en todos los programas; un fallo al sumar nunca frena lo que hizo el estudiante.
+  - **00380:** solo lectura.
+  - **00381:** avisar antes si hace falta.
+  - **Al aplicar cada una:** confirmar el número con `list_migrations` (otras sesiones suman migraciones) y, antes de la primera, comprobar que haya un backup reciente.
+
 # PENDIENTE — Servicios v12
 
 # A4 (desde el 12/11/2026)
