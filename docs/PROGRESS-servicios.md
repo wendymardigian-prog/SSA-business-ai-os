@@ -5,10 +5,16 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.11 (F126 a F130 y
 | Migración | Qué | Estado |
 |---|---|---|
 | `00375_activity_submission_limits` | F126: `superseded`, `submission_plan`, límites en el enganche, revisar solo la última | Ensayada en producción en una transacción que se deshizo sola (18/18 casos, comportamiento y «sin límites como antes»). **Aplicada y registrada** el 14/11/2026 UTC (versión `20261114185102`), con el backup del 14/11 09:27 UTC confirmado. Después: CHECK con `superseded`, `submission_plan` solo del servidor, 0 filas reemplazadas, huella de `submit_form_response` igual (`78a358d5…`) |
-| `00376` reto | F127 | Pendiente |
+| `00376_challenge_generic` | F127: reglas para aceptar, anclas nuevas de la repetición, sin adelantar y días de gracia, repeticiones no obligatorias, control semanal (con «trabado»), fecha límite para empezar, certificado según si llegó a tiempo | Probada antes en local (PGlite: 75/75 casos del camino, 10/10 repeticiones, 9/9 ventana, 10/10 atraso, 3/3 semanas, 4/4 fecha límite) y ensayada en producción en una transacción que se deshizo sola (los 4 caminos validan igual, 10/10 casos viejos de repeticiones, comportamiento con un servicio real). **Aplicada y registrada** el 14/11/2026 UTC. Después: SV004 para una sesión que intenta empezar como estudiante; permisos de la sesión iguales que antes |
 | `00377` avisos y días activos | F128, decisión 475 | Pendiente |
 | `00378`/`00379` puntos | F129 | Pendiente |
 | `00380` lecturas | F130 | Pendiente |
+
+## F127 · Reto genérico (base y reglas)
+- Gemelas en `lib/services/challenge.ts` (`recurrenceWindow`, `latePlan`, `challengeWeeks`, `startByDate`, `certificateTemplatePick`) con `challenge.cases.json`; validación del camino en `journey-template.ts` (+19 casos en `journey-template.cases.json`); `occurrenceDates` con `item_completed` y `max_days` (+4 casos en `recurrence.cases.json`, los 6 viejos iguales).
+- Errores nuevos: SV035 (todavía no se puede cargar), SV036 (ya pasó el plazo), SV037 (faltan aceptar las reglas).
+- `svc_start_challenge_accepting` (solo servidor) es la que va a llamar el portal en B2. `svc_challenge_view` es la lectura del bloque Reto de la ficha.
+- Aviso nuevo `svc_challenge_start_overdue` (una vez por fase, desde el cron diario de siempre).
 
 ## F126 · Entregas de actividades
 - Gemelas `submissionPlan` (lib/program/submission-limits.ts) y `app_servicio.submission_plan`, con `submission-limits.cases.json` (18 casos). `verify-program --bloque a3`.

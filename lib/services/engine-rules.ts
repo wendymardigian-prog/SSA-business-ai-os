@@ -117,8 +117,11 @@ export function phaseShouldAdvance(advance: string, requiredTotal: number, requi
 export interface Recurrence {
   every: "day" | "week" | "n_days";
   n?: number | null;
-  until: "phase_end" | "service_end" | "n_days" | "n_times";
+  /** F127.2: `item_completed` (y `phase_end` de otra fase) llegan ya resueltos en `phaseEnd` (ver `recurrenceWindow`). */
+  until: "phase_end" | "service_end" | "n_days" | "n_times" | "item_completed";
   n_until?: number | null;
+  /** F127.2: tope de días desde el inicio, para cualquier `until`. */
+  max_days?: number | null;
 }
 export interface Occurrence {
   index: number;
@@ -128,11 +131,15 @@ export interface Occurrence {
 /** Las repeticiones que ya llegaron (occursOn <= upTo), desde `start`. Nunca devuelve mas de 1000. */
 export function occurrenceDates(r: Recurrence, start: string, phaseEnd: string | null, serviceEnd: string | null, upTo: string): Occurrence[] {
   const step = r.every === "day" ? 1 : r.every === "week" ? 7 : Math.max(1, r.n ?? 1);
-  const limitDate =
-    r.until === "phase_end" ? phaseEnd
+  let limitDate =
+    r.until === "phase_end" || r.until === "item_completed" ? phaseEnd
     : r.until === "service_end" ? serviceEnd
     : r.until === "n_days" ? addDays(start, Math.max(1, r.n_until ?? 1) - 1)
     : null;
+  if (typeof r.max_days === "number" && Number.isInteger(r.max_days) && r.max_days >= 1) {
+    const cap = addDays(start, r.max_days - 1);
+    if (!limitDate || cap < limitDate) limitDate = cap;
+  }
   const maxCount = r.until === "n_times" ? Math.max(1, r.n_until ?? 1) : 1000;
   const out: Occurrence[] = [];
   for (let k = 0; k < maxCount; k++) {

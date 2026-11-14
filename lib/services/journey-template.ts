@@ -20,7 +20,10 @@ export const ADVANCE = ["auto", "auto_all", "manual"] as const;
 export const CHALLENGE_START = ["previous_phase", "student", "automation", "fixed_date"] as const;
 export const FUTURE_VISIBILITY = ["names", "names_and_descriptions", "hidden"] as const;
 export const RECUR_EVERY = ["day", "week", "n_days"] as const;
-export const RECUR_UNTIL = ["phase_end", "service_end", "n_days", "n_times"] as const;
+export const RECUR_UNTIL = ["phase_end", "service_end", "n_days", "n_times", "item_completed"] as const;
+/** F127.2: desde cuándo se repite (sin `from`, desde el inicio de su fase). */
+export const RECUR_FROM = ["service_created", "service_start", "phase_start", "phase_end", "item_completed"] as const;
+const FIELD_KEY = /^[a-z][a-z0-9_]{0,39}$/;
 
 export interface DueRule {
   from: (typeof DUE_FROM)[number];
@@ -130,7 +133,19 @@ function refProblems(item: JourneyItem, ctx: JourneyContext, nm: string): string
     if (!(typeof ref.program_item_id === "string" && UUID.test(ref.program_item_id))) p.push(`«${nm}»: elegí el módulo o la clase`);
     else if (ctx.programItems && !ctx.programItems.includes(ref.program_item_id)) p.push(`«${nm}»: el módulo o la clase no es de este programa`);
   } else if (item.kind === "certificate") {
-    if (!(typeof ref.template_id === "string" && UUID.test(ref.template_id))) p.push("Elegí la plantilla del certificado");
+    if (has(ref, "templates")) {
+      // F127.7: [{if: "on_time", item_key, template_id}, …, {else: true, template_id}].
+      const list = ref.templates;
+      const ok =
+        Array.isArray(list) && list.length >= 2 && list.length <= 5 &&
+        list.every((c, i) =>
+          isObj(c) && typeof c.template_id === "string" && UUID.test(c.template_id) &&
+          (i === list.length - 1
+            ? c.else === true && Object.keys(c).length === 2
+            : c.if === "on_time" && typeof c.item_key === "string" && ITEM_KEY.test(c.item_key) && Object.keys(c).length === 3));
+      if (!ok) p.push(`«${nm}»: las plantillas del certificado no son válidas`);
+      else if (ctx.certificateTemplates && (list as Array<{ template_id: string }>).some((c) => !ctx.certificateTemplates!.includes(c.template_id))) p.push(`«${nm}»: la plantilla no es de un certificado de este negocio`);
+    } else if (!(typeof ref.template_id === "string" && UUID.test(ref.template_id))) p.push("Elegí la plantilla del certificado");
     else if (ctx.certificateTemplates && !ctx.certificateTemplates.includes(ref.template_id)) p.push(`«${nm}»: la plantilla no es de un certificado de este negocio`);
   } else if (item.kind === "open_section") {
     if (!(AVAILABLE_SECTIONS as readonly string[]).includes(ref.section as string)) p.push(`«${nm}»: elegí la sección`);
@@ -298,6 +313,82 @@ function recurrenceProblems(item: JourneyItem, nm: string): string[] {
   if (r.every === "n_days" && !(isInt(r.n) && r.n >= 1 && r.n <= 365)) p.push(`«${nm}»: elegí cada cuántos días se repite`);
   if (!(RECUR_UNTIL as readonly string[]).includes(r.until as string)) p.push(`«${nm}»: elegí hasta cuándo se repite`);
   if ((r.until === "n_days" || r.until === "n_times") && !(isInt(r.n_until) && r.n_until >= 1 && r.n_until <= 1000)) p.push(`«${nm}»: elegí cuántas veces o días`);
+  // F127.2: anclas nuevas (mismo orden que app_servicio.journey_recurrence_problems, 00376).
+  if (r.until === "item_completed" && !(typeof r.item_key === "string" && ITEM_KEY.test(r.item_key))) p.push(`«${nm}»: elegí el paso que corta la repetición`);
+  if (has(r, "phase_key") && r.phase_key !== null && !(r.until === "phase_end" && typeof r.phase_key === "string" && PHASE_KEY.test(r.phase_key))) p.push(`«${nm}»: la fase no es válida`);
+  if (has(r, "max_days") && r.max_days !== null && !(isInt(r.max_days) && r.max_days >= 1 && r.max_days <= 1000)) p.push(`«${nm}»: el tope de días va de 1 a 1000`);
+  if (has(r, "from") && r.from !== null) {
+    const f = r.from;
+    const ok =
+      isObj(f) && (RECUR_FROM as readonly string[]).includes(f.from as string) && isInt(f.days) && f.days >= 0 && f.days <= 3650 &&
+      (f.from === "item_completed" ? typeof f.item_key === "string" && ITEM_KEY.test(f.item_key) : !has(f, "item_key") || f.item_key === null) &&
+      (!has(f, "phase_key") || f.phase_key === null || ((f.from === "phase_start" || f.from === "phase_end") && typeof f.phase_key === "string" && PHASE_KEY.test(f.phase_key)));
+    if (!ok) p.push(`«${nm}»: elegí desde cuándo se repite`);
+  }
+  return p;
+}
+
+/** F127.3: `late = {accept?, early?, grace_hours?, grace_days?, counts?, message?}`. */
+function lateProblems(item: JourneyItem, nm: string): string[] {
+  const l = item.late;
+  if (l === null || l === undefined) return [];
+  const intIn = (v: unknown, max: number) => v === undefined || v === null || (isInt(v) && v >= 0 && v <= max);
+  const boolOrAbsent = (v: unknown) => v === undefined || typeof v === "boolean";
+  if (!isObj(l) || !boolOrAbsent(l.accept) || !boolOrAbsent(l.early) || !intIn(l.grace_hours, 168) || !intIn(l.grace_days, 365)) return [`«${nm}»: el atraso no es válido`];
+  return [];
+}
+
+/** F127.1, F127.5 y F127.6: las reglas, el control semanal y la fecha límite del Reto. */
+function challengeProblems(c: Record<string, unknown>, label: string): string[] {
+  const p: string[] = [];
+  const a = c.acceptance;
+  if (a !== undefined && a !== null) {
+    if (!isObj(a)) p.push(`«${label}»: las reglas para aceptar no son válidas`);
+    else {
+      if (c.start !== "student") p.push(`«${label}»: las reglas para aceptar son solo si lo empieza el estudiante`);
+      if (a.enabled === true) {
+        const items = a.items;
+        if (!(Array.isArray(items) && items.length >= 1 && items.length <= 20 && items.every((x) => typeof x === "string" && x.trim() !== "" && x.length <= 300))) {
+          p.push(`«${label}»: las reglas tienen de 1 a 20 puntos de hasta 300 caracteres`);
+        }
+      }
+      if ((a.description !== undefined && a.description !== null && !(typeof a.description === "string" && a.description.length <= 2000)) ||
+          (a.button_label !== undefined && a.button_label !== null && !(typeof a.button_label === "string" && a.button_label.length <= 40 && !/[\r\n]/.test(a.button_label)))) {
+        p.push(`«${label}»: el texto de las reglas o del botón es muy largo`);
+      }
+    }
+  }
+  const w = c.weekly;
+  if (w !== undefined && w !== null) {
+    const keyOk = (v: unknown) => v === undefined || v === null || (typeof v === "string" && FIELD_KEY.test(v));
+    if (!isObj(w) || !(w.min === undefined || w.min === null || (typeof w.min === "number" && w.min >= 0 && w.min <= 1000)) ||
+        !(w.video === undefined || typeof w.video === "boolean") || !keyOk(w.number_field_key) || !keyOk(w.link_field_key) || !keyOk(w.stuck_field_key)) {
+      p.push(`«${label}»: el control semanal no es válido`);
+    }
+  }
+  const sb = c.start_by;
+  if (sb !== undefined && sb !== null) {
+    if (!isObj(sb) || !(sb.from === "service_start" || sb.from === "service_created") || !(isInt(sb.days) && sb.days >= 0 && sb.days <= 3650)) {
+      p.push(`«${label}»: la fecha límite para empezar no es válida`);
+    }
+  }
+  return p;
+}
+
+/** F127: las fases y pasos que nombran la repetición y el certificado existen (y no son los suyos). */
+function crossRefProblems(it: JourneyItem, nm: string, ownPhase: string, phases: Set<string>, items: Set<string>): string[] {
+  const p: string[] = [];
+  const r = isObj(it.recurrence) ? it.recurrence : null;
+  const f = r && isObj(r.from) ? r.from : null;
+  const pk = [f?.phase_key, r?.phase_key].filter((x): x is string => typeof x === "string" && PHASE_KEY.test(x));
+  if (pk.some((k) => !phases.has(k) || k === ownPhase)) p.push(`«${nm}»: la fase de la repetición tiene que ser otra fase del camino`);
+  const ik = [f?.item_key, r?.until === "item_completed" ? r?.item_key : undefined].filter((x): x is string => typeof x === "string" && ITEM_KEY.test(x));
+  if (ik.some((k) => !items.has(k) || k === it.key)) p.push(`«${nm}»: el paso de la repetición tiene que ser otro paso del camino`);
+  const ref = isObj(it.ref) ? it.ref : null;
+  if (it.kind === "certificate" && ref && Array.isArray(ref.templates)) {
+    const keys = (ref.templates as unknown[]).map((c) => (isObj(c) ? c.item_key : undefined)).filter((x): x is string => typeof x === "string" && ITEM_KEY.test(x));
+    if (keys.some((k) => !items.has(k))) p.push(`«${nm}»: el paso del certificado no existe`);
+  }
   return p;
 }
 
@@ -313,6 +404,14 @@ export function validateJourneyTemplate(template: unknown, ctx: JourneyContext =
   const phaseKeys = new Set<string>();
   const itemKeys = new Set<string>();
   const seenBefore = new Set<string>();
+  // F127: las repeticiones y el certificado pueden nombrar cualquier fase o paso del camino (no solo los anteriores).
+  const allPhaseKeys = new Set<string>();
+  const allItemKeys = new Set<string>();
+  for (const ph of template.phases as unknown[]) {
+    if (!isObj(ph)) continue;
+    if (typeof ph.key === "string") allPhaseKeys.add(ph.key);
+    if (Array.isArray(ph.items)) for (const it of ph.items as unknown[]) if (isObj(it) && typeof it.key === "string") allItemKeys.add(it.key);
+  }
 
   for (const ph of template.phases as unknown[]) {
     if (!isObj(ph)) {
@@ -343,6 +442,7 @@ export function validateJourneyTemplate(template: unknown, ctx: JourneyContext =
       else if (c.enabled === true) {
         if (!(CHALLENGE_START as readonly string[]).includes(c.start as string)) p.push(`«${label}»: elegí cómo empieza el Reto`);
         if (c.start === "fixed_date" && !(typeof c.fixed_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.fixed_date))) p.push(`«${label}»: elegí la fecha del Reto`);
+        p.push(...challengeProblems(c, label));
       }
     }
     if (ph.late_light !== null && ph.late_light !== undefined) {
@@ -390,6 +490,8 @@ export function validateJourneyTemplate(template: unknown, ctx: JourneyContext =
         }
       }
       p.push(...recurrenceProblems(it, nm));
+      p.push(...lateProblems(it, nm));
+      p.push(...crossRefProblems(it, nm, key, allPhaseKeys, allItemKeys));
       const light = it.light;
       if (light !== null && light !== undefined) {
         if (!isObj(light) || !nonNegIntOrNull(light.yellow_after_days) || !nonNegIntOrNull(light.red_after_days)) {

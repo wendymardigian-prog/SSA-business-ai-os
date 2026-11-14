@@ -132,6 +132,8 @@ export const NOTIFICATION_TYPES = [
   "svc_payment_reverted",
   /** Compró una renovación sin servicio anterior. Va a Owner/Admin. */
   "svc_renewal_without_previous",
+  /** Un cliente no empezó el Reto a tiempo (`challenge.start_by`, Servicios A3). Va al responsable, una vez. */
+  "svc_challenge_start_overdue",
   /** Algo automático del módulo no se pudo hacer (un enganche falló). Va a Owner/Admin. */
   "svc_hook_failed",
   /** Llegó una respuesta de un formulario del camino que no completó ningún paso. Va al responsable. */
@@ -486,6 +488,7 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
   svc_extension_sale_closed: { type: "svc_extension_sale_closed", label: "Se canceló una venta que extendió un servicio", tone: "warning", entity: "service" },
   svc_payment_reverted: { type: "svc_payment_reverted", label: "Se revirtió un pago de un servicio", tone: "warning", entity: "service" },
   svc_renewal_without_previous: { type: "svc_renewal_without_previous", label: "Renovación sin servicio anterior", tone: "warning" },
+  svc_challenge_start_overdue: { type: "svc_challenge_start_overdue", label: "Un cliente no empezó el Reto", tone: "warning", entity: "service" },
   svc_hook_failed: { type: "svc_hook_failed", label: "Algo automático de Servicios no se hizo", tone: "warning" },
   svc_item_unmatched: { type: "svc_item_unmatched", label: "Una respuesta no completó ningún paso", tone: "warning", entity: "form_submission" },
   svc_merge_two_services: { type: "svc_merge_two_services", label: "Dos servicios del mismo producto", tone: "warning", entity: "contact" },

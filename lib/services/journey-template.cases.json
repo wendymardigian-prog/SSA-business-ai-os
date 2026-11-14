@@ -1502,6 +1502,1871 @@
         ]
       },
       "expected": []
+    },
+    {
+      "name": "reto: camino completo válido (reglas, control semanal, fecha límite, repetición hasta la entrega final, certificado a tiempo)",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "reto: reglas para aceptar sin que lo empiece el estudiante",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "previous_phase",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reto»: las reglas para aceptar son solo si lo empieza el estudiante"
+      ]
+    },
+    {
+      "name": "reto: reglas vacías",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reto»: las reglas tienen de 1 a 20 puntos de hasta 300 caracteres"
+      ]
+    },
+    {
+      "name": "reto: botón de las reglas muy largo",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reto»: el texto de las reglas o del botón es muy largo"
+      ]
+    },
+    {
+      "name": "reto: control semanal con una clave de campo inválida",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "Horas Trabajadas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reto»: el control semanal no es válido"
+      ]
+    },
+    {
+      "name": "reto: fecha límite desde un ancla desconocida",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "phase_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reto»: la fecha límite para empezar no es válida"
+      ]
+    },
+    {
+      "name": "repetición: hasta completar sin elegir el paso",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reporte diario»: elegí el paso que corta la repetición"
+      ]
+    },
+    {
+      "name": "repetición: hasta completar un paso que no existe",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_zzzzzz",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reporte diario»: el paso de la repetición tiene que ser otro paso del camino"
+      ]
+    },
+    {
+      "name": "repetición: tope de días fuera de rango",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 0
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reporte diario»: el tope de días va de 1 a 1000"
+      ]
+    },
+    {
+      "name": "repetición: desde el fin de otra fase",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30,
+                  "from": {
+                    "from": "phase_end",
+                    "phase_key": "ph_final1",
+                    "days": 0
+                  }
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "repetición: desde su propia fase por clave",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30,
+                  "from": {
+                    "from": "phase_start",
+                    "phase_key": "ph_reto01",
+                    "days": 0
+                  }
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reporte diario»: la fase de la repetición tiene que ser otra fase del camino"
+      ]
+    },
+    {
+      "name": "repetición: desde un ancla desconocida",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30,
+                  "from": {
+                    "from": "sale_paid",
+                    "days": 0
+                  }
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reporte diario»: elegí desde cuándo se repite"
+      ]
+    },
+    {
+      "name": "repetición: desde completar un paso sin decir cuál",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30,
+                  "from": {
+                    "from": "item_completed",
+                    "days": 1
+                  }
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reporte diario»: elegí desde cuándo se repite"
+      ]
+    },
+    {
+      "name": "repetición: hasta el fin de otra fase",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "phase_end",
+                  "phase_key": "ph_final1"
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "repetición: fase de fin con otro corte",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "n_days",
+                  "n_until": 30,
+                  "phase_key": "ph_final1"
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reporte diario»: la fase no es válida"
+      ]
+    },
+    {
+      "name": "atraso: días de gracia fuera de rango",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 400
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reporte diario»: el atraso no es válido"
+      ]
+    },
+    {
+      "name": "atraso: adelantar con un valor raro",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": "no",
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Reporte diario»: el atraso no es válido"
+      ]
+    },
+    {
+      "name": "certificado: sin la plantilla de «si no»",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_finalx",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Certificado»: las plantillas del certificado no son válidas"
+      ]
+    },
+    {
+      "name": "certificado: a tiempo de un paso que no existe",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_reto01",
+            "name": "Reto",
+            "duration_days": 30,
+            "challenge": {
+              "enabled": true,
+              "start": "student",
+              "acceptance": {
+                "enabled": true,
+                "description": "Antes de empezar",
+                "items": [
+                  "Voy a cargar el reporte todos los días",
+                  "Voy a subir un video por semana"
+                ],
+                "button_label": "Empezar el Reto"
+              },
+              "weekly": {
+                "min": 10,
+                "video": true,
+                "number_field_key": "horas",
+                "link_field_key": "video",
+                "stuck_field_key": "trabado"
+              },
+              "start_by": {
+                "from": "service_start",
+                "days": 56
+              }
+            },
+            "items": [
+              {
+                "key": "it_report",
+                "kind": "form",
+                "name": "Reporte diario",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "recurrence": {
+                  "every": "day",
+                  "until": "item_completed",
+                  "item_key": "it_finalx",
+                  "max_days": 30
+                },
+                "late": {
+                  "accept": true,
+                  "early": false,
+                  "grace_hours": 6,
+                  "grace_days": 2
+                }
+              }
+            ]
+          },
+          {
+            "key": "ph_final1",
+            "name": "Entrega",
+            "items": [
+              {
+                "key": "it_finalx",
+                "kind": "form",
+                "name": "Entrega final",
+                "ref": {
+                  "form_id": "11111111-1111-4111-8111-111111111111"
+                },
+                "late": {
+                  "accept": true,
+                  "grace_days": 30
+                }
+              },
+              {
+                "key": "it_certif",
+                "kind": "certificate",
+                "name": "Certificado",
+                "ref": {
+                  "templates": [
+                    {
+                      "if": "on_time",
+                      "item_key": "it_zzzzzz",
+                      "template_id": "22222222-2222-4222-8222-222222222222"
+                    },
+                    {
+                      "else": true,
+                      "template_id": "33333333-3333-4333-8333-333333333333"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Certificado»: el paso del certificado no existe"
+      ]
     }
   ]
 }

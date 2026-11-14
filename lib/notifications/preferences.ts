@@ -279,6 +279,16 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     audience: ALL,
     defaults: BELL,
   },
+  // Servicios A3 (F127): el Reto.
+  {
+    key: "svc_challenge",
+    section: "servicios",
+    label: "Un cliente no empezó el Reto",
+    description: "Pasó la fecha límite para empezar el Reto y el cliente todavía no lo arrancó. Llega una sola vez.",
+    types: ["svc_challenge_start_overdue"],
+    audience: ALL,
+    defaults: BELL,
+  },
   // Servicios A4 (F134): reuniones de servicio, propuestas del analizador y topes de cartera.
   {
     key: "svc_calls",

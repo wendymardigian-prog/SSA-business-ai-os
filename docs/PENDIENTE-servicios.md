@@ -2,6 +2,14 @@
 
 Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.11 (F126 a F130 y el resto de F124) y `claude/v12/cambios-panel-v12-reto-avisos.md`. Rama `feat/servicios-a3`.
 
+## Decisiones de F127 (14/11)
+- **Una repetición se crea solo mientras su fase está abierta y nunca con fecha anterior al inicio de su fase**, aunque el ancla (p. ej. «desde el inicio del servicio») caiga antes. Antes se creaban de golpe las atrasadas. No había ninguna en producción.
+- **Las anclas de siempre sin fecha** (servicio sin fecha de inicio) arrancan con la fase, como antes. **Las nuevas** (fin de otra fase, paso completado) esperan a tener fecha.
+- **«Sin adelantar» y los días de gracia solo frenan lo que carga el estudiante**, y solo en una repetición con `late` configurado. El equipo completa igual (puede cargar un reporte atrasado a mano). Si llega por un formulario fuera de plazo, la respuesta queda guardada pero el paso no se completa (los enganches nunca tumban la respuesta); el portal (B2) va a avisar antes de mandar.
+- **El plazo de un paso (`due_rule`) no suma anclas nuevas** en esta corrida: el §18 lo menciona «de paso», pero ningún caso del Reto lo necesita y tocaría `svc_compute_due`. Queda para cuando haga falta.
+- **`svc_start_challenge` con actor 'student' es solo del servidor** (antes no se usaba). El equipo y las automatizaciones siguen igual.
+- El aviso de la fecha límite va al responsable del servicio, una sola vez por fase (lo marca el historial).
+
 ## Decisiones de F126 (14/11)
 - **Después de la primera revisión, una entrega pendiente no se reemplaza** (EV005, «Tu entrega está esperando la revisión»). El §18 solo habla de reemplazar antes de la primera revisión; reemplazar después cambiaría lo que el equipo ya está mirando.
 - **«Revisada» sin calificación cuenta como aprobada** (no se reentrega), igual que ya completa el paso con `passed`. `after_review` solo se gasta con una revisada que **no aprobó**.
