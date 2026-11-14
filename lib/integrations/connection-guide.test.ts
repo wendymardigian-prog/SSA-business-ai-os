@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { GOOGLE_SCOPES } from "@/lib/social/google";
 import { GOOGLE_CALENDAR_SCOPES } from "@/lib/social/google-calendar";
+import { GOOGLE_DRIVE_SCOPES } from "@/lib/social/google-drive";
 import { OAUTH_ADAPTERS } from "@/lib/oauth/registry";
 
 const GUIDE = readFileSync(join(process.cwd(), "guias/conexiones.md"), "utf8");
@@ -26,7 +27,7 @@ function pastedScopes(): string[] {
 }
 
 describe("guias/conexiones.md", () => {
-  const scopes = [...new Set([...GOOGLE_SCOPES, ...GOOGLE_CALENDAR_SCOPES].map(asShownByGoogle))];
+  const scopes = [...new Set([...GOOGLE_SCOPES, ...GOOGLE_CALENDAR_SCOPES, ...GOOGLE_DRIVE_SCOPES].map(asShownByGoogle))];
 
   it("el bloque para pegar tiene exactamente los permisos que pide el sistema", () => {
     expect([...pastedScopes()].sort()).toEqual([...scopes].sort());
@@ -38,7 +39,7 @@ describe("guias/conexiones.md", () => {
 
   it("tiene la dirección de retorno de cada adaptador de Google", () => {
     const google = Object.keys(OAUTH_ADAPTERS).filter((p) => p.startsWith("google"));
-    expect(google.sort()).toEqual(["google", "google_calendar"]);
+    expect(google.sort()).toEqual(["google", "google_calendar", "google_drive"]);
     for (const provider of google) {
       expect(GUIDE).toContain(`https://app.tunegocio.com/api/oauth/${provider}/callback`);
     }

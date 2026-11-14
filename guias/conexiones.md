@@ -25,7 +25,7 @@ Ninguno de esos datos es secreto.
 
 ## Google: Calendar, Meet, YouTube y Drive
 
-Una sola «llave» de Google (se llama *cliente OAuth*) sirve para todo. Con ella cada persona del equipo conecta su Google Calendar: el sistema ve sus horarios ocupados, crea las reuniones en su calendario y arma el link de Google Meet. La misma llave conecta YouTube (subir videos, métricas y comentarios) y deja Drive listo para más adelante. Se hace una vez y lleva de 15 a 20 minutos.
+Una sola «llave» de Google (se llama *cliente OAuth*) sirve para todo. Con ella cada persona del equipo conecta su Google Calendar: el sistema ve sus horarios ocupados, crea las reuniones en su calendario y arma el link de Google Meet. La misma llave conecta los canales de YouTube del negocio (subir videos, métricas y comentarios; pueden ser varios) y una cuenta de Google Drive para importar archivos a Recursos. Se hace una vez y lleva de 15 a 20 minutos.
 
 > **Quién lo puede hacer.** Solo una cuenta con rol **Propietario** (*Owner*) en el proyecto de Google Cloud puede prender servicios y crear la llave. Ser «Administrador de la organización» no alcanza. Si te aparece «No tienes permisos suficientes», mirá [Si no sos el dueño del proyecto](#si-no-sos-el-dueño-del-proyecto).
 
@@ -47,7 +47,7 @@ Google pregunta quién va a poder conectarse. Se decide una vez por proyecto y v
 
 > **Portal de clientes.** Si más adelante tus clientes entran a un portal con «Iniciar sesión con Google», eso va en **otro proyecto**, externo, que solo pide nombre y email. No mezcles el del equipo con el de los clientes: el del equipo tendría que pasar las revisiones de Google para Calendar, YouTube y Drive.
 
-### 3. Prendé los cuatro servicios
+### 3. Prendé los cinco servicios
 
 Abrí cada link y tocá **Habilitar** (*Enable*). Si ya dice «Administrar», está prendido.
 
@@ -56,7 +56,8 @@ Abrí cada link y tocá **Habilitar** (*Enable*). Si ya dice «Administrar», es
 | Google Calendar API | Calendario y links de Meet (Meet no necesita un servicio aparte) | `https://console.cloud.google.com/apis/library/calendar-json.googleapis.com?project=mi-proyecto-123` |
 | YouTube Data API v3 | Subir videos y leer comentarios | `https://console.cloud.google.com/apis/library/youtube.googleapis.com?project=mi-proyecto-123` |
 | YouTube Analytics API | Métricas de los videos | `https://console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com?project=mi-proyecto-123` |
-| Google Drive API | Preparado para un módulo futuro. Hoy el sistema no lo usa | `https://console.cloud.google.com/apis/library/drive.googleapis.com?project=mi-proyecto-123` |
+| Google Drive API | Importar archivos de Drive a Recursos | `https://console.cloud.google.com/apis/library/drive.googleapis.com?project=mi-proyecto-123` |
+| Google Picker API | La ventana para elegir archivos de Drive desde Recursos | `https://console.cloud.google.com/apis/library/picker.googleapis.com?project=mi-proyecto-123` |
 
 ### 4. Armá la pantalla de permisos
 
@@ -73,7 +74,7 @@ Es lo que ve cada persona cuando Google le pregunta si da permiso. Entrá a Goog
    - Tocá **Guardar**.
 5. **Solo si elegiste Externa:** en **Público**, tocá **Publicar app** (*Publish app*) y confirmá. Queda «En producción».
 
-### 5. Cargá los 9 permisos
+### 5. Cargá los 10 permisos
 
 En el menú de la izquierda, **Acceso a los datos** (*Data Access*) → **Agregar o quitar permisos**. Se abre una ventana a la derecha. Elegí una de las dos formas: dan el mismo resultado.
 
@@ -93,9 +94,10 @@ En el menú de la izquierda, **Acceso a los datos** (*Data Access*) → **Agrega
    https://www.googleapis.com/auth/youtube.upload
    https://www.googleapis.com/auth/yt-analytics.readonly
    https://www.googleapis.com/auth/youtube.force-ssl
+   https://www.googleapis.com/auth/drive.file
    ```
 
-2. Tocá **Agregar a la tabla**. Los nueve aparecen tildados arriba.
+2. Tocá **Agregar a la tabla**. Los diez aparecen tildados arriba.
 3. Tocá **Actualizar**, abajo de todo, y después **Guardar** en la página.
 
 **Opción B: buscarlos uno por uno**
@@ -113,10 +115,11 @@ La ventana tiene una tabla (API, Permiso, Descripción) con un **Filtro** arriba
 | 7 | YouTube Data API v3 | `youtube.upload` | `youtube.upload` | Manage your YouTube videos |
 | 8 | YouTube Analytics API | `yt-analytics.readonly` | `yt-analytics.readonly` | View YouTube Analytics reports for your YouTube content |
 | 9 | YouTube Data API v3 | `force-ssl` | `youtube.force-ssl` | See, edit, and permanently delete your YouTube videos, ratings, comments and captions |
+| 10 | Google Drive API | `drive.file` | `drive.file` | See, edit, create, and delete only the specific Google Drive files you use with this app |
 
-Con los nueve tildados: **Actualizar** y después **Guardar**.
+Con los diez tildados: **Actualizar** y después **Guardar**.
 
-**Cómo comprobar:** en «Acceso a los datos» hay tres grupos (no sensibles, sensibles y restringidos). Entre todos tienen que sumar **9 permisos**. Si sobra alguno, se quita con el tacho de esa fila. Drive no lleva permiso todavía: se agrega cuando el sistema lo use.
+**Cómo comprobar:** en «Acceso a los datos» hay tres grupos (no sensibles, sensibles y restringidos). Entre todos tienen que sumar **10 permisos**. Si sobra alguno, se quita con el tacho de esa fila. De Drive va solo `drive.file`: con ese permiso el sistema ve únicamente los archivos que alguien elige en la ventana de Google, nunca el Drive entero, y Google no pide revisión.
 
 ### 6. Creá la llave
 
@@ -137,30 +140,40 @@ En el menú de la izquierda, **Clientes** (`https://console.cloud.google.com/aut
    ```
    https://app.tunegocio.com/api/oauth/google_calendar/callback
    https://app.tunegocio.com/api/oauth/google/callback
+   https://app.tunegocio.com/api/oauth/google_drive/callback
    https://tu-app.up.railway.app/api/oauth/google_calendar/callback
    https://tu-app.up.railway.app/api/oauth/google/callback
+   https://tu-app.up.railway.app/api/oauth/google_drive/callback
    https://abcdefghijklmnopqrst.supabase.co/auth/v1/callback
    ```
 
-   - La que termina en `google_calendar/callback` es la del **calendario**; la que termina en `google/callback`, la de **YouTube**. Hacen falta las dos.
-   - Las dos de Railway, solo si tenés dominio propio y querés que también funcione desde Railway.
+   - La que termina en `google_calendar/callback` es la del **calendario**; la que termina en `google/callback`, la de **YouTube**; la que termina en `google_drive/callback`, la de **Drive**. Hacen falta las tres.
+   - Las tres de Railway, solo si tenés dominio propio y querés que también funcione desde Railway.
    - La de Supabase es opcional: deja preparado un futuro «Iniciar sesión con Google» para el equipo. Hoy no se usa, y agregarla no abre ninguna puerta.
 
 4. Tocá **Crear**. Google muestra dos datos:
    - **ID de cliente** (*Client ID*): termina en `.apps.googleusercontent.com`. No es secreto.
    - **Secreto del cliente** (*Client secret*): **es secreto**. Copialo en ese momento: puede no volver a mostrarse completo.
 
-### 7. Pegala en el sistema
+### 7. Creá la clave para elegir archivos de Drive
 
-1. Entrá a `https://app.tunegocio.com/dashboard/settings/integrations` y abrí la tarjeta **Google (YouTube)**. Aunque diga YouTube, es la misma llave que usa el calendario.
-2. Pegá el Client ID y el Client Secret y tocá **Guardar**.
+Solo si vas a importar archivos de Drive en Recursos. La ventana de Google para elegir archivos (Google Picker) pide, además de la llave, una **clave de API** y el **número del proyecto**.
+
+1. En **APIs y servicios → Credenciales** (`https://console.cloud.google.com/apis/credentials?project=mi-proyecto-123`) → **Crear credenciales → Clave de API**.
+2. Tocá la clave nueva → **Restricciones de API** → **Restringir clave** → tildá solo **Google Picker API** → **Guardar**. Opcional: en **Restricciones de aplicaciones**, «Sitios web» con `https://app.tunegocio.com/*`.
+3. El **número del proyecto** (solo dígitos, no es el ID) está en el panel principal del proyecto (`https://console.cloud.google.com/home/dashboard?project=mi-proyecto-123`).
+
+### 8. Pegala en el sistema
+
+1. Entrá a `https://app.tunegocio.com/dashboard/settings/integrations` y abrí la tarjeta **Google**. Es la misma llave para Calendar, YouTube y Drive.
+2. Pegá el Client ID y el Client Secret. Si vas a usar Drive, también la clave de API y el número del proyecto. Tocá **Guardar**.
 3. Si los datos te los pasó otra persona: el Client ID puede llegar por cualquier medio; el Client Secret, solo por un link que se borra después de leerlo (Bitwarden Send, 1Password u onetimesecret.com). Nunca en un mail o chat común.
 
-### 8. Probalo
+### 9. Probalo
 
 1. En el sistema: **Mi cuenta → Conexiones → Conectar cuenta de Google** (o **Agenda → Configuración → Calendarios**). Entrá con una cuenta del equipo y aceptá los permisos.
 2. Tiene que volver al sistema con tu cuenta y tus calendarios listados. Cada persona del equipo conecta el suyo de la misma forma.
-3. YouTube se conecta desde la tarjeta de Google, cuando lo vayas a usar.
+3. YouTube y Drive se conectan desde la tarjeta **Google → Cuentas**: **Conectar un canal** (repetilo por cada canal; si la cuenta maneja varios, Google te deja elegir cuál) y **Conectar Google Drive** (una cuenta por negocio). Después, en **Recursos → Importar de Drive**.
 
 ### Si algo sale mal
 
@@ -170,6 +183,7 @@ En el menú de la izquierda, **Clientes** (`https://console.cloud.google.com/aut
 - **«Google no verificó esta app»:** normal en una app Externa: tocá Configuración avanzada → Ir a (nombre de la app).
 - **El calendario se desconecta cada semana:** la app es Externa y quedó «en prueba». Publicala (paso 4, punto 5) y volvé a conectar.
 - **Conecta, pero después falla al leer el calendario:** falta prender la Google Calendar API (paso 3) o todavía no tomó el cambio: esperá 5 minutos y probá de nuevo.
+- **«Importar de Drive» abre la ventana de Google pero da error:** falta prender la Google Picker API o la Google Drive API (paso 3), o la clave de API está restringida a otra cosa (paso 7).
 
 ### Si no sos el dueño del proyecto
 
@@ -185,10 +199,10 @@ Necesito que me guíes paso a paso, en español y con lenguaje simple, para conf
 
 Datos:
 - Proyecto de Google Cloud: mi-proyecto-123
-- APIs a habilitar: Google Calendar API, YouTube Data API v3, YouTube Analytics API y Google Drive API (Drive queda prendida para más adelante, sin scopes por ahora).
+- APIs a habilitar: Google Calendar API, YouTube Data API v3, YouTube Analytics API, Google Drive API y Google Picker API.
 - Google Auth Platform: público Interno si todo el equipo usa cuentas de Google Workspace de la empresa; si no, Externo y publicada (En producción).
 - Branding: página principal https://app.tunegocio.com, dominio autorizado tunegocio.com, logo opcional de 120x120.
-- Scopes en Data Access (pegarlos en "Agregar permisos manualmente"; tienen que quedar exactamente estos 9):
+- Scopes en Data Access (pegarlos en "Agregar permisos manualmente"; tienen que quedar exactamente estos 10):
     https://www.googleapis.com/auth/calendar.calendarlist.readonly
     https://www.googleapis.com/auth/calendar.events.freebusy
     https://www.googleapis.com/auth/calendar.events
@@ -198,13 +212,16 @@ Datos:
     https://www.googleapis.com/auth/youtube.upload
     https://www.googleapis.com/auth/yt-analytics.readonly
     https://www.googleapis.com/auth/youtube.force-ssl
+    https://www.googleapis.com/auth/drive.file
 - Cliente OAuth tipo "Aplicación web":
   - Orígenes JavaScript autorizados:
     https://app.tunegocio.com
   - URIs de redireccionamiento autorizados:
     https://app.tunegocio.com/api/oauth/google_calendar/callback
     https://app.tunegocio.com/api/oauth/google/callback
+    https://app.tunegocio.com/api/oauth/google_drive/callback
     https://abcdefghijklmnopqrst.supabase.co/auth/v1/callback
+- Una clave de API restringida a la Google Picker API (para elegir archivos de Drive), y decime dónde está el número del proyecto.
 
 Al final, recordame que el Client ID se puede mandar por cualquier medio, pero el Client Secret solo por un link que se autodestruye (Bitwarden Send, 1Password u onetimesecret.com), nunca en texto común.
 ```

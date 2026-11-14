@@ -7,11 +7,12 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, SocialPlatform } from "@/lib/types/database";
+import type { Database, OAuthProvider, SocialPlatform } from "@/lib/types/database";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { readSecret, SECRET_NAMES, oauthSecretName } from "@/lib/vault";
 import { getOAuthAdapter } from "@/lib/oauth/registry";
+import { findWorkspaceConnection } from "@/lib/oauth/workspace-connection";
 import { needsFreshToken, refreshConnection } from "@/lib/social/refresh-connection";
 import { readZernioMetrics } from "@/lib/metrics/zernio";
 import { readThreadsMetrics } from "@/lib/metrics/threads";
@@ -53,14 +54,14 @@ export interface MetricsSyncPayload {
  * con 401 casi siempre. Si el refresco no sale, se devuelve null y la cuenta
  * se saltea con aviso, que es como el job trata a una cuenta sin token.
  */
-async function oauthToken(supabase: Db, workspaceId: string, provider: string): Promise<string | null> {
-  const { data } = await supabase
-    .from("oauth_connections")
-    .select("id, vault_secret_prefix, token_expires_at")
-    .eq("workspace_id", workspaceId)
-    .eq("provider", provider as never)
-    .is("user_id", null)
-    .maybeSingle();
+async function oauthToken(
+  supabase: Db,
+  workspaceId: string,
+  provider: OAuthProvider,
+  /** El canal, para YouTube: cada canal tiene su conexion (00374). */
+  externalAccountId?: string | null,
+): Promise<string | null> {
+  const data = await findWorkspaceConnection(supabase, workspaceId, provider, externalAccountId);
 
   if (!data) return null;
 
@@ -140,7 +141,7 @@ async function readAccount(
     }
 
     case "youtube": {
-      const token = await oauthToken(supabase, account.workspace_id, "google");
+      const token = await oauthToken(supabase, account.workspace_id, "google", account.external_id);
       if (!token || !account.external_id) {
         return { ...EMPTY_READER_RESULT, warnings: ["YouTube no esta conectado"] };
       }
@@ -216,7 +217,7 @@ async function syncComments(
       if (!token) continue;
       read = await readThreadsReplies({ token, postId: post.externalPostId });
     } else if (account.platform === "youtube") {
-      const token = await oauthToken(supabase, account.workspace_id, "google");
+      const token = await oauthToken(supabase, account.workspace_id, "google", account.external_id);
       if (!token) continue;
       read = await readYouTubeComments({
         token,

@@ -182,6 +182,8 @@ export interface PublishDeps {
     publisherId: string;
     workspaceId: string;
     platform: string;
+    /** Con que cuenta del proveedor (el canal de YouTube, 00374). */
+    accountRef?: string | null;
   }): Promise<PublishCredentials>;
 }
 
@@ -234,6 +236,7 @@ export async function runPublication(
       publisherId: row.publisher ?? "",
       workspaceId: row.workspace_id,
       platform: row.platform,
+      accountRef,
     });
 
     const result = await publisher.publish({ input, credentials });

@@ -14,18 +14,32 @@ import { probeYouTubeUpload } from "@/lib/actions/youtube-probe";
  * auditoria, y descubrirlo asi es mucho mejor que descubrirlo con un video
  * del cliente.
  */
-export function YouTubeProbeFooter({ verifiedAt }: { verifiedAt: string | null }) {
+export function YouTubeProbeFooter({
+  verifiedAt,
+  channelId,
+  compact = false,
+}: {
+  verifiedAt: string | null;
+  /** El canal a probar (00374: puede haber varios). */
+  channelId?: string | null;
+  /** Dentro de la fila de un canal: solo el boton y el resultado. */
+  compact?: boolean;
+}) {
   const timeZone = useViewerTimezone();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   return (
     <div>
-      <p className="text-sm font-medium">Probar la subida directa a YouTube</p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Sube un video de un segundo como &quot;no listado&quot;, mira como quedo y lo borra. Sirve
-        para saber, antes de publicar algo de verdad, si YouTube respeta la visibilidad que se pide.
-      </p>
+      {!compact && (
+        <>
+          <p className="text-sm font-medium">Probar la subida directa a YouTube</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Sube un video de un segundo como &quot;no listado&quot;, mira como quedo y lo borra. Sirve
+            para saber, antes de publicar algo de verdad, si YouTube respeta la visibilidad que se pide.
+          </p>
+        </>
+      )}
 
       {verifiedAt && !result && (
         <p className="mt-1 text-xs text-muted-foreground">
@@ -38,7 +52,7 @@ export function YouTubeProbeFooter({ verifiedAt }: { verifiedAt: string | null }
         disabled={pending}
         onClick={() =>
           start(async () => {
-            const outcome = await probeYouTubeUpload();
+            const outcome = await probeYouTubeUpload(channelId ?? null);
             setResult(
               outcome.ok
                 ? { ok: outcome.verified, message: outcome.message }
@@ -46,10 +60,10 @@ export function YouTubeProbeFooter({ verifiedAt }: { verifiedAt: string | null }
             );
           })
         }
-        className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm disabled:opacity-60"
+        className={`${compact ? "mt-2 h-8 text-xs" : "mt-3 h-9 text-sm"} inline-flex items-center gap-2 rounded-lg border border-border px-3 disabled:opacity-60`}
       >
         {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-        Probar ahora
+        {compact ? "Probar la subida" : "Probar ahora"}
       </button>
 
       {result && (

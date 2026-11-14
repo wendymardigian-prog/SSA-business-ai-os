@@ -61,8 +61,8 @@ export type IntegrationType =
   | "slack";
 
 /** Proveedores que se conectan por OAuth con la app propia del negocio (00082). */
-export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar" | "fathom"; // @plantilla-quitar(llamadas)
-// @plantilla-sin(llamadas): export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar";
+export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar" | "google_drive" | "fathom"; // @plantilla-quitar(llamadas)
+// @plantilla-sin(llamadas): export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar" | "google_drive";
 
 // @plantilla-desde(llamadas)
 // ── Llamadas (00145) ──────────────────────────────────────────────────────
@@ -4106,7 +4106,7 @@ export interface Database {
           transcript_started_at: string | null;
           source: "recorded" | "uploaded" | "synthesized" | null;
           url: string | null;
-          link_kind: "video" | "imagen" | "testimonio" | "articulo" | "landing" | "formulario" | "agenda" | "pago" | "otro" | null;
+          link_kind: "video" | "imagen" | "testimonio" | "articulo" | "landing" | "formulario" | "agenda" | "pago" | "otro" | "drive" | null;
           preview_path: string | null;
           caption: string | null;
           usage_count: number;
@@ -4138,7 +4138,7 @@ export interface Database {
           transcript_started_at?: string | null;
           source?: "recorded" | "uploaded" | "synthesized" | null;
           url?: string | null;
-          link_kind?: "video" | "imagen" | "testimonio" | "articulo" | "landing" | "formulario" | "agenda" | "pago" | "otro" | null;
+          link_kind?: "video" | "imagen" | "testimonio" | "articulo" | "landing" | "formulario" | "agenda" | "pago" | "otro" | "drive" | null;
           preview_path?: string | null;
           caption?: string | null;
           usage_count?: number;
@@ -4167,7 +4167,7 @@ export interface Database {
           transcript_started_at?: string | null;
           source?: "recorded" | "uploaded" | "synthesized" | null;
           url?: string | null;
-          link_kind?: "video" | "imagen" | "testimonio" | "articulo" | "landing" | "formulario" | "agenda" | "pago" | "otro" | null;
+          link_kind?: "video" | "imagen" | "testimonio" | "articulo" | "landing" | "formulario" | "agenda" | "pago" | "otro" | "drive" | null;
           preview_path?: string | null;
           caption?: string | null;
           usage_count?: number;

@@ -211,12 +211,16 @@ export function CredentialsForm({
         {webhookUrl && <CopyableUrl label="Direccion para pegar en el proveedor" url={webhookUrl} />}
       </div>
 
-      {provider.connection === "oauth_app" && (
-        <ConnectWithProvider
-          provider={provider}
-          connected={connected}
-          allSecretsSaved={fields.every((f) => stored.has(f.key))}
-        />
+      {provider.id === "google" ? (
+        <GoogleConnectionsHint ready={fields.filter((f) => f.required).every((f) => stored.has(f.key))} />
+      ) : (
+        provider.connection === "oauth_app" && (
+          <ConnectWithProvider
+            provider={provider}
+            connected={connected}
+            allSecretsSaved={fields.filter((f) => f.required).every((f) => stored.has(f.key))}
+          />
+        )
       )}
 
       {error && (
@@ -248,6 +252,12 @@ export function CredentialsForm({
       {confirmingDisconnect ? (
         <div className="mt-4 rounded-lg border border-border p-3">
           <p className="text-sm font-medium">Desconectar {provider.label}</p>
+          {provider.id === "google" && (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+              Corta todo lo de Google a la vez: los canales de YouTube, Google Drive y el Google Calendar de cada
+              persona del equipo, que van a tener que volver a conectarlo.
+            </p>
+          )}
           <p className="mt-1 text-xs text-muted-foreground">
             Se borran sus claves. {scheduledUses === null
               ? "Revisando si hay publicaciones programadas..."
@@ -362,6 +372,31 @@ export function CopyableUrl({ label, url }: { label: string; url: string }) {
           {copied ? "Copiada" : "Copiar"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Google (00374): las credenciales sirven a tres cosas y ninguna se autoriza
+ * desde aca. YouTube (varios canales) y Drive se conectan en la pestaña
+ * Cuentas; Calendar lo conecta cada persona desde Agenda.
+ */
+function GoogleConnectionsHint({ ready }: { ready: boolean }) {
+  return (
+    <div className="mt-4 rounded-lg border border-border p-3">
+      <p className="text-xs text-muted-foreground">
+        {ready
+          ? "Con estas credenciales se conectan los canales de YouTube y Google Drive, desde la pestaña Cuentas. Google Calendar lo conecta cada persona desde Agenda."
+          : "Guardá primero el Client ID y el Secret. Después conectás YouTube y Drive desde la pestaña Cuentas."}
+      </p>
+      {ready && (
+        <Link
+          href="/dashboard/settings/integrations/google?tab=cuentas"
+          className="mt-2 inline-flex h-9 items-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground"
+        >
+          Ir a Cuentas
+        </Link>
+      )}
     </div>
   );
 }

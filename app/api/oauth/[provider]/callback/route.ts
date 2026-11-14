@@ -84,6 +84,17 @@ export async function GET(
           performedBy: ctx.user.id,
         });
       // @plantilla-hasta(llamadas)
+      } else if (adapter.provider === "google_drive") {
+        // Drive no es una red social: no hay cuentas que recalcular ni nada que leer.
+        await logAudit({
+          supabase: service,
+          workspaceId: ctx.workspace.id,
+          entityType: "channel",
+          entityId: ctx.workspace.id,
+          action: "update",
+          metadata: { provider: "google", kind: "drive_connected" },
+          performedBy: ctx.user.id,
+        });
       } else if (!adapter.perUser) {
         const synced = await syncSocialAccounts(service, ctx.workspace.id);
         // Una red recien conectada se lee ya, no a las 3 AM. Nunca lanza.

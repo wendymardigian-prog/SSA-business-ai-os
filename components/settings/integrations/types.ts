@@ -42,4 +42,26 @@ export interface IntegrationCardData {
    * Calendar conectado (G4). Es por persona, asi que un sí/no mentiria.
    */
   calendarPeople?: number;
+  /** Solo para `google` (00374): los canales de YouTube, Drive y el selector. */
+  google?: GoogleServicesSummary;
+}
+
+/** Un canal de YouTube conectado al negocio (00374: puede haber varios). */
+export interface YouTubeChannelSummary {
+  connectionId: string;
+  channelId: string | null;
+  label: string;
+  status: string;
+  lastError: string | null;
+  /** La ultima prueba de subida directa de este canal (F38). */
+  verifiedAt: string | null;
+  avatarUrl: string | null;
+}
+
+export interface GoogleServicesSummary {
+  youtube: YouTubeChannelSummary[];
+  /** La cuenta de Google Drive del negocio, si hay. */
+  drive: { label: string; status: string; lastError: string | null } | null;
+  /** API key y numero de proyecto cargados: Recursos puede abrir el selector de Drive. */
+  pickerReady: boolean;
 }

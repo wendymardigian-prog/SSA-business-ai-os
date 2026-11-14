@@ -61,7 +61,8 @@ export async function GET(request: NextRequest) {
       await notifyIntegrationAttention({
         supabase,
         workspaceId: row.workspace_id,
-        providerId: row.provider,
+        // Google Drive no tiene tarjeta propia: el aviso lleva a la de Google.
+        providerId: row.provider === "google_drive" ? "google" : row.provider,
         providerLabel: adapter.label,
         cause: "expiring",
         detail: warnMessage(adapter.label, action),
@@ -89,7 +90,8 @@ export async function GET(request: NextRequest) {
       await notifyIntegrationAttention({
         supabase,
         workspaceId: row.workspace_id,
-        providerId: row.provider,
+        // Google Drive no tiene tarjeta propia: el aviso lleva a la de Google.
+        providerId: row.provider === "google_drive" ? "google" : row.provider,
         providerLabel: adapter.label,
         cause: "expiring",
         detail: `No pude renovar el acceso a ${adapter.label}. Reconectalo desde Integraciones.`,

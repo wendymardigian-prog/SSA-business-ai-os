@@ -128,3 +128,40 @@ describe("A2 · el token de Google se renueva en el momento", () => {
     ).rejects.toBeInstanceOf(PublishError);
   });
 });
+
+describe("varios canales de YouTube (00374)", () => {
+  function twoChannels() {
+    const vault: Record<string, string> = {
+      oauth_google_access_token: "token-canal-a",
+      "oauth_google_c2_access_token": "token-canal-b",
+    };
+    return memoryDb(
+      {
+        oauth_connections: [
+          { id: "c1", workspace_id: WS, provider: "google", status: "active", vault_secret_prefix: "oauth_google", external_account_id: "UC-A", token_expires_at: null, user_id: null, created_at: "2026-01-01T00:00:00Z" },
+          { id: "c2", workspace_id: WS, provider: "google", status: "active", vault_secret_prefix: "oauth_google_c2", external_account_id: "UC-B", token_expires_at: null, user_id: null, created_at: "2026-02-01T00:00:00Z" },
+        ],
+      },
+      { rpc: { read_secret: (args) => vault[String(args.secret_name)] ?? null } },
+    );
+  }
+
+  it("publica con el token del canal que dice la cuenta", async () => {
+    const db = twoChannels();
+    const credentials = await credentialsForPublisher(db.client as never, { publisherId: "youtube_api", workspaceId: WS, accountRef: "UC-B" });
+    expect(credentials.token).toBe("token-canal-b");
+  });
+
+  it("sin canal, el mas antiguo (lo de siempre)", async () => {
+    const db = twoChannels();
+    const credentials = await credentialsForPublisher(db.client as never, { publisherId: "youtube_api", workspaceId: WS });
+    expect(credentials.token).toBe("token-canal-a");
+  });
+
+  it("un canal que ya no esta conectado falla con un mensaje claro, sin usar otro", async () => {
+    const db = twoChannels();
+    await expect(
+      credentialsForPublisher(db.client as never, { publisherId: "youtube_api", workspaceId: WS, accountRef: "UC-C" }),
+    ).rejects.toThrow("canal de YouTube ya no esta conectado");
+  });
+});

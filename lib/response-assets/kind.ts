@@ -84,7 +84,9 @@ export type LinkKind =
   | "formulario"
   | "agenda"
   | "pago"
-  | "otro";
+  | "otro"
+  /** Un archivo o carpeta de Google Drive, importado como enlace (00374). */
+  | "drive";
 
 export const LINK_KINDS: readonly LinkKind[] = [
   "video",
@@ -96,6 +98,7 @@ export const LINK_KINDS: readonly LinkKind[] = [
   "agenda",
   "pago",
   "otro",
+  "drive",
 ];
 
 export const LINK_KIND_LABEL: Record<LinkKind, string> = {
@@ -108,6 +111,7 @@ export const LINK_KIND_LABEL: Record<LinkKind, string> = {
   agenda: "Agenda",
   pago: "Pago",
   otro: "Otro",
+  drive: "Google Drive",
 };
 
 export function isLinkKind(value: unknown): value is LinkKind {

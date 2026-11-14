@@ -1,8 +1,8 @@
 import type { ProviderDefinition } from "@/lib/integrations/providers";
 import type { AdAccount } from "@/lib/meta/accounts";
 import { MetaAccountsFooter } from "./meta-accounts-footer";
-import { YouTubeProbeFooter } from "./youtube-probe-footer";
-import { GoogleServices } from "./google-services";
+import { GoogleAccountsPanel } from "./google-accounts-panel";
+import type { GoogleServicesSummary } from "./types";
 import { PublisherDefaults, type SocialAccountRow } from "./publisher-defaults";
 import { ChannelsPanel, type Channel } from "@/components/channels/channels-panel";
 
@@ -24,9 +24,9 @@ export function AccountsTab({
   channels,
   metaAccounts,
   metaIgUsername,
-  youtubeVerifiedAt,
   calendarPeople,
-  youtubeConnected,
+  google,
+  googleCredentialsReady,
   socialAccounts,
 }: {
   provider: ProviderDefinition;
@@ -34,9 +34,11 @@ export function AccountsTab({
   channels: Channel[];
   metaAccounts: AdAccount[];
   metaIgUsername: string | null;
-  youtubeVerifiedAt: string | null;
   calendarPeople: number;
-  youtubeConnected: boolean;
+  /** Google (00374): sus canales de YouTube y su Drive. */
+  google?: GoogleServicesSummary;
+  /** Client ID y Secret de Google guardados. */
+  googleCredentialsReady: boolean;
   socialAccounts: SocialAccountRow[];
 }) {
   if (provider.id === "zernio") {
@@ -77,11 +79,10 @@ export function AccountsTab({
 
   if (provider.id === "google") {
     return (
-      <div className="max-w-lg space-y-5">
-        <GoogleServices youtubeConnected={youtubeConnected} calendarPeople={calendarPeople} />
-        <YouTubeProbeFooter verifiedAt={youtubeVerifiedAt} />
+      <div className="max-w-xl space-y-8">
+        <GoogleAccountsPanel google={google} calendarPeople={calendarPeople} credentialsReady={googleCredentialsReady} />
         <div>
-          <p className="text-sm font-medium">Por donde publica YouTube</p>
+          <p className="text-sm font-medium">Por donde publica cada canal de YouTube</p>
           <div className="mt-2">
             <PublisherDefaults accounts={socialAccounts} />
           </div>

@@ -28,7 +28,12 @@ import { getOAuthAdapter } from "@/lib/oauth/registry";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import { parsePublishers } from "@/lib/social/accounts-schema";
 import { parseMetaConfig, type AdAccount } from "@/lib/meta/accounts";
-import type { IntegrationCardData, OAuthConnectionSummary } from "@/components/settings/integrations/types";
+import type {
+  GoogleServicesSummary,
+  IntegrationCardData,
+  OAuthConnectionSummary,
+  YouTubeChannelSummary,
+} from "@/components/settings/integrations/types";
 
 type Db = SupabaseClient<Database>;
 
@@ -59,6 +64,8 @@ export interface BuildCardDataParams {
   connectionRow: WorkspaceConnectionRow | null;
   /** Solo tiene sentido para `google` (G4). */
   calendarPeople?: number;
+  /** Solo para `google` (00374). */
+  google?: GoogleServicesSummary;
 }
 
 /**
@@ -106,21 +113,23 @@ export function buildCardData(params: BuildCardDataParams): IntegrationCardData 
     connectedAt,
     oauth,
   };
-  if (provider.id === "google") data.calendarPeople = params.calendarPeople ?? 0;
+  if (provider.id === "google") {
+    data.calendarPeople = params.calendarPeople ?? 0;
+    if (params.google) data.google = params.google;
+  }
   return data;
 }
 
 export interface LoadedIntegrations {
   integrations: Record<string, IntegrationCardData>;
   webhookUrls: Record<string, string>;
-  youtubeVerifiedAt: string | null;
   metaAccounts: AdAccount[];
   metaIgUsername: string | null;
   channelsSummary: Array<{ id: string; label: string; platform: string }>;
 }
 
-/** Los tres proveedores que se conectan por OAuth del WORKSPACE (no por persona). */
-const WORKSPACE_OAUTH_PROVIDERS: readonly OAuthProvider[] = ["google", "linkedin", "threads"];
+/** Los proveedores que se conectan por OAuth del WORKSPACE (no por persona). Drive va en la card de Google. */
+const WORKSPACE_OAUTH_PROVIDERS: readonly OAuthProvider[] = ["google", "linkedin", "threads", "google_drive"];
 
 /**
  * Lee todo lo que hace falta para pintar el listado y el detalle de
@@ -133,7 +142,7 @@ export async function loadIntegrations(supabase: Db, workspaceId: string): Promi
   const [
     { data: configs },
     { data: channels },
-    { data: youtubeAccount },
+    { data: youtubeAccounts },
     { data: connections },
     { data: calendarConnections },
     secretNames,
@@ -147,23 +156,24 @@ export async function loadIntegrations(supabase: Db, workspaceId: string): Promi
       .from("channels")
       .select("id, platform, username, display_name, is_active, provider")
       .eq("workspace_id", workspaceId),
-    // Cuando se probo por ultima vez la subida directa a YouTube (F38).
+    // Cuando se probo por ultima vez la subida directa a YouTube (F38), por
+    // canal: puede haber varios (00374).
     supabase
       .from("social_accounts")
-      .select("publishers")
+      .select("external_id, publishers, avatar_url")
       .eq("workspace_id", workspaceId)
-      .eq("platform", "youtube")
-      .maybeSingle(),
+      .eq("platform", "youtube"),
     // Las conexiones OAuth del workspace (G3): una por proveedor, no por
     // persona. Google Calendar queda afuera: es per-user (G4, abajo).
     supabase
       .from("oauth_connections")
       .select(
-        "provider, status, token_expires_at, refresh_expires_at, granted_scopes, last_error, last_refreshed_at, created_at",
+        "id, provider, status, token_expires_at, refresh_expires_at, granted_scopes, last_error, last_refreshed_at, created_at, external_account_id, account_label",
       )
       .eq("workspace_id", workspaceId)
       .is("user_id", null)
-      .in("provider", WORKSPACE_OAUTH_PROVIDERS),
+      .in("provider", WORKSPACE_OAUTH_PROVIDERS)
+      .order("created_at", { ascending: true }),
     // Cuantas personas conectaron SU Google Calendar (G4). Revocada no cuenta.
     supabase
       .from("oauth_connections")
@@ -181,10 +191,33 @@ export async function loadIntegrations(supabase: Db, workspaceId: string): Promi
   const metaConfig = parseMetaConfig(
     (configs ?? []).find((c) => c.type === "meta" && c.provider === "meta")?.config,
   );
-  const youtubePublishers = parsePublishers(youtubeAccount?.publishers ?? []);
-  const youtubeVerifiedAt = youtubePublishers.ok
-    ? (youtubePublishers.publishers.find((p) => p.publisher === "youtube_api")?.verified_at ?? null)
-    : null;
+  const verifiedAtOf = (publishers: unknown): string | null => {
+    const parsed = parsePublishers(publishers ?? []);
+    return parsed.ok ? (parsed.publishers.find((p) => p.publisher === "youtube_api")?.verified_at ?? null) : null;
+  };
+
+  // Google (00374): sus canales de YouTube y su Drive, para la card y la pestaña Cuentas.
+  const googleConnections = (connections ?? []).filter((c) => c.provider === "google");
+  const driveConnection = (connections ?? []).find((c) => c.provider === "google_drive") ?? null;
+  const youtubeChannels: YouTubeChannelSummary[] = googleConnections.map((c) => {
+    const account = (youtubeAccounts ?? []).find((a) => a.external_id && a.external_id === c.external_account_id);
+    return {
+      connectionId: c.id,
+      channelId: c.external_account_id,
+      label: c.account_label ?? "Canal de YouTube",
+      status: c.status,
+      lastError: c.last_error,
+      verifiedAt: account ? verifiedAtOf(account.publishers) : null,
+      avatarUrl: account?.avatar_url ?? null,
+    };
+  });
+  const googleSummary: GoogleServicesSummary = {
+    youtube: youtubeChannels,
+    drive: driveConnection
+      ? { label: driveConnection.account_label ?? "Cuenta de Google", status: driveConnection.status, lastError: driveConnection.last_error }
+      : null,
+    pickerReady: storedSecrets.has(SECRET_NAMES.googleApiKey) && storedSecrets.has(SECRET_NAMES.googleProjectNumber),
+  };
   const activeChannels = (channels ?? []).filter((c) => c.is_active);
   const calendarPeople = new Set((calendarConnections ?? []).map((c) => c.user_id)).size;
 
@@ -223,8 +256,11 @@ export async function loadIntegrations(supabase: Db, workspaceId: string): Promi
     const isActive = row?.is_active === true || zernioConnected;
     const usage = buildUsage(provider, usageCounts[provider.id] ?? 0);
 
-    const connectionRow =
-      (connections ?? []).find((c) => c.provider === provider.id) ?? null;
+    // Google: el estado de la card sale de sus canales de YouTube (Drive tiene
+    // otros permisos y su estado se muestra en su fila). Un canal que necesita
+    // atencion va primero: si no, uno roto se esconde detras de uno sano.
+    const ownConnections = (connections ?? []).filter((c) => c.provider === provider.id);
+    const connectionRow = ownConnections.find((c) => c.status !== "active") ?? ownConnections[0] ?? null;
 
     integrations[provider.id] = buildCardData({
       provider,
@@ -243,13 +279,13 @@ export async function loadIntegrations(supabase: Db, workspaceId: string): Promi
       account: accountOf(provider, config),
       connectionRow: connectionRow as WorkspaceConnectionRow | null,
       calendarPeople,
+      google: provider.id === "google" ? googleSummary : undefined,
     });
   }
 
   return {
     integrations,
     webhookUrls: webhookUrls(),
-    youtubeVerifiedAt,
     metaAccounts: metaConfig.ad_accounts,
     metaIgUsername: metaConfig.ig_username,
     channelsSummary: activeChannels

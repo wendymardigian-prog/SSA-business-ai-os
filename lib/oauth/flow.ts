@@ -270,8 +270,10 @@ function logStateFailure(provider: string, reason: StateFailure) {
  *
  * Que fila es "la que corresponde":
  *   - del workspace (`user_id` NULL): la del proveedor, sea cual sea la cuenta
- *     externa. Reconectar con otra cuenta de Google reemplaza la conexion, no
- *     suma una segunda (los lectores hacen `.is("user_id", null).maybeSingle()`).
+ *     externa. Reconectar con otra cuenta reemplaza la conexion, no suma una
+ *     segunda (LinkedIn, Threads, Google Drive).
+ *   - del workspace con varias cuentas (`multiAccount`, YouTube desde la
+ *     00374): la de esa cuenta externa. Otro canal es otra fila.
  *   - de una persona: la de esa persona Y esa cuenta externa. Otra cuenta es
  *     otra fila (Etapa 4: varias cuentas de Google por persona).
  */
@@ -295,7 +297,9 @@ export async function saveConnection(params: {
     .eq("provider", adapter.provider);
   existingQuery = ownerId
     ? existingQuery.eq("user_id", ownerId).eq("external_account_id", identity.externalAccountId)
-    : existingQuery.is("user_id", null);
+    : adapter.multiAccount
+      ? existingQuery.is("user_id", null).eq("external_account_id", identity.externalAccountId)
+      : existingQuery.is("user_id", null);
   const { data: existing, error: lookupError } = await existingQuery.maybeSingle();
   if (lookupError) {
     console.error(`[oauth] ${adapter.provider}: no pude buscar la conexion`, lookupError.message);
@@ -305,7 +309,12 @@ export async function saveConnection(params: {
   // El id se decide ANTES de guardar los tokens: el prefijo de Vault de una
   // conexion por persona lo lleva adentro.
   const connectionId = existing?.id ?? randomUUID();
-  const prefix = existing?.vault_secret_prefix ?? vaultPrefixFor(adapter.provider, ownerId ? connectionId : null);
+  // Una conexion por persona o de varias cuentas lleva el id en el prefijo; la
+  // fila que ya existia conserva el suyo (el canal de YouTube conectado antes
+  // de la 00374 sigue en `oauth_google`, sin mover secretos).
+  const prefix =
+    existing?.vault_secret_prefix ??
+    vaultPrefixFor(adapter.provider, ownerId || adapter.multiAccount ? connectionId : null);
 
   const stored = await storeSecret(
     supabase,

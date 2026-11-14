@@ -12,6 +12,7 @@ import { registerPublishing } from "@/lib/publishing/bootstrap";
 import { getAnyPermissionAction, getPermissionAction } from "@/lib/auth/guards";
 import { sectionOfProvider } from "@/lib/integrations/sections";
 import { logAudit } from "@/lib/audit";
+import { removeWorkspaceConnection } from "@/lib/oauth/remove-connection";
 import { storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
@@ -395,6 +396,14 @@ export async function disconnectIntegration(
     }
   }
 
+  // Google (00374): sin cliente OAuth sus conexiones del negocio no sirven
+  // para nada (YouTube y Drive). Se borran con sus tokens: si quedaran, las
+  // cuentas de YouTube seguirian figurando como disponibles.
+  if (provider.id === "google") {
+    const removed = await removeGoogleWorkspaceConnections(workspace.id);
+    if (!removed.ok) return { ok: false, error: `No se pudieron borrar las conexiones de Google: ${removed.error}` };
+  }
+
   // La fila se conserva desactivada: guarda el historial de cuando estuvo
   // conectada y la config (remitente, modelo) para no retipearla al reconectar.
   const { error } = await supabase
@@ -430,6 +439,23 @@ export async function disconnectIntegration(
 
   revalidatePath(INTEGRATIONS_PATH);
   return warnings.length ? { ok: true, warnings } : { ok: true };
+}
+
+/** Los canales de YouTube y el Drive del negocio, con sus tokens (00374). */
+async function removeGoogleWorkspaceConnections(workspaceId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const service = await createServiceClient();
+  const { data, error } = await service
+    .from("oauth_connections")
+    .select("id, vault_secret_prefix")
+    .eq("workspace_id", workspaceId)
+    .is("user_id", null)
+    .in("provider", ["google", "google_drive"]);
+  if (error) return { ok: false, error: error.message };
+  for (const row of data ?? []) {
+    const removed = await removeWorkspaceConnection(service, workspaceId, row);
+    if (!removed.ok) return removed;
+  }
+  return { ok: true };
 }
 
 /** Avisa en la campana (a Owner y Admin) que agentes quedaron sin IA despues de desconectar una. No lanza. */

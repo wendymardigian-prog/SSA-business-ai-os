@@ -1,5 +1,6 @@
 /**
- * Conexion con Google, para YouTube (F10).
+ * Conexion con Google, para YouTube (F10). Un negocio puede conectar varios
+ * canales (00374): cada autorizacion trae el canal que se eligio en Google.
  *
  * El negocio crea su propio cliente OAuth en Google Cloud y pega Client ID y
  * Secret; el sistema no tiene una app compartida. Es lo que corresponde: los
@@ -48,6 +49,12 @@ export function googleAuthorizeUrl(params: {
   state: string;
   scopes?: string[];
   loginHint?: string | null;
+  /**
+   * Mostrar siempre el selector de cuenta de Google. Con varios canales de
+   * YouTube (00374) es lo que deja elegir OTRO canal o cuenta de marca: sin
+   * esto, Google entra solo con la sesion abierta y vuelve el mismo canal.
+   */
+  selectAccount?: boolean;
 }): string {
   const url = new URL(AUTHORIZE);
   url.searchParams.set("client_id", params.clientId);
@@ -55,7 +62,7 @@ export function googleAuthorizeUrl(params: {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", (params.scopes ?? GOOGLE_SCOPES).join(" "));
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
+  url.searchParams.set("prompt", params.selectAccount ? "consent select_account" : "consent");
   url.searchParams.set("include_granted_scopes", "true");
   if (params.loginHint) url.searchParams.set("login_hint", params.loginHint);
   url.searchParams.set("state", params.state);
@@ -205,12 +212,13 @@ export async function googleFetchIdentity(params: {
 
 export const googleAdapter: OAuthAdapter = {
   provider: "google",
-  label: "Google (YouTube)",
+  label: "YouTube",
+  multiAccount: true,
   scopes: GOOGLE_SCOPES,
   requiredScopes: GOOGLE_REQUIRED_SCOPES,
   clientIdSecretName: SECRET_NAMES.googleClientId,
   clientSecretSecretName: SECRET_NAMES.googleClientSecret,
-  authorizeUrl: (p) => googleAuthorizeUrl(p),
+  authorizeUrl: (p) => googleAuthorizeUrl({ ...p, selectAccount: true }),
   exchangeCode: googleExchangeCode,
   fetchIdentity: googleFetchIdentity,
   refresh: googleRefresh,

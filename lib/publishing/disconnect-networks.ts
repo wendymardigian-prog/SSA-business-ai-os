@@ -41,15 +41,23 @@ export interface DisconnectUnscheduleResult {
  */
 export async function unscheduleOnDisconnect(
   service: Db,
-  params: { workspaceId: string; publisher: string; credentialsFor: CredentialsFor },
+  params: {
+    workspaceId: string;
+    publisher: string;
+    credentialsFor: CredentialsFor;
+    /** Solo las de esta cuenta (un canal de YouTube entre varios, 00374). Sin pasar, todas. */
+    socialAccountId?: string | null;
+  },
 ): Promise<DisconnectUnscheduleResult> {
-  const { data: rows } = await service
+  let query = service
     .from("social_posts")
     .select("id, workspace_id, content_post_id, platform, publisher, publisher_ref")
     .eq("workspace_id", params.workspaceId)
     .eq("publisher", params.publisher)
     .in("status", ["scheduled", "uploading"])
     .is("deleted_at", null);
+  if (params.socialAccountId) query = query.eq("social_account_id", params.socialAccountId);
+  const { data: rows } = await query;
 
   let unscheduled = 0;
   let failed = 0;
