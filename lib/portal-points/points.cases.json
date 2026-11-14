@@ -1,0 +1,365 @@
+{
+  "_comment": "Casos de los puntos (F129). Corren contra lib/portal-points/rules.ts y contra app_servicio (verify-points): pointsFor ↔ points_for, dailyCap ↔ points_daily_cap, levelOf ↔ level_of, settings ↔ points_settings_problems.",
+  "pointsFor": [
+    {
+      "name": "programa con los puntos apagados no suma",
+      "event": "lesson",
+      "settings": {},
+      "override": null,
+      "expected": {
+        "points": 0,
+        "group": "cont"
+      }
+    },
+    {
+      "name": "sin configurar nada tampoco suma (nacen apagados)",
+      "event": "step",
+      "settings": null,
+      "override": null,
+      "expected": {
+        "points": 0,
+        "group": "camino"
+      }
+    },
+    {
+      "name": "prendido: el valor por defecto",
+      "event": "step",
+      "settings": {
+        "enabled": true
+      },
+      "override": null,
+      "expected": {
+        "points": 10,
+        "group": "camino"
+      }
+    },
+    {
+      "name": "prendido: el valor del programa",
+      "event": "step",
+      "settings": {
+        "enabled": true,
+        "values": {
+          "step": 15
+        }
+      },
+      "override": null,
+      "expected": {
+        "points": 15,
+        "group": "camino"
+      }
+    },
+    {
+      "name": "el valor del paso gana al del programa",
+      "event": "step",
+      "settings": {
+        "enabled": true,
+        "values": {
+          "step": 15
+        }
+      },
+      "override": 2,
+      "expected": {
+        "points": 2,
+        "group": "camino"
+      }
+    },
+    {
+      "name": "un valor propio en 0 no suma",
+      "event": "submit",
+      "settings": {
+        "enabled": true
+      },
+      "override": 0,
+      "expected": {
+        "points": 0,
+        "group": "act"
+      }
+    },
+    {
+      "name": "un valor propio raro se ignora",
+      "event": "pass",
+      "settings": {
+        "enabled": true
+      },
+      "override": -3,
+      "expected": {
+        "points": 10,
+        "group": "act"
+      }
+    },
+    {
+      "name": "evento desconocido",
+      "event": "otra_cosa",
+      "settings": {
+        "enabled": true
+      },
+      "override": null,
+      "expected": {
+        "points": 0,
+        "group": null
+      }
+    },
+    {
+      "name": "referido que compra",
+      "event": "ref_sale",
+      "settings": {
+        "enabled": true
+      },
+      "override": null,
+      "expected": {
+        "points": 100,
+        "group": "ref"
+      }
+    },
+    {
+      "name": "me gusta recibido",
+      "event": "like",
+      "settings": {
+        "enabled": true,
+        "values": {
+          "like": 2
+        }
+      },
+      "override": null,
+      "expected": {
+        "points": 2,
+        "group": "com"
+      }
+    }
+  ],
+  "dailyCap": [
+    {
+      "name": "publicar: 1 por día",
+      "event": "post",
+      "settings": {
+        "enabled": true
+      },
+      "expected": 1
+    },
+    {
+      "name": "comentar: 10 por día",
+      "event": "comment",
+      "settings": {
+        "enabled": true
+      },
+      "expected": 10
+    },
+    {
+      "name": "tope propio",
+      "event": "comment",
+      "settings": {
+        "enabled": true,
+        "caps": {
+          "comment": 3
+        }
+      },
+      "expected": 3
+    },
+    {
+      "name": "sin tope",
+      "event": "post",
+      "settings": {
+        "enabled": true,
+        "caps": {
+          "post": null
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "los demás no tienen tope",
+      "event": "like",
+      "settings": {
+        "enabled": true
+      },
+      "expected": null
+    }
+  ],
+  "levelOf": [
+    {
+      "name": "arranca en 1",
+      "total": 0,
+      "levels": null,
+      "expected": {
+        "level": 1,
+        "name": "Explorador",
+        "min": 0,
+        "next": 10
+      }
+    },
+    {
+      "name": "justo en el umbral",
+      "total": 60,
+      "levels": null,
+      "expected": {
+        "level": 4,
+        "name": "Builder",
+        "min": 60,
+        "next": 100
+      }
+    },
+    {
+      "name": "el último no tiene próximo",
+      "total": 1200,
+      "levels": null,
+      "expected": {
+        "level": 9,
+        "name": "Leyenda",
+        "min": 600,
+        "next": null
+      }
+    },
+    {
+      "name": "niveles propios",
+      "total": 5,
+      "levels": [
+        {
+          "name": "A",
+          "min": 0
+        },
+        {
+          "name": "B",
+          "min": 5
+        },
+        {
+          "name": "C",
+          "min": 9
+        },
+        {
+          "name": "D",
+          "min": 20
+        },
+        {
+          "name": "E",
+          "min": 30
+        },
+        {
+          "name": "F",
+          "min": 40
+        },
+        {
+          "name": "G",
+          "min": 50
+        },
+        {
+          "name": "H",
+          "min": 60
+        },
+        {
+          "name": "I",
+          "min": 70
+        }
+      ],
+      "expected": {
+        "level": 2,
+        "name": "B",
+        "min": 5,
+        "next": 9
+      }
+    }
+  ],
+  "settings": [
+    {
+      "name": "sin puntos",
+      "points": null,
+      "expected": []
+    },
+    {
+      "name": "prendido con valores y topes",
+      "points": {
+        "enabled": true,
+        "values": {
+          "step": 12,
+          "like": 0
+        },
+        "caps": {
+          "post": 2,
+          "comment": null
+        },
+        "ranking": {
+          "visible": true
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "valor fuera de rango",
+      "points": {
+        "values": {
+          "step": -1
+        }
+      },
+      "expected": [
+        "cada valor de puntos va de 0 a 10.000"
+      ]
+    },
+    {
+      "name": "evento desconocido en los valores",
+      "points": {
+        "values": {
+          "nada": 3
+        }
+      },
+      "expected": [
+        "cada valor de puntos va de 0 a 10.000"
+      ]
+    },
+    {
+      "name": "niveles que no crecen",
+      "points": {
+        "levels": [
+          {
+            "name": "A",
+            "min": 0
+          },
+          {
+            "name": "B",
+            "min": 5
+          },
+          {
+            "name": "C",
+            "min": 5
+          },
+          {
+            "name": "D",
+            "min": 20
+          },
+          {
+            "name": "E",
+            "min": 30
+          },
+          {
+            "name": "F",
+            "min": 40
+          },
+          {
+            "name": "G",
+            "min": 50
+          },
+          {
+            "name": "H",
+            "min": 60
+          },
+          {
+            "name": "I",
+            "min": 70
+          }
+        ]
+      },
+      "expected": [
+        "los 9 niveles necesitan nombre y un mínimo que crezca, empezando en 0"
+      ]
+    },
+    {
+      "name": "clave desconocida y prendido raro",
+      "points": {
+        "enabled": "si",
+        "otra": 1
+      },
+      "expected": [
+        "clave desconocida: otra",
+        "prender los puntos tiene que ser sí o no"
+      ]
+    }
+  ]
+}

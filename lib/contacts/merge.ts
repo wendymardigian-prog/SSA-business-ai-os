@@ -69,6 +69,8 @@ export const CONTACT_MERGE_EXCLUSIONS: Readonly<Record<string, string>> = {
     "Servicios A1 (00351): las reacciones las reapunta `merge_contacts_hook` (00353); una repetida queda una.", // @plantilla-quitar(servicios)
   "app_servicio_portal.live_attendance": // @plantilla-quitar(servicios)
     "Servicios A1 (00346): la asistencia a las clases en vivo la une `merge_contacts_hook` (S16): si los dos asistieron a la misma fecha, queda una.", // @plantilla-quitar(servicios)
+  "app_servicio_portal.points_ledger": // @plantilla-quitar(servicios)
+    "Servicios A3 (00378): los puntos los une `merge_contacts_hook`: si los dos sumaron por lo mismo, queda una fila.", // @plantilla-quitar(servicios)
   "app_servicio.link_clicks": // @plantilla-quitar(servicios)
     "Servicios A1 (00346): los clics al link de una clase los reapunta `merge_contacts_hook` (S16).", // @plantilla-quitar(servicios)
 };

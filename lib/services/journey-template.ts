@@ -60,6 +60,8 @@ export interface JourneyPhase {
   advance?: (typeof ADVANCE)[number];
   challenge?: Record<string, unknown> | null;
   late_light?: Record<string, unknown> | null;
+  /** F129: puntos al completar la fase (vacío = el valor del programa). */
+  points?: number | null;
   items: JourneyItem[];
 }
 export interface JourneyTemplate {
@@ -81,7 +83,7 @@ export interface JourneyContext {
   programItems?: string[];
 }
 
-const PHASE_KEYS = ["key", "name", "duration_days", "yellow_day", "red_day", "advance", "challenge", "late_light", "items"];
+const PHASE_KEYS = ["key", "name", "duration_days", "yellow_day", "red_day", "advance", "challenge", "late_light", "points", "items"];
 const ITEM_KEYS = [
   "key", "kind", "name", "description", "required", "assignee", "assignee_user_id", "visible_to_client", "portal_button",
   "ref", "due_rule", "light", "recurrence", "late", "reminders",
@@ -452,6 +454,8 @@ export function validateJourneyTemplate(template: unknown, ctx: JourneyContext =
         if (!(isInt(l.yellow_at) && l.yellow_at >= 1 && isInt(l.red_at) && l.red_at >= l.yellow_at)) p.push(`«${label}»: el rojo por entregas tiene que ser igual o mayor que el amarillo`);
       }
     }
+    // F129: «Puntos al completarlo» de la fase.
+    if (has(ph, "points") && ph.points !== null && !(isInt(ph.points) && ph.points >= 0 && ph.points <= 10000)) p.push(`«${label}»: los puntos tienen que ser un número entero de 0 a 10.000`);
     if (!Array.isArray(ph.items)) {
       p.push(`«${label}»: faltan los pasos`);
       continue;
@@ -492,6 +496,9 @@ export function validateJourneyTemplate(template: unknown, ctx: JourneyContext =
       p.push(...recurrenceProblems(it, nm));
       p.push(...lateProblems(it, nm));
       p.push(...crossRefProblems(it, nm, key, allPhaseKeys, allItemKeys));
+      // F129: «Puntos al completarlo» del paso (en un paso que se repite, vale por cada repetición).
+      const rp = isObj(it.ref) ? (it.ref as Record<string, unknown>) : null;
+      if (rp && has(rp, "points") && rp.points !== null && !(isInt(rp.points) && rp.points >= 0 && rp.points <= 10000)) p.push(`«${nm}»: los puntos tienen que ser un número entero de 0 a 10.000`);
       const light = it.light;
       if (light !== null && light !== undefined) {
         if (!isObj(light) || !nonNegIntOrNull(light.yellow_after_days) || !nonNegIntOrNull(light.red_after_days)) {
