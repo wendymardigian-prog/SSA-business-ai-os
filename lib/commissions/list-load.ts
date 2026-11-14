@@ -41,7 +41,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const LIGHT_COLUMNS = "id, kind, role, user_id, payment_id, sale_id, rule_id, amount, base_amount, paid_on, available_on, expense_id, voided_at, created_at";
 const EXTRA_COLUMNS = "id, rule_snapshot, attribution_snapshot, notes, void_reason";
-const DETAIL_COLUMNS = `${LIGHT_COLUMNS}, rule_snapshot, attribution_snapshot, attribution_touch_id, currency, notes, void_reason, voided_by, created_by, updated_at`;
+const DETAIL_COLUMNS = `${LIGHT_COLUMNS}, contact_id, rule_snapshot, attribution_snapshot, attribution_touch_id, currency, notes, void_reason, voided_by, created_by, updated_at`;
 
 const chunk = <T>(list: readonly T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -376,6 +376,8 @@ export interface CommissionDetail {
   role: string | null;
   roleName: string | null;
   userId: string | null;
+  /** El contacto afiliado que cobra (F124), si es de un contacto y no de alguien del equipo. */
+  payeeContactId?: string | null;
   userName: string | null;
   amountCents: number;
   baseCents: number | null;
@@ -486,6 +488,7 @@ export async function loadCommissionDetail(ctx: Ctx, id: string): Promise<Commis
     role: c.role,
     roleName: c.role ? settings?.roles.find((r) => r.key === c.role)?.name ?? c.role : null,
     userId: scope === "all" || c.user_id === ctx.user.id ? c.user_id : null,
+    payeeContactId: scope === "all" ? ((c as { contact_id?: string | null }).contact_id ?? null) : null,
     userName: showPerson(c.user_id),
     amountCents: toCents(c.amount),
     baseCents: c.base_amount === null || c.base_amount === undefined ? null : toCents(c.base_amount),
