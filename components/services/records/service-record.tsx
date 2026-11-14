@@ -157,13 +157,26 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     );
   }
 
+  // F128: los últimos resúmenes semanales que se le mandaron (del registro de emails que ya existe).
+  const digestSends = hasPortal
+    ? (((await service.from("email_log").select("created_at, status").eq("workspace_id", workspace.id).eq("contact_id", s.contact_id).eq("kind", "portal_digest").order("created_at", { ascending: false }).limit(3)).data ?? []) as Array<{ created_at: string; status: string }>)
+    : [];
+  const sendFmt = new Intl.DateTimeFormat("es", { timeZone, day: "numeric", month: "short" });
   const accesses = hasPortal ? (
-    <ServiceAccessesPanel
-      serviceId={s.id}
-      rows={accessViewRows(accessRows, s.product_id, new Date().toISOString(), timeZone)}
-      pending={variantPortal.enabled && s.status === "active" ? pendingSections(variantPortal.sections ?? [], programSections(prod?.portal_settings), accessRows, s.product_id) : []}
-      canManage={ctx.can("services.access")}
-    />
+    <>
+      <ServiceAccessesPanel
+        serviceId={s.id}
+        rows={accessViewRows(accessRows, s.product_id, new Date().toISOString(), timeZone)}
+        pending={variantPortal.enabled && s.status === "active" ? pendingSections(variantPortal.sections ?? [], programSections(prod?.portal_settings), accessRows, s.product_id) : []}
+        canManage={ctx.can("services.access")}
+      />
+      <p className="mt-3 text-xs text-muted-foreground">
+        Resumen semanal por email:{" "}
+        {digestSends.length === 0
+          ? "todavía no se le mandó ninguno."
+          : digestSends.map((d) => `${sendFmt.format(new Date(d.created_at))} (${d.status === "sent" || d.status === "delivered" ? "enviado" : d.status === "skipped_not_configured" ? "sin Resend" : d.status})`).join(" · ")}
+      </p>
+    </>
   ) : null;
 
   const toLocal = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));

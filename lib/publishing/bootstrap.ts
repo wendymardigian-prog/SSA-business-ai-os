@@ -34,6 +34,7 @@ import { registerDesignerHandlers } from "@/lib/jobs/handlers/designer"; // @pla
 import { loadModuleDesignExtensions } from "@/lib/designer/module-extensions"; // @plantilla-quitar(disenador)
 import { registerSvcCertificateHandler } from "@/lib/jobs/handlers/svc-certificate"; // @plantilla-quitar(servicios)
 import { registerSvcDailyHandler } from "@/lib/jobs/handlers/svc-daily"; // @plantilla-quitar(servicios)
+import { registerPortalDigestHandler } from "@/lib/jobs/handlers/portal-digest"; // @plantilla-quitar(servicios)
 import { registerCallMissingRecordingHandler } from "@/lib/jobs/handlers/call-missing-recording"; // @plantilla-quitar(servicios)
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
@@ -133,6 +134,7 @@ export function registerPublishing(): void {
   loadModuleDesignExtensions(); // @plantilla-quitar(disenador)
   registerSvcCertificateHandler(); // @plantilla-quitar(servicios)
   registerSvcDailyHandler(); // @plantilla-quitar(servicios)
+  registerPortalDigestHandler(); // @plantilla-quitar(servicios)
   registerCallMissingRecordingHandler(); // @plantilla-quitar(servicios)
 
   // Mejoras de Chat: pasar a texto las notas de voz, para que el agente sepa

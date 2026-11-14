@@ -6,9 +6,16 @@ Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.11 (F126 a F130 y
 |---|---|---|
 | `00375_activity_submission_limits` | F126: `superseded`, `submission_plan`, límites en el enganche, revisar solo la última | Ensayada en producción en una transacción que se deshizo sola (18/18 casos, comportamiento y «sin límites como antes»). **Aplicada y registrada** el 14/11/2026 UTC (versión `20261114185102`), con el backup del 14/11 09:27 UTC confirmado. Después: CHECK con `superseded`, `submission_plan` solo del servidor, 0 filas reemplazadas, huella de `submit_form_response` igual (`78a358d5…`) |
 | `00376_challenge_generic` | F127: reglas para aceptar, anclas nuevas de la repetición, sin adelantar y días de gracia, repeticiones no obligatorias, control semanal (con «trabado»), fecha límite para empezar, certificado según si llegó a tiempo | Probada antes en local (PGlite: 75/75 casos del camino, 10/10 repeticiones, 9/9 ventana, 10/10 atraso, 3/3 semanas, 4/4 fecha límite) y ensayada en producción en una transacción que se deshizo sola (los 4 caminos validan igual, 10/10 casos viejos de repeticiones, comportamiento con un servicio real). **Aplicada y registrada** el 14/11/2026 UTC. Después: SV004 para una sesión que intenta empezar como estudiante; permisos de la sesión iguales que antes |
-| `00377` avisos y días activos | F128, decisión 475 | Pendiente |
+| `00377_portal_notifications` | F128 y decisión 475: 3 columnas en `portal_accounts`, preferencias, días activos, «Para hoy» y «Novedades», a quién le toca el resumen y qué lleva; `notifications` en los ajustes del programa | Probada en local (PGlite: 10/10 casos y la validación) y ensayada en producción (5/5 productos validan igual; 0 destinatarios con el programa apagado; prenderlo y apagarlo en Perfil funciona). **Aplicada y registrada** el 14/11/2026 UTC. Después: 0 programas con el resumen prendido |
 | `00378`/`00379` puntos | F129 | Pendiente |
 | `00380` lecturas | F130 | Pendiente |
+
+## F128 · Avisos del estudiante y resumen semanal
+- Gemelas `notificationPrefs` y `activeDaysPlan` (lib/portal-notify/rules.ts, `rules.cases.json`); `todayDueView` y `weeklyDigestView` copiadas del portal con sus tests; `digest.ts` (secciones, HTML y lunes 8:00 en la zona del estudiante).
+- Job `portal_digest`: lo encola `svc_daily` los lunes (uno por persona y programa, a las 8:00 de su zona); al correr vuelve a mirar que el programa lo tenga prendido y que la persona no lo haya apagado; sale con el Resend del negocio (sin Resend queda «sin Resend» en el registro de emails).
+- Portal › programa › Ajustes: «Avisos por email a los estudiantes» (Resumen semanal, **nace apagado**). Ficha del servicio: los últimos resúmenes enviados, en Accesos al portal.
+- Para B2: `portal_touch_active_day`, `portal_save_notification_prefs`, `portal_mark_notifications_seen` y `portal_notifications_view` (solo servidor).
+- **Falta de F128:** el envío de «Lo que vence hoy» por email (la clave `due_today_email` ya existe; el interruptor se muestra cuando tenga su envío) y elegir la plantilla del diseñador de emails para el resumen (hoy sale con un HTML simple).
 
 ## F127 · Reto genérico (base y reglas)
 - Gemelas en `lib/services/challenge.ts` (`recurrenceWindow`, `latePlan`, `challengeWeeks`, `startByDate`, `certificateTemplatePick`) con `challenge.cases.json`; validación del camino en `journey-template.ts` (+19 casos en `journey-template.cases.json`); `occurrenceDates` con `item_completed` y `max_days` (+4 casos en `recurrence.cases.json`, los 6 viejos iguales).

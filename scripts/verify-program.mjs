@@ -623,6 +623,18 @@ try {
       (c) => `app_servicio.svc_occurrence_dates(${jlit(c.recurrence)}, ${lit(c.start)}::date, ${lit(c.phaseEnd)}::date, ${lit(c.serviceEnd)}::date, ${lit(c.upTo)}::date)`, (c) => c.expected);
     runA3(json("lib/services/journey-template.cases.json").cases, "validate_journey_template (con el Reto)", (c) => `app_servicio.validate_journey_template(${jlit(c.template)}, NULL)`, (c) => c.expected);
   }
+  // Servicios A3 · F128: avisos del estudiante (00377).
+  if (run("a3") && sql(`SELECT to_regprocedure('app_servicio.portal_notification_prefs(jsonb)') IS NOT NULL ok`)[0]?.ok === true) {
+    console.log("\na3 · Avisos del estudiante (F128)");
+    const nc = json("lib/portal-notify/rules.cases.json");
+    const got = sql(`SELECT jsonb_build_array(${nc.prefs.map((c) => `app_servicio.portal_notification_prefs(${jlit(c.saved)})`).join(", ")}) AS r`)[0]?.r ?? [];
+    const bad = nc.prefs.filter((c, i) => !eq(got[i], c.expected)).map((c) => c.name);
+    check(bad.length === 0, `portal_notification_prefs: los ${nc.prefs.length} casos dan lo mismo que en TypeScript`, bad.join(" | "));
+    const days = sql(`SELECT jsonb_build_array(${nc.activeDays.map((c) => `(SELECT to_jsonb(array_agg(to_char(d, 'YYYY-MM-DD') ORDER BY d)) FROM unnest(app_servicio.portal_active_days_plan(${lit(`{${c.days.join(",")}}`)}::date[], ${lit(c.today)}::date)) d)`).join(", ")}) AS r`)[0]?.r ?? [];
+    const badD = nc.activeDays.filter((c, i) => !eq(days[i] ?? null, c.expected)).map((c) => c.name);
+    check(badD.length === 0, `portal_active_days_plan: los ${nc.activeDays.length} casos dan lo mismo que en TypeScript`, badD.join(" | "));
+    check(sql(`SELECT count(*)::int n FROM public.products WHERE portal_settings #> '{notifications,weekly_digest}' = 'true'::jsonb AND name NOT LIKE 'zz-test%'`)[0]?.n === 0, "el resumen semanal sigue apagado en todos los programas (se prende con el portal en línea)");
+  }
 
   if (run("x") && sql(`SELECT to_regprocedure('app_servicio.merge_contacts_hook(uuid,uuid)') IS NOT NULL ok`)[0]?.ok === true) {
     console.log("\nx · Fusión de contactos con datos del módulo (F89)");

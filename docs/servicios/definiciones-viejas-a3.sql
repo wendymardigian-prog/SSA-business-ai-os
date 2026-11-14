@@ -628,3 +628,84 @@ BEGIN
   RETURN n;
 END;
 $$;
+
+-- ── 00377 ──────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.validate_program_portal_settings(p jsonb, p_product_id uuid DEFAULT NULL)
+RETURNS text[]
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v text[] := ARRAY[]::text[];
+  k text; t jsonb; c jsonb; sp jsonb; a jsonb;
+  v_keys text[] := ARRAY[]::text[];
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN RETURN ARRAY['la configuración tiene que ser un objeto']; END IF;
+  v := v || app_servicio.unknown_keys(p, ARRAY['v','sections','terms','community','affiliates','assistant']);
+  IF p ? 'v' AND p -> 'v' <> '1'::jsonb THEN v := v || 'versión desconocida'::text; END IF;
+  IF p ? 'sections' THEN
+    IF jsonb_typeof(p -> 'sections') <> 'object' THEN v := v || 'las secciones no son válidas'::text;
+    ELSE
+      FOR k IN SELECT key FROM jsonb_object_keys(p -> 'sections') WITH ORDINALITY AS t(key, ord) ORDER BY ord LOOP
+        IF NOT COALESCE(k = ANY (ARRAY['program','calendar','challenge','certificate','assistant','community','affiliates','fame','projects']), false) THEN v := v || ('sección desconocida: ' || k);
+        ELSIF NOT COALESCE(k = ANY (ARRAY['program','calendar','challenge','certificate','assistant','community','affiliates']), false) THEN v := v || 'Todavía no está disponible'::text;
+        ELSIF jsonb_typeof(p -> 'sections' -> k) <> 'boolean' THEN v := v || (k || ': tiene que ser sí o no');
+        END IF;
+      END LOOP;
+    END IF;
+  END IF;
+  IF p ? 'terms' THEN
+    t := p -> 'terms';
+    IF jsonb_typeof(t) <> 'object' THEN v := v || 'los términos no son válidos'::text;
+    ELSE
+      v := v || app_servicio.unknown_keys(t, ARRAY['enabled','form_id','ask_again_on_change']);
+      IF t -> 'enabled' = 'true'::jsonb AND NOT app_servicio.j_uuid(t -> 'form_id') THEN v := v || 'cargá los términos antes de prenderlos'::text; END IF;
+    END IF;
+  END IF;
+  IF p ? 'community' THEN
+    c := p -> 'community';
+    IF jsonb_typeof(c) <> 'object' THEN v := v || 'la comunidad no es válida'::text;
+    ELSE
+      v := v || app_servicio.unknown_keys(c, ARRAY['lesson_comments','spaces']);
+      IF c ? 'spaces' THEN
+        IF jsonb_typeof(c -> 'spaces') <> 'array' THEN v := v || 'los espacios no son válidos'::text;
+        ELSE
+          FOR sp IN SELECT x FROM jsonb_array_elements(c -> 'spaces') x LOOP
+            IF jsonb_typeof(sp) <> 'object' OR jsonb_typeof(sp -> 'key') IS DISTINCT FROM 'string' OR (sp ->> 'key') !~ '^[a-z0-9_]{1,40}$'
+               OR jsonb_typeof(sp -> 'name') IS DISTINCT FROM 'string' OR btrim(sp ->> 'name') = '' THEN
+              v := v || 'hay un espacio sin nombre o con una clave inválida'::text;
+              CONTINUE;
+            END IF;
+            IF (sp ->> 'key') = ANY (v_keys) THEN v := v || format('el espacio %s está repetido', sp ->> 'key'); END IF;
+            v_keys := v_keys || (sp ->> 'key');
+          END LOOP;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+  IF p ? 'affiliates' THEN
+    a := p -> 'affiliates';
+    IF jsonb_typeof(a) <> 'object' OR (a ? 'visible_link_keys' AND NOT (jsonb_typeof(a -> 'visible_link_keys') = 'array'
+       AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(a -> 'visible_link_keys') x WHERE jsonb_typeof(x) <> 'string' OR (x #>> '{}') !~ '^lk_[a-z0-9]{6}$'))) THEN
+      v := v || 'los links de afiliados no son válidos'::text;
+    END IF;
+  END IF;
+  IF p ? 'assistant' THEN
+    a := p -> 'assistant';
+    IF jsonb_typeof(a) <> 'object' THEN v := v || 'el asistente no es válido'::text;
+    ELSE
+      v := v || app_servicio.unknown_keys(a, ARRAY['excluded_kb_ids','monthly_limit_usd_per_student','credits_per_usd','credits_name','suggestions']);
+      IF a ? 'monthly_limit_usd_per_student' AND NOT (jsonb_typeof(a -> 'monthly_limit_usd_per_student') = 'number'
+         AND app_servicio.j_num(a -> 'monthly_limit_usd_per_student') BETWEEN 0 AND 10000) THEN
+        v := v || 'el límite por estudiante va de 0 a 10.000 dólares'::text;
+      END IF;
+      IF a ? 'credits_per_usd' AND NOT (app_servicio.j_int(a -> 'credits_per_usd') AND app_servicio.j_num(a -> 'credits_per_usd') BETWEEN 1 AND 100000) THEN
+        v := v || 'los créditos por dólar tienen que ser un número entero positivo'::text;
+      END IF;
+    END IF;
+  END IF;
+  RETURN v;
+END;
+$$;

@@ -290,6 +290,9 @@ export const MODULES = {
       "lib/actions/tutor.ts",
       "lib/jobs/handlers/svc-certificate.ts",
       "lib/jobs/handlers/svc-daily.ts",
+      // Servicios A3 (F128): avisos del estudiante y el resumen semanal.
+      "lib/portal-notify",
+      "lib/jobs/handlers/portal-digest.ts",
       "lib/flow-engine/nodes/service-actions.ts",
       "lib/flow-engine/nodes/service-action-detail.ts",
       "lib/flow-engine/nodes/service-action-detail.test.ts",

@@ -2,6 +2,13 @@
 
 Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.11 (F126 a F130 y el resto de F124) y `claude/v12/cambios-panel-v12-reto-avisos.md`. Rama `feat/servicios-a3`.
 
+## Decisiones de F128 (14/11)
+- **«Novedades» respeta las preferencias** (revisaron su entrega, le contestaron, anuncios): si la apagó, no aparece en la campana ni cuenta para el número. El contenido nuevo siempre aparece. Se miran como mucho 30 días para atrás.
+- **El resumen va por programa**: si tiene dos programas con el resumen prendido, le llegan dos (uno de cada uno), cada lunes a las 8:00 de su zona. Se encola en el barrido diario del negocio del lunes; si ese día el barrido corre después de las 8:00 de la persona, sale apenas se encola.
+- **Sin Resend no sale y queda en el registro de emails** como «sin Resend» (se ve en la ficha del servicio). No se manda un aviso aparte al equipo.
+- **El email del resumen es un HTML simple** con las secciones; elegir una plantilla del diseñador de emails queda para cuando Wendy quiera el diseño final.
+- **«Lo que vence hoy» por email todavía no se manda**: la clave del programa existe (`due_today_email`, apagada) pero el interruptor se muestra cuando tenga su envío.
+
 ## Decisiones de F127 (14/11)
 - **Una repetición se crea solo mientras su fase está abierta y nunca con fecha anterior al inicio de su fase**, aunque el ancla (p. ej. «desde el inicio del servicio») caiga antes. Antes se creaban de golpe las atrasadas. No había ninguna en producción.
 - **Las anclas de siempre sin fecha** (servicio sin fecha de inicio) arrancan con la fase, como antes. **Las nuevas** (fin de otra fase, paso completado) esperan a tener fecha.

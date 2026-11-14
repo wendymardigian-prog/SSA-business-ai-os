@@ -1,0 +1,127 @@
+{
+  "_comment": "Casos de los avisos del estudiante (F128). Corren contra lib/portal-notify/rules.ts y contra app_servicio (verify-program --bloque a3): prefs ↔ portal_notification_prefs, activeDays ↔ portal_active_days_plan.",
+  "prefs": [
+    {
+      "name": "nada guardado: los de por defecto",
+      "saved": {},
+      "expected": {
+        "weekly_digest": true,
+        "due_today_email": false,
+        "review_done": true,
+        "community_reply": true,
+        "announcements": true
+      }
+    },
+    {
+      "name": "apagó el resumen semanal",
+      "saved": {
+        "weekly_digest": false
+      },
+      "expected": {
+        "weekly_digest": false,
+        "due_today_email": false,
+        "review_done": true,
+        "community_reply": true,
+        "announcements": true
+      }
+    },
+    {
+      "name": "prendió el vence hoy por email",
+      "saved": {
+        "due_today_email": true
+      },
+      "expected": {
+        "weekly_digest": true,
+        "due_today_email": true,
+        "review_done": true,
+        "community_reply": true,
+        "announcements": true
+      }
+    },
+    {
+      "name": "claves desconocidas y valores raros no cuentan",
+      "saved": {
+        "otra": false,
+        "review_done": "no",
+        "announcements": false
+      },
+      "expected": {
+        "weekly_digest": true,
+        "due_today_email": false,
+        "review_done": true,
+        "community_reply": true,
+        "announcements": false
+      }
+    },
+    {
+      "name": "algo que no es un objeto",
+      "saved": [
+        1,
+        2
+      ],
+      "expected": {
+        "weekly_digest": true,
+        "due_today_email": false,
+        "review_done": true,
+        "community_reply": true,
+        "announcements": true
+      }
+    }
+  ],
+  "activeDays": [
+    {
+      "name": "primer día",
+      "days": [],
+      "today": "2026-11-14",
+      "expected": [
+        "2026-11-14"
+      ]
+    },
+    {
+      "name": "hoy ya estaba: no se escribe",
+      "days": [
+        "2026-11-13",
+        "2026-11-14"
+      ],
+      "today": "2026-11-14",
+      "expected": null
+    },
+    {
+      "name": "suma hoy y ordena",
+      "days": [
+        "2026-11-10",
+        "2026-11-02"
+      ],
+      "today": "2026-11-14",
+      "expected": [
+        "2026-11-02",
+        "2026-11-10",
+        "2026-11-14"
+      ]
+    },
+    {
+      "name": "descarta los de hace más de 180 días",
+      "days": [
+        "2026-05-17",
+        "2026-05-18",
+        "2026-11-01"
+      ],
+      "today": "2026-11-13",
+      "expected": [
+        "2026-05-18",
+        "2026-11-01",
+        "2026-11-13"
+      ]
+    },
+    {
+      "name": "un día futuro (reloj corrido) se descarta",
+      "days": [
+        "2026-11-20"
+      ],
+      "today": "2026-11-14",
+      "expected": [
+        "2026-11-14"
+      ]
+    }
+  ]
+}

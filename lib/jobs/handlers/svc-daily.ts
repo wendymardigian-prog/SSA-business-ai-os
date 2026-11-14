@@ -10,17 +10,26 @@
  */
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { svcRpc } from "@/lib/services/db";
+import { enqueuePortalDigests } from "@/lib/jobs/handlers/portal-digest";
 
 export const SVC_DAILY_JOB = "svc_daily";
 
 const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
 export async function runSvcDaily({ supabase, job }: JobContext): Promise<void> {
-  const p = (job.payload ?? {}) as { workspace_id?: unknown };
+  const p = (job.payload ?? {}) as { workspace_id?: unknown; local_date?: unknown };
   if (!isUuid(p.workspace_id)) return;
   const res = await svcRpc<{ errors?: string[] }>(supabase, "svc_daily_run", { p_workspace_id: p.workspace_id });
   if (!res.ok) throw new Error(`svc_daily_run: ${res.error.message}`);
   const errors = res.data?.errors ?? [];
+  // A3 (F128): los lunes, el resumen semanal del estudiante (solo los programas que lo tienen prendido).
+  if (typeof p.local_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.local_date)) {
+    try {
+      await enqueuePortalDigests(supabase, p.workspace_id, p.local_date);
+    } catch (e) {
+      errors.push(`portal_digest: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
   if (errors.length > 0) throw new Error(`svc_daily: ${errors.length} paso(s) fallaron: ${errors.map((e) => e.split(":")[0]).join(", ")}`);
 }
 
