@@ -80,6 +80,7 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "payments_overdue_sweep", // @plantilla-quitar(ventas)
       // Servicios A3 (F128): el resumen semanal del estudiante. // @plantilla-quitar(servicios)
       "portal_digest", // @plantilla-quitar(servicios)
+      "portal_due_today", // @plantilla-quitar(servicios)
       // La asignacion automatica de un contacto (B2).
       "sales_contact_eval",
       // Servicios A1 (CE, F67): emitir el certificado al llegar al paso. // @plantilla-quitar(servicios)

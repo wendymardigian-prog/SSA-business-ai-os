@@ -10,7 +10,7 @@
  */
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { svcRpc } from "@/lib/services/db";
-import { enqueuePortalDigests } from "@/lib/jobs/handlers/portal-digest";
+import { enqueuePortalDigests, enqueuePortalDueToday } from "@/lib/jobs/handlers/portal-digest";
 
 export const SVC_DAILY_JOB = "svc_daily";
 
@@ -28,6 +28,12 @@ export async function runSvcDaily({ supabase, job }: JobContext): Promise<void> 
       await enqueuePortalDigests(supabase, p.workspace_id, p.local_date);
     } catch (e) {
       errors.push(`portal_digest: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    // A3 (F128): «Lo que vence hoy» por email, todos los días (solo programas y personas que lo prendieron).
+    try {
+      await enqueuePortalDueToday(supabase, p.workspace_id, p.local_date);
+    } catch (e) {
+      errors.push(`portal_due_today: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   if (errors.length > 0) throw new Error(`svc_daily: ${errors.length} paso(s) fallaron: ${errors.map((e) => e.split(":")[0]).join(", ")}`);
