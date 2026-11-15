@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { BackLink } from "@/components/ui/back-link";
 import { ProgramSettingsPanel } from "@/components/services/portal/program-settings-panel";
 import { ProgramTermsPanel } from "@/components/services/portal/program-terms-panel";
+import { ProgramNotificationsPanel } from "@/components/services/portal/program-notifications-panel";
 import type { PortalFormInitial } from "@/components/services/portal/portal-form-editor";
 import { createServiceClient } from "@/lib/supabase/server";
 
@@ -62,6 +63,17 @@ export default async function PortalProgramSettingsPage({ params }: { params: Pr
               Términos al entrar
             </h2>
             <ProgramTermsPanel productId={p.id} terms={terms} rev={p.portal_settings_rev ?? 0} form={termsForm} canEdit={canEdit} />
+          </section>
+          <section aria-labelledby="avisos" className="space-y-2">
+            <h2 id="avisos" className="text-sm font-semibold">
+              Avisos por email a los estudiantes
+            </h2>
+            <ProgramNotificationsPanel
+              productId={p.id}
+              notifications={((ps as { notifications?: { weekly_digest?: boolean; due_today_email?: boolean } }).notifications ?? {})}
+              rev={p.portal_settings_rev ?? 0}
+              canEdit={canEdit}
+            />
           </section>
           <section aria-labelledby="variantes" className="space-y-2">
             <h2 id="variantes" className="text-sm font-semibold">

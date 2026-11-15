@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
  * cada pestaña la suya. Con el módulo apagado, 404. Se lee con la sesión de quien mira.
  */
 export default async function PortalPage({ searchParams }: { searchParams: Promise<{ tab?: string; estudiante?: string; dias?: string; programa?: string; filtro?: string }> }) {
-  const ctx = await requireAnyPermission(["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "submissions.review", "community.view"]);
+  const ctx = await requireAnyPermission(["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "portal.points", "submissions.review", "community.view"]);
   const { workspace, supabase } = ctx;
   if (!moduleShows("route.portal", { servicesEnabled: isModuleEnabled(workspace as { services_enabled?: boolean | null }) })) notFound();
   const sp = await searchParams;

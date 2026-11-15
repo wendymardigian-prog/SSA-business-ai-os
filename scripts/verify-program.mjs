@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @plantilla-quitar(servicios)
 /**
- * Verificacion del programa del portal y lo que cuelga de el (Servicios A1): bloques pr, ev, ca, ce, co e ia.
+ * Verificacion del programa del portal y lo que cuelga de el (Servicios A1): bloques pr, ev, ca, ce, co, ia y a3 (entregas de actividades, F126).
  *
  * Corre contra la base real con usuarios de verdad: gemelas SQL = TS con los mismos casos, la estructura del arbol
  * (PR001), lo que incluye cada variante, el desbloqueo por persona, el avance que completa modulos y pasos, la RLS por
@@ -593,6 +593,47 @@ try {
     // El Member de sistema ve solo sus contactos (setter, vendedor o asignado): este no es suyo.
     const seesNone = asUser(member.id, `SELECT count(*)::int n FROM public.ai_threads WHERE contact_id = ${lit(cT.id)} AND channel = 'portal'`).row?.n;
     check(seesOwner === 1 && seesNone === 0, "una conversación del portal la lee quien ve el contacto", `${seesOwner} / ${seesNone}`);
+  }
+
+  // Servicios A3 · F126: entregas de actividades (00375).
+  if (run("a3") && sql(`SELECT to_regprocedure('app_servicio.submission_plan(jsonb)') IS NOT NULL ok`)[0]?.ok === true) {
+    console.log("\na3 · Entregas de actividades (F126)");
+    const list = json("lib/program/submission-limits.cases.json").cases;
+    const got = sql(`SELECT jsonb_build_array(${list.map((c) => `app_servicio.submission_plan(${jlit({ limits: c.limits, history: c.history })})`).join(", ")}) AS r`)[0]?.r ?? [];
+    const bad = list.filter((c, i) => !eq(got[i], c.expected)).map((c) => c.name);
+    check(bad.length === 0, `submission_plan: los ${list.length} casos dan lo mismo que en TypeScript`, bad.slice(0, 3).join(" | "));
+    check(sql(`SELECT pg_get_constraintdef(oid) LIKE '%superseded%' ok FROM pg_constraint WHERE conname = 'form_submissions_review_status_check'`)[0]?.ok === true, "review_status admite 'superseded'");
+    const grants = sql(`SELECT has_function_privilege('anon', 'app_servicio.submission_plan(jsonb)', 'EXECUTE') a, has_function_privilege('authenticated', 'app_servicio.submission_plan(jsonb)', 'EXECUTE') u`)[0];
+    check(grants && !grants.a && !grants.u, "submission_plan es solo del servidor");
+  }
+  // Servicios A3 · F127: Reto genérico (00376). Los mismos casos que lib/services/challenge.test.ts.
+  if (run("a3") && sql(`SELECT to_regprocedure('app_servicio.svc_recurrence_window(jsonb,jsonb)') IS NOT NULL ok`)[0]?.ok === true) {
+    console.log("\na3 · Reto genérico (F127)");
+    const ch = json("lib/services/challenge.cases.json");
+    const runA3 = (list, label, toSql, expected) => {
+      const got = sql(`SELECT jsonb_build_array(${list.map((c) => `to_jsonb(${toSql(c)})`).join(", ")}) AS r`)[0]?.r ?? [];
+      const bad = list.filter((c, i) => !eq(got[i] ?? null, expected(c))).map((c) => c.name);
+      check(bad.length === 0, `${label}: los ${list.length} casos dan lo mismo que en TypeScript`, bad.slice(0, 3).join(" | "));
+    };
+    runA3(ch.window, "svc_recurrence_window", (c) => `app_servicio.svc_recurrence_window(${jlit(c.recurrence)}, ${jlit(c.anchors)})`, (c) => c.expected);
+    runA3(ch.late, "svc_late_plan", (c) => `app_servicio.svc_late_plan(${c.late === null ? "NULL" : jlit(c.late)}, ${lit(c.occursOn)}::date, ${lit(c.dueOn)}::date, ${lit(c.now)}::timestamp)`, (c) => c.expected);
+    runA3(ch.weeks, "svc_challenge_weeks_plan", (c) => `app_servicio.svc_challenge_weeks_plan(${jlit(c.input)})`, (c) => c.expected);
+    runA3(ch.startBy, "svc_challenge_start_by", (c) => `to_char(app_servicio.svc_challenge_start_by(${c.startBy === null ? "NULL" : jlit(c.startBy)}, ${lit(c.serviceStart)}::date, ${lit(c.serviceCreated)}::date), 'YYYY-MM-DD')`, (c) => c.expected);
+    runA3(json("lib/services/recurrence.cases.json").cases, "svc_occurrence_dates (con item_completed y max_days)",
+      (c) => `app_servicio.svc_occurrence_dates(${jlit(c.recurrence)}, ${lit(c.start)}::date, ${lit(c.phaseEnd)}::date, ${lit(c.serviceEnd)}::date, ${lit(c.upTo)}::date)`, (c) => c.expected);
+    runA3(json("lib/services/journey-template.cases.json").cases, "validate_journey_template (con el Reto)", (c) => `app_servicio.validate_journey_template(${jlit(c.template)}, NULL)`, (c) => c.expected);
+  }
+  // Servicios A3 · F128: avisos del estudiante (00377).
+  if (run("a3") && sql(`SELECT to_regprocedure('app_servicio.portal_notification_prefs(jsonb)') IS NOT NULL ok`)[0]?.ok === true) {
+    console.log("\na3 · Avisos del estudiante (F128)");
+    const nc = json("lib/portal-notify/rules.cases.json");
+    const got = sql(`SELECT jsonb_build_array(${nc.prefs.map((c) => `app_servicio.portal_notification_prefs(${jlit(c.saved)})`).join(", ")}) AS r`)[0]?.r ?? [];
+    const bad = nc.prefs.filter((c, i) => !eq(got[i], c.expected)).map((c) => c.name);
+    check(bad.length === 0, `portal_notification_prefs: los ${nc.prefs.length} casos dan lo mismo que en TypeScript`, bad.join(" | "));
+    const days = sql(`SELECT jsonb_build_array(${nc.activeDays.map((c) => `(SELECT to_jsonb(array_agg(to_char(d, 'YYYY-MM-DD') ORDER BY d)) FROM unnest(app_servicio.portal_active_days_plan(${lit(`{${c.days.join(",")}}`)}::date[], ${lit(c.today)}::date)) d)`).join(", ")}) AS r`)[0]?.r ?? [];
+    const badD = nc.activeDays.filter((c, i) => !eq(days[i] ?? null, c.expected)).map((c) => c.name);
+    check(badD.length === 0, `portal_active_days_plan: los ${nc.activeDays.length} casos dan lo mismo que en TypeScript`, badD.join(" | "));
+    check(sql(`SELECT count(*)::int n FROM public.products WHERE portal_settings #> '{notifications,weekly_digest}' = 'true'::jsonb AND name NOT LIKE 'zz-test%'`)[0]?.n === 0, "el resumen semanal sigue apagado en todos los programas (se prende con el portal en línea)");
   }
 
   if (run("x") && sql(`SELECT to_regprocedure('app_servicio.merge_contacts_hook(uuid,uuid)') IS NOT NULL ok`)[0]?.ok === true) {

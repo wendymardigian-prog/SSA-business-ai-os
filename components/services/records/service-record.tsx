@@ -12,6 +12,9 @@ const civilShortDate = (d: string) => civilShortFmt.format(new Date(`${d}T12:00:
 import { ServiceAccessesPanel } from "@/components/services/clients/service-accesses-panel";
 import { loadServiceAccesses } from "@/lib/portal-admin/load";
 import { ServiceCertificateCard, type CertificateView } from "@/components/services/clients/service-certificate-card";
+import { ServiceChallengeCard, type ChallengeViewData } from "./service-challenge-card";
+import { PortalActivityChart, ServicePointsHistory, type PointsHistoryRow } from "./service-points-block";
+import type { PointsDaily } from "@/lib/actions/points";
 import { serviceCertificates } from "@/lib/services/certificate-core";
 import { certificateState } from "@/lib/services/certificate";
 import { loadDesignLinks } from "@/lib/designer/public-links";
@@ -90,7 +93,16 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
   let assistantInfo: { conversations: number; lastAt: string | null } | null = null;
   let reviews: Awaited<ReturnType<typeof loadReviewItems>> = [];
   let assistantCard: React.ReactNode = null;
+  let pointsDaily: PointsDaily | null = null;
+  let pointsRows: PointsHistoryRow[] = [];
   if (hasPortal) {
+    // F129/F130.4: el gráfico y el historial (00380). Si la lectura falla, la ficha se ve igual, sin esas partes.
+    const [daily, hist] = await Promise.all([
+      svcRpc<PointsDaily | null>(supabase, "svc_points_daily", { p_service_id: s.id, p_days: 30 }),
+      svcRpc<PointsHistoryRow[]>(supabase, "svc_points_history", { p_service_id: s.id, p_limit: 100 }),
+    ]);
+    pointsDaily = daily.ok ? daily.data : null;
+    pointsRows = hist.ok ? hist.data ?? [] : [];
     const [cls, att, rev] = await Promise.all([
       svcRpc<{ items: ClassroomItem[] }>(supabase, "service_classroom", { p_service_id: s.id }),
       svcRpc<AttendanceOccurrence[]>(supabase, "service_attendance", { p_service_id: s.id }),
@@ -124,6 +136,13 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     }
   }
 
+  // F127: el bloque Reto, solo si el camino tiene una fase Reto (la lectura mira el alcance de la sesión).
+  let challengeCard: React.ReactNode = null;
+  if (phases.some((ph) => !!(ph.challenge && (ph.challenge as { enabled?: boolean }).enabled))) {
+    const ch = await svcRpc<ChallengeViewData | null>(supabase, "svc_challenge_view", { p_service_id: s.id });
+    if (ch.ok && ch.data) challengeCard = <ServiceChallengeCard data={ch.data} today={today} timeZone={timeZone} />;
+  }
+
   // El certificado: las generaciones con este servicio como sujeto (con el cliente de servicio, del negocio de la sesión).
   const live = items.filter((i) => !i.is_recurring_template);
   const hasCertificateStep = live.some((i) => i.kind === "certificate");
@@ -149,13 +168,26 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     );
   }
 
+  // F128: los últimos resúmenes semanales que se le mandaron (del registro de emails que ya existe).
+  const digestSends = hasPortal
+    ? (((await service.from("email_log").select("created_at, status").eq("workspace_id", workspace.id).eq("contact_id", s.contact_id).eq("kind", "portal_digest").order("created_at", { ascending: false }).limit(3)).data ?? []) as Array<{ created_at: string; status: string }>)
+    : [];
+  const sendFmt = new Intl.DateTimeFormat("es", { timeZone, day: "numeric", month: "short" });
   const accesses = hasPortal ? (
-    <ServiceAccessesPanel
-      serviceId={s.id}
-      rows={accessViewRows(accessRows, s.product_id, new Date().toISOString(), timeZone)}
-      pending={variantPortal.enabled && s.status === "active" ? pendingSections(variantPortal.sections ?? [], programSections(prod?.portal_settings), accessRows, s.product_id) : []}
-      canManage={ctx.can("services.access")}
-    />
+    <>
+      <ServiceAccessesPanel
+        serviceId={s.id}
+        rows={accessViewRows(accessRows, s.product_id, new Date().toISOString(), timeZone)}
+        pending={variantPortal.enabled && s.status === "active" ? pendingSections(variantPortal.sections ?? [], programSections(prod?.portal_settings), accessRows, s.product_id) : []}
+        canManage={ctx.can("services.access")}
+      />
+      <p className="mt-3 text-xs text-muted-foreground">
+        Resumen semanal por email:{" "}
+        {digestSends.length === 0
+          ? "todavía no se le mandó ninguno."
+          : digestSends.map((d) => `${sendFmt.format(new Date(d.created_at))} (${d.status === "sent" || d.status === "delivered" ? "enviado" : d.status === "skipped_not_configured" ? "sin Resend" : d.status})`).join(" · ")}
+      </p>
+    </>
   ) : null;
 
   const toLocal = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
@@ -264,6 +296,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
       items: stepItems.filter((i) => i.phaseId === ph.id),
     })),
     reviews: reviews.slice(0, 20),
+    points: pointsDaily && (pointsDaily.enabled || pointsDaily.total !== 0) ? { total: pointsDaily.total, level: pointsDaily.level.level, levelName: pointsDaily.level.name } : null,
   };
 
   // El bloque Reuniones (Servicios A4, F137): con la sesión de quien mira. No depende del portal.
@@ -290,8 +323,15 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
         permissions={ctx.permissions.keys}
         accesses={accesses}
         certificate={certificate}
+        challenge={challengeCard}
         assistantCard={assistantCard}
         meetings={meetings}
+        activity={pointsDaily ? <PortalActivityChart serviceId={s.id} initial={pointsDaily} /> : null}
+        pointsHistory={
+          pointsDaily && (pointsDaily.enabled || pointsRows.length > 0) ? (
+            <ServicePointsHistory serviceId={s.id} rows={pointsRows} enabled={pointsDaily.enabled} canAdjust={ctx.can("portal.points")} userNames={Object.fromEntries(memberLabels(team))} />
+          ) : null
+        }
       />
     </RecordModal>
   );

@@ -27,6 +27,7 @@ import {
 } from "@/lib/forms/list";
 import type { EodVariant } from "@/lib/eod/types";
 import { cn } from "@/lib/utils";
+import { withRef } from "@/lib/affiliates/url"; // @plantilla-quitar(ventas)
 
 const TYPE_HINT: Record<FormType, string> = {
   custom: "Para captar leads: aplicaciones, contacto, registros.",
@@ -46,6 +47,7 @@ export function FormsList({
   publicBase,
   timeZone,
   nowIso,
+  myRefCode = null,
 }: {
   rows: FormListRow[];
   canManage: boolean;
@@ -58,6 +60,8 @@ export function FormsList({
   timeZone: string;
   /** El "ahora" del servidor: el mismo en el servidor y el navegador, asi "hace 2 h" no se desfasa al hidratar. */
   nowIso: string;
+  /** F124: el código de afiliado de quien mira; con él, «Copiar con mi código». */
+  myRefCode?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -101,8 +105,12 @@ export function FormsList({
     });
   }
 
-  function copyLink(row: FormListRow) {
-    const url = `${publicBase}/f/${row.slug}`;
+  function copyLink(row: FormListRow, withCode = false) {
+    const plain = `${publicBase}/f/${row.slug}`;
+    let url = plain;
+    // @plantilla-desde(ventas)
+    if (withCode && myRefCode) url = withRef(plain, myRefCode);
+    // @plantilla-hasta(ventas)
     void navigator.clipboard?.writeText(url).then(
       () => setMessage({ tone: "success", text: "Link copiado" }),
       () => setMessage({ tone: "error", text: "No pude copiar el link. Copialo desde la pestaña Publicar." }),
@@ -238,6 +246,7 @@ export function FormsList({
                         row={row}
                         canManage={canManage}
                         onCopy={() => copyLink(row)}
+                        onCopyWithCode={myRefCode ? () => copyLink(row, true) : undefined}
                         onDuplicate={() => run(() => duplicateForm(row.id), "Duplicado como borrador")}
                         onPause={() => run(() => setFormStatus(row.id, "paused"), "Pausado")}
                         onResume={() => run(() => setFormStatus(row.id, "published"), "Reanudado")}
@@ -360,6 +369,7 @@ function CardMenu({
   row,
   canManage,
   onCopy,
+  onCopyWithCode,
   onDuplicate,
   onPause,
   onResume,
@@ -369,6 +379,7 @@ function CardMenu({
   row: FormListRow;
   canManage: boolean;
   onCopy: () => void;
+  onCopyWithCode?: () => void;
   onDuplicate: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -385,6 +396,11 @@ function CardMenu({
         {row.status === "published" && row.type !== "eod" && (
           <MenuItem icon={<Link2 className="h-4 w-4" />} onClick={onCopy}>
             Copiar link
+          </MenuItem>
+        )}
+        {row.status === "published" && row.type !== "eod" && onCopyWithCode && (
+          <MenuItem icon={<Link2 className="h-4 w-4" />} onClick={onCopyWithCode}>
+            Copiar con mi código
           </MenuItem>
         )}
         {canManage && (

@@ -5,7 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
-import { createProgramItem, reorderProgramItems, saveLessonTranscript, setProgramItemStatus, updateProgramItem, uploadProgramFile, type ProgramUploadKind } from "@/lib/actions/program";
+import { copyProgramItemToProduct, createProgramItem, reorderProgramItems, saveLessonTranscript, setProgramItemStatus, updateProgramItem, uploadProgramFile, type ProgramUploadKind } from "@/lib/actions/program";
 import { buildTree, flattenTree, inactiveDescendants, reorderTree, type ProgramRow, type TreeNode } from "@/lib/program/tree";
 import { LESSON_TYPE_LABELS } from "@/lib/program/lesson";
 import { transcriptFormat } from "@/lib/program/transcript";
@@ -13,10 +13,16 @@ import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 import { PortalFormEditor, type PortalFormInitial } from "./portal-form-editor";
 import { useUrlIntent } from "@/components/ui/use-url-intent";
+import { listFathomForLesson, pickFathomForLesson } from "@/lib/actions/live-sessions";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 
 export interface ContentRow extends ProgramRow {
   /** El formulario de una evaluación o actividad (bloque EV), si ya tiene uno. */
   portalForm?: PortalFormInitial | null;
+  /** «Puntos al entregar / al aprobar» propios (F129); null = los del programa. */
+  points?: PortalFormInitial["points"];
+  /** F46: la grabación de Fathom de una clase de video («Elegir un Fathom»). */
+  source_call_id?: string | null;
   description: string | null;
   required: boolean;
   comments_enabled: boolean;
@@ -47,6 +53,7 @@ export function ProgramContentEditor({
   canManage,
   canActivate,
   commentCounts = {},
+  otherPrograms = [],
 }: {
   productId: string;
   rows: ContentRow[];
@@ -54,6 +61,8 @@ export function ProgramContentEditor({
   canActivate: boolean;
   /** Comentarios sin contestar por clase (F111, «N comentarios nuevos»). */
   commentCounts?: Record<string, number>;
+  /** F50: los otros programas del negocio, para «Copiar a otro programa». */
+  otherPrograms?: Array<{ id: string; name: string }>;
 }) {
   const router = useRouter();
   const tree = useMemo(() => buildTree(rows), [rows]);
@@ -210,13 +219,13 @@ export function ProgramContentEditor({
       )}
 
       {editing && byId.get(editing) && (
-        <ItemDrawer key={editing} productId={productId} item={byId.get(editing)!} canManage={canManage} canActivate={canActivate} onClose={() => setEditing(null)} />
+        <ItemDrawer key={editing} productId={productId} item={byId.get(editing)!} canManage={canManage} canActivate={canActivate} otherPrograms={otherPrograms} onClose={() => setEditing(null)} />
       )}
     </div>
   );
 }
 
-function ItemDrawer({ productId, item, canManage, canActivate, onClose }: { productId: string; item: ContentRow; canManage: boolean; canActivate: boolean; onClose: () => void }) {
+function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, onClose }: { productId: string; item: ContentRow; canManage: boolean; canActivate: boolean; otherPrograms: Array<{ id: string; name: string }>; onClose: () => void }) {
   const router = useRouter();
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description ?? "");
@@ -298,6 +307,18 @@ function ItemDrawer({ productId, item, canManage, canActivate, onClose }: { prod
             <input className={fieldInput} value={videoUrl} disabled={disabled} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://" />
           </label>
         )}
+        {item.kind === "lesson" && item.lesson_type === "video" && canManage && (
+          <FathomPicker
+            productId={productId}
+            itemId={item.id}
+            linked={!!item.source_call_id}
+            onPicked={(url, warning) => {
+              setVideoUrl(url);
+              setMsg({ kind: warning ? "error" : "ok", text: warning ? `Guardado. ${warning}` : "Listo: la clase usa esa grabación de Fathom y su transcripción." });
+              router.refresh();
+            }}
+          />
+        )}
         {item.kind === "lesson" && item.lesson_type === "html" && (
           <div className="space-y-1">
             <label className="block text-xs text-muted-foreground">
@@ -315,7 +336,7 @@ function ItemDrawer({ productId, item, canManage, canActivate, onClose }: { prod
               kind={item.lesson_type}
               itemId={item.id}
               canEdit={canManage}
-              initial={item.portalForm ?? { name: item.title, intro: "", fields: [], quiz: {}, grading: { enabled: false } }}
+              initial={item.portalForm ?? { name: item.title, intro: "", fields: [], quiz: {}, grading: { enabled: false }, points: item.points ?? null }}
             />
           </fieldset>
         )}
@@ -409,6 +430,10 @@ function ItemDrawer({ productId, item, canManage, canActivate, onClose }: { prod
           </fieldset>
         )}
 
+        {canManage && item.kind !== "submodule" && otherPrograms.length > 0 && (
+          <CopyToProgram productId={productId} itemId={item.id} programs={otherPrograms} onDone={(text) => setMsg({ kind: "ok", text })} onError={(text) => setMsg({ kind: "error", text })} />
+        )}
+
         {msg && (
           <p role="status" className={msg.kind === "ok" ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>
             {msg.text}
@@ -441,6 +466,121 @@ function ItemDrawer({ productId, item, canManage, canActivate, onClose }: { prod
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** «Copiar a otro programa» (F50): copias nuevas e inactivas en el programa elegido. */
+function CopyToProgram({ productId, itemId, programs, onDone, onError }: { productId: string; itemId: string; programs: Array<{ id: string; name: string }>; onDone: (t: string) => void; onError: (t: string) => void }) {
+  const [target, setTarget] = useState(programs[0]?.id ?? "");
+  const [pending, start] = useTransition();
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-3">
+      <label className="min-w-0 flex-1 text-xs text-muted-foreground">
+        Copiar a otro programa
+        <select className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-2 text-sm text-foreground" value={target} onChange={(e) => setTarget(e.target.value)}>
+          {programs.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        disabled={pending || !target}
+        onClick={() =>
+          start(async () => {
+            const res = await copyProgramItemToProduct(productId, itemId, target);
+            if (!res.ok) return onError(res.error.message);
+            onDone(`Copiado (${res.data.count === 1 ? "1 ítem" : `${res.data.count} ítems`}). La copia quedó inactiva en el otro programa.`);
+          })
+        }
+        className="h-9 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-60"
+      >
+        {pending ? "Copiando…" : "Copiar"}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * «Elegir un Fathom» (F46): las grabaciones de Fathom del equipo, con buscador. Guarda `source_call_id`, el link
+ * compartido y la transcripción. Fathom no deja incrustar su video: el portal muestra la vista previa con «Ver la
+ * grabación». Sin Fathom conectado, lleva a Integraciones.
+ */
+function FathomPicker({ productId, itemId, linked, onPicked }: { productId: string; itemId: string; linked: boolean; onPicked: (videoUrl: string, warning: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [data, setData] = useState<{ connected: boolean; calls: Array<{ id: string; title: string; recorded_at: string; shared: boolean }> } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const timeZone = useViewerTimezone();
+  const when = new Intl.DateTimeFormat("es", { day: "numeric", month: "short", year: "numeric", timeZone });
+
+  function load(text: string) {
+    setQ(text);
+    start(async () => {
+      const r = await listFathomForLesson(text);
+      if (r.ok) setData(r.data);
+      else setError(r.error.message);
+    });
+  }
+  function pick(callId: string) {
+    setError(null);
+    start(async () => {
+      const r = await pickFathomForLesson(productId, itemId, callId);
+      if (!r.ok) return setError(r.error.message);
+      setOpen(false);
+      onPicked(r.data.videoUrl, r.data.warning);
+    });
+  }
+
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" disabled={pending} onClick={() => { setOpen(!open); if (!open) load(""); }} className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent">
+          Elegir un Fathom
+        </button>
+        {linked && <span className="text-muted-foreground">Usa una grabación de Fathom: en el portal se ve la vista previa con «Ver la grabación».</span>}
+      </div>
+      {open && (
+        <div className="space-y-2 rounded-lg border border-border p-2">
+          {data && !data.connected ? (
+            <p className="text-sm">
+              Fathom no está conectado.{" "}
+              <Link href="/dashboard/settings/integrations" className="font-medium text-primary-ink hover:underline">
+                Conectalo en Integraciones
+              </Link>
+            </p>
+          ) : (
+            <>
+              <input value={q} onChange={(e) => load(e.target.value)} placeholder="Buscar una grabación…" aria-label="Buscar una grabación de Fathom" className={fieldInput} />
+              {data && data.calls.length === 0 ? (
+                <p className="text-muted-foreground">No hay grabaciones{q ? " con ese nombre" : ""}.</p>
+              ) : (
+                <ul className="max-h-56 divide-y divide-border overflow-auto rounded-md border border-border text-sm" aria-busy={pending}>
+                  {(data?.calls ?? []).map((c) => (
+                    <li key={c.id} className="flex items-center gap-2 px-2 py-1.5">
+                      <span className="min-w-0 flex-1 truncate">
+                        {c.title} <span className="text-xs text-muted-foreground">· {when.format(new Date(c.recorded_at))}{c.shared ? "" : " · sin link compartido"}</span>
+                      </span>
+                      <button type="button" disabled={pending} onClick={() => pick(c.id)} className="text-xs font-medium text-primary-ink hover:underline">
+                        Usar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+          {error && (
+            <p role="alert" className="text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

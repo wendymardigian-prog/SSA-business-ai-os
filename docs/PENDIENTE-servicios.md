@@ -1,3 +1,40 @@
+# A3 (desde el 14/11/2026)
+
+Plano: §18 de `claude/v12/requerimientos-v12-servicios.md` v1.11 (F126 a F130 y el resto de F124) y `claude/v12/cambios-panel-v12-reto-avisos.md`. Rama `feat/servicios-a3`.
+
+## Decisiones de F128 (14/11)
+- **«Novedades» respeta las preferencias** (revisaron su entrega, le contestaron, anuncios): si la apagó, no aparece en la campana ni cuenta para el número. El contenido nuevo siempre aparece. Se miran como mucho 30 días para atrás.
+- **El resumen va por programa**: si tiene dos programas con el resumen prendido, le llegan dos (uno de cada uno), cada lunes a las 8:00 de su zona. Se encola en el barrido diario del negocio del lunes; si ese día el barrido corre después de las 8:00 de la persona, sale apenas se encola.
+- **Sin Resend no sale y queda en el registro de emails** como «sin Resend» (se ve en la ficha del servicio). No se manda un aviso aparte al equipo.
+- **El email del resumen es un HTML simple** con las secciones; elegir una plantilla del diseñador de emails queda para cuando Wendy quiera el diseño final.
+- **«Lo que vence hoy» por email todavía no se manda**: la clave del programa existe (`due_today_email`, apagada) pero el interruptor se muestra cuando tenga su envío.
+
+## Decisiones de F127 (14/11)
+- **Una repetición se crea solo mientras su fase está abierta y nunca con fecha anterior al inicio de su fase**, aunque el ancla (p. ej. «desde el inicio del servicio») caiga antes. Antes se creaban de golpe las atrasadas. No había ninguna en producción.
+- **Las anclas de siempre sin fecha** (servicio sin fecha de inicio) arrancan con la fase, como antes. **Las nuevas** (fin de otra fase, paso completado) esperan a tener fecha.
+- **«Sin adelantar» y los días de gracia solo frenan lo que carga el estudiante**, y solo en una repetición con `late` configurado. El equipo completa igual (puede cargar un reporte atrasado a mano). Si llega por un formulario fuera de plazo, la respuesta queda guardada pero el paso no se completa (los enganches nunca tumban la respuesta); el portal (B2) va a avisar antes de mandar.
+- **El plazo de un paso (`due_rule`) no suma anclas nuevas** en esta corrida: el §18 lo menciona «de paso», pero ningún caso del Reto lo necesita y tocaría `svc_compute_due`. Queda para cuando haga falta.
+- **`svc_start_challenge` con actor 'student' es solo del servidor** (antes no se usaba). El equipo y las automatizaciones siguen igual.
+- El aviso de la fecha límite va al responsable del servicio, una sola vez por fase (lo marca el historial).
+
+## Decisiones de F126 (14/11)
+- **Después de la primera revisión, una entrega pendiente no se reemplaza** (EV005, «Tu entrega está esperando la revisión»). El §18 solo habla de reemplazar antes de la primera revisión; reemplazar después cambiaría lo que el equipo ya está mirando.
+- **«Revisada» sin calificación cuenta como aprobada** (no se reentrega), igual que ya completa el paso con `passed`. `after_review` solo se gasta con una revisada que **no aprobó**.
+- **Con límites, solo se revisa la última entrega** (EV006). Sin límites, como antes.
+- El estado de la lista sigue diciendo «A corregir»; el botón dice «Pedir otra entrega».
+
+## Decisiones de Wendy antes de arrancar (14/11)
+- **Avisos del estudiante: sí** a `portal_accounts.notification_prefs` y `notifications_seen_at` (dos columnas, ninguna tabla; mismo criterio que los días activos, decisión 475). Valores por defecto (F252 del portal): resumen semanal **prendido**, «vence hoy» por email **apagado**, lo demás prendido.
+- **«Trabado en» en el reporte diario: sí, campo opcional del formulario del reto** (configuración, no código). En `challenge.weekly` se marca cuál es el campo «trabado» (`stuck_field_key`), igual que el de horas y el de video; el control semanal destaca los días que lo tienen escrito.
+- **Migraciones 00375 a 00380 aprobadas**, con estas condiciones:
+  - **00375 (entregas):** las entregas que ya existen quedan igual (ninguna pasa sola a `superseded`); una actividad sin límites configurados se comporta como hoy; no toca las funciones protegidas de Formularios.
+  - **00376 (reto):** todas las plantillas de camino de la base validan igual que antes; las repeticiones ya creadas no cambian de fecha en ningún servicio; los casos de `recurrence.cases.json` que ya existían dan lo mismo. Incluye `stuck_field_key`.
+  - **00377 (avisos):** el resumen semanal **nace apagado en todos los programas**; se prende recién con el portal en línea (después de B2).
+  - **00378/00379 (puntos):** los puntos **nacen apagados** en todos los programas; un fallo al sumar nunca frena lo que hizo el estudiante.
+  - **00380:** solo lectura.
+  - **00381:** avisar antes si hace falta.
+  - **Al aplicar cada una:** confirmar el número con `list_migrations` (otras sesiones suman migraciones) y, antes de la primera, comprobar que haya un backup reciente.
+
 # PENDIENTE — Servicios v12
 
 # A4 (desde el 12/11/2026)

@@ -1,0 +1,680 @@
+{
+  "_comment": "Casos del Reto genérico (F127). Corren contra lib/services/challenge.ts y contra app_servicio (verify-services --bloque a3): window ↔ svc_recurrence_window, late ↔ svc_late_plan, weeks ↔ svc_challenge_weeks_plan, startBy ↔ svc_challenge_start_by. Fechas civiles; horas locales del estudiante.",
+  "window": [
+    {
+      "name": "sin from: desde el inicio de su fase, hasta su fin",
+      "recurrence": {
+        "every": "day",
+        "until": "phase_end"
+      },
+      "anchors": {
+        "serviceCreated": "2026-10-01",
+        "serviceStart": "2026-10-05",
+        "serviceEnd": "2027-01-05",
+        "phaseStart": "2026-11-02",
+        "phaseEnd": "2026-12-01",
+        "phases": {
+          "ph_entreg": {
+            "start": "2026-12-02",
+            "end": null
+          },
+          "ph_previa": {
+            "start": "2026-10-05",
+            "end": "2026-11-01"
+          }
+        },
+        "items": {
+          "it_finala": null,
+          "it_listoa": "2026-11-20"
+        }
+      },
+      "expected": {
+        "start": "2026-11-02",
+        "until": "2026-12-01"
+      }
+    },
+    {
+      "name": "desde el fin de otra fase",
+      "recurrence": {
+        "every": "day",
+        "until": "n_days",
+        "n_until": 30,
+        "from": {
+          "from": "phase_end",
+          "phase_key": "ph_previa",
+          "days": 1
+        }
+      },
+      "anchors": {
+        "serviceCreated": "2026-10-01",
+        "serviceStart": "2026-10-05",
+        "serviceEnd": "2027-01-05",
+        "phaseStart": "2026-11-02",
+        "phaseEnd": "2026-12-01",
+        "phases": {
+          "ph_entreg": {
+            "start": "2026-12-02",
+            "end": null
+          },
+          "ph_previa": {
+            "start": "2026-10-05",
+            "end": "2026-11-01"
+          }
+        },
+        "items": {
+          "it_finala": null,
+          "it_listoa": "2026-11-20"
+        }
+      },
+      "expected": {
+        "start": "2026-11-02",
+        "until": "2026-12-01"
+      }
+    },
+    {
+      "name": "desde una fase que no terminó: todavía no arranca",
+      "recurrence": {
+        "every": "day",
+        "until": "phase_end",
+        "from": {
+          "from": "phase_end",
+          "phase_key": "ph_entreg",
+          "days": 0
+        }
+      },
+      "anchors": {
+        "serviceCreated": "2026-10-01",
+        "serviceStart": "2026-10-05",
+        "serviceEnd": "2027-01-05",
+        "phaseStart": "2026-11-02",
+        "phaseEnd": "2026-12-01",
+        "phases": {
+          "ph_entreg": {
+            "start": "2026-12-02",
+            "end": null
+          },
+          "ph_previa": {
+            "start": "2026-10-05",
+            "end": "2026-11-01"
+          }
+        },
+        "items": {
+          "it_finala": null,
+          "it_listoa": "2026-11-20"
+        }
+      },
+      "expected": {
+        "start": null,
+        "until": null
+      }
+    },
+    {
+      "name": "hasta completar la entrega final (sin completar), tope 30 días",
+      "recurrence": {
+        "every": "day",
+        "until": "item_completed",
+        "item_key": "it_finala",
+        "max_days": 30
+      },
+      "anchors": {
+        "serviceCreated": "2026-10-01",
+        "serviceStart": "2026-10-05",
+        "serviceEnd": "2027-01-05",
+        "phaseStart": "2026-11-02",
+        "phaseEnd": "2026-12-01",
+        "phases": {
+          "ph_entreg": {
+            "start": "2026-12-02",
+            "end": null
+          },
+          "ph_previa": {
+            "start": "2026-10-05",
+            "end": "2026-11-01"
+          }
+        },
+        "items": {
+          "it_finala": null,
+          "it_listoa": "2026-11-20"
+        }
+      },
+      "expected": {
+        "start": "2026-11-02",
+        "until": "2026-12-01"
+      }
+    },
+    {
+      "name": "hasta completar un paso ya completado",
+      "recurrence": {
+        "every": "day",
+        "until": "item_completed",
+        "item_key": "it_listoa"
+      },
+      "anchors": {
+        "serviceCreated": "2026-10-01",
+        "serviceStart": "2026-10-05",
+        "serviceEnd": "2027-01-05",
+        "phaseStart": "2026-11-02",
+        "phaseEnd": "2026-12-01",
+        "phases": {
+          "ph_entreg": {
+            "start": "2026-12-02",
+            "end": null
+          },
+          "ph_previa": {
+            "start": "2026-10-05",
+            "end": "2026-11-01"
+          }
+        },
+        "items": {
+          "it_finala": null,
+          "it_listoa": "2026-11-20"
+        }
+      },
+      "expected": {
+        "start": "2026-11-02",
+        "until": "2026-11-20"
+      }
+    },
+    {
+      "name": "hasta el fin de otra fase",
+      "recurrence": {
+        "every": "week",
+        "until": "phase_end",
+        "phase_key": "ph_previa"
+      },
+      "anchors": {
+        "serviceCreated": "2026-10-01",
+        "serviceStart": "2026-10-05",
+        "serviceEnd": "2027-01-05",
+        "phaseStart": "2026-11-02",
+        "phaseEnd": "2026-12-01",
+        "phases": {
+          "ph_entreg": {
+            "start": "2026-12-02",
+            "end": null
+          },
+          "ph_previa": {
+            "start": "2026-10-05",
+            "end": "2026-11-01"
+          }
+        },
+        "items": {
+          "it_finala": null,
+          "it_listoa": "2026-11-20"
+        }
+      },
+      "expected": {
+        "start": "2026-11-02",
+        "until": "2026-11-01"
+      }
+    },
+    {
+      "name": "desde completar un paso + 2 días",
+      "recurrence": {
+        "every": "day",
+        "until": "service_end",
+        "from": {
+          "from": "item_completed",
+          "item_key": "it_listoa",
+          "days": 2
+        }
+      },
+      "anchors": {
+        "serviceCreated": "2026-10-01",
+        "serviceStart": "2026-10-05",
+        "serviceEnd": "2027-01-05",
+        "phaseStart": "2026-11-02",
+        "phaseEnd": "2026-12-01",
+        "phases": {
+          "ph_entreg": {
+            "start": "2026-12-02",
+            "end": null
+          },
+          "ph_previa": {
+            "start": "2026-10-05",
+            "end": "2026-11-01"
+          }
+        },
+        "items": {
+          "it_finala": null,
+          "it_listoa": "2026-11-20"
+        }
+      },
+      "expected": {
+        "start": "2026-11-22",
+        "until": "2027-01-05"
+      }
+    },
+    {
+      "name": "desde el inicio del servicio, n veces sin fin",
+      "recurrence": {
+        "every": "week",
+        "until": "n_times",
+        "n_until": 4,
+        "from": {
+          "from": "service_start",
+          "days": 0
+        }
+      },
+      "anchors": {
+        "serviceCreated": "2026-10-01",
+        "serviceStart": "2026-10-05",
+        "serviceEnd": "2027-01-05",
+        "phaseStart": "2026-11-02",
+        "phaseEnd": "2026-12-01",
+        "phases": {
+          "ph_entreg": {
+            "start": "2026-12-02",
+            "end": null
+          },
+          "ph_previa": {
+            "start": "2026-10-05",
+            "end": "2026-11-01"
+          }
+        },
+        "items": {
+          "it_finala": null,
+          "it_listoa": "2026-11-20"
+        }
+      },
+      "expected": {
+        "start": "2026-10-05",
+        "until": null
+      }
+    },
+    {
+      "name": "ancla de siempre sin fecha (servicio sin inicio): arranca con su fase, como antes",
+      "recurrence": {
+        "every": "day",
+        "until": "phase_end",
+        "from": {
+          "from": "service_start",
+          "days": 3
+        }
+      },
+      "anchors": {
+        "serviceCreated": "2026-10-01",
+        "serviceStart": null,
+        "phaseStart": "2026-11-02",
+        "phaseEnd": "2026-11-05"
+      },
+      "expected": {
+        "start": "2026-11-02",
+        "until": "2026-11-05"
+      }
+    }
+  ],
+  "late": [
+    {
+      "name": "sin atraso configurado: como siempre",
+      "late": null,
+      "occursOn": "2026-11-10",
+      "dueOn": "2026-11-10",
+      "now": "2026-11-01T10:00:00",
+      "expected": {
+        "ok": true,
+        "late": false
+      }
+    },
+    {
+      "name": "hoy, a tiempo",
+      "late": {
+        "accept": false
+      },
+      "occursOn": "2026-11-10",
+      "dueOn": "2026-11-10",
+      "now": "2026-11-10T23:59:00",
+      "expected": {
+        "ok": true,
+        "late": false
+      }
+    },
+    {
+      "name": "no se adelanta",
+      "late": {
+        "accept": true
+      },
+      "occursOn": "2026-11-10",
+      "dueOn": "2026-11-10",
+      "now": "2026-11-09T22:00:00",
+      "expected": {
+        "ok": false,
+        "code": "SV035",
+        "message": "Todavía no se puede cargar"
+      }
+    },
+    {
+      "name": "con early sí se adelanta",
+      "late": {
+        "early": true
+      },
+      "occursOn": "2026-11-10",
+      "dueOn": "2026-11-10",
+      "now": "2026-11-09T22:00:00",
+      "expected": {
+        "ok": true,
+        "late": false
+      }
+    },
+    {
+      "name": "dentro de las horas de gracia",
+      "late": {
+        "accept": false,
+        "grace_hours": 6
+      },
+      "occursOn": "2026-11-10",
+      "dueOn": "2026-11-10",
+      "now": "2026-11-11T05:59:00",
+      "expected": {
+        "ok": true,
+        "late": false
+      }
+    },
+    {
+      "name": "pasadas las horas de gracia, sin aceptar tarde",
+      "late": {
+        "accept": false,
+        "grace_hours": 6
+      },
+      "occursOn": "2026-11-10",
+      "dueOn": "2026-11-10",
+      "now": "2026-11-11T06:00:00",
+      "expected": {
+        "ok": false,
+        "code": "SV036",
+        "message": "Ya pasó el plazo para cargarlo"
+      }
+    },
+    {
+      "name": "tarde aceptado dentro de los días de gracia",
+      "late": {
+        "accept": true,
+        "grace_hours": 6,
+        "grace_days": 30
+      },
+      "occursOn": "2026-11-10",
+      "dueOn": "2026-11-10",
+      "now": "2026-12-10T12:00:00",
+      "expected": {
+        "ok": true,
+        "late": true
+      }
+    },
+    {
+      "name": "tarde fuera de los días de gracia",
+      "late": {
+        "accept": true,
+        "grace_hours": 6,
+        "grace_days": 30
+      },
+      "occursOn": "2026-11-10",
+      "dueOn": "2026-11-10",
+      "now": "2026-12-11T06:00:00",
+      "expected": {
+        "ok": false,
+        "code": "SV036",
+        "message": "Ya pasó el plazo para cargarlo"
+      }
+    },
+    {
+      "name": "tarde aceptado sin tope de días",
+      "late": {
+        "accept": true
+      },
+      "occursOn": "2026-11-10",
+      "dueOn": "2026-11-10",
+      "now": "2027-03-01T00:00:00",
+      "expected": {
+        "ok": true,
+        "late": true
+      }
+    },
+    {
+      "name": "semanal: cualquier día de su semana es a tiempo",
+      "late": {
+        "accept": false
+      },
+      "occursOn": "2026-11-02",
+      "dueOn": "2026-11-08",
+      "now": "2026-11-08T20:00:00",
+      "expected": {
+        "ok": true,
+        "late": false
+      }
+    }
+  ],
+  "weeks": [
+    {
+      "name": "30 días a mitad: semanas cerradas, la de hoy y las que vienen",
+      "input": {
+        "startOn": "2026-11-02",
+        "today": "2026-11-12",
+        "days": 30,
+        "min": 10,
+        "video": true,
+        "rows": [
+          {
+            "on": "2026-11-02",
+            "number": 3,
+            "link": null,
+            "stuck": null
+          },
+          {
+            "on": "2026-11-03",
+            "number": 2.5,
+            "link": "https://x.example/v",
+            "stuck": "El login"
+          },
+          {
+            "on": "2026-11-05",
+            "number": 4,
+            "link": "",
+            "stuck": "  "
+          },
+          {
+            "on": "2026-11-09",
+            "number": 1,
+            "link": null,
+            "stuck": null
+          },
+          {
+            "on": "2026-11-30",
+            "number": 2,
+            "link": null,
+            "stuck": null
+          }
+        ]
+      },
+      "expected": [
+        {
+          "week": 1,
+          "from": "2026-11-02",
+          "to": "2026-11-08",
+          "total": 9.5,
+          "video": true,
+          "below": true,
+          "missingVideo": false,
+          "current": false,
+          "future": false,
+          "stuck": [
+            {
+              "on": "2026-11-03",
+              "text": "El login"
+            }
+          ]
+        },
+        {
+          "week": 2,
+          "from": "2026-11-09",
+          "to": "2026-11-15",
+          "total": 1,
+          "video": false,
+          "below": false,
+          "missingVideo": false,
+          "current": true,
+          "future": false,
+          "stuck": []
+        },
+        {
+          "week": 3,
+          "from": "2026-11-16",
+          "to": "2026-11-22",
+          "total": 0,
+          "video": false,
+          "below": false,
+          "missingVideo": false,
+          "current": false,
+          "future": true,
+          "stuck": []
+        },
+        {
+          "week": 4,
+          "from": "2026-11-23",
+          "to": "2026-11-29",
+          "total": 0,
+          "video": false,
+          "below": false,
+          "missingVideo": false,
+          "current": false,
+          "future": true,
+          "stuck": []
+        },
+        {
+          "week": 5,
+          "from": "2026-11-30",
+          "to": "2026-12-01",
+          "total": 2,
+          "video": false,
+          "below": false,
+          "missingVideo": false,
+          "current": false,
+          "future": true,
+          "stuck": []
+        }
+      ]
+    },
+    {
+      "name": "semana sin video cuando se pide",
+      "input": {
+        "startOn": "2026-11-02",
+        "today": "2026-11-20",
+        "days": 14,
+        "min": null,
+        "video": true,
+        "rows": [
+          {
+            "on": "2026-11-10",
+            "number": 20
+          }
+        ]
+      },
+      "expected": [
+        {
+          "week": 1,
+          "from": "2026-11-02",
+          "to": "2026-11-08",
+          "total": 0,
+          "video": false,
+          "below": true,
+          "missingVideo": true,
+          "current": false,
+          "future": false,
+          "stuck": []
+        },
+        {
+          "week": 2,
+          "from": "2026-11-09",
+          "to": "2026-11-15",
+          "total": 20,
+          "video": false,
+          "below": true,
+          "missingVideo": true,
+          "current": false,
+          "future": false,
+          "stuck": []
+        }
+      ]
+    },
+    {
+      "name": "sin duración: hasta la semana de hoy",
+      "input": {
+        "startOn": "2026-11-02",
+        "today": "2026-11-09",
+        "days": null,
+        "min": 5,
+        "video": false,
+        "rows": [
+          {
+            "on": "2026-11-02",
+            "number": 5
+          }
+        ]
+      },
+      "expected": [
+        {
+          "week": 1,
+          "from": "2026-11-02",
+          "to": "2026-11-08",
+          "total": 5,
+          "video": false,
+          "below": false,
+          "missingVideo": false,
+          "current": false,
+          "future": false,
+          "stuck": []
+        },
+        {
+          "week": 2,
+          "from": "2026-11-09",
+          "to": "2026-11-09",
+          "total": 0,
+          "video": false,
+          "below": false,
+          "missingVideo": false,
+          "current": true,
+          "future": false,
+          "stuck": []
+        }
+      ]
+    }
+  ],
+  "startBy": [
+    {
+      "name": "8 semanas desde el inicio del servicio",
+      "startBy": {
+        "from": "service_start",
+        "days": 56
+      },
+      "serviceStart": "2026-10-05",
+      "serviceCreated": "2026-10-01",
+      "expected": "2026-11-30"
+    },
+    {
+      "name": "desde la creación",
+      "startBy": {
+        "from": "service_created",
+        "days": 10
+      },
+      "serviceStart": null,
+      "serviceCreated": "2026-10-01",
+      "expected": "2026-10-11"
+    },
+    {
+      "name": "sin configurar",
+      "startBy": null,
+      "serviceStart": "2026-10-05",
+      "serviceCreated": "2026-10-01",
+      "expected": null
+    },
+    {
+      "name": "servicio sin fecha de inicio",
+      "startBy": {
+        "from": "service_start",
+        "days": 56
+      },
+      "serviceStart": null,
+      "serviceCreated": "2026-10-01",
+      "expected": null
+    }
+  ]
+}

@@ -118,6 +118,7 @@ export const TRIGGER_CATALOG: readonly TriggerCatalogEntry[] = [
   { type: "challenge_occurrence_due_soon", label: "Se acerca una entrega del Reto", description: "Antes de que venza una repetición", group: "servicios", synonyms: ["reto", "entrega"] }, // @plantilla-quitar(servicios)
   { type: "challenge_occurrence_overdue", label: "Se venció una entrega del Reto", description: "Cuando una repetición vence sin entregar", group: "servicios", synonyms: ["reto", "entrega"] }, // @plantilla-quitar(servicios)
   { type: "challenge_completed", label: "Terminó el Reto", description: "Cuando se cierra la fase Reto", group: "servicios", synonyms: ["reto", "entrega"] }, // @plantilla-quitar(servicios)
+  { type: "points_level_up", label: "Subió de nivel", description: "Cuando sus puntos lo llevan al nivel siguiente", group: "servicios", synonyms: ["puntos", "nivel"] }, // @plantilla-quitar(servicios)
   { type: "certificate_issued", label: "Se emitió un certificado", description: "Cuando se genera el certificado del servicio", group: "servicios", synonyms: ["certificado", "diploma"] }, // @plantilla-quitar(servicios)
   { type: "portal_access_expiring", label: "Un acceso al portal está por vencer", description: "Antes de que venza un acceso", group: "servicios", synonyms: ["portal", "acceso"] }, // @plantilla-quitar(servicios)
   { type: "portal_access_expired", label: "Venció un acceso al portal", description: "Cuando un acceso llega a su fin", group: "servicios", synonyms: ["portal", "acceso"] }, // @plantilla-quitar(servicios)

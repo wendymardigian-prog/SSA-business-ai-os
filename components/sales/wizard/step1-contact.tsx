@@ -14,6 +14,7 @@ import { formatCallDate } from "@/lib/calls/format";
 import { saleStatusLabel } from "@/lib/sales/labels";
 import type { WizardConfig, WizardMember } from "./types";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { searchAffiliates, type AffiliateOption } from "@/lib/actions/affiliates";
 
 export interface Step1Values {
   contact: { id: string; name: string } | null;
@@ -23,7 +24,14 @@ export interface Step1Values {
   saleDate: string;
   notes: string;
   bookingId: string | null;
+  /** F74: lo del contacto (`inherit`), otro afiliado (`pick`) o ninguno (`none`). */
+  affiliate: SaleAffiliateChoice;
 }
+
+export type SaleAffiliateChoice =
+  | { mode: "inherit" }
+  | { mode: "none" }
+  | { mode: "pick"; ref: { type: "user" | "contact"; id: string }; kind: "originated" | "influenced"; name: string };
 
 const ATTRIBUTION_TYPE_TEXT = { last_touch: "último toque", manual: "cargada a mano", none: "sin atribución" } as const;
 
@@ -82,6 +90,7 @@ export function Step1Contact({
         <MemberSelect label="Setter" hint="Quien contactó al lead" value={values.setterId} members={config.members} onChange={(v) => onChange({ setterId: v })} />
         <MemberSelect label="Vendedor" hint="Quien cierra la venta" value={values.vendedorId} members={config.members} onChange={(v) => onChange({ vendedorId: v })} />
       </section>
+      <AffiliateField config={config} value={values.affiliate} preload={contactContext?.affiliate ?? null} contactId={values.contact?.id ?? null} onChange={(affiliate) => onChange({ affiliate })} />
       {!config.hasAllScope && (
         <p className="text-xs text-muted-foreground">Tenés que quedar como setter o como vendedor: si no, no podrías ver la venta que cargás.</p>
       )}
@@ -230,5 +239,99 @@ export function DuplicateSaleWarning({ sales, confirmed, onConfirm }: { sales: A
       </p>
       <label className="flex items-center gap-2"><input type="checkbox" checked={confirmed} onChange={(e) => onConfirm(e.target.checked)} /> Es otra venta, quiero cargarla igual</label>
     </div>
+  );
+}
+
+const KIND_TEXT = { originated: "lo trajo", influenced: "influyó" } as const;
+
+/**
+ * «Afiliado» (F74), junto a setter y vendedor: precargado con el afiliado vigente del contacto y su etiqueta
+ * («del contacto · lo trajo · vence el 3/2»). Solo lo cambia quien tiene `affiliates.assign`; el resto lo ve.
+ */
+function AffiliateField({
+  config,
+  value,
+  preload,
+  contactId,
+  onChange,
+}: {
+  config: WizardConfig;
+  value: SaleAffiliateChoice;
+  preload: SaleContactContext["affiliate"];
+  contactId: string | null;
+  onChange: (v: SaleAffiliateChoice) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [q, setQ] = useState("");
+  const [options, setOptions] = useState<AffiliateOption[]>([]);
+  const [kind, setKind] = useState<"originated" | "influenced">("influenced");
+  const [searching, startSearch] = useTransition();
+  const expires = preload?.expiresAt ? new Intl.DateTimeFormat("es", { day: "numeric", month: "numeric", timeZone: config.timeZone }).format(new Date(preload.expiresAt)) : null;
+  const current =
+    value.mode === "pick"
+      ? `${value.name} · ${KIND_TEXT[value.kind]}`
+      : value.mode === "none"
+        ? "Sin afiliado"
+        : preload
+          ? `${preload.name} · del contacto · ${KIND_TEXT[preload.kind]}${expires ? ` · vence el ${expires}` : ""}`
+          : "Sin afiliado";
+
+  function search(text: string) {
+    setQ(text);
+    startSearch(async () => setOptions(await searchAffiliates(text)));
+  }
+
+  return (
+    <section aria-label="Afiliado" className="space-y-1.5">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Afiliado</h3>
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+        <span className="min-w-0 flex-1 truncate">{contactId ? current : "Elegí el contacto primero"}</span>
+        {config.canAssignAffiliate && contactId && !editing && (
+          <button type="button" onClick={() => { setEditing(true); search(""); }} className="text-xs font-medium text-primary-ink hover:underline">
+            Cambiar
+          </button>
+        )}
+        {config.canAssignAffiliate && value.mode !== "inherit" && !editing && (
+          <button type="button" onClick={() => onChange({ mode: "inherit" })} className="text-xs text-muted-foreground hover:underline">
+            Volver al del contacto
+          </button>
+        )}
+      </div>
+      {editing && (
+        <div className="space-y-2 rounded-lg border border-border p-2">
+          <div className="flex flex-wrap gap-2">
+            <input autoFocus value={q} onChange={(e) => search(e.target.value)} placeholder="Buscar por nombre o código…" aria-label="Buscar un afiliado" className={`${fieldInput} min-w-0 flex-1`} />
+            <select aria-label="Tipo" value={kind} onChange={(e) => setKind(e.target.value as "originated" | "influenced")} className={`${fieldInput} w-auto`}>
+              <option value="originated">Lo trajo</option>
+              <option value="influenced">Influyó</option>
+            </select>
+          </div>
+          <ul className="max-h-48 overflow-auto text-sm" aria-busy={searching}>
+            <li>
+              <button type="button" onClick={() => { onChange({ mode: "none" }); setEditing(false); }} className="w-full rounded px-2 py-1.5 text-left text-muted-foreground hover:bg-accent">
+                Sin afiliado
+              </button>
+            </li>
+            {options
+              .filter((o) => !(o.type === "contact" && o.id === contactId))
+              .map((o) => (
+                <li key={`${o.type}:${o.id}`}>
+                  <button
+                    type="button"
+                    onClick={() => { onChange({ mode: "pick", ref: { type: o.type, id: o.id }, kind, name: o.name }); setEditing(false); }}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-accent"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{o.name}</span>
+                    <span className="text-xs text-muted-foreground">{o.type === "user" ? "equipo" : "contacto"}{o.code ? ` · ${o.code}` : ""}</span>
+                  </button>
+                </li>
+              ))}
+          </ul>
+          <button type="button" onClick={() => setEditing(false)} className="text-xs text-muted-foreground hover:underline">
+            Cancelar
+          </button>
+        </div>
+      )}
+    </section>
   );
 }

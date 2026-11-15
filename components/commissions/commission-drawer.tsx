@@ -35,6 +35,8 @@ export interface CommissionDrawerProps {
   detail: CommissionDetail;
   extras: DrawerExtras;
   members: ReadonlyArray<{ id: string; name: string }>;
+  /** F124: los contactos afiliados (con código), para pagarle a uno al editar a mano. */
+  affiliates?: ReadonlyArray<{ id: string; name: string }>;
   roles: readonly CommissionRole[];
   lookups: DescribeLookups;
   filters: CommissionFilters;
@@ -46,7 +48,7 @@ export interface CommissionDrawerProps {
 
 type DialogKind = "assign" | "void" | "adjust" | "edit" | null;
 
-export function CommissionDrawer({ detail, extras, members, roles, lookups, filters, timeZone, names, can }: CommissionDrawerProps) {
+export function CommissionDrawer({ detail, extras, members, affiliates = [], roles, lookups, filters, timeZone, names, can }: CommissionDrawerProps) {
   const router = useRouter();
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [historyKey, setHistoryKey] = useState(0);
@@ -250,8 +252,10 @@ export function CommissionDrawer({ detail, extras, members, roles, lookups, filt
           amountCents={d.amountCents}
           role={d.role ?? ""}
           userId={d.userId ?? null}
+          contactId={d.payeeContactId ?? null}
           roles={roleList.map((r) => ({ key: r.key, name: r.name }))}
           members={members}
+          affiliates={affiliates}
           onClose={() => setDialog(null)}
           onDone={(newId) => {
             if (newId) {
@@ -373,8 +377,10 @@ function EditDialog({
   amountCents,
   role,
   userId,
+  contactId,
   roles,
   members,
+  affiliates,
   onClose,
   onDone,
 }: {
@@ -382,21 +388,24 @@ function EditDialog({
   amountCents: number;
   role: string;
   userId: string | null;
+  contactId: string | null;
   roles: ReadonlyArray<{ key: string; name: string }>;
   members: ReadonlyArray<{ id: string; name: string }>;
+  affiliates: ReadonlyArray<{ id: string; name: string }>;
   onClose: () => void;
   onDone: (newId: string | null) => void;
 }) {
   const [amount, setAmount] = useState((amountCents / 100).toFixed(2));
   const [roleKey, setRoleKey] = useState(role);
-  const [person, setPerson] = useState(userId ?? "");
+  // «u:<id>» alguien del equipo, «c:<id>» un contacto afiliado (F124).
+  const [person, setPerson] = useState(userId ? `u:${userId}` : contactId ? `c:${contactId}` : "");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   function submit() {
     setError(null);
     start(async () => {
-      const res = await editCommission(id, { void: false, amount, role: roleKey, person: person ? { type: "user", id: person } : null, reason });
+      const res = await editCommission(id, { void: false, amount, role: roleKey, person: person ? { type: person.startsWith("c:") ? "contact" : "user", id: person.slice(2) } : null, reason });
       if (!res.ok) return setError(res.error);
       onDone(res.id);
       onClose();
@@ -421,7 +430,14 @@ function EditDialog({
       <DialogField label="Persona">
         <select className={fieldInput} value={person} onChange={(e) => setPerson(e.target.value)}>
           <option value="">Sin persona</option>
-          {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          <optgroup label="Equipo">
+            {members.map((m) => <option key={m.id} value={`u:${m.id}`}>{m.name}</option>)}
+          </optgroup>
+          {affiliates.length > 0 && (
+            <optgroup label="Contactos afiliados">
+              {affiliates.map((c) => <option key={c.id} value={`c:${c.id}`}>{c.name}</option>)}
+            </optgroup>
+          )}
         </select>
       </DialogField>
       <DialogField label="Motivo">

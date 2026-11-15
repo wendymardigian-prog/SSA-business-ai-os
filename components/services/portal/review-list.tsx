@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { reviewSubmission } from "@/lib/actions/program";
 import type { ReviewItem } from "@/lib/program/load-review";
-import { matchesReviewFilter, reviewRowView, type ReviewFilter } from "@/lib/program/review";
+import { gradeLabel, isLatestSubmission, matchesReviewFilter, reviewRowView, submissionHistory, type ReviewFilter } from "@/lib/program/review";
 import { SCALE_LABELS, WORD_LABELS, WORD_SCALE } from "@/lib/program/grading";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
@@ -64,19 +64,26 @@ export function ReviewList({ items, canReview, timeZone, filter }: { items: Revi
           </table>
         </div>
       )}
-      {open && <ReviewDrawer item={open} canReview={canReview} onClose={() => setOpen(null)} onDone={() => { setOpen(null); router.refresh(); }} />}
+      {open && <ReviewDrawer item={open} history={items} timeZone={timeZone} canReview={canReview} onClose={() => setOpen(null)} onDone={() => { setOpen(null); router.refresh(); }} />}
     </div>
   );
 }
 
-export function ReviewDrawer({ item, canReview, onClose, onDone }: { item: ReviewItem; canReview: boolean; onClose: () => void; onDone: () => void }) {
+/**
+ * El drawer de una entrega. `history` son las entregas que ya están cargadas (las de la lista o las de la ficha): con
+ * ellas se muestra el historial de esa persona en esa actividad (F126). Con límites, solo la última se puede revisar.
+ */
+export function ReviewDrawer({ item, history = [], timeZone, canReview, onClose, onDone }: { item: ReviewItem; history?: ReviewItem[]; timeZone: string; canReview: boolean; onClose: () => void; onDone: () => void }) {
   const [comment, setComment] = useState(item.reviewComment ?? "");
   const [note, setNote] = useState(item.internalNote ?? "");
   const scale = item.grading?.enabled ? item.grading.scale ?? "pass" : null;
   const [value, setValue] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const editable = canReview && item.formType === "activity";
+  const all = history.some((h) => h.id === item.id) ? history : [...history, item];
+  const mine = item.formType === "activity" ? submissionHistory(all, item) : [];
+  const latest = !item.limitsConfigured || isLatestSubmission(all, item);
+  const editable = canReview && item.formType === "activity" && latest && item.reviewStatus !== "superseded";
   // Esc cierra el drawer primero (está encima de la ficha del servicio o de Por revisar).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -128,6 +135,32 @@ export function ReviewDrawer({ item, canReview, onClose, onDone }: { item: Revie
             );
           })}
         </dl>
+        {mine.length > 1 && (
+          <div className="space-y-1 border-t border-border pt-3">
+            <h4 className="text-xs font-semibold text-muted-foreground">Entregas de {item.contactName} en esta actividad</h4>
+            <ol className="space-y-1 text-sm">
+              {mine.map((h, n) => {
+                const v = reviewRowView(h);
+                const g = gradeLabel(h.grade);
+                return (
+                  <li key={h.id} className={cn("flex items-center justify-between gap-2", h.id === item.id && "font-medium")}>
+                    <span>
+                      Entrega {n + 1} · {new Date(h.createdAt).toLocaleDateString("es-AR", { timeZone, day: "2-digit", month: "2-digit" })}
+                      {h.id === item.id ? " (esta)" : ""}
+                    </span>
+                    <span className={TONE[v.tone]}>
+                      {v.stateLabel}
+                      {g ? ` · ${g}` : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        )}
+        {item.formType === "activity" && canReview && !editable && (
+          <p className="text-sm text-muted-foreground">{item.reviewStatus === "superseded" ? "La reemplazó una entrega más nueva." : "Hay una entrega más nueva: se revisa esa."}</p>
+        )}
         {item.formType === "quiz" && <p className="text-sm text-muted-foreground">La corrigió el sistema: {reviewRowView(item).stateLabel}{reviewRowView(item).gradeLabel ? ` · ${reviewRowView(item).gradeLabel}` : ""}.</p>}
         {editable && (
           <div className="space-y-3 border-t border-border pt-3">
@@ -163,7 +196,7 @@ export function ReviewDrawer({ item, canReview, onClose, onDone }: { item: Revie
             )}
             <div className="flex flex-wrap justify-end gap-2">
               <button type="button" onClick={() => submit("needs_changes")} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent">
-                A corregir
+                Pedir otra entrega
               </button>
               <button type="button" onClick={() => submit("reviewed")} disabled={pending} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60">
                 {scale ? "Guardar calificación" : "Revisada"}

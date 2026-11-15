@@ -254,6 +254,77 @@ export function portalInviteEmail(params: { workspaceName: string; inviteUrl: st
     }),
   };
 }
+
+/**
+ * El resumen semanal del estudiante (F128) con la plantilla del sistema (la marca del negocio: logo, color, botón).
+ * Secciones solo si tienen algo, referidos siempre al final (las arma `digestSections`). Lleva cómo apagarlo.
+ */
+export function portalDigestEmail(params: {
+  brand?: Brand | null;
+  studentName: string | null;
+  programName: string;
+  sections: Array<{ key: string; title: string; text: string }>;
+  portalUrl?: string | null;
+}): EmailContent {
+  const brand = params.brand ?? resolveBrand(null);
+  const theme = emailTheme(brand);
+  const first = params.studentName?.trim().split(/\s+/)[0] ?? "";
+  const subject = `Tu semana en ${params.programName}`;
+  const rows = params.sections
+    .map(
+      (s) => `<tr><td style="padding:14px 0;border-top:1px solid #f0f1f3;">
+                    <p style="margin:0;font-size:13px;font-weight:700;color:${theme.ink};">${escapeHtml(s.title)}</p>
+                    <p style="margin:4px 0 0;font-size:15px;line-height:1.6;color:#374151;">${escapeHtml(s.text)}</p>
+                  </td></tr>`,
+    )
+    .join("");
+  return {
+    subject,
+    html: brandedEmailHtml({
+      brand,
+      preheader: `Lo de tu semana en ${params.programName}.`,
+      body: `
+                ${eyebrow("Tu semana", theme)}
+                ${heading(`${first ? `Hola, ${escapeHtml(first)}` : "Hola"}: esto es lo de tu semana`)}
+                <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#374151;">En <strong>${escapeHtml(params.programName)}</strong>.</p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows}</table>
+                ${params.portalUrl ? button(params.portalUrl, "Entrar al portal", theme) : ""}`,
+      footerNote: "Te llega los lunes. Lo podés apagar desde tu Perfil en el portal, en Notificaciones.",
+    }),
+  };
+}
+
+/** «Lo que vence hoy» por email (F128): solo si la persona lo prendió en su Perfil y el programa lo tiene prendido. */
+export function portalDueTodayEmail(params: {
+  brand?: Brand | null;
+  studentName: string | null;
+  programName: string;
+  items: Array<{ name: string; time?: string | null }>;
+  portalUrl?: string | null;
+}): EmailContent {
+  const brand = params.brand ?? resolveBrand(null);
+  const theme = emailTheme(brand);
+  const first = params.studentName?.trim().split(/\s+/)[0] ?? "";
+  const n = params.items.length;
+  const subject = n === 1 ? `Hoy vence «${params.items[0].name}»` : `Hoy vencen ${n} cosas en ${params.programName}`;
+  const list = params.items
+    .map((i) => `<li style="margin:0 0 6px;font-size:15px;line-height:1.5;color:#374151;">${escapeHtml(i.name)}${i.time ? ` <span style="color:#6b7280;">· hasta las ${escapeHtml(i.time)}</span>` : ""}</li>`)
+    .join("");
+  return {
+    subject,
+    html: brandedEmailHtml({
+      brand,
+      preheader: n === 1 ? `Hoy vence «${params.items[0].name}».` : `Hoy vencen ${n} cosas. Vos podés.`,
+      body: `
+                ${eyebrow("Para hoy", theme)}
+                ${heading(`${first ? `${escapeHtml(first)}, hoy` : "Hoy"} ${n === 1 ? "vence esto" : "vencen estas cosas"}`)}
+                <ul style="margin:0;padding-left:20px;">${list}</ul>
+                <p style="margin:16px 0 0;font-size:15px;line-height:1.6;color:#374151;">Un paso a la vez: lo tenés.</p>
+                ${params.portalUrl ? button(params.portalUrl, "Ir al portal", theme) : ""}`,
+      footerNote: "Lo prendiste en tu Perfil del portal. Lo podés apagar ahí, en Notificaciones.",
+    }),
+  };
+}
 // @plantilla-hasta(servicios)
 
 /**

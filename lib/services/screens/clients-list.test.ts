@@ -124,3 +124,40 @@ describe("la URL de la lista", () => {
     expect(parseClientsUrl({ f: "otro", agrupar: "x" })).toEqual({ mode: "table", quick: "all", group: "none", q: "" });
   });
 });
+
+describe("A3: puntos de 30 días y el Reto a tiempo", () => {
+  const base = { status: "active" as const, light: "green" as const, progressPct: 0, ownerName: null, hasPortal: true };
+  const build = (services: Parameters<typeof buildClientRows>[0]["services"]) =>
+    buildClientRows({ services, names: new Map(), portal: new Map(), paidCents: new Map(), nowIso: "2026-11-15T12:00:00Z" });
+  it("suma por día los puntos de sus servicios", () => {
+    const [r] = build([
+      { ...base, contactId: "c", points30: [0, 2, 3] },
+      { ...base, contactId: "c", points30: [1, 0, 4] },
+    ]);
+    expect(r.points30).toEqual([1, 2, 7]);
+    expect(r.points30Total).toBe(10);
+  });
+  it("sin datos de puntos: null (la celda muestra —)", () => {
+    const [r] = build([{ ...base, contactId: "c" }]);
+    expect(r.points30).toBeNull();
+    expect(r.points30Total).toBeNull();
+  });
+  it("el filtro «No empezó el Reto a tiempo» solo aparece si hay alguno, y solo cuenta servicios en curso", () => {
+    const rows = build([
+      { ...base, contactId: "a", lateChallenge: true },
+      { ...base, contactId: "b", status: "completed", lateChallenge: true },
+      { ...base, contactId: "c" },
+    ]);
+    expect(rows.filter((r) => matchesClientQuick(r, "late_challenge")).map((r) => r.contactId)).toEqual(["a"]);
+    expect(clientQuickOptions(rows).find((o) => o.key === "late_challenge")?.count).toBe(1);
+    expect(clientQuickOptions(build([{ ...base, contactId: "c" }])).some((o) => o.key === "late_challenge")).toBe(false);
+  });
+  it("ordena por puntos y deja al final a quien no tiene", () => {
+    const rows = build([
+      { ...base, contactId: "a", points30: [5] },
+      { ...base, contactId: "b" },
+      { ...base, contactId: "c", points30: [9] },
+    ]);
+    expect(sortClients(rows, "points", "desc").map((r) => r.contactId)).toEqual(["c", "a", "b"]);
+  });
+});

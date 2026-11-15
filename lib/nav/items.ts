@@ -135,7 +135,7 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // (bandera `services` = workspaces.services_enabled).
   { name: "Clientes", href: "/dashboard/clientes", icon: "GraduationCap", permissions: ["services.view"], requires: "services", group: "servicio" },
   // Portal (F35, F43): los programas del portal y sus ajustes, con el modulo prendido.
-  { name: "Portal", href: "/dashboard/portal", icon: "AppWindow", permissions: ["portal.view", "portal.sections", "portal.access_rules", "portal.settings"], requires: "services", group: "servicio" },
+  { name: "Portal", href: "/dashboard/portal", icon: "AppWindow", permissions: ["portal.view", "portal.sections", "portal.access_rules", "portal.settings", "portal.points"], requires: "services", group: "servicio" },
   // @plantilla-hasta(servicios)
   // Afiliados (Servicios A1, F105): no depende del modulo de Servicios, asi que la seccion aparece aunque este apagado.
   // Lo ve quien tiene el resumen o las reglas; «Mis links» (affiliates.use) va en el menu de usuario, no aca.

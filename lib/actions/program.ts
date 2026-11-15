@@ -8,9 +8,11 @@ import { svcRpc, svcSchema, type SvcResult } from "@/lib/services/db";
 import { normalizeVideoUrl } from "@/lib/program/video-url";
 import { unlockRuleProblems, type UnlockRule } from "@/lib/program/unlock";
 import { checkDocument, checkHtml, checkImage, checkResource, programPath } from "@/lib/program/lesson";
+import { copiedPath, copyPlan, filePaths } from "@/lib/program/copy";
 import { saveLessonTranscriptCore } from "@/lib/program/transcript-store";
 import { quizDefinitionIssues, type QuizSettings } from "@/lib/program/quiz";
 import { gradingIssues, type GradingDef } from "@/lib/program/grading";
+import { DEFAULT_SUBMISSION_LIMITS, limitValue, submissionLimitsIssues, type SubmissionLimits } from "@/lib/program/submission-limits";
 
 /**
  * El contenido del programa (bloque PR). Escribir pide `program.manage`; prender, apagar y archivar,
@@ -170,7 +172,7 @@ const PORTAL_FIELD_TYPES: Record<"quiz" | "activity" | "terms", readonly string[
 export async function savePortalForm(
   productId: string,
   target: { kind: "quiz" | "activity"; itemId: string } | { kind: "terms" },
-  input: { name: string; intro?: string; fields: PortalFormField[]; quiz?: QuizSettings; grading?: GradingDef },
+  input: { name: string; intro?: string; fields: PortalFormField[]; quiz?: QuizSettings; grading?: GradingDef; submission?: SubmissionLimits; points?: { submit?: number | null; pass?: number | null } },
 ): Promise<SvcResult<{ formId: string }>> {
   const ctx = await getPermissionAction(target.kind === "terms" ? "portal.sections" : "program.manage");
   if (!ctx || !UUID.test(productId) || ("itemId" in target && !UUID.test(target.itemId))) return NOT_ALLOWED;
@@ -188,7 +190,7 @@ export async function savePortalForm(
     if (problems.length) return fail(problems.join(". "));
   }
   if (target.kind === "activity") {
-    const problems = gradingIssues(input.grading ?? {});
+    const problems = [...gradingIssues(input.grading ?? {}), ...submissionLimitsIssues(input.submission)];
     if (problems.length) return fail(problems.join(". "));
   }
   const service = await createServiceClient();
@@ -207,7 +209,12 @@ export async function savePortalForm(
     fields: input.fields.map((f) => ({ id: f.key, key: f.key, type: f.type, label: f.label, required: f.required, ...(f.options ? { options: f.options } : {}), ...(f.consentText ? { consentText: f.consentText } : {}) })),
   };
   if (target.kind === "quiz") definition.quiz = input.quiz ?? {};
-  if (target.kind === "activity") definition.grading = input.grading ?? { enabled: false };
+  if (target.kind === "activity") {
+    definition.grading = input.grading ?? { enabled: false };
+    // F126: guardar la actividad deja sus límites escritos (los de siempre si no vinieron).
+    const l = { ...DEFAULT_SUBMISSION_LIMITS, ...(input.submission ?? {}) };
+    definition.submission = { before_review: limitValue(l.before_review), after_review: limitValue(l.after_review) };
+  }
   const name = input.name.trim().slice(0, 120) || (target.kind === "terms" ? "Términos del programa" : "Formulario del programa");
   const db = service as unknown as { from: (t: string) => any; rpc: (f: string, a: Record<string, unknown>) => Promise<{ error: { message: string } | null }> };
   if (formId) {
@@ -238,7 +245,10 @@ export async function savePortalForm(
       if (!res.ok) return res;
     }
   } else {
-    const res = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: target.itemId, p: { form_id: formId } });
+    // F129: los puntos propios viajan con el mismo cambio (la base los valida, 00382). Sin la clave, quedan como estaban.
+    const pts = input.points;
+    if (pts && [pts.submit, pts.pass].some((v) => v != null && !(Number.isInteger(v) && v >= 0 && v <= 10000))) return fail("Los puntos al entregar y al aprobar van de 0 a 10.000");
+    const res = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: target.itemId, p: { form_id: formId, ...(pts ? { points: { submit: pts.submit ?? null, pass: pts.pass ?? null } } : {}) } });
     if (!res.ok) return res;
   }
   refresh(productId);
@@ -258,4 +268,80 @@ export async function reviewSubmission(submissionId: string, input: { status: "r
   });
   if (res.ok) revalidatePath("/dashboard/portal");
   return res;
+}
+
+/**
+ * «Copiar a otro programa» (F50): un módulo (con sus submódulos y clases) o una clase, como copias NUEVAS en otro
+ * programa del negocio. Las evaluaciones y actividades se copian como formularios nuevos con el programa de destino; los
+ * archivos, a rutas nuevas. Las copias nacen inactivas y abiertas (la regla de desbloqueo del original puede nombrar
+ * cosas del otro programa). Editar la copia no cambia el original. Crea con la sesión (pide `program.manage`).
+ */
+export async function copyProgramItemToProduct(productId: string, itemId: string, targetProductId: string): Promise<SvcResult<{ count: number }>> {
+  const ctx = await getPermissionAction("program.manage");
+  if (!ctx || !UUID.test(productId) || !UUID.test(itemId) || !UUID.test(targetProductId)) return NOT_ALLOWED;
+  if (productId === targetProductId) return fail("Elegí otro programa");
+  const service = await createServiceClient();
+  const { data: target } = await service.from("products").select("id").eq("id", targetProductId).eq("workspace_id", ctx.workspace.id).maybeSingle();
+  if (!target) return NOT_ALLOWED;
+  const { data: rows } = await svcSchema(ctx.supabase).from("program_items").select("*").eq("product_id", productId).eq("workspace_id", ctx.workspace.id);
+  const all = (rows ?? []) as Array<Record<string, unknown> & { id: string; parent_id: string | null; kind: "module" | "submodule" | "lesson"; position: number }>;
+  const plan = copyPlan(all, itemId).filter((i) => i.status !== "archived");
+  if (plan.length === 0) return NOT_ALLOWED;
+  const db = service as unknown as { from: (t: string) => any; rpc: (f: string, a: Record<string, unknown>) => Promise<{ error: { message: string } | null }> };
+  const map = new Map<string, string>();
+  for (const src of plan) {
+    const created = await svcRpc<string>(ctx.supabase, "program_create_item", {
+      p_product_id: targetProductId,
+      p: { kind: src.kind, lesson_type: src.lesson_type ?? null, title: src.title, description: src.description ?? null, parent_id: src.id === itemId ? null : map.get(src.parent_id ?? "") ?? null },
+    });
+    if (!created.ok || !created.data) return created.ok ? fail("No se pudo copiar. Probá de nuevo.") : created;
+    const newId = created.data;
+    map.set(src.id, newId);
+    // Los archivos, a la carpeta del ítem nuevo.
+    const moved = new Map<string, string>();
+    for (const path of filePaths(src as { document_path?: string | null; cover_path?: string | null; thumbnail_path?: string | null; resources?: unknown })) {
+      const to = copiedPath(path, ctx.workspace.id, targetProductId, newId);
+      const { error } = await service.storage.from("program-resources").copy(path, to);
+      if (error) console.error("[programa] no pude copiar un archivo:", error.message);
+      else moved.set(path, to);
+    }
+    // La evaluación o actividad: un formulario nuevo del programa de destino, con su versión publicada.
+    let formId: string | null = null;
+    if (typeof src.form_id === "string") {
+      const { data: f } = await db.from("forms").select("name, type, draft_definition").eq("id", src.form_id).eq("workspace_id", ctx.workspace.id).maybeSingle();
+      if (f) {
+        const slug = `prog-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+        const { data: nf, error } = await db.from("forms").insert({ workspace_id: ctx.workspace.id, name: f.name, type: f.type, slug, product_id: targetProductId, draft_definition: f.draft_definition, status: "published", created_by: ctx.user.id }).select("id").single();
+        if (!error && nf) {
+          formId = (nf as { id: string }).id;
+          const { error: pubError } = await db.rpc("publish_form_version", { p_form_id: formId, p_actor: ctx.user.id });
+          if (pubError) console.error("[programa] no pude publicar el formulario copiado:", pubError.message);
+        }
+      }
+    }
+    const pathOf = (p: unknown) => (typeof p === "string" ? moved.get(p) ?? null : null);
+    const resources = Array.isArray(src.resources)
+      ? (src.resources as Array<Record<string, unknown>>).map((r) => (typeof r.path === "string" ? { ...r, id: crypto.randomUUID(), path: moved.get(r.path) ?? r.path } : { ...r, id: crypto.randomUUID() }))
+      : [];
+    const upd = await svcRpc<null>(ctx.supabase, "program_update_item", {
+      p_item_id: newId,
+      p: {
+        video_url: src.video_url ?? null,
+        video_embed_url: src.video_embed_url ?? null,
+        duration_seconds: src.duration_seconds ?? null,
+        html_content: src.html_content ?? null,
+        document_path: pathOf(src.document_path),
+        cover_path: pathOf(src.cover_path),
+        thumbnail_path: pathOf(src.thumbnail_path),
+        thumbnail_url: src.thumbnail_url ?? null,
+        resources,
+        comments_enabled: src.comments_enabled !== false,
+        required: src.required !== false,
+        form_id: formId,
+      },
+    });
+    if (!upd.ok) return upd;
+  }
+  refresh(targetProductId);
+  return { ok: true, data: { count: plan.length } };
 }

@@ -13,10 +13,11 @@ export const CLIENT_COLUMN_METAS: readonly ColumnMeta[] = [
   { key: "active", label: "Servicios", defaultWidth: 120 },
   { key: "progress", label: "Avance", defaultWidth: 160 },
   { key: "login", label: "Último ingreso", defaultWidth: 160 },
+  { key: "points", label: "Puntos (30 días)", defaultWidth: 170 },
   { key: "paid", label: "Total cobrado", defaultWidth: 140 },
 ];
 
-/** Las columnas que se ofrecen: «Último ingreso» solo si algun producto tiene portal. */
+/** Las columnas que se ofrecen: «Último ingreso» y «Puntos (30 días)» solo si algún producto tiene portal. */
 export function clientColumnMetas(anyPortal: boolean): readonly ColumnMeta[] {
-  return anyPortal ? CLIENT_COLUMN_METAS : CLIENT_COLUMN_METAS.filter((c) => c.key !== "login");
+  return anyPortal ? CLIENT_COLUMN_METAS : CLIENT_COLUMN_METAS.filter((c) => c.key !== "login" && c.key !== "points");
 }

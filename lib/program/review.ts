@@ -7,7 +7,7 @@ import { SCALE_LABELS, WORD_LABELS } from "./grading";
 export interface ReviewSubmission {
   id: string;
   formType: "quiz" | "activity";
-  reviewStatus: "pending" | "graded" | "reviewed" | "needs_changes" | null;
+  reviewStatus: "pending" | "graded" | "reviewed" | "needs_changes" | "superseded" | null;
   grade: { pct?: number; passed?: boolean; counted?: boolean; scale?: string; value?: unknown } | null;
   gradingEnabled: boolean;
   createdAt: string;
@@ -42,6 +42,7 @@ export function reviewRowView(s: ReviewSubmission): ReviewRowView {
       gradeLabel: gradeLabel(s.grade),
     };
   }
+  if (s.reviewStatus === "superseded") return { kindLabel: "Actividad", stateLabel: "Reemplazada", tone: "info", action: "view", gradeLabel: null };
   if (s.reviewStatus === "needs_changes") return { kindLabel: "Actividad", stateLabel: "A corregir", tone: "warn", action: "view", gradeLabel: null };
   if (s.reviewStatus === "reviewed") {
     return {
@@ -79,9 +80,33 @@ export function reviewFilterCounts(items: readonly ReviewSubmission[]): Record<R
 }
 
 export function matchesReviewFilter(s: ReviewSubmission, f: ReviewFilter): boolean {
+  // Una entrega reemplazada (F126) no va en la lista: se ve en el historial de la persona.
+  if (s.reviewStatus === "superseded") return false;
   if (f === "all") return true;
   if (f === "quiz") return s.formType === "quiz";
   if (s.formType === "quiz") return false;
   if (f === "pending") return s.reviewStatus === "pending" || s.reviewStatus === null;
   return s.reviewStatus === f;
+}
+
+/** Lo mínimo para armar el historial de entregas de una persona en una actividad (F126). */
+export interface HistoryKey {
+  id: string;
+  formId: string;
+  contactId: string | null;
+  attempt: number | null;
+  createdAt: string;
+}
+
+/** Las entregas de esa persona en esa actividad, de la primera a la última. */
+export function submissionHistory<T extends HistoryKey>(items: readonly T[], of: HistoryKey): T[] {
+  return items
+    .filter((i) => i.formId === of.formId && i.contactId === of.contactId)
+    .sort((a, b) => (a.attempt ?? 0) - (b.attempt ?? 0) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+/** Si es la última entrega de esa persona (con límites, la base solo deja revisar esa: EV006). */
+export function isLatestSubmission<T extends HistoryKey & { reviewStatus: ReviewSubmission["reviewStatus"] }>(items: readonly T[], of: T): boolean {
+  const live = submissionHistory(items, of).filter((i) => i.reviewStatus !== "superseded");
+  return live.length === 0 || live[live.length - 1].id === of.id;
 }

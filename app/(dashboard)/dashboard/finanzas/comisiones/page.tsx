@@ -46,11 +46,17 @@ export default async function ComisionesPage({ searchParams }: { searchParams: P
   let drawer: React.ReactNode = null;
   if (detail) {
     const drawerExtras = await loadDrawerExtras(ctx, { saleId: detail.sale?.id ?? null, paymentId: detail.payment?.id ?? null });
+    // F124: al editar a mano también se le puede pagar a un contacto afiliado (los que tienen código).
+    const { data: affContacts } = ctx.can("commissions.edit")
+      ? await ctx.supabase.from("contacts").select("id, display_name").eq("workspace_id", ctx.workspace.id).not("affiliate_code", "is", null).is("deleted_at", null).order("display_name").limit(500)
+      : { data: [] };
+    const affiliates = ((affContacts ?? []) as Array<{ id: string; display_name: string | null }>).map((c) => ({ id: c.id, name: c.display_name ?? "Sin nombre" }));
     drawer = (
       <CommissionDrawer
         detail={detail}
         extras={drawerExtras}
         members={members}
+        affiliates={affiliates}
         roles={data.roles}
         lookups={{
           roles: Object.fromEntries(data.roles.map((r) => [r.key, r.name])),

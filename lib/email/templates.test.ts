@@ -107,3 +107,24 @@ describe("brandedEmailHtml", () => {
     expect(brandedEmailHtml({ brand: brand(), body: "<p>x</p>" })).toContain("Enviado por Negocio Demo");
   });
 });
+
+describe("emails del estudiante (F128)", () => {
+  it("el resumen semanal lleva las secciones escapadas, el botón al portal y cómo apagarlo", async () => {
+    const { portalDigestEmail } = await import("./templates");
+    const e = portalDigestEmail({ studentName: "Ana <b>Pérez", programName: "Prog & Co", sections: [{ key: "done", title: "Lo que hiciste", text: "Completaste 2 pasos." }, { key: "referrals", title: "Referidos", text: "Compartí tu link." }], portalUrl: "https://portal.example.com/" });
+    expect(e.subject).toBe("Tu semana en Prog & Co");
+    expect(e.html).toContain("Ana");
+    expect(e.html).not.toContain("<b>Pérez");
+    expect(e.html).toContain("Prog &amp; Co");
+    expect(e.html.indexOf("Lo que hiciste")).toBeLessThan(e.html.indexOf("Referidos"));
+    expect(e.html).toContain("Entrar al portal");
+    expect(e.html).toContain("Lo podés apagar");
+  });
+  it("«Lo que vence hoy»: asunto en singular y en plural, con la hora", async () => {
+    const { portalDueTodayEmail } = await import("./templates");
+    expect(portalDueTodayEmail({ studentName: null, programName: "P", items: [{ name: "Reporte diario", time: "23:59" }] }).subject).toBe("Hoy vence «Reporte diario»");
+    const two = portalDueTodayEmail({ studentName: "Leo", programName: "P", items: [{ name: "A" }, { name: "B" }] });
+    expect(two.subject).toBe("Hoy vencen 2 cosas en P");
+    expect(portalDueTodayEmail({ studentName: null, programName: "P", items: [{ name: "X", time: "18:00" }] }).html).toContain("hasta las 18:00");
+  });
+});

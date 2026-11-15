@@ -18,13 +18,13 @@ export const CLIENTS_SERVICE_LIMIT = 2000;
 export async function loadClientsList(supabase: Db, service: Db, workspaceId: string, memberNames: Map<string, string>): Promise<{ rows: ClientRow[]; truncated: boolean }> {
   const { data, error } = await svcSchema(supabase)
     .from("services")
-    .select("contact_id, product_id, status, light, progress_pct, owner_user_id, sale_id")
+    .select("id, contact_id, product_id, status, light, progress_pct, owner_user_id, sale_id")
     .eq("workspace_id", workspaceId)
     .neq("status", "cancelled")
     .order("created_at", { ascending: false })
     .limit(CLIENTS_SERVICE_LIMIT + 1);
   if (error) console.error("[clientes] no pude leer los servicios:", error.message);
-  const all = (data ?? []) as Array<{ contact_id: string; product_id: string; status: ServiceStatus; light: Light | null; progress_pct: number | string | null; owner_user_id: string | null; sale_id: string | null }>;
+  const all = (data ?? []) as Array<{ id: string; contact_id: string; product_id: string; status: ServiceStatus; light: Light | null; progress_pct: number | string | null; owner_user_id: string | null; sale_id: string | null }>;
   const truncated = all.length > CLIENTS_SERVICE_LIMIT;
   const svc = all.slice(0, CLIENTS_SERVICE_LIMIT);
   const contactIds = [...new Set(svc.map((s) => s.contact_id))];
@@ -43,9 +43,29 @@ export async function loadClientsList(supabase: Db, service: Db, workspaceId: st
   }
   for (const s of svc) if (s.sale_id && !paidCents.has(s.contact_id)) paidCents.set(s.contact_id, 0);
 
-  const [names, summary] = await Promise.all([
+  // A3: los puntos de 30 días (00380, de a 500) y quiénes no empezaron el Reto a tiempo. Si fallan, la lista se ve igual.
+  const portalSvcIds = svc.filter((s) => withPortal.has(s.product_id) && (s.status === "active" || s.status === "paused")).map((s) => s.id);
+  const points = new Map<string, number[]>();
+  const pointsJobs: Array<Promise<void>> = [];
+  for (let i = 0; i < portalSvcIds.length; i += 500) {
+    pointsJobs.push(
+      (async () => {
+        const { data: m, error: e } = await svcSchema(supabase).rpc("svc_points_minibars", { p_service_ids: portalSvcIds.slice(i, i + 500) });
+        if (e) return void console.error("[clientes] no pude leer los puntos:", e.message);
+        for (const [id, v] of Object.entries((m ?? {}) as Record<string, { total: number; bars: number[] }>)) if (v.total > 0) points.set(id, v.bars);
+      })(),
+    );
+  }
+  const lateJob = (async () => {
+    const { data: ids, error: e } = await svcSchema(supabase).rpc("svc_challenge_late_starts", { p_workspace_id: workspaceId });
+    if (e) console.error("[clientes] no pude leer el reto:", e.message);
+    return new Set(((ids ?? []) as string[]).map(String));
+  })();
+  const [names, summary, late] = await Promise.all([
     contactNames(supabase, contactIds),
     withPortal.size ? loadPortalSummary(supabase, [...new Set(svc.filter((s) => withPortal.has(s.product_id)).map((s) => s.contact_id))]) : Promise.resolve(new Map()),
+    lateJob,
+    Promise.all(pointsJobs),
   ]);
   const services: ClientServiceInput[] = svc.map((s) => ({
     contactId: s.contact_id,
@@ -54,6 +74,8 @@ export async function loadClientsList(supabase: Db, service: Db, workspaceId: st
     progressPct: Number(s.progress_pct) || 0,
     ownerName: s.owner_user_id ? memberNames.get(s.owner_user_id) ?? "Ya no está en el equipo" : null,
     hasPortal: withPortal.has(s.product_id),
+    points30: points.get(s.id) ?? null,
+    lateChallenge: late.has(s.id),
   }));
   const portal = new Map([...summary.values()].map((r) => [r.contact_id, { accountStatus: r.account_status, lastLoginAt: r.last_login_at, pendingReviews: Number(r.pending_reviews) || 0 }]));
   return { rows: buildClientRows({ services, names, portal, paidCents, nowIso: new Date().toISOString() }), truncated };

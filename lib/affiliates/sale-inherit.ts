@@ -17,6 +17,29 @@ export function vigenteAffiliate(row: { affiliate_user_id: string | null; affili
   return null;
 }
 
+/**
+ * Lo que el asistente de venta precarga en «Afiliado» (F74): el afiliado vigente del contacto, salvo que la regla del
+ * negocio cuente solo la primera compra (`counts.first_purchase_only`) y el contacto ya tenga una venta con afiliado.
+ */
+export function saleAffiliatePreload(
+  row: Parameters<typeof vigenteAffiliate>[0],
+  input: { now: Date; firstPurchaseOnly: boolean; hasSaleWithAffiliate: boolean },
+): ReturnType<typeof vigenteAffiliate> {
+  if (input.firstPurchaseOnly && input.hasSaleWithAffiliate) return null;
+  return vigenteAffiliate(row, input.now);
+}
+
+/** Si el contacto ya tiene una venta con afiliado y la regla cuenta solo la primera compra. */
+async function firstPurchaseBlocks(service: Db, workspaceId: string, contactId: string, exceptSaleId: string | null): Promise<boolean> {
+  const { data: ws } = await service.from("workspaces").select("affiliate_settings").eq("id", workspaceId).maybeSingle();
+  const only = ((ws as { affiliate_settings?: { counts?: { first_purchase_only?: boolean } } } | null)?.affiliate_settings?.counts?.first_purchase_only) === true;
+  if (!only) return false;
+  let q = service.from("sales").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("contact_id", contactId).or("affiliate_user_id.not.is.null,affiliate_contact_id.not.is.null");
+  if (exceptSaleId) q = q.neq("id", exceptSaleId);
+  const { count } = await q;
+  return (count ?? 0) > 0;
+}
+
 export async function inheritContactAffiliate(service: Db, workspaceId: string, saleId: string, contactId: string, now: Date = new Date()): Promise<boolean> {
   try {
     const { data } = await service
@@ -25,7 +48,9 @@ export async function inheritContactAffiliate(service: Db, workspaceId: string, 
       .eq("workspace_id", workspaceId)
       .eq("id", contactId)
       .maybeSingle();
-    const pick = vigenteAffiliate(data as never, now);
+    const vigente = vigenteAffiliate(data as never, now);
+    // F74: si el negocio cuenta solo la primera compra y el contacto ya tiene una venta con afiliado, esta no lo hereda.
+    const pick = vigente && !(await firstPurchaseBlocks(service, workspaceId, contactId, saleId)) ? vigente : null;
     if (!pick) return false;
     const { error } = await service.rpc("affiliate_set_sale", { p_sale_id: saleId, p_affiliate: pick.ref, p_kind: pick.kind, p_reason: null });
     if (error) {

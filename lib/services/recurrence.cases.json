@@ -1,5 +1,5 @@
 {
-  "_comment": "Casos de occurrenceDates (F21). Corren contra la gemela TS (lib/services/engine-rules.ts) y contra app_servicio.svc_occurrence_dates (verify-services). Plata en centimos; fechas civiles YYYY-MM-DD.",
+  "_comment": "Casos de occurrenceDates (F21). Corren contra la gemela TS (lib/services/engine-rules.ts) y contra app_servicio.svc_occurrence_dates (verify-services). Plata en centimos; fechas civiles YYYY-MM-DD. Desde la 00376 (F127.2): `until: item_completed` usa phaseEnd (la fecha ya resuelta) y `max_days` es un tope.",
   "cases": [
     {
       "name": "semanal 30 dias el primer dia",
@@ -152,6 +152,113 @@
       "serviceEnd": "2027-01-01",
       "upTo": "2026-11-08",
       "expected": []
+    },
+    {
+      "name": "diario hasta completar otro paso (sin completar: sigue)",
+      "recurrence": {
+        "every": "day",
+        "until": "item_completed",
+        "item_key": "it_aaaaaa"
+      },
+      "start": "2026-11-02",
+      "phaseEnd": null,
+      "serviceEnd": null,
+      "upTo": "2026-11-04",
+      "expected": [
+        {
+          "index": 1,
+          "occursOn": "2026-11-02",
+          "dueOn": "2026-11-02"
+        },
+        {
+          "index": 2,
+          "occursOn": "2026-11-03",
+          "dueOn": "2026-11-03"
+        },
+        {
+          "index": 3,
+          "occursOn": "2026-11-04",
+          "dueOn": "2026-11-04"
+        }
+      ]
+    },
+    {
+      "name": "diario hasta completar otro paso (completado el 3)",
+      "recurrence": {
+        "every": "day",
+        "until": "item_completed",
+        "item_key": "it_aaaaaa"
+      },
+      "start": "2026-11-02",
+      "phaseEnd": "2026-11-03",
+      "serviceEnd": null,
+      "upTo": "2026-11-10",
+      "expected": [
+        {
+          "index": 1,
+          "occursOn": "2026-11-02",
+          "dueOn": "2026-11-02"
+        },
+        {
+          "index": 2,
+          "occursOn": "2026-11-03",
+          "dueOn": "2026-11-03"
+        }
+      ]
+    },
+    {
+      "name": "tope de 3 días aunque el paso no se complete",
+      "recurrence": {
+        "every": "day",
+        "until": "item_completed",
+        "item_key": "it_aaaaaa",
+        "max_days": 3
+      },
+      "start": "2026-11-02",
+      "phaseEnd": null,
+      "serviceEnd": null,
+      "upTo": "2026-11-10",
+      "expected": [
+        {
+          "index": 1,
+          "occursOn": "2026-11-02",
+          "dueOn": "2026-11-02"
+        },
+        {
+          "index": 2,
+          "occursOn": "2026-11-03",
+          "dueOn": "2026-11-03"
+        },
+        {
+          "index": 3,
+          "occursOn": "2026-11-04",
+          "dueOn": "2026-11-04"
+        }
+      ]
+    },
+    {
+      "name": "el tope no alarga un fin anterior",
+      "recurrence": {
+        "every": "day",
+        "until": "phase_end",
+        "max_days": 30
+      },
+      "start": "2026-11-02",
+      "phaseEnd": "2026-11-03",
+      "serviceEnd": null,
+      "upTo": "2026-11-10",
+      "expected": [
+        {
+          "index": 1,
+          "occursOn": "2026-11-02",
+          "dueOn": "2026-11-02"
+        },
+        {
+          "index": 2,
+          "occursOn": "2026-11-03",
+          "dueOn": "2026-11-03"
+        }
+      ]
     }
   ]
 }
