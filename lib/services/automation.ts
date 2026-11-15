@@ -33,6 +33,8 @@ export const SERVICE_TRIGGER_TYPES = [
   "challenge_occurrence_due_soon",
   "challenge_occurrence_overdue",
   "challenge_completed",
+  // A3 (F129): subió de nivel con los puntos (00379).
+  "points_level_up",
   "certificate_issued",
   "portal_access_expiring",
   "portal_access_expired",
@@ -66,6 +68,7 @@ export const SERVICE_TRIGGER_LABELS: Record<ServiceTriggerType, { label: string;
   challenge_occurrence_due_soon: { label: "Se acerca una entrega del Reto", description: "Antes de que venza una repetición" },
   challenge_occurrence_overdue: { label: "Se venció una entrega del Reto", description: "Cuando una repetición vence sin entregar" },
   challenge_completed: { label: "Terminó el Reto", description: "Cuando se cierra la fase Reto" },
+  points_level_up: { label: "Subió de nivel", description: "Cuando sus puntos lo llevan al nivel siguiente" },
   certificate_issued: { label: "Se emitió un certificado", description: "Cuando se genera el certificado del servicio" },
   portal_access_expiring: { label: "Un acceso al portal está por vencer", description: "Antes de que venza un acceso" },
   portal_access_expired: { label: "Venció un acceso al portal", description: "Cuando un acceso llega a su fin" },
