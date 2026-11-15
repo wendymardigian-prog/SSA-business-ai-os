@@ -21,7 +21,7 @@
 --
 -- Solo lectura (salvo el día activo que ya suma `session_resolve`, 00384). Aditiva.
 --
--- Volver atrás: DROP FUNCTION IF EXISTS app_servicio_portal.portal_context(text, text, uuid), app_servicio_portal.ctx_programs(uuid, uuid),
+-- Volver atrás: DROP FUNCTION IF EXISTS app_servicio_portal.portal_context(text, text, uuid), app_servicio_portal.portal_public_brand(text), app_servicio_portal.ctx_programs(uuid, uuid),
 --   app_servicio_portal.ctx_section(uuid, uuid, uuid, text, date);
 -- ============================================================================
 
@@ -219,6 +219,21 @@ BEGIN
 END;
 $$;
 
+-- La marca para las pantallas SIN sesión (Entrar, invitación, «Este portal no existe»): solo lo público del negocio
+-- de esa dirección. Dirección desconocida: {exists:false}, sin ningún nombre (F201).
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_public_brand(p_host text)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT COALESCE((
+    SELECT jsonb_build_object('exists', true, 'name', COALESCE(NULLIF(w.brand_name, ''), w.name),
+             'short', upper(left(COALESCE(NULLIF(w.brand_name, ''), w.name), 1)), 'logo_path', w.brand_logo_path, 'color', w.brand_color,
+             'host', w.portal_settings ->> 'host', 'support', w.portal_settings ->> 'support_whatsapp',
+             'password_allowed', COALESCE(w.portal_settings #> '{login,password_allowed}' = 'true'::jsonb, false),
+             'contract', app_servicio.contract_version()::integer)
+      FROM public.workspaces w
+     WHERE w.id = app_servicio_portal.ws_by_host(p_host) AND app_servicio.module_on(w.id)), jsonb_build_object('exists', false));
+$$;
+
 REVOKE ALL ON FUNCTION app_servicio_portal.ctx_programs(uuid, uuid), app_servicio_portal.ctx_section(uuid, uuid, uuid, text, date),
   app_servicio_portal.portal_context(text, text, uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION app_servicio_portal.portal_context(text, text, uuid) TO portal_app, service_role;
+REVOKE ALL ON FUNCTION app_servicio_portal.portal_public_brand(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio_portal.portal_context(text, text, uuid), app_servicio_portal.portal_public_brand(text) TO portal_app, service_role;
