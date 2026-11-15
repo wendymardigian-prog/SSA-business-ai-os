@@ -8,7 +8,7 @@ import { svcRpc, svcSchema, type SvcResult } from "@/lib/services/db";
 import { wallClockToUtc } from "@/lib/scheduling/time/tz";
 import type { DateString, WallTime } from "@/lib/scheduling/types";
 import { liveDateIssues, liveSessionIssues, liveSessionPayload, type LiveSessionInput } from "@/lib/program/live-sessions";
-import { addToPortalPlan, type AddToPortalChoice, type CallForPortal } from "@/lib/program/add-to-portal";
+import { addToPortalPlan, callTranscriptToVtt, type AddToPortalChoice, type CallForPortal } from "@/lib/program/add-to-portal";
 import { saveLessonTranscriptCore } from "@/lib/program/transcript-store";
 import { sanitizeSearch } from "@/lib/url-params";
 
@@ -275,4 +275,45 @@ export async function portalTargets(callId: string): Promise<SvcResult<{
     }),
   );
   return { ok: true, data: { recordedAt: c.recorded_at, title: c.title, programs } };
+}
+
+/**
+ * «Elegir un Fathom» para el video de una clase (F46): las grabaciones de Fathom del equipo (las mismas de Grabaciones,
+ * con la sesión de quien mira), con buscador. `connected = false` si nadie conectó Fathom (el botón lleva a Integraciones).
+ */
+export async function listFathomForLesson(query: string): Promise<SvcResult<{ connected: boolean; calls: Array<{ id: string; title: string; recorded_at: string; shared: boolean }> }>> {
+  const ctx = await getPermissionAction("program.manage");
+  if (!ctx) return NOT_ALLOWED;
+  const service = await createServiceClient();
+  const { count } = await service.from("oauth_connections").select("id", { count: "exact", head: true }).eq("workspace_id", ctx.workspace.id).eq("provider", "fathom");
+  const q = sanitizeSearch(query, 60);
+  let req = ctx.supabase.from("calls").select("id, title, recorded_at, share_url").eq("workspace_id", ctx.workspace.id).eq("source", "fathom").order("recorded_at", { ascending: false }).limit(20);
+  if (q.length >= 2) req = req.ilike("title", `%${q}%`);
+  const { data } = await req;
+  return {
+    ok: true,
+    data: {
+      connected: (count ?? 0) > 0,
+      calls: ((data ?? []) as Array<{ id: string; title: string | null; recorded_at: string; share_url: string | null }>).map((c) => ({ id: c.id, title: c.title || "Sin título", recorded_at: c.recorded_at, shared: !!c.share_url })),
+    },
+  };
+}
+
+/**
+ * Guarda la grabación elegida en la clase: `source_call_id`, el link compartido de Fathom como video (Fathom no deja
+ * incrustar: el portal muestra la vista previa con «Ver la grabación») y la transcripción en Conocimiento. Sin link
+ * compartido, guarda igual y avisa que hay que compartirla como «Cualquiera con el link».
+ */
+export async function pickFathomForLesson(productId: string, itemId: string, callId: string): Promise<SvcResult<{ warning: string | null; videoUrl: string }>> {
+  const ctx = await getPermissionAction("program.manage");
+  if (!ctx || !UUID.test(productId) || !UUID.test(itemId) || !UUID.test(callId)) return NOT_ALLOWED;
+  const { data: c } = await ctx.supabase.from("calls").select("id, title, recorded_at, transcript, share_url, fathom_url").eq("id", callId).eq("workspace_id", ctx.workspace.id).eq("source", "fathom").maybeSingle();
+  if (!c) return fail("No encontré esa grabación");
+  const call = c as unknown as CallForPortal & { share_url: string | null; fathom_url: string | null };
+  const r = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: itemId, p: { source_call_id: call.id, video_url: call.share_url ?? "", video_embed_url: "" } });
+  if (!r.ok) return r;
+  const vtt = callTranscriptToVtt(call.transcript ?? []);
+  if (vtt) await saveLessonTranscriptCore(ctx, productId, itemId, vtt, "vtt").catch((e) => console.error("[fathom-clase] transcripcion", e instanceof Error ? e.message : "error"));
+  refresh(productId);
+  return { ok: true, data: { videoUrl: call.share_url ?? "", warning: call.share_url ? null : "Esta grabación todavía no tiene link compartido. En Fathom, compartila como «Cualquiera con el link» para que el estudiante la pueda ver." } };
 }

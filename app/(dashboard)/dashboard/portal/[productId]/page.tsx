@@ -66,7 +66,7 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   async function contentTab() {
     const { data: items } = await svcSchema(supabase)
       .from("program_items")
-      .select("id, parent_id, kind, lesson_type, title, description, position, status, unlock_rule, video_url, thumbnail_path, thumbnail_url, cover_path, required, comments_enabled, html_content, document_path, form_id, points")
+      .select("id, parent_id, kind, lesson_type, title, description, position, status, unlock_rule, video_url, thumbnail_path, thumbnail_url, cover_path, required, comments_enabled, html_content, document_path, form_id, points, source_call_id")
       .eq("product_id", productId)
       .eq("workspace_id", workspace.id);
     const ids = ((items ?? []) as Array<{ id: string }>).map((i) => i.id);

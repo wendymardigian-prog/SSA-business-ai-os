@@ -13,12 +13,15 @@ import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 import { PortalFormEditor, type PortalFormInitial } from "./portal-form-editor";
 import { useUrlIntent } from "@/components/ui/use-url-intent";
+import { listFathomForLesson, pickFathomForLesson } from "@/lib/actions/live-sessions";
 
 export interface ContentRow extends ProgramRow {
   /** El formulario de una evaluación o actividad (bloque EV), si ya tiene uno. */
   portalForm?: PortalFormInitial | null;
   /** «Puntos al entregar / al aprobar» propios (F129); null = los del programa. */
   points?: PortalFormInitial["points"];
+  /** F46: la grabación de Fathom de una clase de video («Elegir un Fathom»). */
+  source_call_id?: string | null;
   description: string | null;
   required: boolean;
   comments_enabled: boolean;
@@ -303,6 +306,18 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
             <input className={fieldInput} value={videoUrl} disabled={disabled} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://" />
           </label>
         )}
+        {item.kind === "lesson" && item.lesson_type === "video" && canManage && (
+          <FathomPicker
+            productId={productId}
+            itemId={item.id}
+            linked={!!item.source_call_id}
+            onPicked={(url, warning) => {
+              setVideoUrl(url);
+              setMsg({ kind: warning ? "error" : "ok", text: warning ? `Guardado. ${warning}` : "Listo: la clase usa esa grabación de Fathom y su transcripción." });
+              router.refresh();
+            }}
+          />
+        )}
         {item.kind === "lesson" && item.lesson_type === "html" && (
           <div className="space-y-1">
             <label className="block text-xs text-muted-foreground">
@@ -484,6 +499,86 @@ function CopyToProgram({ productId, itemId, programs, onDone, onError }: { produ
       >
         {pending ? "Copiando…" : "Copiar"}
       </button>
+    </div>
+  );
+}
+
+/**
+ * «Elegir un Fathom» (F46): las grabaciones de Fathom del equipo, con buscador. Guarda `source_call_id`, el link
+ * compartido y la transcripción. Fathom no deja incrustar su video: el portal muestra la vista previa con «Ver la
+ * grabación». Sin Fathom conectado, lleva a Integraciones.
+ */
+function FathomPicker({ productId, itemId, linked, onPicked }: { productId: string; itemId: string; linked: boolean; onPicked: (videoUrl: string, warning: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [data, setData] = useState<{ connected: boolean; calls: Array<{ id: string; title: string; recorded_at: string; shared: boolean }> } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const when = new Intl.DateTimeFormat("es", { day: "numeric", month: "short", year: "numeric" });
+
+  function load(text: string) {
+    setQ(text);
+    start(async () => {
+      const r = await listFathomForLesson(text);
+      if (r.ok) setData(r.data);
+      else setError(r.error.message);
+    });
+  }
+  function pick(callId: string) {
+    setError(null);
+    start(async () => {
+      const r = await pickFathomForLesson(productId, itemId, callId);
+      if (!r.ok) return setError(r.error.message);
+      setOpen(false);
+      onPicked(r.data.videoUrl, r.data.warning);
+    });
+  }
+
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" disabled={pending} onClick={() => { setOpen(!open); if (!open) load(""); }} className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent">
+          Elegir un Fathom
+        </button>
+        {linked && <span className="text-muted-foreground">Usa una grabación de Fathom: en el portal se ve la vista previa con «Ver la grabación».</span>}
+      </div>
+      {open && (
+        <div className="space-y-2 rounded-lg border border-border p-2">
+          {data && !data.connected ? (
+            <p className="text-sm">
+              Fathom no está conectado.{" "}
+              <Link href="/dashboard/settings/integrations" className="font-medium text-primary-ink hover:underline">
+                Conectalo en Integraciones
+              </Link>
+            </p>
+          ) : (
+            <>
+              <input value={q} onChange={(e) => load(e.target.value)} placeholder="Buscar una grabación…" aria-label="Buscar una grabación de Fathom" className={fieldInput} />
+              {data && data.calls.length === 0 ? (
+                <p className="text-muted-foreground">No hay grabaciones{q ? " con ese nombre" : ""}.</p>
+              ) : (
+                <ul className="max-h-56 divide-y divide-border overflow-auto rounded-md border border-border text-sm" aria-busy={pending}>
+                  {(data?.calls ?? []).map((c) => (
+                    <li key={c.id} className="flex items-center gap-2 px-2 py-1.5">
+                      <span className="min-w-0 flex-1 truncate">
+                        {c.title} <span className="text-xs text-muted-foreground">· {when.format(new Date(c.recorded_at))}{c.shared ? "" : " · sin link compartido"}</span>
+                      </span>
+                      <button type="button" disabled={pending} onClick={() => pick(c.id)} className="text-xs font-medium text-primary-ink hover:underline">
+                        Usar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+          {error && (
+            <p role="alert" className="text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
