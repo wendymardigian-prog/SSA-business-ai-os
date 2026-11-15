@@ -172,7 +172,7 @@ const PORTAL_FIELD_TYPES: Record<"quiz" | "activity" | "terms", readonly string[
 export async function savePortalForm(
   productId: string,
   target: { kind: "quiz" | "activity"; itemId: string } | { kind: "terms" },
-  input: { name: string; intro?: string; fields: PortalFormField[]; quiz?: QuizSettings; grading?: GradingDef; submission?: SubmissionLimits },
+  input: { name: string; intro?: string; fields: PortalFormField[]; quiz?: QuizSettings; grading?: GradingDef; submission?: SubmissionLimits; points?: { submit?: number | null; pass?: number | null } },
 ): Promise<SvcResult<{ formId: string }>> {
   const ctx = await getPermissionAction(target.kind === "terms" ? "portal.sections" : "program.manage");
   if (!ctx || !UUID.test(productId) || ("itemId" in target && !UUID.test(target.itemId))) return NOT_ALLOWED;
@@ -245,7 +245,10 @@ export async function savePortalForm(
       if (!res.ok) return res;
     }
   } else {
-    const res = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: target.itemId, p: { form_id: formId } });
+    // F129: los puntos propios viajan con el mismo cambio (la base los valida, 00382). Sin la clave, quedan como estaban.
+    const pts = input.points;
+    if (pts && [pts.submit, pts.pass].some((v) => v != null && !(Number.isInteger(v) && v >= 0 && v <= 10000))) return fail("Los puntos al entregar y al aprobar van de 0 a 10.000");
+    const res = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: target.itemId, p: { form_id: formId, ...(pts ? { points: { submit: pts.submit ?? null, pass: pts.pass ?? null } } : {}) } });
     if (!res.ok) return res;
   }
   refresh(productId);

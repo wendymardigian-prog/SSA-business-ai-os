@@ -17,6 +17,8 @@ import { useUrlIntent } from "@/components/ui/use-url-intent";
 export interface ContentRow extends ProgramRow {
   /** El formulario de una evaluación o actividad (bloque EV), si ya tiene uno. */
   portalForm?: PortalFormInitial | null;
+  /** «Puntos al entregar / al aprobar» propios (F129); null = los del programa. */
+  points?: PortalFormInitial["points"];
   description: string | null;
   required: boolean;
   comments_enabled: boolean;
@@ -318,7 +320,7 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
               kind={item.lesson_type}
               itemId={item.id}
               canEdit={canManage}
-              initial={item.portalForm ?? { name: item.title, intro: "", fields: [], quiz: {}, grading: { enabled: false } }}
+              initial={item.portalForm ?? { name: item.title, intro: "", fields: [], quiz: {}, grading: { enabled: false }, points: item.points ?? null }}
             />
           </fieldset>
         )}

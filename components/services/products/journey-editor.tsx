@@ -49,6 +49,7 @@ const HELP = {
   advance: "Manual: la pasa una persona. Sola con los obligatorios: avanza cuando se completan los pasos obligatorios. Sola con todos: cuando se completan todos.",
   challenge: "La fase se ve como «Reto» en el portal del cliente y puede empezar cuando la arranca el cliente, una automatización o una fecha fija.",
   light: "0 = el mismo día que vence. Sin regla, un paso vencido no cambia el color.",
+  points: "Puntos del portal al completarlo (solo si el programa tiene los puntos prendidos). Vacío = el valor del programa. En un paso que se repite, vale por cada repetición.",
 };
 
 const FUTURE_LABELS: Record<(typeof FUTURE_VISIBILITY)[number], string> = {
@@ -382,7 +383,7 @@ function PhaseHeader({
           <Trash2 className="h-4 w-4" aria-hidden />
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <div>
           <span className={label}>
             Duración (días) <InfoTooltip text={HELP.duration} />
@@ -410,6 +411,12 @@ function PhaseHeader({
             <option value="auto">Sola con los obligatorios</option>
             <option value="auto_all">Sola con todos</option>
           </select>
+        </div>
+        <div>
+          <span className={label}>
+            Puntos al completarla <InfoTooltip text={HELP.points} />
+          </span>
+          <input aria-label="Puntos al completar la fase" inputMode="numeric" placeholder="Del programa" value={phase.points ?? ""} onChange={(e) => onChange({ points: numOrNull(e.target.value.replace(/[^\d]/g, "")) })} className={input} />
         </div>
       </div>
       <label className="flex items-center gap-2 text-xs text-foreground">
@@ -621,6 +628,20 @@ function ItemDrawer({
               </select>
             </div>
           )}
+        </div>
+
+        <div className="max-w-[12rem]">
+          <label htmlFor="it-points" className={label}>
+            Puntos al completarlo <InfoTooltip text={HELP.points} />
+          </label>
+          <input
+            id="it-points"
+            inputMode="numeric"
+            placeholder="Del programa"
+            value={typeof ref.points === "number" ? ref.points : ""}
+            onChange={(e) => setRef({ points: numOrNull(e.target.value.replace(/[^\d]/g, "")) ?? undefined })}
+            className={input}
+          />
         </div>
 
         <fieldset className="space-y-2">

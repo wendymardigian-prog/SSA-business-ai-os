@@ -20,6 +20,8 @@ export interface PortalFormInitial {
   grading: GradingDef;
   /** Solo actividades (F126). Sin valor, el editor propone los de siempre (antes: sin límite; después: 2). */
   submission?: SubmissionLimits;
+  /** Solo actividades y evaluaciones (F129): puntos propios al entregar y al aprobar; vacío = los del programa. */
+  points?: { submit?: number | null; pass?: number | null } | null;
 }
 
 const TYPES: Record<Kind, Array<{ v: PortalFormField["type"]; label: string }>> = {
@@ -79,6 +81,7 @@ export function PortalFormEditor({ productId, kind, itemId, initial, canEdit }: 
   const [quiz, setQuiz] = useState<QuizSettings>({ pass_pct: 70, attempts: 1, show_grade: true, show_correct: false, ...initial.quiz });
   const [grading, setGrading] = useState<GradingDef>({ enabled: false, ...initial.grading });
   const [submission, setSubmission] = useState<SubmissionLimits>({ ...DEFAULT_SUBMISSION_LIMITS, ...initial.submission });
+  const [points, setPoints] = useState({ submit: initial.points?.submit != null ? String(initial.points.submit) : "", pass: initial.points?.pass != null ? String(initial.points.pass) : "" });
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [pending, start] = useTransition();
 
@@ -108,7 +111,15 @@ export function PortalFormEditor({ productId, kind, itemId, initial, canEdit }: 
     if (problems.length) return setMsg({ kind: "error", text: problems.join(". ") });
     setMsg(null);
     start(async () => {
-      const res = await savePortalForm(productId, kind === "terms" ? { kind } : { kind, itemId: itemId as string }, { name, intro, fields: clean, quiz, grading, submission });
+      const res = await savePortalForm(productId, kind === "terms" ? { kind } : { kind, itemId: itemId as string }, {
+        name,
+        intro,
+        fields: clean,
+        quiz,
+        grading,
+        submission,
+        ...(kind === "terms" ? {} : { points: { submit: kind === "activity" && points.submit !== "" ? Number(points.submit) : null, pass: points.pass !== "" ? Number(points.pass) : null } }),
+      });
       if (!res.ok) return setMsg({ kind: "error", text: res.error.message });
       setMsg({ kind: "ok", text: "Guardado y publicado." });
       router.refresh();
@@ -286,6 +297,25 @@ export function PortalFormEditor({ productId, kind, itemId, initial, canEdit }: 
           <LimitPicker label="Correcciones antes de la primera revisión" value={submission.before_review} disabled={disabled} onChange={(v) => setSubmission({ ...submission, before_review: v })} />
           <LimitPicker label="Entregas nuevas después de una revisión" value={submission.after_review} disabled={disabled} onChange={(v) => setSubmission({ ...submission, after_review: v })} />
           <p>Corregir antes de la revisión reemplaza la entrega anterior. Con «Pedir otra entrega» siempre puede mandar una más, sin contar para este número. Una entrega aprobada no se vuelve a entregar.</p>
+        </fieldset>
+      )}
+
+      {kind !== "terms" && (
+        <fieldset className="space-y-2 rounded-lg border border-border p-3 text-xs text-muted-foreground">
+          <legend className="px-1 font-semibold text-foreground">Puntos</legend>
+          <div className="flex flex-wrap gap-4">
+            {kind === "activity" && (
+              <label className="flex items-center gap-2">
+                Al entregar
+                <input aria-label="Puntos al entregar" inputMode="numeric" placeholder="Del programa" className={`${fieldInput} w-28`} value={points.submit} disabled={disabled} onChange={(e) => setPoints({ ...points, submit: e.target.value.replace(/[^\d]/g, "") })} />
+              </label>
+            )}
+            <label className="flex items-center gap-2">
+              Al aprobarla
+              <input aria-label="Puntos al aprobar" inputMode="numeric" placeholder="Del programa" className={`${fieldInput} w-28`} value={points.pass} disabled={disabled} onChange={(e) => setPoints({ ...points, pass: e.target.value.replace(/[^\d]/g, "") })} />
+            </label>
+          </div>
+          <p>Solo cuentan si el programa tiene los puntos prendidos (Portal › programa › Puntos). Vacío = el valor del programa.</p>
         </fieldset>
       )}
 

@@ -22,6 +22,7 @@ export const PROGRAM_PAGE_PERMISSIONS = [
   "community.spaces",
   "tutor.manage",
   "tutor.knowledge",
+  "portal.points",
 ] as const;
 
 export interface PortalProgram {

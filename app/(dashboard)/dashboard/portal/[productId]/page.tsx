@@ -16,6 +16,8 @@ import { lessonCommentsOn, programSpaces, LESSON_SPACE } from "@/lib/program/com
 import { svcRpc } from "@/lib/services/db";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { resolveBrand } from "@/lib/brand";
+import { ProgramPointsPanel, type RankingRow } from "@/components/services/portal/program-points-panel";
+import type { PointsSettings } from "@/lib/portal-points/rules";
 import { ProgramAssistant, type AssistantUsage, type TutorKnowledge } from "@/components/services/portal/program-assistant";
 import { svcSchema } from "@/lib/services/db";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -36,11 +38,12 @@ const PROGRAM_TABS = [
   { key: "comunidad", label: "Comunidad" },
   { key: "asistente", label: "Asistente IA" },
   { key: "afiliados", label: "Afiliados" },
+  { key: "puntos", label: "Puntos" },
 ] as const;
 
 /**
- * Portal › un programa: Contenido, Calendario, Comunidad, Asistente IA y Afiliados (qué links ven los estudiantes,
- * F106), como pestañas en la barra superior. Los ajustes del programa (secciones, términos, variantes) son el
+ * Portal › un programa: Contenido, Calendario, Comunidad, Asistente IA, Afiliados (qué links ven los estudiantes,
+ * F106) y Puntos (F129, se ve con `portal.points` o `portal.view`), como pestañas en la barra superior. Los ajustes del programa (secciones, términos, variantes) son el
  * engranaje de la barra (`/dashboard/portal/<id>/ajustes`); el link viejo `?tab=ajustes` lleva ahí.
  */
 export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string; filtro?: string; espacio?: string; clase?: string }> }) {
@@ -53,7 +56,9 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   const loaded = await loadPortalProgram(supabase, workspace.id, productId);
   if (!loaded) notFound();
   const { program: p, variants: vs } = loaded;
-  const tab = PROGRAM_TABS.find((t) => t.key === sp.tab)?.key ?? "contenido";
+  const canSeePoints = ctx.can("portal.points") || ctx.can("portal.view");
+  const tabs = PROGRAM_TABS.filter((t) => t.key !== "puntos" || canSeePoints);
+  const tab = tabs.find((t) => t.key === sp.tab)?.key ?? "contenido";
   const ps = (p.portal_settings ?? {}) as { sections?: Record<string, boolean>; affiliates?: { visible_link_keys?: string[] } };
   const canEdit = ctx.can("portal.sections");
 
@@ -61,7 +66,7 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   async function contentTab() {
     const { data: items } = await svcSchema(supabase)
       .from("program_items")
-      .select("id, parent_id, kind, lesson_type, title, description, position, status, unlock_rule, video_url, thumbnail_path, thumbnail_url, cover_path, required, comments_enabled, html_content, document_path, form_id")
+      .select("id, parent_id, kind, lesson_type, title, description, position, status, unlock_rule, video_url, thumbnail_path, thumbnail_url, cover_path, required, comments_enabled, html_content, document_path, form_id, points")
       .eq("product_id", productId)
       .eq("workspace_id", workspace.id);
     const ids = ((items ?? []) as Array<{ id: string }>).map((i) => i.id);
@@ -72,10 +77,10 @@ export default async function PortalProgramPage({ params, searchParams }: { para
     const formIds = ((items ?? []) as Array<{ form_id?: string | null }>).map((i) => i.form_id).filter((x): x is string => !!x);
     const { data: forms } = formIds.length ? await (await createServiceClient()).from("forms").select("id, name, draft_definition").in("id", formIds).eq("workspace_id", workspace.id) : { data: [] };
     const formById = new Map(((forms ?? []) as Array<{ id: string; name: string; draft_definition: Record<string, unknown> }>).map((f) => [f.id, f]));
-    const rows = ((items ?? []) as unknown as Array<Omit<ContentRow, "hasTranscript"> & { form_id?: string | null }>).map((r) => {
+    const rows = ((items ?? []) as unknown as Array<Omit<ContentRow, "hasTranscript"> & { form_id?: string | null; points?: PortalFormInitial["points"] }>).map((r) => {
       const f = r.form_id ? formById.get(r.form_id) : null;
       const d = (f?.draft_definition ?? {}) as { intro?: string; fields?: PortalFormInitial["fields"]; quiz?: PortalFormInitial["quiz"]; grading?: PortalFormInitial["grading"]; submission?: PortalFormInitial["submission"] };
-      return { ...r, hasTranscript: withTranscript.has(r.id), portalForm: f ? { name: f.name, intro: d.intro ?? "", fields: d.fields ?? [], quiz: d.quiz ?? {}, grading: d.grading ?? { enabled: false }, submission: d.submission } : null };
+      return { ...r, hasTranscript: withTranscript.has(r.id), portalForm: f ? { name: f.name, intro: d.intro ?? "", fields: d.fields ?? [], quiz: d.quiz ?? {}, grading: d.grading ?? { enabled: false }, submission: d.submission, points: r.points ?? null } : null };
     });
     const counts = await svcRpc<{ by_item?: Record<string, number> }>(supabase, "community_item_counts", { p_product_id: productId });
     // F50: los otros programas del negocio (productos con portal), para «Copiar a otro programa».
@@ -164,6 +169,20 @@ export default async function PortalProgramPage({ params, searchParams }: { para
     );
   }
 
+  // Puntos (F129): la configuración sale del producto; el ranking, de `points_ranking` (00380).
+  async function pointsTab() {
+    const ranking = await svcRpc<{ students: number; rows: RankingRow[] } | null>(supabase, "points_ranking", { p_product_id: productId, p_limit: 50 });
+    return (
+      <ProgramPointsPanel
+        productId={productId}
+        settings={(((p!.portal_settings ?? {}) as { points?: PointsSettings }).points ?? {}) as PointsSettings}
+        rev={p!.portal_settings_rev ?? 0}
+        canEdit={ctx.can("portal.points")}
+        ranking={ranking.ok ? ranking.data : null}
+      />
+    );
+  }
+
   // Lo sin contestar de la comunidad es el contador de su pestaña (lo mismo que cuenta «Por revisar»).
   const unanswered = ctx.can("community.view") ? await svcRpc<{ unanswered?: number }>(supabase, "community_item_counts", { p_product_id: productId }) : null;
   const unansweredCount = unanswered?.ok ? Number(unanswered.data?.unanswered ?? 0) || 0 : 0;
@@ -219,7 +238,7 @@ export default async function PortalProgramPage({ params, searchParams }: { para
           <TopbarTabs
             label="Secciones del programa"
             active={tab}
-            tabs={PROGRAM_TABS.map((t) => ({
+            tabs={tabs.map((t) => ({
               key: t.key,
               label: t.label,
               href: `/dashboard/portal/${p.id}?tab=${t.key}`,
@@ -245,6 +264,8 @@ export default async function PortalProgramPage({ params, searchParams }: { para
             await communityTab()
           ) : tab === "asistente" ? (
             await assistantTab()
+          ) : tab === "puntos" ? (
+            await pointsTab()
           ) : (
             <ProgramSettingsPanel
               productId={p.id}
