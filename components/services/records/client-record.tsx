@@ -7,6 +7,8 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { loadPortalAccount, loadPortalHost } from "@/lib/portal-admin/load";
 import { createServiceClient } from "@/lib/supabase/server";
 import { svcRpc } from "@/lib/services/db";
+import { PortalActivityChart } from "./service-points-block";
+import type { PointsDaily } from "@/lib/actions/points";
 import type { PermissionContext } from "@/lib/auth/guards";
 import { PortalAccountCard } from "@/components/services/clients/portal-account-card";
 import { RecordModal } from "./record-modal";
@@ -56,8 +58,17 @@ export async function ClientRecord({ ctx, contactId }: { ctx: Ctx; contactId: st
   let portalCard: React.ReactNode = null;
   if (hasPortal) {
     const [account, { host }] = await Promise.all([loadPortalAccount(supabase, workspace.id, contactId), loadPortalHost(service, workspace.id)]);
+    // F130.4: el gráfico «Actividad en el portal» del servicio con portal más reciente (activo primero).
+    const withPortalSvcs = services
+      .filter((s) => withPortal.has(s.product_id))
+      .sort((a, b) => Number(b.status === "active" || b.status === "paused") - Number(a.status === "active" || a.status === "paused") || b.created_at.localeCompare(a.created_at));
+    const chartSvc = withPortalSvcs[0];
+    const daily = chartSvc ? await svcRpc<PointsDaily | null>(supabase, "svc_points_daily", { p_service_id: chartSvc.id, p_days: 30 }) : null;
     portalCard = (
-      <PortalAccountCard contactId={contactId} contactName={c?.display_name ?? "este cliente"} account={account} hasHost={!!host} canAccounts={ctx.can("portal.accounts")} canViewAs={ctx.can("portal.view_as")} />
+      <>
+        {daily?.ok && daily.data && chartSvc && <PortalActivityChart serviceId={chartSvc.id} initial={daily.data} />}
+        <PortalAccountCard contactId={contactId} contactName={c?.display_name ?? "este cliente"} account={account} hasHost={!!host} canAccounts={ctx.can("portal.accounts")} canViewAs={ctx.can("portal.view_as")} />
+      </>
     );
   }
 

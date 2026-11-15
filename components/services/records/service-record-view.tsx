@@ -76,6 +76,8 @@ export interface ServiceRecordData {
   overdue: Array<{ id: string; name: string; dueOn: string }>;
   phases: Array<{ id: string; name: string; status: string; durationDays: number | null; startedAt: string | null; completedAt: string | null; challenge: boolean; awaitingStart: boolean; items: ServiceRecordStep[] }>;
   reviews: ReviewItem[];
+  /** F129: el total y el nivel en este programa; null si el programa no tiene los puntos prendidos ni puntos guardados. */
+  points?: { total: number; level: number; levelName: string } | null;
 }
 
 // ── Formatos (las fechas del servicio son civiles: se leen en UTC) ─────────
@@ -252,6 +254,12 @@ export function ServiceRecordHeader({ data, today, members, permissions }: { dat
             <span className="text-muted-foreground"> del mes</span>
           </Figure>
         )}
+        {data.points && (
+          <Figure label="Puntos">
+            <span className="font-semibold tabular-nums">{data.points.total}</span>
+            <span className="text-muted-foreground"> · nivel {data.points.level}, {data.points.levelName}</span>
+          </Figure>
+        )}
         {data.payment && (
           <Figure label={data.payment.kind === "overdue" ? "Pago" : data.payment.kind === "paid" ? "Pago" : "Próximo pago"}>
             {data.payment.kind === "paid" ? (
@@ -366,6 +374,8 @@ export function ServiceRecordView({
   challenge,
   assistantCard,
   meetings,
+  activity,
+  pointsHistory,
 }: {
   data: ServiceRecordData;
   tab: ServiceRecordTab;
@@ -380,6 +390,10 @@ export function ServiceRecordView({
   assistantCard: ReactNode;
   /** Servicios A4 (F137): el bloque Reuniones. */
   meetings?: ReactNode;
+  /** Servicios A3 (F130.4): el gráfico «Actividad en el portal». */
+  activity?: ReactNode;
+  /** Servicios A3 (F129): el plegable «Historial de puntos». */
+  pointsHistory?: ReactNode;
 }) {
   const router = useRouter();
   const can = (k: string) => permissions.includes(k);
@@ -452,6 +466,8 @@ export function ServiceRecordView({
           </ul>
         </section>
 
+        {activity}
+
         {data.hasPortal && (
           <div className="grid gap-4 md:grid-cols-2">
             <section aria-labelledby="record-entregas" className="space-y-2 rounded-xl border border-border p-3">
@@ -520,6 +536,7 @@ export function ServiceRecordView({
 
         {meetings}
 
+        {pointsHistory}
         {data.hasPortal && accesses && (
           <Collapsible id="record-accesos" title="Accesos al portal" hint="Qué tiene abierto y hasta cuándo" open={openAccesses} onToggle={setOpenAccesses}>
             {accesses}

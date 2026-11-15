@@ -13,6 +13,8 @@ import { ServiceAccessesPanel } from "@/components/services/clients/service-acce
 import { loadServiceAccesses } from "@/lib/portal-admin/load";
 import { ServiceCertificateCard, type CertificateView } from "@/components/services/clients/service-certificate-card";
 import { ServiceChallengeCard, type ChallengeViewData } from "./service-challenge-card";
+import { PortalActivityChart, ServicePointsHistory, type PointsHistoryRow } from "./service-points-block";
+import type { PointsDaily } from "@/lib/actions/points";
 import { serviceCertificates } from "@/lib/services/certificate-core";
 import { certificateState } from "@/lib/services/certificate";
 import { loadDesignLinks } from "@/lib/designer/public-links";
@@ -91,7 +93,16 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
   let assistantInfo: { conversations: number; lastAt: string | null } | null = null;
   let reviews: Awaited<ReturnType<typeof loadReviewItems>> = [];
   let assistantCard: React.ReactNode = null;
+  let pointsDaily: PointsDaily | null = null;
+  let pointsRows: PointsHistoryRow[] = [];
   if (hasPortal) {
+    // F129/F130.4: el gráfico y el historial (00380). Si la lectura falla, la ficha se ve igual, sin esas partes.
+    const [daily, hist] = await Promise.all([
+      svcRpc<PointsDaily | null>(supabase, "svc_points_daily", { p_service_id: s.id, p_days: 30 }),
+      svcRpc<PointsHistoryRow[]>(supabase, "svc_points_history", { p_service_id: s.id, p_limit: 100 }),
+    ]);
+    pointsDaily = daily.ok ? daily.data : null;
+    pointsRows = hist.ok ? hist.data ?? [] : [];
     const [cls, att, rev] = await Promise.all([
       svcRpc<{ items: ClassroomItem[] }>(supabase, "service_classroom", { p_service_id: s.id }),
       svcRpc<AttendanceOccurrence[]>(supabase, "service_attendance", { p_service_id: s.id }),
@@ -285,6 +296,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
       items: stepItems.filter((i) => i.phaseId === ph.id),
     })),
     reviews: reviews.slice(0, 20),
+    points: pointsDaily && (pointsDaily.enabled || pointsDaily.total !== 0) ? { total: pointsDaily.total, level: pointsDaily.level.level, levelName: pointsDaily.level.name } : null,
   };
 
   // El bloque Reuniones (Servicios A4, F137): con la sesión de quien mira. No depende del portal.
@@ -314,6 +326,12 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
         challenge={challengeCard}
         assistantCard={assistantCard}
         meetings={meetings}
+        activity={pointsDaily ? <PortalActivityChart serviceId={s.id} initial={pointsDaily} /> : null}
+        pointsHistory={
+          pointsDaily && (pointsDaily.enabled || pointsRows.length > 0) ? (
+            <ServicePointsHistory serviceId={s.id} rows={pointsRows} enabled={pointsDaily.enabled} canAdjust={ctx.can("portal.points")} userNames={Object.fromEntries(memberLabels(team))} />
+          ) : null
+        }
       />
     </RecordModal>
   );
