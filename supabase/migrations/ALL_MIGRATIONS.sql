@@ -79270,7 +79270,7 @@ GRANT EXECUTE ON FUNCTION app_servicio.portal_due_today_targets(uuid) TO service
 --       `EXECUTE` solo en las funciones `portal_*` de ese esquema. Ninguna tabla: un SELECT directo falla.
 -- P02 · La entrada y la sesión (§5 del plano del portal). Todas reciben la dirección (`host`) o el token de sesión:
 --       el negocio y el contacto salen de ahí, nunca de un parámetro.
---         portal_login_code_issue   SOLO servidor de SSA: emite el código de 6 dígitos (10 min) y lo devuelve una
+--         app_servicio.portal_login_code_issue   SOLO servidor de SSA (por eso en app_servicio, que la API ve): emite el código de 6 dígitos (10 min) y lo devuelve una
 --                                    vez para que SSA lo mande con el Resend del negocio. Tope 5 por hora por email.
 --         portal_login_verify        el código → sesión (30 días con «Recordarme», 12 h sin). 5 intentos.
 --         portal_login_password      con contraseña, si el negocio la permite (`login.password_allowed`).
@@ -79289,7 +79289,7 @@ GRANT EXECUTE ON FUNCTION app_servicio.portal_due_today_targets(uuid) TO service
 -- Aditiva: nada de lo que existe cambia. Sin la contraseña del rol, nadie se puede conectar como el portal.
 --
 -- Volver atrás:
---   DROP FUNCTION IF EXISTS app_servicio_portal.portal_login_code_issue(text, text), app_servicio_portal.portal_login_verify(text, text, text, boolean, text, text),
+--   DROP FUNCTION IF EXISTS app_servicio.portal_login_code_issue(text, text), app_servicio_portal.portal_login_verify(text, text, text, boolean, text, text),
 --     app_servicio_portal.portal_login_password(text, text, text, boolean, text, text), app_servicio_portal.portal_set_password(text, text),
 --     app_servicio_portal.portal_invite_check(text, text), app_servicio_portal.portal_invite_redeem(text, text, text, text),
 --     app_servicio_portal.portal_preview_redeem(text, text, text, text), app_servicio_portal.portal_session_get(text),
@@ -79411,7 +79411,7 @@ $$;
 -- SOLO el servidor de SSA (service_role): devuelve el código en claro para mandarlo por email. Responde
 -- {send:false} si la dirección o el email no existen (SSA contesta igual en los dos casos) o {send:false,
 -- reason:'rate_limited'} desde el sexto pedido en la hora (se cuenta exista o no el email).
-CREATE OR REPLACE FUNCTION app_servicio_portal.portal_login_code_issue(p_host text, p_email text)
+CREATE OR REPLACE FUNCTION app_servicio.portal_login_code_issue(p_host text, p_email text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
   v_ws uuid := app_servicio_portal.ws_by_host(p_host);
@@ -79597,13 +79597,13 @@ $$;
 REVOKE ALL ON FUNCTION
   app_servicio_portal.err(text, text), app_servicio_portal.ws_by_host(text),
   app_servicio_portal.session_new(uuid, uuid, text, interval, text, text, uuid, uuid), app_servicio_portal.session_resolve(text, boolean),
-  app_servicio_portal.require_write(jsonb), app_servicio_portal.portal_login_code_issue(text, text),
+  app_servicio_portal.require_write(jsonb), app_servicio.portal_login_code_issue(text, text),
   app_servicio_portal.portal_login_verify(text, text, text, boolean, text, text), app_servicio_portal.portal_login_password(text, text, text, boolean, text, text),
   app_servicio_portal.portal_set_password(text, text), app_servicio_portal.portal_invite_check(text, text),
   app_servicio_portal.portal_invite_redeem(text, text, text, text), app_servicio_portal.portal_preview_redeem(text, text, text, text),
   app_servicio_portal.portal_session_get(text), app_servicio_portal.portal_logout(text), app_servicio_portal.portal_logout_all(text)
 FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION app_servicio_portal.portal_login_code_issue(text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION app_servicio.portal_login_code_issue(text, text) TO service_role;
 GRANT EXECUTE ON FUNCTION
   app_servicio_portal.portal_login_verify(text, text, text, boolean, text, text), app_servicio_portal.portal_login_password(text, text, text, boolean, text, text),
   app_servicio_portal.portal_set_password(text, text), app_servicio_portal.portal_invite_check(text, text),

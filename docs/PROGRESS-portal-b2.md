@@ -25,4 +25,4 @@ Plano: `~/Documents/portal/docs/requerimientos-v12-portal.md` §2 (migraciones P
 - Login, cookie `__Host-portal`, middleware de dirección, `/api/salud`.
 
 ## SSA
-- Endpoint interno `POST /api/portal/login-code` (firma HMAC con `PORTAL_SHARED_SECRET`): emite el código y manda el email. Respuesta siempre igual.
+- **Hecho:** `POST /api/portal/login-code` (firma HMAC con `PORTAL_SHARED_SECRET`, 5 minutos; `lib/portal-admin/portal-signature.ts` con test): emite el código con `app_servicio.portal_login_code_issue` y lo manda con `sendTransactionalEmail` y la plantilla `portalLoginCodeEmail` (código + link mágico `/entrar/codigo?e=&c=`). Respuesta siempre igual salvo el tope. La emisión del código pasó a `app_servicio` (la API no ve `app_servicio_portal`), antes de aplicar la 00384.

@@ -294,6 +294,33 @@ export function portalDigestEmail(params: {
   };
 }
 
+/**
+ * El código para entrar al portal (B2, F202): 6 dígitos que vencen en 10 minutos y, en el mismo email, el link
+ * mágico que entra sin tipearlo. Transaccional: sale aunque la persona se haya dado de baja de marketing.
+ */
+export function portalLoginCodeEmail(params: { brand?: Brand | null; workspaceName: string; code: string; magicUrl: string | null; studentName?: string | null }): EmailContent {
+  const brand = params.brand ?? resolveBrand(null);
+  const theme = emailTheme(brand);
+  const first = params.studentName?.trim().split(/\s+/)[0] ?? "";
+  const code = escapeHtml(params.code);
+  return {
+    subject: `Tu código para entrar: ${params.code}`,
+    html: brandedEmailHtml({
+      brand,
+      preheader: `Tu código para entrar al portal de ${params.workspaceName}. Vence en 10 minutos.`,
+      body: `
+                ${eyebrow("Portal", theme)}
+                ${heading(`${first ? `${escapeHtml(first)}, este` : "Este"} es tu código para entrar`)}
+                <p style="margin:24px 0 0;text-align:center;font-size:34px;letter-spacing:0.3em;font-weight:700;color:#111827;font-family:'SFMono-Regular',Menlo,Consolas,monospace;">${code}</p>
+                <p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#6b7280;text-align:center;">Vence en 10 minutos.</p>
+                ${params.magicUrl ? button(params.magicUrl, "Entrar sin tipear el código", theme) : ""}
+                <p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#6b7280;">
+                  Si no pediste entrar, ignorá este email: nadie puede entrar sin este código.
+                </p>`,
+    }),
+  };
+}
+
 /** «Lo que vence hoy» por email (F128): solo si la persona lo prendió en su Perfil y el programa lo tiene prendido. */
 export function portalDueTodayEmail(params: {
   brand?: Brand | null;
