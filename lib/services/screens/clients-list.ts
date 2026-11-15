@@ -14,6 +14,10 @@ export interface ClientServiceInput {
   progressPct: number;
   ownerName: string | null;
   hasPortal: boolean;
+  /** A3 (F129): los puntos de los últimos 30 días, uno por día (del más viejo a hoy). Sin portal o sin lectura: nada. */
+  points30?: readonly number[] | null;
+  /** A3 (F127.6): su fase Reto tenía fecha límite para empezar y no empezó a tiempo. */
+  lateChallenge?: boolean;
 }
 
 export interface ClientPortalInput {
@@ -37,6 +41,10 @@ export interface ClientRow {
   lastLoginAt: string | null;
   portalGroup: PortalGroup;
   paidCents: number | null;
+  /** A3: la suma por día de los puntos de sus servicios (30 días); null si ninguno tiene datos. */
+  points30: number[] | null;
+  points30Total: number | null;
+  lateChallenge: boolean;
 }
 
 const RUNNING: ServiceStatus[] = ["active", "paused"];
@@ -56,6 +64,15 @@ export function portalGroupOf(hasPortal: boolean, p: ClientPortalInput | null | 
   if (!hasPortal || !p?.accountStatus) return "none";
   if (p.lastLoginAt) return Date.parse(nowIso) - Date.parse(p.lastLoginAt) <= WEEK ? "week" : "stale";
   return p.accountStatus === "invited" ? "invited" : "never";
+}
+
+function sumPoints(list: readonly ClientServiceInput[]): { points30: number[] | null; points30Total: number | null } {
+  const withData = list.filter((s) => Array.isArray(s.points30) && s.points30.length > 0);
+  if (!withData.length) return { points30: null, points30Total: null };
+  const n = Math.max(...withData.map((s) => s.points30!.length));
+  const out = Array.from({ length: n }, () => 0);
+  for (const s of withData) s.points30!.forEach((v, i) => (out[i + n - s.points30!.length] += Math.max(0, Number(v) || 0)));
+  return { points30: out, points30Total: out.reduce((a, b) => a + b, 0) };
 }
 
 export function buildClientRows(input: {
@@ -83,12 +100,14 @@ export function buildClientRows(input: {
       lastLoginAt: hasPortal ? p?.lastLoginAt ?? null : null,
       portalGroup: portalGroupOf(hasPortal, p, input.nowIso),
       paidCents: input.paidCents.has(contactId) ? input.paidCents.get(contactId)! : null,
+      ...sumPoints(list),
+      lateChallenge: list.some((s) => s.lateChallenge === true && RUNNING.includes(s.status)),
     };
   });
 }
 
 // ── Filtro rapido, busqueda, orden y grupos ────────────────────────────────
-export const CLIENT_QUICK = ["all", "red", "yellow", "pending", "reviews", "stale"] as const;
+export const CLIENT_QUICK = ["all", "red", "yellow", "pending", "reviews", "stale", "late_challenge"] as const;
 export type ClientQuick = (typeof CLIENT_QUICK)[number];
 export const CLIENT_QUICK_LABELS: Record<ClientQuick, string> = {
   all: "Todos",
@@ -97,6 +116,7 @@ export const CLIENT_QUICK_LABELS: Record<ClientQuick, string> = {
   pending: "Por confirmar",
   reviews: "Entregas por revisar",
   stale: "Más de 7 días sin entrar",
+  late_challenge: "No empezó el Reto a tiempo",
 };
 
 export function matchesClientQuick(r: ClientRow, q: ClientQuick): boolean {
@@ -111,13 +131,16 @@ export function matchesClientQuick(r: ClientRow, q: ClientQuick): boolean {
       return r.pendingReviews > 0;
     case "stale":
       return r.portalGroup === "stale";
+    case "late_challenge":
+      return r.lateChallenge;
   }
 }
 
 /** Las opciones del filtro rapido con su conteo. Las del portal solo si algun cliente tiene portal. */
 export function clientQuickOptions(rows: readonly ClientRow[]): Array<{ key: ClientQuick; label: string; count: number }> {
   const anyPortal = rows.some((r) => r.hasPortal);
-  return CLIENT_QUICK.filter((k) => anyPortal || (k !== "reviews" && k !== "stale")).map((k) => ({ key: k, label: CLIENT_QUICK_LABELS[k], count: rows.filter((r) => matchesClientQuick(r, k)).length }));
+  const anyLate = rows.some((r) => r.lateChallenge);
+  return CLIENT_QUICK.filter((k) => (anyPortal || (k !== "reviews" && k !== "stale")) && (k !== "late_challenge" || anyLate)).map((k) => ({ key: k, label: CLIENT_QUICK_LABELS[k], count: rows.filter((r) => matchesClientQuick(r, k)).length }));
 }
 
 const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -126,7 +149,7 @@ export function searchClients(rows: readonly ClientRow[], q: string): ClientRow[
   return needle ? rows.filter((r) => fold(r.name).includes(needle)) : [...rows];
 }
 
-export const CLIENT_SORT = ["name", "light", "active", "progress", "login", "paid"] as const;
+export const CLIENT_SORT = ["name", "light", "active", "progress", "login", "points", "paid"] as const;
 export type ClientSort = (typeof CLIENT_SORT)[number];
 
 export function sortClients(rows: readonly ClientRow[], key: ClientSort, dir: "asc" | "desc"): ClientRow[] {
@@ -145,6 +168,8 @@ export function sortClients(rows: readonly ClientRow[], key: ClientSort, dir: "a
         return nullable(a.progressPct, b.progressPct);
       case "login":
         return nullable(a.lastLoginAt ? Date.parse(a.lastLoginAt) : null, b.lastLoginAt ? Date.parse(b.lastLoginAt) : null);
+      case "points":
+        return nullable(a.points30Total, b.points30Total);
       case "paid":
         return nullable(a.paidCents, b.paidCents);
     }
