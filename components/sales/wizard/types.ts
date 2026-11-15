@@ -21,6 +21,8 @@ export interface WizardConfig {
   timeZone: string;
   currentUserId: string;
   canManageCatalog: boolean;
+  /** F74: puede cambiar el afiliado de la venta en el paso 1 (si no, lo ve de solo lectura). */
+  canAssignAffiliate?: boolean;
 }
 
 /** Lo que ya viene resuelto al abrir el asistente desde la ficha del contacto o de una agenda. */

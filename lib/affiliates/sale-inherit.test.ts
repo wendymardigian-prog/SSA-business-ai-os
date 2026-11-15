@@ -1,6 +1,6 @@
 // @plantilla-quitar(ventas)
 import { describe, expect, it, vi } from "vitest";
-import { inheritContactAffiliate, vigenteAffiliate } from "./sale-inherit";
+import { inheritContactAffiliate, saleAffiliatePreload, vigenteAffiliate } from "./sale-inherit";
 
 const now = new Date("2026-11-08T12:00:00Z");
 
@@ -20,5 +20,16 @@ describe("la venta hereda el afiliado vigente del contacto", () => {
     expect(ok.rpc).toHaveBeenCalledWith("affiliate_set_sale", { p_sale_id: "s", p_affiliate: { type: "user", id: "u1" }, p_kind: "originated", p_reason: null });
     const bad = { from: () => { throw new Error("caida"); }, rpc: vi.fn() };
     expect(await inheritContactAffiliate(bad as never, "w", "s", "c", now)).toBe(false);
+  });
+});
+
+describe("lo que precarga el asistente de venta (F74)", () => {
+  const row = { affiliate_user_id: "u1", affiliate_contact_id: null, affiliate_kind: "originated", affiliate_expires_at: null };
+  it("el afiliado vigente del contacto", () => {
+    expect(saleAffiliatePreload(row, { now, firstPurchaseOnly: false, hasSaleWithAffiliate: true })).toEqual({ ref: { type: "user", id: "u1" }, kind: "originated" });
+  });
+  it("nada si la regla cuenta solo la primera compra y ya hubo una venta con afiliado", () => {
+    expect(saleAffiliatePreload(row, { now, firstPurchaseOnly: true, hasSaleWithAffiliate: true })).toBeNull();
+    expect(saleAffiliatePreload(row, { now, firstPurchaseOnly: true, hasSaleWithAffiliate: false })).not.toBeNull();
   });
 });

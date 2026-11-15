@@ -69,6 +69,18 @@ export const createSaleInputSchema = z.object({
   serviceStartsAt: dateOnly.nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
   payments: z.array(paymentInputSchema).min(1, "La venta necesita al menos un pago").max(60),
+  /**
+   * El afiliado de la venta (F74). `inherit` (lo de siempre): el vigente del contacto. Con `affiliates.assign` se puede
+   * elegir otro (`pick`) o dejarla sin afiliado (`none`); sin ese permiso, el servidor usa `inherit` igual.
+   */
+  affiliate: z
+    .union([
+      z.object({ mode: z.literal("inherit") }),
+      z.object({ mode: z.literal("none") }),
+      z.object({ mode: z.literal("pick"), ref: z.object({ type: z.enum(["user", "contact"]), id: uuid }), kind: z.enum(["originated", "influenced"]) }),
+    ])
+    .optional()
+    .default({ mode: "inherit" }),
 });
 
 export type CreateSaleInput = z.input<typeof createSaleInputSchema>;

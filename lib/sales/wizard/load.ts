@@ -39,5 +39,6 @@ export async function loadWizardConfig(ctx: PermissionContext): Promise<WizardCo
     timeZone: viewerTz,
     currentUserId: user.id,
     canManageCatalog: ctx.can("products.manage"),
+    canAssignAffiliate: ctx.can("affiliates.assign"),
   };
 }

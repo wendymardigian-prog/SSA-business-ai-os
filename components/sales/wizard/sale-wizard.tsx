@@ -39,6 +39,7 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
     saleDate: config.today,
     notes: "",
     bookingId: initial?.bookingId ?? null,
+    affiliate: { mode: "inherit" },
   });
   const [ctx, setCtx] = useState<{ id: string; data: SaleContactContext | null } | null>(null);
   const [s2, setS2] = useState<Step2Values>(() => ({
@@ -162,6 +163,7 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
         serviceStartsAt: resolveServiceStart(s2.serviceStartsAt, product?.timing ?? "duration", variant.eventDate, s1.saleDate),
         notes: s1.notes.trim() || null,
         payments: paymentsForServer(rows) as never,
+        affiliate: s1.affiliate.mode === "pick" ? { mode: "pick", ref: s1.affiliate.ref, kind: s1.affiliate.kind } : { mode: s1.affiliate.mode },
       });
       if (result.ok) {
         onClose();

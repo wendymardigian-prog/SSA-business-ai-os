@@ -2,7 +2,8 @@
 
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { revalidatePath } from "next/cache";
-import { inheritContactAffiliate } from "@/lib/affiliates/sale-inherit";
+import { inheritContactAffiliate, saleAffiliatePreload } from "@/lib/affiliates/sale-inherit";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { z } from "zod";
 import { snapshotProductId } from "@/lib/sales/sale-text";
 import { getPermissionAction } from "@/lib/auth/guards";
@@ -152,8 +153,14 @@ export async function createSale(rawInput: CreateSaleInput): Promise<CreateSaleR
   // 5. Los recordatorios relativos de los pagos (se completan en el Bloque 4).
   await syncPaymentRelativeJobs(service, { saleId });
 
-  // 6. El afiliado vigente del contacto pasa a la venta (Servicios A1, F74). Nunca lanza ni tumba la venta.
-  await inheritContactAffiliate(service, workspace.id, saleId, input.contactId);
+  // 6. El afiliado (Servicios A1/A3, F74). Lo de siempre: el vigente del contacto. Quien tiene `affiliates.assign` pudo
+  //    elegir otro o ninguno en el paso 1. Nunca tumba la venta: si falla, queda sin afiliado y se carga desde la ficha.
+  const aff = ctx.can("affiliates.assign") ? input.affiliate : { mode: "inherit" as const };
+  if (aff.mode === "inherit") await inheritContactAffiliate(service, workspace.id, saleId, input.contactId);
+  else if (aff.mode === "pick" && !(aff.ref.type === "contact" && aff.ref.id === input.contactId)) {
+    const { error: affErr } = await (service as unknown as { rpc: (f: string, a: Record<string, unknown>) => Promise<{ error: { code?: string } | null }> }).rpc("affiliate_set_sale", { p_sale_id: saleId, p_affiliate: aff.ref, p_kind: aff.kind, p_reason: null });
+    if (affErr) console.error("[afiliados] no pude guardar el afiliado elegido en la venta:", affErr.code ?? "?");
+  }
 
   revalidatePath("/dashboard/ventas");
   revalidatePath(`/dashboard/contacts/${input.contactId}`);
@@ -562,6 +569,8 @@ export interface SaleContactContext {
   sales: Array<{ id: string; status: string; productId: string | null }>;
   /** Agendas PASADAS del contacto que la persona ve, de la más nueva a la más vieja. */
   bookings: Array<{ id: string; startAt: string; status: string; hostUserId: string | null; eventTypeTitle: string | null }>;
+  /** F74: el afiliado que se precarga (el vigente del contacto), con su nombre; null = sin afiliado. */
+  affiliate: { ref: { type: "user" | "contact"; id: string }; kind: "originated" | "influenced"; name: string; expiresAt: string | null } | null;
 }
 
 /** Lo que el paso 1 necesita saber del contacto elegido. La RLS decide qué ve cada persona. */
@@ -597,7 +606,37 @@ export async function getSaleContactContext(contactId: string): Promise<SaleCont
     : { data: [] as Array<{ id: string; title: string }> };
   const titles = new Map((eventTypes ?? []).map((e) => [e.id, e.title]));
 
+  // F74: el afiliado a precargar. La regla «solo la primera compra» se lee del negocio de la sesión.
+  // Las columnas de afiliado (00343) se leen aparte: el contacto ya pasó por la RLS de quien carga.
+  const service = await createServiceClient();
+  const { data: affRow } = await service
+    .from("contacts")
+    .select("affiliate_user_id, affiliate_contact_id, affiliate_kind, affiliate_expires_at" as never)
+    .eq("id", contactId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+  const c = ((affRow as unknown) ?? { affiliate_user_id: null, affiliate_contact_id: null, affiliate_kind: null, affiliate_expires_at: null }) as { affiliate_user_id: string | null; affiliate_contact_id: string | null; affiliate_kind: string | null; affiliate_expires_at: string | null };
+  let affiliate: SaleContactContext["affiliate"] = null;
+  if (c.affiliate_user_id || c.affiliate_contact_id) {
+    const [{ data: ws }, { count: withAff }] = await Promise.all([
+      service.from("workspaces").select("affiliate_settings" as never).eq("id", workspace.id).maybeSingle(),
+      service.from("sales").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("contact_id", contactId).or("affiliate_user_id.not.is.null,affiliate_contact_id.not.is.null"),
+    ]);
+    const firstOnly = ((ws as { affiliate_settings?: { counts?: { first_purchase_only?: boolean } } } | null)?.affiliate_settings?.counts?.first_purchase_only) === true;
+    const pick = saleAffiliatePreload(c, { now: new Date(), firstPurchaseOnly: firstOnly, hasSaleWithAffiliate: (withAff ?? 0) > 0 });
+    if (pick) {
+      let name = "Alguien del equipo";
+      if (pick.ref.type === "user") name = (await getWorkspaceMembers(workspace.id)).find((m) => m.userId === pick.ref.id)?.name ?? name;
+      else {
+        const { data: ac } = await service.from("contacts").select("display_name").eq("id", pick.ref.id).eq("workspace_id", workspace.id).maybeSingle();
+        name = (ac as { display_name: string | null } | null)?.display_name || "Sin nombre";
+      }
+      affiliate = { ref: pick.ref, kind: pick.kind === "originated" ? "originated" : "influenced", name, expiresAt: c.affiliate_expires_at };
+    }
+  }
+
   return {
+    affiliate,
     name: contact.display_name || contact.email || "Sin nombre",
     touchCount: touches.count ?? 0,
     doNotContact: contact.do_not_contact === true,
