@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { PortalFormEditor, type PortalFormInitial } from "./portal-form-editor";
 import { useUrlIntent } from "@/components/ui/use-url-intent";
 import { listFathomForLesson, pickFathomForLesson } from "@/lib/actions/live-sessions";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 
 export interface ContentRow extends ProgramRow {
   /** El formulario de una evaluación o actividad (bloque EV), si ya tiene uno. */
@@ -514,7 +515,8 @@ function FathomPicker({ productId, itemId, linked, onPicked }: { productId: stri
   const [data, setData] = useState<{ connected: boolean; calls: Array<{ id: string; title: string; recorded_at: string; shared: boolean }> } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const when = new Intl.DateTimeFormat("es", { day: "numeric", month: "short", year: "numeric" });
+  const timeZone = useViewerTimezone();
+  const when = new Intl.DateTimeFormat("es", { day: "numeric", month: "short", year: "numeric", timeZone });
 
   function load(text: string) {
     setQ(text);
