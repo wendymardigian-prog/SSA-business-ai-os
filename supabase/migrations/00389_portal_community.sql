@@ -24,7 +24,8 @@
 -- El nombre que ve otro estudiante: nombre y la inicial del apellido.
 CREATE OR REPLACE FUNCTION app_servicio_portal.public_name(p_name text)
 RETURNS text LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
-  SELECT CASE WHEN NULLIF(btrim(p_name), '') IS NULL THEN 'Estudiante'
+  -- Un nombre sin letras (un teléfono o un número cargado como nombre) nunca se muestra.
+  SELECT CASE WHEN NULLIF(btrim(p_name), '') IS NULL OR p_name !~ '[[:alpha:]]' THEN 'Estudiante'
               WHEN position(' ' IN btrim(p_name)) = 0 THEN btrim(p_name)
               ELSE split_part(btrim(p_name), ' ', 1) || ' ' || left(split_part(btrim(p_name), ' ', 2), 1) || '.' END;
 $$;
