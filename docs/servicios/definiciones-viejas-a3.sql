@@ -1106,3 +1106,11 @@ BEGIN
     jsonb_build_object('item_id', it.id, 'keys', (SELECT jsonb_agg(k) FROM jsonb_object_keys(p) k)));
 END;
 $function$;
+
+-- ── 00391 ──────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.contract_version()
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$ SELECT '1'::text; $function$;
