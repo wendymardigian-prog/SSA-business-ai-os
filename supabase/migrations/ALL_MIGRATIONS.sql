@@ -79257,3 +79257,2237 @@ $$;
 
 REVOKE ALL ON FUNCTION app_servicio.portal_due_today_targets(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION app_servicio.portal_due_today_targets(uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 384: PORTAL ROLE SESSIONS
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00384_portal_role_sessions  (Portal de estudiantes, Corrida B2 · P01 + P02 + P16)
+-- ============================================================================
+-- P01 · El rol del portal: `portal_app` (NOLOGIN) y `portal_app_login` (LOGIN, hereda de portal_app). Nace SIN
+--       contraseña: la genera y la carga Leonardo (decisión 15/11). `USAGE` solo en `app_servicio_portal` y
+--       `EXECUTE` solo en las funciones `portal_*` de ese esquema. Ninguna tabla: un SELECT directo falla.
+-- P02 · La entrada y la sesión (§5 del plano del portal). Todas reciben la dirección (`host`) o el token de sesión:
+--       el negocio y el contacto salen de ahí, nunca de un parámetro.
+--         app_servicio.portal_login_code_issue   SOLO servidor de SSA (por eso en app_servicio, que la API ve): emite el código de 6 dígitos (10 min) y lo devuelve una
+--                                    vez para que SSA lo mande con el Resend del negocio. Tope 5 por hora por email.
+--         portal_login_verify        el código → sesión (30 días con «Recordarme», 12 h sin). 5 intentos.
+--         portal_login_password      con contraseña, si el negocio la permite (`login.password_allowed`).
+--         portal_set_password        define o cambia la contraseña (10 a 200 caracteres; bcrypt).
+--         portal_invite_check        si el link de invitación sigue sirviendo, SIN gastarlo (lección de Outlook).
+--         portal_invite_redeem       lo canjea (recién al tocar el botón) y crea la sesión.
+--         portal_preview_redeem      el pase de 60 s del equipo → sesión `preview` de 30 min (solo lectura).
+--         portal_session_get         valida la sesión (y la renueva si se usa en sus últimos 7 días).
+--         portal_logout, portal_logout_all
+-- P16 · Días activos: cada sesión válida de un estudiante suma el día de hoy (`portal_touch_active_day`, 00377,
+--       una escritura por día) y `last_seen_at` como mucho una vez por hora.
+-- Topes (§4.7): 5 códigos por hora por email; 5 intentos por código; 60 pedidos por minuto por sesión.
+-- Errores: PO401 (sin sesión, código o contraseña mal), PO402 (cuenta suspendida), PO403 (vista previa: solo
+-- lectura), PO410 (link vencido), PO429 (tope).
+--
+-- Aditiva: nada de lo que existe cambia. Sin la contraseña del rol, nadie se puede conectar como el portal.
+--
+-- Volver atrás:
+--   DROP FUNCTION IF EXISTS app_servicio.portal_login_code_issue(text, text), app_servicio_portal.portal_login_verify(text, text, text, boolean, text, text),
+--     app_servicio_portal.portal_login_password(text, text, text, boolean, text, text), app_servicio_portal.portal_set_password(text, text),
+--     app_servicio_portal.portal_invite_check(text, text), app_servicio_portal.portal_invite_redeem(text, text, text, text),
+--     app_servicio_portal.portal_preview_redeem(text, text, text, text), app_servicio_portal.portal_session_get(text),
+--     app_servicio_portal.portal_logout(text), app_servicio_portal.portal_logout_all(text),
+--     app_servicio_portal.ws_by_host(text), app_servicio_portal.session_new(uuid, uuid, text, interval, text, text, uuid, uuid),
+--     app_servicio_portal.session_resolve(text, boolean), app_servicio_portal.require_write(jsonb), app_servicio_portal.err(text, text);
+--   REVOKE USAGE ON SCHEMA app_servicio_portal FROM portal_app; DROP ROLE IF EXISTS portal_app_login; DROP ROLE IF EXISTS portal_app;
+-- ============================================================================
+
+-- ─── P01 · Los roles ────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'portal_app') THEN
+    CREATE ROLE portal_app NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'portal_app_login') THEN
+    CREATE ROLE portal_app_login LOGIN INHERIT CONNECTION LIMIT 30 IN ROLE portal_app;
+  END IF;
+END $$;
+ALTER ROLE portal_app_login SET statement_timeout = '15s';
+ALTER ROLE portal_app_login SET search_path = '';
+GRANT USAGE ON SCHEMA app_servicio_portal TO portal_app;
+-- Sin tablas, sin otros esquemas: por si alguien sumó algo por defecto.
+REVOKE ALL ON ALL TABLES IN SCHEMA app_servicio_portal FROM portal_app;
+REVOKE ALL ON SCHEMA public FROM portal_app;
+
+-- ─── Ayudantes internos (sin EXECUTE para el portal) ────────────────────────
+-- Un error del contrato: código POxxx y el texto para mostrar.
+CREATE OR REPLACE FUNCTION app_servicio_portal.err(p_code text, p_message text)
+RETURNS void LANGUAGE plpgsql IMMUTABLE SET search_path = '' AS $$
+BEGIN
+  RAISE EXCEPTION '%', p_message USING ERRCODE = p_code;
+END;
+$$;
+
+-- La dirección → el negocio (índice único `uq_workspaces_portal_host`). Desconocida: NULL.
+CREATE OR REPLACE FUNCTION app_servicio_portal.ws_by_host(p_host text)
+RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT w.id FROM public.workspaces w
+   WHERE lower(w.portal_settings ->> 'host') = lower(btrim(split_part(COALESCE(p_host, ''), ':', 1)))
+     AND NULLIF(w.portal_settings ->> 'host', '') IS NOT NULL
+   LIMIT 1;
+$$;
+
+-- Crea una sesión y devuelve el token en claro UNA vez (en la base queda solo su huella).
+CREATE OR REPLACE FUNCTION app_servicio_portal.session_new(p_ws uuid, p_account uuid, p_kind text, p_ttl interval, p_ua_hash text, p_ip_hash text,
+                                                           p_preview_contact uuid DEFAULT NULL, p_preview_user uuid DEFAULT NULL)
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_token text := encode(extensions.gen_random_bytes(32), 'hex');
+BEGIN
+  INSERT INTO app_servicio_portal.portal_sessions (workspace_id, account_id, kind, token_hash, expires_at, preview_user_id, preview_contact_id,
+                                                   user_agent_hash, ip_hash, last_seen_at)
+  VALUES (p_ws, p_account, p_kind, app_servicio.portal_token_hash(v_token), now() + p_ttl, p_preview_user, p_preview_contact,
+          left(p_ua_hash, 64), left(p_ip_hash, 64), now());
+  RETURN v_token;
+END;
+$$;
+
+-- Valida el token y devuelve {session_id, workspace_id, account_id, contact_id, kind, expires_at}. Con p_touch:
+-- tope de pedidos, renovación, `last_seen_at` por hora y el día activo (P16).
+CREATE OR REPLACE FUNCTION app_servicio_portal.session_resolve(p_session text, p_touch boolean DEFAULT true)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio_portal.portal_sessions;
+  a app_servicio_portal.portal_accounts;
+  v_contact uuid;
+  v_ttl interval;
+BEGIN
+  IF p_session IS NULL OR p_session !~ '^[0-9a-f]{64}$' THEN PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar'); END IF;
+  SELECT * INTO s FROM app_servicio_portal.portal_sessions WHERE token_hash = app_servicio.portal_token_hash(p_session);
+  IF s.id IS NULL OR s.revoked_at IS NOT NULL OR s.expires_at <= now() OR s.kind NOT IN ('student', 'preview') THEN
+    PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar');
+  END IF;
+  IF NOT app_servicio.module_on(s.workspace_id) THEN PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar'); END IF;
+  IF s.kind = 'student' THEN
+    SELECT * INTO a FROM app_servicio_portal.portal_accounts WHERE id = s.account_id;
+    IF a.id IS NULL THEN PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar'); END IF;
+    IF a.status = 'suspended' THEN PERFORM app_servicio_portal.err('PO402', 'Tu cuenta está suspendida. Escribinos'); END IF;
+    v_contact := a.contact_id;
+  ELSE
+    v_contact := s.preview_contact_id;
+  END IF;
+  IF p_touch THEN
+    IF public.bump_rate_limit('portal-s:' || s.id::text, date_trunc('minute', now())) > 60 THEN
+      PERFORM app_servicio_portal.err('PO429', 'Esperá unos minutos y volvé a probar');
+    END IF;
+    IF s.kind = 'student' THEN
+      -- Se renueva sola si se usa en sus últimos 7 días (solo las largas, «Recordarme»).
+      v_ttl := s.expires_at - s.created_at;
+      IF v_ttl >= interval '7 days' AND s.expires_at - now() < interval '7 days' THEN
+        UPDATE app_servicio_portal.portal_sessions SET expires_at = now() + v_ttl WHERE id = s.id;
+        s.expires_at := now() + v_ttl;
+      END IF;
+      IF s.last_seen_at IS NULL OR s.last_seen_at < now() - interval '1 hour' THEN
+        UPDATE app_servicio_portal.portal_sessions SET last_seen_at = now() WHERE id = s.id;
+      END IF;
+      BEGIN
+        PERFORM app_servicio.portal_touch_active_day(a.id);
+      EXCEPTION WHEN OTHERS THEN
+        PERFORM app_servicio.hook_failed(s.workspace_id, 'portal_active_day', SQLSTATE || ' ' || SQLERRM, NULL);
+      END;
+    END IF;
+  END IF;
+  RETURN jsonb_build_object('session_id', s.id, 'workspace_id', s.workspace_id, 'account_id', s.account_id, 'contact_id', v_contact,
+                            'kind', s.kind, 'expires_at', s.expires_at);
+END;
+$$;
+
+-- Toda función que escribe empieza con esto: la vista previa del equipo es de solo lectura (§4.5).
+CREATE OR REPLACE FUNCTION app_servicio_portal.require_write(p_sess jsonb)
+RETURNS void LANGUAGE plpgsql IMMUTABLE SET search_path = '' AS $$
+BEGIN
+  IF p_sess ->> 'kind' <> 'student' THEN PERFORM app_servicio_portal.err('PO403', 'Solo lectura'); END IF;
+END;
+$$;
+
+-- ─── P02 · Entrar ───────────────────────────────────────────────────────────
+-- SOLO el servidor de SSA (service_role): devuelve el código en claro para mandarlo por email. Responde
+-- {send:false} si la dirección o el email no existen (SSA contesta igual en los dos casos) o {send:false,
+-- reason:'rate_limited'} desde el sexto pedido en la hora (se cuenta exista o no el email).
+CREATE OR REPLACE FUNCTION app_servicio.portal_login_code_issue(p_host text, p_email text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_ws uuid := app_servicio_portal.ws_by_host(p_host);
+  v_email text := lower(btrim(COALESCE(p_email, '')));
+  a app_servicio_portal.portal_accounts;
+  v_code text;
+BEGIN
+  IF v_ws IS NULL OR v_email !~ '^[^\s@]+@[^\s@]+\.[^\s@]+$' OR NOT app_servicio.module_on(v_ws) THEN
+    RETURN jsonb_build_object('send', false);
+  END IF;
+  IF public.bump_rate_limit('portal-code:' || v_ws::text || ':' || v_email, date_trunc('hour', now())) > 5 THEN
+    RETURN jsonb_build_object('send', false, 'reason', 'rate_limited');
+  END IF;
+  SELECT * INTO a FROM app_servicio_portal.portal_accounts WHERE workspace_id = v_ws AND email = v_email FOR UPDATE;
+  IF a.id IS NULL THEN RETURN jsonb_build_object('send', false); END IF;
+  v_code := lpad((('x' || encode(extensions.gen_random_bytes(4), 'hex'))::bit(32)::bigint % 1000000)::text, 6, '0');
+  UPDATE app_servicio_portal.portal_accounts
+     SET login_code_hash = app_servicio.portal_token_hash(a.id::text || ':' || v_code), login_code_expires_at = now() + interval '10 minutes',
+         login_code_attempts = 0, updated_at = now()
+   WHERE id = a.id;
+  RETURN jsonb_build_object('send', true, 'workspace_id', v_ws, 'account_id', a.id, 'contact_id', a.contact_id, 'email', a.email,
+                            'display_name', a.display_name, 'code', v_code, 'expires_at', now() + interval '10 minutes');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_login_verify(p_host text, p_email text, p_code text, p_remember boolean, p_ua_hash text, p_ip_hash text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_ws uuid := app_servicio_portal.ws_by_host(p_host);
+  a app_servicio_portal.portal_accounts;
+  v_ttl interval := CASE WHEN p_remember IS NOT FALSE THEN interval '30 days' ELSE interval '12 hours' END;
+  v_token text;
+BEGIN
+  IF v_ws IS NULL OR NOT app_servicio.module_on(v_ws) THEN PERFORM app_servicio_portal.err('PO401', 'El código no es válido o venció. Pedí otro'); END IF;
+  SELECT * INTO a FROM app_servicio_portal.portal_accounts WHERE workspace_id = v_ws AND email = lower(btrim(COALESCE(p_email, ''))) FOR UPDATE;
+  IF a.id IS NULL OR a.login_code_hash IS NULL OR a.login_code_expires_at <= now() OR a.login_code_attempts >= 5 THEN
+    PERFORM app_servicio_portal.err('PO401', 'El código no es válido o venció. Pedí otro');
+  END IF;
+  IF a.login_code_hash IS DISTINCT FROM app_servicio.portal_token_hash(a.id::text || ':' || btrim(COALESCE(p_code, ''))) THEN
+    UPDATE app_servicio_portal.portal_accounts SET login_code_attempts = login_code_attempts + 1 WHERE id = a.id;
+    -- El intento fallido tiene que quedar aunque la llamada termine en error: se devuelve, no se lanza.
+    RETURN jsonb_build_object('ok', false, 'code', 'PO401', 'message',
+      CASE WHEN a.login_code_attempts + 1 >= 5 THEN 'Ese código ya no sirve. Pedí otro' ELSE 'El código no es correcto' END);
+  END IF;
+  IF a.status = 'suspended' THEN PERFORM app_servicio_portal.err('PO402', 'Tu cuenta está suspendida. Escribinos'); END IF;
+  UPDATE app_servicio_portal.portal_accounts
+     SET login_code_hash = NULL, login_code_expires_at = NULL, login_code_attempts = 0, last_login_at = now(),
+         status = CASE WHEN status = 'invited' THEN 'active' ELSE status END, updated_at = now()
+   WHERE id = a.id;
+  v_token := app_servicio_portal.session_new(v_ws, a.id, 'student', v_ttl, p_ua_hash, p_ip_hash);
+  RETURN jsonb_build_object('ok', true, 'token', v_token, 'expires_at', now() + v_ttl);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_login_password(p_host text, p_email text, p_password text, p_remember boolean, p_ua_hash text, p_ip_hash text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_ws uuid := app_servicio_portal.ws_by_host(p_host);
+  v_email text := lower(btrim(COALESCE(p_email, '')));
+  a app_servicio_portal.portal_accounts;
+  v_ttl interval := CASE WHEN p_remember IS NOT FALSE THEN interval '30 days' ELSE interval '12 hours' END;
+BEGIN
+  IF v_ws IS NULL OR NOT app_servicio.module_on(v_ws) THEN PERFORM app_servicio_portal.err('PO401', 'El email o la contraseña no son correctos'); END IF;
+  IF (SELECT portal_settings #> '{login,password_allowed}' FROM public.workspaces WHERE id = v_ws) IS DISTINCT FROM 'true'::jsonb THEN
+    PERFORM app_servicio_portal.err('PO401', 'Entrá con el código que te mandamos por email');
+  END IF;
+  IF public.bump_rate_limit('portal-pw:' || v_ws::text || ':' || v_email, date_trunc('hour', now())) > 10 THEN
+    PERFORM app_servicio_portal.err('PO429', 'Esperá unos minutos y volvé a probar');
+  END IF;
+  SELECT * INTO a FROM app_servicio_portal.portal_accounts WHERE workspace_id = v_ws AND email = v_email;
+  IF a.id IS NULL OR a.password_hash IS NULL OR extensions.crypt(COALESCE(p_password, ''), a.password_hash) IS DISTINCT FROM a.password_hash THEN
+    PERFORM app_servicio_portal.err('PO401', 'El email o la contraseña no son correctos');
+  END IF;
+  IF a.status = 'suspended' THEN PERFORM app_servicio_portal.err('PO402', 'Tu cuenta está suspendida. Escribinos'); END IF;
+  UPDATE app_servicio_portal.portal_accounts SET last_login_at = now(), status = CASE WHEN status = 'invited' THEN 'active' ELSE status END, updated_at = now() WHERE id = a.id;
+  RETURN jsonb_build_object('ok', true, 'token', app_servicio_portal.session_new(v_ws, a.id, 'student', v_ttl, p_ua_hash, p_ip_hash), 'expires_at', now() + v_ttl);
+END;
+$$;
+
+-- La revisión contra contraseñas filtradas la hace el servidor del portal antes de llamar (k-anonimato).
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_set_password(p_session text, p_password text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  IF p_password IS NULL OR char_length(p_password) < 10 OR char_length(p_password) > 200 THEN
+    PERFORM app_servicio_portal.err('PO400', 'La contraseña tiene que tener al menos 10 caracteres');
+  END IF;
+  UPDATE app_servicio_portal.portal_accounts SET password_hash = extensions.crypt(p_password, extensions.gen_salt('bf', 10)), updated_at = now()
+   WHERE id = (sess ->> 'account_id')::uuid;
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+-- ─── P02 · Invitación y vista previa ────────────────────────────────────────
+-- Ver si el link sirve NO lo gasta: el GET de la página llama a esta; el botón, a portal_invite_redeem.
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_invite_check(p_host text, p_token text)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT jsonb_build_object('valid', EXISTS (
+    SELECT 1 FROM app_servicio_portal.portal_accounts a
+     WHERE a.workspace_id = app_servicio_portal.ws_by_host(p_host) AND p_token ~ '^[0-9a-f]{64}$'
+       AND a.invite_token_hash = app_servicio.portal_token_hash(p_token) AND a.invite_expires_at > now() AND a.status <> 'suspended'));
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_invite_redeem(p_host text, p_token text, p_ua_hash text, p_ip_hash text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_ws uuid := app_servicio_portal.ws_by_host(p_host);
+  a app_servicio_portal.portal_accounts;
+BEGIN
+  IF v_ws IS NULL OR p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' OR NOT app_servicio.module_on(v_ws) THEN
+    PERFORM app_servicio_portal.err('PO410', 'Este link venció. Pedí uno nuevo');
+  END IF;
+  SELECT * INTO a FROM app_servicio_portal.portal_accounts
+   WHERE workspace_id = v_ws AND invite_token_hash = app_servicio.portal_token_hash(p_token) FOR UPDATE;
+  IF a.id IS NULL OR a.invite_expires_at <= now() THEN PERFORM app_servicio_portal.err('PO410', 'Este link venció. Pedí uno nuevo'); END IF;
+  IF a.status = 'suspended' THEN PERFORM app_servicio_portal.err('PO402', 'Tu cuenta está suspendida. Escribinos'); END IF;
+  UPDATE app_servicio_portal.portal_accounts
+     SET invite_token_hash = NULL, invite_expires_at = NULL, status = 'active', last_login_at = now(), updated_at = now()
+   WHERE id = a.id;
+  RETURN jsonb_build_object('ok', true, 'token', app_servicio_portal.session_new(v_ws, a.id, 'student', interval '30 days', p_ua_hash, p_ip_hash),
+                            'expires_at', now() + interval '30 days', 'has_password', a.password_hash IS NOT NULL);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_preview_redeem(p_host text, p_token text, p_ua_hash text, p_ip_hash text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_ws uuid := app_servicio_portal.ws_by_host(p_host);
+  s app_servicio_portal.portal_sessions;
+BEGIN
+  IF v_ws IS NULL OR p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN PERFORM app_servicio_portal.err('PO410', 'Este link venció. Volvé a abrirlo desde SSA'); END IF;
+  SELECT * INTO s FROM app_servicio_portal.portal_sessions
+   WHERE token_hash = app_servicio.portal_token_hash(p_token) AND workspace_id = v_ws AND kind = 'preview_pass' FOR UPDATE;
+  IF s.id IS NULL OR s.revoked_at IS NOT NULL OR s.expires_at <= now() THEN
+    PERFORM app_servicio_portal.err('PO410', 'Este link venció. Volvé a abrirlo desde SSA');
+  END IF;
+  UPDATE app_servicio_portal.portal_sessions SET revoked_at = now() WHERE id = s.id;
+  RETURN jsonb_build_object('ok', true, 'expires_at', now() + interval '30 minutes',
+    'token', app_servicio_portal.session_new(v_ws, s.account_id, 'preview', interval '30 minutes', p_ua_hash, p_ip_hash, s.preview_contact_id, s.preview_user_id));
+END;
+$$;
+
+-- ─── P02 · La sesión ────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_session_get(p_session text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+BEGIN
+  RETURN jsonb_build_object('kind', sess ->> 'kind', 'expires_at', sess -> 'expires_at',
+    'preview_name', CASE WHEN sess ->> 'kind' = 'preview' THEN (SELECT c.display_name FROM public.contacts c WHERE c.id = (sess ->> 'contact_id')::uuid) END);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_logout(p_session text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF p_session ~ '^[0-9a-f]{64}$' THEN
+    UPDATE app_servicio_portal.portal_sessions SET revoked_at = now()
+     WHERE token_hash = app_servicio.portal_token_hash(p_session) AND revoked_at IS NULL;
+  END IF;
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+-- Cerrar en todos lados: todas las sesiones de la cuenta (también esta). Rige en el próximo pedido de cada una.
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_logout_all(p_session text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session, false);
+  n integer;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  UPDATE app_servicio_portal.portal_sessions SET revoked_at = now()
+   WHERE account_id = (sess ->> 'account_id')::uuid AND kind = 'student' AND revoked_at IS NULL;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN jsonb_build_object('ok', true, 'closed', n);
+END;
+$$;
+
+-- ─── Permisos ───────────────────────────────────────────────────────────────
+REVOKE ALL ON FUNCTION
+  app_servicio_portal.err(text, text), app_servicio_portal.ws_by_host(text),
+  app_servicio_portal.session_new(uuid, uuid, text, interval, text, text, uuid, uuid), app_servicio_portal.session_resolve(text, boolean),
+  app_servicio_portal.require_write(jsonb), app_servicio.portal_login_code_issue(text, text),
+  app_servicio_portal.portal_login_verify(text, text, text, boolean, text, text), app_servicio_portal.portal_login_password(text, text, text, boolean, text, text),
+  app_servicio_portal.portal_set_password(text, text), app_servicio_portal.portal_invite_check(text, text),
+  app_servicio_portal.portal_invite_redeem(text, text, text, text), app_servicio_portal.portal_preview_redeem(text, text, text, text),
+  app_servicio_portal.portal_session_get(text), app_servicio_portal.portal_logout(text), app_servicio_portal.portal_logout_all(text)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio.portal_login_code_issue(text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION
+  app_servicio_portal.portal_login_verify(text, text, text, boolean, text, text), app_servicio_portal.portal_login_password(text, text, text, boolean, text, text),
+  app_servicio_portal.portal_set_password(text, text), app_servicio_portal.portal_invite_check(text, text),
+  app_servicio_portal.portal_invite_redeem(text, text, text, text), app_servicio_portal.portal_preview_redeem(text, text, text, text),
+  app_servicio_portal.portal_session_get(text), app_servicio_portal.portal_logout(text), app_servicio_portal.portal_logout_all(text)
+TO portal_app, service_role;
+
+-- ============================================================
+-- MIGRATION 385: PORTAL CONTEXT
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00385_portal_context  (Portal de estudiantes, Corrida B2 · P03)
+-- ============================================================================
+-- `app_servicio_portal.portal_context(session, host, product_id?)`: lo que arma el shell del portal en cada pedido
+-- (§5 del plano, F205, F208, F210 a F212). Con la forma de `PortalContext` del repo del portal:
+--   contract, brand {name, short, logo_path, host, support}, programs[], program, moment, variant, status
+--   (active · paused · ended), pause {since, until}, terms_pending, preview, points_enabled, levels, me, sections[]
+--   ({key, display: open · locked · soon, reason, when, expired, count}), excluded[], notifications_count.
+--
+-- El menú lo decide la base, sección por sección (decisión 430):
+--   * Inicio, Mi camino y Perfil: siempre.
+--   * Contenido, Calendario, Reto, Comunidad, Asistente IA y Mis referidos: la sección tiene que estar prendida en el
+--     programa (`portal_section_enabled`) e incluida en SU variante (`portal_section_rule`). Si no: no viene (y va en
+--     `excluded`, para «Esto no está en <programa>»).
+--   * Con acceso vigente (`portal_access_effective`): abierta. Acceso que terminó: con candado y `expired`. Cortado por
+--     un pago vencido: con candado y el motivo. Todavía no abrió: como dice la regla (`display`): `hidden` no viene,
+--     `coming_soon` → «Pronto» con la fecha si la hay, `locked` (por defecto) → candado con el motivo.
+--   * Sala de la fama y Mis proyectos son de la Corrida C: todavía no vienen.
+-- El negocio sale de la sesión y se comprueba contra la dirección (`host`): una sesión de otro negocio da PO401.
+--
+-- Solo lectura (salvo el día activo que ya suma `session_resolve`, 00384). Aditiva.
+--
+-- Volver atrás: DROP FUNCTION IF EXISTS app_servicio_portal.portal_context(text, text, uuid), app_servicio_portal.portal_public_brand(text), app_servicio_portal.ctx_programs(uuid, uuid),
+--   app_servicio_portal.ctx_section(uuid, uuid, uuid, text, date);
+-- ============================================================================
+
+-- Los programas de una persona: productos con portal donde tiene un servicio (no cancelado) con una variante que
+-- tiene el portal prendido. Primero los activos; dentro, el más reciente.
+CREATE OR REPLACE FUNCTION app_servicio_portal.ctx_programs(p_ws uuid, p_contact uuid)
+RETURNS TABLE (product_id uuid, name text, product_type text, service_id uuid, variant_id uuid, status text, starts_on date, paused_at timestamptz,
+               pause_cut_access boolean, pause_resume_on date)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT DISTINCT ON (p.id) p.id, p.name, p.product_type, s.id, s.product_variant_id, s.status, s.starts_on, s.paused_at, s.pause_cut_access, s.pause_resume_on
+    FROM app_servicio.services s
+    JOIN public.products p ON p.id = s.product_id
+    JOIN public.product_variants v ON v.id = s.product_variant_id
+   WHERE s.workspace_id = p_ws AND s.contact_id = p_contact AND s.status <> 'cancelled' AND p.portal_enabled
+     AND COALESCE((v.portal_settings ->> 'enabled')::boolean, false)
+   ORDER BY p.id, (s.status IN ('active', 'paused')) DESC, s.created_at DESC;
+$$;
+
+-- El estado de UNA sección para el menú. NULL = no viene (oculta, no incluida o apagada).
+CREATE OR REPLACE FUNCTION app_servicio_portal.ctx_section(p_contact uuid, p_product uuid, p_variant uuid, p_section text, p_starts date)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_rule jsonb;
+  o jsonb;
+  v_display text;
+  v_when date;
+  v_reason text;
+  v_ref text;
+  v_name text;
+BEGIN
+  IF NOT app_servicio.portal_section_enabled(p_product, p_section) THEN RETURN NULL; END IF;
+  v_rule := app_servicio.portal_section_rule(p_variant, p_section);
+  IF v_rule IS NULL THEN RETURN NULL; END IF;
+  IF app_servicio.portal_access_effective(p_contact, p_product, p_section) IS NOT NULL THEN
+    RETURN jsonb_build_object('display', 'open');
+  END IF;
+  -- Tuvo acceso y se cortó.
+  IF EXISTS (SELECT 1 FROM app_servicio_portal.portal_access a WHERE a.contact_id = p_contact AND a.product_id = p_product AND a.section = p_section
+              AND a.revoked_at IS NULL AND a.suspended_overdue_at IS NOT NULL) THEN
+    RETURN jsonb_build_object('display', 'locked', 'reason', 'Se reabre cuando se regularice el pago');
+  END IF;
+  IF EXISTS (SELECT 1 FROM app_servicio_portal.portal_access a WHERE a.contact_id = p_contact AND a.product_id = p_product AND a.section = p_section
+              AND (a.revoked_at IS NOT NULL OR a.ends_at < now())) THEN
+    RETURN jsonb_build_object('display', 'locked', 'expired', true, 'reason', 'Tu acceso a esta sección terminó');
+  END IF;
+  -- Todavía no abrió: como dice la regla.
+  v_display := COALESCE(v_rule ->> 'display', 'locked');
+  IF v_display = 'hidden' THEN RETURN NULL; END IF;
+  o := COALESCE(NULLIF(v_rule -> 'opens', 'null'::jsonb), '{"type":"service_start"}'::jsonb);
+  v_ref := o ->> 'ref';
+  CASE o ->> 'type'
+    WHEN 'fixed_date' THEN v_when := NULLIF(o ->> 'date', '')::date;
+    WHEN 'days_after_start' THEN v_when := p_starts + COALESCE((o ->> 'days')::integer, 0);
+    WHEN 'service_start' THEN v_when := p_starts;
+    ELSE v_when := NULL;
+  END CASE;
+  IF o ->> 'type' = 'phase_completed' THEN
+    SELECT ph ->> 'name' INTO v_name FROM public.product_variants v, jsonb_array_elements(COALESCE(v.journey_template -> 'phases', '[]'::jsonb)) ph
+     WHERE v.id = p_variant AND ph ->> 'key' = v_ref LIMIT 1;
+    v_reason := 'Se abre al terminar ' || COALESCE('la fase «' || v_name || '»', 'una fase de tu camino');
+  ELSIF o ->> 'type' = 'item_completed' THEN
+    SELECT it ->> 'name' INTO v_name FROM public.product_variants v, jsonb_array_elements(COALESCE(v.journey_template -> 'phases', '[]'::jsonb)) ph,
+           jsonb_array_elements(COALESCE(ph -> 'items', '[]'::jsonb)) it
+     WHERE v.id = p_variant AND it ->> 'key' = v_ref LIMIT 1;
+    v_reason := 'Se abre al completar ' || COALESCE('«' || v_name || '»', 'un paso de tu camino');
+  ELSIF o ->> 'type' = 'module_completed' THEN
+    SELECT i.title INTO v_name FROM app_servicio.program_items i WHERE i.id::text = v_ref AND i.product_id = p_product;
+    v_reason := 'Se abre al terminar ' || COALESCE('el módulo «' || v_name || '»', 'un módulo');
+  ELSIF o ->> 'type' = 'challenge_started' THEN
+    v_reason := 'Se abre cuando empieces el reto';
+  ELSIF v_when IS NOT NULL THEN
+    v_reason := 'Se abre el ' || to_char(v_when, 'DD/MM/YYYY');
+  ELSE
+    v_reason := 'Se abre más adelante';
+  END IF;
+  RETURN jsonb_build_object('display', CASE WHEN v_display = 'coming_soon' THEN 'soon' ELSE 'locked' END, 'reason', v_reason,
+                            'when', CASE WHEN v_when IS NOT NULL AND v_when > CURRENT_DATE THEN to_char(v_when, 'YYYY-MM-DD') END);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_context(p_session text, p_host text, p_product_id uuid DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  v_ws uuid := (sess ->> 'workspace_id')::uuid;
+  v_contact uuid := (sess ->> 'contact_id')::uuid;
+  w public.workspaces;
+  a app_servicio_portal.portal_accounts;
+  c public.contacts;
+  pr record;
+  v_programs jsonb := '[]'::jsonb;
+  v_program jsonb;
+  v_sections jsonb := '[]'::jsonb;
+  v_excluded jsonb := '[]'::jsonb;
+  v_status text := 'ended';
+  v_pause jsonb;
+  v_moment text;
+  v_points jsonb;
+  v_total integer;
+  v_notif integer := 0;
+  v_st jsonb;
+  k record;
+  v_any_open boolean := false;
+BEGIN
+  IF app_servicio_portal.ws_by_host(p_host) IS DISTINCT FROM v_ws THEN PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar'); END IF;
+  SELECT * INTO w FROM public.workspaces WHERE id = v_ws;
+  SELECT * INTO c FROM public.contacts WHERE id = v_contact;
+  SELECT * INTO a FROM app_servicio_portal.portal_accounts WHERE workspace_id = v_ws AND contact_id = v_contact;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('id', x.product_id, 'name', x.name, 'short', x.name, 'detail', COALESCE(x.product_type, ''),
+           'kind', CASE WHEN x.product_type = 'event' THEN 'event' ELSE 'program' END, 'nick', 'el programa «' || x.name || '»')
+           ORDER BY (x.status IN ('active', 'paused')) DESC, x.name), '[]'::jsonb)
+    INTO v_programs FROM app_servicio_portal.ctx_programs(v_ws, v_contact) x;
+
+  SELECT * INTO pr FROM app_servicio_portal.ctx_programs(v_ws, v_contact) x
+   ORDER BY (x.product_id = p_product_id) DESC, (x.status IN ('active', 'paused')) DESC, x.name LIMIT 1;
+
+  IF pr.product_id IS NOT NULL THEN
+    v_program := (SELECT e FROM jsonb_array_elements(v_programs) e WHERE e ->> 'id' = pr.product_id::text);
+    -- Las secciones del menú, en el orden del portal.
+    FOR k IN SELECT * FROM (VALUES (1, 'inicio', NULL), (2, 'camino', NULL), (3, 'programa', 'program'), (4, 'calendario', 'calendar'),
+                                   (5, 'reto', 'challenge'), (6, 'comunidad', 'community'), (7, 'referidos', 'affiliates'),
+                                   (8, 'asistente', 'assistant'), (9, 'perfil', NULL)) t(pos, key, section) ORDER BY pos LOOP
+      IF k.section IS NULL THEN
+        v_sections := v_sections || jsonb_build_object('key', k.key, 'display', 'open');
+        CONTINUE;
+      END IF;
+      v_st := app_servicio_portal.ctx_section(v_contact, pr.product_id, pr.variant_id, k.section, pr.starts_on);
+      IF v_st IS NULL THEN
+        IF app_servicio.portal_section_rule(pr.variant_id, k.section) IS NULL OR NOT app_servicio.portal_section_enabled(pr.product_id, k.section) THEN
+          v_excluded := v_excluded || to_jsonb(k.key);
+        END IF;
+        CONTINUE;
+      END IF;
+      IF v_st ->> 'display' = 'open' THEN v_any_open := true; END IF;
+      IF k.key = 'comunidad' AND v_st ->> 'display' = 'open' THEN
+        v_st := v_st || jsonb_build_object('count', (SELECT count(*) FROM app_servicio_portal.community_posts p
+          WHERE p.product_id = pr.product_id AND p.parent_id IS NULL AND p.deleted_at IS NULL AND p.hidden_at IS NULL
+            AND p.author_contact_id IS DISTINCT FROM v_contact
+            AND p.created_at > GREATEST(COALESCE(a.notifications_seen_at, '-infinity'::timestamptz), now() - interval '7 days')));
+      END IF;
+      v_sections := v_sections || (jsonb_build_object('key', k.key) || v_st);
+    END LOOP;
+
+    -- El estado del programa (F212).
+    IF pr.status = 'paused' AND pr.pause_cut_access THEN
+      v_status := 'paused';
+      v_pause := jsonb_build_object('since', to_char(app_servicio.local_date(pr.paused_at, v_ws), 'YYYY-MM-DD'), 'until', to_char(pr.pause_resume_on, 'YYYY-MM-DD'));
+    ELSIF pr.status IN ('active', 'paused', 'pending_confirmation') OR v_any_open THEN
+      v_status := 'active';
+    END IF;
+
+    -- El momento (para el Inicio): terminado, en pausa, certificado, en el reto, en el onboarding o a mitad de camino.
+    v_moment := CASE
+      WHEN v_status = 'ended' THEN 'exp'
+      WHEN v_status = 'paused' THEN 'pausa'
+      WHEN EXISTS (SELECT 1 FROM app_servicio.service_items i WHERE i.service_id = pr.service_id AND i.kind = 'certificate' AND i.status = 'completed') THEN 'cert'
+      WHEN EXISTS (SELECT 1 FROM app_servicio.service_phases ph WHERE ph.service_id = pr.service_id AND ph.status = 'in_progress' AND ph.challenge -> 'enabled' = 'true'::jsonb) THEN 'reto'
+      WHEN COALESCE((SELECT ph.position FROM app_servicio.service_phases ph WHERE ph.service_id = pr.service_id AND ph.status = 'in_progress' ORDER BY ph.position LIMIT 1), 0)
+           = (SELECT min(ph.position) FROM app_servicio.service_phases ph WHERE ph.service_id = pr.service_id) THEN 'onb'
+      ELSE 'mid' END;
+
+    SELECT portal_settings -> 'points' INTO v_points FROM public.products WHERE id = pr.product_id;
+    SELECT COALESCE(sum(points), 0)::integer INTO v_total FROM app_servicio_portal.points_ledger WHERE contact_id = v_contact AND product_id = pr.product_id;
+    IF a.id IS NOT NULL THEN
+      v_notif := COALESCE((app_servicio.portal_notifications_view(a.id, pr.product_id) ->> 'unseen')::integer, 0)
+               + COALESCE(jsonb_array_length(app_servicio.portal_notifications_view(a.id, pr.product_id) -> 'today_items'), 0);
+    END IF;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'contract', app_servicio.contract_version()::integer,
+    'brand', jsonb_build_object('name', COALESCE(NULLIF(w.brand_name, ''), w.name), 'short', upper(left(COALESCE(NULLIF(w.brand_name, ''), w.name), 1)),
+                                'logo_path', w.brand_logo_path, 'color', w.brand_color, 'host', w.portal_settings ->> 'host',
+                                'support', w.portal_settings ->> 'support_whatsapp'),
+    'programs', v_programs,
+    'program', v_program,
+    'moment', COALESCE(v_moment, 'exp'),
+    'variant', 'full',
+    'status', v_status,
+    'pause', v_pause,
+    'terms_pending', CASE WHEN pr.product_id IS NULL THEN false ELSE app_servicio.portal_terms_pending(v_contact, pr.product_id) END,
+    'preview', sess ->> 'kind' = 'preview',
+    'points_enabled', COALESCE(v_points -> 'enabled' = 'true'::jsonb, false),
+    'levels', (SELECT jsonb_agg(jsonb_build_object('level', n, 'name', l ->> 'name', 'min', (l ->> 'min')::integer) ORDER BY n)
+                 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v_points -> 'levels') = 'array' AND jsonb_array_length(v_points -> 'levels') = 9 THEN v_points -> 'levels'
+                   ELSE '[{"name":"Explorador","min":0},{"name":"Aprendiz","min":10},{"name":"Constructor","min":30},{"name":"Builder","min":60},{"name":"Builder Pro","min":100},{"name":"Arquitecto","min":160},{"name":"Experto","min":250},{"name":"Maestro","min":400},{"name":"Leyenda","min":600}]'::jsonb END)
+                   WITH ORDINALITY AS t(l, n)),
+    'me', jsonb_build_object('name', COALESCE(a.display_name, c.display_name, ''), 'first_name', split_part(COALESCE(a.display_name, c.display_name, ''), ' ', 1),
+                             'email', COALESCE(a.email, c.email), 'points', CASE WHEN COALESCE(v_points -> 'enabled' = 'true'::jsonb, false) THEN v_total END,
+                             'theme', COALESCE(a.notification_prefs ->> 'theme', 'dark')),
+    'sections', v_sections,
+    'excluded', v_excluded,
+    'notifications_count', v_notif);
+END;
+$$;
+
+-- La marca para las pantallas SIN sesión (Entrar, invitación, «Este portal no existe»): solo lo público del negocio
+-- de esa dirección. Dirección desconocida: {exists:false}, sin ningún nombre (F201).
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_public_brand(p_host text)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT COALESCE((
+    SELECT jsonb_build_object('exists', true, 'name', COALESCE(NULLIF(w.brand_name, ''), w.name),
+             'short', upper(left(COALESCE(NULLIF(w.brand_name, ''), w.name), 1)), 'logo_path', w.brand_logo_path, 'color', w.brand_color,
+             'host', w.portal_settings ->> 'host', 'support', w.portal_settings ->> 'support_whatsapp',
+             'password_allowed', COALESCE(w.portal_settings #> '{login,password_allowed}' = 'true'::jsonb, false),
+             'contract', app_servicio.contract_version()::integer)
+      FROM public.workspaces w
+     WHERE w.id = app_servicio_portal.ws_by_host(p_host) AND app_servicio.module_on(w.id)), jsonb_build_object('exists', false));
+$$;
+
+REVOKE ALL ON FUNCTION app_servicio_portal.ctx_programs(uuid, uuid), app_servicio_portal.ctx_section(uuid, uuid, uuid, text, date),
+  app_servicio_portal.portal_context(text, text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION app_servicio_portal.portal_public_brand(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio_portal.portal_context(text, text, uuid), app_servicio_portal.portal_public_brand(text) TO portal_app, service_role;
+
+-- ============================================================
+-- MIGRATION 386: PORTAL HOME JOURNEY PROFILE
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00386_portal_home_journey_profile  (Portal de estudiantes, Corrida B2 · P04)
+-- ============================================================================
+-- El contrato del Inicio, Mi camino, el perfil y el certificado (§5 del plano del portal; F214 a F217). Todas
+-- reciben la sesión: el contacto y el negocio salen de ahí. Devuelven los datos; el portal los acomoda a su pantalla
+-- (fechas en la zona del estudiante, textos).
+--
+--   program_for(sess, product)              ayudante: el programa tiene que ser de la persona (PO404), sin términos
+--                                            pendientes (PO451) y sin pausa que corte el acceso (PO423).
+--   portal_home(session, product_id)        avance, línea de fases, próxima clase en vivo, lo pendiente más cercano,
+--                                            dónde seguir en el contenido, el reto, el certificado, las cifras y los
+--                                            puntos de la semana.
+--   portal_journey(session, product_id)     fases y pasos VISIBLES para el estudiante (`visible_to_client`), con su
+--                                            plazo, quién lo hace, si está bloqueado, el botón (si el equipo lo prendió)
+--                                            y si puede ver su respuesta. Las repeticiones de un paso vienen contadas.
+--   portal_step_response(session, item_id)  sus respuestas a ese paso, de solo lectura, si `ref.show_response` no es
+--                                            false. Nunca la nota interna ni la de otro.
+--   portal_profile_get / portal_profile_save  nombre, zona horaria, tema, «No aparecer en el ranking»; el email es
+--                                            de solo lectura. La vista previa no guarda (PO403).
+--   portal_certificate(session, product_id) el certificado vigente (o anulado) del servicio: código y estado. El
+--                                            link público y el PDF los arma el portal con la base de links del negocio.
+--
+-- Solo lectura salvo `portal_profile_save`. Aditiva.
+--
+-- Volver atrás: DROP FUNCTION IF EXISTS app_servicio_portal.program_for(jsonb, uuid, boolean), app_servicio_portal.portal_home(text, uuid),
+--   app_servicio_portal.portal_journey(text, uuid), app_servicio_portal.portal_step_response(text, uuid),
+--   app_servicio_portal.portal_profile_get(text), app_servicio_portal.portal_profile_save(text, jsonb),
+--   app_servicio_portal.portal_certificate(text, uuid);
+-- ============================================================================
+
+-- El programa de la persona, con las guardas de F211 y F212. p_allow_paused: el Inicio y el perfil se ven en pausa.
+CREATE OR REPLACE FUNCTION app_servicio_portal.program_for(p_sess jsonb, p_product uuid, p_allow_paused boolean DEFAULT false)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  pr record;
+BEGIN
+  SELECT * INTO pr FROM app_servicio_portal.ctx_programs((p_sess ->> 'workspace_id')::uuid, (p_sess ->> 'contact_id')::uuid) x WHERE x.product_id = p_product;
+  IF pr.product_id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Esto no está en tus programas'); END IF;
+  IF app_servicio.portal_terms_pending((p_sess ->> 'contact_id')::uuid, p_product) THEN
+    PERFORM app_servicio_portal.err('PO451', 'Antes de seguir, aceptá los términos del programa');
+  END IF;
+  IF NOT p_allow_paused AND pr.status = 'paused' AND pr.pause_cut_access THEN
+    PERFORM app_servicio_portal.err('PO423', 'Tu programa está en pausa' || COALESCE(' · se reanuda el ' || to_char(pr.pause_resume_on, 'DD/MM/YYYY'), ''));
+  END IF;
+  RETURN jsonb_build_object('product_id', pr.product_id, 'service_id', pr.service_id, 'variant_id', pr.variant_id, 'status', pr.status,
+                            'starts_on', pr.starts_on, 'contact_id', p_sess ->> 'contact_id', 'workspace_id', p_sess ->> 'workspace_id');
+END;
+$$;
+
+-- ─── Mi camino ──────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_journey(p_session text, p_product_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.program_for(sess, p_product_id);
+  v_service uuid := (pf ->> 'service_id')::uuid;
+BEGIN
+  RETURN jsonb_build_object(
+    'service_id', v_service,
+    'timezone', app_servicio.points_tz((pf ->> 'contact_id')::uuid, (pf ->> 'workspace_id')::uuid),
+    'phases', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'id', ph.id, 'name', ph.name, 'status', ph.status, 'position', ph.position, 'duration_days', ph.duration_days,
+               'started_at', ph.started_at, 'completed_at', ph.completed_at, 'challenge', COALESCE(ph.challenge -> 'enabled' = 'true'::jsonb, false),
+               'awaiting_start', ph.awaiting_start,
+               'items', COALESCE((
+                 SELECT jsonb_agg(jsonb_build_object(
+                          'id', i.id, 'name', i.name, 'description', i.description, 'kind', i.kind, 'status', i.status,
+                          'required', i.required, 'who', CASE WHEN i.assignee = 'student' THEN 'student' ELSE 'team' END,
+                          'due_on', i.due_on, 'due_at', i.due_at, 'completed_at', i.completed_at,
+                          'lock', CASE WHEN jsonb_typeof(i.ref -> 'lock') = 'object' AND i.status = 'pending' THEN app_servicio.svc_item_lock_state(i.id) END,
+                          'portal_button', i.portal_button,
+                          'button', CASE WHEN i.portal_button THEN jsonb_strip_nulls(jsonb_build_object(
+                                      'label', i.ref #>> '{button,label}',
+                                      'url', CASE WHEN i.kind IN ('team_task', 'student_task', 'checkbox') THEN i.ref #>> '{button,url}' END,
+                                      'complete_on', i.ref ->> 'complete_on')) END,
+                          'show_response', i.kind IN ('form', 'survey', 'activity', 'quiz', 'contract') AND COALESCE(i.ref -> 'show_response' <> 'false'::jsonb, true),
+                          'repeats', i.is_recurring_template,
+                          'occurrences', CASE WHEN i.is_recurring_template THEN (
+                             SELECT jsonb_build_object('done', count(*) FILTER (WHERE o.status = 'completed'), 'total', count(*),
+                                                       'due_today', count(*) FILTER (WHERE o.status = 'pending' AND o.due_on = app_servicio.today_in(i.workspace_id)))
+                               FROM app_servicio.service_items o WHERE o.parent_item_id = i.id) END)
+                        ORDER BY i.position, i.created_at)
+                   FROM app_servicio.service_items i
+                  WHERE i.phase_id = ph.id AND i.visible_to_client AND i.parent_item_id IS NULL), '[]'::jsonb))
+             ORDER BY ph.position)
+        FROM app_servicio.service_phases ph WHERE ph.service_id = v_service), '[]'::jsonb));
+END;
+$$;
+
+-- ─── La respuesta de un paso (solo lectura) ─────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_step_response(p_session text, p_item_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  i app_servicio.service_items;
+  s app_servicio.services;
+  fs public.form_submissions;
+  v_fields jsonb;
+BEGIN
+  SELECT * INTO i FROM app_servicio.service_items WHERE id = p_item_id;
+  SELECT * INTO s FROM app_servicio.services WHERE id = i.service_id;
+  IF i.id IS NULL OR s.contact_id IS DISTINCT FROM (sess ->> 'contact_id')::uuid OR NOT i.visible_to_client
+     OR i.kind NOT IN ('form', 'survey', 'activity', 'quiz', 'contract') OR i.ref -> 'show_response' = 'false'::jsonb THEN
+    PERFORM app_servicio_portal.err('PO404', 'No hay una respuesta para mostrar');
+  END IF;
+  PERFORM app_servicio_portal.program_for(sess, s.product_id);
+  SELECT * INTO fs FROM public.form_submissions f
+   WHERE f.contact_id = s.contact_id AND f.form_id::text = i.ref ->> 'form_id' AND COALESCE(f.review_status, '') <> 'superseded'
+   ORDER BY (f.service_item_id = i.id) DESC NULLS LAST, f.created_at DESC LIMIT 1;
+  IF fs.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Todavía no hay una respuesta'); END IF;
+  SELECT v.definition -> 'fields' INTO v_fields FROM public.form_versions v WHERE v.id = fs.form_version_id;
+  RETURN jsonb_build_object('kind', i.kind, 'title', i.name, 'sent_at', fs.created_at,
+    'answers', COALESCE((SELECT jsonb_agg(jsonb_build_object('label', COALESCE(f ->> 'label', f ->> 'key'), 'value', fs.answers -> (f ->> 'key')) ORDER BY n)
+                           FROM jsonb_array_elements(COALESCE(v_fields, '[]'::jsonb)) WITH ORDINALITY t(f, n)
+                          WHERE fs.answers ? (f ->> 'key') AND f ->> 'type' NOT IN ('hidden', 'section', 'text_block')), '[]'::jsonb));
+END;
+$$;
+
+-- ─── Inicio ─────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_home(p_session text, p_product_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.program_for(sess, p_product_id, true);
+  v_service uuid := (pf ->> 'service_id')::uuid;
+  v_contact uuid := (pf ->> 'contact_id')::uuid;
+  v_ws uuid := (pf ->> 'workspace_id')::uuid;
+  s app_servicio.services;
+  v_today date;
+  v_tz text;
+  v_live jsonb; v_pending jsonb; v_continue jsonb; v_first jsonb; v_cert jsonb; v_lessons jsonb; v_week integer; v_place integer;
+  v_ch jsonb;
+BEGIN
+  SELECT * INTO s FROM app_servicio.services WHERE id = v_service;
+  v_tz := app_servicio.points_tz(v_contact, v_ws);
+  v_today := (now() AT TIME ZONE v_tz)::date;
+
+  -- La próxima clase en vivo de SU variante (sin el link de la reunión: ese sale solo al «Entrar», F223).
+  SELECT jsonb_build_object('session_id', o.live_session_id, 'title', ls.title, 'occurs_on', o.occurs_on, 'starts_at', o.starts_at, 'ends_at', o.ends_at)
+    INTO v_live
+    FROM app_servicio.live_session_occurrences(p_product_id, v_today, v_today + 45) o
+    JOIN app_servicio.live_sessions ls ON ls.id = o.live_session_id
+   WHERE o.ends_at > now() AND COALESCE(o.status, 'scheduled') <> 'cancelled'
+     AND (ls.variant_ids IS NULL OR cardinality(ls.variant_ids) = 0 OR s.product_variant_id = ANY (ls.variant_ids))
+   ORDER BY o.starts_at LIMIT 1;
+
+  -- Lo pendiente más cercano que hace la persona.
+  SELECT COALESCE(jsonb_agg(x ORDER BY x ->> 'due_at' NULLS LAST, x ->> 'due_on' NULLS LAST), '[]'::jsonb) INTO v_pending FROM (
+    SELECT jsonb_build_object('item_id', i.id, 'title', i.name, 'kind', i.kind, 'due_on', i.due_on, 'due_at', i.due_at,
+                              'overdue', i.due_on IS NOT NULL AND i.due_on < v_today) x
+      FROM app_servicio.service_items i
+     WHERE i.service_id = v_service AND i.visible_to_client AND i.status = 'pending' AND NOT i.is_recurring_template AND i.assignee = 'student'
+       AND (i.due_on IS NULL OR i.due_on <= v_today + 14)
+     ORDER BY i.due_on NULLS LAST, i.due_at NULLS LAST, i.position LIMIT 3) t;
+
+  -- Dónde seguir: la última clase empezada y sin terminar; si no, la primera clase del programa.
+  SELECT jsonb_build_object('item_id', it.id, 'title', it.title, 'module_id', it.parent_id, 'module_title', m.title, 'seconds', pp.last_position_seconds)
+    INTO v_continue
+    FROM app_servicio_portal.program_progress pp
+    JOIN app_servicio.program_items it ON it.id = pp.program_item_id AND it.product_id = p_product_id AND it.kind = 'lesson' AND it.status = 'active'
+    LEFT JOIN app_servicio.program_items m ON m.id = it.parent_id
+   WHERE pp.contact_id = v_contact AND pp.viewed_at IS NOT NULL AND pp.completed_at IS NULL
+   ORDER BY pp.updated_at DESC LIMIT 1;
+  SELECT jsonb_build_object('item_id', it.id, 'title', it.title, 'module_id', it.parent_id, 'module_title', m.title)
+    INTO v_first
+    FROM app_servicio.program_items it LEFT JOIN app_servicio.program_items m ON m.id = it.parent_id
+   WHERE it.product_id = p_product_id AND it.kind = 'lesson' AND it.status = 'active'
+   ORDER BY m.position NULLS FIRST, it.position LIMIT 1;
+
+  -- El certificado (el vigente primero).
+  SELECT jsonb_build_object('code', d.code, 'valid', d.status <> 'void' AND d.voided_at IS NULL, 'issued_at', d.created_at)
+    INTO v_cert
+    FROM public.designs d JOIN public.design_templates t ON t.id = d.template_id AND t.doc_type = 'certificado'
+   WHERE d.workspace_id = v_ws AND d.subject_ref ->> 'module' = 'service' AND d.subject_ref ->> 'id' = v_service::text
+   ORDER BY (d.voided_at IS NULL) DESC, d.created_at DESC LIMIT 1;
+
+  v_lessons := app_servicio.service_classroom(v_service);
+  IF EXISTS (SELECT 1 FROM app_servicio.service_phases ph WHERE ph.service_id = v_service AND ph.challenge -> 'enabled' = 'true'::jsonb) THEN
+    v_ch := app_servicio.svc_challenge_view(v_service);
+  END IF;
+  SELECT COALESCE(sum(points), 0)::integer INTO v_week FROM app_servicio_portal.points_ledger
+   WHERE contact_id = v_contact AND product_id = p_product_id AND local_day > v_today - 7;
+  SELECT r.n INTO v_place FROM (
+    SELECT contact_id, row_number() OVER (ORDER BY sum(points) DESC) n FROM app_servicio_portal.points_ledger
+     WHERE product_id = p_product_id AND local_day > v_today - 30 GROUP BY contact_id) r WHERE r.contact_id = v_contact;
+
+  RETURN jsonb_build_object(
+    'service_id', v_service, 'today', v_today, 'timezone', v_tz,
+    'progress_pct', COALESCE(s.progress_pct, 0),
+    'starts_on', s.starts_on, 'ends_on', s.ends_on, 'status', s.status,
+    'phases', COALESCE((SELECT jsonb_agg(jsonb_build_object('name', ph.name, 'status', ph.status, 'started_at', ph.started_at, 'completed_at', ph.completed_at,
+                                                            'duration_days', ph.duration_days) ORDER BY ph.position)
+                          FROM app_servicio.service_phases ph WHERE ph.service_id = v_service), '[]'::jsonb),
+    'live', v_live,
+    'pending', v_pending,
+    'continue', v_continue,
+    'first_lesson', v_first,
+    'challenge', v_ch,
+    'certificate', v_cert,
+    'numbers', jsonb_build_object(
+      'lessons_viewed', (SELECT count(*) FROM jsonb_array_elements(COALESCE(v_lessons -> 'items', '[]'::jsonb)) e WHERE e ->> 'kind' = 'lesson' AND (e ->> 'viewed_at') IS NOT NULL),
+      'lessons_total', (SELECT count(*) FROM jsonb_array_elements(COALESCE(v_lessons -> 'items', '[]'::jsonb)) e WHERE e ->> 'kind' = 'lesson'),
+      'activities_sent', (SELECT count(DISTINCT f.form_id) FROM public.form_submissions f
+                           JOIN app_servicio.program_items it ON it.form_id = f.form_id AND it.product_id = p_product_id AND it.lesson_type = 'activity'
+                           WHERE f.contact_id = v_contact),
+      'activities_total', (SELECT count(*) FROM app_servicio.program_items it WHERE it.product_id = p_product_id AND it.lesson_type = 'activity' AND it.status = 'active')),
+    'points', CASE WHEN (SELECT portal_settings #> '{points,enabled}' FROM public.products WHERE id = p_product_id) = 'true'::jsonb
+                   THEN jsonb_build_object('week', v_week, 'place30', v_place) END);
+END;
+$$;
+
+-- ─── Perfil ─────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_profile_get(p_session text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  a app_servicio_portal.portal_accounts;
+  c public.contacts;
+BEGIN
+  SELECT * INTO c FROM public.contacts WHERE id = (sess ->> 'contact_id')::uuid;
+  SELECT * INTO a FROM app_servicio_portal.portal_accounts WHERE workspace_id = (sess ->> 'workspace_id')::uuid AND contact_id = c.id;
+  RETURN jsonb_build_object(
+    'name', COALESCE(a.display_name, c.display_name, ''), 'email', COALESCE(a.email, c.email), 'country', c.country,
+    'timezone', COALESCE(NULLIF(a.timezone, ''), NULLIF(c.timezone, ''), app_servicio.ws_tz(c.workspace_id)),
+    'avatar_path', a.avatar_path, 'theme', COALESCE(a.notification_prefs ->> 'theme', 'dark'),
+    'hide_from_ranking', COALESCE((a.notification_prefs ->> 'hide_from_ranking')::boolean, false),
+    'show_amount_in_fame', COALESCE(a.show_amount_in_fame, false),
+    'has_password', a.password_hash IS NOT NULL,
+    'notifications', app_servicio.portal_notification_prefs(a.notification_prefs),
+    'sessions', (SELECT count(*) FROM app_servicio_portal.portal_sessions s WHERE s.account_id = a.id AND s.kind = 'student' AND s.revoked_at IS NULL AND s.expires_at > now()));
+END;
+$$;
+
+-- Guarda solo lo que viene: name, timezone, theme (dark · light), hide_from_ranking, show_amount_in_fame. El email no.
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_profile_save(p_session text, p_patch jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  v_prefs jsonb;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  IF p_patch IS NULL OR jsonb_typeof(p_patch) <> 'object' THEN PERFORM app_servicio_portal.err('PO400', 'El cambio no es válido'); END IF;
+  IF p_patch ? 'name' AND (jsonb_typeof(p_patch -> 'name') <> 'string' OR btrim(p_patch ->> 'name') = '' OR char_length(p_patch ->> 'name') > 80) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Escribí tu nombre (hasta 80 caracteres)');
+  END IF;
+  IF p_patch ? 'timezone' AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names WHERE name = p_patch ->> 'timezone') THEN
+    PERFORM app_servicio_portal.err('PO400', 'Elegí una zona horaria de la lista');
+  END IF;
+  IF p_patch ? 'theme' AND NOT COALESCE(p_patch ->> 'theme' IN ('dark', 'light'), false) THEN PERFORM app_servicio_portal.err('PO400', 'El tema no es válido'); END IF;
+  IF (p_patch ? 'hide_from_ranking' AND jsonb_typeof(p_patch -> 'hide_from_ranking') <> 'boolean')
+     OR (p_patch ? 'show_amount_in_fame' AND jsonb_typeof(p_patch -> 'show_amount_in_fame') <> 'boolean') THEN
+    PERFORM app_servicio_portal.err('PO400', 'El cambio no es válido');
+  END IF;
+  SELECT COALESCE(notification_prefs, '{}'::jsonb) INTO v_prefs FROM app_servicio_portal.portal_accounts WHERE id = (sess ->> 'account_id')::uuid;
+  IF p_patch ? 'theme' THEN v_prefs := v_prefs || jsonb_build_object('theme', p_patch ->> 'theme'); END IF;
+  IF p_patch ? 'hide_from_ranking' THEN v_prefs := v_prefs || jsonb_build_object('hide_from_ranking', p_patch -> 'hide_from_ranking'); END IF;
+  UPDATE app_servicio_portal.portal_accounts
+     SET display_name = CASE WHEN p_patch ? 'name' THEN btrim(p_patch ->> 'name') ELSE display_name END,
+         timezone = CASE WHEN p_patch ? 'timezone' THEN p_patch ->> 'timezone' ELSE timezone END,
+         show_amount_in_fame = CASE WHEN p_patch ? 'show_amount_in_fame' THEN (p_patch ->> 'show_amount_in_fame')::boolean ELSE show_amount_in_fame END,
+         notification_prefs = v_prefs, updated_at = now()
+   WHERE id = (sess ->> 'account_id')::uuid;
+  RETURN app_servicio_portal.portal_profile_get(p_session);
+END;
+$$;
+
+-- ─── Certificado ────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_certificate(p_session text, p_product_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.program_for(sess, p_product_id, true);
+  v jsonb;
+BEGIN
+  SELECT jsonb_build_object('code', d.code, 'status', CASE WHEN d.voided_at IS NOT NULL OR d.status = 'void' THEN 'void' WHEN d.status = 'ready' THEN 'valid' ELSE 'pending' END,
+                            'issued_at', d.created_at, 'voided_at', d.voided_at, 'allow_download', COALESCE(d.allow_download, true), 'name', d.name)
+    INTO v
+    FROM public.designs d JOIN public.design_templates t ON t.id = d.template_id AND t.doc_type = 'certificado'
+   WHERE d.workspace_id = (pf ->> 'workspace_id')::uuid AND d.subject_ref ->> 'module' = 'service' AND d.subject_ref ->> 'id' = pf ->> 'service_id'
+   ORDER BY (d.voided_at IS NULL) DESC, d.created_at DESC LIMIT 1;
+  RETURN COALESCE(v, jsonb_build_object('status', 'none'));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app_servicio_portal.program_for(jsonb, uuid, boolean), app_servicio_portal.portal_home(text, uuid),
+  app_servicio_portal.portal_journey(text, uuid), app_servicio_portal.portal_step_response(text, uuid),
+  app_servicio_portal.portal_profile_get(text), app_servicio_portal.portal_profile_save(text, jsonb),
+  app_servicio_portal.portal_certificate(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio_portal.portal_home(text, uuid), app_servicio_portal.portal_journey(text, uuid),
+  app_servicio_portal.portal_step_response(text, uuid), app_servicio_portal.portal_profile_get(text), app_servicio_portal.portal_profile_save(text, jsonb),
+  app_servicio_portal.portal_certificate(text, uuid) TO portal_app, service_role;
+
+-- ============================================================
+-- MIGRATION 387: PORTAL PROGRAM
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00387_portal_program  (Portal de estudiantes, Corrida B2 · P05)
+-- ============================================================================
+-- El contenido del portal (F218 a F222, F244, F211): módulos y clases según lo que la variante incluye y cómo abre
+-- cada cosa para ESA persona (`program_item_unlocked`, Corrida A), marcar una clase, evaluaciones (sin las respuestas
+-- correctas), actividades (con sus límites de entregas, 00375) y los términos al entrar.
+--
+--   require_section(sess, product, section)       ayudante: la sección tiene que estar abierta para la persona (PO403).
+--   portal_program(session, product_id)           módulos visibles con cómo se ven (abierto · candado · pronto) y sus clases.
+--   portal_module(session, item_id)               un módulo con sus clases.
+--   portal_lesson(session, item_id)               la clase completa: video, página HTML, si hay PDF, recursos (los links;
+--                                                  los archivos por id), anterior y siguiente. Inactiva → PO410.
+--   portal_lesson_mark(session, item_id, seconds, complete)  vista (idempotente; el avance solo sube).
+--   portal_quiz_get / portal_quiz_submit           preguntas SIN las correctas; la nota la calcula la base al guardar.
+--   portal_activity_get / portal_activity_submit   el formulario, la escala, el historial (sin la nota interna) y si
+--                                                  puede entregar (`submission_plan`); la base aplica los límites.
+--   portal_terms_get / portal_terms_accept         el formulario de términos vigente y su aceptación (F113).
+--   app_servicio.portal_file_grant(session, kind, item, ref)   SOLO el servidor de SSA: qué archivo puede ver o
+--                                                  subir la persona (bucket y ruta). SSA arma el link de 5 minutos.
+--
+-- La vista previa lee y no escribe (PO403). Aditiva.
+--
+-- La nota nunca lleva las respuestas correctas; el «bien o mal» por pregunta, solo con `quiz.show_correct`.
+--
+-- Volver atrás: DROP FUNCTION de cada una (las de abajo).
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.require_section(p_sess jsonb, p_product uuid, p_section text)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  pf jsonb := app_servicio_portal.program_for(p_sess, p_product);
+  v jsonb;
+BEGIN
+  v := app_servicio_portal.ctx_section((pf ->> 'contact_id')::uuid, p_product, (pf ->> 'variant_id')::uuid, p_section, (pf ->> 'starts_on')::date);
+  IF v IS NULL OR v ->> 'display' <> 'open' THEN
+    PERFORM app_servicio_portal.err('PO403', COALESCE(v ->> 'reason', 'Esta sección no está abierta'));
+  END IF;
+  RETURN pf;
+END;
+$$;
+
+-- Una clase o submódulo visible para la persona, con su apertura.
+CREATE OR REPLACE FUNCTION app_servicio_portal.lesson_row(p_contact uuid, i app_servicio.program_items)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  u jsonb := app_servicio.program_item_unlocked(p_contact, i.id);
+  pp app_servicio_portal.program_progress;
+BEGIN
+  IF NOT COALESCE((u ->> 'visible')::boolean, false) THEN RETURN NULL; END IF;
+  SELECT * INTO pp FROM app_servicio_portal.program_progress WHERE contact_id = p_contact AND program_item_id = i.id ORDER BY updated_at DESC LIMIT 1;
+  RETURN jsonb_build_object('id', i.id, 'kind', i.kind, 'title', i.title, 'description', left(i.description, 280), 'lesson_type', i.lesson_type,
+    'duration_seconds', i.duration_seconds, 'thumbnail_url', i.thumbnail_url, 'thumbnail_path', i.thumbnail_path, 'required', i.required,
+    'unlocked', COALESCE((u ->> 'unlocked')::boolean, false), 'display', u ->> 'display', 'reason', u ->> 'reason', 'opens_on', u ->> 'opensOn',
+    'viewed', pp.viewed_at IS NOT NULL, 'completed', pp.completed_at IS NOT NULL,
+    'new', COALESCE(pp.unlocked_at, i.created_at) > now() - interval '7 days' AND pp.viewed_at IS NULL,
+    'comments', (SELECT count(*) FROM app_servicio_portal.community_posts p WHERE p.program_item_id = i.id AND p.deleted_at IS NULL AND p.hidden_at IS NULL));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.module_row(p_contact uuid, m app_servicio.program_items)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  u jsonb := app_servicio.program_item_unlocked(p_contact, m.id);
+BEGIN
+  IF NOT COALESCE((u ->> 'visible')::boolean, false) THEN RETURN NULL; END IF;
+  RETURN jsonb_build_object('id', m.id, 'title', m.title, 'description', m.description, 'cover_path', m.cover_path, 'thumbnail_url', m.thumbnail_url,
+    'unlocked', COALESCE((u ->> 'unlocked')::boolean, false), 'display', u ->> 'display', 'reason', u ->> 'reason', 'opens_on', u ->> 'opensOn',
+    'items', CASE WHEN COALESCE((u ->> 'unlocked')::boolean, false) THEN COALESCE((
+      SELECT jsonb_agg(r ORDER BY pos) FROM (
+        SELECT app_servicio_portal.lesson_row(p_contact, c) r, c.position pos FROM app_servicio.program_items c
+         WHERE c.parent_id = m.id AND c.status = 'active') x WHERE r IS NOT NULL), '[]'::jsonb) ELSE '[]'::jsonb END);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_program(p_session text, p_product_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.require_section(sess, p_product_id, 'program');
+BEGIN
+  RETURN jsonb_build_object('modules', COALESCE((
+    SELECT jsonb_agg(r ORDER BY pos) FROM (
+      SELECT app_servicio_portal.module_row((pf ->> 'contact_id')::uuid, m) r, m.position pos FROM app_servicio.program_items m
+       WHERE m.product_id = p_product_id AND m.kind = 'module' AND m.parent_id IS NULL AND m.status = 'active') x WHERE r IS NOT NULL), '[]'::jsonb));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_module(p_session text, p_item_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  m app_servicio.program_items;
+  pf jsonb;
+  v jsonb;
+BEGIN
+  SELECT * INTO m FROM app_servicio.program_items WHERE id = p_item_id AND kind IN ('module', 'submodule');
+  IF m.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Este módulo no existe'); END IF;
+  pf := app_servicio_portal.require_section(sess, m.product_id, 'program');
+  IF m.status <> 'active' THEN PERFORM app_servicio_portal.err('PO410', 'Este módulo ya no está disponible'); END IF;
+  v := app_servicio_portal.module_row((pf ->> 'contact_id')::uuid, m);
+  IF v IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Este módulo no existe'); END IF;
+  RETURN v;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_lesson(p_session text, p_item_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  i app_servicio.program_items;
+  m app_servicio.program_items;
+  pf jsonb;
+  u jsonb;
+  v_contact uuid;
+  v_sib uuid[];
+  v_idx integer;
+  pp app_servicio_portal.program_progress;
+BEGIN
+  SELECT * INTO i FROM app_servicio.program_items WHERE id = p_item_id AND kind = 'lesson';
+  IF i.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Esta clase no existe'); END IF;
+  pf := app_servicio_portal.require_section(sess, i.product_id, 'program');
+  v_contact := (pf ->> 'contact_id')::uuid;
+  IF i.status <> 'active' THEN PERFORM app_servicio_portal.err('PO410', 'Esta clase ya no está disponible'); END IF;
+  u := app_servicio.program_item_unlocked(v_contact, i.id);
+  IF NOT COALESCE((u ->> 'visible')::boolean, false) THEN PERFORM app_servicio_portal.err('PO404', 'Esta clase no existe'); END IF;
+  IF NOT COALESCE((u ->> 'unlocked')::boolean, false) THEN PERFORM app_servicio_portal.err('PO403', COALESCE(u ->> 'reason', 'Esta clase todavía no está abierta')); END IF;
+  SELECT * INTO m FROM app_servicio.program_items WHERE id = i.parent_id;
+  SELECT array_agg(c.id ORDER BY c.position) INTO v_sib FROM app_servicio.program_items c WHERE c.parent_id = i.parent_id AND c.status = 'active' AND c.kind = 'lesson';
+  v_idx := array_position(v_sib, i.id);
+  SELECT * INTO pp FROM app_servicio_portal.program_progress WHERE contact_id = v_contact AND program_item_id = i.id ORDER BY updated_at DESC LIMIT 1;
+  RETURN jsonb_build_object(
+    'id', i.id, 'title', i.title, 'description', i.description, 'lesson_type', i.lesson_type, 'duration_seconds', i.duration_seconds,
+    'module', jsonb_build_object('id', m.id, 'title', m.title),
+    'video_embed_url', i.video_embed_url, 'video_url', i.video_url, 'thumbnail_url', i.thumbnail_url,
+    'fathom', CASE WHEN i.source_call_id IS NOT NULL AND i.video_embed_url IS NULL THEN jsonb_build_object('url', (SELECT c.share_url FROM public.calls c WHERE c.id = i.source_call_id)) END,
+    'html', CASE WHEN i.lesson_type = 'html' THEN i.html_content END,
+    'has_document', i.document_path IS NOT NULL,
+    'resources', COALESCE((SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object('id', r ->> 'id', 'name', COALESCE(r ->> 'name', r ->> 'title'),
+                     'kind', CASE WHEN r ? 'url' AND NOT r ? 'path' THEN 'link' ELSE 'file' END, 'url', CASE WHEN NOT r ? 'path' THEN r ->> 'url' END)))
+                   FROM jsonb_array_elements(COALESCE(i.resources, '[]'::jsonb)) r), '[]'::jsonb),
+    'comments_enabled', i.comments_enabled,
+    'viewed', pp.viewed_at IS NOT NULL, 'completed', pp.completed_at IS NOT NULL, 'position_seconds', pp.last_position_seconds,
+    'prev_id', CASE WHEN v_idx > 1 THEN v_sib[v_idx - 1] END, 'next_id', CASE WHEN v_idx < cardinality(v_sib) THEN v_sib[v_idx + 1] END);
+END;
+$$;
+
+-- Vista (y completa con p_complete). El avance solo sube: nunca se borra una vista ni una completada.
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_lesson_mark(p_session text, p_item_id uuid, p_seconds integer DEFAULT NULL, p_complete boolean DEFAULT true)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  i app_servicio.program_items;
+  v_contact uuid := (sess ->> 'contact_id')::uuid;
+  v_id uuid;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  SELECT * INTO i FROM app_servicio.program_items WHERE id = p_item_id AND kind = 'lesson' AND status = 'active';
+  IF i.id IS NULL THEN PERFORM app_servicio_portal.err('PO410', 'Esta clase ya no está disponible'); END IF;
+  PERFORM app_servicio_portal.require_section(sess, i.product_id, 'program');
+  IF NOT COALESCE((app_servicio.program_item_unlocked(v_contact, i.id) ->> 'unlocked')::boolean, false) THEN
+    PERFORM app_servicio_portal.err('PO403', 'Esta clase todavía no está abierta');
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('portal-progress:' || v_contact::text || ':' || i.id::text, 0));
+  SELECT id INTO v_id FROM app_servicio_portal.program_progress WHERE contact_id = v_contact AND program_item_id = i.id ORDER BY created_at LIMIT 1;
+  IF v_id IS NULL THEN
+    INSERT INTO app_servicio_portal.program_progress (workspace_id, contact_id, program_item_id, viewed_at, completed_at, last_position_seconds)
+    VALUES (i.workspace_id, v_contact, i.id, now(), CASE WHEN p_complete THEN now() END, GREATEST(COALESCE(p_seconds, 0), 0));
+  ELSE
+    UPDATE app_servicio_portal.program_progress
+       SET viewed_at = COALESCE(viewed_at, now()), completed_at = COALESCE(completed_at, CASE WHEN p_complete THEN now() END),
+           last_position_seconds = GREATEST(COALESCE(last_position_seconds, 0), COALESCE(p_seconds, 0)), updated_at = now()
+     WHERE id = v_id;
+  END IF;
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+-- ─── Evaluaciones y actividades ─────────────────────────────────────────────
+-- El formulario de una evaluación o actividad del programa, abierto para la persona. Nunca lleva las correctas.
+CREATE OR REPLACE FUNCTION app_servicio_portal.form_item(p_sess jsonb, p_item_id uuid, p_type text)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  i app_servicio.program_items;
+  pf jsonb;
+  f public.forms;
+  d jsonb;
+BEGIN
+  SELECT * INTO i FROM app_servicio.program_items WHERE id = p_item_id AND kind = 'lesson' AND lesson_type = p_type;
+  IF i.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'No existe'); END IF;
+  pf := app_servicio_portal.require_section(p_sess, i.product_id, 'program');
+  IF i.status <> 'active' THEN PERFORM app_servicio_portal.err('PO410', 'Ya no está disponible'); END IF;
+  IF NOT COALESCE((app_servicio.program_item_unlocked((pf ->> 'contact_id')::uuid, i.id) ->> 'unlocked')::boolean, false) THEN
+    PERFORM app_servicio_portal.err('PO403', 'Todavía no está abierta');
+  END IF;
+  SELECT * INTO f FROM public.forms WHERE id = i.form_id;
+  IF f.id IS NULL OR f.current_version_id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Todavía no está lista'); END IF;
+  SELECT definition INTO d FROM public.form_versions WHERE id = f.current_version_id;
+  RETURN jsonb_build_object('item_id', i.id, 'title', i.title, 'description', i.description, 'form_id', f.id, 'version_id', f.current_version_id,
+    'contact_id', pf ->> 'contact_id', 'workspace_id', pf ->> 'workspace_id', 'definition', d);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.public_fields(d jsonb)
+RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT COALESCE(jsonb_agg(jsonb_strip_nulls(jsonb_build_object('key', f ->> 'key', 'type', f ->> 'type', 'label', f ->> 'label', 'help', f ->> 'help',
+           'required', COALESCE((f ->> 'required')::boolean, false), 'options', f -> 'options', 'points', d #> ARRAY['quiz', 'questions', f ->> 'key', 'points']))
+           ORDER BY n), '[]'::jsonb)
+    FROM jsonb_array_elements(COALESCE(d -> 'fields', '[]'::jsonb)) WITH ORDINALITY t(f, n);
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_quiz_get(p_session text, p_item_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  x jsonb := app_servicio_portal.form_item(sess, p_item_id, 'quiz');
+  q jsonb := COALESCE(x #> '{definition,quiz}', '{}'::jsonb);
+BEGIN
+  RETURN jsonb_build_object('item_id', x -> 'item_id', 'title', x -> 'title', 'description', x -> 'description', 'intro', x #> '{definition,intro}',
+    'fields', app_servicio_portal.public_fields(x -> 'definition'),
+    'pass_pct', COALESCE((q ->> 'pass_pct')::numeric, 70), 'attempts', COALESCE((q ->> 'attempts')::integer, 1), 'show_grade', COALESCE((q ->> 'show_grade')::boolean, true),
+    'tries', COALESCE((SELECT jsonb_agg(jsonb_build_object('attempt', fs.attempt, 'at', fs.created_at,
+                 'grade', CASE WHEN COALESCE((q ->> 'show_grade')::boolean, true) THEN CASE WHEN COALESCE((q ->> 'show_correct')::boolean, false) THEN fs.grade ELSE fs.grade - 'per_question' END END) ORDER BY fs.created_at)
+               FROM public.form_submissions fs WHERE fs.form_id = (x ->> 'form_id')::uuid AND fs.contact_id = (x ->> 'contact_id')::uuid AND fs.status = 'received'), '[]'::jsonb));
+END;
+$$;
+
+-- Guarda la respuesta: la nota la calcula la base (portal_form_before_hook) y la devuelve al instante.
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_submit(p_sess jsonb, p_x jsonb, p_answers jsonb)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_id uuid;
+BEGIN
+  IF p_answers IS NULL OR jsonb_typeof(p_answers) <> 'object' THEN PERFORM app_servicio_portal.err('PO400', 'Faltan las respuestas'); END IF;
+  -- Solo las claves del formulario.
+  IF EXISTS (SELECT 1 FROM jsonb_object_keys(p_answers) k WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(p_x #> '{definition,fields}', '[]'::jsonb)) f WHERE f ->> 'key' = k)) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Hay respuestas que no son de este formulario');
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(p_x #> '{definition,fields}', '[]'::jsonb)) f
+              WHERE COALESCE((f ->> 'required')::boolean, false) AND NULLIF(btrim(COALESCE(p_answers ->> (f ->> 'key'), '')), '') IS NULL
+                AND COALESCE(p_answers -> (f ->> 'key'), 'null'::jsonb) IN ('null'::jsonb, '[]'::jsonb, '""'::jsonb)) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Completá las preguntas obligatorias');
+  END IF;
+  INSERT INTO public.form_submissions (workspace_id, form_id, form_version_id, idempotency_key, status, answers, contact_id, meta)
+  VALUES ((p_x ->> 'workspace_id')::uuid, (p_x ->> 'form_id')::uuid, (p_x ->> 'version_id')::uuid, gen_random_uuid(), 'received', p_answers,
+          (p_x ->> 'contact_id')::uuid, jsonb_build_object('source', 'portal', 'program_item_id', p_x ->> 'item_id'))
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_quiz_submit(p_session text, p_item_id uuid, p_answers jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  x jsonb := app_servicio_portal.form_item(sess, p_item_id, 'quiz');
+  v_max integer := COALESCE((x #>> '{definition,quiz,attempts}')::integer, 1);
+  v_used integer;
+  fs public.form_submissions;
+  v_new uuid;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  PERFORM pg_advisory_xact_lock(hashtextextended('portal-form:' || (x ->> 'contact_id') || ':' || (x ->> 'form_id'), 0));
+  SELECT count(*) INTO v_used FROM public.form_submissions WHERE form_id = (x ->> 'form_id')::uuid AND contact_id = (x ->> 'contact_id')::uuid AND status = 'received';
+  IF v_max > 0 AND v_used >= v_max THEN PERFORM app_servicio_portal.err('PO409', 'Ya usaste todos tus intentos'); END IF;
+  v_new := app_servicio_portal.portal_submit(sess, x, p_answers);
+  SELECT * INTO fs FROM public.form_submissions WHERE id = v_new;
+  RETURN jsonb_build_object('ok', true, 'attempt', fs.attempt, 'attempts_left', GREATEST(v_max - v_used - 1, 0),
+    'grade', CASE WHEN COALESCE((x #>> '{definition,quiz,show_grade}')::boolean, true)
+                   THEN CASE WHEN COALESCE((x #>> '{definition,quiz,show_correct}')::boolean, false) THEN fs.grade ELSE fs.grade - 'per_question' END END);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_activity_get(p_session text, p_item_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  x jsonb := app_servicio_portal.form_item(sess, p_item_id, 'activity');
+  v_hist jsonb;
+BEGIN
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('id', fs.id, 'attempt', fs.attempt, 'at', fs.created_at, 'status', fs.review_status,
+           'grade', fs.grade, 'comment', fs.review_comment, 'reviewed_at', fs.reviewed_at, 'answers', fs.answers) ORDER BY fs.attempt, fs.created_at), '[]'::jsonb)
+    INTO v_hist FROM public.form_submissions fs
+   WHERE fs.form_id = (x ->> 'form_id')::uuid AND fs.contact_id = (x ->> 'contact_id')::uuid AND fs.status = 'received';
+  RETURN jsonb_build_object('item_id', x -> 'item_id', 'title', x -> 'title', 'description', x -> 'description', 'intro', x #> '{definition,intro}',
+    'fields', app_servicio_portal.public_fields(x -> 'definition'),
+    'grading', x #> '{definition,grading}', 'history', v_hist,
+    'plan', app_servicio.submission_plan(jsonb_build_object('limits', x #> '{definition,submission}',
+              'history', (SELECT COALESCE(jsonb_agg(jsonb_build_object('id', h ->> 'id', 'status', h ->> 'status')), '[]'::jsonb) FROM jsonb_array_elements(v_hist) h))));
+END;
+$$;
+
+-- Los límites (EV003 a EV005) los aplica el enganche de la 00375 al guardar.
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_activity_submit(p_session text, p_item_id uuid, p_answers jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  x jsonb := app_servicio_portal.form_item(sess, p_item_id, 'activity');
+  fs public.form_submissions;
+  v_new uuid;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  v_new := app_servicio_portal.portal_submit(sess, x, p_answers);
+  SELECT * INTO fs FROM public.form_submissions WHERE id = v_new;
+  RETURN jsonb_build_object('ok', true, 'id', fs.id, 'attempt', fs.attempt, 'status', fs.review_status);
+END;
+$$;
+
+-- ─── Términos al entrar (F211) ──────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_terms_get(p_session text, p_product_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  f public.forms;
+  d jsonb;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM app_servicio_portal.ctx_programs((sess ->> 'workspace_id')::uuid, (sess ->> 'contact_id')::uuid) x WHERE x.product_id = p_product_id) THEN
+    PERFORM app_servicio_portal.err('PO404', 'Esto no está en tus programas');
+  END IF;
+  SELECT fo.* INTO f FROM public.products p JOIN public.forms fo ON fo.id = NULLIF(p.portal_settings #>> '{terms,form_id}', '')::uuid WHERE p.id = p_product_id;
+  IF f.id IS NULL THEN RETURN jsonb_build_object('pending', false); END IF;
+  SELECT fv.definition INTO d FROM public.form_versions fv WHERE fv.form_id = f.id ORDER BY fv.version_number DESC LIMIT 1;
+  RETURN jsonb_build_object('pending', app_servicio.portal_terms_pending((sess ->> 'contact_id')::uuid, p_product_id),
+    'version_id', (SELECT fv.id FROM public.form_versions fv WHERE fv.form_id = f.id ORDER BY fv.version_number DESC LIMIT 1),
+    'title', f.name, 'intro', d -> 'intro', 'fields', app_servicio_portal.public_fields(d));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_terms_accept(p_session text, p_product_id uuid, p_version_id uuid, p_checks jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  f public.forms;
+  v_current uuid;
+  d jsonb;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  IF NOT EXISTS (SELECT 1 FROM app_servicio_portal.ctx_programs((sess ->> 'workspace_id')::uuid, (sess ->> 'contact_id')::uuid) x WHERE x.product_id = p_product_id) THEN
+    PERFORM app_servicio_portal.err('PO404', 'Esto no está en tus programas');
+  END IF;
+  IF NOT app_servicio.portal_terms_pending((sess ->> 'contact_id')::uuid, p_product_id) THEN RETURN jsonb_build_object('ok', true, 'already', true); END IF;
+  SELECT fo.* INTO f FROM public.products p JOIN public.forms fo ON fo.id = NULLIF(p.portal_settings #>> '{terms,form_id}', '')::uuid WHERE p.id = p_product_id;
+  SELECT fv.id, fv.definition INTO v_current, d FROM public.form_versions fv WHERE fv.form_id = f.id ORDER BY fv.version_number DESC LIMIT 1;
+  IF v_current IS DISTINCT FROM p_version_id THEN PERFORM app_servicio_portal.err('PO409', 'Los términos cambiaron. Volvé a leerlos'); END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(d -> 'fields', '[]'::jsonb)) x
+              WHERE x ->> 'type' = 'consent' AND COALESCE(p_checks -> (x ->> 'key'), 'false'::jsonb) <> 'true'::jsonb) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Tildá todos los compromisos');
+  END IF;
+  INSERT INTO public.form_submissions (workspace_id, form_id, form_version_id, idempotency_key, status, answers, contact_id, meta)
+  VALUES ((sess ->> 'workspace_id')::uuid, f.id, v_current, gen_random_uuid(), 'received', p_checks, (sess ->> 'contact_id')::uuid,
+          jsonb_build_object('source', 'portal', 'product_id', p_product_id));
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+-- ─── Archivos: SOLO el servidor de SSA (arma el link de 5 minutos) ──────────
+-- kind: document (el PDF de una clase) · resource (un archivo de una clase, p_ref = su id) · avatar (la foto propia) ·
+-- avatar_upload (subir la foto propia) · activity_upload (subir un archivo a una actividad, p_ref = la extensión).
+CREATE OR REPLACE FUNCTION app_servicio.portal_file_grant(p_session text, p_kind text, p_item_id uuid DEFAULT NULL, p_ref text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  i app_servicio.program_items;
+  x jsonb;
+  v_path text;
+  v_ext text := lower(COALESCE(p_ref, ''));
+BEGIN
+  IF p_kind IN ('document', 'resource') THEN
+    SELECT * INTO i FROM app_servicio.program_items WHERE id = p_item_id AND kind = 'lesson' AND status = 'active';
+    IF i.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'No existe'); END IF;
+    PERFORM app_servicio_portal.require_section(sess, i.product_id, 'program');
+    IF NOT COALESCE((app_servicio.program_item_unlocked((sess ->> 'contact_id')::uuid, i.id) ->> 'unlocked')::boolean, false) THEN
+      PERFORM app_servicio_portal.err('PO403', 'Todavía no está abierta');
+    END IF;
+    IF p_kind = 'document' THEN v_path := i.document_path;
+    ELSE SELECT r ->> 'path' INTO v_path FROM jsonb_array_elements(COALESCE(i.resources, '[]'::jsonb)) r WHERE r ->> 'id' = p_ref LIMIT 1;
+    END IF;
+    IF v_path IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'No existe'); END IF;
+    RETURN jsonb_build_object('bucket', 'program-resources', 'path', v_path, 'upload', false);
+  ELSIF p_kind = 'avatar' THEN
+    SELECT a.avatar_path INTO v_path FROM app_servicio_portal.portal_accounts a WHERE a.id = (sess ->> 'account_id')::uuid;
+    IF v_path IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'No hay foto'); END IF;
+    RETURN jsonb_build_object('bucket', 'portal-avatars', 'path', v_path, 'upload', false);
+  ELSIF p_kind = 'avatar_upload' THEN
+    PERFORM app_servicio_portal.require_write(sess);
+    IF v_ext NOT IN ('png', 'jpg', 'jpeg', 'webp') THEN PERFORM app_servicio_portal.err('PO400', 'La foto tiene que ser PNG, JPG o WEBP'); END IF;
+    v_path := (sess ->> 'workspace_id') || '/' || (sess ->> 'account_id') || '/' || gen_random_uuid()::text || '.' || v_ext;
+    RETURN jsonb_build_object('bucket', 'portal-avatars', 'path', v_path, 'upload', true);
+  ELSIF p_kind = 'activity_upload' THEN
+    PERFORM app_servicio_portal.require_write(sess);
+    x := app_servicio_portal.form_item(sess, p_item_id, 'activity');
+    IF v_ext !~ '^[a-z0-9]{1,8}$' THEN PERFORM app_servicio_portal.err('PO400', 'Ese archivo no se puede subir'); END IF;
+    v_path := (x ->> 'workspace_id') || '/' || (x ->> 'form_id') || '/' || (x ->> 'contact_id') || '/' || gen_random_uuid()::text || '.' || v_ext;
+    RETURN jsonb_build_object('bucket', 'form-uploads', 'path', v_path, 'upload', true);
+  END IF;
+  PERFORM app_servicio_portal.err('PO400', 'Pedido no válido');
+END;
+$$;
+
+-- Guardar la foto ya subida (la ruta la dio portal_file_grant: es de esa cuenta).
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_avatar_set(p_session text, p_path text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  IF p_path IS NULL OR p_path NOT LIKE (sess ->> 'workspace_id') || '/' || (sess ->> 'account_id') || '/%' THEN
+    PERFORM app_servicio_portal.err('PO400', 'La foto no es válida');
+  END IF;
+  UPDATE app_servicio_portal.portal_accounts SET avatar_path = p_path, updated_at = now() WHERE id = (sess ->> 'account_id')::uuid;
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app_servicio_portal.require_section(jsonb, uuid, text), app_servicio_portal.lesson_row(uuid, app_servicio.program_items),
+  app_servicio_portal.module_row(uuid, app_servicio.program_items), app_servicio_portal.portal_program(text, uuid), app_servicio_portal.portal_module(text, uuid),
+  app_servicio_portal.portal_lesson(text, uuid), app_servicio_portal.portal_lesson_mark(text, uuid, integer, boolean),
+  app_servicio_portal.form_item(jsonb, uuid, text), app_servicio_portal.public_fields(jsonb), app_servicio_portal.portal_quiz_get(text, uuid),
+  app_servicio_portal.portal_submit(jsonb, jsonb, jsonb), app_servicio_portal.portal_quiz_submit(text, uuid, jsonb),
+  app_servicio_portal.portal_activity_get(text, uuid), app_servicio_portal.portal_activity_submit(text, uuid, jsonb),
+  app_servicio_portal.portal_terms_get(text, uuid), app_servicio_portal.portal_terms_accept(text, uuid, uuid, jsonb),
+  app_servicio.portal_file_grant(text, text, uuid, text), app_servicio_portal.portal_avatar_set(text, text)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio_portal.portal_program(text, uuid), app_servicio_portal.portal_module(text, uuid),
+  app_servicio_portal.portal_lesson(text, uuid), app_servicio_portal.portal_lesson_mark(text, uuid, integer, boolean),
+  app_servicio_portal.portal_quiz_get(text, uuid), app_servicio_portal.portal_quiz_submit(text, uuid, jsonb),
+  app_servicio_portal.portal_activity_get(text, uuid), app_servicio_portal.portal_activity_submit(text, uuid, jsonb),
+  app_servicio_portal.portal_terms_get(text, uuid), app_servicio_portal.portal_terms_accept(text, uuid, uuid, jsonb),
+  app_servicio_portal.portal_avatar_set(text, text)
+TO portal_app, service_role;
+GRANT EXECUTE ON FUNCTION app_servicio.portal_file_grant(text, text, uuid, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 388: PORTAL CALENDAR CHALLENGE REFERRALS
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00388_portal_calendar_challenge_referrals  (Portal de estudiantes, Corrida B2 · P06 + P07)
+-- ============================================================================
+-- P06 · Calendario (F223 a F225):
+--   portal_calendar(session, product_id, from, to)   las fechas de SU variante (sin el link de la reunión), con su
+--                                                     asistencia, si hay grabación activa y si «Estoy acá» está abierto.
+--   portal_live_enter(session, session_id, date)      registra el clic (y la asistencia, si la sesión lo cuenta) y
+--                                                     devuelve la URL de la reunión SOLO para redirigir.
+--   portal_attendance_mark(session, session_id, date, keyword)   «Estoy acá» dentro de la ventana (10 min antes a
+--                                                     30 después), con la palabra clave si la sesión la pide.
+--   portal_recording_url(session, session_id, date)   la grabación, si está activa en el portal.
+-- P07 · Reto y referidos (F226, F227), sobre lo de A3 (00376):
+--   portal_challenge(session, product_id)             la fase Reto (svc_challenge_view), el formulario del reporte y
+--                                                     cada día con su estado y si se puede cargar (`svc_late_plan`).
+--   portal_challenge_start(session, product_id, accepted)   acepta las reglas y empieza (svc_start_challenge_accepting).
+--   portal_challenge_report_submit(session, item_id, answers)   el reporte de ese día: rechaza el futuro (SV035) y lo
+--                                                     vencido fuera de la gracia (SV036); completa el día.
+--   portal_referrals(session, product_id)             su código, los links que el programa muestra, sus referidos
+--                                                     (nombre, tipo, vencimiento, si compró) y sus comisiones.
+--
+-- La vista previa no escribe (PO403). Aditiva.
+--
+-- Volver atrás: DROP FUNCTION de las 8 funciones de arriba y de app_servicio_portal.live_for(jsonb, uuid, date).
+-- ============================================================================
+
+-- Una fecha de una sesión en vivo de la variante de la persona (o error). Devuelve la sesión, la fecha y la ventana.
+CREATE OR REPLACE FUNCTION app_servicio_portal.live_for(p_sess jsonb, p_session_id uuid, p_date date)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  ls app_servicio.live_sessions;
+  pf jsonb;
+  o record;
+BEGIN
+  SELECT * INTO ls FROM app_servicio.live_sessions WHERE id = p_session_id AND archived_at IS NULL;
+  IF ls.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Esta clase no existe'); END IF;
+  pf := app_servicio_portal.require_section(p_sess, ls.product_id, 'calendar');
+  IF ls.variant_ids IS NOT NULL AND cardinality(ls.variant_ids) > 0 AND NOT ((pf ->> 'variant_id')::uuid = ANY (ls.variant_ids)) THEN
+    PERFORM app_servicio_portal.err('PO404', 'Esta clase no existe');
+  END IF;
+  SELECT * INTO o FROM app_servicio.live_session_occurrences(ls.product_id, p_date, p_date) x WHERE x.live_session_id = ls.id AND x.occurs_on = p_date;
+  IF o.live_session_id IS NULL OR o.status = 'cancelled' THEN PERFORM app_servicio_portal.err('PO404', 'Esa fecha no tiene clase'); END IF;
+  RETURN jsonb_build_object('session_id', ls.id, 'product_id', ls.product_id, 'title', ls.title, 'occurs_on', p_date, 'starts_at', o.starts_at, 'ends_at', o.ends_at,
+    'meeting_url', ls.meeting_url, 'keyword', ls.keyword, 'click_counts', ls.click_counts_as_attendance, 'workspace_id', ls.workspace_id,
+    'contact_id', pf ->> 'contact_id', 'in_window', app_servicio.live_attendance_window(o.starts_at, o.ends_at, now()));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_calendar(p_session text, p_product_id uuid, p_from date, p_to date)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.require_section(sess, p_product_id, 'calendar');
+  v_contact uuid := (pf ->> 'contact_id')::uuid;
+BEGIN
+  IF p_from IS NULL OR p_to IS NULL OR p_to < p_from OR p_to - p_from > 120 THEN PERFORM app_servicio_portal.err('PO400', 'El rango de fechas no es válido'); END IF;
+  RETURN jsonb_build_object(
+    'timezone', app_servicio.points_tz(v_contact, (pf ->> 'workspace_id')::uuid),
+    'dates', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'session_id', o.live_session_id, 'title', ls.title, 'kind', ls.kind, 'occurs_on', o.occurs_on, 'starts_at', o.starts_at, 'ends_at', o.ends_at,
+               'status', o.status, 'keyword_required', NULLIF(ls.keyword, '') IS NOT NULL,
+               'can_enter', o.ends_at > now() - interval '30 minutes' AND o.starts_at < now() + interval '10 minutes' AND NULLIF(ls.meeting_url, '') IS NOT NULL,
+               'can_mark', app_servicio.live_attendance_window(o.starts_at, o.ends_at, now()),
+               'attended', EXISTS (SELECT 1 FROM app_servicio_portal.live_attendance a WHERE a.live_session_id = ls.id AND a.occurs_on = o.occurs_on
+                                    AND a.contact_id = v_contact AND a.removed_at IS NULL),
+               'recording', EXISTS (SELECT 1 FROM app_servicio.live_session_dates d WHERE d.live_session_id = ls.id AND d.occurs_on = o.occurs_on
+                                     AND d.recording_active AND (NULLIF(d.recording_url, '') IS NOT NULL OR d.recording_call_id IS NOT NULL)))
+             ORDER BY o.starts_at)
+        FROM app_servicio.live_session_occurrences(p_product_id, p_from, p_to) o
+        JOIN app_servicio.live_sessions ls ON ls.id = o.live_session_id
+       WHERE ls.archived_at IS NULL
+         AND (ls.variant_ids IS NULL OR cardinality(ls.variant_ids) = 0 OR (pf ->> 'variant_id')::uuid = ANY (ls.variant_ids))), '[]'::jsonb));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_live_enter(p_session text, p_session_id uuid, p_date date)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  x jsonb := app_servicio_portal.live_for(sess, p_session_id, p_date);
+BEGIN
+  IF NULLIF(x ->> 'meeting_url', '') IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Todavía no hay link para entrar'); END IF;
+  IF (x ->> 'ends_at')::timestamptz < now() - interval '30 minutes' THEN PERFORM app_servicio_portal.err('PO410', 'Esta clase ya terminó'); END IF;
+  IF sess ->> 'kind' = 'student' THEN
+    INSERT INTO app_servicio.link_clicks (workspace_id, target_type, target_id, target_date, contact_id, portal_account_id, clicked_at, user_agent_kind, is_bot)
+    VALUES ((x ->> 'workspace_id')::uuid, 'live_session', p_session_id, p_date, (x ->> 'contact_id')::uuid, (sess ->> 'account_id')::uuid, now(), 'portal', false);
+    IF (x ->> 'click_counts')::boolean AND (x ->> 'in_window')::boolean
+       AND NOT EXISTS (SELECT 1 FROM app_servicio_portal.live_attendance a WHERE a.live_session_id = p_session_id AND a.occurs_on = p_date AND a.contact_id = (x ->> 'contact_id')::uuid AND a.removed_at IS NULL) THEN
+      INSERT INTO app_servicio_portal.live_attendance (workspace_id, live_session_id, occurs_on, contact_id, source, marked_at)
+      VALUES ((x ->> 'workspace_id')::uuid, p_session_id, p_date, (x ->> 'contact_id')::uuid, 'click', now());
+    END IF;
+  END IF;
+  RETURN jsonb_build_object('url', x ->> 'meeting_url');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_attendance_mark(p_session text, p_session_id uuid, p_date date, p_keyword text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  x jsonb := app_servicio_portal.live_for(sess, p_session_id, p_date);
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  IF NOT (x ->> 'in_window')::boolean THEN PERFORM app_servicio_portal.err('PO409', '«Estoy acá» se marca durante la clase'); END IF;
+  IF NULLIF(x ->> 'keyword', '') IS NOT NULL AND lower(btrim(COALESCE(p_keyword, ''))) <> lower(btrim(x ->> 'keyword')) THEN
+    PERFORM app_servicio_portal.err('PO400', 'La palabra clave no es esa');
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('portal-att:' || (x ->> 'contact_id') || ':' || p_session_id::text || ':' || p_date::text, 0));
+  IF NOT EXISTS (SELECT 1 FROM app_servicio_portal.live_attendance a WHERE a.live_session_id = p_session_id AND a.occurs_on = p_date AND a.contact_id = (x ->> 'contact_id')::uuid AND a.removed_at IS NULL) THEN
+    INSERT INTO app_servicio_portal.live_attendance (workspace_id, live_session_id, occurs_on, contact_id, source, marked_at)
+    VALUES ((x ->> 'workspace_id')::uuid, p_session_id, p_date, (x ->> 'contact_id')::uuid, 'self', now());
+  END IF;
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_recording_url(p_session text, p_session_id uuid, p_date date)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  x jsonb := app_servicio_portal.live_for(sess, p_session_id, p_date);
+  d app_servicio.live_session_dates;
+BEGIN
+  SELECT * INTO d FROM app_servicio.live_session_dates WHERE live_session_id = p_session_id AND occurs_on = p_date;
+  IF d.id IS NULL OR NOT d.recording_active THEN PERFORM app_servicio_portal.err('PO404', 'Esta clase todavía no tiene grabación'); END IF;
+  RETURN jsonb_build_object('title', x ->> 'title',
+    'url', COALESCE(NULLIF(d.recording_url, ''), (SELECT c.share_url FROM public.calls c WHERE c.id = d.recording_call_id)),
+    'fathom', d.recording_source = 'fathom' AND NULLIF(d.recording_url, '') IS NULL);
+END;
+$$;
+
+-- ─── Reto ───────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_challenge(p_session text, p_product_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.require_section(sess, p_product_id, 'challenge');
+  v_service uuid := (pf ->> 'service_id')::uuid;
+  v jsonb := app_servicio.svc_challenge_view(v_service);
+  ph app_servicio.service_phases;
+  v_form uuid;
+  v_today date := app_servicio.today_in((pf ->> 'workspace_id')::uuid);
+BEGIN
+  IF v IS NULL THEN RETURN NULL; END IF;
+  SELECT * INTO ph FROM app_servicio.service_phases WHERE id = (v ->> 'phase_id')::uuid;
+  SELECT NULLIF(t.ref ->> 'form_id', '')::uuid INTO v_form FROM app_servicio.service_items t
+   WHERE t.phase_id = ph.id AND t.is_recurring_template AND t.kind IN ('form', 'survey') ORDER BY t.position LIMIT 1;
+  RETURN v - 'accepted' || jsonb_build_object(
+    'rules', ph.challenge -> 'acceptance',
+    'accepted', ph.challenge -> 'accepted' IS NOT NULL AND ph.challenge -> 'accepted' <> 'null'::jsonb,
+    'can_start', ph.status = 'pending' AND ph.awaiting_start AND COALESCE(ph.challenge ->> 'start', '') = 'student',
+    'today', v_today,
+    'report_fields', CASE WHEN v_form IS NOT NULL THEN app_servicio_portal.public_fields(
+        (SELECT fv.definition FROM public.forms f JOIN public.form_versions fv ON fv.id = f.current_version_id WHERE f.id = v_form)) END,
+    'days', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object('item_id', i.id, 'name', i.name, 'due_on', i.due_on, 'status', i.status, 'index', i.occurrence_index,
+               'can_submit', i.status = 'pending' AND COALESCE((app_servicio.svc_late_plan(i.late, i.due_on, i.due_on, (now() AT TIME ZONE app_servicio.ws_tz(i.workspace_id))) ->> 'ok')::boolean, true),
+               'why_not', CASE WHEN i.status = 'pending' THEN app_servicio.svc_late_plan(i.late, i.due_on, i.due_on, (now() AT TIME ZONE app_servicio.ws_tz(i.workspace_id))) ->> 'message' END)
+             ORDER BY i.due_on, i.occurrence_index)
+        FROM app_servicio.service_items i
+       WHERE i.phase_id = ph.id AND i.parent_item_id IS NOT NULL AND i.visible_to_client), '[]'::jsonb));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_challenge_start(p_session text, p_product_id uuid, p_accepted integer[])
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  pf := app_servicio_portal.require_section(sess, p_product_id, 'challenge');
+  PERFORM app_servicio.svc_start_challenge_accepting((pf ->> 'service_id')::uuid, COALESCE(p_accepted, ARRAY[]::integer[]), (pf ->> 'contact_id')::uuid);
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+-- El reporte de un día: la respuesta queda unida a ese día y el paso se completa (con su regla de atraso).
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_challenge_report_submit(p_session text, p_item_id uuid, p_answers jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  i app_servicio.service_items;
+  t app_servicio.service_items;
+  s app_servicio.services;
+  f public.forms;
+  d jsonb;
+  lp jsonb;
+  pf jsonb;
+  v_new uuid;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  SELECT * INTO i FROM app_servicio.service_items WHERE id = p_item_id AND parent_item_id IS NOT NULL;
+  SELECT * INTO s FROM app_servicio.services WHERE id = i.service_id;
+  IF i.id IS NULL OR s.contact_id IS DISTINCT FROM (sess ->> 'contact_id')::uuid OR NOT i.visible_to_client THEN PERFORM app_servicio_portal.err('PO404', 'Este día no existe'); END IF;
+  pf := app_servicio_portal.require_section(sess, s.product_id, 'challenge');
+  IF i.status = 'completed' THEN PERFORM app_servicio_portal.err('PO409', 'Este día ya está cargado'); END IF;
+  lp := app_servicio.svc_late_plan(i.late, i.due_on, i.due_on, (now() AT TIME ZONE app_servicio.ws_tz(i.workspace_id)));
+  IF NOT COALESCE((lp ->> 'ok')::boolean, true) THEN PERFORM app_servicio_portal.err(COALESCE(lp ->> 'code', 'SV036'), COALESCE(lp ->> 'message', 'Ya pasó el plazo')); END IF;
+  SELECT * INTO t FROM app_servicio.service_items WHERE id = i.parent_item_id;
+  SELECT * INTO f FROM public.forms WHERE id = NULLIF(COALESCE(i.ref ->> 'form_id', t.ref ->> 'form_id'), '')::uuid;
+  IF f.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'El reporte todavía no está listo'); END IF;
+  SELECT definition INTO d FROM public.form_versions WHERE id = f.current_version_id;
+  v_new := app_servicio_portal.portal_submit(sess, jsonb_build_object('workspace_id', s.workspace_id, 'form_id', f.id, 'version_id', f.current_version_id,
+            'contact_id', s.contact_id, 'item_id', NULL, 'definition', d), p_answers);
+  UPDATE public.form_submissions SET service_item_id = i.id, service_id = s.id WHERE id = v_new;
+  PERFORM app_servicio.svc_mark_item(i.id, 'portal', 'client', NULL);
+  RETURN jsonb_build_object('ok', true, 'late', COALESCE((lp ->> 'late')::boolean, false));
+END;
+$$;
+
+-- ─── Mis referidos ──────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_referrals(p_session text, p_product_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.require_section(sess, p_product_id, 'affiliates');
+  v_contact uuid := (pf ->> 'contact_id')::uuid;
+  v_ws uuid := (pf ->> 'workspace_id')::uuid;
+  v_code text;
+  v_keys jsonb;
+BEGIN
+  SELECT affiliate_code INTO v_code FROM public.contacts WHERE id = v_contact;
+  IF v_code IS NULL AND sess ->> 'kind' = 'student' THEN v_code := public.affiliate_ensure_code(v_ws, 'contact', v_contact); END IF;
+  SELECT COALESCE(portal_settings #> '{affiliates,visible_link_keys}', '[]'::jsonb) INTO v_keys FROM public.products WHERE id = p_product_id;
+  RETURN jsonb_build_object(
+    'code', v_code,
+    'links', COALESCE((SELECT jsonb_agg(jsonb_build_object('key', l ->> 'key', 'name', l ->> 'name', 'primary', l ->> 'primary', 'product', p.name) ORDER BY (l ->> 'primary') NULLS LAST, l ->> 'name')
+                         FROM public.products p, jsonb_array_elements(COALESCE(p.links -> 'items', '[]'::jsonb)) l
+                        WHERE p.id = p_product_id AND COALESCE((l ->> 'active')::boolean, true) AND v_keys ? (l ->> 'key')), '[]'::jsonb),
+    'contacts', COALESCE((SELECT jsonb_agg(jsonb_build_object('name', COALESCE(NULLIF(split_part(c.display_name, ' ', 1), ''), 'Sin nombre'),
+                            'kind', c.affiliate_kind, 'since', c.affiliate_assigned_at, 'expires_at', c.affiliate_expires_at,
+                            'bought', EXISTS (SELECT 1 FROM public.sales s WHERE s.affiliate_contact_id = v_contact AND s.contact_id = c.id AND s.status NOT IN ('cancelled', 'refunded', 'disputed')))
+                            ORDER BY c.affiliate_assigned_at DESC NULLS LAST)
+                          FROM public.contacts c WHERE c.workspace_id = v_ws AND c.affiliate_contact_id = v_contact AND c.deleted_at IS NULL), '[]'::jsonb),
+    'commissions', jsonb_build_object(
+      'total', COALESCE((SELECT sum(amount) FROM public.commissions WHERE contact_id = v_contact AND workspace_id = v_ws AND voided_at IS NULL), 0),
+      'paid', COALESCE((SELECT sum(amount) FROM public.commissions WHERE contact_id = v_contact AND workspace_id = v_ws AND voided_at IS NULL AND paid_on IS NOT NULL), 0),
+      'currency', (SELECT currency FROM public.commissions WHERE contact_id = v_contact AND workspace_id = v_ws LIMIT 1)));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app_servicio_portal.live_for(jsonb, uuid, date), app_servicio_portal.portal_calendar(text, uuid, date, date),
+  app_servicio_portal.portal_live_enter(text, uuid, date), app_servicio_portal.portal_attendance_mark(text, uuid, date, text),
+  app_servicio_portal.portal_recording_url(text, uuid, date), app_servicio_portal.portal_challenge(text, uuid),
+  app_servicio_portal.portal_challenge_start(text, uuid, integer[]), app_servicio_portal.portal_challenge_report_submit(text, uuid, jsonb),
+  app_servicio_portal.portal_referrals(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio_portal.portal_calendar(text, uuid, date, date), app_servicio_portal.portal_live_enter(text, uuid, date),
+  app_servicio_portal.portal_attendance_mark(text, uuid, date, text), app_servicio_portal.portal_recording_url(text, uuid, date),
+  app_servicio_portal.portal_challenge(text, uuid), app_servicio_portal.portal_challenge_start(text, uuid, integer[]),
+  app_servicio_portal.portal_challenge_report_submit(text, uuid, jsonb), app_servicio_portal.portal_referrals(text, uuid)
+TO portal_app, service_role;
+
+-- ============================================================
+-- MIGRATION 389: PORTAL COMMUNITY
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00389_portal_community  (Portal de estudiantes, Corrida B2 · P08)
+-- ============================================================================
+-- La comunidad del portal (F228, F229, F220): sobre las tablas y reglas de la Corrida A (00351).
+--   portal_spaces(session, product_id)                          los espacios del programa (y cuáles son solo del equipo).
+--   portal_feed(session, product_id, space, before)            20 publicaciones (las fijadas primero), con sus respuestas
+--                                                               (un nivel) y reacciones. De los demás, solo el nombre: ni
+--                                                               email ni datos de contacto. Lo oculto por moderación no viene.
+--   portal_lesson_comments(session, item_id)                   lo mismo, del espacio Clases de esa clase.
+--   portal_post_create(session, product_id, space, body, parent_id, program_item_id, media)   con
+--                                                               `community_can_post_check` (acceso, silenciado, espacio).
+--   portal_post_edit / portal_post_delete                      solo lo propio.
+--   portal_react(session, post_id, kind)                       pone o saca like · fire · clap.
+--   portal_report(session, post_id, reason)                    una vez por persona y publicación.
+--   app_servicio.portal_file_grant                             suma subir una foto a la comunidad y ver las fotos de un
+--                                                               post del programa de la persona (el resto, igual que la 00387).
+--
+-- La vista previa no escribe (PO403). Aditiva (portal_file_grant se redefine con lo de antes intacto).
+--
+-- Volver atrás: DROP de las funciones nuevas y volver a crear portal_file_grant como en la 00387.
+-- ============================================================================
+
+-- El nombre que ve otro estudiante: nombre y la inicial del apellido.
+CREATE OR REPLACE FUNCTION app_servicio_portal.public_name(p_name text)
+RETURNS text LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  -- Un nombre sin letras (un teléfono o un número cargado como nombre) nunca se muestra.
+  SELECT CASE WHEN NULLIF(btrim(p_name), '') IS NULL OR p_name !~ '[[:alpha:]]' THEN 'Estudiante'
+              WHEN position(' ' IN btrim(p_name)) = 0 THEN btrim(p_name)
+              ELSE split_part(btrim(p_name), ' ', 1) || ' ' || left(split_part(btrim(p_name), ' ', 2), 1) || '.' END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.post_row(p_me uuid, t app_servicio_portal.community_posts)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT jsonb_build_object(
+    'id', t.id, 'space', t.space_key, 'program_item_id', t.program_item_id, 'body', t.body, 'media_count', jsonb_array_length(t.media),
+    'author', CASE WHEN t.as_business OR t.author_user_id IS NOT NULL THEN jsonb_build_object('name', 'Equipo', 'team', true)
+                   ELSE jsonb_build_object('name', app_servicio_portal.public_name((SELECT COALESCE(a.display_name, c.display_name) FROM public.contacts c
+                          LEFT JOIN app_servicio_portal.portal_accounts a ON a.contact_id = c.id WHERE c.id = t.author_contact_id LIMIT 1)), 'team', false,
+                                           'contact_ref', md5(t.author_contact_id::text)) END,
+    'mine', t.author_contact_id = p_me, 'pinned', t.pinned_at IS NOT NULL, 'created_at', t.created_at, 'edited_at', t.edited_at,
+    'reactions', COALESCE((SELECT jsonb_object_agg(k.kind, k.n) FROM (SELECT kind, count(*)::int n FROM app_servicio_portal.community_reactions
+                            WHERE post_id = t.id AND kind <> 'report' GROUP BY kind) k), '{}'::jsonb),
+    'my_reactions', COALESCE((SELECT jsonb_agg(r.kind) FROM app_servicio_portal.community_reactions r WHERE r.post_id = t.id AND r.contact_id = p_me AND r.kind <> 'report'), '[]'::jsonb),
+    'replies', COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                  'id', x.id, 'body', x.body, 'created_at', x.created_at, 'mine', x.author_contact_id = p_me,
+                  'author', CASE WHEN x.as_business OR x.author_user_id IS NOT NULL THEN jsonb_build_object('name', 'Equipo', 'team', true)
+                                 ELSE jsonb_build_object('name', app_servicio_portal.public_name((SELECT c.display_name FROM public.contacts c WHERE c.id = x.author_contact_id)), 'team', false) END)
+                  ORDER BY x.created_at)
+                FROM app_servicio_portal.community_posts x
+               WHERE x.parent_id = t.id AND x.deleted_at IS NULL AND (x.hidden_at IS NULL OR x.author_contact_id = p_me)), '[]'::jsonb));
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_spaces(p_session text, p_product_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+BEGIN
+  PERFORM app_servicio_portal.require_section(sess, p_product_id, 'community');
+  RETURN COALESCE((SELECT jsonb_agg(jsonb_build_object('key', s ->> 'key', 'name', s ->> 'name', 'team_only', COALESCE((s ->> 'team_only')::boolean, false)))
+                     FROM jsonb_array_elements(COALESCE(app_servicio.community_spaces(p_product_id), '[]'::jsonb)) s
+                    WHERE NOT COALESCE((s ->> 'archived')::boolean, false)), '[]'::jsonb);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_feed(p_session text, p_product_id uuid, p_space text DEFAULT NULL, p_before timestamptz DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.require_section(sess, p_product_id, 'community');
+  v_me uuid := (pf ->> 'contact_id')::uuid;
+  v_rows jsonb;
+BEGIN
+  SELECT COALESCE(jsonb_agg(app_servicio_portal.post_row(v_me, t) ORDER BY t.pinned_at DESC NULLS LAST, t.created_at DESC), '[]'::jsonb) INTO v_rows FROM (
+    SELECT * FROM app_servicio_portal.community_posts t
+     WHERE t.product_id = p_product_id AND t.parent_id IS NULL AND t.deleted_at IS NULL AND t.space_key <> 'clases'
+       AND (t.hidden_at IS NULL OR t.author_contact_id = v_me)
+       AND (NULLIF(p_space, '') IS NULL OR t.space_key = p_space)
+       AND (p_before IS NULL OR t.created_at < p_before)
+     ORDER BY t.pinned_at DESC NULLS LAST, t.created_at DESC LIMIT 20) t;
+  RETURN jsonb_build_object('posts', v_rows,
+    'next', CASE WHEN jsonb_array_length(v_rows) = 20 THEN v_rows -> 19 ->> 'created_at' END,
+    'can_post', app_servicio.community_can_post_check(v_me, p_product_id, COALESCE(NULLIF(p_space, ''), 'general'), NULL));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_lesson_comments(p_session text, p_item_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  i app_servicio.program_items;
+  pf jsonb;
+  v_me uuid;
+BEGIN
+  SELECT * INTO i FROM app_servicio.program_items WHERE id = p_item_id AND kind = 'lesson';
+  IF i.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Esta clase no existe'); END IF;
+  pf := app_servicio_portal.require_section(sess, i.product_id, 'program');
+  v_me := (pf ->> 'contact_id')::uuid;
+  RETURN jsonb_build_object(
+    'can_post', app_servicio.community_can_post_check(v_me, i.product_id, 'clases', i.id),
+    'posts', COALESCE((SELECT jsonb_agg(app_servicio_portal.post_row(v_me, t) ORDER BY t.created_at DESC)
+                         FROM app_servicio_portal.community_posts t
+                        WHERE t.program_item_id = i.id AND t.parent_id IS NULL AND t.deleted_at IS NULL AND (t.hidden_at IS NULL OR t.author_contact_id = v_me)), '[]'::jsonb));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_post_create(p_session text, p_product_id uuid, p_space text, p_body text, p_parent_id uuid DEFAULT NULL,
+                                                                  p_program_item_id uuid DEFAULT NULL, p_media jsonb DEFAULT '[]'::jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb;
+  par app_servicio_portal.community_posts;
+  v_space text := COALESCE(NULLIF(p_space, ''), 'general');
+  v_item uuid := p_program_item_id;
+  v_check jsonb;
+  v_id uuid;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  IF p_parent_id IS NOT NULL THEN
+    SELECT * INTO par FROM app_servicio_portal.community_posts WHERE id = p_parent_id AND product_id = p_product_id AND deleted_at IS NULL AND hidden_at IS NULL;
+    IF par.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Esa publicación ya no está'); END IF;
+    IF par.parent_id IS NOT NULL THEN PERFORM app_servicio_portal.err('PO400', 'Se responde a la publicación, no a una respuesta'); END IF;
+    v_space := par.space_key; v_item := par.program_item_id;
+  END IF;
+  pf := app_servicio_portal.require_section(sess, p_product_id, CASE WHEN v_space = 'clases' THEN 'program' ELSE 'community' END);
+  IF btrim(COALESCE(p_body, '')) = '' OR char_length(p_body) > 10000 THEN PERFORM app_servicio_portal.err('PO400', 'Escribí algo (hasta 10.000 caracteres)'); END IF;
+  IF p_media IS NOT NULL AND (jsonb_typeof(p_media) <> 'array' OR jsonb_array_length(p_media) > 10
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(p_media) m WHERE jsonb_typeof(m) <> 'object' OR NOT ((m ->> 'path') LIKE (pf ->> 'workspace_id') || '/' || p_product_id::text || '/' || (pf ->> 'contact_id') || '/%'))) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Las fotos no son válidas');
+  END IF;
+  v_check := app_servicio.community_can_post_check((pf ->> 'contact_id')::uuid, p_product_id, v_space, v_item);
+  IF NOT COALESCE((v_check ->> 'ok')::boolean, false) THEN PERFORM app_servicio_portal.err('PO403', COALESCE(v_check ->> 'reason', 'No podés publicar acá')); END IF;
+  INSERT INTO app_servicio_portal.community_posts (workspace_id, product_id, space_key, parent_id, program_item_id, author_contact_id, body, media)
+  VALUES ((pf ->> 'workspace_id')::uuid, p_product_id, v_space, p_parent_id, v_item, (pf ->> 'contact_id')::uuid, btrim(p_body), COALESCE(p_media, '[]'::jsonb))
+  RETURNING id INTO v_id;
+  RETURN jsonb_build_object('ok', true, 'id', v_id);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.own_post(p_sess jsonb, p_post_id uuid)
+RETURNS app_servicio_portal.community_posts LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  t app_servicio_portal.community_posts;
+BEGIN
+  SELECT * INTO t FROM app_servicio_portal.community_posts WHERE id = p_post_id AND deleted_at IS NULL;
+  IF t.id IS NULL OR t.author_contact_id IS DISTINCT FROM (p_sess ->> 'contact_id')::uuid THEN PERFORM app_servicio_portal.err('PO404', 'Esa publicación no es tuya'); END IF;
+  RETURN t;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_post_edit(p_session text, p_post_id uuid, p_body text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  t app_servicio_portal.community_posts;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  t := app_servicio_portal.own_post(sess, p_post_id);
+  IF btrim(COALESCE(p_body, '')) = '' OR char_length(p_body) > 10000 THEN PERFORM app_servicio_portal.err('PO400', 'Escribí algo (hasta 10.000 caracteres)'); END IF;
+  UPDATE app_servicio_portal.community_posts SET body = btrim(p_body), edited_at = now() WHERE id = t.id;
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_post_delete(p_session text, p_post_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  t app_servicio_portal.community_posts;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  t := app_servicio_portal.own_post(sess, p_post_id);
+  UPDATE app_servicio_portal.community_posts SET deleted_at = now() WHERE id = t.id;
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+-- Una publicación del programa de la persona, visible para ella.
+CREATE OR REPLACE FUNCTION app_servicio_portal.visible_post(p_sess jsonb, p_post_id uuid)
+RETURNS app_servicio_portal.community_posts LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  t app_servicio_portal.community_posts;
+BEGIN
+  SELECT * INTO t FROM app_servicio_portal.community_posts WHERE id = p_post_id AND deleted_at IS NULL AND hidden_at IS NULL;
+  IF t.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'Esa publicación ya no está'); END IF;
+  PERFORM app_servicio_portal.require_section(p_sess, t.product_id, CASE WHEN t.space_key = 'clases' THEN 'program' ELSE 'community' END);
+  RETURN t;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_react(p_session text, p_post_id uuid, p_kind text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  t app_servicio_portal.community_posts;
+  v_me uuid := (sess ->> 'contact_id')::uuid;
+  v_id uuid;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  IF p_kind IS NULL OR p_kind NOT IN ('like', 'fire', 'clap') THEN PERFORM app_servicio_portal.err('PO400', 'Esa reacción no existe'); END IF;
+  t := app_servicio_portal.visible_post(sess, p_post_id);
+  PERFORM pg_advisory_xact_lock(hashtextextended('portal-react:' || v_me::text || ':' || t.id::text || ':' || p_kind, 0));
+  SELECT id INTO v_id FROM app_servicio_portal.community_reactions WHERE post_id = t.id AND contact_id = v_me AND kind = p_kind LIMIT 1;
+  IF v_id IS NULL THEN
+    INSERT INTO app_servicio_portal.community_reactions (workspace_id, post_id, contact_id, kind) VALUES (t.workspace_id, t.id, v_me, p_kind);
+    RETURN jsonb_build_object('ok', true, 'on', true);
+  END IF;
+  DELETE FROM app_servicio_portal.community_reactions WHERE id = v_id;
+  RETURN jsonb_build_object('ok', true, 'on', false);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_report(p_session text, p_post_id uuid, p_reason text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  t app_servicio_portal.community_posts;
+  v_me uuid := (sess ->> 'contact_id')::uuid;
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  t := app_servicio_portal.visible_post(sess, p_post_id);
+  IF t.author_contact_id = v_me THEN PERFORM app_servicio_portal.err('PO400', 'No podés reportar lo tuyo'); END IF;
+  IF NOT EXISTS (SELECT 1 FROM app_servicio_portal.community_reactions WHERE post_id = t.id AND contact_id = v_me AND kind = 'report') THEN
+    INSERT INTO app_servicio_portal.community_reactions (workspace_id, post_id, contact_id, kind, report_reason)
+    VALUES (t.workspace_id, t.id, v_me, 'report', left(NULLIF(btrim(p_reason), ''), 500));
+  END IF;
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+-- portal_file_grant: lo de la 00387 + community_upload (p_item = el programa, p_ref = la extensión) y community_media
+-- (p_item = la publicación, p_ref = el número de foto).
+CREATE OR REPLACE FUNCTION app_servicio.portal_file_grant(p_session text, p_kind text, p_item_id uuid DEFAULT NULL, p_ref text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  i app_servicio.program_items;
+  x jsonb;
+  pf jsonb;
+  t app_servicio_portal.community_posts;
+  v_path text;
+  v_ext text := lower(COALESCE(p_ref, ''));
+BEGIN
+  IF p_kind IN ('document', 'resource') THEN
+    SELECT * INTO i FROM app_servicio.program_items WHERE id = p_item_id AND kind = 'lesson' AND status = 'active';
+    IF i.id IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'No existe'); END IF;
+    PERFORM app_servicio_portal.require_section(sess, i.product_id, 'program');
+    IF NOT COALESCE((app_servicio.program_item_unlocked((sess ->> 'contact_id')::uuid, i.id) ->> 'unlocked')::boolean, false) THEN
+      PERFORM app_servicio_portal.err('PO403', 'Todavía no está abierta');
+    END IF;
+    IF p_kind = 'document' THEN v_path := i.document_path;
+    ELSE SELECT r ->> 'path' INTO v_path FROM jsonb_array_elements(COALESCE(i.resources, '[]'::jsonb)) r WHERE r ->> 'id' = p_ref LIMIT 1;
+    END IF;
+    IF v_path IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'No existe'); END IF;
+    RETURN jsonb_build_object('bucket', 'program-resources', 'path', v_path, 'upload', false);
+  ELSIF p_kind = 'avatar' THEN
+    SELECT a.avatar_path INTO v_path FROM app_servicio_portal.portal_accounts a WHERE a.id = (sess ->> 'account_id')::uuid;
+    IF v_path IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'No hay foto'); END IF;
+    RETURN jsonb_build_object('bucket', 'portal-avatars', 'path', v_path, 'upload', false);
+  ELSIF p_kind = 'avatar_upload' THEN
+    PERFORM app_servicio_portal.require_write(sess);
+    IF v_ext NOT IN ('png', 'jpg', 'jpeg', 'webp') THEN PERFORM app_servicio_portal.err('PO400', 'La foto tiene que ser PNG, JPG o WEBP'); END IF;
+    v_path := (sess ->> 'workspace_id') || '/' || (sess ->> 'account_id') || '/' || gen_random_uuid()::text || '.' || v_ext;
+    RETURN jsonb_build_object('bucket', 'portal-avatars', 'path', v_path, 'upload', true);
+  ELSIF p_kind = 'activity_upload' THEN
+    PERFORM app_servicio_portal.require_write(sess);
+    x := app_servicio_portal.form_item(sess, p_item_id, 'activity');
+    IF v_ext !~ '^[a-z0-9]{1,8}$' THEN PERFORM app_servicio_portal.err('PO400', 'Ese archivo no se puede subir'); END IF;
+    v_path := (x ->> 'workspace_id') || '/' || (x ->> 'form_id') || '/' || (x ->> 'contact_id') || '/' || gen_random_uuid()::text || '.' || v_ext;
+    RETURN jsonb_build_object('bucket', 'form-uploads', 'path', v_path, 'upload', true);
+  ELSIF p_kind = 'community_upload' THEN
+    PERFORM app_servicio_portal.require_write(sess);
+    pf := app_servicio_portal.require_section(sess, p_item_id, 'community');
+    IF v_ext NOT IN ('png', 'jpg', 'jpeg', 'webp', 'gif') THEN PERFORM app_servicio_portal.err('PO400', 'La foto tiene que ser PNG, JPG, WEBP o GIF'); END IF;
+    v_path := (pf ->> 'workspace_id') || '/' || p_item_id::text || '/' || (pf ->> 'contact_id') || '/' || gen_random_uuid()::text || '.' || v_ext;
+    RETURN jsonb_build_object('bucket', 'community-media', 'path', v_path, 'upload', true);
+  ELSIF p_kind = 'community_media' THEN
+    t := app_servicio_portal.visible_post(sess, p_item_id);
+    v_path := t.media -> (CASE WHEN p_ref ~ '^\d{1,2}$' THEN p_ref::integer ELSE -1 END) ->> 'path';
+    IF v_path IS NULL THEN PERFORM app_servicio_portal.err('PO404', 'No existe'); END IF;
+    RETURN jsonb_build_object('bucket', 'community-media', 'path', v_path, 'upload', false);
+  END IF;
+  PERFORM app_servicio_portal.err('PO400', 'Pedido no válido');
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app_servicio_portal.public_name(text), app_servicio_portal.post_row(uuid, app_servicio_portal.community_posts),
+  app_servicio_portal.portal_spaces(text, uuid), app_servicio_portal.portal_feed(text, uuid, text, timestamptz),
+  app_servicio_portal.portal_lesson_comments(text, uuid), app_servicio_portal.portal_post_create(text, uuid, text, text, uuid, uuid, jsonb),
+  app_servicio_portal.own_post(jsonb, uuid), app_servicio_portal.portal_post_edit(text, uuid, text), app_servicio_portal.portal_post_delete(text, uuid),
+  app_servicio_portal.visible_post(jsonb, uuid), app_servicio_portal.portal_react(text, uuid, text), app_servicio_portal.portal_report(text, uuid, text),
+  app_servicio.portal_file_grant(text, text, uuid, text)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio_portal.portal_spaces(text, uuid), app_servicio_portal.portal_feed(text, uuid, text, timestamptz),
+  app_servicio_portal.portal_lesson_comments(text, uuid), app_servicio_portal.portal_post_create(text, uuid, text, text, uuid, uuid, jsonb),
+  app_servicio_portal.portal_post_edit(text, uuid, text), app_servicio_portal.portal_post_delete(text, uuid),
+  app_servicio_portal.portal_react(text, uuid, text), app_servicio_portal.portal_report(text, uuid, text)
+TO portal_app, service_role;
+GRANT EXECUTE ON FUNCTION app_servicio.portal_file_grant(text, text, uuid, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 390: PORTAL POINTS FAME NOTIFICATIONS
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00390_portal_points_fame_notifications  (Portal de estudiantes, Corrida B2 · P14 (lectura), P09 (fama), P15)
+-- ============================================================================
+--   portal_points(session, product_id, period)     su nivel y puntos, el ranking del período (7d · 30d · all) SIN quien
+--                                                  eligió no aparecer (ella sí se ve a sí misma), el desglose por grupo,
+--                                                  cuánta gente hay en cada nivel, sus últimos puntos y la configuración
+--                                                  del programa para «Cómo sumar» (F248). Totales calculados en la base.
+--   portal_fame(session, product_id, period)       la Sala de la fama: por ahora solo «Mostrar mi monto» y los puntos; la
+--                                                  facturación llega con la Corrida C (`revenue: null`).
+--   portal_fame_visibility(session, show_amount)   mostrar el monto o solo la posición.
+--   portal_notifications(session, product_id)      «Para hoy» y «Novedades» (portal_notifications_view, 00377).
+--   portal_notification_seen(session)              marca las novedades como vistas.
+--   portal_notification_prefs_get / _save          qué recibe por email (portal_save_notification_prefs, 00377).
+--
+-- La vista previa lee y no escribe (PO403). Aditiva.
+--
+-- Volver atrás: DROP FUNCTION de las 7 de arriba.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_points(p_session text, p_product_id uuid, p_period text DEFAULT '30d')
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.program_for(sess, p_product_id, true);
+  v_me uuid := (pf ->> 'contact_id')::uuid;
+  v_settings jsonb;
+  v_today date := (now() AT TIME ZONE app_servicio.points_tz(v_me, (pf ->> 'workspace_id')::uuid))::date;
+  v_from date := CASE p_period WHEN '7d' THEN v_today - 6 WHEN 'all' THEN DATE '1900-01-01' ELSE v_today - 29 END;
+  v_total integer;
+BEGIN
+  SELECT portal_settings -> 'points' INTO v_settings FROM public.products WHERE id = p_product_id;
+  IF v_settings -> 'enabled' IS DISTINCT FROM 'true'::jsonb THEN RETURN jsonb_build_object('enabled', false); END IF;
+  SELECT COALESCE(sum(points), 0)::integer INTO v_total FROM app_servicio_portal.points_ledger WHERE contact_id = v_me AND product_id = p_product_id;
+  RETURN jsonb_build_object(
+    'enabled', true, 'period', p_period, 'total', v_total, 'level', app_servicio.level_of(v_total, v_settings -> 'levels'),
+    'ranking_visible', COALESCE((v_settings #>> '{ranking,visible}')::boolean, true),
+    'ranking', CASE WHEN COALESCE((v_settings #>> '{ranking,visible}')::boolean, true) THEN COALESCE((
+      SELECT jsonb_agg(jsonb_build_object('name', app_servicio_portal.public_name(COALESCE(a.display_name, c.display_name)), 'me', r.contact_id = v_me,
+               'period', r.period_points, 'total', r.total, 'level', (app_servicio.level_of(r.total, v_settings -> 'levels') ->> 'level')::integer,
+               'by_group', r.by_group) ORDER BY r.period_points DESC, r.total DESC)
+        FROM (SELECT l.contact_id,
+                     sum(l.points) FILTER (WHERE l.local_day >= v_from)::integer AS period_points,
+                     sum(l.points)::integer AS total,
+                     (SELECT jsonb_object_agg(g.point_group, g.n) FROM (SELECT point_group, sum(points)::integer n FROM app_servicio_portal.points_ledger
+                       WHERE contact_id = l.contact_id AND product_id = p_product_id AND local_day >= v_from GROUP BY point_group) g) AS by_group
+                FROM app_servicio_portal.points_ledger l WHERE l.product_id = p_product_id GROUP BY l.contact_id
+               ORDER BY 2 DESC NULLS LAST LIMIT 50) r
+        JOIN public.contacts c ON c.id = r.contact_id
+        LEFT JOIN app_servicio_portal.portal_accounts a ON a.contact_id = r.contact_id AND a.workspace_id = c.workspace_id
+       WHERE r.contact_id = v_me OR COALESCE((a.notification_prefs ->> 'hide_from_ranking')::boolean, false) IS NOT TRUE), '[]'::jsonb) END,
+    'my_place', (SELECT x.n FROM (SELECT contact_id, row_number() OVER (ORDER BY sum(points) FILTER (WHERE local_day >= v_from) DESC NULLS LAST) n
+                                    FROM app_servicio_portal.points_ledger WHERE product_id = p_product_id GROUP BY contact_id) x WHERE x.contact_id = v_me),
+    'levels_count', (SELECT COALESCE(jsonb_object_agg(lv, n), '{}'::jsonb) FROM (
+                       SELECT (app_servicio.level_of(t.total, v_settings -> 'levels') ->> 'level') lv, count(*) n
+                         FROM (SELECT sum(points)::integer total FROM app_servicio_portal.points_ledger WHERE product_id = p_product_id GROUP BY contact_id) t GROUP BY 1) q),
+    'my_groups', (SELECT COALESCE(jsonb_object_agg(point_group, n), '{}'::jsonb) FROM (SELECT point_group, sum(points)::integer n FROM app_servicio_portal.points_ledger
+                    WHERE contact_id = v_me AND product_id = p_product_id AND local_day >= v_from GROUP BY point_group) g),
+    'history', COALESCE((SELECT jsonb_agg(jsonb_build_object('points', l.points, 'group', l.point_group, 'kind', split_part(l.source_key, ':', 1), 'reason', l.reason, 'day', l.local_day) ORDER BY l.created_at DESC)
+                           FROM (SELECT * FROM app_servicio_portal.points_ledger WHERE contact_id = v_me AND product_id = p_product_id ORDER BY created_at DESC LIMIT 20) l), '[]'::jsonb),
+    'settings', jsonb_build_object('values', v_settings -> 'values', 'caps', v_settings -> 'caps'));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_fame(p_session text, p_product_id uuid, p_period text DEFAULT 'all')
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.program_for(sess, p_product_id, true);
+BEGIN
+  RETURN jsonb_build_object(
+    'show_amount', COALESCE((SELECT a.show_amount_in_fame FROM app_servicio_portal.portal_accounts a WHERE a.id = (sess ->> 'account_id')::uuid), false),
+    'points_enabled', (SELECT portal_settings #> '{points,enabled}' = 'true'::jsonb FROM public.products WHERE id = p_product_id),
+    'revenue', NULL);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_fame_visibility(p_session text, p_show_amount boolean)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  UPDATE app_servicio_portal.portal_accounts SET show_amount_in_fame = COALESCE(p_show_amount, false), updated_at = now() WHERE id = (sess ->> 'account_id')::uuid;
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_notifications(p_session text, p_product_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.program_for(sess, p_product_id, true);
+  a app_servicio_portal.portal_accounts;
+BEGIN
+  SELECT * INTO a FROM app_servicio_portal.portal_accounts WHERE workspace_id = (pf ->> 'workspace_id')::uuid AND contact_id = (pf ->> 'contact_id')::uuid;
+  IF a.id IS NULL THEN RETURN jsonb_build_object('today_items', '[]'::jsonb, 'news', '[]'::jsonb, 'unseen', 0); END IF;
+  RETURN app_servicio.portal_notifications_view(a.id, p_product_id) - 'prefs'
+    || jsonb_build_object('timezone', app_servicio.points_tz(a.contact_id, a.workspace_id), 'now', now());
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_notification_seen(p_session text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  PERFORM app_servicio.portal_mark_notifications_seen((sess ->> 'account_id')::uuid);
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_notification_prefs_get(p_session text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+BEGIN
+  RETURN app_servicio.portal_notification_prefs((SELECT a.notification_prefs FROM app_servicio_portal.portal_accounts a WHERE a.id = (sess ->> 'account_id')::uuid));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_notification_prefs_save(p_session text, p_prefs jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+BEGIN
+  PERFORM app_servicio_portal.require_write(sess);
+  RETURN app_servicio.portal_save_notification_prefs((sess ->> 'account_id')::uuid, p_prefs);
+EXCEPTION WHEN SQLSTATE 'SV038' THEN
+  PERFORM app_servicio_portal.err('PO400', 'Esas preferencias no son válidas');
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app_servicio_portal.portal_points(text, uuid, text), app_servicio_portal.portal_fame(text, uuid, text),
+  app_servicio_portal.portal_fame_visibility(text, boolean), app_servicio_portal.portal_notifications(text, uuid),
+  app_servicio_portal.portal_notification_seen(text), app_servicio_portal.portal_notification_prefs_get(text),
+  app_servicio_portal.portal_notification_prefs_save(text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio_portal.portal_points(text, uuid, text), app_servicio_portal.portal_fame(text, uuid, text),
+  app_servicio_portal.portal_fame_visibility(text, boolean), app_servicio_portal.portal_notifications(text, uuid),
+  app_servicio_portal.portal_notification_seen(text), app_servicio_portal.portal_notification_prefs_get(text),
+  app_servicio_portal.portal_notification_prefs_save(text, jsonb) TO portal_app, service_role;
+
+-- ============================================================
+-- MIGRATION 391: PORTAL CONTRACT V2
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00391_portal_contract_v2  (Portal de estudiantes, Corrida B2 · P12)
+-- ============================================================================
+-- `app_servicio.contract_version()` pasa a '2': las funciones `portal_*` de las 00384 a 00390 están aplicadas. El
+-- portal declara que espera la 2 (F209); con la 1 muestra «Estamos actualizando el portal».
+--
+-- Volver atrás: CREATE OR REPLACE FUNCTION app_servicio.contract_version() RETURNS text LANGUAGE sql IMMUTABLE
+--   SET search_path TO '' AS $function$ SELECT '1'::text; $function$;
+-- ============================================================================
+CREATE OR REPLACE FUNCTION app_servicio.contract_version()
+RETURNS text LANGUAGE sql IMMUTABLE SET search_path TO '' AS $function$ SELECT '2'::text; $function$;
+
+-- ============================================================
+-- MIGRATION 392: PORTAL SUBMIT FILES
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00392_portal_submit_files  (Portal de estudiantes, Corrida B2 · P06, entregas con archivo)
+-- ============================================================================
+-- portal_submit (00387) guardaba las respuestas tal cual. Para las preguntas de tipo archivo eso no alcanza:
+--   1. La respuesta de un campo «file» tiene que ser la lista que usa el panel (lib/forms/files.ts):
+--      [{ path, name, size, mime }], hasta 5, cada una dentro de la carpeta de ESTA persona en ESTE formulario
+--      (`<workspace>/<form>/<contact>/…`, la misma que da portal_file_grant('activity_upload')), sin «..», y el archivo
+--      tiene que estar subido de verdad en `form-uploads` (así nadie entrega la ruta de un archivo ajeno).
+--   2. Una respuesta que no es de archivo no puede ser un objeto.
+--   3. Guarda `upload_prefix` en la entrega: el panel solo abre archivos que están dentro de esa carpeta
+--      (isFileOfSubmission), así la revisión puede mostrar el link.
+--
+-- Mismo contrato y misma firma: CREATE OR REPLACE. La definición vieja queda en docs/servicios/definiciones-viejas-a3.sql.
+-- Volver atrás: volver a correr la definición de portal_submit de la 00387.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_submit(p_sess jsonb, p_x jsonb, p_answers jsonb)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_id uuid;
+  v_fields jsonb := COALESCE(p_x #> '{definition,fields}', '[]'::jsonb);
+  v_prefix text := (p_x ->> 'workspace_id') || '/' || (p_x ->> 'form_id') || '/' || (p_x ->> 'contact_id');
+BEGIN
+  IF p_answers IS NULL OR jsonb_typeof(p_answers) <> 'object' THEN PERFORM app_servicio_portal.err('PO400', 'Faltan las respuestas'); END IF;
+  -- Solo las claves del formulario.
+  IF EXISTS (SELECT 1 FROM jsonb_object_keys(p_answers) k WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_fields) f WHERE f ->> 'key' = k)) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Hay respuestas que no son de este formulario');
+  END IF;
+  -- Una respuesta que no es de archivo nunca es un objeto.
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_fields) f
+              WHERE f ->> 'type' IS DISTINCT FROM 'file' AND jsonb_typeof(p_answers -> (f ->> 'key')) = 'object') THEN
+    PERFORM app_servicio_portal.err('PO400', 'Hay respuestas que no son válidas');
+  END IF;
+  -- Los archivos: la lista del panel, dentro de la carpeta de la persona y subidos de verdad.
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_fields) f
+     WHERE f ->> 'type' = 'file' AND p_answers ? (f ->> 'key') AND jsonb_typeof(p_answers -> (f ->> 'key')) <> 'null'
+       AND (jsonb_typeof(p_answers -> (f ->> 'key')) <> 'array'
+            OR jsonb_array_length(p_answers -> (f ->> 'key')) > 5
+            OR EXISTS (SELECT 1 FROM jsonb_array_elements(p_answers -> (f ->> 'key')) a
+                        WHERE jsonb_typeof(a) <> 'object'
+                           OR jsonb_typeof(a -> 'path') <> 'string' OR jsonb_typeof(a -> 'name') <> 'string'
+                           OR jsonb_typeof(a -> 'size') <> 'number' OR jsonb_typeof(a -> 'mime') <> 'string'
+                           OR char_length(a ->> 'name') NOT BETWEEN 1 AND 200 OR (a ->> 'size')::numeric NOT BETWEEN 0 AND 10485760
+                           OR NOT starts_with(a ->> 'path', v_prefix || '/') OR strpos(a ->> 'path', '..') > 0
+                           OR NOT EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'form-uploads' AND o.name = a ->> 'path')))
+  ) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Algún archivo no se subió bien. Volvé a adjuntarlo');
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_fields) f
+              WHERE COALESCE((f ->> 'required')::boolean, false) AND NULLIF(btrim(COALESCE(p_answers ->> (f ->> 'key'), '')), '') IS NULL
+                AND COALESCE(p_answers -> (f ->> 'key'), 'null'::jsonb) IN ('null'::jsonb, '[]'::jsonb, '""'::jsonb)) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Completá las preguntas obligatorias');
+  END IF;
+  INSERT INTO public.form_submissions (workspace_id, form_id, form_version_id, idempotency_key, status, answers, contact_id, meta, upload_prefix)
+  VALUES ((p_x ->> 'workspace_id')::uuid, (p_x ->> 'form_id')::uuid, (p_x ->> 'version_id')::uuid, gen_random_uuid(), 'received', p_answers,
+          (p_x ->> 'contact_id')::uuid, jsonb_build_object('source', 'portal', 'program_item_id', p_x ->> 'item_id'), v_prefix)
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$$;
+
+-- Interna, como en la 00387: solo la llaman las funciones del portal (SECURITY DEFINER), nadie de afuera.
+REVOKE ALL ON FUNCTION app_servicio_portal.portal_submit(jsonb, jsonb, jsonb) FROM PUBLIC, anon, authenticated, service_role, portal_app;
+
+-- ============================================================
+-- MIGRATION 393: PORTAL COMMUNITY INFO
+-- ============================================================
+-- @plantilla-quitar(servicios)
+-- ============================================================================
+-- 00393_portal_community_info  (Portal de estudiantes, Corrida B2 · P08, la cabecera de la comunidad)
+-- ============================================================================
+-- 1. portal_community_info(session, product_id): lo que muestra la cabecera de la comunidad (F228):
+--      members  cuántas personas tienen hoy acceso a la comunidad de ese programa;
+--      online   cuántas de ellas usaron el portal en los últimos 5 minutos;
+--      faces    hasta 5 nombres públicos («Ana P.») de las últimas que lo usaron;
+--      levels   el nivel de cada persona con puntos, por `contact_ref` (la misma huella que trae post_row), sin quien
+--               eligió no aparecer en el ranking. Vacío si el programa no tiene puntos.
+--    Nunca un id ni un email.
+-- 2. session_resolve: `last_seen_at` se anota cada 2 minutos de uso (antes, cada hora), para que «en línea» sea real.
+--    Mismo cuerpo que la 00384 con ese único cambio; la definición vieja queda en docs/servicios/definiciones-viejas-a3.sql.
+--
+-- Volver atrás: DROP FUNCTION app_servicio_portal.portal_community_info(text, uuid) y la session_resolve de la 00384.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.session_resolve(p_session text, p_touch boolean DEFAULT true)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio_portal.portal_sessions;
+  a app_servicio_portal.portal_accounts;
+  v_contact uuid;
+  v_ttl interval;
+BEGIN
+  IF p_session IS NULL OR p_session !~ '^[0-9a-f]{64}$' THEN PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar'); END IF;
+  SELECT * INTO s FROM app_servicio_portal.portal_sessions WHERE token_hash = app_servicio.portal_token_hash(p_session);
+  IF s.id IS NULL OR s.revoked_at IS NOT NULL OR s.expires_at <= now() OR s.kind NOT IN ('student', 'preview') THEN
+    PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar');
+  END IF;
+  IF NOT app_servicio.module_on(s.workspace_id) THEN PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar'); END IF;
+  IF s.kind = 'student' THEN
+    SELECT * INTO a FROM app_servicio_portal.portal_accounts WHERE id = s.account_id;
+    IF a.id IS NULL THEN PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar'); END IF;
+    IF a.status = 'suspended' THEN PERFORM app_servicio_portal.err('PO402', 'Tu cuenta está suspendida. Escribinos'); END IF;
+    v_contact := a.contact_id;
+  ELSE
+    v_contact := s.preview_contact_id;
+  END IF;
+  IF p_touch THEN
+    IF public.bump_rate_limit('portal-s:' || s.id::text, date_trunc('minute', now())) > 60 THEN
+      PERFORM app_servicio_portal.err('PO429', 'Esperá unos minutos y volvé a probar');
+    END IF;
+    IF s.kind = 'student' THEN
+      -- Se renueva sola si se usa en sus últimos 7 días (solo las largas, «Recordarme»).
+      v_ttl := s.expires_at - s.created_at;
+      IF v_ttl >= interval '7 days' AND s.expires_at - now() < interval '7 days' THEN
+        UPDATE app_servicio_portal.portal_sessions SET expires_at = now() + v_ttl WHERE id = s.id;
+        s.expires_at := now() + v_ttl;
+      END IF;
+      -- Cada 2 minutos de uso: alcanza para «en línea» (últimos 5 minutos) sin escribir en cada pedido.
+      IF s.last_seen_at IS NULL OR s.last_seen_at < now() - interval '2 minutes' THEN
+        UPDATE app_servicio_portal.portal_sessions SET last_seen_at = now() WHERE id = s.id;
+      END IF;
+      BEGIN
+        PERFORM app_servicio.portal_touch_active_day(a.id);
+      EXCEPTION WHEN OTHERS THEN
+        PERFORM app_servicio.hook_failed(s.workspace_id, 'portal_active_day', SQLSTATE || ' ' || SQLERRM, NULL);
+      END;
+    END IF;
+  END IF;
+  RETURN jsonb_build_object('session_id', s.id, 'workspace_id', s.workspace_id, 'account_id', s.account_id, 'contact_id', v_contact,
+                            'kind', s.kind, 'expires_at', s.expires_at);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_community_info(p_session text, p_product_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  sess jsonb := app_servicio_portal.session_resolve(p_session);
+  pf jsonb := app_servicio_portal.require_section(sess, p_product_id, 'community');
+  v_ws uuid := (pf ->> 'workspace_id')::uuid;
+  v_settings jsonb;
+  v_out jsonb;
+BEGIN
+  SELECT portal_settings -> 'points' INTO v_settings FROM public.products WHERE id = p_product_id;
+  WITH m AS (
+    SELECT DISTINCT a.contact_id FROM app_servicio_portal.portal_access a
+     WHERE a.product_id = p_product_id AND a.section = 'community' AND a.revoked_at IS NULL
+       AND app_servicio.portal_access_effective(a.contact_id, p_product_id, 'community') IS NOT NULL
+  ), seen AS (
+    SELECT acc.contact_id, max(s.last_seen_at) AS last_seen
+      FROM app_servicio_portal.portal_sessions s
+      JOIN app_servicio_portal.portal_accounts acc ON acc.id = s.account_id
+     WHERE s.kind = 'student' AND s.revoked_at IS NULL AND s.expires_at > now() AND s.last_seen_at IS NOT NULL
+       AND acc.workspace_id = v_ws AND acc.status <> 'suspended' AND acc.contact_id IN (SELECT contact_id FROM m)
+     GROUP BY acc.contact_id
+  )
+  SELECT jsonb_build_object(
+    'members', (SELECT count(*) FROM m),
+    'online', (SELECT count(*) FROM seen WHERE seen.last_seen > now() - interval '5 minutes'),
+    'faces', COALESCE((SELECT jsonb_agg(f.n ORDER BY f.last_seen DESC) FROM (
+                SELECT app_servicio_portal.public_name(COALESCE(acc.display_name, c.display_name)) AS n, seen.last_seen
+                  FROM seen JOIN public.contacts c ON c.id = seen.contact_id
+                  LEFT JOIN app_servicio_portal.portal_accounts acc ON acc.contact_id = c.id AND acc.workspace_id = v_ws
+                 ORDER BY seen.last_seen DESC LIMIT 5) f), '[]'::jsonb),
+    'levels', CASE WHEN v_settings -> 'enabled' = 'true'::jsonb THEN COALESCE((
+                SELECT jsonb_object_agg(md5(t.contact_id::text), (app_servicio.level_of(t.total, v_settings -> 'levels') ->> 'level')::integer)
+                  FROM (SELECT l.contact_id, sum(l.points)::integer AS total FROM app_servicio_portal.points_ledger l
+                         WHERE l.product_id = p_product_id GROUP BY l.contact_id) t
+                  LEFT JOIN app_servicio_portal.portal_accounts acc ON acc.contact_id = t.contact_id AND acc.workspace_id = v_ws
+                 WHERE COALESCE((acc.notification_prefs ->> 'hide_from_ranking')::boolean, false) IS NOT TRUE), '{}'::jsonb)
+              ELSE '{}'::jsonb END)
+  INTO v_out;
+  RETURN v_out;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app_servicio_portal.portal_community_info(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app_servicio_portal.portal_community_info(text, uuid) TO portal_app, service_role;

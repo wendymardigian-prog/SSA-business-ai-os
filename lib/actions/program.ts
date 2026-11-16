@@ -6,6 +6,8 @@ import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { svcRpc, svcSchema, type SvcResult } from "@/lib/services/db";
 import { normalizeVideoUrl } from "@/lib/program/video-url";
+import { isFileOfSubmission, SIGNED_URL_SECONDS } from "@/lib/forms/files";
+import { UPLOADS_BUCKET } from "@/lib/forms/server-ports";
 import { unlockRuleProblems, type UnlockRule } from "@/lib/program/unlock";
 import { checkDocument, checkHtml, checkImage, checkResource, programPath } from "@/lib/program/lesson";
 import { copiedPath, copyPlan, filePaths } from "@/lib/program/copy";
@@ -268,6 +270,22 @@ export async function reviewSubmission(submissionId: string, input: { status: "r
   });
   if (res.ok) revalidatePath("/dashboard/portal");
   return res;
+}
+
+/**
+ * Abrir un archivo de una entrega desde la revisión (00392): solo uno que está en esa entrega y dentro de su carpeta.
+ * Link de 60 segundos.
+ */
+export async function submissionFileUrl(submissionId: string, path: string): Promise<SvcResult<{ url: string }>> {
+  const ctx = await getPermissionAction("submissions.review");
+  if (!ctx || !UUID.test(submissionId) || typeof path !== "string") return NOT_ALLOWED;
+  const { data: sub } = await ctx.supabase.from("form_submissions").select("id, answers, upload_prefix").eq("id", submissionId).eq("workspace_id", ctx.workspace.id).maybeSingle();
+  const row = sub as { answers: Record<string, unknown> | null; upload_prefix: string | null } | null;
+  if (!row || !isFileOfSubmission(row.answers, row.upload_prefix, path)) return { ok: false, error: { code: "SV404", message: "Ese archivo no es de esta entrega", detail: null } };
+  const service = await createServiceClient();
+  const { data, error } = await service.storage.from(UPLOADS_BUCKET).createSignedUrl(path, SIGNED_URL_SECONDS);
+  if (error || !data?.signedUrl) return { ok: false, error: { code: "SV500", message: "No pudimos abrir el archivo. Probá de nuevo.", detail: null } };
+  return { ok: true, data: { url: data.signedUrl } };
 }
 
 /**

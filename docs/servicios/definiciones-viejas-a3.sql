@@ -1106,3 +1106,85 @@ BEGIN
     jsonb_build_object('item_id', it.id, 'keys', (SELECT jsonb_agg(k) FROM jsonb_object_keys(p) k)));
 END;
 $function$;
+
+-- ── 00391 ──────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION app_servicio.contract_version()
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$ SELECT '1'::text; $function$;
+
+-- ===== Antes de la 00392 (portal_submit de la 00387) =====
+-- Guarda la respuesta: la nota la calcula la base (portal_form_before_hook) y la devuelve al instante.
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_submit(p_sess jsonb, p_x jsonb, p_answers jsonb)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_id uuid;
+BEGIN
+  IF p_answers IS NULL OR jsonb_typeof(p_answers) <> 'object' THEN PERFORM app_servicio_portal.err('PO400', 'Faltan las respuestas'); END IF;
+  -- Solo las claves del formulario.
+  IF EXISTS (SELECT 1 FROM jsonb_object_keys(p_answers) k WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(p_x #> '{definition,fields}', '[]'::jsonb)) f WHERE f ->> 'key' = k)) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Hay respuestas que no son de este formulario');
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(p_x #> '{definition,fields}', '[]'::jsonb)) f
+              WHERE COALESCE((f ->> 'required')::boolean, false) AND NULLIF(btrim(COALESCE(p_answers ->> (f ->> 'key'), '')), '') IS NULL
+                AND COALESCE(p_answers -> (f ->> 'key'), 'null'::jsonb) IN ('null'::jsonb, '[]'::jsonb, '""'::jsonb)) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Completá las preguntas obligatorias');
+  END IF;
+  INSERT INTO public.form_submissions (workspace_id, form_id, form_version_id, idempotency_key, status, answers, contact_id, meta)
+  VALUES ((p_x ->> 'workspace_id')::uuid, (p_x ->> 'form_id')::uuid, (p_x ->> 'version_id')::uuid, gen_random_uuid(), 'received', p_answers,
+          (p_x ->> 'contact_id')::uuid, jsonb_build_object('source', 'portal', 'program_item_id', p_x ->> 'item_id'))
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$$;
+
+-- ===== Antes de la 00393 (session_resolve de la 00384) =====
+CREATE OR REPLACE FUNCTION app_servicio_portal.session_resolve(p_session text, p_touch boolean DEFAULT true)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  s app_servicio_portal.portal_sessions;
+  a app_servicio_portal.portal_accounts;
+  v_contact uuid;
+  v_ttl interval;
+BEGIN
+  IF p_session IS NULL OR p_session !~ '^[0-9a-f]{64}$' THEN PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar'); END IF;
+  SELECT * INTO s FROM app_servicio_portal.portal_sessions WHERE token_hash = app_servicio.portal_token_hash(p_session);
+  IF s.id IS NULL OR s.revoked_at IS NOT NULL OR s.expires_at <= now() OR s.kind NOT IN ('student', 'preview') THEN
+    PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar');
+  END IF;
+  IF NOT app_servicio.module_on(s.workspace_id) THEN PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar'); END IF;
+  IF s.kind = 'student' THEN
+    SELECT * INTO a FROM app_servicio_portal.portal_accounts WHERE id = s.account_id;
+    IF a.id IS NULL THEN PERFORM app_servicio_portal.err('PO401', 'Tu sesión venció. Volvé a entrar'); END IF;
+    IF a.status = 'suspended' THEN PERFORM app_servicio_portal.err('PO402', 'Tu cuenta está suspendida. Escribinos'); END IF;
+    v_contact := a.contact_id;
+  ELSE
+    v_contact := s.preview_contact_id;
+  END IF;
+  IF p_touch THEN
+    IF public.bump_rate_limit('portal-s:' || s.id::text, date_trunc('minute', now())) > 60 THEN
+      PERFORM app_servicio_portal.err('PO429', 'Esperá unos minutos y volvé a probar');
+    END IF;
+    IF s.kind = 'student' THEN
+      -- Se renueva sola si se usa en sus últimos 7 días (solo las largas, «Recordarme»).
+      v_ttl := s.expires_at - s.created_at;
+      IF v_ttl >= interval '7 days' AND s.expires_at - now() < interval '7 days' THEN
+        UPDATE app_servicio_portal.portal_sessions SET expires_at = now() + v_ttl WHERE id = s.id;
+        s.expires_at := now() + v_ttl;
+      END IF;
+      IF s.last_seen_at IS NULL OR s.last_seen_at < now() - interval '1 hour' THEN
+        UPDATE app_servicio_portal.portal_sessions SET last_seen_at = now() WHERE id = s.id;
+      END IF;
+      BEGIN
+        PERFORM app_servicio.portal_touch_active_day(a.id);
+      EXCEPTION WHEN OTHERS THEN
+        PERFORM app_servicio.hook_failed(s.workspace_id, 'portal_active_day', SQLSTATE || ' ' || SQLERRM, NULL);
+      END;
+    END IF;
+  END IF;
+  RETURN jsonb_build_object('session_id', s.id, 'workspace_id', s.workspace_id, 'account_id', s.account_id, 'contact_id', v_contact,
+                            'kind', s.kind, 'expires_at', s.expires_at);
+END;
+$$;

@@ -15,6 +15,15 @@ describe("filesOfAnswers", () => {
   });
 });
 
+describe("filesOfAnswers · entregas del portal", () => {
+  it("lee la lista directa que guarda el portal", () => {
+    const f = { path: "w/f/c/a.pdf", name: "a.pdf", size: 10, mime: "application/pdf" };
+    expect(filesOfAnswers({ doc: [f], txt: "hola" })).toEqual([f]);
+    expect(isFileOfSubmission({ doc: [f] }, "w/f/c", "w/f/c/a.pdf")).toBe(true);
+    expect(isFileOfSubmission({ doc: [f] }, "w/f/otra", "w/f/c/a.pdf")).toBe(false);
+  });
+});
+
 describe("isFileOfSubmission", () => {
   it("solo un archivo de esa respuesta, dentro de su carpeta", () => {
     expect(isFileOfSubmission(answers, prefix, `${prefix}/cv/a.pdf`)).toBe(true);

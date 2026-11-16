@@ -295,6 +295,8 @@ export const MODULES = {
       // Servicios A3 (F129): los puntos.
       "lib/portal-points",
       "lib/actions/points.ts",
+      // Portal B2: lo que el portal le pide a SSA (firmado).
+      "app/api/portal",
       "lib/jobs/handlers/portal-digest.ts",
       "lib/flow-engine/nodes/service-actions.ts",
       "lib/flow-engine/nodes/service-action-detail.ts",

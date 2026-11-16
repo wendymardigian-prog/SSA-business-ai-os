@@ -128,3 +128,15 @@ describe("emails del estudiante (F128)", () => {
     expect(portalDueTodayEmail({ studentName: null, programName: "P", items: [{ name: "X", time: "18:00" }] }).html).toContain("hasta las 18:00");
   });
 });
+
+describe("el código para entrar al portal (B2)", () => {
+  it("lleva el código, el link mágico y nada de HTML de afuera", async () => {
+    const { portalLoginCodeEmail } = await import("./templates");
+    const e = portalLoginCodeEmail({ workspaceName: "Academia", code: "123456", magicUrl: "https://portal.example.com/entrar/codigo?e=a%40b.com&c=123456", studentName: "Ana <i>" });
+    expect(e.subject).toBe("Tu código para entrar: 123456");
+    expect(e.html).toContain("123456");
+    expect(e.html).toContain("Entrar sin tipear el código");
+    expect(e.html).not.toContain("<i>");
+    expect(portalLoginCodeEmail({ workspaceName: "A", code: "000001", magicUrl: null }).html).not.toContain("Entrar sin tipear");
+  });
+});
