@@ -12,12 +12,16 @@ export interface StoredFile {
   mime: string;
 }
 
-/** Todos los archivos guardados en las respuestas de una submission. */
-export function filesOfAnswers(answers: Record<string, { value?: unknown }> | null | undefined): StoredFile[] {
+/**
+ * Todos los archivos guardados en las respuestas de una submission. Un formulario público guarda `{ value: [...] }`;
+ * una entrega del portal (00392) guarda la lista directo.
+ */
+export function filesOfAnswers(answers: Record<string, unknown> | null | undefined): StoredFile[] {
   const out: StoredFile[] = [];
   for (const answer of Object.values(answers ?? {})) {
-    if (!Array.isArray(answer?.value)) continue;
-    for (const item of answer.value) {
+    const list = Array.isArray(answer) ? answer : Array.isArray((answer as { value?: unknown } | null)?.value) ? ((answer as { value: unknown[] }).value) : null;
+    if (!list) continue;
+    for (const item of list) {
       if (item && typeof item === "object" && typeof (item as StoredFile).path === "string" && typeof (item as StoredFile).name === "string") {
         out.push(item as StoredFile);
       }
@@ -28,7 +32,7 @@ export function filesOfAnswers(answers: Record<string, { value?: unknown }> | nu
 
 /** ¿Esta ruta es un archivo de esta respuesta (y está dentro de su carpeta)? */
 export function isFileOfSubmission(
-  answers: Record<string, { value?: unknown }> | null | undefined,
+  answers: Record<string, unknown> | null | undefined,
   uploadPrefix: string | null | undefined,
   path: string,
 ): boolean {

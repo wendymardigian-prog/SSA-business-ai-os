@@ -3,7 +3,8 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { reviewSubmission } from "@/lib/actions/program";
+import { reviewSubmission, submissionFileUrl } from "@/lib/actions/program";
+import { filesOfAnswers } from "@/lib/forms/files";
 import type { ReviewItem } from "@/lib/program/load-review";
 import { gradeLabel, isLatestSubmission, matchesReviewFilter, reviewRowView, submissionHistory, type ReviewFilter } from "@/lib/program/review";
 import { SCALE_LABELS, WORD_LABELS, WORD_SCALE } from "@/lib/program/grading";
@@ -130,7 +131,19 @@ export function ReviewDrawer({ item, history = [], timeZone, canReview, onClose,
             return (
               <div key={f.key}>
                 <dt className="text-xs text-muted-foreground">{f.label}</dt>
-                <dd className="whitespace-pre-wrap text-sm">{Array.isArray(a) ? a.join(", ") : a == null || a === "" ? "—" : typeof a === "object" ? "Archivo adjunto" : String(a)}</dd>
+                <dd className="whitespace-pre-wrap text-sm">
+                  {filesOfAnswers({ [f.key]: a }).length ? (
+                    <SubmissionFiles submissionId={item.id} files={filesOfAnswers({ [f.key]: a })} />
+                  ) : Array.isArray(a) ? (
+                    a.join(", ")
+                  ) : a == null || a === "" ? (
+                    "—"
+                  ) : typeof a === "object" ? (
+                    "Archivo adjunto"
+                  ) : (
+                    String(a)
+                  )}
+                </dd>
               </div>
             );
           })}
@@ -206,5 +219,26 @@ export function ReviewDrawer({ item, history = [], timeZone, canReview, onClose,
         )}
       </div>
     </div>
+  );
+}
+
+/** Los archivos de una entrega (00392): cada uno se abre con un link de 60 segundos que comprueba que es de esta entrega. */
+function SubmissionFiles({ submissionId, files }: { submissionId: string; files: { path: string; name: string; size: number }[] }) {
+  const [error, setError] = useState<string | null>(null);
+  const open = async (path: string) => {
+    setError(null);
+    const r = await submissionFileUrl(submissionId, path);
+    if (!r.ok) return setError(r.error.message);
+    window.open(r.data.url, "_blank", "noopener,noreferrer");
+  };
+  return (
+    <span className="flex flex-col items-start gap-1">
+      {files.map((f) => (
+        <button key={f.path} type="button" onClick={() => open(f.path)} className="text-left text-primary underline-offset-2 hover:underline">
+          {f.name} <span className="text-xs text-muted-foreground">({Math.max(1, Math.round(f.size / 1024))} KB)</span>
+        </button>
+      ))}
+      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+    </span>
   );
 }

@@ -1114,3 +1114,28 @@ CREATE OR REPLACE FUNCTION app_servicio.contract_version()
  IMMUTABLE
  SET search_path TO ''
 AS $function$ SELECT '1'::text; $function$;
+
+-- ===== Antes de la 00392 (portal_submit de la 00387) =====
+-- Guarda la respuesta: la nota la calcula la base (portal_form_before_hook) y la devuelve al instante.
+CREATE OR REPLACE FUNCTION app_servicio_portal.portal_submit(p_sess jsonb, p_x jsonb, p_answers jsonb)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_id uuid;
+BEGIN
+  IF p_answers IS NULL OR jsonb_typeof(p_answers) <> 'object' THEN PERFORM app_servicio_portal.err('PO400', 'Faltan las respuestas'); END IF;
+  -- Solo las claves del formulario.
+  IF EXISTS (SELECT 1 FROM jsonb_object_keys(p_answers) k WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(p_x #> '{definition,fields}', '[]'::jsonb)) f WHERE f ->> 'key' = k)) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Hay respuestas que no son de este formulario');
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(p_x #> '{definition,fields}', '[]'::jsonb)) f
+              WHERE COALESCE((f ->> 'required')::boolean, false) AND NULLIF(btrim(COALESCE(p_answers ->> (f ->> 'key'), '')), '') IS NULL
+                AND COALESCE(p_answers -> (f ->> 'key'), 'null'::jsonb) IN ('null'::jsonb, '[]'::jsonb, '""'::jsonb)) THEN
+    PERFORM app_servicio_portal.err('PO400', 'Completá las preguntas obligatorias');
+  END IF;
+  INSERT INTO public.form_submissions (workspace_id, form_id, form_version_id, idempotency_key, status, answers, contact_id, meta)
+  VALUES ((p_x ->> 'workspace_id')::uuid, (p_x ->> 'form_id')::uuid, (p_x ->> 'version_id')::uuid, gen_random_uuid(), 'received', p_answers,
+          (p_x ->> 'contact_id')::uuid, jsonb_build_object('source', 'portal', 'program_item_id', p_x ->> 'item_id'))
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$$;
