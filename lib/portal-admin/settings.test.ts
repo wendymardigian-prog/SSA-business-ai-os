@@ -8,7 +8,8 @@ const run = { variant: validateVariantPortalSettings, program: validateProgramPo
 describe("validadores del portal (gemelos de app_servicio.validate_*_portal_settings)", () => {
   for (const c of cases.cases) {
     it(`${c.kind}: ${c.name}`, () => {
-      expect(run[c.kind as keyof typeof run](c.settings)).toEqual(c.expected);
+      const o = (c as { ext?: boolean }).ext ? { extensions: { projects: true } } : {};
+      expect(run[c.kind as keyof typeof run](c.settings, o)).toEqual(c.expected);
     });
   }
 });

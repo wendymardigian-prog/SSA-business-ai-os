@@ -11,8 +11,11 @@
 export const AVAILABLE_SECTIONS = ["program", "calendar", "challenge", "certificate", "assistant", "community", "affiliates"] as const;
 export type PortalSection = (typeof AVAILABLE_SECTIONS)[number];
 
+/** Las secciones de la extensión de proyectos (Corrida C): se ofrecen solo con `extensions.projects` del negocio. */
+export const EXTENSION_SECTIONS = ["fame", "projects"] as const;
+
 /** Todas las secciones que acepta la base (CHECK de portal_access.section), incluidas las de la extension. */
-export const ALL_SECTIONS = [...AVAILABLE_SECTIONS, "fame", "projects"] as const;
+export const ALL_SECTIONS = [...AVAILABLE_SECTIONS, ...EXTENSION_SECTIONS] as const;
 
 export const SECTION_LABELS: Record<(typeof ALL_SECTIONS)[number], string> = {
   program: "Programa",

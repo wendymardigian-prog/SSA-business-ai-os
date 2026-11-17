@@ -1,0 +1,15 @@
+{
+  "_comment": "Casos de la forma de fame y projects del programa (F80, F118, F119). Corren contra lib/projects/settings.ts (vitest) y contra app_servicio_proyectos.fame_settings_problems / projects_settings_problems (verify-projects). kind = fame | projects.",
+  "cases": [
+    { "kind": "fame", "name": "completa", "input": { "counts": "paid", "verified_only": true, "include_before_program": false, "milestones": [100000, 500000, 1000000], "first_project_milestone": true }, "expected": [] },
+    { "kind": "fame", "name": "qué cuenta y opciones mal", "input": { "counts": "todo", "verified_only": "si" }, "expected": ["elegí qué cuenta: lo cobrado o lo vendido", "las opciones de la Sala de la fama tienen que ser sí o no"] },
+    { "kind": "fame", "name": "hitos desordenados", "input": { "milestones": [500000, 100000] }, "expected": ["los hitos van de menor a mayor, en montos positivos"] },
+    { "kind": "fame", "name": "clave desconocida y no objeto", "input": { "x": 1 }, "expected": ["clave desconocida: x"] },
+    { "kind": "fame", "name": "no es objeto", "input": [], "expected": ["la Sala de la fama no es válida"] },
+    { "kind": "projects", "name": "dos pasos encadenados", "input": { "reviewer_agent_id": null, "steps": [ { "key": "brief", "name": "Brief inicial", "prompt": { "text": "Armá el brief de {{proyecto}}", "version": 1 }, "tasks": ["Agendar la llamada"] }, { "key": "guion", "name": "Guion", "depends_on": ["brief"], "prompt": { "text": "…", "version": 3 }, "analysis": null } ], "budget_ranges": [ { "size": "small", "min_cents": 50000, "max_cents": 150000 }, { "size": "large", "min_cents": 500000, "max_cents": 2000000 } ] }, "expected": [] },
+    { "kind": "projects", "name": "depende de un paso posterior", "input": { "steps": [ { "key": "guion", "name": "Guion", "depends_on": ["brief"] }, { "key": "brief", "name": "Brief" } ] }, "expected": ["Guion: solo puede usar documentos de pasos anteriores"] },
+    { "kind": "projects", "name": "paso repetido, instrucciones sin versión, clave rara", "input": { "steps": [ { "key": "a", "name": "A" }, { "key": "a", "name": "A2", "prompt": { "text": "x" }, "color": "rojo" } ] }, "expected": ["clave desconocida: color", "el paso A2 está repetido", "A2: las instrucciones no son válidas"] },
+    { "kind": "projects", "name": "rango con mínimo mayor y repetido", "input": { "budget_ranges": [ { "size": "small", "min_cents": 200000, "max_cents": 100000 }, { "size": "small", "min_cents": 1, "max_cents": 2 }, { "size": "xl", "min_cents": 1, "max_cents": 2 } ] }, "expected": ["el rango small tiene el mínimo mayor que el máximo", "el rango small está repetido", "cada rango lleva tamaño, mínimo y máximo"] },
+    { "kind": "projects", "name": "revisor y clase inválidos", "input": { "reviewer_agent_id": "x", "steps": [ { "key": "a", "name": "A", "lesson_item_id": "no", "tasks": [""] } ] }, "expected": ["el revisor no es válido", "A: las tareas no son válidas", "A: la clase no es válida"] }
+  ]
+}

@@ -1,0 +1,238 @@
+{
+  "_comment": "Casos de la Sala de la fama (F80, F120). Corren contra lib/projects/fame.ts (vitest) y contra app_servicio_proyectos.fame_plan (verify-projects). today = 2026-11-17.",
+  "cases": [
+    {
+      "name": "lo cobrado, solo verificados (por defecto)",
+      "settings": {},
+      "period": "all",
+      "entries": [
+        {
+          "contact_id": "a",
+          "kind": "payment",
+          "amount_cents": 100000,
+          "received_on": "2026-10-01",
+          "verified": true
+        },
+        {
+          "contact_id": "a",
+          "kind": "payment",
+          "amount_cents": 50000,
+          "received_on": "2026-11-02",
+          "verified": false
+        },
+        {
+          "contact_id": "b",
+          "kind": "payment",
+          "amount_cents": 300000,
+          "received_on": "2026-11-03",
+          "verified": true
+        },
+        {
+          "contact_id": "c",
+          "kind": "payment",
+          "amount_cents": 90000,
+          "received_on": "2026-11-03",
+          "verified": false
+        }
+      ],
+      "projects": [],
+      "expected": [
+        {
+          "contact_id": "b",
+          "amount_cents": 300000,
+          "projects_won": 0
+        },
+        {
+          "contact_id": "a",
+          "amount_cents": 100000,
+          "projects_won": 0
+        }
+      ]
+    },
+    {
+      "name": "sin verificar también cuenta si el programa lo permite",
+      "settings": {
+        "verified_only": false
+      },
+      "period": "all",
+      "entries": [
+        {
+          "contact_id": "a",
+          "kind": "payment",
+          "amount_cents": 100000,
+          "received_on": "2026-10-01",
+          "verified": true
+        },
+        {
+          "contact_id": "a",
+          "kind": "payment",
+          "amount_cents": 50000,
+          "received_on": "2026-11-02",
+          "verified": false
+        }
+      ],
+      "projects": [],
+      "expected": [
+        {
+          "contact_id": "a",
+          "amount_cents": 150000,
+          "projects_won": 0
+        }
+      ]
+    },
+    {
+      "name": "lo de antes del programa no suma salvo que se pida; los ajustes siempre",
+      "settings": {},
+      "period": "all",
+      "entries": [
+        {
+          "contact_id": "a",
+          "kind": "payment",
+          "amount_cents": 200000,
+          "received_on": "2026-01-01",
+          "verified": true,
+          "before_program": true
+        },
+        {
+          "contact_id": "a",
+          "kind": "payment",
+          "amount_cents": 10000,
+          "received_on": "2026-11-01",
+          "verified": true
+        },
+        {
+          "contact_id": "a",
+          "kind": "adjustment",
+          "amount_cents": -2000,
+          "received_on": "2026-11-05"
+        }
+      ],
+      "projects": [],
+      "expected": [
+        {
+          "contact_id": "a",
+          "amount_cents": 8000,
+          "projects_won": 0
+        }
+      ]
+    },
+    {
+      "name": "este mes: del 1 a hoy",
+      "settings": {
+        "include_before_program": true
+      },
+      "period": "month",
+      "entries": [
+        {
+          "contact_id": "a",
+          "kind": "payment",
+          "amount_cents": 100000,
+          "received_on": "2026-10-31",
+          "verified": true
+        },
+        {
+          "contact_id": "a",
+          "kind": "payment",
+          "amount_cents": 20000,
+          "received_on": "2026-11-01",
+          "verified": true
+        },
+        {
+          "contact_id": "b",
+          "kind": "payment",
+          "amount_cents": 20000,
+          "received_on": "2026-11-18",
+          "verified": true
+        }
+      ],
+      "projects": [],
+      "expected": [
+        {
+          "contact_id": "a",
+          "amount_cents": 20000,
+          "projects_won": 0
+        }
+      ]
+    },
+    {
+      "name": "lo vendido: proyectos reales desde Ganado; empate por proyectos",
+      "settings": {
+        "counts": "sold"
+      },
+      "period": "all",
+      "entries": [
+        {
+          "contact_id": "a",
+          "kind": "payment",
+          "amount_cents": 999999,
+          "received_on": "2026-11-01",
+          "verified": true
+        }
+      ],
+      "projects": [
+        {
+          "contact_id": "a",
+          "kind": "real",
+          "status": "won",
+          "sold_cents": 100000,
+          "closed_on": "2026-11-01"
+        },
+        {
+          "contact_id": "b",
+          "kind": "real",
+          "status": "delivered",
+          "sold_cents": 60000,
+          "closed_on": "2026-09-01"
+        },
+        {
+          "contact_id": "b",
+          "kind": "challenge",
+          "status": "in_build",
+          "sold_cents": 40000,
+          "closed_on": "2026-10-01"
+        },
+        {
+          "contact_id": "c",
+          "kind": "real",
+          "status": "proposal_sent",
+          "sold_cents": 500000,
+          "closed_on": null
+        },
+        {
+          "contact_id": "d",
+          "kind": "practice",
+          "status": null,
+          "sold_cents": null,
+          "closed_on": null
+        }
+      ],
+      "expected": [
+        {
+          "contact_id": "b",
+          "amount_cents": 100000,
+          "projects_won": 2
+        },
+        {
+          "contact_id": "a",
+          "amount_cents": 100000,
+          "projects_won": 1
+        }
+      ]
+    },
+    {
+      "name": "nadie con monto: lista vacía",
+      "settings": {},
+      "period": "all",
+      "entries": [
+        {
+          "contact_id": "a",
+          "kind": "adjustment",
+          "amount_cents": -5000,
+          "received_on": "2026-11-01"
+        }
+      ],
+      "projects": [],
+      "expected": []
+    }
+  ]
+}
