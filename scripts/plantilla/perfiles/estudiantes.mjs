@@ -288,6 +288,8 @@ export const MODULES = {
       "lib/actions/service-certificates.ts",
       "lib/actions/community.ts",
       "lib/actions/tutor.ts",
+      // El Asistente IA del portal (F230): corre el tutor para /api/portal/tutor.
+      "lib/portal-tutor",
       "lib/jobs/handlers/svc-certificate.ts",
       "lib/jobs/handlers/svc-daily.ts",
       // Servicios A3 (F128): avisos del estudiante y el resumen semanal.
