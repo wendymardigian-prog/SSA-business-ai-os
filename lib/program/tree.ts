@@ -19,6 +19,8 @@ export interface ProgramRow {
   thumbnail_path?: string | null;
   thumbnail_url?: string | null;
   cover_path?: string | null;
+  /** El módulo va en la sección Extras del portal (00399). */
+  is_extra?: boolean;
 }
 
 export interface TreeNode extends ProgramRow {

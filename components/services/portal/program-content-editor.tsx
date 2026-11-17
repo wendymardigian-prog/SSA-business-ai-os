@@ -138,7 +138,7 @@ export function ProgramContentEditor({
               <button type="button" onClick={() => setEditing(n.id)} className="min-w-0 flex-1 truncate text-left text-sm text-foreground hover:underline">
                 {n.title}
                 <span className="ml-2 text-xs text-muted-foreground">
-                  {n.kind === "module" ? "Módulo" : n.kind === "submodule" ? "Submódulo" : LESSON_TYPE_LABELS[n.lesson_type ?? ""] ?? "Clase"}
+                  {n.kind === "module" ? (n.is_extra ? "Módulo · Extra" : "Módulo") : n.kind === "submodule" ? "Submódulo" : LESSON_TYPE_LABELS[n.lesson_type ?? ""] ?? "Clase"}
                   {UNLOCK_LABEL[(n.unlock_rule?.type as string) ?? "open"] ? ` · ${UNLOCK_LABEL[(n.unlock_rule?.type as string) ?? "open"]}` : ""}
                   {n.hiddenByParent ? " · Oculto porque el módulo está inactivo" : ""}
                   {n.kind === "lesson" && n.lesson_type === "video" && !byId.get(n.id)?.hasTranscript ? " · Sin transcripción" : ""}
@@ -233,6 +233,7 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
   const [html, setHtml] = useState(item.html_content ?? "");
   const [required, setRequired] = useState(item.required);
   const [comments, setComments] = useState(item.comments_enabled);
+  const [extra, setExtra] = useState(item.is_extra === true);
   const rule = (item.unlock_rule ?? { type: "open" }) as Record<string, unknown>;
   const [ruleType, setRuleType] = useState(String(rule.type ?? "open"));
   const [ruleDate, setRuleDate] = useState(String(rule.date ?? ""));
@@ -253,6 +254,7 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
     const patch: Record<string, unknown> = { title, description, required, comments_enabled: comments, unlock_rule: unlock };
     if (item.kind === "lesson" && item.lesson_type === "video") patch.video_url = videoUrl;
     if (item.kind === "lesson" && item.lesson_type === "html") patch.html_content = html;
+    if (item.kind === "module") patch.is_extra = extra;
     start(async () => {
       const res = await updateProgramItem(productId, item.id, patch);
       if (!res.ok) return setMsg({ kind: "error", text: res.error.message });
@@ -349,6 +351,7 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
         {canManage && (
           <label className="block text-xs text-muted-foreground">
             {item.kind === "module" ? "Imagen de portada (16:9, JPG, PNG o WebP, hasta 2 MB)" : "Imagen de vista previa (JPG, PNG o WebP, hasta 2 MB)"}
+            {(item.kind === "module" ? item.cover_path : item.thumbnail_path) ? " · ya hay una cargada" : ""}
             <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => upload(item.kind === "module" ? "cover" : "thumbnail", e.target.files?.[0])} className="mt-1 block text-xs" />
           </label>
         )}
@@ -362,6 +365,11 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={required} disabled={disabled} onChange={(e) => setRequired(e.target.checked)} /> Obligatoria
           </label>
+          {item.kind === "module" && (
+            <label className="flex items-center gap-2 text-sm" title="En el portal va en la sección Extras, sin número y fuera del avance">
+              <input type="checkbox" checked={extra} disabled={disabled} onChange={(e) => setExtra(e.target.checked)} /> Extra (va en la sección Extras del portal)
+            </label>
+          )}
           {item.kind === "lesson" && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={comments} disabled={disabled} onChange={(e) => setComments(e.target.checked)} /> Comentarios
