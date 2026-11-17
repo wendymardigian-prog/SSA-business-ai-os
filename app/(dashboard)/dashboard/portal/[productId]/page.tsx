@@ -76,17 +76,24 @@ export default async function PortalProgramPage({ params, searchParams }: { para
       .eq("product_id", productId)
       .eq("workspace_id", workspace.id);
     const ids = ((items ?? []) as Array<{ id: string }>).map((i) => i.id);
-    const { data: kb } = ids.length ? await supabase.from("knowledge_base").select("program_item_id").in("program_item_id" as never, ids as never) : { data: [] };
-    const withTranscript = new Set(((kb ?? []) as unknown as Array<{ program_item_id: string | null }>).map((k) => k.program_item_id));
+    const { data: kb } = ids.length
+      ? await supabase.from("knowledge_base").select("program_item_id, status, chunk_count, indexed_at, updated_at").in("program_item_id" as never, ids as never).is("deleted_at", null)
+      : { data: [] };
+    const transcriptOf = new Map(
+      ((kb ?? []) as unknown as Array<{ program_item_id: string | null; status: string; chunk_count: number | null; indexed_at: string | null; updated_at: string | null }>).map((k) => [
+        k.program_item_id,
+        { status: k.status, chunks: k.chunk_count, at: k.indexed_at ?? k.updated_at },
+      ]),
+    );
     // Los formularios de las evaluaciones y actividades (no aparecen en Formularios): con el cliente de servicio,
     // del negocio de la sesión, después del permiso de la página.
     const formIds = ((items ?? []) as Array<{ form_id?: string | null }>).map((i) => i.form_id).filter((x): x is string => !!x);
     const { data: forms } = formIds.length ? await (await createServiceClient()).from("forms").select("id, name, draft_definition").in("id", formIds).eq("workspace_id", workspace.id) : { data: [] };
     const formById = new Map(((forms ?? []) as Array<{ id: string; name: string; draft_definition: Record<string, unknown> }>).map((f) => [f.id, f]));
-    const rows = ((items ?? []) as unknown as Array<Omit<ContentRow, "hasTranscript"> & { form_id?: string | null; points?: PortalFormInitial["points"] }>).map((r) => {
+    const rows = ((items ?? []) as unknown as Array<Omit<ContentRow, "hasTranscript" | "transcript"> & { form_id?: string | null; points?: PortalFormInitial["points"] }>).map((r) => {
       const f = r.form_id ? formById.get(r.form_id) : null;
       const d = (f?.draft_definition ?? {}) as { intro?: string; fields?: PortalFormInitial["fields"]; quiz?: PortalFormInitial["quiz"]; grading?: PortalFormInitial["grading"]; submission?: PortalFormInitial["submission"] };
-      return { ...r, hasTranscript: withTranscript.has(r.id), portalForm: f ? { name: f.name, intro: d.intro ?? "", fields: d.fields ?? [], quiz: d.quiz ?? {}, grading: d.grading ?? { enabled: false }, submission: d.submission, points: r.points ?? null } : null };
+      return { ...r, hasTranscript: transcriptOf.has(r.id), transcript: transcriptOf.get(r.id) ?? null, portalForm: f ? { name: f.name, intro: d.intro ?? "", fields: d.fields ?? [], quiz: d.quiz ?? {}, grading: d.grading ?? { enabled: false }, submission: d.submission, points: r.points ?? null } : null };
     });
     const counts = await svcRpc<{ by_item?: Record<string, number> }>(supabase, "community_item_counts", { p_product_id: productId });
     // F50: los otros programas del negocio (productos con portal), para «Copiar a otro programa».
