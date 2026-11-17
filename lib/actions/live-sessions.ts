@@ -10,6 +10,7 @@ import type { DateString, WallTime } from "@/lib/scheduling/types";
 import { liveDateIssues, liveSessionIssues, liveSessionPayload, type LiveSessionInput } from "@/lib/program/live-sessions";
 import { addToPortalPlan, callTranscriptToVtt, type AddToPortalChoice, type CallForPortal } from "@/lib/program/add-to-portal";
 import { saveLessonTranscriptCore } from "@/lib/program/transcript-store";
+import { videoMeta } from "@/lib/program/video-meta";
 import { sanitizeSearch } from "@/lib/url-params";
 
 /**
@@ -197,7 +198,10 @@ export async function addRecordingToPortal(callId: string, choice: AddToPortalCh
       if (!r.ok) return r;
       itemId = r.data;
     } else if (step.op === "update_lesson") {
-      const r = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: itemId, p: step.patch });
+      // Loom: la miniatura y la duración reales (oEmbed), como al guardar la clase desde el editor.
+      const meta = await videoMeta(typeof step.patch.video_embed_url === "string" ? step.patch.video_embed_url : null);
+      const patch = { ...step.patch, ...(meta?.thumbnailUrl ? { thumbnail_url: meta.thumbnailUrl } : {}), ...(meta?.durationSeconds ? { duration_seconds: meta.durationSeconds } : {}) };
+      const r = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: itemId, p: patch });
       if (!r.ok) return r;
     } else if (step.op === "activate_lesson") {
       const r = await svcRpc<number>(ctx.supabase, "program_set_status", { p_item_id: itemId, p_status: "active", p_children: false });
