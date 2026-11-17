@@ -86,7 +86,8 @@
       "expected": {
         "ok": true,
         "provider": "loom",
-        "embedUrl": "https://www.loom.com/embed/0123456789abcdef0123456789abcdef"
+        "embedUrl": "https://www.loom.com/embed/0123456789abcdef0123456789abcdef",
+        "thumbnailUrl": null
       }
     },
     {

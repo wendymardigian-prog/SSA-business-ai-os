@@ -6,6 +6,7 @@ import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { svcRpc, svcSchema, type SvcResult } from "@/lib/services/db";
 import { normalizeVideoUrl } from "@/lib/program/video-url";
+import { videoMeta } from "@/lib/program/video-meta";
 import { isFileOfSubmission, SIGNED_URL_SECONDS } from "@/lib/forms/files";
 import { UPLOADS_BUCKET } from "@/lib/forms/server-ports";
 import { unlockRuleProblems, type UnlockRule } from "@/lib/program/unlock";
@@ -54,6 +55,10 @@ export async function updateProgramItem(productId: string, itemId: string, patch
       if (!v.ok) return fail(v.error);
       warning = v.warning;
       Object.assign(p, { video_url: url, video_embed_url: v.embedUrl, thumbnail_url: v.thumbnailUrl });
+      // Loom: la miniatura y la duración reales (oEmbed). La duración solo si no vino escrita en el mismo cambio.
+      const meta = await videoMeta(v.embedUrl);
+      if (meta?.thumbnailUrl) p.thumbnail_url = meta.thumbnailUrl;
+      if (meta?.durationSeconds && !("duration_seconds" in patch)) p.duration_seconds = meta.durationSeconds;
     }
   }
   if ("unlock_rule" in patch) {

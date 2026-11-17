@@ -41,7 +41,8 @@ export function normalizeVideoUrl(raw: string): VideoUrlResult {
   if (host === "loom.com") {
     const m = u.pathname.match(/^\/(?:share|embed)\/([0-9a-f]{20,40})/);
     if (!m) return { ok: false, error: "No encontré el video en ese link de Loom" };
-    return { ok: true, provider: "loom", embedUrl: `https://www.loom.com/embed/${m[1]}`, thumbnailUrl: `https://cdn.loom.com/sessions/thumbnails/${m[1]}-00001.jpg`, warning: null };
+    // La miniatura de Loom no se puede armar desde el id (la de «-00001.jpg» da 403): la trae `videoMeta` (oEmbed).
+    return { ok: true, provider: "loom", embedUrl: `https://www.loom.com/embed/${m[1]}`, thumbnailUrl: null, warning: null };
   }
   if (host === "drive.google.com") {
     if (u.pathname.startsWith("/drive/folders/") || u.pathname.startsWith("/drive/u/")) return { ok: false, error: "Esto es una carpeta de Drive: pegá el link de un archivo de video" };
@@ -55,4 +56,23 @@ export function normalizeVideoUrl(raw: string): VideoUrlResult {
     return { ok: true, provider: "fathom", embedUrl: null, thumbnailUrl: null, warning: "Fathom no deja reproducir su video dentro de otra página: el portal muestra el botón «Ver la grabación»." };
   }
   return { ok: false, error: "Ese link no es de YouTube, Vimeo, Loom, Drive ni Fathom" };
+}
+
+/** El id de un video de Loom a partir del link para incrustar (`https://www.loom.com/embed/<id>`). */
+export function loomIdFromEmbed(embedUrl: string | null | undefined): string | null {
+  const m = /^https:\/\/www\.loom\.com\/embed\/([0-9a-f]{20,40})$/.exec(embedUrl ?? "");
+  return m ? m[1] : null;
+}
+
+/** La dirección del oEmbed de Loom para un id ya validado. */
+export function loomOembedUrl(id: string): string {
+  return `https://www.loom.com/v1/oembed?url=${encodeURIComponent(`https://www.loom.com/share/${id}`)}`;
+}
+
+/** Lo que sirve del oEmbed de Loom: la miniatura (solo de su CDN, por https) y la duración en segundos. */
+export function parseLoomOembed(body: unknown): { thumbnailUrl: string | null; durationSeconds: number | null } {
+  const o = (body && typeof body === "object" ? body : {}) as { thumbnail_url?: unknown; duration?: unknown };
+  const t = typeof o.thumbnail_url === "string" && /^https:\/\/cdn\.loom\.com\/[^\s"'<>]+$/.test(o.thumbnail_url) && o.thumbnail_url.length <= 500 ? o.thumbnail_url : null;
+  const d = typeof o.duration === "number" && Number.isFinite(o.duration) && o.duration > 0 && o.duration < 86_400 ? Math.round(o.duration) : null;
+  return { thumbnailUrl: t, durationSeconds: d };
 }
