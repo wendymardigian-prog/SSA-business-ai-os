@@ -28,7 +28,7 @@ export function svcSchema(client: unknown) {
 export function svcErrorMessage(error: { code?: string | null; message?: string | null } | null | undefined): string {
   if (!error) return "No se pudo hacer";
   const code = error.code ?? "";
-  if (/^(SV|AC|AF|PR|EV|CO|CE|CM|CA)\d{3}$/.test(code) && error.message) return error.message;
+  if (/^(SV|AC|AF|PR|EV|CO|CE|CM|CA|PO)\d{3}$/.test(code) && error.message) return error.message;
   if (code === "42501") return "No tenés permiso para hacer esto";
   return "No se pudo hacer. Probá de nuevo en un rato.";
 }
