@@ -55,6 +55,11 @@ const VariableChip = Node.create({
 export interface RichTextFormat {
   load: (value: string) => JSONContent;
   save: (doc: JSONContent) => string;
+  /**
+   * Un texto plano pegado (sin HTML en el portapapeles) que este formato sabe leer: devuelve el documento a meter, o
+   * null para pegarlo como siempre. La comunidad lo usa para que un Markdown copiado de Claude se pegue con formato.
+   */
+  pasteText?: (text: string) => JSONContent | null;
 }
 
 export interface RichTextEditorApi {
@@ -92,6 +97,7 @@ export function RichTextEditor({
   emoji?: boolean;
 }) {
   const lastEmitted = useRef<string>(value);
+  const editorRef = useRef<Editor | null>(null);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -119,6 +125,14 @@ export function RichTextEditor({
         class: "rich-text-body focus:outline-none",
         style: `min-height:${minHeight}px`,
       },
+      handlePaste: (_view, event) => {
+        const data = event.clipboardData;
+        if (!format?.pasteText || !data || data.getData("text/html")) return false;
+        const doc = format.pasteText(data.getData("text/plain"));
+        if (!doc?.content?.length || !editorRef.current) return false;
+        editorRef.current.chain().focus().insertContent(doc.content).run();
+        return true;
+      },
     },
     onUpdate: ({ editor: ed }) => {
       const next = format ? format.save(ed.getJSON()) : editorHtmlToBody(ed.getHTML());
@@ -135,6 +149,10 @@ export function RichTextEditor({
     lastEmitted.current = value;
     editor.commands.setContent(format ? format.load(value) : bodyToEditorHtml(value), { emitUpdate: false });
   }, [value, editor, format]);
+
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   useEffect(() => {
     editor?.setEditable(!disabled, false);

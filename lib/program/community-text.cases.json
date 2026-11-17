@@ -1,0 +1,73 @@
+{
+  "_comment": "Casos del texto de una publicación de la comunidad (lib/program/community-text.ts). El portal corre los mismos contra su copia: blocks = lo que se dibuja, videos = los embedUrl que van debajo del texto.",
+  "cases": [
+    {
+      "name": "texto plano de antes: un salto suelto queda en el mismo párrafo",
+      "body": "Hola a todos\nBienvenidos",
+      "blocks": [{ "type": "paragraph", "runs": [{ "text": "Hola a todos\nBienvenidos" }] }],
+      "videos": []
+    },
+    {
+      "name": "párrafos, título, negrita y cursiva",
+      "body": "## Tus primeros pasos\n\nEsto es **importante** y _esto_ también.",
+      "blocks": [
+        { "type": "heading", "level": 2, "runs": [{ "text": "Tus primeros pasos" }] },
+        { "type": "paragraph", "runs": [{ "text": "Esto es " }, { "text": "importante", "bold": true }, { "text": " y " }, { "text": "esto", "italic": true }, { "text": " también." }] }
+      ],
+      "videos": []
+    },
+    {
+      "name": "listas con viñetas y numeradas",
+      "body": "- uno\n- dos\n\n1. primero\n2. segundo",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [[{ "text": "uno" }], [{ "text": "dos" }]] },
+        { "type": "list", "ordered": true, "items": [[{ "text": "primero" }], [{ "text": "segundo" }]] }
+      ],
+      "videos": []
+    },
+    {
+      "name": "un link con texto",
+      "body": "Mirá [el portal](https://portal.ejemplo.com/inicio).",
+      "blocks": [{ "type": "paragraph", "runs": [{ "text": "Mirá " }, { "text": "el portal", "href": "https://portal.ejemplo.com/inicio" }, { "text": "." }] }],
+      "videos": []
+    },
+    {
+      "name": "un link suelto también es link, sin el punto final",
+      "body": "Entrá a https://portal.ejemplo.com/inicio.",
+      "blocks": [{ "type": "paragraph", "runs": [{ "text": "Entrá a " }, { "text": "https://portal.ejemplo.com/inicio", "href": "https://portal.ejemplo.com/inicio" }, { "text": "." }] }],
+      "videos": []
+    },
+    {
+      "name": "un javascript: nunca es link",
+      "body": "[click](javascript:alert(1))",
+      "blocks": [{ "type": "paragraph", "runs": [{ "text": "[click](javascript:alert(1))" }] }],
+      "videos": []
+    },
+    {
+      "name": "HTML queda como texto",
+      "body": "<script>alert(1)</script>",
+      "blocks": [{ "type": "paragraph", "runs": [{ "text": "<script>alert(1)</script>" }] }],
+      "videos": []
+    },
+    {
+      "name": "un video de YouTube suelto se ve debajo",
+      "body": "Miren esto https://youtu.be/dQw4w9WgXcQ",
+      "blocks": [{ "type": "paragraph", "runs": [{ "text": "Miren esto " }, { "text": "https://youtu.be/dQw4w9WgXcQ", "href": "https://youtu.be/dQw4w9WgXcQ" }] }],
+      "videos": ["https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"]
+    },
+    {
+      "name": "Loom con texto, Fathom compartido, y el mismo YouTube dos veces una sola vez",
+      "body": "[La clase](https://www.loom.com/share/0123456789abcdef0123456789abcdef)\n\nhttps://fathom.video/share/AbCdEfGh12345678\n\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ y https://youtu.be/dQw4w9WgXcQ",
+      "videos": [
+        "https://www.loom.com/embed/0123456789abcdef0123456789abcdef",
+        "https://fathom.video/embed/AbCdEfGh12345678",
+        "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"
+      ]
+    },
+    {
+      "name": "un Fathom privado (calls) y una web común no tienen reproductor",
+      "body": "https://fathom.video/calls/123456 https://ejemplo.com/video",
+      "videos": []
+    }
+  ]
+}
