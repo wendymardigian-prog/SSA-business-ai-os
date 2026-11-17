@@ -47,16 +47,20 @@ Actualizado: 17/11/2026. Detalle técnico de cada migración en `docs/PROGRESS-p
 
 ## Lo que falta
 
+**Hecho en la rama `feat/proyectos-c6` del portal (pendiente de mergear a `main`)**
+- La tarjeta **Análisis con IA** en los pasos con análisis: créditos del mes, botón Analizar, resultado con la versión analizada, «Analizar de nuevo», aviso de análisis viejo y «Copiar como pedido de mejora».
+- **Subir un Word o un PDF** a un paso (el texto se lee en el panel y se guarda como versión; el original queda al lado).
+- **Descargar un documento como PDF** (abre la impresión del navegador).
+- **«Publicarlo en Victorias»** al reportar un pago (sin monto, salvo que la persona lo muestre en la Sala de la fama).
+- «Reportar un pago» de la **Sala de la fama** abre el modal real (antes mostraba «llega con Mis proyectos»).
+
 **Para terminar Mis proyectos**
-- **Análisis con IA en la pantalla del portal.** La base (00398) y el panel (`/api/portal/builder-analyze`) ya lo hacen: créditos del mismo cupo del tutor, una línea de resumen, criterios Bien / A mejorar / Falta, las 3 cosas más importantes y las preguntas de seguimiento. Falta la tarjeta en el portal, que hoy dice "llega muy pronto": el botón "Analizar", "Copiar como pedido de mejora" y el aviso cuando el análisis es de una versión vieja. Las acciones del portal ya están (`analyzeStep`, `getCredits`).
-- **Subir un Word o un PDF a un paso.** El panel ya extrae el texto (`/api/portal/doc-extract`) y el portal ya tiene las acciones (`startDocUpload`, `saveDocFromFile`). Falta conectarlas al botón "Subir archivo"; hoy acepta solo .md, .txt, .vtt y .srt.
-- **Descargar un documento en PDF.** Hoy se descarga en Markdown.
-- **"Publicarlo en Victorias"** al reportar un pago.
-- **El uso del revisor separado del tutor** en la pestaña Asistente IA del programa. Hoy se descuenta bien del cupo, pero no se muestra por separado.
+- **El uso del revisor separado del tutor** en la pestaña Asistente IA del programa. Hoy se descuenta bien del cupo, pero no se muestra por separado (pide una migración nueva).
+- **Mirar todas estas pantallas funcionando.** Se probaron con tests y compilan, pero no se vieron en pantalla con la extensión prendida.
 
 **Para abrirlo a estudiantes**
 - **Publicar el portal en Railway**: crear el servicio con sus variables (`PORTAL_DATABASE_URL`, `PORTAL_SHARED_SECRET`, `PANEL_INTERNAL_URL`), apuntar `scalingsystems.academy` y cargar `PORTAL_SHARED_SECRET` en el panel. Antes, cambiar la contraseña de `portal_app_login`, porque quedó visible en una captura.
-- **La prueba completa con el estudiante de prueba**: proyecto real y de práctica, pasos, prompt, versiones, pagos con y sin comprobante, verificar desde el panel, Sala de la fama y acceso vencido.
+- **La prueba completa con el estudiante de prueba**: proyecto real y de práctica, pasos, prompt, versiones, análisis, Word/PDF, pagos con y sin comprobante, verificar desde el panel, Sala de la fama y acceso vencido.
 
 ## Qué mirar al probar
 
