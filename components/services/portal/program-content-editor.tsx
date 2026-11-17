@@ -9,6 +9,7 @@ import { copyProgramItemToProduct, createProgramItem, reorderProgramItems, saveL
 import { buildTree, flattenTree, inactiveDescendants, reorderTree, type ProgramRow, type TreeNode } from "@/lib/program/tree";
 import { LESSON_TYPE_LABELS } from "@/lib/program/lesson";
 import { transcriptFormat } from "@/lib/program/transcript";
+import { transcriptBadge, type TranscriptInfo } from "@/lib/program/transcript-status";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 import { PortalFormEditor, type PortalFormInitial } from "./portal-form-editor";
@@ -29,6 +30,8 @@ export interface ContentRow extends ProgramRow {
   html_content: string | null;
   document_path: string | null;
   hasTranscript: boolean;
+  /** El estado de la transcripción en Conocimiento (null si no tiene). */
+  transcript?: TranscriptInfo | null;
 }
 
 const STATUS_LABEL = { active: "Activo", inactive: "Inactivo", archived: "Archivado" } as const;
@@ -142,6 +145,7 @@ export function ProgramContentEditor({
                   {UNLOCK_LABEL[(n.unlock_rule?.type as string) ?? "open"] ? ` · ${UNLOCK_LABEL[(n.unlock_rule?.type as string) ?? "open"]}` : ""}
                   {n.hiddenByParent ? " · Oculto porque el módulo está inactivo" : ""}
                   {n.kind === "lesson" && n.lesson_type === "video" && !byId.get(n.id)?.hasTranscript ? " · Sin transcripción" : ""}
+                  {n.kind === "lesson" && byId.get(n.id)?.transcript && byId.get(n.id)?.transcript?.status !== "ready" ? " · Transcripción sin indexar" : ""}
                 </span>
               </button>
               {(commentCounts[n.id] ?? 0) > 0 && (
@@ -417,8 +421,29 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
 
         {item.kind === "lesson" && item.lesson_type === "video" && canManage && (
           <fieldset className="space-y-2 rounded-lg border border-border p-3">
-            <legend className="px-1 text-xs font-semibold">Transcripción {item.hasTranscript ? "(cargada)" : "(falta)"}</legend>
-            <p className="text-xs text-muted-foreground">El tutor solo usa las clases con transcripción. Con .vtt o .srt se guarda el segundo de cada parte.</p>
+            <legend className="px-1 text-xs font-semibold">Transcripción</legend>
+            {(() => {
+              const b = transcriptBadge(item.transcript ?? (item.hasTranscript ? { status: "ready", chunks: null, at: null } : null));
+              return (
+                <div
+                  role="status"
+                  className={cn(
+                    "flex items-start gap-2 rounded-lg px-3 py-2 text-xs",
+                    b.tone === "ok" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                    b.tone === "warn" && "bg-warn/15 text-foreground",
+                    b.tone === "missing" && "bg-muted text-muted-foreground",
+                  )}
+                >
+                  <span className="font-semibold">{b.tone === "ok" ? "✓ " : ""}{b.label}</span>
+                  <span>{b.detail}</span>
+                </div>
+              );
+            })()}
+            <p className="text-xs text-muted-foreground">
+              {item.hasTranscript
+                ? "El estudiante no la ve: la usa el tutor para responder y citar el minuto. Para reemplazarla, subí otro archivo o pegá el texto nuevo."
+                : "El tutor solo usa las clases con transcripción. Con .vtt o .srt se guarda el segundo de cada parte."}
+            </p>
             <input
               type="file"
               accept=".vtt,.srt,.txt,text/plain,text/vtt"
@@ -431,9 +456,9 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
                 saveTranscript(await f.text(), fmt);
               }}
             />
-            <textarea className={fieldInput} rows={4} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="O pegá el texto acá" />
+            <textarea className={fieldInput} rows={4} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder={item.hasTranscript ? "Pegá acá el texto nuevo para reemplazarla" : "O pegá el texto acá"} />
             <button type="button" onClick={() => saveTranscript(transcript, "txt")} disabled={pending || !transcript.trim()} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-60">
-              Guardar transcripción
+              {item.hasTranscript ? "Reemplazar transcripción" : "Guardar transcripción"}
             </button>
           </fieldset>
         )}
