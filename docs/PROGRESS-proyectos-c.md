@@ -9,7 +9,7 @@ La extensión está **apagada** hasta que la plataforma prenda `workspaces.porta
 | Etapa | Qué | Estado |
 |---|---|---|
 | C1 | SX1 (00395): esquema, tablas, Sala de la fama, buckets, revisor, secciones con la extensión | **Aplicada** (17/11) |
-| C2 | Panel: Proyectos y facturación (Sala de la fama, Pagos reportados, Proyectos, Mesa de trabajo, Ideas), ficha › Proyectos e ingresos, KPI | Base aplicada (00396); pantallas en curso |
+| C2 | Panel: Proyectos y facturación (Sala de la fama, Pagos reportados, Proyectos, Mesa de trabajo, Ideas), ficha › Proyectos e ingresos, KPI | **Hecha** (00396 + pantallas). Falta: prender el revisor al prender Mis proyectos (va en la migración de C3) |
 | C3 | Funciones del portal: proyectos, pasos y versiones, armado del prompt, pagos y comprobantes | Pendiente |
 | C4 | Pantallas del portal (P7) desde el prototipo | Pendiente |
 | C5 | Análisis con IA (revisor), mismo cupo de créditos que el tutor | Pendiente (falta `investigacion-proyectos-metodo-builder.md` v2) |
