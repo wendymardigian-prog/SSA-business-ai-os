@@ -514,8 +514,8 @@ function CopyToProgram({ productId, itemId, programs, onDone, onError }: { produ
 
 /**
  * «Elegir un Fathom» (F46): las grabaciones de Fathom del equipo, con buscador. Guarda `source_call_id`, el link
- * compartido y la transcripción. Fathom no deja incrustar su video: el portal muestra la vista previa con «Ver la
- * grabación». Sin Fathom conectado, lleva a Integraciones.
+ * compartido y la transcripción. Con link compartido, el video se ve dentro del portal (`/embed/`); si no, el portal
+ * muestra «Ver la grabación». Sin Fathom conectado, lleva a Integraciones.
  */
 function FathomPicker({ productId, itemId, linked, onPicked }: { productId: string; itemId: string; linked: boolean; onPicked: (videoUrl: string, warning: string | null) => void }) {
   const [open, setOpen] = useState(false);
@@ -550,7 +550,7 @@ function FathomPicker({ productId, itemId, linked, onPicked }: { productId: stri
         <button type="button" disabled={pending} onClick={() => { setOpen(!open); if (!open) load(""); }} className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent">
           Elegir un Fathom
         </button>
-        {linked && <span className="text-muted-foreground">Usa una grabación de Fathom: en el portal se ve la vista previa con «Ver la grabación».</span>}
+        {linked && <span className="text-muted-foreground">Usa una grabación de Fathom: con link compartido se ve dentro del portal.</span>}
       </div>
       {open && (
         <div className="space-y-2 rounded-lg border border-border p-2">

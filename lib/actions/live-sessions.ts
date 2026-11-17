@@ -11,6 +11,7 @@ import { liveDateIssues, liveSessionIssues, liveSessionPayload, type LiveSession
 import { addToPortalPlan, callTranscriptToVtt, type AddToPortalChoice, type CallForPortal } from "@/lib/program/add-to-portal";
 import { saveLessonTranscriptCore } from "@/lib/program/transcript-store";
 import { videoMeta } from "@/lib/program/video-meta";
+import { normalizeVideoUrl } from "@/lib/program/video-url";
 import { sanitizeSearch } from "@/lib/url-params";
 
 /**
@@ -304,8 +305,8 @@ export async function listFathomForLesson(query: string): Promise<SvcResult<{ co
 }
 
 /**
- * Guarda la grabación elegida en la clase: `source_call_id`, el link compartido de Fathom como video (Fathom no deja
- * incrustar: el portal muestra la vista previa con «Ver la grabación») y la transcripción en Conocimiento. Sin link
+ * Guarda la grabación elegida en la clase: `source_call_id`, el link compartido de Fathom como video (se incrusta por
+ * `/embed/`; si no se puede, el portal muestra «Ver la grabación») y la transcripción en Conocimiento. Sin link
  * compartido, guarda igual y avisa que hay que compartirla como «Cualquiera con el link».
  */
 export async function pickFathomForLesson(productId: string, itemId: string, callId: string): Promise<SvcResult<{ warning: string | null; videoUrl: string }>> {
@@ -314,7 +315,9 @@ export async function pickFathomForLesson(productId: string, itemId: string, cal
   const { data: c } = await ctx.supabase.from("calls").select("id, title, recorded_at, transcript, share_url, fathom_url").eq("id", callId).eq("workspace_id", ctx.workspace.id).eq("source", "fathom").maybeSingle();
   if (!c) return fail("No encontré esa grabación");
   const call = c as unknown as CallForPortal & { share_url: string | null; fathom_url: string | null };
-  const r = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: itemId, p: { source_call_id: call.id, video_url: call.share_url ?? "", video_embed_url: "" } });
+  const v = call.share_url ? normalizeVideoUrl(call.share_url) : null;
+  const embed = v && v.ok ? v.embedUrl ?? "" : "";
+  const r = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: itemId, p: { source_call_id: call.id, video_url: call.share_url ?? "", video_embed_url: embed } });
   if (!r.ok) return r;
   const vtt = callTranscriptToVtt(call.transcript ?? []);
   if (vtt) await saveLessonTranscriptCore(ctx, productId, itemId, vtt, "vtt").catch((e) => console.error("[fathom-clase] transcripcion", e instanceof Error ? e.message : "error"));

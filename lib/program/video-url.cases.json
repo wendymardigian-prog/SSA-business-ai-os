@@ -117,8 +117,18 @@
       }
     },
     {
-      "name": "Fathom: se avisa",
+      "name": "Fathom compartido → se incrusta por /embed/",
       "url": "https://fathom.video/share/AbCdEf123",
+      "expected": {
+        "ok": true,
+        "provider": "fathom",
+        "embedUrl": "https://fathom.video/embed/AbCdEf123",
+        "warning": null
+      }
+    },
+    {
+      "name": "Fathom privado (/calls/): no se incrusta, se avisa",
+      "url": "https://fathom.video/calls/123456789",
       "expected": {
         "ok": true,
         "provider": "fathom",
