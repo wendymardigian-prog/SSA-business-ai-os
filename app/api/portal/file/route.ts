@@ -32,7 +32,10 @@ export async function POST(request: NextRequest) {
   if (typeof input.session !== "string" || typeof input.kind !== "string") return NextResponse.json({ ok: false }, { status: 400 });
 
   const service = await createServiceClient();
-  const grant = await svcRpc<{ bucket: string; path: string; upload: boolean }>(service, "portal_file_grant", {
+  // Corrida C: los documentos de Mis proyectos y los comprobantes de Facturación tienen su propia función (00397).
+  const projectKind = ["project_doc_upload", "project_doc", "revenue_receipt_upload", "revenue_receipt"].includes(input.kind); // @plantilla-quitar(proyectos)
+  // @plantilla-sin(proyectos): const projectKind = false;
+  const grant = await svcRpc<{ bucket: string; path: string; upload: boolean }>(service, projectKind ? "portal_project_file_grant" : "portal_file_grant", {
     p_session: input.session,
     p_kind: input.kind,
     p_item_id: typeof input.item_id === "string" ? input.item_id : null,

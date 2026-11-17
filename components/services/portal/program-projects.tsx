@@ -380,6 +380,8 @@ function Workbench({ productId, initial, rev: initialRev, canEdit }: { productId
   const [rev, setRev] = useState(initialRev);
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [steps, setSteps] = useState<Step[]>(initial.steps);
+  // Las claves guardadas no cambian: los proyectos de los estudiantes guardan lo suyo con esa clave.
+  const savedKeys = new Set(initial.steps.map((s) => s.key));
   const [open, setOpen] = useState<number | null>(initial.steps.length ? 0 : null);
   const rangeText = (size: Range["size"]) => {
     const r = initial.budget_ranges.find((x) => x.size === size);
@@ -440,13 +442,14 @@ function Workbench({ productId, initial, rev: initialRev, canEdit }: { productId
           ) : null}
         </div>
         <p className="text-xs text-muted-foreground">
-          Cada paso arma un prompt con sus instrucciones, los datos del proyecto y los documentos de los pasos que usa. El estudiante lo usa en su IA y pega el
+          Las claves proyecto, brief1, guion, llamada, brief2, invest, propuesta, diseno, roadmap y constr activan su pantalla propia en el portal (datos del
+          proyecto, campos, transcripción, links, roadmap y construcción). Cada paso arma un prompt con sus instrucciones, los datos del proyecto y los documentos de los pasos que usa. El estudiante lo usa en su IA y pega el
           resultado. Variables: {"{{proyecto}}"}, {"{{brief_inicial}}"}, {"{{transcripcion}}"}, {"{{rango_presupuesto}}"}, {"{{montos}}"}, {"{{parte}}"}, {"{{modo}}"}.
         </p>
         {!steps.length ? <p className={`${card} p-6 text-center text-sm text-muted-foreground`}>Todavía no hay pasos. Sumá el primero.</p> : null}
         <ol className="space-y-2">
           {steps.map((s, i) => (
-            <li key={s.key} className={card}>
+            <li key={i} className={card}>
               <div className="flex items-center gap-2 px-4 py-2">
                 <span className="w-6 text-xs tabular-nums text-muted-foreground">{i}</span>
                 <button type="button" className="flex-1 text-left text-sm font-medium" aria-expanded={open === i} onClick={() => setOpen(open === i ? null : i)}>
@@ -477,8 +480,17 @@ function Workbench({ productId, initial, rev: initialRev, canEdit }: { productId
                       <input className={field} maxLength={80} value={s.name} onChange={(e) => upd(i, { name: e.target.value })} />
                     </label>
                     <label className="block text-sm">
-                      <span className="text-xs text-muted-foreground">Clave (no cambia)</span>
-                      <input className={field} value={s.key} readOnly />
+                      <span className="text-xs text-muted-foreground">{savedKeys.has(s.key) ? "Clave (no cambia)" : "Clave (solo antes de guardar)"}</span>
+                      <input
+                        className={field}
+                        value={s.key}
+                        readOnly={savedKeys.has(s.key)}
+                        maxLength={40}
+                        onChange={(e) => {
+                          const k = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "");
+                          if (k && !steps.some((x, j) => j !== i && x.key === k)) upd(i, { key: k });
+                        }}
+                      />
                     </label>
                   </div>
                   <label className="block text-sm">

@@ -341,6 +341,13 @@ export async function saveProgramSettings(productId: string, patch: Record<strin
     const t = await svcRpc<string | null>(ctx.supabase, "program_tutor_set_enabled", { p_product_id: productId, p_enabled: sections.assistant });
     if (!t.ok) console.error("[servicios] no pude prender o apagar el tutor:", t.error.message);
   }
+  // @plantilla-desde(proyectos)
+  // Corrida C (F119): prender Mis proyectos crea (o prende) el revisor de proyectos del programa; apagarlo lo deja inactivo.
+  if (res.ok && (res.data as { status?: string } | null)?.status === "ok" && sections && typeof sections.projects === "boolean") {
+    const rv = await svcRpc<string | null>(ctx.supabase, "projects_set_enabled", { p_product_id: productId, p_enabled: sections.projects });
+    if (!rv.ok) console.error("[proyectos] no pude prender o apagar el revisor:", rv.error.message);
+  }
+  // @plantilla-hasta(proyectos)
   return res;
 }
 
