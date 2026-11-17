@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "node scripts/build-embed.mjs && next build",
+    "build": "node scripts/build-embed.mjs && NODE_OPTIONS=--max-old-space-size=6144 next build",
     "build:embed": "node scripts/build-embed.mjs",
     "start": "next start",
     "lint": "eslint .",
