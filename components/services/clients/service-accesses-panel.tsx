@@ -4,7 +4,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { extendAccess, giveAccessNow, grantExtraAccess, revokeAccess } from "@/lib/actions/portal-admin";
-import { AVAILABLE_SECTIONS, SECTION_LABELS } from "@/lib/services/availability";
+import { AVAILABLE_SECTIONS, SECTION_LABELS, type PortalSection } from "@/lib/services/availability";
 import type { AccessViewRow } from "@/lib/portal-admin/accesses-view";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
@@ -30,11 +30,14 @@ export function ServiceAccessesPanel({
   rows,
   pending,
   canManage,
+  offered = AVAILABLE_SECTIONS,
 }: {
   serviceId: string;
   rows: AccessViewRow[];
   pending: Array<{ section: string; sectionLabel: string; opensLabel: string }>;
   canManage: boolean;
+  /** Las secciones que se ofrecen (con la extensión de proyectos suman `fame` y `projects`). */
+  offered?: readonly PortalSection[];
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -168,7 +171,7 @@ export function ServiceAccessesPanel({
               <label className="block text-xs text-muted-foreground">
                 Sección
                 <select className={fieldInput} value={section} onChange={(e) => setSection(e.target.value)}>
-                  {AVAILABLE_SECTIONS.map((s) => (
+                  {offered.map((s) => (
                     <option key={s} value={s}>
                       {SECTION_LABELS[s]}
                     </option>

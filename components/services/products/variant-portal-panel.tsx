@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Save } from "lucide-react";
 import { saveProgramSettings, saveVariantPortal } from "@/lib/actions/services";
 import { validateVariantPortalSettings, type SectionRule } from "@/lib/portal-admin/settings";
-import type { PortalSection } from "@/lib/services/availability";
+import { AVAILABLE_SECTIONS, EXTENSION_SECTIONS, type PortalSection } from "@/lib/services/availability";
 import { portalRows, readVariantPortal, setEnabled, setIncluded, setRule } from "@/lib/services/screens/variant-portal-form";
 import { ActionError } from "@/components/contacts/ui";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -31,6 +31,7 @@ export function VariantPortalPanel({
   programRev,
   canSections,
   canRules,
+  offered = AVAILABLE_SECTIONS,
 }: {
   variantId: string;
   productId: string;
@@ -41,6 +42,8 @@ export function VariantPortalPanel({
   programRev: number;
   canSections: boolean;
   canRules: boolean;
+  /** Las secciones que se ofrecen (con la extensión de proyectos suman `fame` y `projects`). */
+  offered?: readonly PortalSection[];
 }) {
   const router = useRouter();
   const [s, setS] = useState(() => readVariantPortal(settings));
@@ -50,8 +53,8 @@ export function VariantPortalPanel({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
-  const rows = portalRows(s, programSettings);
-  const problems = validateVariantPortalSettings(s);
+  const rows = portalRows(s, programSettings, offered);
+  const problems = validateVariantPortalSettings(s, { extensions: { projects: offered.some((x) => (EXTENSION_SECTIONS as readonly string[]).includes(x)) } });
   const change = (next: typeof s) => {
     setS(next);
     setDirty(true);

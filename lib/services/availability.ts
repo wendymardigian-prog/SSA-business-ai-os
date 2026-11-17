@@ -9,13 +9,20 @@
 
 /** Las secciones del portal que A1 ofrece, en el orden de la pantalla. */
 export const AVAILABLE_SECTIONS = ["program", "calendar", "challenge", "certificate", "assistant", "community", "affiliates"] as const;
-export type PortalSection = (typeof AVAILABLE_SECTIONS)[number];
 
 /** Las secciones de la extensión de proyectos (Corrida C): se ofrecen solo con `extensions.projects` del negocio. */
 export const EXTENSION_SECTIONS = ["fame", "projects"] as const;
 
 /** Todas las secciones que acepta la base (CHECK de portal_access.section), incluidas las de la extension. */
 export const ALL_SECTIONS = [...AVAILABLE_SECTIONS, ...EXTENSION_SECTIONS] as const;
+/** Una sección del portal: las de A1 y, con la extensión de proyectos, `fame` y `projects`. */
+export type PortalSection = (typeof ALL_SECTIONS)[number];
+
+/** Las secciones que se ofrecen en este negocio: las de A1, más las de la extensión si está prendida. */
+export function offeredSections(workspace: { portal_settings?: unknown } | null | undefined): readonly PortalSection[] {
+  const ps = (workspace?.portal_settings ?? {}) as { extensions?: { projects?: unknown } };
+  return ps.extensions?.projects === true ? ALL_SECTIONS : AVAILABLE_SECTIONS;
+}
 
 export const SECTION_LABELS: Record<(typeof ALL_SECTIONS)[number], string> = {
   program: "Programa",

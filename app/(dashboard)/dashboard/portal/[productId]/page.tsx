@@ -27,6 +27,9 @@ import { MonthNav } from "@/components/ui/month-nav";
 import { intentHref } from "@/lib/ui/url-intent";
 import { communityQuickOptions, communityQuickValue } from "@/lib/program/community";
 import { shiftMonth } from "@/lib/program/calendar-view";
+// @plantilla-desde(proyectos)
+import { ProgramProjects, type FameRow, type FameSettings, type IdeaRow, type PaymentRow, type ProjectRow, type ProjectsView } from "@/components/services/portal/program-projects";
+// @plantilla-hasta(proyectos)
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +42,7 @@ const PROGRAM_TABS = [
   { key: "asistente", label: "Asistente IA" },
   { key: "afiliados", label: "Afiliados" },
   { key: "puntos", label: "Puntos" },
+  { key: "proyectos", label: "Proyectos y facturación" }, // @plantilla-quitar(proyectos)
 ] as const;
 
 /**
@@ -46,7 +50,7 @@ const PROGRAM_TABS = [
  * F106) y Puntos (F129, se ve con `portal.points` o `portal.view`), como pestañas en la barra superior. Los ajustes del programa (secciones, términos, variantes) son el
  * engranaje de la barra (`/dashboard/portal/<id>/ajustes`); el link viejo `?tab=ajustes` lleva ahí.
  */
-export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string; filtro?: string; espacio?: string; clase?: string }> }) {
+export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string; filtro?: string; espacio?: string; clase?: string; periodo?: string }> }) {
   const [{ productId }, sp] = await Promise.all([params, searchParams]);
   if (!UUID.test(productId)) notFound();
   if (sp.tab === "ajustes") redirect(`/dashboard/portal/${productId}/ajustes`);
@@ -57,7 +61,9 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   if (!loaded) notFound();
   const { program: p, variants: vs } = loaded;
   const canSeePoints = ctx.can("portal.points") || ctx.can("portal.view");
-  const tabs = PROGRAM_TABS.filter((t) => t.key !== "puntos" || canSeePoints);
+  // Corrida C: «Proyectos y facturación» solo con la extensión de proyectos prendida en el negocio (la cambia la plataforma).
+  const projectsOn = (((workspace as { portal_settings?: { extensions?: { projects?: boolean } } | null }).portal_settings ?? {}).extensions?.projects ?? false) === true;
+  const tabs = PROGRAM_TABS.filter((t) => (t.key !== "puntos" || canSeePoints) && ((t.key as string) !== "proyectos" || projectsOn));
   const tab = tabs.find((t) => t.key === sp.tab)?.key ?? "contenido";
   const ps = (p.portal_settings ?? {}) as { sections?: Record<string, boolean>; affiliates?: { visible_link_keys?: string[] } };
   const canEdit = ctx.can("portal.sections");
@@ -183,6 +189,40 @@ export default async function PortalProgramPage({ params, searchParams }: { para
     );
   }
 
+  // @plantilla-desde(proyectos)
+  // Proyectos y facturación (Corrida C, F80, F118, F120): cada vista lee con su función `projects_admin_*`.
+  async function projectsTab() {
+    const views: ProjectsView[] = ["pagos", "proyectos", "fama", "mesa", "ideas"];
+    const view = (views as string[]).includes(sp.vista ?? "") ? (sp.vista as ProjectsView) : "pagos";
+    const filter = sp.filtro === "unverified" || sp.filtro === "no_receipt" ? sp.filtro : "all";
+    const period = sp.periodo === "month" ? "month" : "all";
+    const none = Promise.resolve({ ok: false as const, error: { code: null, message: "", detail: null } });
+    const [payments, projects, fame, ideas] = await Promise.all([
+      view === "pagos" ? svcRpc<{ counts: { unverified: number; no_receipt: number }; rows: PaymentRow[] }>(supabase, "projects_admin_payments", { p_product_id: productId, p_filter: filter, p_limit: 300 }) : none,
+      view === "proyectos" ? svcRpc<ProjectRow[]>(supabase, "projects_admin_projects", { p_product_id: productId }) : none,
+      view === "fama" ? svcRpc<FameRow[]>(supabase, "projects_admin_fame", { p_product_id: productId, p_period: period }) : none,
+      view === "ideas" && ctx.can("projects.templates") ? svcRpc<IdeaRow[]>(supabase, "projects_admin_ideas", { p_product_id: productId }) : none,
+    ]);
+    const settings = (p!.portal_settings ?? {}) as { fame?: FameSettings; projects?: { steps?: unknown[]; budget_ranges?: unknown[] } };
+    return (
+      <ProgramProjects
+        productId={productId}
+        view={view}
+        filter={filter}
+        period={period}
+        payments={payments.ok ? payments.data : null}
+        projects={projects.ok ? projects.data : null}
+        fame={fame.ok ? fame.data : null}
+        fameSettings={settings.fame ?? {}}
+        ideas={ideas.ok ? ideas.data : null}
+        workbench={{ steps: (settings.projects?.steps ?? []) as never, budget_ranges: (settings.projects?.budget_ranges ?? []) as never }}
+        rev={p!.portal_settings_rev ?? 0}
+        can={{ manageRevenue: ctx.can("student_revenue.manage"), fame: ctx.can("fame.manage"), templates: ctx.can("projects.templates") }}
+      />
+    );
+  }
+  // @plantilla-hasta(proyectos)
+
   // Lo sin contestar de la comunidad es el contador de su pestaña (lo mismo que cuenta «Por revisar»).
   const unanswered = ctx.can("community.view") ? await svcRpc<{ unanswered?: number }>(supabase, "community_item_counts", { p_product_id: productId }) : null;
   const unansweredCount = unanswered?.ok ? Number(unanswered.data?.unanswered ?? 0) || 0 : 0;
@@ -266,6 +306,8 @@ export default async function PortalProgramPage({ params, searchParams }: { para
             await assistantTab()
           ) : tab === "puntos" ? (
             await pointsTab()
+          ) : (tab as string) === "proyectos" ? ( // @plantilla-quitar(proyectos)
+            await projectsTab() // @plantilla-quitar(proyectos)
           ) : (
             <ProgramSettingsPanel
               productId={p.id}

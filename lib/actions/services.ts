@@ -325,7 +325,14 @@ export async function saveVariantPortal(variantId: string, settings: unknown, re
 export async function saveProgramSettings(productId: string, patch: Record<string, unknown>, rev: number): Promise<SvcResult<SaveResult>> {
   // La base pide la clave de CADA parte del parche (secciones, comunidad, asistente, puntos): esto solo deja pasar a quien
   // tiene alguna de ellas.
-  const ctx = await getAnyPermissionAction(["portal.sections", "portal.settings", "portal.points", "community.spaces", "tutor.manage"]);
+  const ctx = await getAnyPermissionAction([
+    "portal.sections",
+    "portal.settings",
+    "portal.points",
+    "community.spaces",
+    "tutor.manage",
+    "fame.manage", // @plantilla-quitar(proyectos)
+  ]);
   if (!ctx) return NOT_ALLOWED;
   const res = await svcRpc<SaveResult>(ctx.supabase, "portal_admin_save_program_settings", { p_product_id: productId, p_patch: patch, p_rev: rev });
   // F84: prender el Asistente IA del programa crea (o vuelve a prender) su tutor; apagarlo lo deja inactivo.

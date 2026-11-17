@@ -1,5 +1,6 @@
 // @plantilla-quitar(servicios)
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
+import { offeredSections } from "@/lib/services/availability";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { contactNames, loadService } from "@/lib/services/screens/load-services";
 import { todayIn } from "@/lib/services/screens/today";
@@ -180,6 +181,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
         rows={accessViewRows(accessRows, s.product_id, new Date().toISOString(), timeZone)}
         pending={variantPortal.enabled && s.status === "active" ? pendingSections(variantPortal.sections ?? [], programSections(prod?.portal_settings), accessRows, s.product_id) : []}
         canManage={ctx.can("services.access")}
+        offered={offeredSections(workspace as { portal_settings?: unknown })}
       />
       <p className="mt-3 text-xs text-muted-foreground">
         Resumen semanal por email:{" "}

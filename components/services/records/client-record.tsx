@@ -55,6 +55,13 @@ export async function ClientRecord({ ctx, contactId }: { ctx: Ctx; contactId: st
     firstSaleAt = ((sales ?? []) as Array<{ created_at: string }>)[0]?.created_at ?? null;
   }
 
+  // @plantilla-desde(proyectos)
+  // Corrida C (F81): «Facturación como builder», solo con la extensión prendida (la base vuelve a mirar el acceso).
+  const projectsOn = (((workspace as { portal_settings?: { extensions?: { projects?: boolean } } | null }).portal_settings ?? {}).extensions?.projects ?? false) === true;
+  const builder = projectsOn ? await svcRpc<{ total_cents: number } | null>(supabase, "projects_admin_contact_revenue", { p_contact_id: contactId }) : null;
+  const builderCents = builder?.ok && builder.data ? Number(builder.data.total_cents) : null;
+  // @plantilla-hasta(proyectos)
+
   let portalCard: React.ReactNode = null;
   if (hasPortal) {
     const [account, { host }] = await Promise.all([loadPortalAccount(supabase, workspace.id, contactId), loadPortalHost(service, workspace.id)]);
@@ -82,6 +89,7 @@ export async function ClientRecord({ ctx, contactId }: { ctx: Ctx; contactId: st
     leadSince: c?.created_at ?? null,
     clientSince: services.map((s) => s.starts_on ?? s.created_at.slice(0, 10)).sort()[0] ?? null,
     paidCents: saleIds.length ? paidCents : null,
+    builderCents, // @plantilla-quitar(proyectos)
     lastContact: c?.last_interaction_at ?? null,
     firstSaleAt,
     hasPortal,

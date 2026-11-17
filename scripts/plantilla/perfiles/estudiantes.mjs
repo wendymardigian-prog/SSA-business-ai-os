@@ -333,7 +333,7 @@ export const MODULES = {
   // el revisor. Su esquema `app_servicio_proyectos` no viaja (la migración entera lleva @plantilla-quitar(proyectos)).
   proyectos: {
     label: "Extensión de proyectos (Mis proyectos, facturación, Sala de la fama, revisor)",
-    paths: ["lib/projects"],
+    paths: ["lib/projects", "lib/actions/projects.ts", "components/services/portal/program-projects.tsx", "components/services/records/service-projects.tsx"],
   },
   // Diseñador IA (disenos, plantillas, generaciones, link publico /d/ y el servicio de render). Sus tablas,
   // funciones y buckets salen en poda.sql; lo que toca en Contenido, Automatizaciones y el menu, con marcas.

@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import type { PortalSection } from "@/lib/services/availability";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Loader2, Pencil } from "lucide-react";
@@ -47,6 +48,7 @@ export function VariantPage({
   timeZone,
   can,
   workflows,
+  offered,
 }: {
   product: ServiceProduct;
   variant: ServiceVariant;
@@ -59,6 +61,8 @@ export function VariantPage({
   timeZone: string;
   can: { sections: boolean; rules: boolean; flows: boolean };
   workflows: PathWorkflow[];
+  /** Las secciones del portal que se ofrecen en este negocio (con la extensión de proyectos suman dos). */
+  offered?: readonly PortalSection[];
 }) {
   const [tab, setTab] = useState<VariantTabKey>(initialTab);
   const [renaming, setRenaming] = useState<VariantFormValues | null>(null);
@@ -161,6 +165,7 @@ export function VariantPage({
                 rev={variant.portalSettingsRev}
                 programSettings={product.portalSettings}
                 programRev={product.portalSettingsRev}
+                offered={offered}
                 canSections={can.sections}
                 canRules={can.rules}
               />

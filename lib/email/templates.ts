@@ -354,6 +354,33 @@ export function portalDueTodayEmail(params: {
 }
 // @plantilla-hasta(servicios)
 
+// @plantilla-desde(proyectos)
+/**
+ * «Pedir comprobante» (Corrida C, F120): el equipo le pide al estudiante el comprobante de un pago que reportó. Sin
+ * comprobante el pago queda sin verificar y no cuenta en la Sala de la fama. El botón lleva a su Facturación.
+ */
+export function portalReceiptRequestEmail(params: { brand?: Brand | null; workspaceName: string; studentName?: string | null; paymentTitle: string; amount: string; receivedOn: string; url: string | null }): EmailContent {
+  const brand = params.brand ?? resolveBrand(null);
+  const theme = emailTheme(brand);
+  const name = params.studentName?.trim().split(/\s+/)[0] ?? "";
+  const subject = `Te falta el comprobante de un pago`;
+  return {
+    subject,
+    html: brandedEmailHtml({
+      brand,
+      preheader: `Subí el comprobante de «${params.paymentTitle}» para que cuente en la Sala de la fama.`,
+      body: `
+                ${eyebrow("Portal", theme)}
+                ${heading(escapeHtml(subject))}
+                <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#374151;">Hola${name ? ` ${escapeHtml(name)}` : ""}, para verificar el pago que reportaste en ${escapeHtml(params.workspaceName)} necesitamos el comprobante:</p>
+                <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#374151;"><strong>${escapeHtml(params.paymentTitle)}</strong> · ${escapeHtml(params.amount)} · ${escapeHtml(params.receivedOn)}</p>
+                <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#374151;">Sin comprobante el pago queda sin verificar y no cuenta en la Sala de la fama.</p>
+                ${params.url ? button(params.url, "Subir el comprobante", theme) : ""}`,
+    }),
+  };
+}
+// @plantilla-hasta(proyectos)
+
 /**
  * Un aviso de la campana que la persona eligio recibir tambien por email
  * (Mi cuenta → Notificaciones). Siempre dice de que negocio es (arriba, con su

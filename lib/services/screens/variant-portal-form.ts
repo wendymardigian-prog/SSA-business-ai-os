@@ -7,7 +7,7 @@
  *  - «Incluida en esta variante» y su regla (`product_variants.portal_settings.sections[]`): solo esta variante.
  * Apagar el acceso o sacar una sección de una variante no corta a los servicios que ya existen (decisión 455).
  */
-import { AVAILABLE_SECTIONS, SECTION_LABELS, type PortalSection } from "../availability";
+import { ALL_SECTIONS, AVAILABLE_SECTIONS, SECTION_LABELS, type PortalSection } from "../availability";
 import type { SectionRule, VariantPortalSettings } from "@/lib/portal-admin/settings";
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -20,7 +20,7 @@ export function readVariantPortal(raw: unknown): VariantPortalSettings {
 export function programSections(raw: unknown): Partial<Record<PortalSection, boolean>> {
   const s = isObj(raw) && isObj(raw.sections) ? (raw.sections as Record<string, unknown>) : {};
   const out: Partial<Record<PortalSection, boolean>> = {};
-  for (const sec of AVAILABLE_SECTIONS) if (typeof s[sec] === "boolean") out[sec] = s[sec] as boolean;
+  for (const sec of ALL_SECTIONS) if (typeof s[sec] === "boolean") out[sec] = s[sec] as boolean;
   return out;
 }
 
