@@ -8,7 +8,7 @@ describe("el link de video de una clase", () => {
   it("hay al menos 15 casos", () => expect(cases.cases.length).toBeGreaterThanOrEqual(15));
   it("Drive y Fathom avisan qué hacer", () => {
     expect(normalizeVideoUrl("https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view")).toMatchObject({ warning: "El archivo tiene que estar compartido como «Cualquiera con el link»." });
-    expect((normalizeVideoUrl("https://fathom.video/share/x") as { warning: string }).warning).toMatch(/Ver la grabación/);
+    expect((normalizeVideoUrl("https://fathom.video/calls/123456789") as { warning: string }).warning).toMatch(/Ver la grabación/);
   });
   it("Loom: la miniatura no se inventa; el oEmbed se arma con el id y se lee con cuidado", () => {
     const id = "0123456789abcdef0123456789abcdef";

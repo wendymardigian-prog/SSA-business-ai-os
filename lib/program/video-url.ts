@@ -1,7 +1,9 @@
 // @plantilla-quitar(servicios)
 /**
  * El link de video de una clase (F46), puro: reconoce YouTube, Vimeo, Loom, Drive y Fathom y da el link para
- * incrustar (o por qué no se puede). Una carpeta de Drive o un video de Fathom no se incrustan: se avisa.
+ * incrustar (o por qué no se puede). Una carpeta de Drive no se incrusta. Fathom: el link compartido
+ * (`/share/<código>`) se incrusta por `/embed/<código>` (la página de compartir no deja meterse en otra página, la de
+ * incrustar sí); un link privado (`/calls/<id>`) no, y el portal muestra «Ver la grabación».
  */
 export type VideoProvider = "youtube" | "vimeo" | "loom" | "drive" | "fathom";
 
@@ -52,8 +54,10 @@ export function normalizeVideoUrl(raw: string): VideoUrlResult {
     return { ok: true, provider: "drive", embedUrl: `https://drive.google.com/file/d/${id}/preview`, thumbnailUrl: null, warning: "El archivo tiene que estar compartido como «Cualquiera con el link»." };
   }
   if (host === "fathom.video") {
+    const share = u.pathname.match(/^\/share\/([A-Za-z0-9_-]{8,80})\/?$/);
+    if (share) return { ok: true, provider: "fathom", embedUrl: `https://fathom.video/embed/${share[1]}`, thumbnailUrl: null, warning: null };
     if (!/^\/(?:share|calls)\//.test(u.pathname)) return { ok: false, error: "No encontré la grabación en ese link de Fathom" };
-    return { ok: true, provider: "fathom", embedUrl: null, thumbnailUrl: null, warning: "Fathom no deja reproducir su video dentro de otra página: el portal muestra el botón «Ver la grabación»." };
+    return { ok: true, provider: "fathom", embedUrl: null, thumbnailUrl: null, warning: "Este link de Fathom no se puede ver dentro del portal: el estudiante ve el botón «Ver la grabación». Para que se vea adentro, pegá el link de «Compartir» (fathom.video/share/…)." };
   }
   return { ok: false, error: "Ese link no es de YouTube, Vimeo, Loom, Drive ni Fathom" };
 }
