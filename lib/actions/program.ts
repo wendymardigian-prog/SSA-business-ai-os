@@ -44,7 +44,7 @@ export async function updateProgramItem(productId: string, itemId: string, patch
   const ctx = await getPermissionAction("program.manage");
   if (!ctx || !UUID.test(itemId)) return NOT_ALLOWED;
   const p: Record<string, unknown> = {};
-  for (const k of ["title", "description", "lesson_type", "duration_seconds", "html_content", "comments_enabled", "required", "form_id", "source_call_id"]) if (k in patch) p[k] = patch[k];
+  for (const k of ["title", "description", "lesson_type", "duration_seconds", "html_content", "comments_enabled", "required", "form_id", "source_call_id", "is_extra"]) if (k in patch) p[k] = patch[k];
   let warning: string | null = null;
   if ("video_url" in patch) {
     const url = String(patch.video_url ?? "").trim();
