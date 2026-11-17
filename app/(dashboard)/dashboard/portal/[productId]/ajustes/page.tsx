@@ -1,5 +1,6 @@
 // @plantilla-quitar(servicios)
 import Link from "next/link";
+import { offeredSections } from "@/lib/services/availability";
 import { notFound } from "next/navigation";
 import { requireAnyPermission } from "@/lib/auth/guards";
 import { isModuleEnabled, moduleShows } from "@/lib/services/module";
@@ -56,7 +57,7 @@ export default async function PortalProgramSettingsPage({ params }: { params: Pr
             <h2 id="secciones" className="text-sm font-semibold">
               Secciones del programa
             </h2>
-            <ProgramSettingsPanel productId={p.id} mode="sections" sections={ps.sections ?? {}} links={[]} visibleLinkKeys={[]} rev={p.portal_settings_rev ?? 0} canEdit={canEdit} />
+            <ProgramSettingsPanel productId={p.id} mode="sections" sections={ps.sections ?? {}} links={[]} visibleLinkKeys={[]} rev={p.portal_settings_rev ?? 0} canEdit={canEdit} offered={offeredSections(workspace as { portal_settings?: unknown })} />
           </section>
           <section aria-labelledby="terminos" className="space-y-2">
             <h2 id="terminos" className="text-sm font-semibold">

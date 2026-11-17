@@ -11,6 +11,8 @@ export interface ClientFactsInput {
   lastContact: string | null;
   clientSince: string | null;
   leadSince: string | null;
+  /** Corrida C (F81): lo que facturó como builder (la suma de sus pagos reportados). Sin la extensión, no viene. */
+  builderCents?: number | null; // @plantilla-quitar(proyectos)
 }
 
 export interface ClientFact {
@@ -38,6 +40,7 @@ const PORTAL_STATUS: Record<string, string> = { active: "Activo", invited: "Invi
 export function clientRecordFacts(i: ClientFactsInput, nowIso: string, timeZone: string): ClientFact[] {
   const out: ClientFact[] = [];
   if (i.paidCents !== null) out.push({ label: "Total cobrado", value: `US$${(i.paidCents / 100).toLocaleString("es-AR", { maximumFractionDigits: i.paidCents % 100 ? 2 : 0 })}` });
+  if (typeof i.builderCents === "number") out.push({ label: "Facturación como builder", value: `US$${(i.builderCents / 100).toLocaleString("es-AR", { maximumFractionDigits: i.builderCents % 100 ? 2 : 0 })}` }); // @plantilla-quitar(proyectos)
   if (i.hasPortal) {
     const st = i.portal?.accountStatus ?? null;
     if (!st) out.push({ label: "Portal", value: "Sin invitar" });

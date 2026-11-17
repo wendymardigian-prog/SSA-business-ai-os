@@ -24,6 +24,7 @@ import { rememberRecordOpener } from "./record-modal";
 import { ServiceActionDialog } from "./service-action-dialog";
 import { SidePanel } from "@/components/tasks/overlay";
 import { EvidenceBox } from "@/components/services/evidence-box";
+import { ServiceProjectsSection } from "./service-projects"; // @plantilla-quitar(proyectos)
 import type { EvidenceEntry, EvidenceRule } from "@/lib/services/evidence";
 
 export interface ServiceRecordStep {
@@ -527,6 +528,8 @@ export function ServiceRecordView({
             )}
           </section>
         )}
+
+        {data.hasPortal && <ServiceProjectsSection serviceId={data.id} />} {/* @plantilla-quitar(proyectos) */}
 
         {data.hasPortal && <ClassroomBlock classroom={data.classroom} />}
 

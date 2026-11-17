@@ -44,6 +44,8 @@ export interface ClientRecordData {
   clientSince: string | null;
   /** Lo cobrado de sus ventas, en centavos. Null sin ventas (no es un cero). */
   paidCents: number | null;
+  /** Corrida C (F81): «Facturación como builder». Null sin la extensión o sin pagos reportados. */
+  builderCents?: number | null; // @plantilla-quitar(proyectos)
   lastContact: string | null;
   firstSaleAt: string | null;
   hasPortal: boolean;

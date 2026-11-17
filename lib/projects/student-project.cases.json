@@ -1,0 +1,19 @@
+{
+  "_comment": "Casos de los problemas de un proyecto del estudiante (F78, F232). Corren contra lib/projects/project.ts (vitest) y contra app_servicio_proyectos.project_problems (verify-projects).",
+  "cases": [
+    { "name": "real en borrador", "input": { "kind": "real", "title": "Web de Ana", "status": "draft", "client": { "company": "Ana SRL" }, "sold_cents": 150000 }, "expected": [] },
+    { "name": "real ganado sin fecha de cierre", "input": { "kind": "real", "title": "App", "status": "won" }, "expected": ["desde Ganado, la fecha de cierre es obligatoria"] },
+    { "name": "real ganado con fecha", "input": { "kind": "real", "title": "App", "status": "delivered", "closed_on": "2026-11-02", "sold_cents": 0 }, "expected": [] },
+    { "name": "real sin estado", "input": { "kind": "real", "title": "App" }, "expected": ["elegí el estado del proyecto"] },
+    { "name": "real con monto negativo y cliente texto", "input": { "kind": "real", "title": "App", "status": "lost", "client": "Ana", "sold_cents": -5 }, "expected": ["los datos del cliente no son válidos", "el monto vendido tiene que ser un número positivo"] },
+    { "name": "práctica limpia", "input": { "kind": "practice", "title": "CRM para una veterinaria" }, "expected": [] },
+    { "name": "práctica con cliente, monto y estado", "input": { "kind": "practice", "title": "X", "client": { "company": "A" }, "sold_cents": 100, "status": "won" }, "expected": ["un proyecto de práctica no tiene cliente", "un proyecto de práctica no tiene monto", "un proyecto de práctica no tiene estado de venta"] },
+    { "name": "práctica por fases", "input": { "kind": "practice", "title": "X", "phases": [{ "key": "f1", "name": "Fase 1" }, { "key": "f2", "name": "Fase 2" }] }, "expected": ["un proyecto de práctica no se vende por fases"] },
+    { "name": "reto sin servicio", "input": { "kind": "challenge", "title": "Reto" }, "expected": ["un proyecto del reto va ligado a la fase Reto de tu servicio"] },
+    { "name": "reto ligado", "input": { "kind": "challenge", "title": "Reto", "service_id": "7becb06c-7f41-4ace-9ee0-c18ba2da57e3", "phase_key": "reto" }, "expected": [] },
+    { "name": "sin tipo", "input": { "title": "X" }, "expected": ["elegí el tipo de proyecto"] },
+    { "name": "nombre vacío", "input": { "kind": "practice", "title": "   " }, "expected": ["escribí el nombre del proyecto (hasta 200 caracteres)"] },
+    { "name": "fases repetidas, sin nombre y precio mal", "input": { "kind": "real", "title": "App", "status": "draft", "phases": [{ "key": "f1", "name": "Diseño", "price_cents": 1000 }, { "key": "f1", "name": "Diseño" }, { "key": "f2", "name": "" }, { "key": "f3", "name": "Build", "price_cents": -1 }] }, "expected": ["la fase Diseño está repetida", "hay una fase sin nombre", "el precio de la fase Build no es válido"] },
+    { "name": "no es objeto", "input": [], "expected": ["el proyecto no es válido"] }
+  ]
+}

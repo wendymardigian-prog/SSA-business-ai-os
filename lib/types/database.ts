@@ -910,7 +910,8 @@ export type AgentRunSource =
   | "call_summary" // @plantilla-quitar(llamadas)
   | "call_prompt_test" // @plantilla-quitar(llamadas)
   /** El tutor del programa en el portal (Servicios A1, 00352). Lo escribe el portal (Parte 2). */ // @plantilla-quitar(servicios)
-  | "portal_tutor"; // @plantilla-quitar(servicios)
+  | "portal_tutor" // @plantilla-quitar(servicios)
+  | "portal_project_review"; // @plantilla-quitar(proyectos)
 export type AgentRunTrigger =
   | "inbound_message"
   | "cron_close"

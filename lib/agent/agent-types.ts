@@ -102,6 +102,26 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
     conversational: false,
   },
   // @plantilla-hasta(servicios)
+  // @plantilla-desde(proyectos)
+  /**
+   * El revisor de proyectos de un programa (Corrida C, F119). Uno por programa, creado al prender Mis proyectos
+   * (`app_servicio_proyectos.projects_ensure_reviewer`), su id en `products.portal_settings.projects.reviewer_agent_id`.
+   * Analiza los pasos que la mesa de trabajo marca «con análisis»; gasta del mismo límite mensual del estudiante que
+   * el tutor. Corre desde el portal (`portal_project_review`); acá se configura.
+   */
+  project_reviewer: {
+    type: "project_reviewer",
+    label: "Revisor de proyectos",
+    description: "Analiza los documentos de los proyectos de los estudiantes de un programa con las instrucciones de la mesa de trabajo.",
+    configSections: ["identity", "prompt", "model"],
+    tabs: [
+      { key: "config", label: "Configuracion", available: true, permission: "agents.edit" },
+      { key: "runs", label: "Runs", available: true },
+      { key: "costs", label: "Costos", available: true, permission: "ai_costs.view" },
+    ],
+    conversational: false,
+  },
+  // @plantilla-hasta(proyectos)
 };
 
 export function getAgentType(type: string): AgentTypeDefinition | null {

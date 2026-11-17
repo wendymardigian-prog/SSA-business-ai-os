@@ -11,7 +11,8 @@
  * `portal-settings.cases.json` corren contra las dos. Lo que depende de la base (que un modulo sea de
  * este programa, que un paso exista en el camino) se valida aparte.
  */
-import { ALL_SECTIONS, AVAILABLE_SECTIONS } from "@/lib/services/availability";
+import { ALL_SECTIONS, AVAILABLE_SECTIONS, EXTENSION_SECTIONS } from "@/lib/services/availability";
+import { fameSettingsProblems, projectsSettingsProblems } from "@/lib/projects/settings"; // @plantilla-quitar(proyectos)
 import { jsonbKeys, unknownKeyProblems } from "@/lib/services/json-order";
 
 export const OPENS_TYPES = [
@@ -54,12 +55,20 @@ const unknownKeys = unknownKeyProblems;
 
 const SECTION_KEYS = ["section", "included", "display", "content", "opens", "until", "limits", "ai_limit_usd"];
 
-function sectionProblems(rule: Record<string, unknown>): string[] {
+/** Con la extensión de proyectos prendida en el negocio, `fame` y `projects` se ofrecen (Corrida C). */
+export interface PortalValidationOptions {
+  extensions?: { projects?: boolean };
+}
+
+const offered = (sec: string, o: PortalValidationOptions) =>
+  (AVAILABLE_SECTIONS as readonly string[]).includes(sec) || (o.extensions?.projects === true && (EXTENSION_SECTIONS as readonly string[]).includes(sec));
+
+function sectionProblems(rule: Record<string, unknown>, o: PortalValidationOptions = {}): string[] {
   const p: string[] = [];
   const sec = rule.section as string;
   p.push(...unknownKeys(rule, SECTION_KEYS));
   if (!(ALL_SECTIONS as readonly string[]).includes(sec)) return [...p, `sección desconocida: ${String(sec)}`];
-  if (!(AVAILABLE_SECTIONS as readonly string[]).includes(sec)) return [...p, "Todavía no está disponible"];
+  if (!offered(sec, o)) return [...p, "Todavía no está disponible"];
   if (has(rule, "display") && !(DISPLAY_TYPES as readonly string[]).includes(rule.display as string)) p.push(`${sec}: elegí cómo se ve mientras está cerrada`);
   if (has(rule, "content")) {
     const c = rule.content;
@@ -100,7 +109,7 @@ function sectionProblems(rule: Record<string, unknown>): string[] {
 }
 
 /** Problemas de `product_variants.portal_settings`. */
-export function validateVariantPortalSettings(settings: unknown): string[] {
+export function validateVariantPortalSettings(settings: unknown, o: PortalValidationOptions = {}): string[] {
   if (!isObj(settings)) return ["la configuración tiene que ser un objeto"];
   const p = unknownKeys(settings, ["v", "enabled", "ask_terms", "sections"]);
   if (has(settings, "v") && settings.v !== 1) p.push("versión desconocida");
@@ -119,7 +128,7 @@ export function validateVariantPortalSettings(settings: unknown): string[] {
           if (seen.has(s.section)) p.push(`la sección ${s.section} está repetida`);
           seen.add(s.section);
         }
-        p.push(...sectionProblems(s));
+        p.push(...sectionProblems(s, o));
       }
     }
   }
@@ -127,9 +136,10 @@ export function validateVariantPortalSettings(settings: unknown): string[] {
 }
 
 /** Problemas de `products.portal_settings` (lo del programa). */
-export function validateProgramPortalSettings(settings: unknown): string[] {
+export function validateProgramPortalSettings(settings: unknown, o: PortalValidationOptions = {}): string[] {
   if (!isObj(settings)) return ["la configuración tiene que ser un objeto"];
-  const p = unknownKeys(settings, ["v", "sections", "terms", "community", "affiliates", "assistant"]);
+  const ext = o.extensions?.projects === true;
+  const p = unknownKeys(settings, ["v", "sections", "terms", "community", "affiliates", "assistant", ...(ext ? ["fame", "projects"] : [])]);
   if (has(settings, "v") && settings.v !== 1) p.push("versión desconocida");
   if (has(settings, "sections")) {
     const s = settings.sections;
@@ -138,7 +148,7 @@ export function validateProgramPortalSettings(settings: unknown): string[] {
       for (const k of jsonbKeys(s)) {
         const v = s[k];
         if (!(ALL_SECTIONS as readonly string[]).includes(k)) p.push(`sección desconocida: ${k}`);
-        else if (!(AVAILABLE_SECTIONS as readonly string[]).includes(k)) p.push("Todavía no está disponible");
+        else if (!offered(k, o)) p.push("Todavía no está disponible");
         else if (typeof v !== "boolean") p.push(`${k}: tiene que ser sí o no`);
       }
   }
@@ -188,6 +198,11 @@ export function validateProgramPortalSettings(settings: unknown): string[] {
       if (has(a, "credits_per_usd") && !(isInt(a.credits_per_usd) && a.credits_per_usd >= 1 && a.credits_per_usd <= 100000)) p.push("los créditos por dólar tienen que ser un número entero positivo");
     }
   }
+  // @plantilla-desde(proyectos)
+  // Corrida C: la Sala de la fama y Mis proyectos (sin la extensión ya cayeron como clave desconocida).
+  if (ext && has(settings, "fame")) p.push(...fameSettingsProblems(settings.fame));
+  if (ext && has(settings, "projects")) p.push(...projectsSettingsProblems(settings.projects));
+  // @plantilla-hasta(proyectos)
   return p;
 }
 

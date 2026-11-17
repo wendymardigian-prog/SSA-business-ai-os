@@ -4,7 +4,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveProgramSettings } from "@/lib/actions/services";
-import { AVAILABLE_SECTIONS, SECTION_LABELS } from "@/lib/services/availability";
+import { AVAILABLE_SECTIONS, SECTION_LABELS, type PortalSection } from "@/lib/services/availability";
 
 /**
  * Portal › programa › Ajustes del programa (F35) y Afiliados (F106): qué secciones están prendidas en el programa
@@ -19,6 +19,7 @@ export function ProgramSettingsPanel({
   visibleLinkKeys: initialVisible,
   rev: initialRev,
   canEdit,
+  offered = AVAILABLE_SECTIONS,
 }: {
   productId: string;
   mode: "sections" | "affiliates";
@@ -27,6 +28,8 @@ export function ProgramSettingsPanel({
   visibleLinkKeys: string[];
   rev: number;
   canEdit: boolean;
+  /** Las secciones que se ofrecen (con la extensión de proyectos suman `fame` y `projects`). */
+  offered?: readonly PortalSection[];
 }) {
   const router = useRouter();
   const [sections, setSections] = useState(initialSections);
@@ -60,7 +63,7 @@ export function ProgramSettingsPanel({
     return (
       <div className="max-w-2xl space-y-3">
         <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-          {AVAILABLE_SECTIONS.map((s) => (
+          {offered.map((s) => (
             <li key={s} className="flex items-center justify-between gap-2 px-4 py-2.5">
               <span className="text-sm text-foreground">{SECTION_LABELS[s]}</span>
               <label className="flex items-center gap-2 text-xs text-muted-foreground">

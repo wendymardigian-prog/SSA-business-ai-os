@@ -1,5 +1,6 @@
 // @plantilla-quitar(servicios)
 import { notFound } from "next/navigation";
+import { offeredSections } from "@/lib/services/availability";
 import { requirePermission } from "@/lib/auth/guards";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
@@ -46,6 +47,7 @@ export default async function VariantSettingsPage({
 
   return (
     <VariantPage
+      offered={offeredSections(workspace as { portal_settings?: unknown })}
       product={product}
       variant={variant}
       tabs={tabs}

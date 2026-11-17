@@ -16,6 +16,13 @@ describe("clientRecordFacts", () => {
     expect(f[1]).toEqual({ label: "Portal", value: "Activo · entró hace 2 h", tone: undefined });
     expect(f[2].value).toBe("ayer");
   });
+  // @plantilla-desde(proyectos)
+  it("con la extensión de proyectos: «Facturación como builder» después del total cobrado", () => {
+    const f = clientRecordFacts({ paidCents: 100, builderCents: 1250050, hasPortal: false, portal: null, lastContact: null, clientSince: null, leadSince: null }, NOW, "UTC");
+    expect(f.map((x) => x.label)).toEqual(["Total cobrado", "Facturación como builder"]);
+    expect(f[1].value).toBe("US$12.500,5");
+  });
+  // @plantilla-hasta(proyectos)
   it("sin portal no se habla del portal; sin ventas no hay total (nunca un cero inventado)", () => {
     const f = clientRecordFacts({ paidCents: null, hasPortal: false, portal: null, lastContact: null, clientSince: "2026-05-02", leadSince: null }, NOW, "UTC");
     expect(f.map((x) => x.label)).toEqual(["Cliente desde"]);
