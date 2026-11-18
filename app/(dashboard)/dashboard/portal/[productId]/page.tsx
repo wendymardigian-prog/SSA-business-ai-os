@@ -26,6 +26,7 @@ import { LinkQuickFilterMenu, LinkViewToggle, PrimaryButton, TopbarMoreMenu, typ
 import { MonthNav } from "@/components/ui/month-nav";
 import { intentHref } from "@/lib/ui/url-intent";
 import { communityQuickOptions, communityQuickValue } from "@/lib/program/community";
+import { COMMUNITY_MEDIA_BUCKET, mediaPaths } from "@/lib/program/community-text";
 import { shiftMonth } from "@/lib/program/calendar-view";
 // @plantilla-desde(proyectos)
 import { ProgramProjects, type FameRow, type FameSettings, type IdeaRow, type PaymentRow, type ProjectRow, type ProjectsView } from "@/components/services/portal/program-projects";
@@ -134,10 +135,21 @@ export default async function PortalProgramPage({ params, searchParams }: { para
       getWorkspaceMembers(workspace.id),
       svcSchema(supabase).from("program_items").select("id, title").eq("product_id", productId).eq("kind", "lesson"),
     ]);
+    const posts = feed.ok ? feed.data ?? [] : [];
+    // Las fotos de los posts: links firmados de una hora, con el servicio, después del permiso (community.view).
+    const paths = [...new Set(posts.flatMap((post) => mediaPaths(post.media)))];
+    const photoUrls: Record<string, string> = {};
+    if (paths.length) {
+      const service = await createServiceClient();
+      const { data: signed } = await service.storage.from(COMMUNITY_MEDIA_BUCKET).createSignedUrls(paths, 3600);
+      for (const s of signed ?? []) if (s.path && s.signedUrl) photoUrls[s.path] = s.signedUrl;
+    }
     return (
       <ProgramCommunity
         productId={productId}
-        posts={feed.ok ? feed.data ?? [] : []}
+        posts={posts}
+        photoUrls={photoUrls}
+        meUserId={ctx.user.id}
         spaces={programSpaces(p!.portal_settings)}
         lessonComments={lessonCommentsOn(p!.portal_settings)}
         rev={p!.portal_settings_rev ?? 0}

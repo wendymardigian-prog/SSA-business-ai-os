@@ -9,20 +9,26 @@ import { SidePanel } from "@/components/tasks/overlay";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 import { useUrlIntent } from "@/components/ui/use-url-intent";
-import { communityMarkSeen, communityModerate, communityResolveReport, communitySetMuted, communityTeamPost } from "@/lib/actions/community";
+import { communityMarkSeen, communityModerate, communityResolveReport, communitySetMuted, communityTeamEdit, communityTeamPost } from "@/lib/actions/community";
 import { saveProgramSettings } from "@/lib/actions/services";
 import { LESSON_SPACE, spaceKeyFor, spacesIssues, type CommunitySpace } from "@/lib/program/community";
+import { mediaPaths } from "@/lib/program/community-text";
+import { CommunityBody } from "@/components/services/portal/community-body";
+import { CommunityComposer, type ComposerPhoto } from "@/components/services/portal/community-composer";
 
 export interface CommunityPost {
   id: string;
   space_key: string;
   program_item_id: string | null;
   body: string;
+  /** Las fotos: [{path}] en el bucket `community-media`. */
+  media?: unknown;
   author_contact_id: string | null;
   author_name: string | null;
   author_user_id: string | null;
   as_business: boolean;
   pinned: boolean;
+  edited_at?: string | null;
   hidden: boolean;
   hidden_reason: string | null;
   seen: boolean;
@@ -52,6 +58,8 @@ export function ProgramCommunity({
   teamNames,
   businessName,
   lessonTitles,
+  photoUrls,
+  meUserId,
   can,
 }: {
   productId: string;
@@ -66,6 +74,9 @@ export function ProgramCommunity({
   teamNames: Record<string, string>;
   businessName: string;
   lessonTitles: Record<string, string>;
+  /** El link firmado de cada foto (path → url), armado por la página. */
+  photoUrls: Record<string, string>;
+  meUserId: string;
   can: { reply: boolean; moderate: boolean; spaces: boolean };
 }) {
   const router = useRouter();
@@ -75,6 +86,12 @@ export function ProgramCommunity({
   const [gear, setGear] = useState(false);
   const live = spaces.filter((s) => !s.archived);
   const [draft, setDraft] = useState({ body: "", space: space && space !== LESSON_SPACE ? space : live.find((s) => s.key === "general")?.key ?? live[0]?.key ?? "", asBusiness: true });
+  const [photos, setPhotos] = useState<ComposerPhoto[]>([]);
+  // El editor se vuelve a armar vacío después de publicar.
+  const [composerKey, setComposerKey] = useState(0);
+  const [editing, setEditing] = useState<{ id: string; body: string; photos: ComposerPhoto[] } | null>(null);
+  const photosOf = (media: unknown) => mediaPaths(media).map((path) => photoUrls[path]).filter((u): u is string => !!u);
+  const canEdit = (p: CommunityPost) => can.reply && !p.author_contact_id && (can.moderate || p.author_user_id === meUserId);
   const [replying, setReplying] = useState<string | null>(null);
   const [reply, setReply] = useState("");
   const when = (iso: string) => new Intl.DateTimeFormat("es", { timeZone: tz, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
@@ -108,20 +125,45 @@ export function ProgramCommunity({
       )}
       {error && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
       {can.reply && (
-        <div className="space-y-2 rounded-xl border border-border p-3">
-          <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} rows={3} placeholder="Escribí una publicación para la comunidad" className={fieldInput} maxLength={10000} aria-label="Publicación" />
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <select value={draft.space} onChange={(e) => setDraft({ ...draft, space: e.target.value })} className={cn(fieldInput, "w-auto")} aria-label="Espacio">
-              {live.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}
-            </select>
-            <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={draft.asBusiness} onChange={(e) => setDraft({ ...draft, asBusiness: e.target.checked })} /> Como {businessName}
-            </label>
-            <span className="flex-1" />
-            <button type="button" disabled={pending || !draft.body.trim() || !draft.space} onClick={() => run(() => communityTeamPost(productId, { body: draft.body, spaceKey: draft.space, asBusiness: draft.asBusiness }), () => setDraft({ ...draft, body: "" }))} className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50">
-              Publicar
-            </button>
-          </div>
+        <div className="rounded-xl border border-border p-3">
+          <CommunityComposer
+            key={composerKey}
+            id="community-new-post"
+            productId={productId}
+            body={draft.body}
+            onBody={(body) => setDraft((d) => ({ ...d, body }))}
+            photos={photos}
+            onPhotos={setPhotos}
+            footer={({ uploading }) => (
+              <>
+                <select value={draft.space} onChange={(e) => setDraft({ ...draft, space: e.target.value })} className={cn(fieldInput, "w-auto")} aria-label="Espacio">
+                  {live.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}
+                </select>
+                <label className="flex items-center gap-1.5">
+                  <input type="checkbox" checked={draft.asBusiness} onChange={(e) => setDraft({ ...draft, asBusiness: e.target.checked })} /> Como {businessName}
+                </label>
+                <span className="flex-1" />
+                <span className={cn("text-xs", draft.body.length > 10000 ? "text-destructive" : "text-muted-foreground")}>{draft.body.length > 8000 ? `${draft.body.length.toLocaleString("es")} / 10.000` : ""}</span>
+                <button
+                  type="button"
+                  disabled={pending || uploading || !draft.body.trim() || draft.body.length > 10000 || !draft.space}
+                  onClick={() =>
+                    run(
+                      () => communityTeamPost(productId, { body: draft.body, spaceKey: draft.space, asBusiness: draft.asBusiness, media: photos.map((f) => f.path) }),
+                      () => {
+                        setDraft((d) => ({ ...d, body: "" }));
+                        setPhotos([]);
+                        setComposerKey((k) => k + 1);
+                      },
+                    )
+                  }
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+                >
+                  Publicar
+                </button>
+              </>
+            )}
+          />
         </div>
       )}
       {posts.length === 0 ? (
@@ -140,8 +182,34 @@ export function ProgramCommunity({
                 {p.pinned && <span className="rounded bg-accent px-1.5">Fijado</span>}
                 {p.hidden && <span className="rounded bg-accent px-1.5">Oculto: {p.hidden_reason}</span>}
                 {p.unanswered && <span className="rounded bg-warn/15 px-1.5 text-foreground">Sin contestar</span>}
+                {p.edited_at && <span>· editado</span>}
               </div>
-              <p className="whitespace-pre-wrap text-sm">{p.body}</p>
+              {editing?.id === p.id ? (
+                <CommunityComposer
+                  id={`community-edit-${p.id}`}
+                  productId={productId}
+                  body={editing.body}
+                  onBody={(body) => setEditing((e) => (e ? { ...e, body } : e))}
+                  photos={editing.photos}
+                  onPhotos={(update) => setEditing((e) => (e ? { ...e, photos: update(e.photos) } : e))}
+                  footer={({ uploading }) => (
+                    <>
+                      <span className="flex-1" />
+                      <button type="button" onClick={() => setEditing(null)} className="rounded-md px-3 py-1.5 text-sm hover:bg-accent">Cancelar</button>
+                      <button
+                        type="button"
+                        disabled={pending || uploading || !editing.body.trim() || editing.body.length > 10000}
+                        onClick={() => run(() => communityTeamEdit(productId, p.id, { body: editing.body, media: editing.photos.map((f) => f.path) }), () => setEditing(null))}
+                        className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+                      >
+                        Guardar
+                      </button>
+                    </>
+                  )}
+                />
+              ) : (
+                <CommunityBody body={p.body} photos={photosOf(p.media)} />
+              )}
               {Object.keys(p.reactions).length > 0 && (
                 <p className="text-xs text-muted-foreground">{Object.entries(p.reactions).map(([k, n]) => `${REACTION_LABEL[k] ?? k} ${n}`).join("  ")}</p>
               )}
@@ -162,7 +230,7 @@ export function ProgramCommunity({
                       <span className="text-xs font-medium">{author(r)}</span>
                       {!r.author_contact_id && <span className="ml-1 rounded bg-primary/10 px-1 text-[11px]">Equipo</span>}
                       <span className="ml-2 text-xs text-muted-foreground">{when(r.created_at)}</span>
-                      <p className="whitespace-pre-wrap">{r.body}</p>
+                      <CommunityBody body={r.body} compact />
                       {can.moderate && (
                         <button type="button" disabled={pending} onClick={() => { if (r.hidden) run(() => communityModerate(productId, r.id, "unhide")); else { const why = ask("¿Por qué se oculta?"); if (why) run(() => communityModerate(productId, r.id, "hide", why)); } }} className="text-xs text-muted-foreground hover:underline">
                           {r.hidden ? "Mostrar" : "Ocultar"}
@@ -185,6 +253,11 @@ export function ProgramCommunity({
               )}
               <div className="flex flex-wrap gap-3 text-xs">
                 {can.reply && replying !== p.id && <button type="button" onClick={() => { setReplying(p.id); setReply(""); }} className="text-primary-ink hover:underline">Responder</button>}
+                {canEdit(p) && editing?.id !== p.id && (
+                  <button type="button" onClick={() => setEditing({ id: p.id, body: p.body, photos: mediaPaths(p.media).map((path) => ({ path, url: photoUrls[path] ?? "" })) })} className="hover:underline">
+                    Editar
+                  </button>
+                )}
                 {can.reply && p.author_contact_id && !p.seen && <button type="button" disabled={pending} onClick={() => run(() => communityMarkSeen(productId, p.id))} className="hover:underline">Marcar como visto</button>}
                 {can.moderate && (
                   <>
