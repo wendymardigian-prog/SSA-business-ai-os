@@ -12,7 +12,7 @@ import { brokenCalendarAccounts } from "@/lib/scheduling/data/attention";
 import { bookingUtmOptions, hostNames, listBookingStatuses, listBookings } from "@/lib/scheduling/data/bookings";
 import { metaLinkFromTouch, touchMetaIds, type MetaLink } from "@/lib/attribution/meta-link";
 import { EMPTY_META_NAMES, loadMetaNamesByIds } from "@/lib/attribution/meta-names";
-import { loadBookingMatches } from "@/lib/attribution/source-touches";
+import { loadBookingMatches, type BookingMatch } from "@/lib/attribution/source-touches";
 import { loadBookingLastTouches } from "@/lib/attribution/last-touches-load";
 import { listCategories, listEventTypes, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { expandCategoryFilter, categoryLabel } from "@/lib/scheduling/categories";
@@ -220,11 +220,22 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   // que la RLS decidio cuales ve; el toque va con el cliente de servicio porque quien atiende una
   // reunion puede no ver su contacto. Los nombres, con la sesion: sin `dashboards.ads.view` se ven los ids.
   const linkTargets = view === "list" ? items.map((i) => ({ id: i.id, contactId: i.contactId, createdAt: i.createdAt })) : [];
-  const bookingMatches = linkTargets.length ? await loadBookingMatches(service, ctx.workspace.id, linkTargets) : new Map();
-  const matchedTouches = [...bookingMatches.values()].flatMap((m) => (m.touch ? [m.touch] : []));
-  const metaNames = ctx.can("dashboards.ads.view") && matchedTouches.length ? await loadMetaNamesByIds(ctx.supabase, ctx.workspace.id, matchedTouches.map(touchMetaIds)) : EMPTY_META_NAMES;
-  // El «último click» de cada reunión (los últimos 3 toques de cualquier canal antes de agendar): solo en la lista.
-  const lastTouches = linkTargets.length ? await loadBookingLastTouches(service, ctx.supabase, ctx.workspace.id, linkTargets.map((t) => t.id)) : {};
+  // El vínculo (con sus nombres, que dependen de él) y el «último click» de cada reunión (los últimos 3 toques de
+  // cualquier canal antes de agendar) no dependen uno del otro: van en paralelo.
+  const [{ bookingMatches, metaNames }, lastTouches] = await Promise.all([
+    (async () => {
+      const bookingMatches: Map<string, BookingMatch> = linkTargets.length
+        ? await loadBookingMatches(service, ctx.workspace.id, linkTargets)
+        : new Map();
+      const matchedTouches = [...bookingMatches.values()].flatMap((m) => (m.touch ? [m.touch] : []));
+      const metaNames =
+        ctx.can("dashboards.ads.view") && matchedTouches.length
+          ? await loadMetaNamesByIds(ctx.supabase, ctx.workspace.id, matchedTouches.map(touchMetaIds))
+          : EMPTY_META_NAMES;
+      return { bookingMatches, metaNames };
+    })(),
+    linkTargets.length ? loadBookingLastTouches(service, ctx.supabase, ctx.workspace.id, linkTargets.map((t) => t.id)) : Promise.resolve({}),
+  ]);
   const metaLinks: Record<string, MetaLink> = {};
   for (const [id, match] of bookingMatches) {
     if (match.touch) metaLinks[id] = metaLinkFromTouch(match.touch, metaNames, { ownTouchId: match.ownTouchId, inherited: match.inherited });
