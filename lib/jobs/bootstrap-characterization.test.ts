@@ -38,6 +38,9 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "comment_backfill_workspace",
       // Comisiones (Extra I, CM1): generar o revertir las de un pago. // @plantilla-quitar(comisiones)
       "commissions_payment", // @plantilla-quitar(comisiones)
+      // El aviso por correo de un post de la comunidad (00405): el reparto y un envío por persona. // @plantilla-quitar(servicios)
+      "community_post_email", // @plantilla-quitar(servicios)
+      "community_post_email_send", // @plantilla-quitar(servicios)
       "content_copy",
       "content_provider_schedule",
       "content_publish",
