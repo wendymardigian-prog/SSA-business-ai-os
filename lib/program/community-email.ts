@@ -38,6 +38,8 @@ export function communityEmailHtml(body: string, opts: { ink: string }): string 
         const items = b.items.map((i) => `<li style="margin:0 0 4px;">${runs(i, opts.ink)}</li>`).join("");
         return `<${tag} style="margin:0 0 12px;padding:0 0 0 22px;font-size:15px;line-height:1.6;color:${TEXT};">${items}</${tag}>`;
       }
+      // Un renglón vacío: una línea en blanco.
+      if (b.runs.length === 0) return `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;">&nbsp;</p>`;
       return `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:${TEXT};">${runs(b.runs, opts.ink)}</p>`;
     })
     .join("\n");

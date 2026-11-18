@@ -36,6 +36,12 @@ describe("communityEmailHtml", () => {
     expect(communityEmailHtml("Línea uno\nLínea dos", { ink })).toContain("Línea uno<br />Línea dos");
   });
 
+  it("un renglón vacío es una línea en blanco", () => {
+    const html = communityEmailHtml("Uno\n\n\n\nDos", { ink });
+    expect(html.split("\n")).toHaveLength(3);
+    expect(html.split("\n")[1]).toContain("&nbsp;</p>");
+  });
+
   it("los emojis pasan tal cual", () => {
     expect(communityEmailHtml("Hola 🙌 📌", { ink })).toContain("Hola 🙌 📌");
   });

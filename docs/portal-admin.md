@@ -75,6 +75,13 @@ sin contestar).
   asunto = título, la cajita «X publicó en la comunidad:», el cuerpo con formato (`communityEmailHtml`, escapa todo),
   «Esta publicación tiene N fotos» (las fotos no viajan) y el botón al portal `/p/<producto>/comunidad`. Editar no
   vuelve a mandar. El portal ya dibuja `title` (viene en `post_row`).
+  **Renglones vacíos (18/11/2026, sin migración)**: entre dos bloques, cada par de saltos de línea de más es un párrafo
+  vacío (`a\n\n\n\nb`); dos o tres saltos siguen siendo párrafos seguidos, así lo viejo se ve igual. Lo lee
+  `splitBlankLines` / `communityBlocks` (`lib/program/community-text.ts`) y la COPIA del portal
+  (`lib/shared/community-text.ts`, mismos casos en `community-text.cases.json`); el editor guarda un párrafo vacío entre
+  dos con texto (`communityFromEditorDoc`) y la pantalla, el portal y el correo lo dibujan como renglón en blanco. Un
+  Markdown pegado se lee de su texto plano aunque el portapapeles traiga HTML (`pasteTextOverHtml`): el HTML de una
+  vista ya dibujada convierte los saltos simples en espacios.
 - **Tutor**: un agente `student_tutor` por programa, atado para siempre (`products.tutor_agent_id`, único). Se crea al
   prender Asistente IA en el programa y se apaga con él. Para un estudiante, busca solo en las clases que tiene
   abiertas; nunca evaluaciones, documentos internos ni lo excluido. Límite: el propio, el de su variante o el del

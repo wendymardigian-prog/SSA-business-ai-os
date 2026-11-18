@@ -17,6 +17,8 @@ const COMMUNITY_FORMAT: RichTextFormat = {
   load: (value) => communityToEditorDoc(value) as JSONContent,
   save: (doc) => communityFromEditorDoc(doc as never),
   pasteText: (text) => (looksLikeMarkdown(text) ? (communityToEditorDoc(text) as JSONContent) : null),
+  // Un Markdown pegado se lee de su texto plano aunque venga con HTML: así no se pierden los saltos de línea.
+  pasteTextOverHtml: true,
 };
 
 /** El título de un post del equipo (00405), con su botón de emojis. Va arriba del editor. */
@@ -147,6 +149,7 @@ export function CommunityComposer({
           <CommunityVideoPlayers videos={videos} />
         </div>
       )}
+      <p className="text-xs text-muted-foreground">Enter: párrafo nuevo · Shift+Enter: renglón nuevo sin espacio · Enter dos veces: renglón vacío</p>
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       <div className="flex flex-wrap items-center gap-2 text-sm">{footer({ uploading: uploading > 0 })}</div>
     </div>
