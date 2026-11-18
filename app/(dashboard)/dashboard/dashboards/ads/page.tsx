@@ -2,7 +2,8 @@ import { requirePermission } from "@/lib/auth/guards";
 import { availableDashboards } from "@/lib/dashboards/available";
 import { AdsDashboard } from "@/components/dashboards/ads-dashboard";
 import { loadAdsInsights } from "@/lib/dashboards/ads-load";
-import { loadCrmForRows } from "@/lib/dashboards/ads-crm-load";
+import { EMPTY_CRM, loadCrmForRows } from "@/lib/dashboards/ads-crm-load";
+import { accountReachOf, neverRejects, previousReachOf, type DashboardReach } from "@/lib/dashboards/ads-live";
 import { previousPeriod } from "@/lib/dashboards/period";
 import { readDashboardPeriod, resolveDashboardPeriod } from "@/lib/dashboards/period-filter";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
@@ -22,6 +23,9 @@ export const dynamic = "force-dynamic";
  * El alcance del periodo se pide EN VIVO: el guardado por dia no se puede
  * sumar sin contar dos veces a quien vio el anuncio dos dias. Si esa
  * consulta falla, la pantalla se muestra igual con la suma y lo aclara.
+ *
+ * Lo de Meta en vivo y el CRM viajan como promesas sin esperar: la cabecera
+ * no queda colgada de la Graph API (cada consulta corta a los 8 segundos).
  */
 export default async function AdsDashboardPage({
   searchParams,
@@ -72,13 +76,8 @@ export default async function AdsDashboardPage({
         adAccountId=""
         currency={null}
         period={period}
-        uniqueReach={null}
-        uniqueFrequency={null}
-        previousLive={null}
-        adReach={null}
         aiModel={null}
-        live={{ placement: null, device: null, audience: null }}
-        liveError={null}
+        live={null}
         syncedLabel={null}
       />
     );
@@ -94,45 +93,58 @@ export default async function AdsDashboardPage({
   const sinceOf = (period: { from: string | null }) => (period.from ? isoToDateInput(period.from, timeZone) : null);
   const untilOf = (period: { to: string | null }) => isoToDateInput(period.to ?? now.toISOString(), timeZone);
 
-  const breakdownOf = (breakdown: BreakdownKind) =>
-    token && range.from
-      ? fetchBreakdown({ token, adAccountId, breakdown, since: sinceOf(range) as string, until: untilOf(range) })
-      : Promise.resolve(null);
+  const since = sinceOf(range);
+  const until = untilOf(range);
 
-  const [rows, previousRows, live, previousLive, adReachLive, placementLive, deviceLive, audienceLive] = await Promise.all([
+  // Lo guardado en la base se espera: es poco y lo usa casi toda la pantalla (y la cabecera, la hora del sync).
+  const [rows, previousRows] = await Promise.all([
     loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: range, timeZone }),
     loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: before, timeZone }),
-    token && range.from
-      ? fetchUniqueReach({ token, adAccountId, since: sinceOf(range) as string, until: untilOf(range) })
-      : Promise.resolve(null),
-    // El alcance unico del periodo anterior, para que la variacion compare
-    // lo mismo con lo mismo: el actual es unico y el anterior, sumado por
-    // dia, seria otro numero.
-    token && before.from
-      ? fetchUniqueReach({ token, adAccountId, since: sinceOf(before) as string, until: untilOf(before) })
-      : Promise.resolve(null),
-    // El alcance unico de cada anuncio, para la comparativa: sumar los dias contaria dos veces a quien lo vio en dos dias
-    // distintos. El de las filas de la tabla lo pide la tabla, solo si esas columnas estan a la vista.
-    token && range.from
-      ? fetchReachByLevel({ token, adAccountId, level: "ad", since: sinceOf(range) as string, until: untilOf(range) })
-      : Promise.resolve(null),
-    // Los desgloses, cada uno por su cuenta: si uno falla, esa tarjeta sola
-    // lo dice y el resto de la pantalla se ve igual.
-    breakdownOf("publisher_platform,platform_position"),
-    breakdownOf("device_platform"),
-    breakdownOf("age,gender"),
   ]);
+
+  // Lo de Meta en vivo y el CRM NO se esperan: la cabecera, el periodo y los filtros se dibujan enseguida y cada
+  // tarjeta aparece cuando llega lo suyo (como el dashboard de Chat). Ninguna de estas promesas rechaza.
+  const noLive = () => null;
+
+  const breakdownOf = (breakdown: BreakdownKind) =>
+    neverRejects(
+      token && since ? fetchBreakdown({ token, adAccountId, breakdown, since, until }) : Promise.resolve(null),
+      `el desglose ${breakdown}`,
+      noLive,
+    );
+
+  const reach: Promise<DashboardReach> = neverRejects(
+    Promise.all([
+      token && since ? fetchUniqueReach({ token, adAccountId, since, until }) : Promise.resolve(null),
+      // El alcance unico del periodo anterior, para que la variacion compare
+      // lo mismo con lo mismo: el actual es unico y el anterior, sumado por
+      // dia, seria otro numero.
+      token && before.from
+        ? fetchUniqueReach({ token, adAccountId, since: sinceOf(before) as string, until: untilOf(before) })
+        : Promise.resolve(null),
+    ]).then(([current, previous]) => ({ current: accountReachOf(current), previous: previousReachOf(previous) })),
+    "el alcance del periodo",
+    (message) => ({ current: { uniqueReach: null, uniqueFrequency: null, liveError: message }, previous: null }),
+  );
+
+  // El alcance unico de cada anuncio, para la comparativa: sumar los dias contaria dos veces a quien lo vio en dos dias
+  // distintos. El de las filas de la tabla lo pide la tabla, solo si esas columnas estan a la vista.
+  const adReach = neverRejects(
+    (token && since
+      ? fetchReachByLevel({ token, adAccountId, level: "ad", since, until })
+      : Promise.resolve(null)
+    ).then((result) => (result?.ok ? result.data : null)),
+    "el alcance por anuncio",
+    noLive,
+  );
 
   // Lo que dice el CRM por campaña, conjunto y anuncio (AT4). Con la sesion de quien mira: la RLS decide que leads,
   // agendas y ventas cuenta. Si algo falla, el dashboard se ve igual con lo de Meta y la tabla avisa.
-  const crm = await loadCrmForRows(permissions, {
-    adAccountId,
-    rows,
-    since: sinceOf(range) ?? "2000-01-01",
-    until: untilOf(range),
-    timeZone,
-    now,
-  });
+  const crm = neverRejects(
+    loadCrmForRows(permissions, { adAccountId, rows, since: since ?? "2000-01-01", until, timeZone, now }),
+    "el CRM",
+    (message) => ({ ...EMPTY_CRM, since: since ?? "2000-01-01", until, adAccountId, timeZone, error: message }),
+  );
 
   const syncedAt =
     lastSyncedAt(rows.filter((r) => r.level === "account")) ?? account?.last_synced_at ?? null;
@@ -151,16 +163,17 @@ export default async function AdsDashboardPage({
       adAccountId={adAccountId}
       currency={account?.currency ?? null}
       period={period}
-      uniqueReach={live?.ok ? live.data.reach : null}
-      uniqueFrequency={live?.ok ? live.data.frequency : null}
-      previousLive={previousLive?.ok ? previousLive.data : null}
-      adReach={adReachLive?.ok ? adReachLive.data : null}
-      live={{ placement: placementLive, device: deviceLive, audience: audienceLive }}
-      liveError={live && !live.ok ? live.error : null}
+      live={{
+        reach,
+        adReach,
+        placement: breakdownOf("publisher_platform,platform_position"),
+        device: breakdownOf("device_platform"),
+        audience: breakdownOf("age,gender"),
+        crm,
+      }}
       aiModel={aiChoice ? `${aiChoice.provider}/${aiChoice.model}` : null}
       syncedLabel={syncedLabel(syncedAt, now, timeZone)}
       canSync={canSync}
-      crm={crm}
     />
   );
 }
