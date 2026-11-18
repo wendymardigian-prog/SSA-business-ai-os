@@ -624,6 +624,8 @@ export type AuditAction =
   | "booking.status_changed"
   | "booking.sync_ok"
   | "booking.sync_failed"
+  /** 00430: una reunión movida en Google Calendar a una hora que acá estaba ocupada. */
+  | "booking.google_move_rejected"
   /** Agenda v2 (00130): su horario dejó/volvió a contar como ocupado. */
   | "booking.slot_released"
   | "booking.slot_occupied"

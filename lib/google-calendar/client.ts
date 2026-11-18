@@ -274,6 +274,81 @@ export async function updateEvent(
   return { meetUrl: ev.hangoutLink ?? null };
 }
 
+/** Un evento tal como lo devuelve events.list, solo lo que se usa al leer los cambios. */
+export interface GoogleEventChange {
+  id: string;
+  status: "confirmed" | "tentative" | "cancelled";
+  /** null = evento de dia entero (o borrado, que viene sin hora). */
+  startUtc: string | null;
+  endUtc: string | null;
+}
+
+export interface ListEventsResult {
+  items: GoogleEventChange[];
+  nextSyncToken: string | null;
+  /** true = el syncToken caduco (410) y se hizo una lectura completa desde `fullSyncFrom`. */
+  fullSync: boolean;
+}
+
+function toUtc(v: { dateTime?: string } | undefined): string | null {
+  if (!v?.dateTime) return null;
+  const ms = Date.parse(v.dateTime);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
+/**
+ * Los cambios del calendario desde la ultima lectura, con events.list:
+ *   - con `syncToken`: solo lo que cambio (incluye los borrados con status "cancelled");
+ *   - sin token, o si Google responde 410 (token caducado): lectura completa desde `fullSyncFrom`, con
+ *     showDeleted y singleEvents, y el token nuevo para la proxima.
+ * Pagina con nextPageToken; el nextSyncToken llega en la ultima pagina.
+ */
+export async function listEvents(
+  deps: GoogleDeps,
+  connectionId: string,
+  calendarId: string,
+  options: { syncToken: string | null; fullSyncFrom: string; maxPages?: number },
+): Promise<ListEventsResult> {
+  const path = `/calendars/${encodeURIComponent(calendarId)}/events`;
+  const read = async (syncToken: string | null): Promise<Omit<ListEventsResult, "fullSync">> => {
+    const items: GoogleEventChange[] = [];
+    let pageToken: string | null = null;
+    let nextSyncToken: string | null = null;
+    const maxPages = options.maxPages ?? 20;
+    for (let page = 0; page < maxPages; page++) {
+      const query: Record<string, string> = { maxResults: "250", showDeleted: "true", singleEvents: "true" };
+      if (syncToken) query.syncToken = syncToken;
+      else query.timeMin = options.fullSyncFrom;
+      if (pageToken) query.pageToken = pageToken;
+      const { json } = await call(deps, connectionId, "GET", path, { query, fallback: "No pude leer los cambios de Google Calendar" });
+      const body = json as {
+        items?: Array<{ id?: string; status?: string; start?: { dateTime?: string }; end?: { dateTime?: string } }>;
+        nextPageToken?: string;
+        nextSyncToken?: string;
+      } | null;
+      for (const it of body?.items ?? []) {
+        if (!it.id) continue;
+        const status = it.status === "cancelled" || it.status === "tentative" ? it.status : "confirmed";
+        items.push({ id: it.id, status, startUtc: toUtc(it.start), endUtc: toUtc(it.end) });
+      }
+      nextSyncToken = body?.nextSyncToken ?? nextSyncToken;
+      pageToken = body?.nextPageToken ?? null;
+      if (!pageToken) break;
+    }
+    return { items, nextSyncToken };
+  };
+
+  if (options.syncToken) {
+    try {
+      return { ...(await read(options.syncToken)), fullSync: false };
+    } catch (err) {
+      // 410 Gone = el token ya no vale: Google pide una lectura completa.
+      if (!(err instanceof GoogleCalendarError && err.status === 410)) throw err;
+    }
+  }
+  return { ...(await read(null)), fullSync: true };
+}
+
 /** Borra el evento. 404 y 410 (ya no estaba) cuentan como exito. */
 export async function deleteEvent(
   deps: GoogleDeps,

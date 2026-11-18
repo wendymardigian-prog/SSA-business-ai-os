@@ -32,6 +32,8 @@ export interface RescheduleInput {
   ignoreAvailability?: boolean;
   /** B-AGE-01: solo el equipo, al estirar la reunión en el calendario. Entre 15 minutos y 8 horas. */
   durationMinutes?: number;
+  /** 00430: quien atiende la movió en su Google Calendar. No se vuelve a escribir ahí (sería eco). */
+  fromGoogle?: boolean;
   now?: Date;
 }
 
@@ -135,7 +137,7 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
     entityId: booking.id,
     action: "booking.rescheduled",
     changes: { start_at: { old: previous.start_at, new: startUtc }, end_at: { old: previous.end_at, new: endUtc } },
-    metadata: { by: input.by, reason: input.reason ?? null },
+    metadata: { by: input.by, reason: input.reason ?? null, ...(input.fromGoogle ? { source: "google" } : {}) },
     performedBy: input.by === "host" ? input.actorUserId ?? null : null,
   });
 
@@ -157,17 +159,19 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
   // relativos los vuelve a agendar syncRelativeJobs (B7a).
   await cancelPendingJobs(service, booking.id);
   await service.from("scheduled_jobs").insert([
-    {
-      type: BOOKING_GOOGLE_SYNC_JOB,
-      payload: { booking_id: booking.id, action: booking.google_event_id ? "update" : "create", attempt: 0 } as unknown as Json,
-      run_at: now.toISOString(),
-      status: "pending",
-    },
+    ...(input.fromGoogle
+      ? []
+      : [{
+          type: BOOKING_GOOGLE_SYNC_JOB,
+          payload: { booking_id: booking.id, action: booking.google_event_id ? "update" : "create", attempt: 0 } as unknown as Json,
+          run_at: now.toISOString(),
+          status: "pending" as const,
+        }]),
     {
       type: BOOKING_ENDED_JOB,
       payload: { booking_id: booking.id } as unknown as Json,
       run_at: endUtc,
-      status: "pending",
+      status: "pending" as const,
     },
   ]);
 
