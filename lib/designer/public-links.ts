@@ -32,6 +32,14 @@ export function designPublicUrl(base: string, code: string): string {
   return `${base.replace(/\/+$/, "")}/d/${encodeURIComponent(code)}`;
 }
 
+/**
+ * El link de verificación para imprimir en la pieza (`design.verify_url`): el mismo de `designPublicUrl` sin `https://`,
+ * que en un papel sobra y se tipea igual.
+ */
+export function designVerifyLabel(base: string, code: string): string {
+  return designPublicUrl(base, code).replace(/^https?:\/\//, "");
+}
+
 export function designDownloadUrl(base: string, code: string, opts: { formato: DownloadFormat; pagina?: number }): string {
   const params = new URLSearchParams({ formato: opts.formato });
   if (opts.formato === "png" && opts.pagina !== undefined) params.set("pagina", String(opts.pagina));
@@ -48,6 +56,11 @@ export interface DesignLinks {
 export function designLinksFor(workspace: WorkspaceDomainSource, code: string): DesignLinks {
   const base = publicBaseUrl(workspace);
   return { link: designPublicUrl(base, code), pdfUrl: designDownloadUrl(base, code, { formato: "pdf" }), zipUrl: designDownloadUrl(base, code, { formato: "zip" }) };
+}
+
+/** El link de verificación con el dominio del negocio leído de la base. Nunca lanza: si falla, el principal. */
+export async function loadDesignVerifyLabel(db: unknown, workspaceId: string, code: string): Promise<string> {
+  return designVerifyLabel(await loadPublicBaseUrl(db, workspaceId), code);
 }
 
 /** Lo mismo leyendo el dominio del negocio de la base (jobs, automatizaciones). Nunca lanza: si falla, el principal. */

@@ -17,17 +17,17 @@ function docWith(format: Parameters<typeof emptyDoc>[0], pages: number): DesignD
 describe("exportPlan (F46)", () => {
   it("PDF: un solo pedido con todas las páginas, al tamaño real del formato", () => {
     const plan = exportPlan(docWith("carta_v", 3), "pdf");
-    expect(plan).toMatchObject({ ok: true, kind: "pdf", scale: 1, width: 816, height: 1056, pageCount: 3, pages: [0, 1, 2] });
+    expect(plan).toMatchObject({ ok: true, kind: "pdf", scale: 2, width: 816, height: 1056, pageCount: 3, pages: [0, 1, 2] });
     if (!plan.ok) return;
-    expect(plan.requests).toEqual([{ format: "pdf", pages: [0, 1, 2], width: 816, height: 1056, scale: 1 }]);
+    expect(plan.requests).toEqual([{ format: "pdf", pages: [0, 1, 2], width: 816, height: 1056, scale: 2 }]);
     expect(plan.stored).toEqual({ file: "document.pdf", contentType: "application/pdf" });
   });
 
-  it("los impresos salen ×1 y las redes y presentaciones ×2", () => {
+  it("los impresos, las redes y las presentaciones salen ×2", () => {
     for (const key of FORMAT_KEYS) {
       if (key === "web") continue;
       const plan = exportPlan(emptyDoc(key), "pdf");
-      expect(plan.ok && plan.scale).toBe(["carta_v", "carta_h", "a4_v", "a4_h"].includes(key) ? 1 : 2);
+      expect(plan.ok && plan.scale).toBe(2);
       expect(plan.ok && plan.width).toBe(FORMATS[key].width);
     }
   });

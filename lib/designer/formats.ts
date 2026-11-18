@@ -41,7 +41,7 @@ export interface FormatDef {
   multiPage: boolean;
   /** Lo principal que exporta: PDF en impresos y presentaciones, PNG en redes. */
   primaryExport: ExportKind;
-  /** Escala de exportación: impresos ×1, redes y presentaciones ×2 (F46). */
+  /** Escala de exportación: impresos, redes y presentaciones ×2 (impresos desde el 18/11/2026: ×1 se veía borroso); web ×1. */
   exportScale: 1 | 2;
   safeZone: SafeZone;
   /** Tamaño mínimo de letra en px de diseño (regla de la IA y de la revisión, F32 y F36). */
@@ -63,7 +63,7 @@ export const FORMATS: Record<FormatKey, FormatDef> = {
     description: "Vertical · PDF",
     multiPage: true,
     primaryExport: "pdf",
-    exportScale: 1,
+    exportScale: 2,
     safeZone: SIX,
     minFontSize: 18,
     group: "impreso",
@@ -76,7 +76,7 @@ export const FORMATS: Record<FormatKey, FormatDef> = {
     description: "Certificados · PDF",
     multiPage: true,
     primaryExport: "pdf",
-    exportScale: 1,
+    exportScale: 2,
     safeZone: SIX,
     minFontSize: 18,
     group: "impreso",
@@ -89,7 +89,7 @@ export const FORMATS: Record<FormatKey, FormatDef> = {
     description: "Vertical · PDF",
     multiPage: true,
     primaryExport: "pdf",
-    exportScale: 1,
+    exportScale: 2,
     safeZone: SIX,
     minFontSize: 18,
     group: "impreso",
@@ -102,7 +102,7 @@ export const FORMATS: Record<FormatKey, FormatDef> = {
     description: "Certificados · PDF",
     multiPage: true,
     primaryExport: "pdf",
-    exportScale: 1,
+    exportScale: 2,
     safeZone: SIX,
     minFontSize: 18,
     group: "impreso",

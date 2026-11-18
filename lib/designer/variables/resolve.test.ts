@@ -38,6 +38,16 @@ describe("el resto del contrato de resolveValues", () => {
   const now = new Date("2026-11-08T02:00:00Z");
   const template: ResolveTemplate = { docKeys: ["nombre"], customVars: [{ key: "nombre", label: "Nombre", sample: "Ana", default: null }], dateFormat: "long", verify: false, docType: null, docTypeLabel: null };
 
+  it("el link de verificación sale del sujeto y, antes de tener código, queda vacío sin contar como dato que falta", () => {
+    const withLink: ResolveTemplate = { ...template, docKeys: ["design.code", "design.verify_url"], customVars: [], verify: true, docType: "certificado" };
+    const before = resolveValues(withLink, { now, timeZone: "UTC" });
+    expect(before.ok).toBe(true);
+    expect(before.values["design.verify_url"]).toBe("");
+    expect(before.sources["design.verify_url"]).toBe("system");
+    const after = resolveValues(withLink, { now, timeZone: "UTC", code: "AAAA-BBBB-CCCC", verifyUrl: "x.test/d/AAAA-BBBB-CCCC" });
+    expect(after.values["design.verify_url"]).toBe("x.test/d/AAAA-BBBB-CCCC");
+  });
+
   it("la política por defecto es «No generar y avisarme»", () => {
     expect(resolveValues(template, { now, timeZone: "UTC" }).ok).toBe(false);
   });
