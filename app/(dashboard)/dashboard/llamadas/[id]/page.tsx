@@ -19,7 +19,8 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import type { CallAnalysisStatus, CallAttendee, CallTranscriptLine } from "@/lib/types/database";
 import { manualSummaryOf } from "@/lib/calls/manual-summary";
-import { readProposals } from "@/lib/calls/proposals";
+import { readProposals, responsibleFor } from "@/lib/calls/proposals";
+import { isAdminRole } from "@/lib/auth/roles";
 import { ACTIVITY_ACTIONS, activityEntries, type CallAuditRow } from "@/lib/calls/activity";
 import { svcSchema } from "@/lib/services/db";
 import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
@@ -195,6 +196,20 @@ export default async function LlamadaPage({ params, searchParams }: { params: Pr
   const callExtra = call as unknown as { proposals?: unknown; service_id?: string | null };
   data.proposals = readProposals(callExtra.proposals);
   data.permissions = ctx.permissions.keys;
+  data.churn = { reasons: taskSettings.call_analysis.churn_reasons, canEdit: ctx.can("calls.edit") };
+  // Quién decide cada propuesta («Quién aprueba»): un admin, o el responsable (el del servicio o quien grabó).
+  if (data.proposals.length > 0) {
+    let serviceOwnerId: string | null = null;
+    if (callExtra.service_id) {
+      const { data: svc } = await svcSchema(service).from("services").select("owner_user_id").eq("id", callExtra.service_id).eq("workspace_id", workspace.id).maybeSingle();
+      serviceOwnerId = (svc as { owner_user_id: string | null } | null)?.owner_user_id ?? null;
+    }
+    data.proposalViewer = {
+      approvers: taskSettings.call_analysis.proposal_approvers,
+      isAdmin: isAdminRole(ctx.role),
+      isResponsible: responsibleFor({ serviceOwnerId, recordedBy: (call as { recorded_by_user_id: string | null }).recorded_by_user_id }) === ctx.user.id,
+    };
+  }
   if (callExtra.service_id && data.proposals.some((p) => p.type === "paso")) {
     const { data: items } = await svcSchema(service).from("service_items").select("template_key, name").eq("service_id", callExtra.service_id).limit(200);
     data.pendingStepNames = Object.fromEntries(((items ?? []) as Array<{ template_key: string | null; name: string }>).filter((i) => i.template_key).map((i) => [i.template_key as string, i.name]));

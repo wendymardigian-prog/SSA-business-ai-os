@@ -114,3 +114,34 @@ describe("criterios que restan (Servicios A4, F140)", () => {
     expect(computeScoresWithRubric(a, plain, null, transcript).closer_score).toBe(computeScoresWithRubric(a, plain, null).closer_score);
   });
 });
+
+describe("el desglose de la nota (traído de RER)", () => {
+  const rubric = {
+    closer: [
+      { clave: "escucha", peso: 50 },
+      { clave: "claridad", peso: 50 },
+      { clave: "promesa", nombre: "Promete algo fuera de las normas", peso: 20, subtracts: true as const },
+    ],
+    lead: [],
+  };
+  const transcript = "Le dije que le garantizo el triple de ventas en un mes.";
+  it("la media, lo que resta cada criterio y el total; sin cita, dice por qué no cuenta", () => {
+    const con = computeScoresWithRubric({ rubrica: [{ codigo: "escucha", puntaje: 5 }, { codigo: "claridad", puntaje: 5 }, { codigo: "promesa", nombre: "Promete", puntaje: 5, cita: "le garantizo el triple de ventas" }] }, rubric, null, transcript);
+    expect(con.breakdown).toEqual({ base: 100, total: 80, restas: [{ clave: "promesa", nombre: "Promete", puntaje: 5, puntos: 20, cita: "le garantizo el triple de ventas", motivo: null }] });
+    expect(con.closer_score).toBe(80);
+    const sin = computeScoresWithRubric({ rubrica: [{ codigo: "escucha", puntaje: 5 }, { codigo: "claridad", puntaje: 5 }, { codigo: "promesa", puntaje: 5 }] }, rubric, null, transcript);
+    expect(sin.breakdown?.restas[0]).toMatchObject({ puntos: 0, motivo: "sin_cita" });
+    const noPaso = computeScoresWithRubric({ rubrica: [{ codigo: "escucha", puntaje: 5 }, { codigo: "claridad", puntaje: 5 }] }, rubric, null, transcript);
+    expect(noPaso.breakdown?.restas[0]).toMatchObject({ clave: "promesa", nombre: "Promete algo fuera de las normas", motivo: "no_paso", puntos: 0 });
+  });
+  it("sin criterios que restan no hay desglose", () => {
+    const plain = { closer: [{ clave: "escucha", peso: 1 }], lead: [] };
+    expect(computeScoresWithRubric({ rubrica: [{ codigo: "escucha", puntaje: 5 }] }, plain, null, transcript).breakdown).toBeNull();
+  });
+  it("se lee del análisis guardado, tolerante", async () => {
+    const { readScoreBreakdown, deductionReason } = await import("./scoring");
+    expect(readScoreBreakdown({ nota: { base: 90, total: 70, restas: [{ clave: "p", nombre: "P", puntos: 20, motivo: "raro" }, { nombre: "sin clave" }] } })).toEqual({ base: 90, total: 70, restas: [{ clave: "p", nombre: "P", puntaje: null, puntos: 20, cita: null, motivo: null }] });
+    expect(readScoreBreakdown({})).toBeNull();
+    expect(deductionReason({ clave: "p", nombre: "P", puntaje: 5, puntos: 0, cita: "x", motivo: "cita_no_esta" })).toMatch(/no está en la transcripción/);
+  });
+});

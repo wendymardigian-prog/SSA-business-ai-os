@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Lightbulb } from "lucide-react";
 import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { PageHeader } from "@/components/page-header";
 import { ContentKanban, NewContentButtons } from "@/components/content/kanban";
@@ -392,6 +394,10 @@ export default async function ContentPage({
           <>
             {/* Los pilares (y lo que se sume en el futuro): solo para quien puede cambiar la configuracion. */}
             {can("settings.general") && <ContentSettingsButton pillars={pillarRows} />}
+            <Link href="/dashboard/content/ideas" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent" aria-label="Ideas: el banco con su estado y de dónde salió cada una">
+              <Lightbulb className="h-4 w-4" aria-hidden />
+              <span className="hidden sm:inline">Ideas</span>
+            </Link>
             <NewContentButtons {...crear} />
           </>
         }

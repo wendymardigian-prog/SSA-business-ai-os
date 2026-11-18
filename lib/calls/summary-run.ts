@@ -9,8 +9,10 @@
  *   2. Respeta el tope de gasto del workspace.
  *   3. Pide el resumen. Si la llamada tiene contacto, en la MISMA llamada le da
  *      la memoria previa y recibe la integrada.
- *   4. Guarda el resumen; crea las ideas de contenido SOLO la primera vez
- *      (resumir de nuevo no las duplica).
+ *   4. Guarda el resumen. Las ideas de contenido van como PROPUESTAS de la
+ *      grabación (idea o borrador, con su cita): resumir de nuevo reemplaza solo
+ *      las pendientes. Una grabación cuyas ideas ya entraron solas al banco
+ *      (antes de las propuestas: `ideas_created_at`) no vuelve a proponerlas.
  *   5. Escribe la memoria con control de concurrencia (`memory.ts`).
  *
  * Un fallo del modelo no lanza: se reintenta a los 1, 5 y 15 minutos y, agotado,
@@ -28,7 +30,11 @@ import { decideAiFailure } from "./ai-retry";
 import { applyMemory, readContactMemory } from "./memory";
 import { enqueueCallJob } from "./queue";
 import { derivedCallType } from "./legacy-type";
-import { ideasFromSummary, memoryApplies, runCallSummary, summaryEligibility } from "./summary";
+import { contentProposalsFromSummary, memoryApplies, runCallSummary, summaryEligibility } from "./summary";
+import { CONTENT_TYPES } from "./proposals";
+import { replacePendingProposals } from "./proposals-write";
+import { transcriptText } from "./transcript-text";
+import { randomUUID } from "node:crypto";
 import { withManualKept } from "./manual-summary";
 
 type Db = SupabaseClient<Database>;
@@ -126,12 +132,11 @@ export async function runCallSummaryJob(deps: SummaryDeps, payload: SummaryJobPa
 
   const { memoria, ...summary } = first.summary;
   const modelLabel = model.provider && model.modelId ? `${model.provider}/${model.modelId}` : "modelo";
-  const { data: ws } = await db.from("workspaces").select("timezone").eq("id", call.workspace_id).maybeSingle();
 
-  // Las ideas, solo la primera vez que el resumen sale bien.
-  let ideasCreatedAt: string | null = call.ideas_created_at;
-  if (!call.ideas_created_at && summary.ideas.length > 0) {
-    ideasCreatedAt = (await createIdeas(db, call, first.summary, ws?.timezone ?? "UTC", now)) ? now.toISOString() : null;
+  // Las ideas, como propuestas (solo reemplaza las pendientes de contenido). Si ya entraron solas al banco, no.
+  if (!call.ideas_created_at) {
+    const fresh = contentProposalsFromSummary(summary, transcriptText(call.transcript), () => randomUUID());
+    await replacePendingProposals(db as never, { callId: call.id, types: CONTENT_TYPES, fresh });
   }
 
   // La memoria, con control de concurrencia (un reintento).
@@ -175,7 +180,6 @@ export async function runCallSummaryJob(deps: SummaryDeps, payload: SummaryJobPa
       summary_status: "done",
       memory_status: memoryStatus,
       ...(memoryAppliedAt ? { memory_applied_at: memoryAppliedAt } : {}),
-      ...(ideasCreatedAt && !call.ideas_created_at ? { ideas_created_at: ideasCreatedAt } : {}),
     })
     .eq("id", call.id);
   if (error) {
@@ -183,39 +187,4 @@ export async function runCallSummaryJob(deps: SummaryDeps, payload: SummaryJobPa
     return { outcome: "error" };
   }
   return { outcome: "done" };
-}
-
-async function createIdeas(db: Db, call: { id: string; workspace_id: string; recorded_at: string; contact_id: string | null }, summary: Parameters<typeof ideasFromSummary>[0], timeZone: string, now: Date): Promise<boolean> {
-  try {
-    let contactName: string | null = null;
-    if (call.contact_id) {
-      const { data: contact } = await db.from("contacts").select("display_name, email").eq("id", call.contact_id).maybeSingle();
-      contactName = contact?.display_name || contact?.email || null;
-    }
-    const ideas = ideasFromSummary(summary, { recordedAt: call.recorded_at, contactName, timeZone });
-    if (ideas.length === 0) return true;
-    // Al final de la columna "nueva", leyendo el maximo (contar da mal apenas alguien reordena).
-    const { data: last } = await db.from("content_ideas").select("position").eq("workspace_id", call.workspace_id).eq("status", "nueva").order("position", { ascending: false }).limit(1).maybeSingle();
-    const base = last?.position ?? 0;
-    const { error } = await db.from("content_ideas").insert(
-      ideas.map((idea, i) => ({
-        ...idea,
-        workspace_id: call.workspace_id,
-        source: "call" as const,
-        call_id: call.id,
-        status: "nueva" as const,
-        created_by: null,
-        position: base + (i + 1) * 10,
-        created_at: now.toISOString(),
-      })),
-    );
-    if (error) {
-      console.error("[call_summary] no pude crear las ideas:", error.message);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.error("[call_summary] fallo al crear las ideas:", err instanceof Error ? err.message : "error");
-    return false;
-  }
 }

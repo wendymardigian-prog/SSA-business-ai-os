@@ -5,7 +5,8 @@ import {
   buildSummarySystem,
   buildSummaryTechnical,
   buildSummaryUser,
-  ideasFromSummary,
+  contentProposalsFromSummary,
+  ideaRowFromProposal,
   memoryApplies,
   runCallSummary,
   summaryEligibility,
@@ -20,9 +21,9 @@ const summary = (over: Partial<CallSummary> = {}): CallSummary => ({
   puntos_clave: ["Sin leads"],
   sentimiento: "neutral",
   ideas: [
-    { gancho: "Por qué no te llegan clientes", angulo: "El dolor de la falta de leads", formato: "reel", cita: "no me llegan clientes" },
-    { gancho: "El error con los anuncios", angulo: "Pagar sin sistema", formato: "post", cita: null },
-    { gancho: "Tu primer embudo", angulo: "Empezar chico", formato: "email" },
+    { gancho: "Por qué no te llegan clientes", angulo: "El dolor de la falta de leads", formato: "reel", cita: "no me llegan clientes", guion: null },
+    { gancho: "El error con los anuncios", angulo: "Pagar sin sistema", formato: "post", cita: null, guion: null },
+    { gancho: "Tu primer embudo", angulo: "Empezar chico", formato: "email", guion: null },
   ],
   memoria: "Ana es dueña de un negocio sin leads.",
   ...over,
@@ -97,35 +98,42 @@ describe("runCallSummary", () => {
   });
 });
 
-describe("ideasFromSummary", () => {
-  const ctx = { recordedAt: "2026-10-09T15:00:00Z", contactName: "Ana Pérez", timeZone: "America/Costa_Rica" };
+describe("contentProposalsFromSummary: las ideas como propuestas de la grabación", () => {
+  const T = "Lead: no me llegan clientes y pagué anuncios sin ningún sistema. Nadie me explicó lo del embudo.";
+  let n = 0;
+  const id = () => `p${++n}`;
 
-  it("una idea por cada una del resumen, con titulo, contenido y formato", () => {
-    const ideas = ideasFromSummary(summary(), ctx);
-    expect(ideas).toHaveLength(3);
-    expect(ideas[0]).toMatchObject({ title: "Por qué no te llegan clientes", format: "Reel" });
-    expect(ideas[0].content).toBe('Ángulo: El dolor de la falta de leads\nCita: "no me llegan clientes"\nDe la llamada del 9 de octubre de 2026 con Ana Pérez');
+  it("solo las ideas con una cita que está en la transcripción; las demás no se proponen", () => {
+    const out = contentProposalsFromSummary(summary(), T, id);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ type: "idea", status: "pending", original: { titulo: "Por qué no te llegan clientes", detalle: "El dolor de la falta de leads", cita: "no me llegan clientes", formato: "Reel" } });
   });
-  it("sin cita no hay linea de cita, y sin contacto dice 'un lead'", () => {
-    const [, second] = ideasFromSummary(summary(), { ...ctx, contactName: null });
-    expect(second.content).toBe("Ángulo: Pagar sin sistema\nDe la llamada del 9 de octubre de 2026 con un lead");
-    expect(second.format).toBe("Post");
+  it("con guion es un borrador; como mucho dos, las demás quedan como idea", () => {
+    const ideas = Array.from({ length: 3 }, (_, i) => ({ gancho: `Gancho ${i}`, angulo: "a", formato: "reel" as const, cita: "pagué anuncios sin ningún sistema", guion: `Texto ${i}` }));
+    const out = contentProposalsFromSummary({ ideas }, T, id);
+    expect(out.map((p) => p.type)).toEqual(["borrador", "borrador", "idea"]);
+    expect(out[0].original.guion).toBe("Texto 0");
+    expect(out[2].original.guion).toBeUndefined();
   });
-  it("usa los formatos con la mayuscula del banco de ideas", () => {
-    const formatos = ideasFromSummary(summary(), ctx).map((i) => i.format);
-    expect(formatos).toEqual(["Reel", "Post", "Email"]);
+  it("un gancho vacío se descarta sin tirar las demás; hasta cinco", () => {
+    const ok = { gancho: "Buena", angulo: "y", formato: "video" as const, cita: "Nadie me explicó lo del embudo", guion: null };
+    expect(contentProposalsFromSummary({ ideas: [{ ...ok, gancho: "  " }, ok] }, T, id).map((p) => p.original.titulo)).toEqual(["Buena"]);
+    expect(contentProposalsFromSummary({ ideas: Array.from({ length: 6 }, () => ok) }, T, id)).toHaveLength(5);
   });
-  it("una idea con el gancho vacio se descarta sin tirar las demas", () => {
-    const ideas = ideasFromSummary(summary({ ideas: [{ gancho: "  ", angulo: "x", formato: "reel" }, { gancho: "Buena", angulo: "y", formato: "video" }] }), ctx);
-    expect(ideas.map((i) => i.title)).toEqual(["Buena"]);
+});
+
+describe("ideaRowFromProposal: la fila del banco al aprobar", () => {
+  const ctx = { recordedAt: "2026-10-09T15:00:00Z", contactName: "Contacto Prueba", timeZone: "America/Costa_Rica" };
+  it("título, ángulo, cita, de qué llamada salió y el formato", () => {
+    const row = ideaRowFromProposal({ titulo: "Por qué no te llegan clientes", detalle: "El dolor", cita: "no me llegan clientes", formato: "Reel" }, ctx);
+    expect(row).toMatchObject({ title: "Por qué no te llegan clientes", format: "Reel" });
+    expect(row?.content).toBe('Ángulo: El dolor\nCita: "no me llegan clientes"\nDe la llamada del 9 de octubre de 2026 con Contacto Prueba');
   });
-  it("hasta cinco", () => {
-    const six = Array.from({ length: 6 }, (_, i) => ({ gancho: `Idea ${i}`, angulo: "a", formato: "reel" as const }));
-    // el esquema ya limita a 5; la funcion tambien, por si le llega algo de otro lado
-    expect(ideasFromSummary({ ...summary(), ideas: six as never }, ctx)).toHaveLength(5);
+  it("sin contacto dice 'un lead'; la fecha sale en la zona del negocio", () => {
+    const row = ideaRowFromProposal({ titulo: "G", detalle: "", cita: null }, { ...ctx, contactName: null, recordedAt: "2026-10-12T05:30:00Z" });
+    expect(row?.content).toBe("De la llamada del 11 de octubre de 2026 con un lead");
   });
-  it("la fecha sale en la zona del negocio: una llamada del domingo de noche sigue siendo domingo", () => {
-    const [i] = ideasFromSummary(summary({ ideas: [{ gancho: "G", angulo: "A", formato: "reel" }] }), { ...ctx, recordedAt: "2026-10-12T05:30:00Z" }); // domingo 23:30 en Costa Rica
-    expect(i.content).toContain("11 de octubre de 2026");
+  it("sin título no hay fila", () => {
+    expect(ideaRowFromProposal({ titulo: "  ", detalle: "x" }, ctx)).toBeNull();
   });
 });

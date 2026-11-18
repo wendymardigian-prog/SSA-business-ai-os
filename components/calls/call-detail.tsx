@@ -1,8 +1,8 @@
 "use client";
 import { CallServiceChip, ManualSummaryCard, type CallServiceInfo } from "@/components/calls/call-service"; // @plantilla-quitar(servicios)
 import type { ManualSummary } from "@/lib/calls/manual-summary";
-import { CallProposals } from "@/components/calls/call-proposals"; // @plantilla-quitar(servicios)
-import type { Proposal } from "@/lib/calls/proposals";
+import { CallProposals, type ProposalViewer } from "@/components/calls/call-proposals"; // @plantilla-quitar(servicios)
+import { DEFAULT_PROPOSAL_APPROVERS, type Proposal } from "@/lib/calls/proposals";
 import { CommentThread } from "@/components/team-comments/comment-thread";
 import { EMPTY_ACTIVITY, type ActivityEntry } from "@/lib/calls/activity";
 
@@ -70,6 +70,8 @@ export interface CallDetailData extends TabsData {
   canCreateTasks?: boolean;
   /** Servicios A4 (F143): las propuestas del analizador y los nombres de los pasos pendientes. */
   proposals?: Proposal[];
+  /** Quién mira, para «Quién aprueba» (servicios). */
+  proposalViewer?: ProposalViewer; // @plantilla-quitar(servicios)
   pendingStepNames?: Record<string, string>;
   /** F145: lo que pasó (vínculo, propuestas, carga a mano), las menciones sin leer y la pestaña de entrada. */
   activity?: ActivityEntry[];
@@ -207,7 +209,7 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
 
             {data.showManual && <ManualSummaryCard callId={data.callId} manual={data.manual ?? null} canEdit={canEdit} canCreateTask={canEdit && (data.canCreateTasks ?? false)} />} {/* @plantilla-quitar(servicios) */}
             {data.proposals && data.proposals.length > 0 && (
-              <CallProposals callId={data.callId} proposals={data.proposals} canEdit={canEdit} permissions={data.permissions ?? []} pendingStepNames={data.pendingStepNames ?? {}} />
+              <CallProposals callId={data.callId} proposals={data.proposals} canEdit={canEdit} permissions={data.permissions ?? []} pendingStepNames={data.pendingStepNames ?? {}} viewer={data.proposalViewer ?? { approvers: DEFAULT_PROPOSAL_APPROVERS, isAdmin: false, isResponsible: false }} />
             )} {/* @plantilla-quitar(servicios) */}
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
