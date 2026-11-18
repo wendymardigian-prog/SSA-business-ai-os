@@ -22,6 +22,7 @@ import { LightDot } from "@/components/services/clients/services-list-view";
 import { cn } from "@/lib/utils";
 import { rememberRecordOpener } from "./record-modal";
 import { ServiceActionDialog } from "./service-action-dialog";
+import { ScheduleCallButton } from "@/components/scheduling/bookings/schedule-call-button";
 import { SidePanel } from "@/components/tasks/overlay";
 import { EvidenceBox } from "@/components/services/evidence-box";
 import { ServiceProjectsSection } from "./service-projects"; // @plantilla-quitar(proyectos)
@@ -172,6 +173,7 @@ export function ServiceRecordHeader({ data, today, members, permissions }: { dat
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
+          {can("bookings.manage") && <ScheduleCallButton contactId={data.contactId} />}
           {main.map((a) => (
             <button
               key={a}

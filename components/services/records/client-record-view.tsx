@@ -14,6 +14,7 @@ import { ActionError } from "@/components/contacts/ui";
 import { InlineField } from "@/components/contacts/inline-field";
 import { LightDot } from "@/components/services/clients/services-list-view";
 import { NewServiceDialog, type NewServiceOptions } from "@/components/services/clients/new-service-dialog";
+import { ScheduleCallButton } from "@/components/scheduling/bookings/schedule-call-button";
 import { cn } from "@/lib/utils";
 import { rememberRecordOpener } from "./record-modal";
 
@@ -57,7 +58,7 @@ export interface ClientRecordData {
 const civil = new Intl.DateTimeFormat("es", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
 const fmtCivil = (d: string | null) => (d ? civil.format(new Date(`${d.slice(0, 10)}T12:00:00Z`)) : "—");
 
-export function ClientRecordHeader({ data, canEdit, canCreate, newServiceOptions, timeZone }: { data: ClientRecordData; canEdit: boolean; canCreate: boolean; newServiceOptions: NewServiceOptions; timeZone: string }) {
+export function ClientRecordHeader({ data, canEdit, canCreate, canBook = false, newServiceOptions, timeZone }: { data: ClientRecordData; canEdit: boolean; canCreate: boolean; /** `bookings.manage`: el boton «Agendar llamada». */ canBook?: boolean; newServiceOptions: NewServiceOptions; timeZone: string }) {
   const [creating, setCreating] = useState(false);
   const facts = clientRecordFacts(data, new Date().toISOString(), timeZone);
   const wa = data.whatsapp ? data.whatsapp.replace(/\D/g, "") : "";
@@ -88,6 +89,7 @@ export function ClientRecordHeader({ data, canEdit, canCreate, newServiceOptions
           <Link href={`/dashboard/contacts/${data.contactId}`} className="inline-flex h-10 items-center rounded-lg border border-border px-3 text-sm hover:bg-accent md:h-8">
             Ficha del contacto
           </Link>
+          {canBook && <ScheduleCallButton contactId={data.contactId} />}
           {canCreate && (
             <button type="button" onClick={() => setCreating(true)} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 md:h-8">
               <Plus className="h-4 w-4" aria-hidden /> Servicio

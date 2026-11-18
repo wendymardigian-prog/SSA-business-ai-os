@@ -86,6 +86,7 @@ export function BookManualDialog({
   currentUserId,
   areas,
   confirmationConfigs = [],
+  presetContact,
 }: {
   events: ManualEventOption[];
   timezone: string;
@@ -102,6 +103,11 @@ export function BookManualDialog({
   areas: Array<{ id: string; name: string; isDefault: boolean }>;
   /** Los flujos de "Se agendó una reunión" prendidos: dicen si sale el email de confirmación. */
   confirmationConfigs?: BookingTriggerConfig[];
+  /**
+   * El invitado ya elegido y FIJO (sin «Cambiar»): desde la ficha del cliente o del servicio («Agendar llamada»).
+   * Sin la prop, el modal es el de siempre.
+   */
+  presetContact?: ManualContactOption;
 }) {
   const router = useRouter();
   const titleId = useId();
@@ -113,7 +119,7 @@ export function BookManualDialog({
 
   const [guestTerm, setGuestTerm] = useState("");
   const [guestResults, setGuestResults] = useState<ManualContactOption[]>([]);
-  const [contact, setContact] = useState<ManualContactOption | null>(null);
+  const [contact, setContact] = useState<ManualContactOption | null>(presetContact ?? null);
   const [newGuest, setNewGuest] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -389,17 +395,19 @@ export function BookManualDialog({
                   <span className="block truncate text-sm font-medium">{contact.name}</span>
                   <span className="block truncate text-xs text-muted-foreground">{contact.detail}</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setContact(null);
-                    setGuestTerm("");
-                    setChosenInviteeTz(null);
-                  }}
-                  className="shrink-0 text-xs font-medium text-primary-ink hover:underline"
-                >
-                  Cambiar
-                </button>
+                {!presetContact && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setContact(null);
+                      setGuestTerm("");
+                      setChosenInviteeTz(null);
+                    }}
+                    className="shrink-0 text-xs font-medium text-primary-ink hover:underline"
+                  >
+                    Cambiar
+                  </button>
+                )}
               </div>
             ) : newGuest ? (
               <div className="space-y-2 rounded-lg border border-border p-3">
