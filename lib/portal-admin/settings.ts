@@ -38,6 +38,18 @@ export interface SectionRule {
   until?: { type: (typeof UNTIL_TYPES)[number]; ref?: string | null; n?: number | null; date?: string | null };
   limits?: { community_can_post?: boolean };
   ai_limit_usd?: number | null;
+  /** Los módulos que la variante no incluye (00404): no se ven, con candado o con la invitación para pasarse. Solo Programa. */
+  not_included?: NotIncluded;
+}
+export const NOT_INCLUDED_MODES = ["hidden", "locked", "invite"] as const;
+export const NOT_INCLUDED_TARGETS = ["link", "form", "event", "whatsapp"] as const;
+export interface NotIncluded {
+  mode: (typeof NOT_INCLUDED_MODES)[number];
+  label?: string;
+  text?: string;
+  button?: string;
+  target?: { kind: (typeof NOT_INCLUDED_TARGETS)[number]; id?: string; url?: string; value?: string; prefill?: string };
+  on_click?: { tag_id?: string | null; notify?: "owner" | "admins" | string | null };
 }
 export interface VariantPortalSettings {
   v?: 1;
@@ -55,7 +67,7 @@ const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInt
 const has = (o: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 const unknownKeys = unknownKeyProblems;
 
-const SECTION_KEYS = ["section", "included", "display", "content", "opens", "until", "limits", "ai_limit_usd"];
+const SECTION_KEYS = ["section", "included", "display", "content", "opens", "until", "limits", "ai_limit_usd", "not_included"];
 
 /** Con la extensión de proyectos prendida en el negocio, `fame` y `projects` se ofrecen (Corrida C). */
 export interface PortalValidationOptions {
@@ -106,6 +118,58 @@ function sectionProblems(rule: Record<string, unknown>, o: PortalValidationOptio
     const v = rule.ai_limit_usd;
     if (!(typeof v === "number" && v >= 0 && v <= 10000)) p.push(`${sec}: el límite de IA va de 0 a 10.000 dólares`);
     else if (sec !== "assistant") p.push(`${sec}: solo el Asistente IA tiene límite de gasto`);
+  }
+  if (has(rule, "not_included")) p.push(...notIncludedProblems(rule));
+  return p;
+}
+
+const chars = (v: string) => [...v].length;
+const blank = (v: unknown) => typeof v !== "string" || v.trim() === "";
+const textOk = (v: unknown, max: number) => typeof v === "string" && chars(v) <= max;
+
+/**
+ * Los módulos que la variante no incluye (00404), gemela de `app_servicio.not_included_problems`. Con `hidden` no se mira
+ * el resto (se apaga sin borrar lo escrito).
+ */
+export function notIncludedProblems(rule: Record<string, unknown>): string[] {
+  const sec = String(rule.section);
+  const n = rule.not_included;
+  if (!isObj(n)) return [`${sec}: los módulos no incluidos no son válidos`];
+  const p = unknownKeys(n, ["mode", "label", "text", "button", "target", "on_click"]);
+  if (sec !== "program") return [...p, `${sec}: solo el Programa muestra los módulos no incluidos`];
+  const m = typeof n.mode === "string" ? n.mode : null;
+  if (!m || !(NOT_INCLUDED_MODES as readonly string[]).includes(m)) return [...p, `${sec}: elegí cómo se ven los módulos no incluidos`];
+  if (m === "hidden") return p;
+  const c = rule.content;
+  if (!(isObj(c) && Array.isArray(c.modules))) p.push(`${sec}: con todo el programa incluido no hay módulos para mostrar`);
+  if (has(n, "label") && !textOk(n.label, 40)) p.push(`${sec}: la etiqueta va hasta 40 caracteres`);
+  else if (m === "invite" && blank(n.label)) p.push(`${sec}: escribí la etiqueta de los módulos no incluidos`);
+  if (has(n, "text") && !textOk(n.text, 400)) p.push(`${sec}: el texto de la invitación va hasta 400 caracteres`);
+  else if (m === "invite" && blank(n.text)) p.push(`${sec}: escribí el texto de la invitación`);
+  if (has(n, "button") && !textOk(n.button, 30)) p.push(`${sec}: el botón va hasta 30 caracteres`);
+  else if (m === "invite" && blank(n.button)) p.push(`${sec}: escribí el texto del botón`);
+  if (has(n, "target") || m === "invite") {
+    const t = n.target;
+    if (!isObj(t) || !(NOT_INCLUDED_TARGETS as readonly string[]).includes(t.kind as string)) p.push(`${sec}: elegí a dónde lleva el botón`);
+    else {
+      p.push(...unknownKeys(t, ["kind", "id", "url", "value", "prefill"]));
+      if (t.kind === "link" && !(typeof t.url === "string" && /^https:\/\/\S+$/.test(t.url) && chars(t.url) <= 2000)) p.push(`${sec}: el link tiene que empezar con https://`);
+      if ((t.kind === "form" || t.kind === "event") && !(typeof t.id === "string" && UUID.test(t.id) && typeof t.url === "string" && /^https?:\/\/\S+$/.test(t.url) && chars(t.url) <= 2000)) {
+        p.push(`${sec}: elegí el formulario o la agenda`);
+      }
+      if (t.kind === "whatsapp" && !(typeof t.value === "string" && /^[1-9][0-9]{7,14}$/.test(t.value))) p.push(`${sec}: el WhatsApp va con el código de país, solo números`);
+      if (has(t, "prefill") && !textOk(t.prefill, 500)) p.push(`${sec}: el mensaje de WhatsApp va hasta 500 caracteres`);
+    }
+  }
+  if (has(n, "on_click")) {
+    const oc = n.on_click;
+    if (!isObj(oc)) p.push(`${sec}: revisá qué pasa al tocar el botón`);
+    else {
+      p.push(...unknownKeys(oc, ["tag_id", "notify"]));
+      const badTag = has(oc, "tag_id") && oc.tag_id !== null && !(typeof oc.tag_id === "string" && UUID.test(oc.tag_id));
+      const badNotify = has(oc, "notify") && oc.notify !== null && !(typeof oc.notify === "string" && (oc.notify === "owner" || oc.notify === "admins" || UUID.test(oc.notify)));
+      if (badTag || badNotify) p.push(`${sec}: revisá qué pasa al tocar el botón`);
+    }
   }
   return p;
 }

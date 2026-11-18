@@ -228,6 +228,7 @@ describe("los tres tipos nuevos estan registrados", () => {
       "challenge_occurrence_overdue", // @plantilla-quitar(servicios)
       "challenge_completed", // @plantilla-quitar(servicios)
       "points_level_up", // @plantilla-quitar(servicios)
+      "service_upgrade_interest", // @plantilla-quitar(servicios)
       "certificate_issued", // @plantilla-quitar(servicios)
       "portal_access_expiring", // @plantilla-quitar(servicios)
       "portal_access_expired", // @plantilla-quitar(servicios)

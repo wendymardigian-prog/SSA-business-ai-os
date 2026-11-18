@@ -43,6 +43,7 @@ const GENERIC_ACTIONS: Record<string, string> = {
   ...FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
   ...SALE_ACTION_LABELS,
   ...TASK_ACTION_LABELS, // @plantilla-quitar(tareas)
+  "svc.upgrade_interest": "tocó la invitación para pasarse", // @plantilla-quitar(servicios)
 };
 
 function actionText(action: string): string {

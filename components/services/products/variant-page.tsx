@@ -168,6 +168,7 @@ export function VariantPage({
                 offered={offered}
                 canSections={can.sections}
                 canRules={can.rules}
+                members={members}
               />
             )}
             {tab === "precio" && (

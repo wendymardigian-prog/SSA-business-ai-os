@@ -151,6 +151,8 @@ export const NOTIFICATION_TYPES = [
   "call_note",
   /** Nadie del reparto tenía lugar y el servicio quedó a nombre del respaldo. Va a quien configura Servicios. */
   "svc_capacity_full",
+  /** Un estudiante tocó el botón de la invitación para pasarse (00404). Va a quien elige la variante. */
+  "svc_upgrade_interest",
   // @plantilla-hasta(servicios)
   // Comentarios (Servicios A4, F132): te mencionaron en una tarea o una reunión. Va a la persona mencionada.
   "mentioned",
@@ -497,6 +499,7 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
   call_proposals_pending: { type: "call_proposals_pending", label: "Hay propuestas para aprobar", tone: "info", entity: "call" },
   call_note: { type: "call_note", label: "Aviso de una reunión", tone: "info", entity: "call" },
   svc_capacity_full: { type: "svc_capacity_full", label: "Nadie del reparto tenía lugar", tone: "warning", entity: "service" },
+  svc_upgrade_interest: { type: "svc_upgrade_interest", label: "Quiere pasarse al programa completo", tone: "success", entity: "service" },
   // @plantilla-hasta(servicios)
   mentioned: { type: "mentioned", label: "Te mencionaron", tone: "info" },
   // @plantilla-desde(webhooks)

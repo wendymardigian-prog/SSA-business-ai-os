@@ -169,6 +169,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "svc.evidence_removed": "quitó evidencia de un paso", // @plantilla-quitar(servicios)
   "svc.capacity_changed": "cambió los topes de cartera", // @plantilla-quitar(servicios)
   "svc.task_closed_by_service": "cerró una tarea al terminar el servicio", // @plantilla-quitar(servicios)
+  "svc.upgrade_interest": "tocó la invitación para pasarse", // @plantilla-quitar(servicios)
   ...CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
   ...COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
   ...FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)

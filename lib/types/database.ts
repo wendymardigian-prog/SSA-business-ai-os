@@ -664,6 +664,7 @@ export type AuditAction =
   | "svc.evidence_removed" // @plantilla-quitar(servicios)
   | "svc.capacity_changed" // @plantilla-quitar(servicios)
   | "svc.task_closed_by_service" // @plantilla-quitar(servicios)
+  | "svc.upgrade_interest" // @plantilla-quitar(servicios)
   /** Extra I, MP: los metodos de pago del negocio (entity workspace) y la correccion de la comision de un pago.  @plantilla-quitar(ventas) */
   | "payment_methods.updated" // @plantilla-quitar(ventas)
   | "payment.fee_corrected" // @plantilla-quitar(ventas)
@@ -1031,6 +1032,7 @@ export type TriggerType =
   | "challenge_occurrence_overdue" // @plantilla-quitar(servicios)
   | "challenge_completed" // @plantilla-quitar(servicios)
   | "points_level_up" // @plantilla-quitar(servicios)
+  | "service_upgrade_interest" // @plantilla-quitar(servicios)
   | "certificate_issued" // @plantilla-quitar(servicios)
   | "portal_access_expiring" // @plantilla-quitar(servicios)
   | "portal_access_expired" // @plantilla-quitar(servicios)

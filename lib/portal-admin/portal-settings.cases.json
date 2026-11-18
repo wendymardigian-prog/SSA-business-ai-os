@@ -594,6 +594,314 @@
       "expected": [
         "las comunidades no son válidas"
       ]
+    },
+    {
+      "name": "invitacion valida por WhatsApp",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "program",
+            "included": true,
+            "content": {
+              "modules": [
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "not_included": {
+              "mode": "invite",
+              "label": "Incluido en la Academia",
+              "text": "Pasate a la completa.",
+              "button": "Quiero pasarme",
+              "target": {
+                "kind": "whatsapp",
+                "value": "50688887777",
+                "prefill": "Hola, quiero pasarme"
+              },
+              "on_click": {
+                "tag_id": "22222222-2222-4222-8222-222222222222",
+                "notify": "owner"
+              }
+            }
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "invitacion valida a un formulario",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "program",
+            "included": true,
+            "content": {
+              "modules": [
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "not_included": {
+              "mode": "invite",
+              "label": "En la Academia",
+              "text": "x",
+              "button": "Ver",
+              "target": {
+                "kind": "form",
+                "id": "33333333-3333-4333-8333-333333333333",
+                "url": "https://ejemplo.test/f/upgrade"
+              },
+              "on_click": {
+                "notify": "admins",
+                "tag_id": null
+              }
+            }
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "modulos no incluidos con candado, sin invitacion",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "program",
+            "included": true,
+            "content": {
+              "modules": [
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "not_included": {
+              "mode": "locked"
+            }
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "modulos no incluidos ocultos no miran el resto",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "program",
+            "included": true,
+            "content": {
+              "modules": "all"
+            },
+            "not_included": {
+              "mode": "hidden",
+              "label": 5,
+              "target": {
+                "kind": "x"
+              }
+            }
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "invitacion incompleta",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "program",
+            "included": true,
+            "content": {
+              "modules": "all"
+            },
+            "not_included": {
+              "mode": "invite",
+              "target": {
+                "kind": "link",
+                "url": "http://ejemplo.test"
+              },
+              "zz": 1
+            }
+          }
+        ]
+      },
+      "expected": [
+        "clave desconocida: zz",
+        "program: con todo el programa incluido no hay módulos para mostrar",
+        "program: escribí la etiqueta de los módulos no incluidos",
+        "program: escribí el texto de la invitación",
+        "program: escribí el texto del botón",
+        "program: el link tiene que empezar con https://"
+      ]
+    },
+    {
+      "name": "invitacion con textos largos y destinos mal cargados",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "program",
+            "included": true,
+            "content": {
+              "modules": [
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "not_included": {
+              "mode": "invite",
+              "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              "text": "t",
+              "button": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "target": {
+                "kind": "whatsapp",
+                "value": "0123",
+                "prefill": 5
+              },
+              "on_click": {
+                "notify": "nadie"
+              }
+            }
+          }
+        ]
+      },
+      "expected": [
+        "program: la etiqueta va hasta 40 caracteres",
+        "program: el botón va hasta 30 caracteres",
+        "program: el WhatsApp va con el código de país, solo números",
+        "program: el mensaje de WhatsApp va hasta 500 caracteres",
+        "program: revisá qué pasa al tocar el botón"
+      ]
+    },
+    {
+      "name": "invitacion a una agenda sin elegir",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "program",
+            "included": true,
+            "content": {
+              "modules": [
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "not_included": {
+              "mode": "invite",
+              "label": "l",
+              "text": "t",
+              "button": "b",
+              "target": {
+                "kind": "event",
+                "url": "https://ejemplo.test/a"
+              }
+            }
+          }
+        ]
+      },
+      "expected": [
+        "program: elegí el formulario o la agenda"
+      ]
+    },
+    {
+      "name": "invitacion sin destino",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "program",
+            "included": true,
+            "content": {
+              "modules": [
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "not_included": {
+              "mode": "invite",
+              "label": "l",
+              "text": "t",
+              "button": "b"
+            }
+          }
+        ]
+      },
+      "expected": [
+        "program: elegí a dónde lleva el botón"
+      ]
+    },
+    {
+      "name": "modo desconocido de los no incluidos",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "program",
+            "included": true,
+            "content": {
+              "modules": [
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "not_included": {
+              "mode": "siempre"
+            }
+          }
+        ]
+      },
+      "expected": [
+        "program: elegí cómo se ven los módulos no incluidos"
+      ]
+    },
+    {
+      "name": "no incluidos fuera del Programa",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "community",
+            "included": true,
+            "not_included": {
+              "mode": "locked"
+            }
+          }
+        ]
+      },
+      "expected": [
+        "community: solo el Programa muestra los módulos no incluidos"
+      ]
+    },
+    {
+      "name": "no incluidos que no son un objeto",
+      "kind": "variant",
+      "settings": {
+        "v": 1,
+        "sections": [
+          {
+            "section": "program",
+            "included": true,
+            "content": {
+              "modules": [
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "not_included": "locked"
+          }
+        ]
+      },
+      "expected": [
+        "program: los módulos no incluidos no son válidos"
+      ]
     }
   ]
 }
