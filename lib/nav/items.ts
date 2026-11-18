@@ -80,6 +80,7 @@ export interface NavItemMeta {
  */
 export const PROFILE_MENU_ROUTES: readonly string[] = [
   "/dashboard/cuenta",
+  "/dashboard/notificaciones", // La marca su propia fila del pie del menú («Notificaciones»), no un ítem del catálogo.
   "/dashboard/mis-links", // Servicios A1 (F103): se abre desde el menu de usuario. @plantilla-quitar(ventas)
 ];
 

@@ -59,6 +59,13 @@ El catálogo es `lib/notifications/preferences.ts` y es la única lista: la usan
 - **El numerito cuenta hasta 10** (`lib/notifications/bell-count.ts`): nunca muestra más que «9+», así que `countUnreadNotifications` pide como mucho 10 filas ordenadas por fecha, sin `count: "exact"`. Contarlas todas evaluaba la RLS en cada aviso sin leer, en cada carga de página (8/11/2026: ~116 ms con 956 avisos). El lector de pantalla dice «más de 9 sin leer».
 - **Un aviso de más de 60 días se borra, leído o no** (00338): `purge_read_notifications` y `purge_stale_unread_notifications`, en el cron diario `purge-notifications`. Antes los sin leer no se borraban nunca y casi nadie los marca. Una tarea vencida hace más de 60 días y todavía abierta vuelve a avisar una vez (`tasks-due-sweep` mira los avisos que existen).
 
+### La pantalla de Notificaciones (18/11/2026, traída de RER-BAIOS)
+
+- `/dashboard/notificaciones`: todos los avisos a pantalla completa, con «N sin leer», «Marcar todas como leídas» y las pestañas **No leídas · Todas · Leídas** (siempre se entra por las no leídas; `?vista=` y `?pagina=`, de a 50). Solo «No leídas» lleva número.
+- **Mismo alcance que la campana** (`bellScope`: lo propio y lo general, sin lo silenciado). Acá sí se cuenta exacto (`count: "exact"`): es una pantalla que se abre a propósito, no cada carga de página.
+- Cada fila: punto de no leída, ícono por a qué apunta (`lib/notifications/page-view.ts`), título, texto, el negocio del cliente si viene en la metadata, la hora corta y el check para marcarla leída sin abrirla. Se actualiza sola por Realtime.
+- «Notificaciones» del pie del menú lateral lleva a esta pantalla (con su número). La campana de la barra del teléfono conserva su panel y suma «Ver todas». No pide permisos: es de cada persona, como Mi cuenta (`PROFILE_MENU_ROUTES`).
+
 ### Email y WhatsApp
 
 Cada aviso nuevo encola un job `notification_deliver` (trigger de la 00275, que nunca puede tumbar el insert del aviso). El job (`lib/notifications/deliver.ts`):
