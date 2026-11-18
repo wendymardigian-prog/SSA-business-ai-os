@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { fakeDb } from "@/lib/testing/fake-db";
 import { runContractPdf, pdfJobKey } from "./pdf-run";
 import { newField } from "@/lib/forms/fields";
-import type { ContractPdfInput } from "./pdf";
+import type { ContractPdfInput, ContractPdfLogo } from "./pdf";
 
 const SIG = "11111111-1111-4111-8111-111111111111";
 const SHA = "a".repeat(64);
@@ -28,15 +28,26 @@ const signature = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function setup(over: { sig?: Record<string, unknown> | null; version?: Record<string, unknown> | null; upload?: boolean; download?: Uint8Array | null; build?: () => Promise<Uint8Array> } = {}) {
+function setup(
+  over: {
+    sig?: Record<string, unknown> | null;
+    version?: Record<string, unknown> | null;
+    upload?: boolean;
+    download?: Uint8Array | null;
+    build?: () => Promise<Uint8Array>;
+    design?: Record<string, unknown>;
+    workspace?: Record<string, unknown>;
+    loadLogo?: (url: string) => Promise<ContractPdfLogo | null>;
+  } = {},
+) {
   const db = fakeDb({
     "contract_signatures:select": { data: over.sig === null ? null : signature(over.sig ?? {}) },
     "form_versions:select": {
       data: over.version === null ? null : { version_number: 2, definition: { fields: [newField("short_text", "nombre", "Nombre"), newField("short_text", "empresa", "Empresa")] }, contract_text: "# Acuerdo\n\nTexto", contract_text_sha256: SHA, ...(over.version ?? {}) },
     },
-    "forms:select": { data: { name: "Mi contrato", contract_config: { title: "Acuerdo de servicios" } } },
+    "forms:select": { data: { name: "Mi contrato", contract_config: { title: "Acuerdo de servicios" }, design: over.design ?? {} } },
     "form_submissions:select": { data: { answers: { nombre: { label: "Nombre", type: "short_text", value: "Ana Pérez" }, empresa: { label: "Empresa", type: "short_text", value: "Acme" } } } },
-    "workspaces:select": { data: { timezone: "America/Costa_Rica" } },
+    "workspaces:select": { data: { timezone: "America/Costa_Rica", brand_name: "Mi Negocio", ...(over.workspace ?? {}) } },
     "contract_signatures:update": { data: null },
   });
   const uploads: Array<{ path: string; mime: string }> = [];
@@ -55,6 +66,7 @@ function setup(over: { sig?: Record<string, unknown> | null; version?: Record<st
     now: () => NOW,
     build,
     businessName: () => "Mi Negocio",
+    loadLogo: vi.fn(over.loadLogo ?? (async () => null)),
     schedule: async (type: string, payload: Record<string, unknown>, runAt: Date, key: string) => {
       scheduled.push({ type, payload, runAt, key });
     },
@@ -180,5 +192,42 @@ describe("runContractPdf en modo Contrato", () => {
     await runContractPdf(deps, SIG);
     expect(build.mock.calls[0][0].contract).toBeNull();
     expect(build.mock.calls[0][0].text).toBe("# Acuerdo\n\nTexto");
+  });
+});
+
+describe("runContractPdf: el logo arriba del PDF", () => {
+  const LOGO: ContractPdfLogo = { png: new Uint8Array([1]), width: 100, height: 40 };
+
+  it("con «Mostrar el logo» prendido y un logo en la marca, lo baja y lo pasa al PDF", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://proyecto.supabase.co");
+    const { deps, build } = setup({ workspace: { brand_logo_path: "ws1/logo.webp" }, loadLogo: async () => LOGO });
+    expect(await runContractPdf(deps, SIG)).toBe("generated");
+    expect(deps.loadLogo).toHaveBeenCalledWith("https://proyecto.supabase.co/storage/v1/object/public/brand-assets/ws1/logo.webp");
+    expect(build.mock.calls[0][0].logo).toEqual(LOGO);
+    vi.unstubAllEnvs();
+  });
+
+  it("con «Mostrar el logo» apagado no lo pide", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://proyecto.supabase.co");
+    const { deps, build } = setup({ design: { showLogo: false }, workspace: { brand_logo_path: "ws1/logo.png" }, loadLogo: async () => LOGO });
+    expect(await runContractPdf(deps, SIG)).toBe("generated");
+    expect(deps.loadLogo).not.toHaveBeenCalled();
+    expect(build.mock.calls[0][0].logo).toBeNull();
+    vi.unstubAllEnvs();
+  });
+
+  it("sin logo en la marca (un negocio con nombre propio) no pide nada", async () => {
+    const { deps, build } = setup({ loadLogo: async () => LOGO });
+    expect(await runContractPdf(deps, SIG)).toBe("generated");
+    expect(deps.loadLogo).not.toHaveBeenCalled();
+    expect(build.mock.calls[0][0].logo).toBeNull();
+  });
+
+  it("un logo que falla al bajarse no frena el PDF: sale sin logo", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://proyecto.supabase.co");
+    const { deps, build } = setup({ workspace: { brand_logo_path: "ws1/logo.png" }, loadLogo: async () => { throw new Error("caído"); } });
+    expect(await runContractPdf(deps, SIG)).toBe("generated");
+    expect(build.mock.calls[0][0].logo).toBeNull();
+    vi.unstubAllEnvs();
   });
 });

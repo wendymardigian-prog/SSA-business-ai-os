@@ -1,3 +1,4 @@
+import { resolveBrand } from "@/lib/brand";
 import { isPortalFormType } from "@/lib/forms/fields"; // @plantilla-quitar(servicios)
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/guards";
@@ -108,6 +109,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     responseCount,
     emailReadiness,
     businessSignatureUrl,
+    businessLogoUrl: resolveBrand(workspace).logoUrl,
   };
 
   return (

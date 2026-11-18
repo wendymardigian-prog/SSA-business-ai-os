@@ -12,9 +12,11 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { brandName } from "@/lib/brand";
+import { brandName, resolveBrand } from "@/lib/brand";
 import { scheduleJob } from "@/lib/scheduler";
-import { buildContractPdf, type ContractPdfInput } from "./pdf";
+import { buildContractPdf, type ContractPdfInput, type ContractPdfLogo } from "./pdf";
+import { loadPdfLogo } from "./pdf-logo";
+import { showsLogo } from "@/lib/forms/show-logo";
 import { contractStorage, type ContractStorage } from "./storage";
 import { emailJobKey, nextEmailRetryAt } from "./email-retry";
 import { answerToText, orderedAnswers, type StoredAnswer } from "@/lib/forms/responses";
@@ -40,6 +42,8 @@ export interface PdfRunDeps {
   now?: () => Date;
   build?: (input: ContractPdfInput) => Promise<Uint8Array>;
   businessName?: () => string;
+  /** Baja y prepara el logo (por defecto `loadPdfLogo`). Nunca lanza: null = el PDF sale sin logo. */
+  loadLogo?: (url: string) => Promise<ContractPdfLogo | null>;
   /** Agenda un job; un duplicado (misma clave pendiente) no es un error. */
   schedule?: (type: string, payload: Record<string, unknown>, runAt: Date, dedupeKey: string) => Promise<void>;
 }
@@ -88,7 +92,7 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
   try {
     const [{ data: version }, { data: form }, { data: submission }] = await Promise.all([
       db.from("form_versions").select("version_number, definition, contract_text, contract_text_sha256").eq("id", sig.form_version_id).maybeSingle(),
-      db.from("forms").select("name, contract_config").eq("id", sig.form_id).maybeSingle(),
+      db.from("forms").select("name, contract_config, design").eq("id", sig.form_id).maybeSingle(),
       db.from("form_submissions").select("answers").eq("id", sig.submission_id).maybeSingle(),
     ]);
     if (!version || !form || !submission || version.contract_text === null) return fail("faltan datos de la firma");
@@ -98,7 +102,7 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
     const rendered = sig.rendered_text ?? null;
     if (rendered !== null && contractTextSha256(rendered) !== sig.rendered_sha256) return fail("la huella del texto firmado no coincide");
 
-    const { data: workspace } = await db.from("workspaces").select("timezone, brand_name").eq("id", sig.workspace_id).maybeSingle();
+    const { data: workspace } = await db.from("workspaces").select("timezone, brand_name, brand_logo_path, brand_color").eq("id", sig.workspace_id).maybeSingle();
     const config = (form.contract_config ?? {}) as { title?: string };
     const legal = (sig.legal ?? {}) as Record<string, unknown>;
     const str = (key: string) => (typeof legal[key] === "string" ? (legal[key] as string) : null);
@@ -117,6 +121,18 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
       businessSigner = { name: signer.name, role: signer.role, image };
     }
 
+    // El logo arriba de la primera hoja: con «Mostrar el logo» prendido en el formulario y un logo en la marca del
+    // negocio. Un logo que no se puede bajar o leer no frena nada: el PDF sale sin logo.
+    let logo: ContractPdfLogo | null = null;
+    const logoUrl = showsLogo(form.design) ? resolveBrand(workspace).logoUrl : null;
+    if (logoUrl) {
+      try {
+        logo = await (deps.loadLogo ?? ((url: string) => loadPdfLogo(url)))(logoUrl);
+      } catch {
+        logo = null;
+      }
+    }
+
     const definitionFields = fieldsOf(version.definition);
     const stored = (submission.answers ?? {}) as unknown as Record<string, StoredAnswer>;
     // El nombre y el email del firmante ya salen en "Firmante": no se repiten en la lista de respuestas.
@@ -128,6 +144,7 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
     const bytes = await (deps.build ?? buildContractPdf)({
       // El nombre del negocio dueño del contrato (00266); sin marca propia, el de la instalación.
       businessName: deps.businessName ? deps.businessName() : workspace?.brand_name?.trim() || brandName(),
+      logo,
       title: config.title?.trim() || form.name,
       text: rendered ?? version.contract_text,
       versionNumber: version.version_number,
