@@ -26,15 +26,28 @@ const TOO_LONG = { ok: false as const, error: { code: "CO002", message: "El text
 const EMPTY = { ok: false as const, error: { code: "CO002", message: "Escribí el mensaje", detail: null } };
 const mediaOf = (paths: string[] | undefined) => (paths ?? []).filter((p) => typeof p === "string").slice(0, MAX_COMMUNITY_PHOTOS).map((path) => ({ path }));
 
-export async function communityTeamPost(productId: string, input: { body: string; spaceKey?: string | null; parentId?: string | null; programItemId?: string | null; asBusiness?: boolean; media?: string[] }): Promise<SvcResult<string>> {
+export async function communityTeamPost(
+  productId: string,
+  input: { body: string; spaceKey?: string | null; parentId?: string | null; programItemId?: string | null; asBusiness?: boolean; media?: string[]; communityKeys?: string[] },
+): Promise<SvcResult<string>> {
   const ctx = await getPermissionAction("community.reply");
   if (!ctx || !UUID.test(productId) || (input.parentId && !UUID.test(input.parentId)) || (input.programItemId && !UUID.test(input.programItemId))) return NOT_ALLOWED;
+  // En qué comunidades (00402): sin elegir, la principal; una respuesta va siempre en la de su post (lo decide la base).
+  const keys = (input.communityKeys ?? []).filter((k) => /^[a-z0-9_]{1,40}$/.test(k)).slice(0, 20);
   const body = input.body.trim();
   if (!body) return EMPTY;
   if (body.length > 10000) return TOO_LONG;
   const res = await svcRpc<string>(ctx.supabase, "community_team_post", {
     p_product_id: productId,
-    p: { body, space_key: input.spaceKey ?? null, parent_id: input.parentId ?? null, program_item_id: input.programItemId ?? null, as_business: input.asBusiness === true, media: mediaOf(input.media) },
+    p: {
+      body,
+      space_key: input.spaceKey ?? null,
+      parent_id: input.parentId ?? null,
+      program_item_id: input.programItemId ?? null,
+      as_business: input.asBusiness === true,
+      media: mediaOf(input.media),
+      ...(keys.length && !input.parentId ? { community_keys: keys } : {}),
+    },
   });
   if (res.ok) refresh(productId);
   return res;

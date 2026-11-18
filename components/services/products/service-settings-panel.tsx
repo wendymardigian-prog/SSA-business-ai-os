@@ -54,6 +54,7 @@ export function ServiceSettingsPanel({
     productId,
     variants: [{ id: variantId, productId, mode: form.mode }, ...siblings.map((s) => ({ id: s.id, productId, mode: s.mode }))],
     members: members.map((m) => m.id),
+    variantId,
   });
   const createVariants = siblings.filter((s) => s.mode === "create");
 
@@ -296,6 +297,28 @@ export function ServiceSettingsPanel({
             )}
           </div>
         </div>
+      )}
+
+      {siblings.length > 0 && (
+        <fieldset className="space-y-2 border-t border-border pt-4">
+          <legend className={label}>Si tiene un servicio activo de estas variantes, cerrarlo al crear este</legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {siblings.map((v) => (
+              <label key={v.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.closesVariantIds.includes(v.id)}
+                  onChange={(e) => set({ closesVariantIds: e.target.checked ? [...form.closesVariantIds, v.id] : form.closesVariantIds.filter((x) => x !== v.id) })}
+                />
+                {v.name}
+              </label>
+            ))}
+          </div>
+          <p className={hint}>
+            Para pasar de una variante a otra (por ejemplo, de Lite a la completa): el servicio anterior queda «Renovado» con el motivo «Pasó a …», los accesos
+            pasan al nuevo sin corte y el avance se mantiene. La bonificación se carga a mano como descuento en la venta.
+          </p>
+        </fieldset>
       )}
 
       {problems.length > 0 && (

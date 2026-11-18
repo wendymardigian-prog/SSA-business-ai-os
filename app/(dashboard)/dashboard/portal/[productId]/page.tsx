@@ -12,7 +12,7 @@ import { ProgramContentEditor, type ContentRow } from "@/components/services/por
 import { ProgramCalendar } from "@/components/services/portal/program-calendar";
 import { loadCalendar } from "@/lib/program/load-calendar";
 import { ProgramCommunity, type CommunityPost } from "@/components/services/portal/program-community";
-import { lessonCommentsOn, programSpaces, LESSON_SPACE } from "@/lib/program/community";
+import { LESSON_SPACE, pickCommunity, programCommunities } from "@/lib/program/community";
 import { svcRpc } from "@/lib/services/db";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { resolveBrand } from "@/lib/brand";
@@ -36,6 +36,9 @@ export const dynamic = "force-dynamic";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** `community_item_counts`: los de todo el programa y, desde la 00402, los de cada comunidad. */
+type CommunityCounts = { unanswered?: number; reported?: number; by_item?: Record<string, number>; by_community?: Record<string, { unanswered?: number; reported?: number }> };
+
 const PROGRAM_TABS = [
   { key: "contenido", label: "Contenido" },
   { key: "calendario", label: "Calendario" },
@@ -51,7 +54,7 @@ const PROGRAM_TABS = [
  * F106) y Puntos (F129, se ve con `portal.points` o `portal.view`), como pestañas en la barra superior. Los ajustes del programa (secciones, términos, variantes) son el
  * engranaje de la barra (`/dashboard/portal/<id>/ajustes`); el link viejo `?tab=ajustes` lleva ahí.
  */
-export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string; filtro?: string; espacio?: string; clase?: string; periodo?: string }> }) {
+export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string; filtro?: string; espacio?: string; clase?: string; periodo?: string; comunidad?: string }> }) {
   const [{ productId }, sp] = await Promise.all([params, searchParams]);
   if (!UUID.test(productId)) notFound();
   if (sp.tab === "ajustes") redirect(`/dashboard/portal/${productId}/ajustes`);
@@ -67,6 +70,12 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   const tabs = PROGRAM_TABS.filter((t) => (t.key !== "puntos" || canSeePoints) && ((t.key as string) !== "proyectos" || projectsOn));
   const tab = tabs.find((t) => t.key === sp.tab)?.key ?? "contenido";
   const ps = (p.portal_settings ?? {}) as { sections?: Record<string, boolean>; affiliates?: { visible_link_keys?: string[] } };
+  // Las comunidades del programa (00402): la barra elige cuál se mira (`?comunidad=`, por defecto la principal).
+  const communities = programCommunities(p.portal_settings);
+  const multiCommunity = communities.length > 1;
+  const community = pickCommunity(communities, sp.comunidad);
+  const usedBy: Record<string, string[]> = {};
+  for (const v of vs) if (v.portal.community_key) (usedBy[v.portal.community_key] ??= []).push(v.name);
   const canEdit = ctx.can("portal.sections");
 
   // Contenido (F45): el árbol se lee con la sesión (la RLS de program_items); las transcripciones, con su clase.
@@ -130,8 +139,10 @@ export default async function PortalProgramPage({ params, searchParams }: { para
     const lessonId = sp.clase && UUID.test(sp.clase) ? sp.clase : null;
     const canView = ctx.can("community.view");
     const [feed, counts, team, { data: lessons }] = await Promise.all([
-      canView ? svcRpc<CommunityPost[]>(supabase, "community_feed", { p_product_id: productId, p: { filter, space: lessonId ? LESSON_SPACE : space, program_item_id: lessonId, limit: 50 } }) : Promise.resolve({ ok: true as const, data: [] as CommunityPost[] }),
-      canView ? svcRpc<{ unanswered: number; reported: number }>(supabase, "community_item_counts", { p_product_id: productId }) : Promise.resolve({ ok: true as const, data: { unanswered: 0, reported: 0 } }),
+      canView
+        ? svcRpc<CommunityPost[]>(supabase, "community_feed", { p_product_id: productId, p: { filter, community: community.key, space: lessonId ? LESSON_SPACE : space, program_item_id: lessonId, limit: 50 } })
+        : Promise.resolve({ ok: true as const, data: [] as CommunityPost[] }),
+      canView ? svcRpc<CommunityCounts>(supabase, "community_item_counts", { p_product_id: productId }) : Promise.resolve({ ok: true as const, data: { unanswered: 0, reported: 0 } as CommunityCounts }),
       getWorkspaceMembers(workspace.id),
       svcSchema(supabase).from("program_items").select("id, title").eq("product_id", productId).eq("kind", "lesson"),
     ]);
@@ -150,10 +161,13 @@ export default async function PortalProgramPage({ params, searchParams }: { para
         posts={posts}
         photoUrls={photoUrls}
         meUserId={ctx.user.id}
-        spaces={programSpaces(p!.portal_settings)}
-        lessonComments={lessonCommentsOn(p!.portal_settings)}
+        spaces={community.spaces}
+        communities={communities}
+        community={community.key}
+        programSettings={p!.portal_settings}
+        usedBy={usedBy}
         rev={p!.portal_settings_rev ?? 0}
-        counts={counts.ok && counts.data ? { unanswered: counts.data.unanswered ?? 0, reported: counts.data.reported ?? 0 } : { unanswered: 0, reported: 0 }}
+        counts={countsOf(counts.ok ? counts.data : null)}
         filter={filter}
         space={lessonId ? null : space}
         lessonId={lessonId}
@@ -196,7 +210,8 @@ export default async function PortalProgramPage({ params, searchParams }: { para
 
   // Puntos (F129): la configuración sale del producto; el ranking, de `points_ranking` (00380).
   async function pointsTab() {
-    const ranking = await svcRpc<{ students: number; rows: RankingRow[] } | null>(supabase, "points_ranking", { p_product_id: productId, p_limit: 50 });
+    // Decisión 4 (00402): con más de una comunidad, el ranking es el de la comunidad elegida en la barra.
+    const ranking = await svcRpc<{ students: number; rows: RankingRow[] } | null>(supabase, "points_ranking", { p_product_id: productId, p_limit: 50, p_community: multiCommunity ? community.key : null });
     return (
       <ProgramPointsPanel
         productId={productId}
@@ -246,6 +261,25 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   const unanswered = ctx.can("community.view") ? await svcRpc<{ unanswered?: number }>(supabase, "community_item_counts", { p_product_id: productId }) : null;
   const unansweredCount = unanswered?.ok ? Number(unanswered.data?.unanswered ?? 0) || 0 : 0;
 
+  // Comunidad y Puntos con más de una comunidad: cuál se mira, en la barra (00402).
+  function communityToggle(t: "comunidad" | "puntos") {
+    const shown = communities.filter((c) => !c.archived || c.key === community.key);
+    return (
+      <LinkViewToggle
+        label="Comunidad"
+        value={community.key}
+        options={shown.map((c) => ({ value: c.key, label: c.name, href: `/dashboard/portal/${p.id}?${new URLSearchParams({ tab: t, comunidad: c.key })}` }))}
+      />
+    );
+  }
+  // Los contadores de la comunidad que se mira (`by_community`); con una sola comunidad, los de siempre.
+  function countsOf(d: CommunityCounts | null | undefined): { unanswered: number; reported: number } {
+    if (!d) return { unanswered: 0, reported: 0 };
+    if (!multiCommunity) return { unanswered: Number(d.unanswered ?? 0) || 0, reported: Number(d.reported ?? 0) || 0 };
+    const c = d.by_community?.[community.key];
+    return { unanswered: Number(c?.unanswered ?? 0) || 0, reported: Number(c?.reported ?? 0) || 0 };
+  }
+
   // Los controles de cada pestaña van en la barra superior (Servicios A2, F130.0); el contenido solo los recibe por la URL.
   const base = `/dashboard/portal/${p.id}`;
   const calView = sp.vista === "mes" || sp.vista === "series" || sp.vista === "grilla" ? sp.vista : "lista";
@@ -275,16 +309,26 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   } else if (tab === "comunidad" && ctx.can("community.view")) {
     const filter = sp.filtro === "sin-contestar" ? "unanswered" : sp.filtro === "reportados" ? "reported" : "all";
     const space = sp.espacio && /^[a-z0-9_]{1,40}$/.test(sp.espacio) ? sp.espacio : null;
-    const counts = await svcRpc<{ unanswered?: number; reported?: number }>(supabase, "community_item_counts", { p_product_id: productId });
+    const counts = await svcRpc<CommunityCounts>(supabase, "community_item_counts", { p_product_id: productId });
+    const keepCommunity = multiCommunity ? community.key : null;
+    if (multiCommunity) view = communityToggle("comunidad");
     quickFilter = (
       <LinkQuickFilterMenu
         label="Mostrar"
         value={communityQuickValue(filter, space)}
         allKey="all"
-        options={communityQuickOptions({ base, spaces: programSpaces(p.portal_settings), counts: { unanswered: counts.ok ? Number(counts.data?.unanswered ?? 0) : 0, reported: counts.ok ? Number(counts.data?.reported ?? 0) : 0 } })}
+        options={communityQuickOptions({ base, spaces: community.spaces, counts: countsOf(counts.ok ? counts.data : null), community: keepCommunity })}
       />
     );
-    if (ctx.can("community.spaces")) moreActions.push({ key: "espacios", label: "Espacios de la comunidad", href: intentHref(`${base}?tab=comunidad`, "espacios", "1") });
+    if (ctx.can("community.spaces")) {
+      moreActions.push({
+        key: "espacios",
+        label: multiCommunity ? "Comunidades y espacios" : "Espacios de la comunidad",
+        href: intentHref(`${base}?${new URLSearchParams({ tab: "comunidad", ...(keepCommunity ? { comunidad: keepCommunity } : {}) })}`, "espacios", "1"),
+      });
+    }
+  } else if (tab === "puntos" && multiCommunity) {
+    view = communityToggle("puntos");
   }
 
   return (

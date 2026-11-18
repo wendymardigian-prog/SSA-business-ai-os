@@ -9,6 +9,7 @@ import { saveProgramSettings, saveVariantPortal } from "@/lib/actions/services";
 import { validateVariantPortalSettings, type SectionRule } from "@/lib/portal-admin/settings";
 import { AVAILABLE_SECTIONS, EXTENSION_SECTIONS, type PortalSection } from "@/lib/services/availability";
 import { portalRows, readVariantPortal, setEnabled, setIncluded, setRule } from "@/lib/services/screens/variant-portal-form";
+import { programCommunities, variantCommunityKey } from "@/lib/program/community";
 import { ActionError } from "@/components/contacts/ui";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SidePanel } from "@/components/tasks/overlay";
@@ -87,6 +88,11 @@ export function VariantPortalPanel({
   }
 
   const rule = open ? s.sections?.find((r) => r.section === open) : undefined;
+  // La comunidad de la variante (00402): el desplegable aparece cuando el programa tiene más de una (o si ya eligió).
+  const communities = programCommunities(programSettings);
+  const activeCommunities = communities.filter((c) => !c.archived);
+  const communityKey = variantCommunityKey(programSettings, s);
+  const showCommunity = activeCommunities.length > 1 || (!!s.community_key && communities.length > 1);
 
   return (
     <div className="space-y-5">
@@ -99,6 +105,35 @@ export function VariantPortalPanel({
           Editar el contenido en Portal › programa
         </Link>
       </div>
+      {showCommunity && (
+        <div className="max-w-sm">
+          <label htmlFor="variant-community" className={label}>
+            Comunidad
+          </label>
+          <select
+            id="variant-community"
+            value={communityKey}
+            disabled={!canSections}
+            onChange={(e) => {
+              const main = activeCommunities.find((c) => c.main)?.key;
+              const { community_key: _old, ...rest } = s;
+              change(e.target.value === main ? rest : { ...rest, community_key: e.target.value });
+            }}
+            className={input}
+          >
+            {activeCommunities.map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.name}
+                {c.main ? " (principal)" : ""}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Sus estudiantes ven y publican solo en esta comunidad (el muro y los comentarios de las clases). Cambiarla vale desde ese momento: lo que ya
+            publicaron queda donde estaba. Las comunidades se crean en Portal › programa › Ajustes.
+          </p>
+        </div>
+      )}
       <p className="text-xs text-muted-foreground">
         Apagar el acceso o sacar una sección vale para los servicios nuevos; los que ya existen se cambian en su ficha. El acceso se corta cuando termina el servicio,
         cuando vence su regla o por mora (si está configurado en la pestaña Servicio).

@@ -64,6 +64,8 @@ export interface LiveDatePatch {
   recordingCallId?: string | null;
   recordingActive?: boolean;
   note?: string | null;
+  /** R7 (00402): las variantes que ven ESTA fecha además de las de la sesión (por ejemplo, la clase del mes de Lite). */
+  extraVariantIds?: string[];
 }
 
 /** Cancelar, mover, o cargar la grabación de UNA fecha. Lo que carga una persona es `manual` y ningún proceso lo pisa. */
@@ -86,6 +88,10 @@ export async function saveLiveDate(productId: string, sessionId: string, occursO
   }
   if (typeof patch.recordingActive === "boolean") p.recording_active = patch.recordingActive;
   if ("note" in patch) p.note = (patch.note ?? "").trim() || null;
+  if (patch.extraVariantIds) {
+    if (!patch.extraVariantIds.every((id) => UUID.test(id))) return NOT_ALLOWED;
+    p.extra_variant_ids = patch.extraVariantIds;
+  }
   const res = await svcRpc<null>(ctx.supabase, "live_date_save", { p_live_session_id: sessionId, p_occurs_on: occursOn, p });
   if (res.ok) refresh(productId);
   return res;
