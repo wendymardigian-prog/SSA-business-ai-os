@@ -71,7 +71,7 @@ export function useRescheduleDrag({ items, timezone, timeFormat }: { items: Book
   return {
     ghost,
     onDrop: (item: BookingListItem, drop: BookingDrop, startUtc: string) => send({ type: "drop", bookingId: item.id, drop, startUtc }),
-    /** B-AGE-01: estirar o encoger la reunión; el inicio no cambia y también pide confirmación. */
+    /** estirar o encoger la reunión; el inicio no cambia y también pide confirmación. */
     onResize: (item: BookingListItem, durationMinutes: number) =>
       send({ type: "drop", bookingId: item.id, drop: { kind: "day", date: item.startAt.slice(0, 10) }, startUtc: item.startAt, durationMinutes }),
     dialog:
@@ -172,7 +172,7 @@ function RescheduleDialog({
           </p>
         )}
         {state.phase === "error" && state.alternatives && state.alternatives.length > 0 && (
-          // B-AGE-11: los huecos libres siguientes; elegir uno vuelve a pedir «Confirmar».
+          // los huecos libres siguientes; elegir uno vuelve a pedir «Confirmar».
           <div role="group" aria-label="Próximos horarios libres" className="mt-2">
             <p className="text-xs font-medium text-muted-foreground">Próximos horarios libres: elegí uno y confirmá.</p>
             <ul className="mt-1 flex flex-wrap gap-2">

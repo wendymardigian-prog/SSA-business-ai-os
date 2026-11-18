@@ -263,7 +263,7 @@ export const schedulingSendLinkTool: AgentToolDefinition<z.infer<typeof linkInpu
 
 export const schedulingActionTools = [schedulingBookTool, schedulingRescheduleTool, schedulingCancelTool, schedulingSendLinkTool];
 
-/** B-AGE-11: los huecos libres siguientes que propuso el servidor, para ofrecerlos y que la persona confirme uno. */
+/** los huecos libres siguientes que propuso el servidor, para ofrecerlos y que la persona confirme uno. */
 function nextSlotsHint(alternatives: string[] | undefined): string {
   return alternatives && alternatives.length ? `: los próximos horarios libres (UTC) son ${alternatives.join(", ")}; que la persona confirme uno antes de agendar` : "";
 }

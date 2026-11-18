@@ -37,7 +37,7 @@ const PATH = "/dashboard/agenda";
 
 export type BookingActionResult<T = undefined> =
   | ({ ok: true } & (T extends undefined ? object : { data: T }))
-  /** B-AGE-11: cuando el horario se acaba de ocupar, los huecos libres siguientes (UTC) para elegir y confirmar. */
+  /** cuando el horario se acaba de ocupar, los huecos libres siguientes (UTC) para elegir y confirmar. */
   | { ok: false; error: string; alternatives?: string[] };
 
 /** La agenda, leída con el cliente del usuario: RLS decide si la ve. */
@@ -137,7 +137,7 @@ export async function rescheduleAsHost(input: {
   startUtc: string;
   ignoreAvailability?: boolean;
   reason?: string | null;
-  /** B-AGE-01: la duración nueva al estirar la reunión en el calendario. */
+  /** la duración nueva al estirar la reunión en el calendario. */
   durationMinutes?: number;
 }): Promise<BookingActionResult<{ startUtc: string; endUtc: string }>> {
   const found = await visibleBooking(input.bookingId);

@@ -116,9 +116,9 @@ export function BookingsCalendar({
   /** R8: se solto una agenda en otro horario o dia. SIEMPRE abre una confirmacion: nada se guarda aca. */
   onDropBooking?: (item: BookingListItem, drop: BookingDrop, startUtc: string) => void;
   ghost?: BookingGhost | null;
-  /** B-AGE-01: se arrastró sobre un hueco vacío de la rejilla (solo escritorio). Abre «Agendar» con ese horario. */
+  /** se arrastró sobre un hueco vacío de la rejilla (solo escritorio). Abre «Agendar» con ese horario. */
   onCreateRange?: (date: string, startMinutes: number, durationMinutes: number) => void;
-  /** B-AGE-01: se estiró o encogió una reunión desde su borde de abajo. SIEMPRE pide confirmación. */
+  /** se estiró o encogió una reunión desde su borde de abajo. SIEMPRE pide confirmación. */
   onResizeBooking?: (item: BookingListItem, durationMinutes: number) => void;
 }) {
   const range = useMemo(() => rangeFor(view, anchor), [view, anchor]);
@@ -185,7 +185,7 @@ export function BookingsCalendar({
   }
   const endDrag = () => setDragging(null);
 
-  // ── B-AGE-01: crear arrastrando y cambiar la duración (punteros, no arrastre nativo) ──────────────────────────────
+  // ── crear arrastrando y cambiar la duración (punteros, no arrastre nativo) ──────────────────────────────
   const [selecting, setSelecting] = useState<{ date: string; from: number; to: number } | null>(null);
   const [resizing, setResizing] = useState<{ id: string; start: number; to: number; original: number } | null>(null);
   const minutesAt = (e: PointerEvent<HTMLElement>, column: HTMLElement) =>

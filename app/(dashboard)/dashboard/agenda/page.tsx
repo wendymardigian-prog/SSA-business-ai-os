@@ -336,6 +336,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       canManage={ctx.can("bookings.manage")}
       showConfig={canOpenConfig(ctx.can)}
       brokenAccounts={broken}
+      noGoogle={ctx.can("scheduling.use") && broken.length === 0 && !hasGoogleByUser.has(ctx.user.id)}
       needsProfile={ctx.can("scheduling.use") && !profile}
       tasks={agendaTasks} // @plantilla-quitar(tareas)
     />

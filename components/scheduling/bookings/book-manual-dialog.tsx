@@ -110,7 +110,7 @@ export function BookManualDialog({
    * Sin la prop, el modal es el de siempre.
    */
   presetContact?: ManualContactOption;
-  /** B-AGE-01: el horario arrastrado en el calendario (día, hora de pared y duración). */
+  /** el horario arrastrado en el calendario (día, hora de pared y duración). */
   initialSlot?: { date: string; time: string; durationMinutes: number } | null;
 }) {
   const router = useRouter();
@@ -142,7 +142,7 @@ export function BookManualDialog({
   const [locationText, setLocationText] = useState("");
 
   const [error, setError] = useState<{ field: ManualBookingField | null; message: string } | null>(null);
-  // B-AGE-11: si el horario chocó con otra reunión, los huecos libres siguientes de quien atiende (UTC).
+  // si el horario chocó con otra reunión, los huecos libres siguientes de quien atiende (UTC).
   const [alternatives, setAlternatives] = useState<string[]>([]);
   const [pending, start] = useTransition();
   const titleRef = useRef<HTMLInputElement>(null);

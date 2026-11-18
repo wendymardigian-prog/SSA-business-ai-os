@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * B-AGE-11 · Cuando el horario elegido se acaba de ocupar, los huecos libres siguientes como botones. Elegir uno solo
+ * Cuando el horario elegido se acaba de ocupar, los huecos libres siguientes como botones. Elegir uno solo
  * cambia el horario del formulario: la reserva se confirma otra vez con el botón de siempre (y pasa por toda la
  * comprobación del servidor). Sirve a la página pública y a «Agendar» del equipo.
  */

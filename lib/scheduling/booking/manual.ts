@@ -41,10 +41,10 @@ const IDENTITY_MESSAGE = "Necesitamos el email del invitado para agendar.";
 
 export type ManualBookingResult =
   | { ok: true; bookingId: string; contactId: string; hostUserId: string }
-  /** B-AGE-11: si el horario chocó con otra reunión, los huecos libres siguientes de quien atiende (UTC), a confirmar. */
+  /** si el horario chocó con otra reunión, los huecos libres siguientes de quien atiende (UTC), a confirmar. */
   | { ok: false; error: string; alternatives?: string[] };
 
-/** B-AGE-11: los huecos siguientes de quien atiende, con la duración de esta reunión. Sin perfil de agenda, ninguno. */
+/** los huecos siguientes de quien atiende, con la duración de esta reunión. Sin perfil de agenda, ninguno. */
 async function nextFreeSlotsForHost(
   service: Db,
   workspaceId: string,

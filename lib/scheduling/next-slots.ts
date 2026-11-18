@@ -1,5 +1,5 @@
 /**
- * B-AGE-11 · Cuando dos personas piden el mismo hueco a la vez, la base deja pasar una sola (la exclusión
+ * Cuando dos personas piden el mismo hueco a la vez, la base deja pasar una sola (la exclusión
  * `bookings_no_overlap`, 23P01). A la que pierde no le basta con «ese horario se acaba de ocupar»: se le proponen
  * los huecos libres siguientes del mismo anfitrión y el mismo evento, para que elija uno y lo confirme. Nada se
  * reserva solo: la propuesta es una lista de horarios, y reservar uno pasa otra vez por toda la comprobación.

@@ -19,6 +19,7 @@ import { CalendarDays, KanbanSquare, List, Plus, Settings } from "lucide-react";
 import { ViewToggle } from "@/components/ui/view-toggle";
 import { PageHeader } from "@/components/page-header";
 import { ReconnectBanner } from "../reconnect-banner";
+import { NoGoogleNotice } from "../no-google-notice";
 import type { MetaLink } from "@/lib/attribution/meta-link";
 import { BookingsList } from "./list";
 import { ColumnsMenu } from "@/components/attribution/columns-menu";
@@ -122,6 +123,7 @@ export function BookingsScreen({
   canManage,
   showConfig,
   brokenAccounts,
+  noGoogle = false,
   needsProfile,
   tasks,
 }: {
@@ -174,6 +176,8 @@ export function BookingsScreen({
   canManage: boolean;
   showConfig: boolean;
   brokenAccounts: string[];
+  /** La persona no tiene Google Calendar conectado (y ninguna cuenta rota, que tiene su propio aviso). */
+  noGoogle?: boolean;
   needsProfile: boolean;
   /**  @plantilla-quitar(tareas)
    * Tareas × CRM (R7): las tareas del calendario. `undefined` = el contacto no puede ver tareas (no hay interruptor). Con  @plantilla-quitar(tareas)
@@ -185,7 +189,7 @@ export function BookingsScreen({
   const searchParams = useSearchParams();
   const { pending: navigating, setParam, setPeriod, clearAll } = useAgendaUrl();
   const [manualOpen, setManualOpen] = useState(false);
-  // B-AGE-01: el horario arrastrado en el calendario (sin esto, «Agendar» arranca en la próxima media hora).
+  // el horario arrastrado en el calendario (sin esto, «Agendar» arranca en la próxima media hora).
   const [manualSlot, setManualSlot] = useState<{ date: string; time: string; durationMinutes: number } | null>(null);
   const [cancelDrop, setCancelDrop] = useState<{ id: string; status: BookingStatus } | null>(null);
   const [reason, setReason] = useState("");
@@ -378,6 +382,7 @@ export function BookingsScreen({
       </div>
       {navigating && <span className="sr-only" role="status">Cargando…</span>}
       <ReconnectBanner accounts={brokenAccounts} />
+      {noGoogle && <NoGoogleNotice state="none" />}
       <AgendaFilterSummary filters={filters} catalog={catalog} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6 pt-3 md:px-6">

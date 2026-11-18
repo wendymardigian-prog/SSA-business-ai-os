@@ -10,7 +10,7 @@ import {
   wallTimeOfMinutes,
 } from "./booking-drag";
 
-describe("B-AGE-01: crear arrastrando", () => {
+describe("crear arrastrando", () => {
   it("de arriba a abajo: inicio y duración", () => {
     expect(dragCreateRange(600, 690)).toEqual({ startMinutes: 600, durationMinutes: 90 });
   });
@@ -29,7 +29,7 @@ describe("B-AGE-01: crear arrastrando", () => {
   });
 });
 
-describe("B-AGE-01: cambiar la duración", () => {
+describe("cambiar la duración", () => {
   it("estirar y encoger desde el borde de abajo", () => {
     expect(resizeDuration(600, 675)).toBe(75);
     expect(resizeDuration(600, 615)).toBe(15);

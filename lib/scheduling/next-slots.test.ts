@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { NEXT_SLOTS_COUNT, pickNextSlots } from "./next-slots";
 import { dragConfirmReducer, type DragConfirmState } from "./booking-drag";
 
-describe("B-AGE-11: los huecos libres siguientes", () => {
+describe("los huecos libres siguientes", () => {
   const slots = [
     "2031-03-03T09:00:00.000Z",
     "2031-03-03T10:00:00.000Z", // el pedido, que se acaba de ocupar
@@ -33,7 +33,7 @@ describe("B-AGE-11: los huecos libres siguientes", () => {
   });
 });
 
-describe("B-AGE-11: mover una reunión a un hueco propuesto", () => {
+describe("mover una reunión a un hueco propuesto", () => {
   const confirming: DragConfirmState = {
     phase: "confirming",
     bookingId: "b1",

@@ -16,8 +16,11 @@ export function AccountView({
   profile,
   notifications,
   connections,
+  notice,
 }: {
   initialTab: AccountTab;
+  /** Un aviso arriba de Perfil y Notificaciones (sin Google Calendar conectado). En Conexiones ya está la tarjeta de Google. */
+  notice?: ReactNode;
   profile: ReactNode;
   notifications: ReactNode;
   /** El Google Calendar y el Fathom propios (antes «Mis conexiones» en Integraciones). */
@@ -66,6 +69,7 @@ export function AccountView({
       <PageHeader route="/dashboard/cuenta" tabs={tabs} />
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         <div className="mx-auto w-full max-w-2xl">
+          {tab !== "conexiones" && notice}
           <div hidden={tab !== "perfil"}>{profile}</div>
           <div hidden={tab !== "notificaciones"}>{notifications}</div>
           <div hidden={tab !== "conexiones"}>{connections}</div>

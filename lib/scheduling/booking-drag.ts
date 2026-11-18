@@ -57,7 +57,7 @@ interface Pending {
   drop: BookingDrop;
   /** El instante nuevo, ya calculado. */
   startUtc: string;
-  /** B-AGE-01: la duración nueva, solo al estirar la tarjeta (sin esto, se conserva la que tenía). */
+  /** la duración nueva, solo al estirar la tarjeta (sin esto, se conserva la que tenía). */
   durationMinutes?: number;
   reason: string;
   /** La casilla «Reagendar igual (ignorar la disponibilidad)». */
@@ -68,7 +68,7 @@ export type DragConfirmState =
   | { phase: "idle" }
   | ({ phase: "pending" } & Pending)
   | ({ phase: "confirming" } & Pending)
-  /** B-AGE-11: `alternatives` (UTC) solo cuando el servidor propuso huecos libres siguientes. */
+  /** `alternatives` (UTC) solo cuando el servidor propuso huecos libres siguientes. */
   | ({ phase: "error"; error: string; offerIgnore: boolean; alternatives?: string[] } & Pending)
   | { phase: "done"; bookingId: string };
 
@@ -79,7 +79,7 @@ export type DragConfirmEvent =
   | { type: "confirm" }
   | { type: "succeeded" }
   | { type: "failed"; error: string; alternatives?: string[] }
-  /** B-AGE-11: elegir uno de los huecos propuestos vuelve a «pendiente» con ese horario, a confirmar. */
+  /** elegir uno de los huecos propuestos vuelve a «pendiente» con ese horario, a confirmar. */
   | { type: "pickAlternative"; startUtc: string }
   | { type: "cancel" };
 
@@ -172,7 +172,7 @@ export function rescheduleEffects(syncStatus: string, newDurationMinutes?: numbe
   return effects;
 }
 
-// ── B-AGE-01: crear arrastrando y cambiar la duración ─────────────────────────────────────────────────────────────
+// ── crear arrastrando y cambiar la duración ─────────────────────────────────────────────────────────────
 
 /** Lo mínimo y lo máximo que dura una reunión hecha desde el calendario. */
 export const MIN_DRAG_MINUTES = 15;

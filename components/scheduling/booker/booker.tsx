@@ -51,7 +51,7 @@ interface State {
   unavailable: UnavailableKey | null;
   error: string | null;
   fieldErrors: Record<string, string>;
-  /** B-AGE-11: los huecos libres siguientes que propuso el servidor al ocuparse el elegido. */
+  /** los huecos libres siguientes que propuso el servidor al ocuparse el elegido. */
   alternatives: string[];
 }
 

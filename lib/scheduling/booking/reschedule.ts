@@ -30,7 +30,7 @@ export interface RescheduleInput {
   actorUserId?: string | null;
   /** Solo el equipo (F36): mover a un horario que el motor no ofreceria. */
   ignoreAvailability?: boolean;
-  /** B-AGE-01: solo el equipo, al estirar la reunión en el calendario. Entre 15 minutos y 8 horas. */
+  /** solo el equipo, al estirar la reunión en el calendario. Entre 15 minutos y 8 horas. */
   durationMinutes?: number;
   /** 00430: quien atiende la movió en su Google Calendar. No se vuelve a escribir ahí (sería eco). */
   fromGoogle?: boolean;
@@ -44,7 +44,7 @@ export type RescheduleResult =
       status: number;
       reason: "not_found" | "too_late" | "slot_unavailable" | "slot_taken" | "temporarily_unavailable";
       message?: string;
-      /** B-AGE-11: los huecos libres siguientes (UTC), a confirmar. */
+      /** los huecos libres siguientes (UTC), a confirmar. */
       alternatives?: string[];
     };
 
@@ -115,7 +115,7 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
   if (error) {
     // 23P01 = la exclusion: el horario nuevo se ocupo entre la consulta y esto.
     if (error.code === "23P01") {
-      // B-AGE-11: se proponen los huecos siguientes del mismo anfitrión, con la duración de ESTA reunión.
+      // se proponen los huecos siguientes del mismo anfitrión, con la duración de ESTA reunión.
       const alternatives = await suggestNextSlots(service, event, profile, {
         requestedUtc: startUtc,
         inviteeTz: booking.booker_timezone ?? "UTC",

@@ -73,7 +73,7 @@ export type CreateBookingResult =
       reason: "not_found" | "rate_limited" | "invalid" | "slot_taken" | "slot_unavailable" | "temporarily_unavailable";
       message?: string;
       fields?: Record<string, string>;
-      /** B-AGE-11: con `slot_taken` o `slot_unavailable`, los huecos libres siguientes (UTC), a confirmar. */
+      /** con `slot_taken` o `slot_unavailable`, los huecos libres siguientes (UTC), a confirmar. */
       alternatives?: string[];
     };
 
@@ -160,7 +160,7 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
     return { ok: false, status: 503, reason: "temporarily_unavailable" };
   }
   if (!isSlotAvailable(built.input, input.startUtc)) {
-    // B-AGE-11: con los datos frescos que ya se leyeron, los huecos siguientes salen sin otra consulta.
+    // con los datos frescos que ya se leyeron, los huecos siguientes salen sin otra consulta.
     const alternatives = pickNextSlots(availableSlots(built.input).map((s) => s.startUtc), input.startUtc);
     return { ok: false, status: 409, reason: "slot_unavailable", message: "Ese horario ya no está disponible.", alternatives };
   }
@@ -211,7 +211,7 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
   if (error) {
     // 23P01 = la exclusion: otro pedido gano la carrera por el mismo horario.
     if (error.code === "23P01") {
-      // B-AGE-11: la otra reserva ya está guardada, así que el motor ya no ofrece este hueco: se proponen los siguientes.
+      // la otra reserva ya está guardada, así que el motor ya no ofrece este hueco: se proponen los siguientes.
       const alternatives = await suggestNextSlots(service, event, profile, {
         requestedUtc: input.startUtc,
         inviteeTz: input.inviteeTz,
