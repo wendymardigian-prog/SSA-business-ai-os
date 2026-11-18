@@ -13,6 +13,7 @@ import { programCommunities, variantCommunityKey } from "@/lib/program/community
 import { ActionError } from "@/components/contacts/ui";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SidePanel } from "@/components/tasks/overlay";
+import { ProgramContentFields } from "./program-content-fields";
 
 const input = "h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge";
 const label = "mb-1.5 block text-xs font-semibold text-foreground";
@@ -33,6 +34,7 @@ export function VariantPortalPanel({
   canSections,
   canRules,
   offered = AVAILABLE_SECTIONS,
+  members = [],
 }: {
   variantId: string;
   productId: string;
@@ -45,6 +47,8 @@ export function VariantPortalPanel({
   canRules: boolean;
   /** Las secciones que se ofrecen (con la extensión de proyectos suman `fame` y `projects`). */
   offered?: readonly PortalSection[];
+  /** El equipo, para elegir a quién avisar cuando alguien toca la invitación para pasarse (00404). */
+  members?: Array<{ id: string; name: string }>;
 }) {
   const router = useRouter();
   const [s, setS] = useState(() => readVariantPortal(settings));
@@ -201,7 +205,18 @@ export function VariantPortalPanel({
         {saved && <span className="text-xs text-good">Guardado.</span>}
       </div>
 
-      {open && <RuleDrawer section={open} label={rows.find((r) => r.section === open)?.label ?? open} rule={rule} onChange={(patch) => change(setRule(s, open, patch))} onClose={() => setOpen(null)} />}
+      {open && (
+        <RuleDrawer
+          section={open}
+          label={rows.find((r) => r.section === open)?.label ?? open}
+          rule={rule}
+          variantId={variantId}
+          programName={productName}
+          members={members}
+          onChange={(patch) => change(setRule(s, open, patch))}
+          onClose={() => setOpen(null)}
+        />
+      )}
       <ConfirmDialog
         open={!!programToggle}
         title={programToggle?.on ? "Prender la sección en el programa" : "Apagar la sección en el programa"}
@@ -220,7 +235,25 @@ export function VariantPortalPanel({
   );
 }
 
-function RuleDrawer({ section, label: title, rule, onChange, onClose }: { section: PortalSection; label: string; rule: SectionRule | undefined; onChange: (patch: Partial<SectionRule>) => void; onClose: () => void }) {
+function RuleDrawer({
+  section,
+  label: title,
+  rule,
+  variantId,
+  programName,
+  members,
+  onChange,
+  onClose,
+}: {
+  section: PortalSection;
+  label: string;
+  rule: SectionRule | undefined;
+  variantId: string;
+  programName: string;
+  members: Array<{ id: string; name: string }>;
+  onChange: (patch: Partial<SectionRule>) => void;
+  onClose: () => void;
+}) {
   const opens = rule?.opens ?? { type: "service_start" as const };
   const until = rule?.until ?? { type: "service" as const };
   return (
@@ -285,6 +318,11 @@ function RuleDrawer({ section, label: title, rule, onChange, onClose }: { sectio
             <input type="checkbox" checked={rule?.limits?.community_can_post !== false} onChange={(e) => onChange({ limits: { community_can_post: e.target.checked } })} />
             Puede publicar en la comunidad
           </label>
+        )}
+        {section === "program" && (
+          <div className="border-t border-border pt-4">
+            <ProgramContentFields variantId={variantId} programName={programName} rule={rule} members={members} onChange={onChange} />
+          </div>
         )}
         {section === "assistant" && (
           <div>

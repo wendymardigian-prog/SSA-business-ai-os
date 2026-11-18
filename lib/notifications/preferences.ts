@@ -317,6 +317,16 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     audience: { kind: "admins", permissions: ["services.configure"] },
     defaults: BELL,
   },
+  // 00404: la invitación para pasarse (módulos que la variante no incluye).
+  {
+    key: "svc_upgrade_interest",
+    section: "servicios",
+    label: "Un estudiante quiere pasarse",
+    description: "Tocó el botón de la invitación desde un módulo que su variante no incluye. Llega una vez cada 7 días por persona.",
+    types: ["svc_upgrade_interest"],
+    audience: ALL,
+    defaults: BELL,
+  },
   // @plantilla-hasta(servicios)
   // @plantilla-desde(finanzas)
   {

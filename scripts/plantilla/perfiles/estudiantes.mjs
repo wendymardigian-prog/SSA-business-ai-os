@@ -287,6 +287,9 @@ export const MODULES = {
       "lib/actions/live-sessions.ts",
       "lib/actions/service-certificates.ts",
       "lib/actions/community.ts",
+      // La invitación para pasarse (00404).
+      "lib/actions/variant-invitation.ts",
+      "scripts/verify-invitacion-upgrade.mjs",
       "lib/actions/tutor.ts",
       // El Asistente IA del portal (F230): corre el tutor para /api/portal/tutor.
       "lib/portal-tutor",
