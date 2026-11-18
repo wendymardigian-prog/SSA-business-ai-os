@@ -142,6 +142,11 @@ function Field({
         {required && <span aria-hidden className="text-destructive"> *</span>}
         {required && <span className="sr-only"> (obligatorio)</span>}
       </label>
+      {field.help && (
+        <p id={`${id}-help`} className="text-xs text-muted-foreground">
+          {field.help}
+        </p>
+      )}
 
       {field.type === "long_text" ? (
         <textarea
@@ -203,11 +208,6 @@ function Field({
         />
       )}
 
-      {field.help && (
-        <p id={`${id}-help`} className="text-xs text-muted-foreground">
-          {field.help}
-        </p>
-      )}
       {error && (
         <p id={`${id}-err`} role="alert" className="text-xs text-destructive">
           {error}

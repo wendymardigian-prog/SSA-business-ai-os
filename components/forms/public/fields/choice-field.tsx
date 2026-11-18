@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { cn } from "@/lib/utils";
 import { FieldShell, publicInputClass, type FieldProps } from "./shared";
 
@@ -9,14 +10,20 @@ const RADIO_LIMIT = 4;
 export function SingleSelectField({ field, value, onChange, error, locked, onInteract }: FieldProps) {
   const options = field.options ?? [];
   const current = typeof value === "string" ? value : "";
+  const helpId = `${useId()}-help`;
 
   if (options.length <= RADIO_LIMIT) {
     return (
-      <fieldset className="space-y-1.5" aria-describedby={undefined}>
+      <fieldset className="space-y-1.5" aria-describedby={field.help ? helpId : undefined}>
         <legend className="block text-sm font-medium">
           {field.label}
           {field.required && <span className="ml-1 text-destructive" aria-hidden="true">*</span>}
         </legend>
+        {field.help && (
+          <p id={helpId} className="text-xs text-muted-foreground">
+            {field.help}
+          </p>
+        )}
         <div className="space-y-2" role="radiogroup" aria-invalid={!!error}>
           {options.map((option) => (
             <label key={option} className={cn("flex cursor-pointer items-center gap-2 text-sm", locked && "pointer-events-none opacity-70")}>
@@ -33,7 +40,6 @@ export function SingleSelectField({ field, value, onChange, error, locked, onInt
             </label>
           ))}
         </div>
-        {field.help && <p className="text-xs text-muted-foreground">{field.help}</p>}
         {error && (
           <p role="alert" className="text-xs text-destructive">
             {error}
@@ -72,13 +78,19 @@ export function SingleSelectField({ field, value, onChange, error, locked, onInt
 export function MultiSelectField({ field, value, onChange, error, locked, onInteract }: FieldProps) {
   const options = field.options ?? [];
   const selected = Array.isArray(value) ? (value as string[]) : [];
+  const helpId = `${useId()}-help`;
 
   return (
-    <fieldset className="space-y-1.5">
+    <fieldset className="space-y-1.5" aria-describedby={field.help ? helpId : undefined}>
       <legend className="block text-sm font-medium">
         {field.label}
         {field.required && <span className="ml-1 text-destructive" aria-hidden="true">*</span>}
       </legend>
+      {field.help && (
+        <p id={helpId} className="text-xs text-muted-foreground">
+          {field.help}
+        </p>
+      )}
       <div className="space-y-2">
         {options.map((option) => (
           <label key={option} className={cn("flex cursor-pointer items-center gap-2 text-sm", locked && "pointer-events-none opacity-70")}>
@@ -93,7 +105,6 @@ export function MultiSelectField({ field, value, onChange, error, locked, onInte
           </label>
         ))}
       </div>
-      {field.help && <p className="text-xs text-muted-foreground">{field.help}</p>}
       {error && (
         <p role="alert" className="text-xs text-destructive">
           {error}

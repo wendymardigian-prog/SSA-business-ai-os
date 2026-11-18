@@ -49,6 +49,14 @@ export function FieldShell({
   const errorId = `${id}-error`;
   const describedBy = [field.help ? helpId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined;
 
+  // La ayuda va debajo de la pregunta y antes de la respuesta. En la casilla de
+  // consentimiento la pregunta ES el texto de la casilla: ahí va debajo.
+  const help = field.help ? (
+    <p id={helpId} className="text-xs text-muted-foreground">
+      {field.help}
+    </p>
+  ) : null;
+
   return (
     <div className="space-y-1.5">
       {!inline && (
@@ -66,12 +74,9 @@ export function FieldShell({
           )}
         </label>
       )}
+      {!inline && help}
       {children({ id, describedBy })}
-      {field.help && (
-        <p id={helpId} className="text-xs text-muted-foreground">
-          {field.help}
-        </p>
-      )}
+      {inline && help}
       {error && (
         <p id={errorId} role="alert" className={cn("text-xs text-destructive")}>
           {error}
