@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
-import { defaultManualCategory } from "@/lib/scheduling/booking/manual";
+import { manualAreaOptions, manualEventOptions, manualHostOptions } from "@/lib/scheduling/booking/manual-options";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { canOpenConfig } from "@/lib/scheduling/config-sections";
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { eventDefaults } from "@/lib/scheduling/data/event-context";
 import { loadMeetContext } from "@/lib/scheduling/data/meet-availability";
+import { loadConfirmationConfigs } from "@/lib/scheduling/data/manual-options";
 import { meetAvailableFor } from "@/lib/scheduling/meet-availability";
 import { brokenCalendarAccounts } from "@/lib/scheduling/data/attention";
 import { bookingUtmOptions, hostNames, listBookingStatuses, listBookings } from "@/lib/scheduling/data/bookings";
@@ -34,7 +35,6 @@ import { parseTasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(t
 import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
-import type { BookingTriggerConfig } from "@/lib/scheduling/automation/triggers";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +84,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   // Primera tanda, todo en paralelo: lo que no depende de los filtros. Antes iban
   // en cinco pasos seguidos (y la mitad, al final de la pagina).
   const service = await createServiceClient();
-  const [profile, broken, categories, events, defaults, timezone, names, { data: anyBooking }, utmOptions, { data: profileRows }, { data: googleRows }, { data: confirmationRows }] =
+  const [profile, broken, categories, events, defaults, timezone, names, { data: anyBooking }, utmOptions, { data: profileRows }, { data: googleRows }, confirmationConfigs] =
     await Promise.all([
       ctx.can("scheduling.use") ? getProfileForUser(ctx.supabase, ctx.workspace.id, ctx.user.id) : Promise.resolve(null),
       ctx.can("scheduling.use") ? brokenCalendarAccounts(ctx.supabase, ctx.workspace.id, ctx.user.id) : Promise.resolve([]),
@@ -107,13 +107,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       service.from("oauth_connections").select("user_id").eq("workspace_id", ctx.workspace.id).eq("provider", "google_calendar").eq("status", "active"),
       // Los flujos de confirmacion prendidos: el modal de agendar a mano dice si sale el email.
       // Con el servidor: un rol sin permiso sobre automatizaciones tambien tiene que saberlo.
-      service
-        .from("triggers")
-        .select("config, flows!inner(status)")
-        .eq("workspace_id", ctx.workspace.id)
-        .eq("type", "booking_created")
-        .eq("is_active", true)
-        .eq("flows.status", "published"),
+      loadConfirmationConfigs(service, ctx.workspace.id),
     ]);
 
   const categoryRows = categories.map(toCategoryRow);
@@ -279,7 +273,6 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
 
   const usernameByUser = new Map((profileRows ?? []).map((p) => [p.user_id, p.username]));
   const hasGoogleByUser = new Set((googleRows ?? []).map((c) => c.user_id));
-  const confirmationConfigs = (confirmationRows ?? []).map((t) => (t.config ?? {}) as BookingTriggerConfig);
   const shareableEvents: ShareableEvent[] = events
     .filter((e) => e.status === "active")
     .map((e) => {
@@ -306,29 +299,9 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       eventOptions={events.filter((e) => e.status !== "inactive").map((e) => ({ id: e.id, title: e.title }))}
       // Agendar a mano (un solo paso): TODOS los eventos, los inactivos tambien
       // (el modal los muestra abajo). El horario es libre, no depende de que el evento este activo.
-      events={events.map((e) => ({
-        id: e.id,
-        title: e.title,
-        durationMinutes: e.duration_minutes,
-        categoryLabel: categoryLabel(e.category_id, categoryRows),
-        hostName: names.get(e.owner_user_id) ?? "Sin nombre",
-        hostUserId: e.owner_user_id,
-        categoryId: e.category_id,
-        status: e.status as "active" | "hidden" | "inactive",
-        color: e.color,
-        locationType: e.location_type === "google_meet" ? "google_meet" : "manual",
-        locationText: e.location_text,
-        meetAvailable: meetAvailableFor(meetContext, e.owner_user_id, e.destination_calendar_id),
-      }))}
-      manualHosts={[...names.entries()]
-        .map(([userId, label]) => ({ userId, label, meetAvailable: meetAvailableFor(meetContext, userId) }))
-        .sort((a, b) => a.label.localeCompare(b.label))}
-      manualAreas={(() => {
-        const defaultId = defaultManualCategory(categoryRows);
-        return categoryRows
-          .filter((c) => c.parent_id === null && !c.archived_at)
-          .map((c) => ({ id: c.id, name: c.name, isDefault: c.id === defaultId }));
-      })()}
+      events={manualEventOptions(events, categoryRows, names, meetContext)}
+      manualHosts={manualHostOptions(names, meetContext)}
+      manualAreas={manualAreaOptions(categoryRows)}
       confirmationConfigs={confirmationConfigs}
       viewerId={ctx.user.id}
       shareableEvents={shareableEvents}

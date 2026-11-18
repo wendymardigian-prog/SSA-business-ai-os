@@ -124,7 +124,7 @@ export async function ClientRecord({ ctx, contactId }: { ctx: Ctx; contactId: st
     : { products: [], members: [], canOffRule: false };
 
   return (
-    <RecordModal label={`Cliente ${data.name || "sin nombre"}`} header={<ClientRecordHeader data={data} canEdit={ctx.can("contacts.edit")} canCreate={ctx.can("services.create")} newServiceOptions={newServiceOptions} timeZone={timeZone} />}>
+    <RecordModal label={`Cliente ${data.name || "sin nombre"}`} header={<ClientRecordHeader data={data} canEdit={ctx.can("contacts.edit")} canCreate={ctx.can("services.create")} canBook={ctx.can("bookings.manage")} newServiceOptions={newServiceOptions} timeZone={timeZone} />}>
       <ClientRecordView data={data} today={todayIn(wsTz ?? undefined)} timeZone={timeZone} portalCard={portalCard} />
     </RecordModal>
   );

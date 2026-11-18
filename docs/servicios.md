@@ -103,6 +103,10 @@ puede completarse «Cuando hay grabación». Una reunión que terminó hace 2 a 
 (`call_missing_recording`, cron `call-missing-recording`). Para las reuniones viejas:
 `node scripts/backfill-call-services.mjs --dry-run` (y `--aplicar`).
 
+Las fichas del cliente y del servicio tienen **«Agendar llamada»** (con `bookings.manage`): el mismo modal de la Agenda
+con el cliente fijo como invitado y el área «Servicio» por defecto, así la grabación después se une sola al servicio.
+La reunión aparece en «Reuniones» al refrescar. Detalle en [agendamiento.md](agendamiento.md).
+
 ## Topes de cartera (Servicios A4, F151)
 
 Ajustes › Productos › «Reparto de clientes» (`services.configure`): el tope de servicios a cargo de cada persona
