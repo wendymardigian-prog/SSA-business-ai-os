@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { rescheduleAsHost } from "@/lib/actions/scheduling/bookings";
 import { formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
-import { dragConfirmReducer, rescheduleEffects, shouldCallAction, type BookingDrop, type DragConfirmEvent, type DragConfirmState } from "@/lib/scheduling/booking-drag";
+import { dragConfirmReducer, durationLabel, rescheduleEffects, shouldCallAction, type BookingDrop, type DragConfirmEvent, type DragConfirmState } from "@/lib/scheduling/booking-drag";
 import type { BookingListItem } from "@/lib/scheduling/data/bookings";
 import type { BookingGhost } from "./calendar-grid";
 
@@ -30,6 +30,7 @@ export function useRescheduleDrag({ items, timezone, timeFormat }: { items: Book
         startUtc: next.startUtc,
         ignoreAvailability: next.ignoreAvailability || undefined,
         reason: next.reason.trim() || null,
+        durationMinutes: next.durationMinutes,
       });
       if (res.ok) {
         send({ type: "succeeded" });
@@ -61,14 +62,18 @@ export function useRescheduleDrag({ items, timezone, timeFormat }: { items: Book
       ? {
           bookingId: booking.id,
           startUtc: state.startUtc,
-          durationMinutes: Math.max(5, Math.round((new Date(booking.endAt).getTime() - new Date(booking.startAt).getTime()) / 60_000)),
-          label: `${booking.contactName || booking.bookerName || "Agenda"} · nuevo horario`,
+          durationMinutes:
+            state.durationMinutes ?? Math.max(5, Math.round((new Date(booking.endAt).getTime() - new Date(booking.startAt).getTime()) / 60_000)),
+          label: `${booking.contactName || booking.bookerName || "Agenda"} · ${state.durationMinutes !== undefined ? "nueva duración" : "nuevo horario"}`,
         }
       : null;
 
   return {
     ghost,
     onDrop: (item: BookingListItem, drop: BookingDrop, startUtc: string) => send({ type: "drop", bookingId: item.id, drop, startUtc }),
+    /** B-AGE-01: estirar o encoger la reunión; el inicio no cambia y también pide confirmación. */
+    onResize: (item: BookingListItem, durationMinutes: number) =>
+      send({ type: "drop", bookingId: item.id, drop: { kind: "day", date: item.startAt.slice(0, 10) }, startUtc: item.startAt, durationMinutes }),
     dialog:
       booking && (state.phase === "pending" || state.phase === "confirming" || state.phase === "error") ? (
         <RescheduleDialog booking={booking} state={state} timezone={timezone} timeFormat={timeFormat} send={send} />
@@ -129,6 +134,12 @@ function RescheduleDialog({
             </dt>
             <dd className="font-medium">{formatDateTimeWithZone(state.startUtc, timezone, timeFormat)}</dd>
           </div>
+          {state.durationMinutes !== undefined && (
+            <div className="flex items-start gap-2">
+              <dt className="w-8 shrink-0 text-xs font-medium text-muted-foreground">Dura:</dt>
+              <dd className="font-medium">{durationLabel(state.durationMinutes)}</dd>
+            </div>
+          )}
         </dl>
         {booking.timezone && booking.timezone !== timezone && (
           <p className="mt-2 text-xs text-muted-foreground">Para el invitado: {formatDateTimeWithZone(state.startUtc, booking.timezone, timeFormat)}</p>
@@ -149,7 +160,7 @@ function RescheduleDialog({
         <div className="mt-3">
           <p className="text-xs font-medium text-muted-foreground">Qué va a pasar</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
-            {rescheduleEffects(booking.syncStatus).map((line) => (
+            {rescheduleEffects(booking.syncStatus, state.durationMinutes).map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>

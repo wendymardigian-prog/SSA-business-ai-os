@@ -136,6 +136,8 @@ export async function rescheduleAsHost(input: {
   startUtc: string;
   ignoreAvailability?: boolean;
   reason?: string | null;
+  /** B-AGE-01: la duración nueva al estirar la reunión en el calendario. */
+  durationMinutes?: number;
 }): Promise<BookingActionResult<{ startUtc: string; endUtc: string }>> {
   const found = await visibleBooking(input.bookingId);
   if (found.error !== undefined) return { ok: false, error: found.error };
@@ -148,6 +150,7 @@ export async function rescheduleAsHost(input: {
     actorUserId: ctx.user.id,
     ignoreAvailability: input.ignoreAvailability,
     reason: input.reason ?? null,
+    durationMinutes: typeof input.durationMinutes === "number" ? input.durationMinutes : undefined,
   });
   if (!result.ok) return { ok: false, error: result.message ?? "No pude reagendar." };
   revalidatePath(PATH);

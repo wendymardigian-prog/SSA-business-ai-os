@@ -29,6 +29,8 @@ export interface RescheduleInput {
   actorUserId?: string | null;
   /** Solo el equipo (F36): mover a un horario que el motor no ofreceria. */
   ignoreAvailability?: boolean;
+  /** B-AGE-01: solo el equipo, al estirar la reunión en el calendario. Entre 15 minutos y 8 horas. */
+  durationMinutes?: number;
   now?: Date;
 }
 
@@ -60,7 +62,11 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
   const startUtc = new Date(input.startUtc).toISOString();
   // La duracion de ESTA reunion, no la del evento: una reunion a mano de 90 minutos no pasa a 30 al moverla.
   const currentMs = Date.parse(booking.end_at) - Date.parse(booking.start_at);
-  const durationMs = currentMs > 0 ? currentMs : event.duration_minutes * 60_000;
+  const wantedMinutes = input.by === "host" && input.durationMinutes !== undefined ? Math.round(input.durationMinutes) : null;
+  if (wantedMinutes !== null && (!Number.isFinite(wantedMinutes) || wantedMinutes < 15 || wantedMinutes > 8 * 60)) {
+    return { ok: false, status: 400, reason: "slot_unavailable", message: "La duración tiene que ir de 15 minutos a 8 horas." };
+  }
+  const durationMs = wantedMinutes !== null ? wantedMinutes * 60_000 : currentMs > 0 ? currentMs : event.duration_minutes * 60_000;
   const endUtc = new Date(new Date(startUtc).getTime() + durationMs).toISOString();
 
   if (!input.ignoreAvailability) {

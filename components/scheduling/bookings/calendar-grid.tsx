@@ -10,14 +10,14 @@
  * hace la vista de contenido de la Etapa 2.
  */
 
-import { useMemo, useState, type DragEvent } from "react";
+import { useMemo, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { BookingListItem } from "@/lib/scheduling/data/bookings";
 import { placeInCalendar, type CalendarView } from "@/lib/scheduling/calendar-view";
 import { rangeFor, shiftAnchor } from "@/lib/scheduling/calendar-range";
 import { capitalize, formatSlotLabel } from "@/lib/scheduling/booker/format";
 import { groupOf } from "@/lib/scheduling/booking-status";
-import { bookingDropToStartUtc, isSameStart, type BookingDrop } from "@/lib/scheduling/booking-drag";
+import { bookingDropToStartUtc, dragCreateRange, durationLabel, isSameStart, resizeDuration, type BookingDrop } from "@/lib/scheduling/booking-drag";
 import { dateInTz, minutesOfDayInTz } from "@/lib/scheduling/time/tz";
 import { useToast } from "@/components/content/drawer/toast";
 import { useOptionalTaskWorkbench } from "@/components/tasks/task-workbench"; // @plantilla-quitar(tareas)
@@ -90,6 +90,8 @@ export function BookingsCalendar({
   canDragBookings = false,
   onDropBooking,
   ghost = null,
+  onCreateRange,
+  onResizeBooking,
 }: {
   items: BookingListItem[];
   /** Nombre de cada anfitrión por su id, para el círculo de la tarjeta. */
@@ -114,6 +116,10 @@ export function BookingsCalendar({
   /** R8: se solto una agenda en otro horario o dia. SIEMPRE abre una confirmacion: nada se guarda aca. */
   onDropBooking?: (item: BookingListItem, drop: BookingDrop, startUtc: string) => void;
   ghost?: BookingGhost | null;
+  /** B-AGE-01: se arrastró sobre un hueco vacío de la rejilla (solo escritorio). Abre «Agendar» con ese horario. */
+  onCreateRange?: (date: string, startMinutes: number, durationMinutes: number) => void;
+  /** B-AGE-01: se estiró o encogió una reunión desde su borde de abajo. SIEMPRE pide confirmación. */
+  onResizeBooking?: (item: BookingListItem, durationMinutes: number) => void;
 }) {
   const range = useMemo(() => rangeFor(view, anchor), [view, anchor]);
   const wb = useOptionalTaskWorkbench(); // @plantilla-quitar(tareas)
@@ -178,6 +184,63 @@ export function BookingsCalendar({
     setDragging({ kind: "booking", id: item.id });
   }
   const endDrag = () => setDragging(null);
+
+  // ── B-AGE-01: crear arrastrando y cambiar la duración (punteros, no arrastre nativo) ──────────────────────────────
+  const [selecting, setSelecting] = useState<{ date: string; from: number; to: number } | null>(null);
+  const [resizing, setResizing] = useState<{ id: string; start: number; to: number; original: number } | null>(null);
+  const minutesAt = (e: PointerEvent<HTMLElement>, column: HTMLElement) =>
+    snapMinutes(e.clientY - column.getBoundingClientRect().top, HOUR_PX, FIRST_HOUR);
+  const canCreate = isDesktop && !!onCreateRange;
+  const canResize = (item: BookingListItem) => bookingDraggable(item) && !!onResizeBooking;
+
+  function selectStart(date: string, e: PointerEvent<HTMLElement>) {
+    if (!canCreate || e.button !== 0 || dragging) return;
+    // Solo sobre el fondo de la columna: una tarjeta o su borde tienen lo suyo.
+    if ((e.target as HTMLElement).closest("button,[data-cal-handle]")) return;
+    const at = minutesAt(e, e.currentTarget);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setSelecting({ date, from: at, to: at });
+  }
+  function selectMove(e: PointerEvent<HTMLElement>) {
+    if (!selecting) return;
+    const at = minutesAt(e, e.currentTarget);
+    if (at !== selecting.to) setSelecting({ ...selecting, to: at });
+  }
+  function selectEnd() {
+    if (!selecting || !onCreateRange) return setSelecting(null);
+    const range = dragCreateRange(selecting.from, selecting.to);
+    setSelecting(null);
+    onCreateRange(selecting.date, range.startMinutes, range.durationMinutes);
+  }
+
+  function resizeStart(item: BookingListItem, start: number, end: number, e: PointerEvent<HTMLElement>) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setResizing({ id: item.id, start, to: end, original: end - start });
+  }
+  function resizeMove(e: PointerEvent<HTMLElement>) {
+    if (!resizing) return;
+    const column = e.currentTarget.parentElement;
+    if (!column) return;
+    const at = minutesAt(e, column);
+    if (at !== resizing.to) setResizing({ ...resizing, to: at });
+  }
+  function resizeEnd(item: BookingListItem) {
+    const r = resizing;
+    setResizing(null);
+    if (!r || r.id !== item.id || !onResizeBooking) return;
+    const next = resizeDuration(r.start, r.to);
+    if (next !== r.original) onResizeBooking(item, next);
+  }
+  /** Con el teclado: flecha abajo o arriba suma o resta 15 minutos (también con confirmación). */
+  function resizeKey(item: BookingListItem, start: number, end: number, e: KeyboardEvent<HTMLElement>) {
+    if (!onResizeBooking || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+    e.preventDefault();
+    const next = resizeDuration(start, end + (e.key === "ArrowDown" ? 15 : -15));
+    if (next !== end - start) onResizeBooking(item, next);
+  }
 
   // @plantilla-desde(tareas)
   /** Una tarea soltada: se mueve al instante, sin confirmar, y se puede deshacer. */
@@ -332,14 +395,23 @@ export function BookingsCalendar({
               ))}
             </div>
             {days.map((date) => (
-              <div key={date} className="relative border-l border-border" {...columnDrop(date)}>
+              <div
+                key={date}
+                className={canCreate ? "relative cursor-cell select-none border-l border-border" : "relative border-l border-border"}
+                {...columnDrop(date)}
+                onPointerDown={(e) => selectStart(date, e)}
+                onPointerMove={selectMove}
+                onPointerUp={selectEnd}
+                onPointerCancel={() => setSelecting(null)}
+              >
                 {Array.from({ length: LAST_HOUR - FIRST_HOUR }, (_, i) => (
                   <div key={i} className="border-t border-border" style={{ height: HOUR_PX }} />
                 ))}
                 {(placement.byDate[date] ?? []).map((it) => {
                   const item = it.booking as unknown as BookingListItem;
                   const top = ((it.startMinutes - FIRST_HOUR * 60) / 60) * HOUR_PX;
-                  const height = Math.max(26, ((it.endMinutes - it.startMinutes) / 60) * HOUR_PX);
+                  const live = resizing?.id === item.id ? resizeDuration(it.startMinutes, resizing.to) : null;
+                  const height = Math.max(26, (((live ?? it.endMinutes - it.startMinutes)) / 60) * HOUR_PX);
                   const canDrag = bookingDraggable(item);
                   // Con tareas, lo que se superpone va lado a lado; sin ellas, ancho completo como siempre.
                   const lane = columnsByDate.get(date)?.get(`b:${item.id}`);
@@ -349,7 +421,7 @@ export function BookingsCalendar({
                     : "overflow-hidden rounded-md border border-border border-l-2 bg-card px-1.5 py-1 text-left text-[11px] hover:border-ring";
                   // Con lugar, el estado va como chip de color debajo del nombre; en una tarjeta baja, como un punto de color.
                   const roomy = height >= CHIP_CARD_PX;
-                  return (
+                  const card = (
                     <button
                       key={item.id}
                       type="button"
@@ -376,7 +448,41 @@ export function BookingsCalendar({
                       )}
                     </button>
                   );
+                  return canResize(item) ? (
+                    <div key={item.id} className="contents">
+                      {card}
+                      <div
+                        data-cal-handle
+                        role="separator"
+                        aria-orientation="horizontal"
+                        tabIndex={0}
+                        aria-label={`Cambiar la duración de ${item.contactName || item.bookerName || "la reunión"}${live !== null ? `: ${durationLabel(live)}` : ""}`}
+                        title={live !== null ? durationLabel(live) : "Arrastrá para cambiar la duración"}
+                        onPointerDown={(e) => resizeStart(item, it.startMinutes, it.endMinutes, e)}
+                        onPointerMove={resizeMove}
+                        onPointerUp={() => resizeEnd(item)}
+                        onPointerCancel={() => setResizing(null)}
+                        onKeyDown={(e) => resizeKey(item, it.startMinutes, it.endMinutes, e)}
+                        style={{ top: top + height - 5, height: 8, ...(lane ? laneStyle(lane) : null) }}
+                        className={`absolute z-[5] cursor-ns-resize rounded-b-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${lane ? "" : "inset-x-1"} ${live !== null ? "bg-primary/30" : "hover:bg-primary/20"}`}
+                      />
+                    </div>
+                  ) : (
+                    card
+                  );
                 })}
+                {selecting && selecting.date === date && (() => {
+                  const r = dragCreateRange(selecting.from, selecting.to);
+                  return (
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-1 z-10 rounded-md border-2 border-dashed border-primary-edge bg-primary/10 px-1.5 py-1 text-[11px] font-medium"
+                      style={{ top: ((r.startMinutes - FIRST_HOUR * 60) / 60) * HOUR_PX, height: Math.max(MIN_CARD_PX, (r.durationMinutes / 60) * HOUR_PX) }}
+                    >
+                      Nueva reunión · {durationLabel(r.durationMinutes)}
+                    </div>
+                  );
+                })()}
                 {/* @plantilla-desde(tareas) */}
                 {taskPlacement &&
                   (taskPlacement.byDate[date] ?? [])

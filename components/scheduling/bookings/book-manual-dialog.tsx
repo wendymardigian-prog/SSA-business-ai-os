@@ -87,6 +87,7 @@ export function BookManualDialog({
   areas,
   confirmationConfigs = [],
   presetContact,
+  initialSlot = null,
 }: {
   events: ManualEventOption[];
   timezone: string;
@@ -108,10 +109,12 @@ export function BookManualDialog({
    * Sin la prop, el modal es el de siempre.
    */
   presetContact?: ManualContactOption;
+  /** B-AGE-01: el horario arrastrado en el calendario (día, hora de pared y duración). */
+  initialSlot?: { date: string; time: string; durationMinutes: number } | null;
 }) {
   const router = useRouter();
   const titleId = useId();
-  const initial = useMemo(() => nextHalfHour(timezone), [timezone]);
+  const initial = useMemo(() => (initialSlot ? { date: initialSlot.date, time: initialSlot.time } : nextHalfHour(timezone)), [initialSlot, timezone]);
 
   const [title, setTitle] = useState("");
   const [eventId, setEventId] = useState<string | null>(null);
@@ -127,7 +130,7 @@ export function BookManualDialog({
 
   const [date, setDate] = useState(initial.date);
   const [time, setTime] = useState(initial.time);
-  const [duration, setDuration] = useState(30);
+  const [duration, setDuration] = useState(initialSlot?.durationMinutes ?? 30);
   const [hostUserId, setHostUserId] = useState(currentUserId);
   const [categoryId, setCategoryId] = useState(areas.find((a) => a.isDefault)?.id ?? areas[0]?.id ?? "");
   const [notes, setNotes] = useState("");
