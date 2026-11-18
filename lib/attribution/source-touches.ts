@@ -14,6 +14,12 @@ const COLUMNS =
 /** PostgREST manda el `in` en la URL: de a tandas. */
 const PER_QUERY = 100;
 
+function chunks<T>(list: readonly T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += PER_QUERY) out.push(list.slice(i, i + PER_QUERY));
+  return out;
+}
+
 export const formTouchKey = (submissionId: string) => `form:${submissionId}`;
 export const bookingTouchKey = (bookingId: string) => `booking:${bookingId}`;
 
@@ -22,12 +28,11 @@ const hasLink = (t: Pick<MatchTouch, "meta_campaign_id" | "meta_adset_id" | "met
 export async function loadTouchesByKey(service: SupabaseClient, workspaceId: string, keys: readonly string[]): Promise<Map<string, MatchTouch>> {
   const out = new Map<string, MatchTouch>();
   const unique = [...new Set(keys)];
-  for (let i = 0; i < unique.length; i += PER_QUERY) {
-    const { data, error } = await service
-      .from("contact_touches")
-      .select(COLUMNS)
-      .eq("workspace_id", workspaceId)
-      .in("dedupe_key", unique.slice(i, i + PER_QUERY));
+  // Las tandas no dependen una de otra: van en paralelo y se leen en orden (ante un error, queda lo de las anteriores).
+  const results = await Promise.all(
+    chunks(unique).map((slice) => service.from("contact_touches").select(COLUMNS).eq("workspace_id", workspaceId).in("dedupe_key", slice)),
+  );
+  for (const { data, error } of results) {
     if (error) {
       console.error("[atribucion] no pude leer los toques, code=", error.code);
       return out;
@@ -69,16 +74,21 @@ export async function loadBookingMatches(
   });
   const byContact = new Map<string, MatchTouch[]>();
   const contactIds = [...new Set(needPrevious.map((b) => b.contactId))];
-  for (let i = 0; i < contactIds.length; i += PER_QUERY) {
-    const { data, error } = await service
-      .from("contact_touches")
-      .select(COLUMNS)
-      .eq("workspace_id", workspaceId)
-      .in("contact_id", contactIds.slice(i, i + PER_QUERY))
-      .or("meta_campaign_id.not.is.null,meta_adset_id.not.is.null,meta_ad_id.not.is.null")
-      .order("occurred_at", { ascending: false })
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false });
+  // Cada contacto cae en una sola tanda, así que leerlas en paralelo no cambia el orden de sus toques.
+  const results = await Promise.all(
+    chunks(contactIds).map((slice) =>
+      service
+        .from("contact_touches")
+        .select(COLUMNS)
+        .eq("workspace_id", workspaceId)
+        .in("contact_id", slice)
+        .or("meta_campaign_id.not.is.null,meta_adset_id.not.is.null,meta_ad_id.not.is.null")
+        .order("occurred_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false }),
+    ),
+  );
+  for (const { data, error } of results) {
     if (error) {
       console.error("[atribucion] no pude leer los toques del contacto, code=", error.code);
       break;
