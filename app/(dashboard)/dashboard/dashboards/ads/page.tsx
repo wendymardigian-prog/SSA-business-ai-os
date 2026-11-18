@@ -40,13 +40,20 @@ export default async function AdsDashboardPage({
   // La lista de cuentas publicitarias esta en `integration_configs`, que solo lee un Admin: con el permiso de la
   // pantalla alcanza para VER las cuentas, asi que se lee con el cliente de servicio, filtrada por el workspace de la sesion.
   const service = await createServiceClient();
-  const { data: configRow } = await service
-    .from("integration_configs")
-    .select("config")
-    .eq("workspace_id", workspace.id)
-    .eq("type", "meta")
-    .eq("provider", "meta")
-    .maybeSingle();
+  // Nada de esto depende de lo otro: van juntos, asi la base contesta en una sola vuelta y no en cuatro.
+  // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el servidor. El workspace sale de la sesion.
+  const [{ data: configRow }, timeZone, token, aiChoice] = await Promise.all([
+    service
+      .from("integration_configs")
+      .select("config")
+      .eq("workspace_id", workspace.id)
+      .eq("type", "meta")
+      .eq("provider", "meta")
+      .maybeSingle(),
+    resolveViewerTimezone(workspace.timezone),
+    getMetaToken(service, workspace.id),
+    loadTaskModel(service, workspace.id, "ads_analysis"),
+  ]);
 
   const config = parseMetaConfig(configRow?.config);
   const accounts = syncedAccounts(config.ad_accounts);
@@ -80,15 +87,9 @@ export default async function AdsDashboardPage({
   const adAccountId = resolved.adAccountId;
   const account = accounts.find((a) => a.ad_account_id === adAccountId);
 
-  const timeZone = await resolveViewerTimezone(workspace.timezone);
   const now = new Date();
   const range = resolveDashboardPeriod(period, now, timeZone);
   const before = previousPeriod(range, now);
-
-  // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
-  // servidor. El workspace sale de la sesion, no del pedido.
-  const token = await getMetaToken(service, workspace.id);
-  const aiChoice = await loadTaskModel(service, workspace.id, "ads_analysis");
 
   const sinceOf = (period: { from: string | null }) => (period.from ? isoToDateInput(period.from, timeZone) : null);
   const untilOf = (period: { to: string | null }) => isoToDateInput(period.to ?? now.toISOString(), timeZone);

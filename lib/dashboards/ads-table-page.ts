@@ -47,13 +47,19 @@ export async function loadAdsTablePage(
   // Las cuentas estan en `integration_configs` (solo la lee un Admin): con el permiso de la pantalla se leen con el
   // cliente de servicio, filtradas por el workspace de la sesion.
   const service = await createServiceClient();
-  const { data: configRow } = await service
-    .from("integration_configs")
-    .select("config")
-    .eq("workspace_id", workspace.id)
-    .eq("type", "meta")
-    .eq("provider", "meta")
-    .maybeSingle();
+  // Nada de esto depende de lo otro: van juntos, en una sola vuelta a la base.
+  // El token, con el de servicio: desde la 00143 `read_secret` solo la ejecuta el servidor.
+  const [{ data: configRow }, timeZone, token] = await Promise.all([
+    service
+      .from("integration_configs")
+      .select("config")
+      .eq("workspace_id", workspace.id)
+      .eq("type", "meta")
+      .eq("provider", "meta")
+      .maybeSingle(),
+    resolveViewerTimezone(workspace.timezone),
+    getMetaToken(service, workspace.id),
+  ]);
 
   const config = parseMetaConfig(configRow?.config);
   const accounts = syncedAccounts(config.ad_accounts);
@@ -66,14 +72,10 @@ export async function loadAdsTablePage(
   const adAccountId = resolved.adAccountId;
   const account = accounts.find((a) => a.ad_account_id === adAccountId);
 
-  const timeZone = await resolveViewerTimezone(workspace.timezone);
   const now = new Date();
   const range = resolveDashboardPeriod(period, now, timeZone);
   const since = range.from ? isoToDateInput(range.from, timeZone) : null;
   const until = isoToDateInput(range.to ?? now.toISOString(), timeZone);
-
-  // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el servidor.
-  const token = await getMetaToken(service, workspace.id);
 
   const [rows, live] = await Promise.all([
     loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: range, timeZone }),
