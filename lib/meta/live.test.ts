@@ -12,6 +12,8 @@ import {
   fetchObjectReach,
   fetchReachByLevel,
   fetchUniqueReach,
+  LIVE_TIMEOUT_MESSAGE,
+  LIVE_TIMEOUT_MS,
   liveQuery,
   parseHour,
   readCache,
@@ -80,6 +82,53 @@ describe("pedir con cache (F58)", () => {
 
     expect(result.ok).toBe(false);
     expect(readCache("k")).toBeNull();
+  });
+});
+
+describe("el tiempo limite con Meta", () => {
+  /** Un fetch que no contesta nunca, salvo que lo corten con el signal (como el de verdad). */
+  const hangs = vi.fn(
+    (_url: string, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+      }),
+  ) as unknown as typeof fetch;
+
+  it("cada pedido lleva un signal con tiempo limite (8 s por defecto)", async () => {
+    const fetchImpl = respond({ data: [] });
+
+    await liveQuery({ key: "k", token: "t", path: "x", query: {}, fetchImpl });
+
+    const init = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(LIVE_TIMEOUT_MS).toBe(8_000);
+  });
+
+  it("si Meta no contesta a tiempo, es «no lo dio» y no queda en la cache", async () => {
+    const result = await liveQuery({ key: "lento", token: "t", path: "x", query: {}, fetchImpl: hangs, timeoutMs: 20 });
+
+    expect(result).toEqual({ ok: false, error: LIVE_TIMEOUT_MESSAGE });
+    expect(readCache("lento")).toBeNull();
+  });
+
+  it("un timeout en el alcance unico da un error, nunca un alcance en cero", async () => {
+    // La pagina muestra «—» con un error; un cero diria «no alcanzo a nadie», que es falso.
+    const timeout = vi.fn(async () => {
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    }) as unknown as typeof fetch;
+
+    const result = await fetchUniqueReach({ token: "t", adAccountId: "act_1", since: "a", until: "b", fetchImpl: timeout });
+
+    expect(result.ok).toBe(false);
+    expect(result.ok ? result.data.reach : null).toBeNull();
+  });
+
+  it("un error de red tambien es «no lo dio»", async () => {
+    const down = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+
+    expect(await liveQuery({ key: "k", token: "t", path: "x", query: {}, fetchImpl: down })).toEqual({ ok: false, error: "fetch failed" });
   });
 });
 
