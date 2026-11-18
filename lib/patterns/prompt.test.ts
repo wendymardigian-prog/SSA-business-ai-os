@@ -45,6 +45,13 @@ describe("buildBatchPrompt", () => {
     expect(p).not.toContain("a".repeat(MAX_TEXT_CHARS + 1));
   });
 
+  it("trunca sin partir un emoji (el pedido quedaba con JSON inválido)", () => {
+    const largo = `${"a".repeat(MAX_TEXT_CHARS - 1)}😀${"b".repeat(50)}`;
+    const p = buildBatchPrompt({ ...req, texts: [{ id: "t-1", text: largo }] });
+    expect(p.isWellFormed()).toBe(true);
+    expect(p).toContain(`${"a".repeat(MAX_TEXT_CHARS - 1)}…`);
+  });
+
   it("incluye hasta 20 correcciones humanas", () => {
     const corrections = Array.from({ length: 25 }, (_, i) => ({ text: `texto ${i}`, categoryName: "Dice que sí" }));
     const p = buildBatchPrompt({ ...req, corrections });

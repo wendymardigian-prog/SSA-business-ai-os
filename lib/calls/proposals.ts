@@ -6,6 +6,7 @@
  * (`proposals-resolve.ts`). Estados: pending → executing → done | failed → (reintentar) | discarded.
  */
 import { z } from "zod";
+import { headText } from "@/lib/text/safe-slice";
 
 export const PROPOSAL_TYPES = ["tarea", "mensaje", "paso", "aviso"] as const;
 export type ProposalType = (typeof PROPOSAL_TYPES)[number];
@@ -119,7 +120,7 @@ export function buildProposalsInstructions(input: { service: ProposalServiceCont
   return lines.join("\n");
 }
 
-const clip = (s: string | null | undefined, max: number) => (typeof s === "string" ? s.trim().slice(0, max) : "");
+const clip = (s: string | null | undefined, max: number) => (typeof s === "string" ? headText(s.trim(), max) : "");
 
 /**
  * Normaliza lo que propuso la IA a `calls.proposals`. Descarta solas:

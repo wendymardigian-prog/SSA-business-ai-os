@@ -2,6 +2,7 @@ import { z } from "zod";
 import { wrapUntrusted } from "@/lib/agent/untrusted";
 import { assembleTaskPrompt, CLASSIFY_DEFAULT_INSTRUCTIONS, interpolate } from "@/lib/ai-tasks/instructions";
 import type { ClassifierItem } from "./classifier";
+import { headText } from "@/lib/text/safe-slice";
 
 /**
  * El pedido al modelo que clasifica textos de mensajes (F20), y el parseo de
@@ -135,7 +136,7 @@ export function buildBatchPrompt(req: BatchRequest): string {
 export const MAX_CORRECTIONS = 20;
 
 function truncate(text: string): string {
-  return text.length > MAX_TEXT_CHARS ? `${text.slice(0, MAX_TEXT_CHARS)}…` : text;
+  return text.length > MAX_TEXT_CHARS ? `${headText(text, MAX_TEXT_CHARS)}…` : text;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { classifyCallWithAi, decideClassification } from "./classify-ai";
+import { CLASSIFIER_MAX_TOKENS, classifyCallWithAi, decideClassification } from "./classify-ai";
 
 const options = [
   { label: "Ventas · Cierre", categoryId: "t-cierre", description: null },
@@ -49,6 +49,9 @@ describe("classifyCallWithAi", () => {
     const arg = generate.mock.calls[0][0];
     expect(arg.system).toContain("Tipos: Ventas · Cierre,");
     expect(arg.prompt).toContain("<<<llamada n1>>>");
+    // Con 600 algunos modelos cortaban la respuesta (18/11/2026).
+    expect(arg.maxOutputTokens).toBe(CLASSIFIER_MAX_TOKENS);
+    expect(CLASSIFIER_MAX_TOKENS).toBeGreaterThanOrEqual(1500);
   });
 
   it("si generate falla, devuelve el error sin lanzar", async () => {
