@@ -110,6 +110,9 @@ export function looksLikeMarkdown(text: string): boolean {
   return /(^|\n)(#{1,3}\s|[-*]\s|\d+[.)]\s)|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\((https?:|mailto:|tel:)/.test(text);
 }
 
+/** El título de un post del equipo (00405): obligatorio en uno nuevo, hasta 200 caracteres (emojis incluidos). */
+export const COMMUNITY_TITLE_MAX = 200;
+
 // ---------------------------------------------------------------------------
 // Fotos del equipo
 // ---------------------------------------------------------------------------

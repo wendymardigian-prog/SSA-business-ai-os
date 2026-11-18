@@ -25,6 +25,7 @@
 import { dropDanglingComma, finalizeEmailHtml, interpolateHtml, isHtmlTemplate, preheaderHtml } from "./html";
 import { interpolateVariables } from "@/lib/flow-engine/interpolate";
 import { legacyNameToVariable, portalTextValues } from "@/lib/portal-admin/invite-variables"; // @plantilla-quitar(servicios)
+import { communityEmailHtml, communityEmailPreheader, communityPhotoLine } from "@/lib/program/community-email"; // @plantilla-quitar(servicios)
 import { mixHex, readableInkOnWhite, readableTextOn, resolveBrand, safeBrandColor, contrastRatio, type Brand } from "@/lib/brand";
 
 interface EmailContent {
@@ -349,6 +350,47 @@ export function portalDueTodayEmail(params: {
                 <p style="margin:16px 0 0;font-size:15px;line-height:1.6;color:#374151;">Un paso a la vez: lo tenés.</p>
                 ${params.portalUrl ? button(params.portalUrl, "Ir al portal", theme) : ""}`,
       footerNote: "Lo prendiste en tu Perfil del portal. Lo podés apagar ahí, en Notificaciones.",
+    }),
+  };
+}
+
+/**
+ * Una publicación nueva del equipo en la comunidad (00405), a cada estudiante con cuenta activa. Asunto = el título.
+ * Adentro, una cajita del color del negocio: «{autor} publicó en la comunidad:», el título y el cuerpo con su formato
+ * (`communityEmailHtml`, que escapa todo). Las fotos no viajan (son privadas): una línea y el botón para verlas.
+ * Transaccional: es parte del programa, como el resumen semanal.
+ */
+export function communityPostEmail(params: {
+  brand?: Brand | null;
+  authorName: string;
+  title: string;
+  body: string;
+  photoCount: number;
+  programName: string;
+  portalUrl?: string | null;
+}): EmailContent {
+  const brand = params.brand ?? resolveBrand(null);
+  const theme = emailTheme(brand);
+  const photos = communityPhotoLine(params.photoCount);
+  const title = params.title.trim();
+  return {
+    subject: title,
+    html: brandedEmailHtml({
+      brand,
+      preheader: communityEmailPreheader(params.body),
+      body: `
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
+                  <tr>
+                    <td bgcolor="${theme.tint}" style="padding:20px 22px;background:${theme.tint};border:1px solid ${theme.tintBorder};border-radius:12px;">
+                      <p style="margin:0 0 10px;font-size:13px;line-height:1.5;color:#4b5563;"><strong style="color:${theme.ink};">${escapeHtml(params.authorName.trim() || brand.name)}</strong> publicó en la comunidad:</p>
+                      <p style="margin:0 0 14px;font-size:20px;line-height:1.35;font-weight:700;color:#111827;">${escapeHtml(title)}</p>
+                      ${communityEmailHtml(params.body, { ink: theme.ink })}
+                      ${photos ? `<p style="margin:4px 0 0;font-size:13px;line-height:1.5;color:#6b7280;">📷 ${escapeHtml(photos)}</p>` : ""}
+                    </td>
+                  </tr>
+                </table>
+                ${params.portalUrl ? button(params.portalUrl, "Ver en la comunidad", theme) : ""}`,
+      footerNote: `Te llega porque sos parte de ${escapeHtml(params.programName)}.`,
     }),
   };
 }
