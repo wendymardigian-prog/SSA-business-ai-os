@@ -4,6 +4,9 @@
  * es lo que usa la fila de total.
  *
  * El permiso lo chequea la pagina y entra por `permissions`: el workspace sale siempre de la sesion.
+ *
+ * El alcance en vivo y el CRM viajan como promesas sin esperar (ninguna rechaza): la cabecera, la cuenta y el periodo
+ * se dibujan enseguida y la tabla aparece cuando llegan los dos.
  */
 
 import type { PermissionContext } from "@/lib/auth/guards";
@@ -14,7 +17,8 @@ import { getMetaToken } from "@/lib/meta/token";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import type { AdsRow } from "./ads";
-import { loadCrmForRows, type CrmTableData } from "./ads-crm-load";
+import { EMPTY_CRM, loadCrmForRows, type CrmTableData } from "./ads-crm-load";
+import { accountReachOf, neverRejects, type AccountReach } from "./ads-live";
 import { loadAdsInsights } from "./ads-load";
 import { lastSyncedAt, syncedLabel as buildSyncedLabel } from "./ads-view";
 import { readDashboardPeriod, resolveDashboardPeriod, type PeriodFilter } from "./period-filter";
@@ -25,15 +29,12 @@ export interface AdsTablePageData {
   adAccountId: string;
   currency: string | null;
   period: PeriodFilter;
-  /** El alcance unico del periodo, de la consulta en vivo. Null si no se pudo leer: el total usa la suma de los dias. */
-  uniqueReach: number | null;
-  /** La frecuencia de la misma respuesta de Meta que `uniqueReach`. */
-  uniqueFrequency: number | null;
-  liveError: string | null;
+  /** El alcance unico del periodo (en vivo) y, si no llego, el motivo. Sin el alcance, el total usa la suma de los dias. */
+  reach: Promise<AccountReach>;
   /** "hoy 14:32": cuando escribio el sync por ultima vez. */
   syncedLabel: string | null;
   /** Null solo si no hay ninguna cuenta. */
-  crm: CrmTableData | null;
+  crm: Promise<CrmTableData> | null;
 }
 
 export async function loadAdsTablePage(
@@ -66,7 +67,16 @@ export async function loadAdsTablePage(
   const resolved = resolveSyncedAccount(config.ad_accounts, typeof searchParams.cuenta === "string" ? searchParams.cuenta : undefined);
 
   if (!resolved.ok) {
-    return { rows: [], accounts: [], adAccountId: "", currency: null, period, uniqueReach: null, uniqueFrequency: null, liveError: null, syncedLabel: null, crm: null };
+    return {
+      rows: [],
+      accounts: [],
+      adAccountId: "",
+      currency: null,
+      period,
+      reach: Promise.resolve(accountReachOf(null)),
+      syncedLabel: null,
+      crm: null,
+    };
   }
 
   const adAccountId = resolved.adAccountId;
@@ -77,12 +87,19 @@ export async function loadAdsTablePage(
   const since = range.from ? isoToDateInput(range.from, timeZone) : null;
   const until = isoToDateInput(range.to ?? now.toISOString(), timeZone);
 
-  const [rows, live] = await Promise.all([
-    loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: range, timeZone }),
-    token && since ? fetchUniqueReach({ token, adAccountId, since, until }) : Promise.resolve(null),
-  ]);
+  // Lo guardado en la base se espera (lo usa la cabecera: la hora del sync); lo de Meta en vivo y el CRM, no.
+  const rows = await loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: range, timeZone });
 
-  const crm = await loadCrmForRows(permissions, { adAccountId, rows, since: since ?? "2000-01-01", until, timeZone, now });
+  const reach = neverRejects(
+    (token && since ? fetchUniqueReach({ token, adAccountId, since, until }) : Promise.resolve(null)).then(accountReachOf),
+    "el alcance del periodo",
+    (message) => ({ uniqueReach: null, uniqueFrequency: null, liveError: message }),
+  );
+  const crm = neverRejects(
+    loadCrmForRows(permissions, { adAccountId, rows, since: since ?? "2000-01-01", until, timeZone, now }),
+    "el CRM",
+    (message) => ({ ...EMPTY_CRM, since: since ?? "2000-01-01", until, adAccountId, timeZone, error: message }),
+  );
   const syncedAt = lastSyncedAt(rows.filter((r) => r.level === "account")) ?? account?.last_synced_at ?? null;
 
   return {
@@ -91,9 +108,7 @@ export async function loadAdsTablePage(
     adAccountId,
     currency: account?.currency ?? null,
     period,
-    uniqueReach: live?.ok ? live.data.reach : null,
-    uniqueFrequency: live?.ok ? live.data.frequency : null,
-    liveError: live && !live.ok ? live.error : null,
+    reach,
     syncedLabel: buildSyncedLabel(syncedAt, now, timeZone),
     crm,
   };
