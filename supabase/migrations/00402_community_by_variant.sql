@@ -1,9 +1,9 @@
 -- @plantilla-quitar(servicios)
 -- ============================================================================
--- 00402_community_by_variant  (Comunidades por variante y Academy Lite)
+-- 00402_community_by_variant  (Comunidades por variante y variante liviana)
 -- ============================================================================
 -- Un programa puede tener varias comunidades con nombre y cada variante elige a cuál pertenece (por defecto, la
--- principal). Requerimientos: «Requerimientos · Comunidades por variante y Academy Lite» (17/11/2026), con las
+-- principal). Requerimientos: «Comunidades por variante» (17/11/2026), con las
 -- decisiones de la sección 7.
 --
 --   Datos (sin tablas nuevas):

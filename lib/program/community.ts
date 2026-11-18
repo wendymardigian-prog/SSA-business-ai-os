@@ -126,6 +126,11 @@ export function variantCommunityKey(programSettings: unknown, variantPortalSetti
   return programCommunities(programSettings).find((c) => c.key === key && !c.archived)?.key ?? mainCommunity(programSettings).key;
 }
 
+/** La comunidad que se mira en el panel (`?comunidad=`): la pedida si existe; si no, la principal (R4.1). */
+export function pickCommunity(list: ProgramCommunity[], key: string | null | undefined): ProgramCommunity {
+  return list.find((c) => c.key === key) ?? list.find((c) => c.main) ?? list[0];
+}
+
 /** Problemas al guardar las comunidades desde la pantalla (además de lo que valida la base). `usedBy`: clave → variantes. */
 export function communitiesIssues(list: ProgramCommunity[], usedBy: Record<string, string[]> = {}): string[] {
   const out: string[] = [];
@@ -186,8 +191,11 @@ export function communityQuickOptions(input: {
   base: string;
   spaces: CommunitySpace[];
   counts: { unanswered: number; reported: number };
+  /** La comunidad elegida en la barra (00402): se conserva en cada opción. Sin elegir, no se agrega a la URL. */
+  community?: string | null;
 }): Array<{ key: string; label: string; count?: number; href: string }> {
-  const href = (q: Record<string, string>) => `${input.base}?${new URLSearchParams({ tab: "comunidad", ...q })}`;
+  const keep: Record<string, string> = input.community ? { comunidad: input.community } : {};
+  const href = (q: Record<string, string>) => `${input.base}?${new URLSearchParams({ tab: "comunidad", ...keep, ...q })}`;
   return [
     { key: "all", label: "Todo", href: href({}) },
     { key: "unanswered", label: "Sin contestar · 30 días", count: input.counts.unanswered, href: href({ filtro: "sin-contestar" }) },

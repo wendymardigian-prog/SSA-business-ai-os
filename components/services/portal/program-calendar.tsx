@@ -444,6 +444,10 @@ function SessionDrawer({
       : { title: "", kind: "single", weekdays: dow ? [dow] : [], everyWeeks: 1, startsOn: date ?? "", singleLocal: date ? `${date}T19:00` : "", startTime: "19:00", durationMinutes: 60, timezone: defaultTimezone, variantIds: null, trackClicks: true, clickCountsAsAttendance: false, attendanceBase: { type: "active" } },
   );
   const [moveTo, setMoveTo] = useState("");
+  // R7 (00402): esta fecha, abierta también a otras variantes (las que la sesión no incluye).
+  const dateKey = session && occurrence ? `${session.id}|${occurrence.occurs_on}` : "";
+  const [extra, setExtra] = useState<string[]>(() => data.extras?.[dateKey] ?? []);
+  const outside = session?.variant_ids?.length ? data.variants.filter((x) => !session.variant_ids!.includes(x.id)) : [];
   const set = (patch: Partial<LiveSessionInput>) => setV((x) => ({ ...x, ...patch }));
   const issues = liveSessionIssues(v);
   const run = (fn: () => Promise<{ ok: boolean; error?: { message: string } }>) =>
@@ -494,6 +498,30 @@ function SessionDrawer({
               )}
             </div>
             <p className="text-[11px] text-muted-foreground">La hora nueva va en la zona de la sesión ({session.timezone}). Una clase movida conserva su asistencia en la fecha original.</p>
+            {outside.length > 0 && (
+              <div className="space-y-1.5 border-t border-border pt-2">
+                <p className="text-xs font-medium">También la ven (solo esta fecha)</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {outside.map((x) => (
+                    <label key={x.id} className="flex items-center gap-1.5 text-sm">
+                      <input type="checkbox" checked={extra.includes(x.id)} disabled={!canManage || pending} onChange={(e) => setExtra(e.target.checked ? [...extra, x.id] : extra.filter((id) => id !== x.id))} />
+                      {x.name}
+                    </label>
+                  ))}
+                </div>
+                {canManage && (
+                  <button
+                    type="button"
+                    disabled={pending || [...extra].sort().join() === [...(data.extras?.[dateKey] ?? [])].sort().join()}
+                    onClick={() => run(() => saveLiveDate(productId, session.id, occurrence.occurs_on, { extraVariantIds: extra }))}
+                    className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent disabled:opacity-50"
+                  >
+                    Guardar quién ve esta fecha
+                  </button>
+                )}
+                <p className="text-[11px] text-muted-foreground">Por ejemplo, la clase del mes de Lite: esas variantes ven esta fecha (y su grabación), no las demás de la serie.</p>
+              </div>
+            )}
           </section>
         )}
         <DialogField label="Nombre">

@@ -3,21 +3,22 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp } from "lucide-react";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { SidePanel } from "@/components/tasks/overlay";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 import { useUrlIntent } from "@/components/ui/use-url-intent";
 import { communityMarkSeen, communityModerate, communityResolveReport, communitySetMuted, communityTeamEdit, communityTeamPost } from "@/lib/actions/community";
-import { saveProgramSettings } from "@/lib/actions/services";
-import { LESSON_SPACE, spaceKeyFor, spacesIssues, type CommunitySpace } from "@/lib/program/community";
+import { LESSON_SPACE, type CommunitySpace, type ProgramCommunity } from "@/lib/program/community";
+import { ProgramCommunitiesEditor } from "@/components/services/portal/program-communities-editor";
 import { mediaPaths } from "@/lib/program/community-text";
 import { CommunityBody } from "@/components/services/portal/community-body";
 import { CommunityComposer, type ComposerPhoto } from "@/components/services/portal/community-composer";
 
 export interface CommunityPost {
   id: string;
+  /** La comunidad del post (00402). */
+  community_key?: string;
   space_key: string;
   program_item_id: string | null;
   body: string;
@@ -44,12 +45,17 @@ const REACTION_LABEL: Record<string, string> = { like: "👍", fire: "🔥", cla
 /**
  * Portal › programa › Comunidad (F77, F111). Sin interruptor: la comunidad se prende en Productos › variante › Portal.
  * Filtros arriba (en la URL), Publicar y la tuerca de los espacios; cada post con sus comentarios, reacciones y reportes.
+ * Con más de una comunidad (00402), la barra elige cuál se ve (`?comunidad=`), Publicar deja elegir en cuáles y cada
+ * post dice de qué comunidad es.
  */
 export function ProgramCommunity({
   productId,
   posts,
   spaces,
-  lessonComments,
+  communities,
+  community,
+  programSettings,
+  usedBy,
   rev,
   counts,
   filter,
@@ -64,8 +70,16 @@ export function ProgramCommunity({
 }: {
   productId: string;
   posts: CommunityPost[];
+  /** Los espacios de la comunidad que se está viendo. */
   spaces: CommunitySpace[];
-  lessonComments: boolean;
+  /** Todas las comunidades del programa (las archivadas también, para el nombre de sus posts). */
+  communities: ProgramCommunity[];
+  /** La comunidad que se está viendo. */
+  community: string;
+  /** `products.portal_settings` (lo edita la tuerca). */
+  programSettings: unknown;
+  /** Clave de cada comunidad → las variantes que la eligieron. */
+  usedBy: Record<string, string[]>;
   rev: number;
   counts: { unanswered: number; reported: number };
   filter: "all" | "unanswered" | "reported";
@@ -84,7 +98,15 @@ export function ProgramCommunity({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [gear, setGear] = useState(false);
-  const live = spaces.filter((s) => !s.archived);
+  const activeCommunities = communities.filter((c) => !c.archived);
+  const multi = communities.length > 1;
+  const communityName = (key: string | undefined) => communities.find((c) => c.key === key)?.name ?? key ?? "";
+  // Publicar en una o en varias comunidades (R4.2): arranca en la que se está viendo.
+  const [targets, setTargets] = useState<string[]>([community]);
+  // Los espacios que se ofrecen son los que tienen TODAS las comunidades elegidas (un anuncio en dos va a Anuncios de las dos).
+  const live = spaces.filter(
+    (s) => !s.archived && targets.every((k) => k === community || activeCommunities.find((c) => c.key === k)?.spaces.some((x) => x.key === s.key && !x.archived)),
+  );
   const [draft, setDraft] = useState({ body: "", space: space && space !== LESSON_SPACE ? space : live.find((s) => s.key === "general")?.key ?? live[0]?.key ?? "", asBusiness: true });
   const [photos, setPhotos] = useState<ComposerPhoto[]>([]);
   // El editor se vuelve a armar vacío después de publicar.
@@ -136,7 +158,23 @@ export function ProgramCommunity({
             onPhotos={setPhotos}
             footer={({ uploading }) => (
               <>
-                <select value={draft.space} onChange={(e) => setDraft({ ...draft, space: e.target.value })} className={cn(fieldInput, "w-auto")} aria-label="Espacio">
+                {multi && (
+                  <span className="flex flex-wrap items-center gap-x-3 gap-y-1" role="group" aria-label="Publicar en">
+                    <span className="text-xs text-muted-foreground">En</span>
+                    {activeCommunities.map((c) => (
+                      <label key={c.key} className="flex items-center gap-1.5 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={targets.includes(c.key)}
+                          onChange={(e) => setTargets(e.target.checked ? [...targets, c.key] : targets.length > 1 ? targets.filter((k) => k !== c.key) : targets)}
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                  </span>
+                )}
+                <select value={live.some((s) => s.key === draft.space) ? draft.space : ""} onChange={(e) => setDraft({ ...draft, space: e.target.value })} className={cn(fieldInput, "w-auto")} aria-label="Espacio">
+                  {!live.some((s) => s.key === draft.space) && <option value="">Elegí el espacio</option>}
                   {live.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}
                 </select>
                 <label className="flex items-center gap-1.5">
@@ -146,10 +184,10 @@ export function ProgramCommunity({
                 <span className={cn("text-xs", draft.body.length > 10000 ? "text-destructive" : "text-muted-foreground")}>{draft.body.length > 8000 ? `${draft.body.length.toLocaleString("es")} / 10.000` : ""}</span>
                 <button
                   type="button"
-                  disabled={pending || uploading || !draft.body.trim() || draft.body.length > 10000 || !draft.space}
+                  disabled={pending || uploading || !draft.body.trim() || draft.body.length > 10000 || !live.some((s) => s.key === draft.space)}
                   onClick={() =>
                     run(
-                      () => communityTeamPost(productId, { body: draft.body, spaceKey: draft.space, asBusiness: draft.asBusiness, media: photos.map((f) => f.path) }),
+                      () => communityTeamPost(productId, { body: draft.body, spaceKey: draft.space, asBusiness: draft.asBusiness, media: photos.map((f) => f.path), communityKeys: targets }),
                       () => {
                         setDraft((d) => ({ ...d, body: "" }));
                         setPhotos([]);
@@ -178,6 +216,7 @@ export function ProgramCommunity({
                 <span className="font-medium text-foreground">{author(p)}</span>
                 {!p.author_contact_id && <span className="rounded bg-primary/10 px-1.5 text-foreground">Equipo</span>}
                 <span>{when(p.created_at)}</span>
+                {multi && <span className="rounded bg-accent px-1.5 text-foreground">{communityName(p.community_key)}</span>}
                 <span>· {p.program_item_id ? `Clase «${lessonTitles[p.program_item_id] ?? "…"}»` : spaces.find((s) => s.key === p.space_key)?.name ?? p.space_key}</span>
                 {p.pinned && <span className="rounded bg-accent px-1.5">Fijado</span>}
                 {p.hidden && <span className="rounded bg-accent px-1.5">Oculto: {p.hidden_reason}</span>}
@@ -278,96 +317,17 @@ export function ProgramCommunity({
           ))}
         </ul>
       )}
-      {gear && <SpacesPanel productId={productId} spaces={spaces} lessonComments={lessonComments} rev={rev} onClose={() => setGear(false)} />}
+      {gear && (
+        <SidePanel
+          label="Comunidades y espacios"
+          onClose={() => setGear(false)}
+          header={<h2 className="text-base font-semibold">{multi ? "Comunidades y espacios" : "Espacios de la comunidad"}</h2>}
+        >
+          <div className="p-4">
+            <ProgramCommunitiesEditor productId={productId} settings={programSettings} rev={rev} usedBy={usedBy} canEdit={can.spaces} initialOpen={community} onSaved={() => setGear(false)} />
+          </div>
+        </SidePanel>
+      )}
     </div>
-  );
-}
-
-function SpacesPanel({ productId, spaces: initial, lessonComments: initialLc, rev, onClose }: { productId: string; spaces: CommunitySpace[]; lessonComments: boolean; rev: number; onClose: () => void }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [spaces, setSpaces] = useState<CommunitySpace[]>(initial);
-  const [lessonComments, setLc] = useState(initialLc);
-  const [error, setError] = useState<string | null>(null);
-  const [newName, setNewName] = useState("");
-  const issues = spacesIssues(spaces);
-  const move = (i: number, d: number) => {
-    const j = i + d;
-    if (j < 0 || j >= spaces.length) return;
-    const next = [...spaces];
-    [next[i], next[j]] = [next[j], next[i]];
-    setSpaces(next);
-  };
-  const patch = (i: number, p: Partial<CommunitySpace>) => setSpaces(spaces.map((s, k) => (k === i ? { ...s, ...p } : s)));
-  const save = () =>
-    start(async () => {
-      setError(null);
-      const r = await saveProgramSettings(productId, { community: { spaces, lesson_comments: lessonComments } }, rev);
-      if (!r.ok) return setError(r.error.message);
-      const d = r.data as { status?: string; problems?: string[] };
-      if (d.status === "invalid") return setError((d.problems ?? []).join(". "));
-      if (d.status === "conflict") return setError("Alguien cambió los espacios mientras tanto. Cerrá y volvé a abrir.");
-      router.refresh();
-      onClose();
-    });
-  return (
-    <SidePanel
-      label="Espacios de la comunidad"
-      onClose={onClose}
-      header={<h2 className="text-base font-semibold">Espacios de la comunidad</h2>}
-      footer={
-        <>
-          {(error || issues[0]) && <p role="alert" className="w-full text-xs text-destructive">{error ?? issues[0]}</p>}
-          <button type="button" disabled={pending || issues.length > 0} onClick={save} className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50">Guardar</button>
-          <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-sm hover:bg-accent">Cancelar</button>
-        </>
-      }
-    >
-      <div className="space-y-4 p-4">
-        <ul className="space-y-2">
-          {spaces.map((s, i) => (
-            <li
-              key={s.key}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.altKey && e.key === "ArrowUp") { e.preventDefault(); move(i, -1); }
-                if (e.altKey && e.key === "ArrowDown") { e.preventDefault(); move(i, 1); }
-              }}
-              className={cn("flex flex-wrap items-center gap-2 rounded-lg border border-border p-2", s.archived && "opacity-60")}
-            >
-              <input value={s.name} onChange={(e) => patch(i, { name: e.target.value })} className={cn(fieldInput, "w-40 flex-1")} aria-label={`Nombre del espacio ${s.key}`} maxLength={40} />
-              <select value={s.team_only ? "team" : "all"} onChange={(e) => patch(i, { team_only: e.target.value === "team" })} className={cn(fieldInput, "w-auto")} aria-label="Quién publica">
-                <option value="all">Publican todos</option>
-                <option value="team">Solo el equipo</option>
-              </select>
-              <button type="button" onClick={() => patch(i, { archived: !s.archived })} className="rounded-md px-2 py-1 text-xs hover:bg-accent">{s.archived ? "Volver a usar" : "Archivar"}</button>
-              <button type="button" aria-label="Subir" onClick={() => move(i, -1)} className="rounded-md p-1 hover:bg-accent"><ArrowUp className="h-3.5 w-3.5" /></button>
-              <button type="button" aria-label="Bajar" onClick={() => move(i, 1)} className="rounded-md p-1 hover:bg-accent"><ArrowDown className="h-3.5 w-3.5" /></button>
-            </li>
-          ))}
-        </ul>
-        <div className="flex gap-2">
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nombre del espacio nuevo" className={fieldInput} maxLength={40} />
-          <button
-            type="button"
-            disabled={!newName.trim()}
-            onClick={() => {
-              setSpaces([...spaces, { key: spaceKeyFor(newName, spaces.map((s) => s.key)), name: newName.trim() }]);
-              setNewName("");
-            }}
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
-          >
-            Agregar
-          </button>
-        </div>
-        <section className="space-y-1 rounded-lg border border-border p-3">
-          <p className="text-sm font-medium">Clases</p>
-          <p className="text-xs text-muted-foreground">Los comentarios de las clases se juntan acá. Apagados, los que había quedan guardados y no se ven.</p>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={lessonComments} onChange={(e) => setLc(e.target.checked)} /> Permitir comentarios en las clases
-          </label>
-        </section>
-      </div>
-    </SidePanel>
   );
 }

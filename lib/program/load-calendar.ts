@@ -44,6 +44,8 @@ export interface CalendarData {
   month: CalendarOccurrence[];
   past: OverviewDate[];
   recordings: Record<string, DateRecording & { recording_source: string | null }>;
+  /** R7 (00402): las variantes que ven una fecha además de las de su sesión, por `<sesión>|<fecha>`. */
+  extras: Record<string, string[]>;
   contacts: Record<string, string>;
   variants: Array<{ id: string; name: string }>;
   phases: Array<{ key: string; name: string }>;
@@ -80,11 +82,13 @@ export async function loadCalendar(ctx: Pick<PermissionContext, "supabase" | "wo
   const list = ((sessions ?? []) as unknown as Omit<CalendarSession, "meeting_url">[]).map((s) => ({ ...s, meeting_url: meeting.get(s.id) ?? null }));
   const ids = list.map((s) => s.id);
   const { data: dates } = ids.length
-    ? await svcSchema(ctx.supabase).from("live_session_dates").select("live_session_id, occurs_on, recording_url, recording_call_id, recording_source, recording_active").in("live_session_id", ids)
+    ? await svcSchema(ctx.supabase).from("live_session_dates").select("live_session_id, occurs_on, recording_url, recording_call_id, recording_source, recording_active, extra_variant_ids").in("live_session_id", ids)
     : { data: [] };
   const recordings: CalendarData["recordings"] = {};
-  for (const d of (dates ?? []) as Array<{ live_session_id: string; occurs_on: string; recording_url: string | null; recording_call_id: string | null; recording_source: string | null; recording_active: boolean }>) {
+  const extras: CalendarData["extras"] = {};
+  for (const d of (dates ?? []) as Array<{ live_session_id: string; occurs_on: string; recording_url: string | null; recording_call_id: string | null; recording_source: string | null; recording_active: boolean; extra_variant_ids?: string[] | null }>) {
     recordings[`${d.live_session_id}|${d.occurs_on}`] = { recording_url: d.recording_url, recording_call_id: d.recording_call_id, recording_source: d.recording_source, recording_active: d.recording_active };
+    if (d.extra_variant_ids?.length) extras[`${d.live_session_id}|${d.occurs_on}`] = d.extra_variant_ids;
   }
   const pastDates = past.ok ? past.data ?? [] : [];
   const contactIds = [...new Set(pastDates.flatMap((d) => [...d.base, ...d.attended.map((a) => a.contact_id)]))];
@@ -100,6 +104,7 @@ export async function loadCalendar(ctx: Pick<PermissionContext, "supabase" | "wo
     month: month.ok ? month.data ?? [] : [],
     past: pastDates,
     recordings,
+    extras,
     contacts,
     variants,
     phases: [...phases].map(([key, name]) => ({ key, name })),

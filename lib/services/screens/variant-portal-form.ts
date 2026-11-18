@@ -14,7 +14,14 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 
 export function readVariantPortal(raw: unknown): VariantPortalSettings {
   const s = isObj(raw) ? (raw as VariantPortalSettings) : {};
-  return { v: 1, enabled: s.enabled === true, ask_terms: s.ask_terms !== false, sections: Array.isArray(s.sections) ? s.sections : [] };
+  return {
+    v: 1,
+    enabled: s.enabled === true,
+    ask_terms: s.ask_terms !== false,
+    sections: Array.isArray(s.sections) ? s.sections : [],
+    // La comunidad de la variante (00402): solo si eligió una (sin elegir, la principal).
+    ...(typeof s.community_key === "string" && s.community_key ? { community_key: s.community_key } : {}),
+  };
 }
 
 export function programSections(raw: unknown): Partial<Record<PortalSection, boolean>> {

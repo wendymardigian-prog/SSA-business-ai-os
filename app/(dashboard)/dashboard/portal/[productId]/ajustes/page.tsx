@@ -12,6 +12,8 @@ import { BackLink } from "@/components/ui/back-link";
 import { ProgramSettingsPanel } from "@/components/services/portal/program-settings-panel";
 import { ProgramTermsPanel } from "@/components/services/portal/program-terms-panel";
 import { ProgramNotificationsPanel } from "@/components/services/portal/program-notifications-panel";
+import { ProgramCommunitiesEditor } from "@/components/services/portal/program-communities-editor";
+import { programCommunities } from "@/lib/program/community";
 import type { PortalFormInitial } from "@/components/services/portal/portal-form-editor";
 import { createServiceClient } from "@/lib/supabase/server";
 
@@ -21,7 +23,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Ajustes del programa (el engranaje de la barra de un programa del portal): las secciones prendidas, los términos al
- * entrar y el resumen de las variantes. Edita quien tiene `portal.sections`.
+ * entrar, las comunidades (00402) y el resumen de las variantes. Edita quien tiene `portal.sections` (las comunidades,
+ * `community.spaces`).
  */
 export default async function PortalProgramSettingsPage({ params }: { params: Promise<{ productId: string }> }) {
   const { productId } = await params;
@@ -34,6 +37,12 @@ export default async function PortalProgramSettingsPage({ params }: { params: Pr
   const { program: p, variants: vs } = loaded;
   const ps = (p.portal_settings ?? {}) as { sections?: Record<string, boolean>; terms?: { enabled?: boolean; form_id?: string | null; ask_again_on_change?: boolean } };
   const canEdit = ctx.can("portal.sections");
+
+  // Las comunidades (00402): qué variantes eligió cada una (para no archivar una en uso).
+  const communities = programCommunities(p.portal_settings);
+  const communityName = (key: string | null | undefined) => communities.find((c) => c.key === key && !c.archived)?.name ?? communities.find((c) => c.main)?.name ?? "";
+  const usedBy: Record<string, string[]> = {};
+  for (const v of vs) if (v.portal.community_key) (usedBy[v.portal.community_key] ??= []).push(v.name);
 
   // Términos al entrar (F113): el formulario del producto se lee con el cliente de servicio, del negocio de la sesión.
   const terms = ps.terms ?? {};
@@ -76,6 +85,18 @@ export default async function PortalProgramSettingsPage({ params }: { params: Pr
               canEdit={canEdit}
             />
           </section>
+          <section id="comunidades" aria-labelledby="comunidades-titulo" className="space-y-2">
+            <h2 id="comunidades-titulo" className="text-sm font-semibold">
+              Comunidades
+            </h2>
+            <ProgramCommunitiesEditor
+              productId={p.id}
+              settings={p.portal_settings}
+              rev={p.portal_settings_rev ?? 0}
+              usedBy={usedBy}
+              canEdit={ctx.can("community.spaces")}
+            />
+          </section>
           <section aria-labelledby="variantes" className="space-y-2">
             <h2 id="variantes" className="text-sm font-semibold">
               Variantes
@@ -83,7 +104,10 @@ export default async function PortalProgramSettingsPage({ params }: { params: Pr
             <ul className="divide-y divide-border rounded-xl border border-border bg-card">
               {vs.map((v) => (
                 <li key={v.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
-                  <span className="text-foreground">{v.name}</span>
+                  <span className="text-foreground">
+                    {v.name}
+                    {communities.length > 1 && <span className="ml-2 rounded bg-accent px-1.5 text-[11px] text-muted-foreground">Comunidad: {communityName(v.portal.community_key)}</span>}
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     {v.portal.enabled
                       ? (v.portal.sections ?? [])

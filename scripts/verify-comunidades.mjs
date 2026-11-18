@@ -1,14 +1,14 @@
 // @plantilla-quitar(servicios)
 /**
- * Comunidades por variante y Academy Lite (00402): los criterios de aceptación contra la base.
+ * Comunidades por variante (00402): los criterios de aceptación contra la base.
  *
  *   1. Las gemelas: community_list_plan, validate_*_portal_settings y validate_service_settings dan lo mismo que
  *      TypeScript (community-list.cases.json, portal-settings.cases.json, service-settings.cases.json).
  *   2. Con una sola comunidad, nada cambia: todos los posts de producción quedan en `principal` y cada persona con
  *      servicios está en la principal de su programa.
- *   3. Un negocio de prueba (zz-test-) con dos comunidades (la principal y «Lite»), tres variantes (Academy, Lite y Lite
+ *   3. Un negocio de prueba (zz-test-) con dos comunidades (la principal y «Lite»), tres variantes (completa, Lite y Lite
  *      mensual) y cuatro estudiantes: muro, comentarios de una clase, publicar llamando a la función, reacciones, el
- *      equipo publicando en las dos, archivar una comunidad en uso, el upgrade de Lite a la Academy, puntos y la fecha
+ *      equipo publicando en las dos, archivar una comunidad en uso, el upgrade de Lite a la completa, puntos y la fecha
  *      de una clase en vivo abierta a Lite.
  *
  * No deja nada: si la 00402 no está aplicada, se aplica ADENTRO de la misma transacción, y todo termina en ROLLBACK

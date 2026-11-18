@@ -40,6 +40,8 @@ export interface ServiceSettingsForm {
   overdueCut: boolean;
   overdueCutDays: string;
   overdueRestore: boolean;
+  /** R5 (00402): al crear un servicio de esta variante, se cierran los activos de estas variantes (en cualquier modo). */
+  closesVariantIds: string[];
   /** Cuándo se prendió la regla (se conserva tal cual: lo maneja la base). */
   enabledAt: string | null;
 }
@@ -76,6 +78,7 @@ export function serviceSettingsForm(settings: unknown): ServiceSettingsForm {
     overdueCut: s.overdue_cut?.enabled === true,
     overdueCutDays: str(s.overdue_cut?.days, "15"),
     overdueRestore: s.overdue_cut?.restore !== false,
+    closesVariantIds: Array.isArray(s.closes_variant_ids) ? s.closes_variant_ids : [],
     enabledAt: when.enabled_at ?? null,
   };
 }
@@ -89,8 +92,9 @@ const num = (v: string): number | null => {
 
 /** El formulario como configuración: solo las claves del modo elegido. */
 export function toServiceSettings(f: ServiceSettingsForm): ServiceSettings {
-  if (f.mode === "none") return {};
-  const out: ServiceSettings = { v: 1, mode: f.mode };
+  const closes = f.closesVariantIds.length ? { closes_variant_ids: f.closesVariantIds } : {};
+  if (f.mode === "none") return closes;
+  const out: ServiceSettings = { v: 1, mode: f.mode, ...closes };
   const when: NonNullable<ServiceSettings["when"]> = { rule: f.rule };
   if (f.rule === "percent" || f.rule === "amount") when.value = num(f.ruleValue);
   if (f.enabledAt) when.enabled_at = f.enabledAt;
