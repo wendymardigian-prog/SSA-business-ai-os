@@ -14,6 +14,13 @@ import type { ClassifierOption } from "./catalog";
 import { buildClassifierSystem, buildClassifierUser, classifierSchema, type ClassifierOutput } from "./classifier-prompt";
 import type { UsageLike } from "@/lib/ai/run";
 
+/**
+ * Tope de la respuesta del clasificador. La respuesta normal ocupa 200 a 400
+ * tokens, pero con 600 algunos modelos la cortaban (18/11/2026: 22 intentos
+ * cortados en una tarde) y cada reintento volvía a pagar la transcripción.
+ */
+export const CLASSIFIER_MAX_TOKENS = 1500;
+
 export interface ClassifyDecision {
   /** Lo que eligio la IA, o null si contesto algo que no esta en la lista. */
   categoryId: string | null;
@@ -58,7 +65,7 @@ export async function classifyCallWithAi(input: {
   const system = buildClassifierSystem(input.instructions, input.options);
   const prompt = buildClassifierUser(input.call, input.nonce ?? newNonce());
   try {
-    const result = await input.generate({ system, prompt, schema: classifierSchema, maxOutputTokens: 600 });
+    const result = await input.generate({ system, prompt, schema: classifierSchema, maxOutputTokens: CLASSIFIER_MAX_TOKENS });
     return { ok: true, decision: decideClassification(result.object, input.options, input.confidenceThreshold), usage: result.usage, system };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "error desconocido", cause: error };

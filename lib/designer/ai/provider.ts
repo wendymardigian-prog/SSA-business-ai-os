@@ -23,6 +23,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
 import { getWorkspaceModel } from "@/lib/ai/provider";
 import type { UsageLike } from "@/lib/ai/run";
+import { STRUCTURED_OUTPUT_PROVIDER_OPTIONS } from "@/lib/ai/structured-output";
 import type { Database } from "@/lib/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -65,7 +66,7 @@ export class TruncatedOutputError extends Error {
  * Opciones por proveedor que viajan en cada pedido del Diseñador. Los proveedores que no son
  * Anthropic ignoran la clave `anthropic`.
  */
-export const DESIGNER_PROVIDER_OPTIONS = { anthropic: { structuredOutputMode: "jsonTool" } } as const;
+export const DESIGNER_PROVIDER_OPTIONS = STRUCTURED_OUTPUT_PROVIDER_OPTIONS;
 
 /** `DesignerGenerate` con el AI SDK. */
 export function aiSdkDesignerGenerate(model: LanguageModel): DesignerGenerate {

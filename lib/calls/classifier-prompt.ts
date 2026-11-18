@@ -9,6 +9,7 @@ import { assembleTaskPrompt, interpolate } from "@/lib/ai-tasks/instructions";
 import { wrapUntrusted } from "@/lib/agent/untrusted";
 import type { ClassifierOption } from "./catalog";
 import { attendeesText, transcriptText } from "./transcript-text";
+import { headText, tailText } from "@/lib/text/safe-slice";
 
 /** Lo que el modelo lee de la transcripcion: el principio y el final (el medio casi nunca cambia el tipo). */
 export const CLASSIFIER_HEAD_CHARS = 40_000;
@@ -18,7 +19,7 @@ export const classifierSchema = z.object({
   tipo: z.string(),
   confianza: z.number().min(0).max(1),
   alternativa: z.string().nullish(),
-  motivo: z.string(),
+  motivo: z.string().describe("Por qué elegiste ese tipo, en una o dos oraciones cortas."),
 });
 export type ClassifierOutput = z.infer<typeof classifierSchema>;
 
@@ -44,7 +45,7 @@ export function buildClassifierSystem(editable: string, options: ClassifierOptio
 /** Los primeros 40.000 caracteres y los ultimos 20.000 (si la transcripcion es mas larga que los dos). */
 export function headAndTailForClassifier(text: string): string {
   if (text.length <= CLASSIFIER_HEAD_CHARS + CLASSIFIER_TAIL_CHARS) return text;
-  return `${text.slice(0, CLASSIFIER_HEAD_CHARS)}\n[… parte central omitida …]\n${text.slice(text.length - CLASSIFIER_TAIL_CHARS)}`;
+  return `${headText(text, CLASSIFIER_HEAD_CHARS)}\n[… parte central omitida …]\n${tailText(text, CLASSIFIER_TAIL_CHARS)}`;
 }
 
 /** El mensaje de usuario: titulo, invitados y la transcripcion recortada, todo marcado como dato. */

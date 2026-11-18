@@ -19,6 +19,7 @@ export function TaskModelPanel({
   current,
   picker,
   runsWhen,
+  defaultCheapest = false,
 }: {
   taskId: string;
   taskName: string;
@@ -27,6 +28,8 @@ export function TaskModelPanel({
   picker: ModelPickerData;
   /** Cuando corre la tarea, en una frase ("al apretar Analizar con IA…"). */
   runsWhen: string;
+  /** Sin elección, la tarea usa el modelo más barato conectado (no el del negocio). */
+  defaultCheapest?: boolean;
 }) {
   const router = useRouter();
   const [custom, setCustom] = useState(current !== null);
@@ -58,7 +61,9 @@ export function TaskModelPanel({
       if (!result.ok) return setMessage({ tone: "error", text: result.error });
       setMessage({
         tone: "success",
-        text: custom ? "Listo: esta tarea va a usar ese modelo." : "Listo: esta tarea usa el modelo del negocio.",
+        text: custom ? "Listo: esta tarea va a usar ese modelo." : defaultCheapest
+            ? "Listo: esta tarea usa el modelo más barato conectado."
+            : "Listo: esta tarea usa el modelo del negocio.",
       });
       router.refresh();
     });
@@ -71,9 +76,11 @@ export function TaskModelPanel({
         <label className="flex items-start gap-2 text-sm">
           <input type="radio" name={`modelo-${taskId}`} checked={!custom} onChange={() => choose(false)} className="mt-1" />
           <span>
-            <span className="font-medium">Usar el modelo del negocio</span>
+            <span className="font-medium">{defaultCheapest ? "Usar el modelo más barato" : "Usar el modelo del negocio"}</span>
             <span className="block text-xs text-muted-foreground">
-              El proveedor y el modelo por defecto que están en Ajustes → Integraciones. Si ahí cambiás de modelo, esta tarea cambia con él.
+              {defaultCheapest
+                ? "El más barato con precio cargado entre los proveedores conectados (con Anthropic, Haiku). Alcanza para esta tarea y cuesta menos."
+                : "El proveedor y el modelo por defecto que están en Ajustes → Integraciones. Si ahí cambiás de modelo, esta tarea cambia con él."}
             </span>
           </span>
         </label>

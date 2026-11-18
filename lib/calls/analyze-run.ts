@@ -22,7 +22,7 @@ import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
 import { getJobHandler } from "@/lib/jobs/registry";
 import { derivedCallType } from "./legacy-type";
-import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
+import { aiSdkGenerate, usageOfFailure, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
 import { runCallAnalysis } from "./analyze";
 import { buildStoredAnalysis } from "./analysis-store";
@@ -170,6 +170,8 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
   });
 
   if (!result.ok) {
+    // Un intento que falló igual se cobró: que quede en el gasto.
+    run.setFinalUsage(usageOfFailure(result.cause));
     await run.close({ status: "error", statusDetail: result.kind === "truncated" ? "truncated" : "generation_failed", error: result.error.slice(0, 300) });
     if (result.kind === "truncated") return fail(db, callId, "error", result.error, null);
     if (result.kind === "schema") {

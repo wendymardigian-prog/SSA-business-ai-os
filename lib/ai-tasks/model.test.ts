@@ -7,7 +7,7 @@ vi.mock("@/lib/ai/provider", () => ({
   getWorkspaceModel: (...args: unknown[]) => byDefault(...args),
 }));
 
-import { loadTaskModel, parseTaskModels, resolveTaskModel, taskModelOf } from "./model";
+import { cheapestConfiguredModel, loadTaskModel, parseTaskModels, resolveTaskModel, taskModelOf } from "./model";
 
 /** Cliente falso minimo: `workspaces.select(...).eq(...).maybeSingle()`. */
 function client(result: { data: unknown; error: unknown } | "throw") {
@@ -100,5 +100,75 @@ describe("resolveTaskModel", () => {
     const result = await resolveTaskModel(client("throw"), "ws", "ads_analysis");
     expect(result.chosen).toBe(false);
     expect(result.ok).toBe(true);
+  });
+});
+
+/** Cliente falso por tabla: cada consulta encadenada devuelve lo de su tabla. */
+function tables(rows: Record<string, unknown>) {
+  return {
+    from: (table: string) => {
+      const result = { data: rows[table] ?? null, error: null };
+      const chain: Record<string, unknown> = {};
+      for (const m of ["select", "eq", "in", "lte"]) chain[m] = () => chain;
+      chain.maybeSingle = async () => result;
+      chain.then = (resolve: (v: unknown) => unknown) => resolve(result);
+      return chain;
+    },
+  } as never;
+}
+
+const anthropicOnly = {
+  workspaces: { ai_task_models: {} },
+  integration_configs: [{ provider: "anthropic" }],
+  model_pricing: [
+    { provider: "anthropic", model: "claude-sonnet-5", input_per_mtok: 2, output_per_mtok: 10 },
+    { provider: "anthropic", model: "claude-haiku-4-5", input_per_mtok: 1, output_per_mtok: 5 },
+    { provider: "anthropic", model: "claude-opus-5", input_per_mtok: 5, output_per_mtok: 25 },
+  ],
+};
+
+describe("cheapestConfiguredModel", () => {
+  it("elige el de menor precio entre los proveedores de texto conectados", async () => {
+    expect(await cheapestConfiguredModel(tables(anthropicOnly), "ws")).toEqual({ preferredProvider: "anthropic", modelId: "claude-haiku-4-5" });
+  });
+
+  it("sin proveedores o sin precios, null", async () => {
+    expect(await cheapestConfiguredModel(tables({ integration_configs: [] }), "ws")).toBeNull();
+    expect(await cheapestConfiguredModel(tables({ integration_configs: [{ provider: "anthropic" }], model_pricing: [] }), "ws")).toBeNull();
+  });
+});
+
+describe("resolveTaskModel: la clasificación de grabaciones usa el más barato", () => {
+  it("sin elección, pide el modelo más barato (Haiku con Anthropic)", async () => {
+    byDefault.mockResolvedValue({ ok: true, model: {}, provider: "anthropic", modelId: "claude-haiku-4-5" });
+    const r = await resolveTaskModel(tables(anthropicOnly), "ws", "call_classification");
+    expect(byDefault).toHaveBeenCalledWith("ws", expect.objectContaining({ preferredProvider: "anthropic", modelId: "claude-haiku-4-5" }));
+    expect(r.modelId).toBe("claude-haiku-4-5");
+    expect(r.chosen).toBe(false);
+  });
+
+  it("con un modelo elegido a mano, usa ese", async () => {
+    exact.mockResolvedValue({ ok: true, model: {}, provider: "anthropic", modelId: "claude-sonnet-5" });
+    const r = await resolveTaskModel(
+      tables({ ...anthropicOnly, workspaces: { ai_task_models: { call_classification: { provider: "anthropic", model: "claude-sonnet-5" } } } }),
+      "ws",
+      "call_classification",
+    );
+    expect(r.chosen).toBe(true);
+    expect(byDefault).not.toHaveBeenCalled();
+  });
+
+  it("sin precios cargados, cae al modelo del negocio", async () => {
+    byDefault.mockResolvedValue({ ok: true, model: {}, provider: "anthropic", modelId: "claude-sonnet-5" });
+    await resolveTaskModel(tables({ ...anthropicOnly, model_pricing: [] }), "ws", "call_classification");
+    expect(byDefault).toHaveBeenCalledTimes(1);
+    expect(byDefault).toHaveBeenCalledWith("ws", expect.not.objectContaining({ modelId: expect.anything() }));
+  });
+
+  it("las demás tareas siguen con el modelo del negocio", async () => {
+    byDefault.mockResolvedValue({ ok: true, model: {}, provider: "anthropic", modelId: "claude-sonnet-5" });
+    await resolveTaskModel(tables(anthropicOnly), "ws", "call_analysis");
+    expect(byDefault).toHaveBeenCalledTimes(1);
+    expect(byDefault.mock.calls[0][1]).not.toHaveProperty("modelId");
   });
 });

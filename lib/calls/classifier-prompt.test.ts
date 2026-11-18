@@ -5,6 +5,8 @@ import {
   buildClassifierUser,
   classifierSchema,
   headAndTailForClassifier,
+  CLASSIFIER_HEAD_CHARS,
+  CLASSIFIER_TAIL_CHARS,
   validTypeList,
 } from "./classifier-prompt";
 import { CALL_CLASSIFICATION_DEFAULT_INSTRUCTIONS } from "@/lib/ai-tasks/instructions";
@@ -47,6 +49,13 @@ describe("prompt del clasificador de llamadas", () => {
     expect(cut).toContain("parte central omitida");
     expect(cut.endsWith("z".repeat(100))).toBe(true);
     expect(headAndTailForClassifier("corta")).toBe("corta");
+  });
+
+  it("headAndTailForClassifier: no parte un emoji en ninguno de los dos bordes", () => {
+    const big = `${"a".repeat(CLASSIFIER_HEAD_CHARS - 1)}😀${"m".repeat(30_000)}😀${"z".repeat(CLASSIFIER_TAIL_CHARS - 1)}`;
+    const cut = headAndTailForClassifier(big);
+    expect(cut.isWellFormed()).toBe(true);
+    expect(cut).toContain("parte central omitida");
   });
 
   it("el mensaje de usuario marca la transcripcion como dato y neutraliza el delimitador", () => {

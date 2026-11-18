@@ -8,6 +8,7 @@
  *  - La llamada vinculada a una agenda se llama `booking_id`.
  * La usan la ingesta, el handler `call_classify` y la pantalla de configuracion.
  */
+import { headText, tailText } from "@/lib/text/safe-slice";
 
 export const BASE_CALL_TYPES = [
   'cierre', 'seguimiento', 'triaje', 'equipo', 'cliente', 'clase', 'no_show', 'otra',
@@ -188,5 +189,5 @@ const OMITIDA = '\n[… parte central omitida …]\n';
 /** Conserva principio y final; nunca corta el final. */
 export function headAndTail(text: string, max: number, each: number): string {
   if (text.length <= max) return text;
-  return text.slice(0, each) + OMITIDA + text.slice(text.length - each);
+  return headText(text, each) + OMITIDA + tailText(text, each);
 }

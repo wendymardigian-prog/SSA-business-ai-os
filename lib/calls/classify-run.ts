@@ -25,7 +25,7 @@ import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
 import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 import { categorySnapshot } from "@/lib/scheduling/categories";
-import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
+import { aiSdkGenerate, usageOfFailure, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
 import { classifierOptions, callCategoryLabel, readCategorySnapshot } from "./catalog";
 import { classifyCallWithAi } from "./classify-ai";
@@ -125,6 +125,8 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
       const options = classifierOptions(ctx.categories, base.snapshot?.area_id);
       const result = await classifyCallWithAi({ call, options, confidenceThreshold: classification.confidence_threshold, instructions: instructions.text, generate });
       if (!result.ok) {
+        // Un intento que falló igual se cobró: que quede en el gasto.
+        run.setFinalUsage(usageOfFailure(result.cause));
         await run.close({ status: "error", statusDetail: "generation_failed", error: result.error.slice(0, 300) });
         // Una respuesta que no cumple el esquema no se arregla reintentando: la decide una persona.
         if (isSchemaError(result.cause)) {

@@ -254,7 +254,18 @@ Configuración; todas tienen las mismas cinco pestañas que el resto de las tare
   en el mensaje del usuario, nunca en el system prompt.
 - **Reintentos de la IA**: los handlers no lanzan por un fallo del modelo;
   reagendan a 1, 5 y 15 minutos. Una key inválida (401/403/400) no se
-  reintenta.
+  reintenta. Un intento que falla igual deja en `agent_runs` lo que se gastó
+  (`usageOfFailure`): el proveedor lo cobra.
+- **El modelo de cada tarea** (18/11/2026): sin elección, la clasificación usa
+  el modelo más barato con precio cargado entre los proveedores conectados
+  (`defaultModel: "cheapest"` en el catálogo; con Anthropic, Haiku) y el resto
+  el del negocio. Su respuesta tiene tope de 1.500 tokens
+  (`CLASSIFIER_MAX_TOKENS`; con 600 se cortaba). Con Anthropic la salida va por
+  herramienta JSON (`STRUCTURED_OUTPUT_PROVIDER_OPTIONS`): el esquema del
+  análisis tiene más de 24 campos opcionales y la salida nativa lo rechaza.
+- **Ningún texto que va a un prompt se corta con `slice`**: `headText` /
+  `tailText` (`lib/text/safe-slice.ts`) no parten un emoji; una mitad suelta deja
+  el pedido con JSON inválido.
 - El SPSP del negocio se carga como instrucciones y rúbrica del analizador de cada tipo de venta. No está en el repo.
 
 ## Lo que se hace con lo analizado (L3)

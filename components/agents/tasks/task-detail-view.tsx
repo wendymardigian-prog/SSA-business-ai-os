@@ -212,6 +212,7 @@ function ConfigTab({ data }: { data: TaskScreenData }) {
             current={data.model.current}
             picker={data.model.picker}
             runsWhen={control.kind === "on_demand" ? control.where : "cuando corre"}
+            defaultCheapest={task.defaultModel === "cheapest"}
           />
         ) : (
           <Notice>{task.modelSource}</Notice>

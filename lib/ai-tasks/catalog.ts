@@ -80,6 +80,13 @@ export interface AiTaskDef {
    * defecto del negocio. Hoy solo el analisis de anuncios.
    */
   hasModelPicker?: boolean;
+  /**
+   * Sin eleccion, que modelo usa: el por defecto del negocio (`business`, lo
+   * normal) o el mas barato con precio cargado entre los proveedores conectados
+   * (`cheapest`, con Anthropic es Haiku). Para tareas cortas que corren solas
+   * muchas veces, donde el modelo grande no suma y cuesta el doble.
+   */
+  defaultModel?: "business" | "cheapest";
   /** No corre sola ni por lote: corre cuando alguien aprieta un boton. */
   onDemand?: boolean;
   /** El `agent_runs.source` de sus corridas. */
@@ -243,8 +250,9 @@ const CALL_TASKS: Record<CallTaskId, AiTaskDef> = {
     canTurnOff: false,
     control: { kind: "on_demand", where: "cuando entra una llamada y ninguna regla decide su tipo" },
     instructions: { editable: true, variables: [{ name: "tipos", description: "las claves de los tipos de llamada válidos (los del sistema y los propios)" }] },
-    modelSource: "El que elijas acá; sin elección, el modelo por defecto del negocio. Conviene uno barato.",
+    modelSource: "El que elijas acá; sin elección, el modelo más barato con precio cargado entre los proveedores de IA conectados (con Anthropic, Haiku).",
     hasModelPicker: true,
+    defaultModel: "cheapest",
     onDemand: true,
     source: "call_classification",
     callTask: "call_classification",
