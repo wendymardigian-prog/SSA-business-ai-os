@@ -37,7 +37,7 @@ export function useRescheduleDrag({ items, timezone, timeFormat }: { items: Book
         router.refresh();
         send({ type: "cancel" }); // cierra el modal: done -> idle
       } else {
-        send({ type: "failed", error: res.error });
+        send({ type: "failed", error: res.error, alternatives: res.alternatives });
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,6 +170,25 @@ function RescheduleDialog({
           <p role="alert" className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-700 dark:text-red-300">
             {error}
           </p>
+        )}
+        {state.phase === "error" && state.alternatives && state.alternatives.length > 0 && (
+          // B-AGE-11: los huecos libres siguientes; elegir uno vuelve a pedir «Confirmar».
+          <div role="group" aria-label="Próximos horarios libres" className="mt-2">
+            <p className="text-xs font-medium text-muted-foreground">Próximos horarios libres: elegí uno y confirmá.</p>
+            <ul className="mt-1 flex flex-wrap gap-2">
+              {state.alternatives.map((startUtc) => (
+                <li key={startUtc}>
+                  <button
+                    type="button"
+                    onClick={() => send({ type: "pickAlternative", startUtc })}
+                    className="rounded-md border border-border bg-background px-2.5 py-1 text-sm hover:border-primary-edge focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge"
+                  >
+                    {formatDateTimeWithZone(startUtc, timezone, timeFormat)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         {offerIgnore && (
           <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm">

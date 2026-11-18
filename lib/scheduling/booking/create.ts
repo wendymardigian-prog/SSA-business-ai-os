@@ -14,10 +14,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { buildBookingSchema, contactDataFromResponses } from "@/lib/scheduling/booking-fields";
-import { isSlotAvailable } from "@/lib/scheduling/slots";
+import { availableSlots, isSlotAvailable } from "@/lib/scheduling/slots";
 import { categorySnapshot } from "@/lib/scheduling/categories";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { buildSlotsInput, findPublicEvent } from "@/lib/scheduling/data/slots-input";
+import { pickNextSlots, suggestNextSlots } from "@/lib/scheduling/next-slots";
 import { checkRateLimit, newBookingUid, HONEYPOT_FIELD } from "@/lib/scheduling/antispam";
 import { minutesToWallTime } from "@/lib/scheduling/time/tz";
 import { syncRelativeJobs } from "@/lib/scheduling/automation/relative";
@@ -66,7 +67,15 @@ export type CreateBookingResult =
   | { ok: true; uid: string; bookingId: string; contactId: string; startUtc: string; endUtc: string; redirectUrl: string | null }
   /** El honeypot: se responde como si hubiera salido bien, sin crear nada. */
   | { ok: true; uid: null; bookingId: null; contactId: null; startUtc: string; endUtc: string; redirectUrl: null; ignored: true }
-  | { ok: false; status: number; reason: "not_found" | "rate_limited" | "invalid" | "slot_taken" | "slot_unavailable" | "temporarily_unavailable"; message?: string; fields?: Record<string, string> };
+  | {
+      ok: false;
+      status: number;
+      reason: "not_found" | "rate_limited" | "invalid" | "slot_taken" | "slot_unavailable" | "temporarily_unavailable";
+      message?: string;
+      fields?: Record<string, string>;
+      /** B-AGE-11: con `slot_taken` o `slot_unavailable`, los huecos libres siguientes (UTC), a confirmar. */
+      alternatives?: string[];
+    };
 
 export async function createBooking(service: Db, input: CreateBookingInput): Promise<CreateBookingResult> {
   const now = input.now ?? new Date();
@@ -151,7 +160,9 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
     return { ok: false, status: 503, reason: "temporarily_unavailable" };
   }
   if (!isSlotAvailable(built.input, input.startUtc)) {
-    return { ok: false, status: 409, reason: "slot_unavailable", message: "Ese horario ya no está disponible." };
+    // B-AGE-11: con los datos frescos que ya se leyeron, los huecos siguientes salen sin otra consulta.
+    const alternatives = pickNextSlots(availableSlots(built.input).map((s) => s.startUtc), input.startUtc);
+    return { ok: false, status: 409, reason: "slot_unavailable", message: "Ese horario ya no está disponible.", alternatives };
   }
 
   // 5b. Tope de emails al invitado por direccion (solo lo publico): pasado, la reserva se guarda igual pero al
@@ -199,7 +210,16 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
 
   if (error) {
     // 23P01 = la exclusion: otro pedido gano la carrera por el mismo horario.
-    if (error.code === "23P01") return { ok: false, status: 409, reason: "slot_taken", message: "Ese horario se acaba de ocupar." };
+    if (error.code === "23P01") {
+      // B-AGE-11: la otra reserva ya está guardada, así que el motor ya no ofrece este hueco: se proponen los siguientes.
+      const alternatives = await suggestNextSlots(service, event, profile, {
+        requestedUtc: input.startUtc,
+        inviteeTz: input.inviteeTz,
+        now,
+        ignoreMinimumNotice: input.ignoreMinimumNotice,
+      });
+      return { ok: false, status: 409, reason: "slot_taken", message: "Ese horario se acaba de ocupar.", alternatives };
+    }
     // CB001 = la regla unica de contactos (00203): sin un email ni un telefono valido no se puede identificar a
     // la persona, y una reserva no crea un contacto solo con el nombre.
     if (error.code === "CB001") return { ok: false, status: 422, reason: "invalid", message: IDENTITY_REQUIRED_MESSAGE };

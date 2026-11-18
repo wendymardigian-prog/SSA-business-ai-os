@@ -68,7 +68,8 @@ export type DragConfirmState =
   | { phase: "idle" }
   | ({ phase: "pending" } & Pending)
   | ({ phase: "confirming" } & Pending)
-  | ({ phase: "error"; error: string; offerIgnore: boolean } & Pending)
+  /** B-AGE-11: `alternatives` (UTC) solo cuando el servidor propuso huecos libres siguientes. */
+  | ({ phase: "error"; error: string; offerIgnore: boolean; alternatives?: string[] } & Pending)
   | { phase: "done"; bookingId: string };
 
 export type DragConfirmEvent =
@@ -77,7 +78,9 @@ export type DragConfirmEvent =
   | { type: "ignoreAvailability"; value: boolean }
   | { type: "confirm" }
   | { type: "succeeded" }
-  | { type: "failed"; error: string }
+  | { type: "failed"; error: string; alternatives?: string[] }
+  /** B-AGE-11: elegir uno de los huecos propuestos vuelve a «pendiente» con ese horario, a confirmar. */
+  | { type: "pickAlternative"; startUtc: string }
   | { type: "cancel" };
 
 const pendingOf = (s: Pending): Pending => ({
@@ -120,7 +123,18 @@ export function dragConfirmReducer(state: DragConfirmState, event: DragConfirmEv
 
     case "failed":
       if (state.phase !== "confirming") return state;
-      return { phase: "error", ...pendingOf(state), error: event.error, offerIgnore: classifyRescheduleError(event.error) === "outside_availability" };
+      return {
+        phase: "error",
+        ...pendingOf(state),
+        error: event.error,
+        offerIgnore: classifyRescheduleError(event.error) === "outside_availability",
+        ...(event.alternatives && event.alternatives.length ? { alternatives: event.alternatives } : {}),
+      };
+
+    case "pickAlternative":
+      // Solo desde el error que las propuso, y solo uno de los propuestos: no se acepta un horario cualquiera.
+      if (state.phase !== "error" || !state.alternatives?.includes(event.startUtc)) return state;
+      return { phase: "pending", ...pendingOf(state), startUtc: event.startUtc, ignoreAvailability: false };
 
     case "cancel":
       // Esc, clic afuera o «Cancelar»: vuelve a idle sin efectos. Con la llamada en vuelo no se puede cancelar.

@@ -37,7 +37,8 @@ const PATH = "/dashboard/agenda";
 
 export type BookingActionResult<T = undefined> =
   | ({ ok: true } & (T extends undefined ? object : { data: T }))
-  | { ok: false; error: string };
+  /** B-AGE-11: cuando el horario se acaba de ocupar, los huecos libres siguientes (UTC) para elegir y confirmar. */
+  | { ok: false; error: string; alternatives?: string[] };
 
 /** La agenda, leída con el cliente del usuario: RLS decide si la ve. */
 type VisibleBooking =
@@ -152,7 +153,7 @@ export async function rescheduleAsHost(input: {
     reason: input.reason ?? null,
     durationMinutes: typeof input.durationMinutes === "number" ? input.durationMinutes : undefined,
   });
-  if (!result.ok) return { ok: false, error: result.message ?? "No pude reagendar." };
+  if (!result.ok) return { ok: false, error: result.message ?? "No pude reagendar.", alternatives: result.alternatives };
   revalidatePath(PATH);
   return { ok: true, data: { startUtc: result.startUtc, endUtc: result.endUtc } };
 }
@@ -399,7 +400,7 @@ export async function bookManually(input: {
     ignoreMinimumNotice: input.ignoreMinimumNotice,
   });
 
-  if (!result.ok) return { ok: false, error: result.message ?? messageFor(result.reason) };
+  if (!result.ok) return { ok: false, error: result.message ?? messageFor(result.reason), alternatives: result.alternatives };
   if (!result.uid) return { ok: false, error: "No pude agendar." };
 
   // Agendar en el evento de OTRA persona (un setter que le pone la llamada al
@@ -444,7 +445,7 @@ export async function bookManuallyQuick(input: ManualBookingInput): Promise<Book
     hostName: hostId && hostId !== ctx.user.id ? (members.find((m) => m.userId === hostId)?.name ?? null) : null,
     hostNameOf: (userId) => members.find((m) => m.userId === userId)?.name ?? null,
   });
-  if (!result.ok) return { ok: false, error: result.error };
+  if (!result.ok) return { ok: false, error: result.error, alternatives: result.alternatives };
 
   // Igual que `bookManually`: si la reunion es de OTRA persona y el contacto no
   // tiene setter, queda quien agendo. Nunca pisa un setter ni tumba la reunion.

@@ -33,6 +33,7 @@ import { formatDateTimeWithZone, gmtOffsetLabel, timezoneCityLabel } from "@/lib
 import { dateInTz, minutesOfDayInTz, minutesToWallTime, wallClockToUtc } from "@/lib/scheduling/time/tz";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { NextSlotsOffer } from "@/components/scheduling/booker/next-slots-offer";
 
 export interface ManualEventOption {
   id: string;
@@ -141,6 +142,8 @@ export function BookManualDialog({
   const [locationText, setLocationText] = useState("");
 
   const [error, setError] = useState<{ field: ManualBookingField | null; message: string } | null>(null);
+  // B-AGE-11: si el horario chocó con otra reunión, los huecos libres siguientes de quien atiende (UTC).
+  const [alternatives, setAlternatives] = useState<string[]>([]);
   const [pending, start] = useTransition();
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -261,10 +264,12 @@ export function BookManualDialog({
       return;
     }
     setError(null);
+    setAlternatives([]);
     start(async () => {
       const result = await bookManuallyQuick(input);
       if (!result.ok) {
         setError({ field: null, message: result.error });
+        setAlternatives(result.alternatives ?? []);
         return;
       }
       if (onCreated) onCreated(result.data.bookingId);
@@ -693,6 +698,20 @@ export function BookManualDialog({
               {error.message}
             </p>
           )}
+          <NextSlotsOffer
+            alternatives={alternatives}
+            durationMinutes={duration}
+            timezone={timezone}
+            timeFormat="24h"
+            disabled={pending}
+            onPick={(slot) => {
+              // Solo cambia el día y la hora del formulario: se agenda con «Agendar», como siempre.
+              setDate(dateInTz(new Date(slot.startUtc), timezone));
+              setTime(minutesToWallTime(minutesOfDayInTz(new Date(slot.startUtc), timezone)));
+              setAlternatives([]);
+              setError(null);
+            }}
+          />
           {/* Enter en cualquier campo agenda. */}
           <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
         </form>

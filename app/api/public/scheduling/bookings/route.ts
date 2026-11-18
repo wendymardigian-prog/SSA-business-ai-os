@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (!result.ok) {
-    return NextResponse.json({ reason: result.reason, message: result.message, fields: result.fields }, { status: result.status });
+    return NextResponse.json({ reason: result.reason, message: result.message, fields: result.fields, alternatives: result.alternatives }, { status: result.status });
   }
   if (!result.uid) {
     // El campo trampa: respuesta que parece exitosa, sin nada creado.

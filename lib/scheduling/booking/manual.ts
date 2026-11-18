@@ -31,6 +31,7 @@ import { newBookingUid } from "@/lib/scheduling/antispam";
 import { syncRelativeJobs } from "@/lib/scheduling/automation/relative";
 import { canHostCreateMeet } from "@/lib/scheduling/data/meet-availability";
 import type { ManualBookingPlan } from "./manual-input";
+import { suggestNextSlots } from "@/lib/scheduling/next-slots";
 
 type Db = SupabaseClient<Database>;
 type EventRow = Database["public"]["Tables"]["event_types"]["Row"];
@@ -40,7 +41,28 @@ const IDENTITY_MESSAGE = "Necesitamos el email del invitado para agendar.";
 
 export type ManualBookingResult =
   | { ok: true; bookingId: string; contactId: string; hostUserId: string }
-  | { ok: false; error: string };
+  /** B-AGE-11: si el horario chocó con otra reunión, los huecos libres siguientes de quien atiende (UTC), a confirmar. */
+  | { ok: false; error: string; alternatives?: string[] };
+
+/** B-AGE-11: los huecos siguientes de quien atiende, con la duración de esta reunión. Sin perfil de agenda, ninguno. */
+async function nextFreeSlotsForHost(
+  service: Db,
+  workspaceId: string,
+  hostUserId: string,
+  event: EventRow,
+  plan: { startUtc: string; endUtc: string; inviteeTimezone: string },
+  now: Date,
+): Promise<string[]> {
+  const { data: profile } = await service.from("scheduling_profiles").select("*").eq("workspace_id", workspaceId).eq("user_id", hostUserId).maybeSingle();
+  if (!profile) return [];
+  return suggestNextSlots(service, event, profile, {
+    requestedUtc: plan.startUtc,
+    inviteeTz: plan.inviteeTimezone,
+    now,
+    ignoreMinimumNotice: true,
+    durationMinutes: (Date.parse(plan.endUtc) - Date.parse(plan.startUtc)) / 60_000,
+  });
+}
 
 /** El area por defecto de una reunion sin evento: "Otros" (de sistema). Si no esta, la primera area. */
 export function defaultManualCategory(categories: CategoryRow[]): string | null {
@@ -225,7 +247,12 @@ export async function createManualBooking(
   if (error) {
     if (error.code === "23P01") {
       const who = hostName ? `${hostName} ya tiene` : "El anfitrión ya tiene";
-      return { ok: false, error: `${who} otra reunión en ese horario. Elegí otra hora.` };
+      const alternatives = await nextFreeSlotsForHost(service, workspaceId, hostUserId, event, plan, now);
+      return {
+        ok: false,
+        error: `${who} otra reunión en ese horario. ${alternatives.length ? "Te propongo los próximos horarios libres: elegí uno y confirmalo." : "Elegí otra hora."}`,
+        alternatives,
+      };
     }
     if (error.code === "CB001") return { ok: false, error: IDENTITY_MESSAGE };
     console.error("[agenda] create_booking (manual) fallo:", error.message);

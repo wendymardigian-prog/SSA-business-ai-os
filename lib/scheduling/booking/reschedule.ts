@@ -10,7 +10,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { logAudit } from "@/lib/audit";
-import { isSlotAvailable } from "@/lib/scheduling/slots";
+import { availableSlots, isSlotAvailable } from "@/lib/scheduling/slots";
+import { pickNextSlots, suggestNextSlots } from "@/lib/scheduling/next-slots";
 import { buildSlotsInput } from "@/lib/scheduling/data/slots-input";
 import { inviteeActions, LATE_ACTION_MESSAGE } from "@/lib/scheduling/booking-page";
 import { notifyBooking } from "@/lib/scheduling/notifications";
@@ -36,7 +37,14 @@ export interface RescheduleInput {
 
 export type RescheduleResult =
   | { ok: true; bookingId: string; uid: string; startUtc: string; endUtc: string }
-  | { ok: false; status: number; reason: "not_found" | "too_late" | "slot_unavailable" | "slot_taken" | "temporarily_unavailable"; message?: string };
+  | {
+      ok: false;
+      status: number;
+      reason: "not_found" | "too_late" | "slot_unavailable" | "slot_taken" | "temporarily_unavailable";
+      message?: string;
+      /** B-AGE-11: los huecos libres siguientes (UTC), a confirmar. */
+      alternatives?: string[];
+    };
 
 export async function rescheduleBooking(service: Db, input: RescheduleInput): Promise<RescheduleResult> {
   const now = input.now ?? new Date();
@@ -84,7 +92,8 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
     });
     if (!built.ok) return { ok: false, status: 503, reason: "temporarily_unavailable" };
     if (!isSlotAvailable(built.input, startUtc)) {
-      return { ok: false, status: 409, reason: "slot_unavailable", message: "Ese horario ya no está disponible." };
+      const alternatives = pickNextSlots(availableSlots(built.input).map((s) => s.startUtc), startUtc);
+      return { ok: false, status: 409, reason: "slot_unavailable", message: "Ese horario ya no está disponible.", alternatives };
     }
   }
 
@@ -103,7 +112,18 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
     .eq("status_group", "active");
   if (error) {
     // 23P01 = la exclusion: el horario nuevo se ocupo entre la consulta y esto.
-    if (error.code === "23P01") return { ok: false, status: 409, reason: "slot_taken", message: "Ese horario se acaba de ocupar." };
+    if (error.code === "23P01") {
+      // B-AGE-11: se proponen los huecos siguientes del mismo anfitrión, con la duración de ESTA reunión.
+      const alternatives = await suggestNextSlots(service, event, profile, {
+        requestedUtc: startUtc,
+        inviteeTz: booking.booker_timezone ?? "UTC",
+        now,
+        excludeBookingId: booking.id,
+        ignoreMinimumNotice: input.by === "host",
+        durationMinutes: durationMs / 60_000,
+      });
+      return { ok: false, status: 409, reason: "slot_taken", message: "Ese horario se acaba de ocupar.", alternatives };
+    }
     console.error("[agenda] no pude reagendar:", error.message);
     return { ok: false, status: 500, reason: "temporarily_unavailable" };
   }
