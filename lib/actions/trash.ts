@@ -223,11 +223,13 @@ export async function listTrash(): Promise<TrashListResult> {
   const items: TrashListItem[] = [];
 
   const { data, error } = await rpcOf(ctx.supabase)("trash_list", { p_workspace_id: ctx.workspace.id });
+  // Si la base no responde (o la 00410 todavía no se aplicó), igual se listan los contactos y las tareas borrados.
+  let notice: string | undefined;
   if (error) {
     console.error("[papelera] lista:", error.message);
-    return { ok: false, error: "No pude leer la Papelera." };
+    notice = "No pude leer lo eliminado de ventas, agendas y el resto. Abajo están los contactos y las tareas borrados.";
   }
-  for (const row of (data ?? []) as Array<{ id: string; entity: string; entity_id: string; label: string; counts: Record<string, number>; deleted_by: string | null; deleted_at: string; expires_at: string }>) {
+  for (const row of (error ? [] : (data ?? [])) as Array<{ id: string; entity: string; entity_id: string; label: string; counts: Record<string, number>; deleted_by: string | null; deleted_at: string; expires_at: string }>) {
     if (!isTrashEntity(row.entity)) continue;
     items.push({
       id: row.id,
@@ -251,6 +253,8 @@ export async function listTrash(): Promise<TrashListResult> {
       .select("id, display_name, deleted_at")
       .eq("workspace_id", ctx.workspace.id)
       .not("deleted_at", "is", null)
+      // Un duplicado que se unió a otro (Fusionar) no es algo eliminado: restaurarlo reviviría el duplicado.
+      .is("metadata->merged_into", null)
       .gt("deleted_at", since)
       .order("deleted_at", { ascending: false })
       .limit(500);
@@ -275,7 +279,7 @@ export async function listTrash(): Promise<TrashListResult> {
   }
 
   items.sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : a.deletedAt > b.deletedAt ? -1 : 0));
-  return { ok: true, items };
+  return { ok: true, items, notice };
 }
 
 function softItem(entity: "contact" | "task", id: string, label: string, deletedAt: string): TrashListItem {

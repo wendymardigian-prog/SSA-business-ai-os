@@ -35,6 +35,13 @@ export interface TrashListItem {
   expiresAt: string;
 }
 
-export type TrashListResult = { ok: true; items: TrashListItem[] } | { ok: false; error: string };
+export type TrashListResult =
+  | {
+      ok: true;
+      items: TrashListItem[];
+      /** La lista de la base no se pudo leer (por ejemplo, la 00410 todavía no se aplicó): igual van contactos y tareas. */
+      notice?: string;
+    }
+  | { ok: false; error: string };
 
 export type TrashRestoreResult = { ok: true; entity: string; entityId: string } | { ok: false; error: string };

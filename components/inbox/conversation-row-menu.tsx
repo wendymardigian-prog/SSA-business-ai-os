@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { BadgeCheck, BadgeX, ExternalLink, HeartHandshake, HeartOff, Loader2, MoreVertical } from "lucide-react";
+import { BadgeCheck, BadgeX, ExternalLink, HeartHandshake, HeartOff, Loader2, MoreVertical, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RowAction } from "@/lib/inbox/row-actions";
 
@@ -15,11 +15,12 @@ import type { RowAction } from "@/lib/inbox/row-actions";
  * las flechas.
  */
 
-const LABELS: Record<Exclude<RowAction, "openContact">, { label: string; icon: typeof HeartHandshake; className?: string }> = {
+const LABELS: Record<Exclude<RowAction, "openContact">, { label: string; icon: typeof HeartHandshake; className?: string; danger?: boolean }> = {
   markCustomer: { label: "Marcar como cliente", icon: BadgeCheck, className: "text-emerald-600 dark:text-emerald-400" },
   unmarkCustomer: { label: "Quitar la marca de cliente", icon: BadgeX },
   markKnown: { label: "Marcar como conocido", icon: HeartHandshake, className: "text-violet-600 dark:text-violet-400" },
   unmarkKnown: { label: "Quitar la marca de conocido", icon: HeartOff },
+  deleteConversation: { label: "Eliminar conversación", icon: Trash2, className: "text-red-700 dark:text-red-400", danger: true },
 };
 
 export function ConversationRowMenu({
@@ -128,7 +129,11 @@ export function ConversationRowMenu({
                   setOpen(false);
                   onAction(action);
                 }}
-                className={cn(itemClass, "disabled:opacity-50")}
+                className={cn(
+                  itemClass,
+                  "disabled:opacity-50",
+                  LABELS[action].danger && "border-t border-border text-red-700 hover:bg-red-500/10 focus:bg-red-500/10 dark:text-red-400",
+                )}
               >
                 {(() => {
                   const { icon: Icon, className } = LABELS[action];

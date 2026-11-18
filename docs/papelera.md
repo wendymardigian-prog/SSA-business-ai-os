@@ -108,7 +108,13 @@ Un tipo de tabla hija nuevo queda cubierto solo. **Un tipo de registro nuevo** s
 
 `00410_trash_engine` (el motor, `private.trash_items`, `calls_deleted_external`, la lista, la purga) y
 `00411_trash_entities` (las reglas de cada tipo, vista previa, eliminar y restaurar). Las dos son aditivas y pueden
-ir antes o después del código: sin ellas, eliminar responde un error claro. **Aplicadas y registradas en producción el 18/11/2026**, después de un ensayo en una transacción que se deshizo sola.
+ir antes o después del código: sin ellas, eliminar responde un error claro y la Papelera muestra igual los contactos
+y las tareas borrados. Traídas de RER-BAIOS (allá 00474/00475) el 18/11/2026: en SSA **todavía sin aplicar**; antes de
+aplicarlas, ensayarlas en una transacción que se deshace sola.
+
+Diferencias con RER: sin tickets (SSA no los tiene) y sin la cola de avisos de agenda (`discard_booking_send_queue`);
+una agenda eliminada cancela sus trabajos pendientes en `scheduled_jobs`. La lista de la Papelera no muestra los
+contactos que se unieron a otro con Fusionar (`metadata.merged_into`): no son algo eliminado.
 
 ## Verificación
 

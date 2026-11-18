@@ -113,6 +113,7 @@ export default async function RespuestaPage({ params }: { params: Promise<{ id: 
       fieldOrder={fieldsOf(version?.definition).map((f) => f.key)}
       contact={contactRes.data ? { id: contactRes.data.id, name: contactRes.data.display_name || contactRes.data.email || "Sin nombre" } : null}
       canManage={ctx.can("forms.manage")}
+      canDelete={ctx.can("forms.delete_responses")}
       metaLink={await loadSubmissionLink(ctx, submission.id, (submission.attribution ?? {}) as Record<string, unknown>)}
       canLinkMeta={ctx.can("settings.general")}
       showHistory={isAdminRole(ctx.role)}

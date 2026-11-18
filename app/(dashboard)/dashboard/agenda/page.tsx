@@ -334,6 +334,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       timeFormat={profile?.time_format ?? "24h"}
       scopeAll={ctx.scope("bookings") === "all"}
       canManage={ctx.can("bookings.manage")}
+      canDelete={ctx.can("bookings.delete")}
       showConfig={canOpenConfig(ctx.can)}
       brokenAccounts={broken}
       needsProfile={ctx.can("scheduling.use") && !profile}

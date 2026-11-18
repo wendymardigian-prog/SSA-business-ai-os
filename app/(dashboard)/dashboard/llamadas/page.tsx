@@ -146,6 +146,7 @@ export default async function LlamadasPage({
       currentUserId={user.id}
       workspaceId={workspace.id}
       canEdit={ctx.can("calls.edit")}
+      canDelete={ctx.can("calls.delete")}
       contactFilterName={contactFilterName}
       canConfigure={ctx.can("calls.configure")}
       pendingCount={pendingCount ?? 0}

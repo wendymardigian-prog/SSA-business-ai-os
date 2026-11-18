@@ -27,4 +27,15 @@ describe("planRowActions", () => {
   it("sin contacto no hay acciones", () => {
     expect(planRowActions({ ...base, contactId: null, contact: null })).toEqual([]);
   });
+
+  it("eliminar la conversación: solo con conversations.delete, al final y también sin contacto", () => {
+    expect(planRowActions({ ...base, contact: {} })).not.toContain("deleteConversation");
+    expect(planRowActions({ ...base, canDeleteConversation: true, contact: {} })).toEqual([
+      "markCustomer",
+      "markKnown",
+      "openContact",
+      "deleteConversation",
+    ]);
+    expect(planRowActions({ ...base, canDeleteConversation: true, contactId: null, contact: null })).toEqual(["deleteConversation"]);
+  });
 });

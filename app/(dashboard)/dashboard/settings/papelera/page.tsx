@@ -14,5 +14,5 @@ export default async function TrashPage() {
   const ctx = await requireAnyPermission(TRASH_PERMISSION_KEYS);
   const [result, members] = await Promise.all([listTrash(), getWorkspaceMembers(ctx.workspace.id)]);
   const names = Object.fromEntries(members.map((m) => [m.userId, m.name]));
-  return <TrashView items={result.ok ? result.items : []} error={result.ok ? null : result.error} names={names} />;
+  return <TrashView items={result.ok ? result.items : []} error={result.ok ? (result.notice ?? null) : result.error} names={names} />;
 }

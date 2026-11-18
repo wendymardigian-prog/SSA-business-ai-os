@@ -70,12 +70,14 @@ export function TrashView({ items, error, names }: { items: TrashListItem[]; err
           </label>
         )}
 
-        {!error && items.length === 0 ? (
+        {items.length === 0 ? (
+          error ? null : (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-12 text-center">
             <Trash2 className="h-6 w-6 text-muted-foreground" aria-hidden />
             <p className="text-sm font-medium">La Papelera está vacía</p>
             <p className="max-w-sm text-xs text-muted-foreground">Cuando elimines una venta, un pago, una agenda u otro registro, va a aparecer acá durante {TRASH_RETENTION_DAYS} días.</p>
           </div>
+          )
         ) : (
           <ul className="divide-y divide-border rounded-xl border border-border">
             {shown.map((item) => {

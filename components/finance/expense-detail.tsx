@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Copy, ExternalLink, FileImage, FileText, Loader2, Paperclip, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { Historial } from "@/components/historial/historial";
 import { DriftAdjustmentDialog, IgnoreDriftDialog } from "@/components/finance/drift-dialogs";
 import { PayExpenseDialog, RevertExpenseDialog, VoidExpenseDialog } from "@/components/finance/expense-dialogs";
@@ -62,6 +63,8 @@ export interface ExpenseDetailData {
   timeZone: string;
   today: string;
   canManage: boolean;
+  /** Con `expenses.delete`: «Eliminar» (Papelera). Un gasto automático lo frena el servidor y explica por qué. */
+  canDelete?: boolean;
 }
 
 type DialogKind = "pay" | "revert" | "void" | "edit" | "duplicate" | "drift-adjust" | "drift-ignore" | null;
@@ -84,17 +87,25 @@ export function ExpenseDetail({ data, commissions }: { data: ExpenseDetailData; 
     recurring_expense_id: e.recurring_expense_id, adjusts_expense_id: e.adjusts_expense_id, id: e.id, updated_at: e.updated_at, receipt_name: e.receipt_name,
   };
 
-  const actions = canManage ? (
+  const actions = canManage || data.canDelete ? (
     <>
       {transitions.includes("pay") && (
         <ActionButton primary onClick={() => setDialog("pay")}>{EXPENSE_ACTION_LABELS.pay}</ActionButton>
       )}
-      {!annulled && (
+      {canManage && !annulled && (
         <ActionButton onClick={() => setDialog("edit")} icon={<Pencil className="h-4 w-4" aria-hidden />}>{editAction ? EXPENSE_ACTION_LABELS[editAction] : "Editar"}</ActionButton>
       )}
       {transitions.includes("revert") && <ActionButton onClick={() => setDialog("revert")}>{EXPENSE_ACTION_LABELS.revert}</ActionButton>}
-      <ActionButton onClick={() => setDialog("duplicate")} icon={<Copy className="h-4 w-4" aria-hidden />}>Duplicar</ActionButton>
+      {canManage && <ActionButton onClick={() => setDialog("duplicate")} icon={<Copy className="h-4 w-4" aria-hidden />}>Duplicar</ActionButton>}
       {transitions.includes("void") && <ActionButton danger onClick={() => setDialog("void")}>{EXPENSE_ACTION_LABELS.void}</ActionButton>}
+      {data.canDelete && (
+        <DeleteButton
+          entity="expense"
+          id={e.id}
+          redirectTo="/dashboard/finanzas/gastos"
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-500/40 px-3 text-sm font-medium text-red-700 hover:bg-red-500/10 md:flex-none dark:text-red-400"
+        />
+      )}
     </>
   ) : null;
 

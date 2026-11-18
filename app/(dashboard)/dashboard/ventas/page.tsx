@@ -154,6 +154,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     hasAnySale: (anySale.count ?? 0) > 0,
     scopeAll: hasSalesAllScope(ctx),
     canManage: ctx.can("sales.manage"),
+    canDelete: ctx.can("sales.delete"),
     products: products.data ?? [],
     variants: variants.data ?? [],
     members: members.map((m) => ({ id: m.userId, name: m.name })),
