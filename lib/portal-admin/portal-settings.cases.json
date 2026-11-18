@@ -423,6 +423,177 @@
         "elegí qué cuenta: lo cobrado o lo vendido",
         "el rango small tiene el mínimo mayor que el máximo"
       ]
+    },
+    {
+      "name": "variante con comunidad",
+      "kind": "variant",
+      "settings": {
+        "enabled": true,
+        "community_key": "lite"
+      },
+      "expected": []
+    },
+    {
+      "name": "variante con la comunidad vacía (la principal)",
+      "kind": "variant",
+      "settings": {
+        "community_key": null
+      },
+      "expected": []
+    },
+    {
+      "name": "variante con una comunidad inválida",
+      "kind": "variant",
+      "settings": {
+        "community_key": "Lite 12"
+      },
+      "expected": [
+        "la comunidad no es válida"
+      ]
+    },
+    {
+      "name": "programa con dos comunidades",
+      "kind": "program",
+      "settings": {
+        "community": {
+          "lesson_comments": true,
+          "spaces": [
+            {
+              "key": "general",
+              "name": "General"
+            }
+          ],
+          "communities": [
+            {
+              "key": "principal",
+              "name": "Academy",
+              "main": true,
+              "archived": false,
+              "spaces": [
+                {
+                  "key": "general",
+                  "name": "General"
+                }
+              ]
+            },
+            {
+              "key": "lite",
+              "name": "Lite",
+              "main": false,
+              "archived": false,
+              "spaces": [
+                {
+                  "key": "anuncios",
+                  "name": "Anuncios",
+                  "team_only": true
+                },
+                {
+                  "key": "general",
+                  "name": "General"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "programa con comunidades mal armadas",
+      "kind": "program",
+      "settings": {
+        "community": {
+          "communities": [
+            {
+              "key": "principal",
+              "name": "Academy",
+              "main": true,
+              "archived": true,
+              "color": "x"
+            },
+            {
+              "key": "lite",
+              "name": "academy",
+              "main": "si",
+              "spaces": [
+                {
+                  "key": "general",
+                  "name": "General"
+                },
+                {
+                  "key": "general",
+                  "name": "Otra"
+                },
+                {
+                  "key": "Mal",
+                  "name": "x"
+                }
+              ]
+            },
+            {
+              "key": "lite",
+              "name": ""
+            }
+          ]
+        }
+      },
+      "expected": [
+        "clave desconocida: color",
+        "la comunidad principal no se puede archivar",
+        "ya hay una comunidad que se llama academy",
+        "academy: principal y archivada son sí o no",
+        "academy: el espacio general está repetido",
+        "academy: hay un espacio sin nombre o con una clave inválida",
+        "hay una comunidad sin nombre o con una clave inválida"
+      ]
+    },
+    {
+      "name": "programa sin principal",
+      "kind": "program",
+      "settings": {
+        "community": {
+          "communities": [
+            {
+              "key": "a",
+              "name": "A"
+            },
+            {
+              "key": "b",
+              "name": "B",
+              "main": false
+            }
+          ]
+        }
+      },
+      "expected": [
+        "elegí una sola comunidad principal"
+      ]
+    },
+    {
+      "name": "programa con la lista vacía",
+      "kind": "program",
+      "settings": {
+        "community": {
+          "communities": []
+        }
+      },
+      "expected": [
+        "dejá al menos una comunidad"
+      ]
+    },
+    {
+      "name": "programa con comunidades que no son lista",
+      "kind": "program",
+      "settings": {
+        "community": {
+          "communities": {
+            "a": 1
+          }
+        }
+      },
+      "expected": [
+        "las comunidades no son válidas"
+      ]
     }
   ]
 }

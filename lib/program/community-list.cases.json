@@ -1,0 +1,84 @@
+{
+  "_comment": "Gemela de app_servicio.community_list_plan (00402): las comunidades de un programa. vitest (community.test.ts) y verify-comunidades los corren contra las dos.",
+  "cases": [
+    {
+      "name": "sin configurar: una sola, la principal, con los espacios de fábrica",
+      "settings": {},
+      "expected": [
+        { "key": "principal", "name": "Principal", "main": true, "archived": false, "spaces": [
+          { "key": "anuncios", "name": "Anuncios", "team_only": true }, { "key": "general", "name": "General" }, { "key": "victorias", "name": "Victorias" } ] }
+      ]
+    },
+    {
+      "name": "sin lista: la principal usa los espacios de siempre y nunca «clases»",
+      "settings": { "community": { "spaces": [{ "key": "general", "name": "General" }, { "key": "clases", "name": "Clases" }, { "key": "dudas", "name": "Dudas", "archived": true }] } },
+      "expected": [
+        { "key": "principal", "name": "Principal", "main": true, "archived": false, "spaces": [{ "key": "general", "name": "General" }, { "key": "dudas", "name": "Dudas", "archived": true }] }
+      ]
+    },
+    {
+      "name": "dos comunidades: la principal sin espacios propios usa los de siempre; la otra, los de fábrica",
+      "settings": { "community": {
+        "spaces": [{ "key": "general", "name": "General" }],
+        "communities": [{ "key": "principal", "name": "Academy", "main": true }, { "key": "lite", "name": "Lite" }] } },
+      "expected": [
+        { "key": "principal", "name": "Academy", "main": true, "archived": false, "spaces": [{ "key": "general", "name": "General" }] },
+        { "key": "lite", "name": "Lite", "main": false, "archived": false, "spaces": [
+          { "key": "anuncios", "name": "Anuncios", "team_only": true }, { "key": "general", "name": "General" }, { "key": "victorias", "name": "Victorias" } ] }
+      ]
+    },
+    {
+      "name": "cada comunidad con sus espacios",
+      "settings": { "community": { "communities": [
+        { "key": "principal", "name": "Academy", "main": true, "spaces": [{ "key": "general", "name": "General" }] },
+        { "key": "lite", "name": " Lite ", "spaces": [{ "key": "victorias", "name": "Victorias" }] } ] } },
+      "expected": [
+        { "key": "principal", "name": "Academy", "main": true, "archived": false, "spaces": [{ "key": "general", "name": "General" }] },
+        { "key": "lite", "name": "Lite", "main": false, "archived": false, "spaces": [{ "key": "victorias", "name": "Victorias" }] }
+      ]
+    },
+    {
+      "name": "sin principal marcada: la primera sin archivar",
+      "settings": { "community": { "communities": [
+        { "key": "vieja", "name": "Vieja", "archived": true, "spaces": [] },
+        { "key": "lite", "name": "Lite", "spaces": [] } ] } },
+      "expected": [
+        { "key": "vieja", "name": "Vieja", "main": false, "archived": true, "spaces": [] },
+        { "key": "lite", "name": "Lite", "main": true, "archived": false, "spaces": [] }
+      ]
+    },
+    {
+      "name": "dos marcadas como principal: vale la primera",
+      "settings": { "community": { "communities": [
+        { "key": "a", "name": "A", "main": true, "spaces": [] },
+        { "key": "b", "name": "B", "main": true, "spaces": [] } ] } },
+      "expected": [
+        { "key": "a", "name": "A", "main": true, "archived": false, "spaces": [] },
+        { "key": "b", "name": "B", "main": false, "archived": false, "spaces": [] }
+      ]
+    },
+    {
+      "name": "una principal archivada no es la principal",
+      "settings": { "community": { "communities": [
+        { "key": "a", "name": "A", "main": true, "archived": true, "spaces": [] },
+        { "key": "b", "name": "B", "spaces": [] } ] } },
+      "expected": [
+        { "key": "a", "name": "A", "main": false, "archived": true, "spaces": [] },
+        { "key": "b", "name": "B", "main": true, "archived": false, "spaces": [] }
+      ]
+    },
+    {
+      "name": "lista vacía o sin claves: como si no hubiera lista",
+      "settings": { "community": { "communities": [{ "name": "Sin clave" }, 3] } },
+      "expected": [
+        { "key": "principal", "name": "Principal", "main": true, "archived": false, "spaces": [
+          { "key": "anuncios", "name": "Anuncios", "team_only": true }, { "key": "general", "name": "General" }, { "key": "victorias", "name": "Victorias" } ] }
+      ]
+    },
+    {
+      "name": "sin nombre: la clave",
+      "settings": { "community": { "communities": [{ "key": "lite", "name": "  ", "main": true, "spaces": [] }] } },
+      "expected": [{ "key": "lite", "name": "lite", "main": true, "archived": false, "spaces": [] }]
+    }
+  ]
+}

@@ -36,6 +36,8 @@ export interface ServiceSettings {
   renewal?: (typeof RENEWAL_MODES)[number];
   light?: { overdue_red_days?: number };
   overdue_cut?: { enabled?: boolean; days?: number; restore?: boolean };
+  /** R5 (00402): al crear un servicio de esta variante, cierra los activos de la misma persona en estas variantes. */
+  closes_variant_ids?: string[] | null;
   extend?: {
     target_variant_ids?: string[] | null;
     n?: number;
@@ -53,6 +55,8 @@ export interface ServiceSettingsContext {
   variants?: Array<{ id: string; productId: string; mode: ServiceMode }>;
   /** Ids de las personas del equipo del negocio. */
   members?: string[];
+  /** La variante que se está configurando (una variante no se cierra a sí misma). */
+  variantId?: string;
 }
 
 import { unknownKeyProblems } from "./json-order";
@@ -63,9 +67,9 @@ const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInt
 const has = (o: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
 const TOP_KEYS: Record<ServiceMode, string[]> = {
-  none: ["v", "mode"],
-  create: ["v", "mode", "when", "confirm", "start", "owner", "renewal", "light", "overdue_cut"],
-  extend: ["v", "mode", "when", "extend", "light", "overdue_cut"],
+  none: ["v", "mode", "closes_variant_ids"],
+  create: ["v", "mode", "when", "confirm", "start", "owner", "renewal", "light", "overdue_cut", "closes_variant_ids"],
+  extend: ["v", "mode", "when", "extend", "light", "overdue_cut", "closes_variant_ids"],
 };
 
 /** El modo, con `{}` = none. */
@@ -86,6 +90,12 @@ export function validateServiceSettings(settings: unknown, context: ServiceSetti
   }
   const mode: ServiceMode = (rawMode as ServiceMode) ?? "none";
   p.push(...unknownKeyProblems(settings, TOP_KEYS[mode]));
+  // R5 (00402): «Si tiene un servicio activo de: [variantes] → cerrarlo al crear este», en cualquier modo.
+  if (has(settings, "closes_variant_ids") && settings.closes_variant_ids !== null) {
+    const ids = settings.closes_variant_ids;
+    if (!Array.isArray(ids) || ids.length > 20 || !ids.every((x) => typeof x === "string" && UUID.test(x))) p.push("las variantes a cerrar no son válidas");
+    else if (context.variantId && ids.includes(context.variantId)) p.push("la variante no se cierra a sí misma");
+  }
   if (mode === "none") return p;
 
   // ¿Cuándo?

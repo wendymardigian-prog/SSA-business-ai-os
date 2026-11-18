@@ -44,6 +44,8 @@ export interface VariantPortalSettings {
   enabled?: boolean;
   ask_terms?: boolean;
   sections?: SectionRule[];
+  /** La comunidad del programa a la que pertenece la variante (00402). Sin elegir, la principal. */
+  community_key?: string | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -111,10 +113,13 @@ function sectionProblems(rule: Record<string, unknown>, o: PortalValidationOptio
 /** Problemas de `product_variants.portal_settings`. */
 export function validateVariantPortalSettings(settings: unknown, o: PortalValidationOptions = {}): string[] {
   if (!isObj(settings)) return ["la configuración tiene que ser un objeto"];
-  const p = unknownKeys(settings, ["v", "enabled", "ask_terms", "sections"]);
+  const p = unknownKeys(settings, ["v", "enabled", "ask_terms", "sections", "community_key"]);
   if (has(settings, "v") && settings.v !== 1) p.push("versión desconocida");
   if (has(settings, "enabled") && typeof settings.enabled !== "boolean") p.push("«Acceso al portal» tiene que ser sí o no");
   if (has(settings, "ask_terms") && typeof settings.ask_terms !== "boolean") p.push("«Esta variante los pide» tiene que ser sí o no");
+  if (has(settings, "community_key") && settings.community_key !== null && !(typeof settings.community_key === "string" && /^[a-z0-9_]{1,40}$/.test(settings.community_key))) {
+    p.push("la comunidad no es válida");
+  }
   if (has(settings, "sections")) {
     if (!Array.isArray(settings.sections)) p.push("las secciones no son válidas");
     else {
@@ -164,7 +169,8 @@ export function validateProgramPortalSettings(settings: unknown, o: PortalValida
     const c = settings.community;
     if (!isObj(c)) p.push("la comunidad no es válida");
     else {
-      p.push(...unknownKeys(c, ["lesson_comments", "spaces"]));
+      p.push(...unknownKeys(c, ["lesson_comments", "spaces", "communities"]));
+      p.push(...communitiesProblems(c));
       if (has(c, "spaces")) {
         if (!Array.isArray(c.spaces)) p.push("los espacios no son válidos");
         else {
@@ -203,6 +209,53 @@ export function validateProgramPortalSettings(settings: unknown, o: PortalValida
   if (ext && has(settings, "fame")) p.push(...fameSettingsProblems(settings.fame));
   if (ext && has(settings, "projects")) p.push(...projectsSettingsProblems(settings.projects));
   // @plantilla-hasta(proyectos)
+  return p;
+}
+
+/**
+ * Las comunidades del programa (`community.communities`, 00402), gemela de `app_servicio.community_settings_problems`
+ * sin la parte de la base (archivar una comunidad que usa una variante se controla allá).
+ */
+export function communitiesProblems(c: Record<string, unknown>): string[] {
+  if (!has(c, "communities")) return [];
+  if (!Array.isArray(c.communities)) return ["las comunidades no son válidas"];
+  if (c.communities.length === 0) return ["dejá al menos una comunidad"];
+  const p: string[] = [];
+  const keys = new Set<string>();
+  const names = new Set<string>();
+  let mains = 0;
+  for (const x of c.communities) {
+    if (!isObj(x) || typeof x.key !== "string" || !/^[a-z0-9_]{1,40}$/.test(x.key) || typeof x.name !== "string" || !x.name.trim()) {
+      p.push("hay una comunidad sin nombre o con una clave inválida");
+      continue;
+    }
+    const name = x.name.trim();
+    p.push(...unknownKeys(x, ["key", "name", "main", "archived", "spaces"]));
+    if (keys.has(x.key)) p.push(`la comunidad ${x.key} está repetida`);
+    keys.add(x.key);
+    if (names.has(name.toLowerCase())) p.push(`ya hay una comunidad que se llama ${name}`);
+    names.add(name.toLowerCase());
+    if ((has(x, "main") && typeof x.main !== "boolean") || (has(x, "archived") && typeof x.archived !== "boolean")) p.push(`${name}: principal y archivada son sí o no`);
+    if (x.main === true) {
+      mains++;
+      if (x.archived === true) p.push("la comunidad principal no se puede archivar");
+    }
+    if (has(x, "spaces")) {
+      if (!Array.isArray(x.spaces)) p.push(`${name}: los espacios no son válidos`);
+      else {
+        const sk = new Set<string>();
+        for (const sp of x.spaces) {
+          if (!isObj(sp) || typeof sp.key !== "string" || !/^[a-z0-9_]{1,40}$/.test(sp.key) || typeof sp.name !== "string" || !sp.name.trim()) {
+            p.push(`${name}: hay un espacio sin nombre o con una clave inválida`);
+            continue;
+          }
+          if (sk.has(sp.key)) p.push(`${name}: el espacio ${sp.key} está repetido`);
+          sk.add(sp.key);
+        }
+      }
+    }
+  }
+  if (mains !== 1) p.push("elegí una sola comunidad principal");
   return p;
 }
 

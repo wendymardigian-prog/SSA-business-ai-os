@@ -1,7 +1,23 @@
 // @plantilla-quitar(servicios)
 import { describe, expect, it } from "vitest";
 import cases from "./community.cases.json";
-import { canPost, communityQuickOptions, communityQuickValue, DEFAULT_SPACES, lessonCommentsOn, programSpaces, spaceKeyFor, spacesIssues, type CanPostInput } from "./community";
+import listCases from "./community-list.cases.json";
+import {
+  canPost,
+  communitiesIssues,
+  communityQuickOptions,
+  communityQuickValue,
+  communitySettingsPatch,
+  DEFAULT_SPACES,
+  lessonCommentsOn,
+  mainCommunity,
+  programCommunities,
+  programSpaces,
+  spaceKeyFor,
+  spacesIssues,
+  variantCommunityKey,
+  type CanPostInput,
+} from "./community";
 
 describe("canPost: casos compartidos con la base", () => {
   it.each(cases.cases.map((c) => [c.name, c] as const))("%s", (_n, c) => {
@@ -48,5 +64,41 @@ describe("Comunidad: el filtro rapido de la barra (Servicios A2)", () => {
     expect(communityQuickValue("unanswered", "general")).toBe("unanswered");
     expect(communityQuickValue("all", "general")).toBe("esp:general");
     expect(communityQuickValue("all", null)).toBe("all");
+  });
+});
+
+describe("comunidades del programa (00402): casos compartidos con la base", () => {
+  it.each(listCases.cases.map((c) => [c.name, c] as const))("%s", (_n, c) => {
+    expect(programCommunities(c.settings)).toEqual(c.expected);
+  });
+});
+
+describe("comunidades del programa (00402)", () => {
+  const two = { community: { communities: [{ key: "principal", name: "Academy", main: true }, { key: "lite", name: "Lite" }, { key: "vieja", name: "Vieja", archived: true }] } };
+  it("la principal y la de cada variante", () => {
+    expect(mainCommunity({}).key).toBe("principal");
+    expect(mainCommunity(two).name).toBe("Academy");
+    expect(variantCommunityKey(two, { community_key: "lite" })).toBe("lite");
+    expect(variantCommunityKey(two, {})).toBe("principal");
+    expect(variantCommunityKey(two, { community_key: "vieja" })).toBe("principal");
+    expect(variantCommunityKey(two, { community_key: "otra" })).toBe("principal");
+  });
+  it("communitiesIssues", () => {
+    const list = programCommunities(two);
+    expect(communitiesIssues(list)).toEqual([]);
+    expect(communitiesIssues([...list, { ...list[1], key: "lite_2" }])).toContain("Ya hay una comunidad que se llama Lite");
+    expect(communitiesIssues(list.map((c) => ({ ...c, main: false })))).toContain("Elegí una sola comunidad principal");
+    expect(communitiesIssues(list.map((c) => (c.key === "principal" ? { ...c, archived: true } : c)))).toContain("La comunidad principal no se puede archivar");
+    expect(communitiesIssues(list.map((c) => (c.key === "lite" ? { ...c, archived: true } : c)), { lite: ["Lite (12 meses)"] })).toContain(
+      "«Lite» la usan estas variantes: Lite (12 meses). Cambiales la comunidad antes de archivarla",
+    );
+    expect(communitiesIssues([{ ...list[1], spaces: [] }, list[0]])).toContain("Lite: Dejá al menos un espacio activo");
+  });
+  it("con una sola comunidad se guarda como siempre (sin `communities`)", () => {
+    const one = programCommunities({});
+    expect(communitySettingsPatch(one, true)).toEqual({ spaces: DEFAULT_SPACES, lesson_comments: true });
+    const patch = communitySettingsPatch(programCommunities(two), false) as { spaces: unknown; communities: Array<{ key: string }> };
+    expect(patch.communities.map((c) => c.key)).toEqual(["principal", "lite", "vieja"]);
+    expect(patch.spaces).toEqual(DEFAULT_SPACES);
   });
 });
