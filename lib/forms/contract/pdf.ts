@@ -25,6 +25,18 @@ const LINK = rgb(0.1, 0.3, 0.75);
 
 export { toWinAnsi };
 
+/**
+ * El ancho de un texto TAL COMO SE DIBUJA. `widthOfTextAtSize` de pdf-lib descuenta el ajuste entre pares de letras
+ * (kerning: la «P» y la «A» de «PARTICIPANTE» se acercan), pero `drawText` escribe sin ese ajuste. Medir con él deja
+ * la palabra más ancha de lo calculado y se come el espacio de la siguiente («PARTICIPANTEdependen»). Por eso se mide
+ * letra por letra, que es como queda en la página. Toda medida de este archivo pasa por acá.
+ */
+export function textWidth(font: PDFFont, text: string, size: number): number {
+  let width = 0;
+  for (const char of text) width += font.widthOfTextAtSize(char, size);
+  return width;
+}
+
 export interface ContractPdfInput {
   businessName: string;
   title: string;
@@ -123,7 +135,7 @@ class Writer {
       let x = MARGIN.left + indent;
       for (const word of line) {
         if (!word.text) continue;
-        const wordWidth = word.font.widthOfTextAtSize(word.text, size);
+        const wordWidth = textWidth(word.font, word.text, size);
         this.page.drawText(word.text, { x, y: this.y - size, size, font: word.font, color: word.href ? LINK : (options.color ?? BLACK) });
         if (word.href && !/^\s+$/.test(word.text)) this.link(x, this.y - size, wordWidth, size, word.href);
         x += wordWidth;
@@ -138,7 +150,7 @@ class Writer {
         flush();
         continue;
       }
-      const w = word.font.widthOfTextAtSize(word.text, size);
+      const w = textWidth(word.font, word.text, size);
       const isSpace = /^\s+$/.test(word.text);
       if (!isSpace && width + w > maxWidth && line.length > 0) {
         // Se corta antes de la palabra; el espacio que quedó al final no se escribe.
@@ -151,7 +163,7 @@ class Writer {
         for (const chunk of splitToWidth(word.text, word.font, size, maxWidth)) {
           if (line.length > 0) flush();
           line.push({ text: chunk, font: word.font, ...(word.href ? { href: word.href } : {}) });
-          width = word.font.widthOfTextAtSize(chunk, size);
+          width = textWidth(word.font, chunk, size);
         }
         continue;
       }
@@ -190,7 +202,7 @@ function splitToWidth(text: string, font: PDFFont, size: number, maxWidth: numbe
   const chunks: string[] = [];
   let current = "";
   for (const char of text) {
-    if (current && font.widthOfTextAtSize(current + char, size) > maxWidth) {
+    if (current && textWidth(font, current + char, size) > maxWidth) {
       chunks.push(current);
       current = char;
     } else {
@@ -428,7 +440,7 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
     page.drawLine({ start: { x: MARGIN.left, y: 44 }, end: { x: PAGE.width - MARGIN.right, y: 44 }, thickness: 0.4, color: rgb(0.8, 0.8, 0.8) });
     page.drawText(footer, { x: MARGIN.left, y: 30, size: 6.5, font: fonts.regular, color: GRAY });
     const label = `${index + 1} de ${total}`;
-    page.drawText(label, { x: PAGE.width - MARGIN.right - fonts.regular.widthOfTextAtSize(label, 8), y: 30, size: 8, font: fonts.regular, color: GRAY });
+    page.drawText(label, { x: PAGE.width - MARGIN.right - textWidth(fonts.regular, label, 8), y: 30, size: 8, font: fonts.regular, color: GRAY });
   });
 
   return doc.save();

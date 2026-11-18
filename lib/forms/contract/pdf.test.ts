@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { extractText, getDocumentProxy } from "unpdf";
-import { buildContractPdf, toWinAnsi, type ContractPdfInput } from "./pdf";
+import { buildContractPdf, textWidth, toWinAnsi, type ContractPdfInput } from "./pdf";
+import { StandardFonts } from "pdf-lib";
 import { pdfSkippedKeys } from "./config";
 import { newField } from "../fields";
 import { answerToText, orderedAnswers } from "../responses";
@@ -208,5 +209,46 @@ describe("modo Contrato: firmas abajo y certificado aparte", () => {
     expect(solo.pages[0]).not.toContain("Por Mi Negocio");
     const jpg = await buildContractPdf(base({ contract: { renderedSha256: RENDERED, businessSigner: { name: "W", role: "", image: JPG_1X1 } } }));
     expect(Buffer.from(jpg.slice(0, 5)).toString()).toBe("%PDF-");
+  });
+});
+
+describe("los espacios entre palabras (kerning)", () => {
+  it("textWidth mide como se dibuja: letra por letra, sin el ajuste entre pares", async () => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const drawn = [..."PARTICIPANTE"].reduce((sum, c) => sum + font.widthOfTextAtSize(c, 10), 0);
+    expect(textWidth(font, "PARTICIPANTE", 10)).toBeCloseTo(drawn, 6);
+    // pdf-lib la mide más angosta (descuenta «PA» dos veces): eso era lo que se comía el espacio.
+    expect(font.widthOfTextAtSize("PARTICIPANTE", 10)).toBeLessThan(drawn - 2);
+  });
+
+  it("«EL PARTICIPANTE dependen» deja el espacio entre las dos palabras en la página", async () => {
+    const bytes = await buildContractPdf(base({ text: "Los resultados de EL PARTICIPANTE dependen de su dedicación." }));
+    const pdf = await getDocumentProxy(new Uint8Array(bytes));
+    const page = await pdf.getPage(1);
+    const { OPS } = await import("unpdf/pdfjs");
+    const ops = await page.getOperatorList();
+    // Cada palabra se dibuja aparte: dónde empieza (setTextMatrix), en qué tamaño (setFont) y qué dice (showText).
+    const drawn: Array<{ text: string; x: number; size: number }> = [];
+    let x = 0;
+    let size = 0;
+    ops.fnArray.forEach((fn, i) => {
+      const args = ops.argsArray[i] as unknown[];
+      if (fn === OPS.setFont) size = args[1] as number;
+      if (fn === OPS.setTextMatrix) x = (args[0] as number[])[4] ?? (args[4] as number);
+      if (fn === OPS.showText) {
+        const text = (args[0] as Array<{ unicode?: string } | number>).map((g) => (typeof g === "object" && g ? g.unicode ?? "" : "")).join("");
+        drawn.push({ text, x, size });
+      }
+    });
+    const index = drawn.findIndex((d) => d.text === "PARTICIPANTE");
+    expect(index, JSON.stringify(drawn.map((d) => d.text))).toBeGreaterThan(-1);
+    const word = drawn[index];
+    const next = drawn.slice(index + 1).find((d) => d.text === "dependen")!;
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    // Entre el comienzo de «PARTICIPANTE» y el de «dependen» entran la palabra dibujada (sin kerning) y un espacio entero.
+    const drawnWidth = [..."PARTICIPANTE "].reduce((sum, c) => sum + font.widthOfTextAtSize(c, word.size), 0);
+    expect(next.x - word.x).toBeCloseTo(drawnWidth, 3);
   });
 });
