@@ -60,6 +60,11 @@ export interface RichTextFormat {
    * null para pegarlo como siempre. La comunidad lo usa para que un Markdown copiado de Claude se pegue con formato.
    */
   pasteText?: (text: string) => JSONContent | null;
+  /**
+   * Probar `pasteText` aunque el portapapeles traiga HTML. Un Markdown copiado de una vista ya dibujada trae HTML que
+   * pierde los saltos de línea simples (los convierte en espacios); su texto plano los conserva.
+   */
+  pasteTextOverHtml?: boolean;
 }
 
 export interface RichTextEditorApi {
@@ -127,7 +132,7 @@ export function RichTextEditor({
       },
       handlePaste: (_view, event) => {
         const data = event.clipboardData;
-        if (!format?.pasteText || !data || data.getData("text/html")) return false;
+        if (!format?.pasteText || !data || (data.getData("text/html") && !format.pasteTextOverHtml)) return false;
         const doc = format.pasteText(data.getData("text/plain"));
         if (!doc?.content?.length || !editorRef.current) return false;
         editorRef.current.chain().focus().insertContent(doc.content).run();

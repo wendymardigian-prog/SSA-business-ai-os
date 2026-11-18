@@ -66,6 +66,22 @@ sin contestar).
   «Agregar al portal» desde Grabaciones guarda una grabación como clase o como grabación de una fecha.
 - **Comunidad**: posts y comentarios (un nivel), reacciones y reportes. Un comentario en una clase es un post del
   espacio reservado «clases». Lo borrado se oculta y se purga a los 30 días.
+  **Título y aviso por correo (00405)**: un post nuevo del equipo lleva título (hasta 200, con emojis; lo exige la
+  base) y el interruptor «Avisar por correo», prendido de entrada. Prendido, la acción encola `community_post_email`
+  (el reparto), que pide `community_email_targets` (cuenta del portal ACTIVA, con acceso a la comunidad y miembro de
+  alguna de las comunidades del post; una fila por persona) y encola un `community_post_email_send` por persona,
+  cada 0,7 s, con clave `community_post_email:<post>:<contacto>` (nadie recibe dos veces). El envío vuelve a mirar el
+  post y a la persona, y manda como transaccional (sale aunque se haya dado de baja de marketing; un rebote lo frena):
+  asunto = título, la cajita «X publicó en la comunidad:», el cuerpo con formato (`communityEmailHtml`, escapa todo),
+  «Esta publicación tiene N fotos» (las fotos no viajan) y el botón al portal `/p/<producto>/comunidad`. Editar no
+  vuelve a mandar. El portal ya dibuja `title` (viene en `post_row`).
+  **Renglones vacíos (18/11/2026, sin migración)**: entre dos bloques, cada par de saltos de línea de más es un párrafo
+  vacío (`a\n\n\n\nb`); dos o tres saltos siguen siendo párrafos seguidos, así lo viejo se ve igual. Lo lee
+  `splitBlankLines` / `communityBlocks` (`lib/program/community-text.ts`) y la COPIA del portal
+  (`lib/shared/community-text.ts`, mismos casos en `community-text.cases.json`); el editor guarda un párrafo vacío entre
+  dos con texto (`communityFromEditorDoc`) y la pantalla, el portal y el correo lo dibujan como renglón en blanco. Un
+  Markdown pegado se lee de su texto plano aunque el portapapeles traiga HTML (`pasteTextOverHtml`): el HTML de una
+  vista ya dibujada convierte los saltos simples en espacios.
 - **Tutor**: un agente `student_tutor` por programa, atado para siempre (`products.tutor_agent_id`, único). Se crea al
   prender Asistente IA en el programa y se apaga con él. Para un estudiante, busca solo en las clases que tiene
   abiertas; nunca evaluaciones, documentos internos ni lo excluido. Límite: el propio, el de su variante o el del

@@ -2283,6 +2283,8 @@ Comentarios con @menciones, Slack como canal de avisos, reuniones unidas a su se
 
 Migraciones `00364` a `00372`, **aplicadas y registradas** el 12/11/2026 UTC, cada una ensayada antes en una transacción que se deshizo sola (la 00367 se corrigió el mismo día; el SQL registrado es el corregido). En un clon nuevo van en orden y **antes** de desplegar el código. **La próxima libre es la `00373`** (confirmar con `list_migrations` y las ramas locales).
 
+**Comunidad: título y aviso por correo (00405, 18/11/2026).** Un post nuevo del equipo lleva título y, con el interruptor «Avisar por correo» (prendido de entrada), le llega por correo a cada estudiante con cuenta del portal ACTIVA y acceso a esa comunidad (`community_email_targets`, solo service_role). Reparto + un envío por persona por la cola (`lib/jobs/handlers/community-post-email.ts`), clave por persona y post, transaccional. Encolar nunca tumba el post; editar no reenvía. La 00405 es aditiva y va **antes** del deploy. **La próxima libre es la `00406`** (confirmar con `list_migrations` y las ramas locales). Detalle en docs/portal-admin.md.
+
 ```
 node scripts/verify-comments.mjs
 node scripts/verify-services.mjs --bloque a4

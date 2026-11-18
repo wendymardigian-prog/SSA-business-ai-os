@@ -8,7 +8,10 @@
  * Además de lo que dice el Markdown:
  *  - un link pegado suelto (https://…) también es link (los posts de texto plano de antes y los del portal);
  *  - los links de video (YouTube, Vimeo, Loom, Drive y Fathom compartido) se ven con su reproductor debajo del texto,
- *    con el mismo reconocedor que las clases (`normalizeVideoUrl`).
+ *    con el mismo reconocedor que las clases (`normalizeVideoUrl`);
+ *  - los renglones vacíos se guardan (18/11/2026): entre dos bloques, cada par de saltos de línea DE MÁS es un párrafo
+ *    vacío (`a\n\n\n\nb` = «a», un renglón vacío, «b»). Con dos o tres saltos, como siempre: párrafos seguidos. Es un
+ *    párrafo sin texto (`runs: []`), que la pantalla, el portal y el correo dibujan como un renglón en blanco.
  *
  * El portal (otro repositorio) lee lo mismo: `community-text.cases.json` son los casos que corren las dos copias.
  */
@@ -42,10 +45,36 @@ function linkifyRun(run: InlineRun): InlineRun[] {
 
 const linkify = (runs: InlineRun[]) => runs.flatMap(linkifyRun);
 
-/** Los bloques para dibujar una publicación. */
+/** Un tramo de texto o un renglón vacío. */
+type Piece = { text: string } | { blank: true };
+
+/**
+ * Corta el texto donde hay cuatro o más saltos de línea seguidos: cada par de más (después de los dos que separan
+ * párrafos) es un renglón vacío. Lo que queda entre esos cortes se lee como siempre. Los del principio y el final no
+ * cuentan.
+ */
+export function splitBlankLines(body: string): Piece[] {
+  const text = (body ?? "").replace(/\r\n?/g, "\n").replace(/^\n+|\n+$/g, "");
+  const out: Piece[] = [];
+  let last = 0;
+  for (const m of text.matchAll(/\n{4,}/g)) {
+    const at = m.index ?? 0;
+    out.push({ text: text.slice(last, at) });
+    for (let i = 0; i < Math.floor((m[0].length - 2) / 2); i++) out.push({ blank: true });
+    last = at + m[0].length;
+  }
+  out.push({ text: text.slice(last) });
+  return out;
+}
+
+/** Los bloques para dibujar una publicación. Un renglón vacío es un párrafo sin texto. */
 export function communityBlocks(body: string): CommunityBlock[] {
-  return renderContractMarkdown(body ?? "").map((b) =>
-    b.type === "list" ? { ...b, items: b.items.map(linkify) } : { ...b, runs: linkify(b.runs) },
+  return splitBlankLines(body).flatMap((piece): CommunityBlock[] =>
+    "blank" in piece
+      ? [{ type: "paragraph", runs: [] }]
+      : renderContractMarkdown(piece.text).map((b) =>
+          b.type === "list" ? { ...b, items: b.items.map(linkify) } : { ...b, runs: linkify(b.runs) },
+        ),
   );
 }
 
@@ -92,14 +121,32 @@ export function communityPlainText(body: string): string {
 // El editor con formato (Tiptap) ↔ lo que se guarda
 // ---------------------------------------------------------------------------
 
-/** Lo guardado → el documento del editor. */
+/** Lo guardado → el documento del editor (un renglón vacío vuelve a ser un párrafo vacío). */
 export function communityToEditorDoc(body: string): DocNode {
-  return markdownToEditorDoc(body ?? "");
+  const content: DocNode[] = [];
+  for (const piece of splitBlankLines(body)) {
+    if ("blank" in piece) content.push({ type: "paragraph" });
+    else if (piece.text.trim()) content.push(...(markdownToEditorDoc(piece.text).content ?? []).filter((n) => !isEmptyParagraph(n)));
+  }
+  return { type: "doc", content: content.length ? content : [{ type: "paragraph" }] };
 }
 
-/** El documento del editor → lo que se guarda. */
+const isEmptyParagraph = (node: DocNode) => node.type === "paragraph" && !(node.content ?? []).some((c) => c.type !== "hardBreak" && !(c.type === "text" && !c.text?.trim()));
+
+/**
+ * El documento del editor → lo que se guarda. Un párrafo vacío ENTRE dos bloques con texto es un renglón vacío (se
+ * guarda como dos saltos de línea de más); los vacíos del principio y el final se descartan.
+ */
 export function communityFromEditorDoc(doc: DocNode): string {
-  return editorDocToMarkdown(doc).trim();
+  const parts: string[] = [];
+  for (const node of doc.content ?? []) {
+    const md = editorDocToMarkdown({ type: "doc", content: [node] });
+    if (md.trim()) parts.push(md);
+    else if (isEmptyParagraph(node)) parts.push("");
+  }
+  while (parts.length && parts[0] === "") parts.shift();
+  while (parts.length && parts[parts.length - 1] === "") parts.pop();
+  return parts.join("\n\n").trim();
 }
 
 /**
@@ -109,6 +156,9 @@ export function communityFromEditorDoc(doc: DocNode): string {
 export function looksLikeMarkdown(text: string): boolean {
   return /(^|\n)(#{1,3}\s|[-*]\s|\d+[.)]\s)|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\((https?:|mailto:|tel:)/.test(text);
 }
+
+/** El título de un post del equipo (00405): obligatorio en uno nuevo, hasta 200 caracteres (emojis incluidos). */
+export const COMMUNITY_TITLE_MAX = 200;
 
 // ---------------------------------------------------------------------------
 // Fotos del equipo

@@ -26,6 +26,8 @@ export function CommunityBody({ body, photos = [], videos = true, compact = fals
               </List>
             );
           }
+          // Un renglón vacío (párrafo sin texto) ocupa una línea en blanco.
+          if (b.runs.length === 0) return <p key={i} aria-hidden="true"><br /></p>;
           return <p key={i} className="break-words">{runs(b.runs)}</p>;
         })}
       </div>

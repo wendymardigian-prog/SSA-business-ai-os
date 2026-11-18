@@ -68,6 +68,35 @@
       "name": "un Fathom privado (calls) y una web común no tienen reproductor",
       "body": "https://fathom.video/calls/123456 https://ejemplo.com/video",
       "videos": []
+    },
+    {
+      "name": "dos o tres saltos: párrafos seguidos, como siempre",
+      "body": "Uno\n\n\nDos",
+      "blocks": [{ "type": "paragraph", "runs": [{ "text": "Uno" }] }, { "type": "paragraph", "runs": [{ "text": "Dos" }] }],
+      "videos": []
+    },
+    {
+      "name": "cuatro saltos: un renglón vacío entre los párrafos",
+      "body": "Uno\n\n\n\nDos",
+      "blocks": [{ "type": "paragraph", "runs": [{ "text": "Uno" }] }, { "type": "paragraph", "runs": [] }, { "type": "paragraph", "runs": [{ "text": "Dos" }] }],
+      "videos": []
+    },
+    {
+      "name": "seis saltos: dos renglones vacíos, también después de una lista",
+      "body": "- uno\n- dos\n\n\n\n\n\nFin",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [[{ "text": "uno" }], [{ "text": "dos" }]] },
+        { "type": "paragraph", "runs": [] },
+        { "type": "paragraph", "runs": [] },
+        { "type": "paragraph", "runs": [{ "text": "Fin" }] }
+      ],
+      "videos": []
+    },
+    {
+      "name": "los saltos del principio y el final no cuentan; un salto suelto sigue siendo salto",
+      "body": "\n\n\n\nLínea uno\nLínea dos\n\n\n\n",
+      "blocks": [{ "type": "paragraph", "runs": [{ "text": "Línea uno\nLínea dos" }] }],
+      "videos": []
     }
   ]
 }

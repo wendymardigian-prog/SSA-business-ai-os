@@ -37,6 +37,10 @@ function sql(query) {
 const applied = sql(`SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'app_servicio_portal'
   AND table_name = 'community_posts' AND column_name = 'community_key') AS a`)[0]?.a === true;
 const migration = applied ? "" : readFileSync(repoFile("supabase/migrations/00402_community_by_variant.sql"), "utf8");
+// 00405 (título y aviso por correo): igual, si no está aplicada se aplica adentro de la transacción.
+const applied405 = sql(`SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'app_servicio_portal'
+  AND table_name = 'community_posts' AND column_name = 'title') AS a`)[0]?.a === true;
+const migration405 = applied405 ? "" : readFileSync(repoFile("supabase/migrations/00405_community_post_title_email.sql"), "utf8");
 
 const listCases = json("lib/program/community-list.cases.json").cases;
 const portalCases = json("lib/portal-admin/portal-settings.cases.json").cases;
@@ -48,6 +52,7 @@ const T = (name, cond, detail = "NULL") => `INSERT INTO zz_res VALUES (${lit(nam
 const parts = [
   "BEGIN",
   migration,
+  migration405,
   `CREATE TEMP TABLE zz_res (name text, ok boolean, detail text) ON COMMIT DROP`,
   `CREATE TEMP TABLE zz (k text PRIMARY KEY, v text) ON COMMIT DROP`,
   // Corre un pedido y devuelve el error (o NULL si salió bien).
@@ -138,7 +143,7 @@ const parts = [
     `(SELECT community_key FROM app_servicio_portal.community_posts WHERE id = pg_temp.zz_get('pL')::uuid) = 'lite'
      AND (SELECT community_key FROM app_servicio_portal.community_posts WHERE id = pg_temp.zz_get('pA')::uuid) = 'principal'`),
   `SELECT pg_temp.zz_as(pg_temp.zz_get('uid'))`,
-  `INSERT INTO zz SELECT 'team', app_servicio.community_team_post(pg_temp.zz_get('prod')::uuid, jsonb_build_object('body', 'zz-test anuncio para todos', 'space_key', 'anuncios', 'as_business', true, 'community_keys', jsonb_build_array('principal', 'lite')))::text`,
+  `INSERT INTO zz SELECT 'team', app_servicio.community_team_post(pg_temp.zz_get('prod')::uuid, jsonb_build_object('title', 'zz-test 📣 Anuncio', 'body', 'zz-test anuncio para todos', 'space_key', 'anuncios', 'as_business', true, 'community_keys', jsonb_build_array('principal', 'lite')))::text`,
   T("criterio 7: el equipo publica un anuncio en las dos comunidades (un post en cada una)",
     `(SELECT array_agg(community_key ORDER BY community_key) FROM app_servicio_portal.community_posts WHERE product_id = pg_temp.zz_get('prod')::uuid AND body = 'zz-test anuncio para todos') = ARRAY['lite', 'principal']`),
   T("criterio 7: el equipo ve cada comunidad con el selector (community_feed con `community`)",
@@ -151,8 +156,50 @@ const parts = [
      AND (app_servicio.community_item_counts(pg_temp.zz_get('prod')::uuid) #>> '{by_community,principal,unanswered}')::int = 2`,
     `app_servicio.community_item_counts(pg_temp.zz_get('prod')::uuid)::text`),
   T("el equipo no publica en una comunidad que no existe",
-    `pg_temp.zz_err(format('SELECT app_servicio.community_team_post(%L::uuid, %L::jsonb)', pg_temp.zz_get('prod'), '{"body":"x","space_key":"general","as_business":true,"community_keys":["otra"]}')) LIKE '%No existe esa comunidad%'`),
+    `pg_temp.zz_err(format('SELECT app_servicio.community_team_post(%L::uuid, %L::jsonb)', pg_temp.zz_get('prod'), '{"title":"x","body":"x","space_key":"general","as_business":true,"community_keys":["otra"]}')) LIKE '%No existe esa comunidad%'`),
   `SELECT set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true)`,
+
+
+  // ── 00405: título y a quién le llega el correo ─────────────────────────────
+  `SELECT pg_temp.zz_as(pg_temp.zz_get('uid'))`,
+  T("00405: un post nuevo del equipo sin título no pasa",
+    `pg_temp.zz_err(format('SELECT app_servicio.community_team_post(%L::uuid, %L::jsonb)', pg_temp.zz_get('prod'), '{"body":"x","space_key":"general","as_business":true}')) LIKE '%Escribí el título%'`),
+  T("00405: un título de más de 200 no pasa",
+    `pg_temp.zz_err(format('SELECT app_servicio.community_team_post(%L::uuid, %L::jsonb)', pg_temp.zz_get('prod'), jsonb_build_object('title', repeat('a', 201), 'body', 'x', 'space_key', 'general'))) LIKE '%200%'`),
+  T("00405: el título queda guardado (con emojis) en las dos copias",
+    `(SELECT bool_and(title = 'zz-test 📣 Anuncio') AND count(*) = 2 FROM app_servicio_portal.community_posts WHERE product_id = pg_temp.zz_get('prod')::uuid AND body = 'zz-test anuncio para todos')`),
+  `INSERT INTO zz SELECT 'reply', app_servicio.community_team_post(pg_temp.zz_get('prod')::uuid, jsonb_build_object('title', 'no va', 'body', 'zz-test respuesta del equipo', 'parent_id', pg_temp.zz_get('team')))::text`,
+  T("00405: una respuesta no lleva título", `(SELECT title IS NULL FROM app_servicio_portal.community_posts WHERE id = pg_temp.zz_get('reply')::uuid)`),
+  `SELECT app_servicio.community_team_edit(pg_temp.zz_get('team')::uuid, jsonb_build_object('title', 'zz-test Nuevo título ✅', 'body', 'zz-test anuncio para todos'))`,
+  T("00405: editar cambia el título", `(SELECT title FROM app_servicio_portal.community_posts WHERE id = pg_temp.zz_get('team')::uuid) = 'zz-test Nuevo título ✅'`),
+  T("00405: editar no deja vaciar un título",
+    `pg_temp.zz_err(format('SELECT app_servicio.community_team_edit(%L::uuid, %L::jsonb)', pg_temp.zz_get('team'), '{"title":"  ","body":"x"}')) LIKE '%Escribí el título%'`),
+  T("00405: el feed del equipo devuelve el título",
+    `EXISTS (SELECT 1 FROM jsonb_array_elements(app_servicio.community_feed(pg_temp.zz_get('prod')::uuid, '{}')) x WHERE x ->> 'title' = 'zz-test Nuevo título ✅')`),
+  `SELECT set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true)`,
+  T("00405: el portal recibe el título (post_row)",
+    `EXISTS (SELECT 1 FROM jsonb_array_elements(app_servicio_portal.portal_feed(pg_temp.zz_get('tokL'), pg_temp.zz_get('prod')::uuid) -> 'posts') x WHERE x ->> 'title' = 'zz-test Nuevo título ✅')`,
+    `app_servicio_portal.portal_feed(pg_temp.zz_get('tokL'), pg_temp.zz_get('prod')::uuid)::text`),
+  // Las cuentas nacen «invited»: sin activar, no le llega a nadie; activas, a los de cada comunidad.
+  T("00405: sin cuentas activas, no le llega a nadie",
+    `NOT EXISTS (SELECT 1 FROM app_servicio.community_email_targets(pg_temp.zz_get('prod')::uuid, ARRAY['principal','lite']))`),
+  `UPDATE app_servicio_portal.portal_accounts SET status = 'active' WHERE workspace_id = pg_temp.zz_get('ws')::uuid AND contact_id IN (pg_temp.zz_get('cA')::uuid, pg_temp.zz_get('cL')::uuid, pg_temp.zz_get('cL2')::uuid)`,
+  T("00405: la principal le llega solo a la Academia",
+    `(SELECT array_agg(contact_id) FROM app_servicio.community_email_targets(pg_temp.zz_get('prod')::uuid, ARRAY['principal'])) = ARRAY[pg_temp.zz_get('cA')::uuid]`,
+    `(SELECT array_agg(contact_id)::text FROM app_servicio.community_email_targets(pg_temp.zz_get('prod')::uuid, ARRAY['principal']))`),
+  T("00405: Lite le llega a los dos de Lite (no a la cuenta sin activar)",
+    `(SELECT count(*) FROM app_servicio.community_email_targets(pg_temp.zz_get('prod')::uuid, ARRAY['lite'])) = 2
+     AND NOT EXISTS (SELECT 1 FROM app_servicio.community_email_targets(pg_temp.zz_get('prod')::uuid, ARRAY['lite']) WHERE contact_id = pg_temp.zz_get('cU')::uuid)`),
+  T("00405: las dos comunidades a la vez: una fila por persona",
+    `(SELECT count(*) = count(DISTINCT contact_id) AND count(*) = 3 FROM app_servicio.community_email_targets(pg_temp.zz_get('prod')::uuid, ARRAY['principal','lite']))`),
+  `UPDATE app_servicio_portal.portal_accounts SET status = 'suspended', suspended_at = now() WHERE contact_id = pg_temp.zz_get('cL2')::uuid`,
+  T("00405: una cuenta suspendida no recibe",
+    `(SELECT count(*) FROM app_servicio.community_email_targets(pg_temp.zz_get('prod')::uuid, ARRAY['lite'])) = 1`),
+  `UPDATE app_servicio_portal.portal_accounts SET status = 'active', suspended_at = NULL WHERE contact_id = pg_temp.zz_get('cL2')::uuid`,
+  T("00405: solo service_role puede pedir los destinatarios",
+    `NOT has_function_privilege('authenticated', 'app_servicio.community_email_targets(uuid, text[])', 'EXECUTE')
+     AND NOT has_function_privilege('anon', 'app_servicio.community_email_targets(uuid, text[])', 'EXECUTE')
+     AND has_function_privilege('service_role', 'app_servicio.community_email_targets(uuid, text[])', 'EXECUTE')`),
 
   // Criterio 2: el muro y los comentarios de la clase.
   T("criterio 2: Lite no ve nada de la Academia en el muro (y ve el anuncio de Lite)",

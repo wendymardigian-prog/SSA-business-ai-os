@@ -21,6 +21,22 @@ describe("casos compartidos con el portal", () => {
 });
 
 describe("ida y vuelta con el editor", () => {
+  it("los renglones vacíos se guardan y vuelven (uno y dos), y los de las puntas se descartan", () => {
+    const body = "Hola\n\n\n\nSegundo párrafo\nmisma línea siguiente\n\n\n\n\n\nFin";
+    const doc = communityToEditorDoc(body);
+    expect(doc.content?.map((n) => (n.content?.length ? "t" : "_"))).toEqual(["t", "_", "t", "_", "_", "t"]);
+    expect(communityFromEditorDoc(doc)).toBe(body);
+    const withEdges = { type: "doc", content: [{ type: "paragraph" }, ...(doc.content ?? []), { type: "paragraph" }, { type: "paragraph" }] };
+    expect(communityFromEditorDoc(withEdges)).toBe(body);
+  });
+  it("un párrafo con solo un salto (Shift+Enter) cuenta como vacío", () => {
+    const doc = { type: "doc", content: [
+      { type: "paragraph", content: [{ type: "text", text: "a" }] },
+      { type: "paragraph", content: [{ type: "hardBreak" }] },
+      { type: "paragraph", content: [{ type: "text", text: "b" }] },
+    ] };
+    expect(communityFromEditorDoc(doc)).toBe("a\n\n\n\nb");
+  });
   it("lo que se guarda vuelve igual", () => {
     const body = "## Bienvenida\n\nHola, **bienvenido**.\nSegunda línea.\n\n- uno\n- dos\n\n1. tres\n2. cuatro\n\nVer [el link](https://ejemplo.com/a_b).";
     expect(communityFromEditorDoc(communityToEditorDoc(body))).toBe(body);

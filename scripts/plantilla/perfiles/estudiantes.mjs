@@ -303,6 +303,9 @@ export const MODULES = {
       // Portal B2: lo que el portal le pide a SSA (firmado).
       "app/api/portal",
       "lib/jobs/handlers/portal-digest.ts",
+      // El aviso por correo de un post de la comunidad (00405).
+      "lib/jobs/handlers/community-post-email.ts",
+      "lib/jobs/handlers/community-post-email.test.ts",
       "lib/flow-engine/nodes/service-actions.ts",
       "lib/flow-engine/nodes/service-action-detail.ts",
       "lib/flow-engine/nodes/service-action-detail.test.ts",
