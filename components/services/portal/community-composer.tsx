@@ -6,8 +6,11 @@ import { ImagePlus, Loader2, X } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
 import { RichTextEditor, type RichTextFormat } from "@/components/editor/rich-text-editor";
 import { CommunityVideoPlayers } from "@/components/services/portal/community-body";
+import { FieldEmojiButton } from "@/components/ui/emoji-picker";
+import { fieldInput } from "@/components/content/dialog";
+import { cn } from "@/lib/utils";
 import { communityUploadPhoto } from "@/lib/actions/community";
-import { communityFromEditorDoc, communityToEditorDoc, communityVideos, looksLikeMarkdown, MAX_COMMUNITY_PHOTOS } from "@/lib/program/community-text";
+import { COMMUNITY_TITLE_MAX, communityFromEditorDoc, communityToEditorDoc, communityVideos, looksLikeMarkdown, MAX_COMMUNITY_PHOTOS } from "@/lib/program/community-text";
 
 /** Lo guardado es Markdown acotado; un Markdown pegado como texto se abre con su formato. */
 const COMMUNITY_FORMAT: RichTextFormat = {
@@ -15,6 +18,26 @@ const COMMUNITY_FORMAT: RichTextFormat = {
   save: (doc) => communityFromEditorDoc(doc as never),
   pasteText: (text) => (looksLikeMarkdown(text) ? (communityToEditorDoc(text) as JSONContent) : null),
 };
+
+/** El título de un post del equipo (00405), con su botón de emojis. Va arriba del editor. */
+export function CommunityTitleField({ id, value, onChange, disabled }: { id: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        id={id}
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={COMMUNITY_TITLE_MAX}
+        placeholder="Título"
+        aria-label="Título"
+        disabled={disabled}
+        className={cn(fieldInput, "flex-1 text-base font-semibold")}
+      />
+      <FieldEmojiButton targetId={id} value={value} onChange={onChange} disabled={disabled} />
+    </div>
+  );
+}
 
 export interface ComposerPhoto {
   path: string;
@@ -34,6 +57,7 @@ export function CommunityComposer({
   onPhotos,
   footer,
   disabled,
+  header,
 }: {
   id: string;
   productId: string;
@@ -45,6 +69,8 @@ export function CommunityComposer({
   /** Lo de abajo; `uploading` = hay fotos subiendo (no se publica hasta que terminen). */
   footer: (state: { uploading: boolean }) => ReactNode;
   disabled?: boolean;
+  /** Lo de arriba del editor (el título). */
+  header?: ReactNode;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -72,6 +98,7 @@ export function CommunityComposer({
 
   return (
     <div className="space-y-2">
+      {header}
       <RichTextEditor
         id={id}
         label="Publicación"
