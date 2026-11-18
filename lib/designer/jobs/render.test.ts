@@ -160,6 +160,20 @@ describe("design_render (F6)", () => {
     expect(state.updates).toEqual([]);
   });
 
+  it("una generación sin el link de verificación en sus valores lo arma al renderizar, con el código de la fila", async () => {
+    const doc = emptyDoc("a4_h");
+    doc.pages[0].elements.push({ id: "el_aaaa02", type: "text", x: 50, y: 90, w: 80, text: "Verificá en {{design.verify_url}}", font: { family: "Inter", weight: 400 }, size: 12, align: "center", color: "#000000" });
+    const { db } = fakeDb(baseRow({ template_id: "t1", status: "queued", doc, format: "a4_h", values: { "design.code": "K8F2-WQ4M-7TQA" } }));
+    const seen: string[] = [];
+    const render = vi.fn(async (req: RenderRequest) => {
+      seen.push(...(req.pages ?? [{ html: req.html ?? "" }]).map((p) => p.html));
+      return fakeRender(req);
+    });
+    await runDesignRender(db, { designId: DESIGN, purpose: "generation" }, { render, now: () => NOW, schedule: vi.fn() });
+    expect(seen[0]).toMatch(/Verificá en [^<\s]+\/d\/K8F2-WQ4M-7TQA</);
+    expect(seen[0]).not.toContain("Verificá en http");
+  });
+
   it("una exportación que falla no toca los intentos de la fila: se reagenda con su propio contador", async () => {
     const { db, state } = fakeDb(baseRow());
     const schedule = vi.fn(async () => ({ id: "j" }));

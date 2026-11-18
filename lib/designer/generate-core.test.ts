@@ -138,6 +138,10 @@ describe("createGeneration: código y fecha de emisión (F56)", () => {
     const row = db.rows("designs")[0];
     expect((row.values as Record<string, string>)["design.code"]).toBe(out.code);
     expect(row.code).toBe(out.code);
+    // Y su link de verificación, para imprimir: el de la página pública, sin `https://`.
+    const link = (row.values as Record<string, string>)["design.verify_url"];
+    expect(link.endsWith(`/d/${out.code}`)).toBe(true);
+    expect(link.startsWith("http")).toBe(false);
   });
 
   it("si no se pudo guardar el código en los valores, la pieza igual se crea sin un código vacío guardado", async () => {

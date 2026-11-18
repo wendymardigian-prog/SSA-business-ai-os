@@ -25,6 +25,7 @@ import { scheduleJob } from "@/lib/scheduler";
 import { parseDesignDoc, type DesignDoc } from "../doc/schema";
 import { emitDesignGenerated, type SubjectRef } from "../extensions";
 import { FORMATS } from "../formats";
+import { loadDesignVerifyLabel } from "../public-links";
 import { renderPageHTML } from "../render/page-html";
 import { renderDesign, RenderFailed, renderErrorMessage, RenderNotConfigured, type RenderRequest, type RenderResult } from "../render-client";
 import { parseDesignSettings } from "../settings-schema";
@@ -123,6 +124,15 @@ function valuesOf(row: DesignRow): Record<string, string> {
   if (row.values && typeof row.values === "object") for (const [k, v] of Object.entries(row.values as Record<string, unknown>)) if (typeof v === "string") values[k] = v;
   if (row.template_id) values["design.code"] ??= row.code;
   return values;
+}
+
+/**
+ * Una generación sin el link de verificación en sus valores (de antes de que existiera, o si no se pudo guardar al
+ * crearla) lo arma con el dominio del negocio. Nunca lanza.
+ */
+async function withVerifyUrl(db: Db, row: DesignRow, values: Record<string, string>): Promise<Record<string, string>> {
+  if (!row.template_id || values["design.verify_url"] || !values["design.code"]) return values;
+  return { ...values, "design.verify_url": await loadDesignVerifyLabel(db, row.workspace_id, values["design.code"]) };
 }
 
 /** Anota un fallo: reagenda (pasajero, hasta 3 veces) o deja `failed`. Nunca lanza. */
@@ -294,7 +304,7 @@ export async function runDesignRender(db: Db, payload: DesignRenderPayload, deps
   try {
     const isGeneration = !!row.template_id && payload.purpose !== "export";
     if (isGeneration) await db.from("designs").update({ status: "rendering" }).eq("id", row.id);
-    const html = await pagesHtml(db, row, doc, { ...valuesOf(row), ...(payload.values ?? {}) });
+    const html = await pagesHtml(db, row, doc, await withVerifyUrl(db, row, { ...valuesOf(row), ...(payload.values ?? {}) }));
     const base = { width: format.width, height: format.height, scale: format.exportScale } as const;
 
     if (payload.purpose === "export") {

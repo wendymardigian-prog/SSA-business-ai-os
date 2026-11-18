@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { designDownloadUrl, designLinksFor, designPublicUrl, loadDesignLinks, normalizeDesignCode } from "./public-links";
+import { designDownloadUrl, designLinksFor, designPublicUrl, designVerifyLabel, loadDesignLinks, loadDesignVerifyLabel, normalizeDesignCode } from "./public-links";
 
 const MAIN = "https://app.principal.test";
 beforeEach(() => vi.stubEnv("NEXT_PUBLIC_APP_URL", MAIN));
@@ -32,6 +32,14 @@ describe("links públicos del Diseñador IA (V4)", () => {
     expect((await loadDesignLinks(db("https://links.negocio.test"), "ws", "K8F2-WQ4M-7TQA")).link).toBe("https://links.negocio.test/d/K8F2-WQ4M-7TQA");
     expect((await loadDesignLinks(db(null), "ws", "K8F2-WQ4M-7TQA")).link).toBe(`${MAIN}/d/K8F2-WQ4M-7TQA`);
     expect((await loadDesignLinks(db(null, true), "ws", "K8F2-WQ4M-7TQA")).link).toBe(`${MAIN}/d/K8F2-WQ4M-7TQA`);
+    // El link para imprimir: el mismo, sin `https://`, también cuando la base falla.
+    expect(await loadDesignVerifyLabel(db("https://links.negocio.test"), "ws", "K8F2-WQ4M-7TQA")).toBe("links.negocio.test/d/K8F2-WQ4M-7TQA");
+    expect(await loadDesignVerifyLabel(db(null, true), "ws", "K8F2-WQ4M-7TQA")).toBe(`${MAIN.replace(/^https?:\/\//, "")}/d/K8F2-WQ4M-7TQA`);
+  });
+
+  it("el link de verificación para imprimir es el link público sin `https://`", () => {
+    expect(designVerifyLabel("https://links.negocio.test/", "AAAA-BBBB-CCCC")).toBe("links.negocio.test/d/AAAA-BBBB-CCCC");
+    expect(designVerifyLabel("http://localhost:3000", "AAAA-BBBB-CCCC")).toBe("localhost:3000/d/AAAA-BBBB-CCCC");
   });
 
   it("la descarga de una página lleva el número", () => {

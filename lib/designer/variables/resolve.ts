@@ -44,11 +44,11 @@ export function isMissingPolicy(value: unknown): value is MissingPolicy {
 }
 
 /** Las variables que pone el sistema y que nunca faltan. */
-const SYSTEM_KEYS = new Set(["workspace.name", "design.code", "design.doc_type", "design.issued_on", "design.today"]);
+const SYSTEM_KEYS = new Set(["workspace.name", "design.code", "design.verify_url", "design.doc_type", "design.issued_on", "design.today"]);
 const CONTACT_KEYS = ["contact.first_name", "contact.display_name", "contact.email", "contact.phone"] as const;
 
 /** Las claves que siempre se calculan y se guardan (el email y «Detalle» las usan aunque la plantilla no las muestre). */
-export const ALWAYS_RESOLVED_KEYS: readonly string[] = [...CONTACT_KEYS, "workspace.name", "design.code", "design.doc_type", "design.issued_on", "design.today"];
+export const ALWAYS_RESOLVED_KEYS: readonly string[] = [...CONTACT_KEYS, "workspace.name", "design.code", "design.verify_url", "design.doc_type", "design.issued_on", "design.today"];
 
 export interface ResolveTemplate {
   /** Las variables que usa el documento (`docVariables`). Solo estas pueden «faltar». */
@@ -73,6 +73,8 @@ export interface ResolveSubject {
   registered?: Readonly<Record<string, string>>;
   /** El código de la pieza, si ya existe (un reintento); al crear todavía no hay. */
   code?: string | null;
+  /** El link de verificación sin `https://` (`designVerifyLabel`), si ya hay código; al crear todavía no hay. */
+  verifyUrl?: string | null;
   /** Cuándo se crea (la fecha de emisión). */
   now: Date;
   /** La zona del negocio (`workspaces.timezone`). */
@@ -127,6 +129,8 @@ function fromSubject(key: string, subject: ResolveSubject, template: ResolveTemp
       return subject.workspaceName ?? null;
     case "design.code":
       return subject.code ?? "";
+    case "design.verify_url":
+      return subject.verifyUrl ?? "";
     case "design.doc_type":
       return docTypeVariable({ verify: template.verify, doc_type: template.docType, doc_type_label: template.docTypeLabel });
     case "design.issued_on":

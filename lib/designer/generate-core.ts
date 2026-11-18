@@ -34,6 +34,7 @@ import { docVariables, parseDesignDoc, type DesignDoc } from "./doc/schema";
 import { resolveRegisteredValues, type SubjectRef } from "./extensions";
 import { enqueueDesignRender } from "./jobs/render";
 import { publishDesignCore } from "./publishing";
+import { loadDesignVerifyLabel } from "./public-links";
 import { parseCustomVarsList } from "./variables/custom";
 import { isMissingPolicy, missingMessage, resolveValues, type ResolveContact, type ResolveResult } from "./variables/resolve";
 import { docTypeNoun, isDocType } from "./verification";
@@ -360,8 +361,9 @@ async function run(db: Db, input: CreateGenerationInput, deps: Required<Generati
   const designId = (created as { id: string }).id;
   const code = (created as { code: string }).code;
 
-  // El código en los valores (para «Detalle» y el email). No frena nada si falla: el render lo pone solo.
-  const withCode = { ...values, "design.code": code };
+  // El código y su link de verificación en los valores (para «Detalle», el email y la pieza). No frena nada si falla: el
+  // render los pone solos.
+  const withCode = { ...values, "design.code": code, "design.verify_url": await loadDesignVerifyLabel(db, workspaceId, code) };
   const { error: codeError } = await db.from("designs").update({ values: withCode as unknown as Json }).eq("id", designId);
   if (codeError) console.error("[designer] no pude guardar el código en los valores:", codeError.message);
 

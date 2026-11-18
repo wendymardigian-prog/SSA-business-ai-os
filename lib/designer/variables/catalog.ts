@@ -48,10 +48,14 @@ export const WORKSPACE_DESIGN_VARIABLES: readonly DesignVariable[] = [{ key: "wo
 /** Las propias del Diseñador IA. `design.doc_type` solo tiene sentido en plantillas con verificación (F47). */
 export const DESIGN_SYSTEM_VARIABLES: readonly DesignVariable[] = [
   { key: "design.code", label: "Código de verificación", sample: "K8F2-WQ4M-7TQA" },
+  { key: "design.verify_url", label: "Link de verificación", sample: "tudominio.com/d/K8F2-WQ4M-7TQA" },
   { key: "design.doc_type", label: "Tipo de documento", sample: "Certificado" },
   { key: "design.issued_on", label: "Fecha de emisión", sample: "7 de noviembre de 2026" },
   { key: "design.today", label: "Fecha de hoy", sample: "7 de noviembre de 2026" },
 ];
+
+/** Solo tienen sentido en una plantilla que se puede verificar: el menú no las ofrece sin verificación. */
+const VERIFY_ONLY_KEYS = new Set(["design.code", "design.verify_url", "design.doc_type"]);
 
 /** Las claves del sistema que el Diseñador comparte con Automatizaciones. */
 export const SHARED_SYSTEM_KEYS: readonly string[] = [...CONTACT_VARIABLES, ...WORKSPACE_VARIABLES];
@@ -93,7 +97,7 @@ export function variableGroups(opts: { customVars?: readonly CustomVar[]; verify
   groups.push({
     key: "diseno",
     label: "Diseño",
-    vars: DESIGN_SYSTEM_VARIABLES.filter((v) => opts.verify || (v.key !== "design.code" && v.key !== "design.doc_type")),
+    vars: DESIGN_SYSTEM_VARIABLES.filter((v) => opts.verify || !VERIFY_ONLY_KEYS.has(v.key)),
   });
   for (const g of registeredVariableGroups()) groups.push({ key: g.group, label: g.label, vars: g.vars.map((v) => ({ ...v })) });
   return groups;

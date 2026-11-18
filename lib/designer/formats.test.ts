@@ -41,8 +41,9 @@ describe("formatos (F9)", () => {
     expect((FORMATS.story.safeZone.bottom / 100) * 1920).toBeCloseTo(340, 0);
   });
 
-  it("impresos ×1 y redes ×2 al exportar", () => {
-    for (const key of PRINT_FORMATS) expect(FORMATS[key].exportScale).toBe(1);
+  it("impresos y redes ×2 al exportar (impresos ×1 se veía borroso); web ×1", () => {
+    for (const key of PRINT_FORMATS) expect(FORMATS[key].exportScale).toBe(2);
+    expect(FORMATS.web.exportScale).toBe(1);
     expect(FORMATS.v45.exportScale).toBe(2);
     expect(FORMATS.story.exportScale).toBe(2);
   });

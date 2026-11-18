@@ -22,9 +22,9 @@ describe("catálogo de variables (núcleo de F49)", () => {
     expect(groups.map((g) => g.label)).toEqual(["Propias", "Contacto", "Negocio", "Diseño"]);
   });
 
-  it("el código y el tipo de documento solo aparecen si la plantilla verifica", () => {
+  it("el código, su link y el tipo de documento solo aparecen si la plantilla verifica", () => {
     const keys = (verify: boolean) => variableGroups({ verify }).find((g) => g.key === "diseno")!.vars.map((v) => v.key);
-    expect(keys(true)).toEqual(["design.code", "design.doc_type", "design.issued_on", "design.today"]);
+    expect(keys(true)).toEqual(["design.code", "design.verify_url", "design.doc_type", "design.issued_on", "design.today"]);
     expect(keys(false)).toEqual(["design.issued_on", "design.today"]);
   });
 
