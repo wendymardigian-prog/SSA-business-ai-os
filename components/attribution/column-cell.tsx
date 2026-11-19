@@ -31,23 +31,38 @@ function CopyCellButton({ value, label }: { value: string; label: string }) {
 /** Solo un https:// se dibuja como link (lo que guardó un formulario ya pasó por esa regla; esto es la red de seguridad). */
 const isHttpsLink = (value: string) => /^https:\/\/\S+$/i.test(value);
 
+/** Lo de adentro de la celda (para la tabla común, que pone su propio `<td>`). */
+export function ColumnCellContent<Row>({ def, row }: { def: ColumnDef<Row>; row: Row }) {
+  const value = def.value(row);
+  if (!value) return <span className="text-muted-foreground">—</span>;
+  if (def.link && isHttpsLink(value)) {
+    return (
+      <a href={value} target="_blank" rel="noopener noreferrer" title={value} className="block truncate text-primary-ink underline-offset-2 hover:underline">
+        {value}
+      </a>
+    );
+  }
+  if (def.copyable) {
+    return (
+      <div className="flex items-center gap-1" title={value}>
+        <span className="min-w-0 flex-1 truncate">{value}</span>
+        <CopyCellButton value={value} label={def.label} />
+      </div>
+    );
+  }
+  return (
+    <div className="truncate" title={value}>
+      {value}
+    </div>
+  );
+}
+
 export function ColumnCell<Row>({ def, row, className }: { def: ColumnDef<Row>; row: Row; className?: string }) {
   const value = def.value(row);
   if (!value) return <td className={cn("px-3 py-2 text-muted-foreground", className)}>—</td>;
   return (
     <td className={cn("max-w-[16rem] px-3 py-2", className)} title={value}>
-      {def.link && isHttpsLink(value) ? (
-        <a href={value} target="_blank" rel="noopener noreferrer" className="block truncate text-primary-ink underline-offset-2 hover:underline">
-          {value}
-        </a>
-      ) : def.copyable ? (
-        <div className="flex items-center gap-1">
-          <span className="min-w-0 flex-1 truncate">{value}</span>
-          <CopyCellButton value={value} label={def.label} />
-        </div>
-      ) : (
-        <div className="truncate">{value}</div>
-      )}
+      <ColumnCellContent def={def} row={row} />
     </td>
   );
 }

@@ -6,6 +6,7 @@ import { columnWidth, resetColumnWidth, setColumnWidth, visibleColumns, type Col
 import { selectionState, toggleAllVisible, toggleRow } from "@/lib/ui/data-table/selection";
 import { splitPinned, stickyOffsets } from "@/lib/ui/data-table/sticky";
 import { ClickableTr } from "@/components/ui/clickable-row";
+import { cn } from "@/lib/utils";
 import { ariaSort, type TableSort } from "@/lib/ui/data-table/sort";
 import { ResizeHandle } from "./resize-handle";
 import type { TablePrefsState } from "./use-table-prefs";
@@ -31,6 +32,16 @@ export interface DataColumn<Row> extends ColumnMeta {
   hint?: string;
   /** Se ordena con un clic en el título. Solo tiene efecto si la tabla recibe `onSortChange`. */
   sortable?: boolean;
+  /** El contenido puede ocupar varias líneas (nombre con insignias, etiquetas, dos datos). Por defecto, una línea con «…». */
+  wrap?: boolean;
+}
+
+/** Filas agrupadas: cada grupo con su título (y un dato a la derecha, por ejemplo el subtotal) adentro de la misma tabla. */
+export interface DataTableGroup<Row> {
+  key: string;
+  label: ReactNode;
+  aside?: ReactNode;
+  rows: readonly Row[];
 }
 
 /**
@@ -64,6 +75,8 @@ export function DataTable<Row>({
   beforeRowNavigate,
   sort,
   onSortChange,
+  rowClassName,
+  groups,
 }: {
   columns: readonly DataColumn<Row>[];
   rows: readonly Row[];
@@ -87,6 +100,10 @@ export function DataTable<Row>({
   sort?: TableSort | null;
   /** Clic en el título de una columna `sortable`. Sin esto, ningún título se ordena y la tabla es la de siempre. */
   onSortChange?: (key: string) => void;
+  /** Clases extra de una fila (atenuar una archivada o anulada, marcar la elegida). */
+  rowClassName?: (row: Row) => string | undefined;
+  /** Filas agrupadas con su título; reemplaza a `rows` (que entonces puede ir vacío). Los grupos sin filas no se dibujan. */
+  groups?: readonly DataTableGroup<Row>[];
 }) {
   const { prefs } = state;
   const [live, setLive] = useState<{ key: string; width: number } | null>(null);
@@ -100,7 +117,8 @@ export function DataTable<Row>({
   const selectWidth = selection ? SELECT_WIDTH : 0;
   const total = widths.reduce((sum, width) => sum + width, selectWidth);
   const offsets = stickyOffsets(widths.slice(0, pinned.length), selectWidth);
-  const visibleIds = useMemo(() => rows.map(rowKey), [rows, rowKey]);
+  const sections = useMemo(() => (groups ? groups.filter((g) => g.rows.length > 0) : [{ key: "", label: null, aside: undefined, rows }]), [groups, rows]);
+  const visibleIds = useMemo(() => sections.flatMap((s) => s.rows.map(rowKey)), [sections, rowKey]);
   const allState = selection ? selectionState(selection.selected, visibleIds) : "none";
   // La casilla de la columna de casillas queda pegada a la izquierda solo si hay columnas fijas.
   const selectSticky = pinned.length > 0 ? "sticky left-0 z-[2]" : "";
@@ -166,32 +184,50 @@ export function DataTable<Row>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-border">
-          {rows.map((row) => (
-            <BodyRow key={rowKey(row)} href={rowHref?.(row) ?? null} onOpen={onRowClick ? () => onRowClick(row) : undefined} beforeNavigate={beforeRowNavigate}>
-              {selection && (
-                <td className={`px-3 py-2 ${pinned.length > 0 ? "sticky left-0 z-[1] bg-card group-hover:bg-muted" : ""}`} onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 cursor-pointer align-middle"
-                    checked={selection.selected.has(rowKey(row))}
-                    onChange={() => selection.onChange(toggleRow(selection.selected, rowKey(row)))}
-                    aria-label={selection.rowLabel?.(row) ?? "Elegir la fila"}
-                  />
-                </td>
-              )}
-              {shown.map((column, index) => (
-                <td
-                  key={column.key}
-                  style={stickyStyle(index)}
-                  className={`overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 ${column.align === "right" ? "text-right tabular-nums" : ""} ${pinClass(index, "bg-card group-hover:bg-muted")} ${column.cellClassName ?? ""}`}
-                >
-                  {column.render(row)}
-                </td>
-              ))}
-            </BodyRow>
-          ))}
-        </tbody>
+        {sections.map((section) => (
+          <tbody key={section.key} className="divide-y divide-border border-t border-border first-of-type:border-t-0">
+            {groups && (
+              <tr>
+                <th scope="rowgroup" colSpan={shown.length + (selection ? 1 : 0)} className={`px-3 py-2 text-left text-xs font-semibold ${HEADER_BG}`}>
+                  <span className="sticky left-3 inline-flex max-w-full items-center gap-3">
+                    <span className="truncate">{section.label}</span>
+                    {section.aside !== undefined && <span className="shrink-0 font-normal text-muted-foreground">{section.aside}</span>}
+                  </span>
+                </th>
+              </tr>
+            )}
+            {section.rows.map((row) => (
+              <BodyRow key={rowKey(row)} href={rowHref?.(row) ?? null} onOpen={onRowClick ? () => onRowClick(row) : undefined} beforeNavigate={beforeRowNavigate} className={rowClassName?.(row)}>
+                {selection && (
+                  <td className={`px-3 py-2 ${pinned.length > 0 ? "sticky left-0 z-[1] bg-card group-hover:bg-muted" : ""}`} onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer align-middle"
+                      checked={selection.selected.has(rowKey(row))}
+                      onChange={() => selection.onChange(toggleRow(selection.selected, rowKey(row)))}
+                      aria-label={selection.rowLabel?.(row) ?? "Elegir la fila"}
+                    />
+                  </td>
+                )}
+                {shown.map((column, index) => (
+                  <td
+                    key={column.key}
+                    style={stickyStyle(index)}
+                    className={cn(
+                      "px-3 py-2",
+                      column.wrap ? "whitespace-normal break-words" : "overflow-hidden text-ellipsis whitespace-nowrap",
+                      column.align === "right" && "text-right tabular-nums",
+                      pinClass(index, "bg-card group-hover:bg-muted"),
+                      column.cellClassName,
+                    )}
+                  >
+                    {column.render(row)}
+                  </td>
+                ))}
+              </BodyRow>
+            ))}
+          </tbody>
+        ))}
         {hasTotals && (
           <tfoot>
             <tr className="border-t-2 border-border font-semibold">
@@ -214,9 +250,9 @@ export function DataTable<Row>({
 }
 
 /** Una fila del cuerpo: con `href` u `onOpen`, toda la fila abre el registro (ver `useRowOpen`). */
-function BodyRow({ href, onOpen, beforeNavigate, children }: { href: string | null; onOpen?: () => void; beforeNavigate?: (element: HTMLElement) => void; children: ReactNode }) {
+function BodyRow({ href, onOpen, beforeNavigate, className, children }: { href: string | null; onOpen?: () => void; beforeNavigate?: (element: HTMLElement) => void; className?: string; children: ReactNode }) {
   return (
-    <ClickableTr href={href} onOpen={onOpen} beforeNavigate={beforeNavigate} className="group hover:bg-muted/30">
+    <ClickableTr href={href} onOpen={onOpen} beforeNavigate={beforeNavigate} className={cn("group hover:bg-muted/30", className)}>
       {children}
     </ClickableTr>
   );
