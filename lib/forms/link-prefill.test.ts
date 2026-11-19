@@ -22,6 +22,29 @@ const map = [
 ];
 
 describe("linkPrefillValues", () => {
+  it("con «Nombre» y «Apellidos» separados, la primera palabra va al nombre y el resto al apellido", () => {
+    const f = [
+      { key: "nombre", type: "short_text" },
+      { key: "apellidos", type: "short_text" },
+      { key: "email", type: "email" },
+    ];
+    const m = [
+      { fieldKey: "nombre", target: "contact.first_name_part" },
+      { fieldKey: "apellidos", target: "contact.last_name_part" },
+      { fieldKey: "email", target: "contact.email" },
+    ];
+    expect(linkPrefillValues(contact({ display_name: "María José  Pérez Rojas" }), f, m)).toEqual({ nombre: "María", apellidos: "José Pérez Rojas", email: "ana@ejemplo.com" });
+    // Una sola palabra: el apellido queda vacío (no se escribe).
+    expect(linkPrefillValues(contact({ display_name: "Ana" }), f, m)).toEqual({ nombre: "Ana", email: "ana@ejemplo.com" });
+    // Un nombre de relleno no se parte ni se prellena.
+    expect(linkPrefillValues(contact({ display_name: "@ana.perez" }), f, m)).toEqual({ email: "ana@ejemplo.com" });
+  });
+
+  it("las partes del nombre solo van a un texto corto", () => {
+    const f = [{ key: "nombre", type: "long_text" }];
+    expect(linkPrefillValues(contact(), f, [{ fieldKey: "nombre", target: "contact.first_name_part" }])).toEqual({});
+  });
+
   it("rellena nombre, email y teléfono según el mapeo, y nada más", () => {
     expect(linkPrefillValues(contact(), fields, map)).toEqual({ nombre: "Ana Pérez", email: "ana@ejemplo.com", telefono: "+50688881234" });
   });

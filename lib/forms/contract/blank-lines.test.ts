@@ -46,6 +46,19 @@ describe("renglones vacíos del contrato", () => {
   });
 });
 
+describe("sangría y espacios dobles del contrato", () => {
+  it("se guardan, también en el primer renglón, y vuelven a abrirse igual", () => {
+    const saved = editorDocToMarkdownWithBlankLines({ type: "doc", content: [p("  Sangría y  dos espacios"), p("    otra")] });
+    expect(saved).toBe("  Sangría y  dos espacios\n\n    otra");
+    expect(editorDocToMarkdownWithBlankLines(markdownToEditorDocWithBlankLines(saved))).toBe(saved);
+  });
+
+  it("quedan en el texto que se dibuja", () => {
+    const [block] = blocksWithBlankLines("  Sangría y  dos espacios");
+    expect(block).toEqual({ type: "paragraph", runs: [{ text: "  Sangría y  dos espacios" }] });
+  });
+});
+
 describe("pegar en el contrato", () => {
   it("un texto plano conserva sus renglones vacíos y entra literal", () => {
     const doc = plainTextToEditorDoc("Cláusula 1\r\n\r\n1. no es una lista\n\n\n**tampoco negrita");

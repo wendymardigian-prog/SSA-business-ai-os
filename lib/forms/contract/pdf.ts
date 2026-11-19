@@ -143,6 +143,9 @@ class Writer {
 
     let line: Word[] = [];
     let width = 0;
+    // Al principio de un renglón que empezó la persona (el primero o después de un salto) los espacios son una
+    // sangría y se dibujan; al principio de un renglón que cortó el ancho, no.
+    let explicitStart = true;
     const flush = () => {
       this.ensure(lineHeight);
       let x = MARGIN.left + indent;
@@ -161,6 +164,7 @@ class Writer {
     for (const word of words) {
       if (word.newline) {
         flush();
+        explicitStart = true;
         continue;
       }
       const w = textWidth(word.font, word.text, size);
@@ -169,8 +173,9 @@ class Writer {
         // Se corta antes de la palabra; el espacio que quedó al final no se escribe.
         while (line.length > 0 && /^\s+$/.test(line[line.length - 1].text)) line.pop();
         flush();
+        explicitStart = false;
       }
-      if (isSpace && line.length === 0) continue; // sin espacios al inicio de línea
+      if (isSpace && line.length === 0 && !explicitStart) continue; // sin espacios al inicio de un renglón cortado por el ancho
       // Una palabra más ancha que la línea (un hash, una URL) se parte por caracteres.
       if (!isSpace && w > maxWidth) {
         for (const chunk of splitToWidth(word.text, word.font, size, maxWidth)) {
@@ -182,6 +187,7 @@ class Writer {
       }
       line.push(word);
       width += w;
+      if (!isSpace) explicitStart = false;
     }
     if (line.length > 0) flush();
   }

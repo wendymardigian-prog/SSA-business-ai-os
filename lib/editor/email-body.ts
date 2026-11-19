@@ -36,10 +36,20 @@ export function variableToken(name: string): string {
   return `{{${name}}}`;
 }
 
-/** Normaliza lo que escribe la persona en el campo de enlace; null si no sirve. */
+const LINK_VARIABLE = /^\{\{\s*([\w-]+(?:\.[\w-]+)*)\s*\}\}$/;
+
+/**
+ * Normaliza lo que escribe la persona en el campo de enlace; null si no sirve.
+ *
+ * Una variable sola (`{{form_link.onboarding}}`, `{{design.link}}`) también vale: se completa al enviar y RECIÉN
+ * DESPUÉS la lista blanca de `lib/email/html.ts` decide si quedó una dirección segura (http, https, mailto o tel). Si
+ * no, el enlace se saca y queda el texto. Este editor no es la defensa.
+ */
 export function normalizeLink(input: string): string | null {
   const value = input.trim();
   if (!value) return null;
+  const variable = LINK_VARIABLE.exec(value);
+  if (variable) return `{{${variable[1]}}}`;
   if (/^(https?:\/\/|mailto:|tel:)/i.test(value)) return value;
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return `mailto:${value}`;
   if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(value)) return `https://${value}`;

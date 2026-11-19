@@ -731,6 +731,7 @@ Revisión de punta a punta del motor, los disparadores, los pasos y la pantalla.
   que se iba a mandar ni se genera; si solo guarda `{{ai_response}}`, sigue igual. Si la base no contesta, no se manda.
   Todo en `lib/flow-engine/do-not-contact.ts`. Antes WhatsApp e Instagram mandaban igual.
 - **Enviar email, vista previa y saludo**: `preheader` (opcional, con variables) es la línea que la bandeja muestra al lado del asunto; se pone después de limpiar el HTML (`withPreheader`). Un respaldo vacío saluda bien en los dos casos: `Hola, {{contact.first_name|}}.` da «Hola, Ana.» o «Hola.» (`dropDanglingComma`).
+- **Enviar email, enlace a una variable** (18/11/2026, traído de ALMA-BAIOS): en el editor de correos, el destino de un enlace puede ser una variable sola (`{{form_link.onboarding}}`, `{{design.link}}`; `normalizeLink`, `lib/editor/email-body.ts`). Se completa al enviar y RECIÉN DESPUÉS la lista blanca decide: si no quedó `http`, `https`, `mailto` o `tel`, se saca el enlace y queda el texto.
 - **Enviar email**: `attachments: [{ assetId }]`, recursos de la banca con archivo, hasta 10 y 25 MB
   (`lib/email/attachment-limits.ts`, `lib/email/flow-attachments.ts`).
 - **WhatsApp**: Evolution manda botones y respuestas rápidas como lista numerada; tope de 200 envíos automáticos por hora.

@@ -64,7 +64,8 @@ export function editorDocToMarkdownWithBlankLines(doc: DocNode): string {
   }
   while (parts.length && parts[0] === "") parts.shift();
   while (parts.length && parts[parts.length - 1] === "") parts.pop();
-  return parts.join("\n\n").trim();
+  // Solo los saltos de las puntas: la sangría del primer renglón se conserva.
+  return parts.join("\n\n").replace(/^\n+|\s+$/g, "");
 }
 
 /**

@@ -49,7 +49,25 @@ describe("toWinAnsi", () => {
   });
 });
 
+/** Dónde empieza (x) el texto que contiene `needle` en la primera página. */
+async function xOf(bytes: Uint8Array, needle: string): Promise<number> {
+  const pdf = await getDocumentProxy(bytes);
+  const content = await (await pdf.getPage(1)).getTextContent();
+  const item = content.items.find((i) => "str" in i && i.str.includes(needle)) as { transform: number[] } | undefined;
+  if (!item) throw new Error(`no encontré «${needle}»`);
+  return item.transform[4];
+}
+
 describe("buildContractPdf", () => {
+  it("la sangría de un renglón que empezó la persona se dibuja; la de un renglón cortado por el ancho, no", async () => {
+    const plano = await xOf(await buildContractPdf(base({ text: "Plano" })), "Plano");
+    const sangria = await xOf(await buildContractPdf(base({ text: "    Plano" })), "Plano");
+    expect(sangria).toBeGreaterThan(plano);
+    const largo = Array.from({ length: 60 }, (_, i) => `palabra${i}`).join("  ");
+    const cortado = await buildContractPdf(base({ text: largo }));
+    expect(await xOf(cortado, "palabra0")).toBeCloseTo(plano, 0);
+  });
+
   it("contiene el título, el firmante, la huella y 'Versión 1'", async () => {
     const { all } = await read(await buildContractPdf(base()));
     expect(all).toContain("Acuerdo de servicios");

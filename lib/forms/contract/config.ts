@@ -6,11 +6,13 @@
  * no cambia).
  */
 import { z } from "zod";
-import { DEFAULT_ACCEPT_LABEL, NO_BUSINESS_SIGNER, type BusinessSigner, type ContractConfig } from "@/lib/forms/defaults";
+import { DEFAULT_ACCEPT_LABEL, NO_BUSINESS_SIGNER, type BusinessSigner, type ContractConfig, type ContractCopyEmail } from "@/lib/forms/defaults";
 import type { FormField } from "@/lib/forms/fields";
 
 export { DEFAULT_ACCEPT_LABEL, NO_BUSINESS_SIGNER };
-export type { BusinessSigner, ContractConfig };
+export type { BusinessSigner, ContractConfig, ContractCopyEmail };
+
+export const COPY_EMAIL_LIMITS = { subject: 200, body: 20_000 } as const;
 
 export const MAX_CC_EMAILS = 3;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -31,7 +33,20 @@ const schema = z.object({
       signaturePath: z.string().max(500).nullable(),
     })
     .default(NO_BUSINESS_SIGNER),
+  // Sin la clave, el correo de siempre (una configuración vieja no la tiene).
+  copyEmail: z
+    .object({
+      subject: z.string().trim().max(COPY_EMAIL_LIMITS.subject, `El asunto del correo puede tener hasta ${COPY_EMAIL_LIMITS.subject} caracteres`),
+      body: z.string().max(COPY_EMAIL_LIMITS.body, "El texto del correo es demasiado largo"),
+    })
+    .nullable()
+    .optional(),
 });
+
+/** ¿El texto del correo quedó vacío? (el editor deja `<p></p>` cuando no hay nada) */
+export function isBlankEmailBody(body: string): boolean {
+  return !body.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+}
 
 export type ContractConfigResult = { ok: true; config: ContractConfig } | { ok: false; errors: string[] };
 
@@ -43,6 +58,10 @@ export function validateContractConfig(input: unknown): ContractConfigResult {
   if (signer.enabled && parsed.data.mode !== "contract") return { ok: false, errors: ["La firma de ambas partes solo se usa en modo Contrato"] };
   if (signer.enabled && !signer.signaturePath) return { ok: false, errors: ["Dibujá o subí tu firma para usar la firma de ambas partes"] };
   if (signer.enabled && !signer.name) return { ok: false, errors: ["Escribí el nombre de quien firma por el negocio"] };
+  const copy = parsed.data.copyEmail;
+  if (copy && (!copy.subject || isBlankEmailBody(copy.body))) {
+    return { ok: false, errors: ["Escribí el asunto y el texto del correo de la copia firmada (o volvé al correo de siempre)"] };
+  }
   return { ok: true, config: { ...parsed.data, ccEmails: [...new Set(parsed.data.ccEmails)] } };
 }
 
@@ -64,7 +83,16 @@ export function parseStoredContractConfig(raw: unknown, fallbackTitle = "Contrat
     copyToOwner: typeof obj.copyToOwner === "boolean" ? obj.copyToOwner : true,
     mode: obj.mode === "contract" ? "contract" : "terms",
     businessSigner: parseSigner(obj.businessSigner),
+    ...(parseCopyEmail(obj.copyEmail) ? { copyEmail: parseCopyEmail(obj.copyEmail) } : {}),
   };
+}
+
+function parseCopyEmail(raw: unknown): ContractCopyEmail | null {
+  const obj = (raw && typeof raw === "object" ? raw : null) as Partial<ContractCopyEmail> | null;
+  if (!obj || typeof obj.subject !== "string" || typeof obj.body !== "string") return null;
+  const subject = obj.subject.trim().slice(0, COPY_EMAIL_LIMITS.subject);
+  const body = obj.body.slice(0, COPY_EMAIL_LIMITS.body);
+  return subject && !isBlankEmailBody(body) ? { subject, body } : null;
 }
 
 function parseSigner(raw: unknown): BusinessSigner {
