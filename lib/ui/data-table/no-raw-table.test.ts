@@ -42,7 +42,6 @@ const LEGACY = [
   "components/designer/generate/generations-tab.tsx", // @plantilla-quitar(disenador)
   "components/drafts/metrics-strip.tsx",
   "components/eod/reports/reports-view.tsx", // @plantilla-quitar(formularios)
-  "components/finance/expenses-list.tsx", // @plantilla-quitar(finanzas)
   "components/finance/recurring-list.tsx", // @plantilla-quitar(finanzas)
   "components/finance/summary-dashboard.tsx", // @plantilla-quitar(finanzas)
   "components/finance/vendors-list.tsx", // @plantilla-quitar(finanzas)
@@ -58,7 +57,6 @@ const LEGACY = [
   "components/scheduling/bookings/list.tsx",
   "components/services/clients/import-services-view.tsx", // @plantilla-quitar(servicios)
   "components/services/clients/service-accesses-panel.tsx", // @plantilla-quitar(servicios)
-  "components/services/clients/services-list-view.tsx", // @plantilla-quitar(servicios)
   "components/services/portal/program-calendar.tsx", // @plantilla-quitar(servicios)
   "components/services/portal/review-list.tsx", // @plantilla-quitar(servicios)
   "components/services/products/service-product-page.tsx", // @plantilla-quitar(servicios)
