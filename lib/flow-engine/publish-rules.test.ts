@@ -34,3 +34,21 @@ describe("triggerProblems", () => {
     expect(triggerProblems([t({ triggerType: "new_contact" })], [])).toEqual([NO_FIRST_STEP_PROBLEM]);
   });
 });
+
+// @plantilla-desde(servicios)
+describe("los de Servicios que emite la base no se publican a medias", () => {
+  it("relativo en horas: pide las horas; «antes» solo con inicio o fin", () => {
+    expect(triggerProblems([t({ triggerType: "service_relative", anchor: "service_start", unit: "hours", offset_hours: -2 }), step], [edge()])).toEqual([]);
+    expect(triggerProblems([t({ triggerType: "service_relative", anchor: "service_start", unit: "hours" }), step], [edge()])).toHaveLength(1);
+    expect(triggerProblems([t({ triggerType: "service_relative", anchor: "service_created", unit: "hours", offset_hours: -2 }), step], [edge()])).toHaveLength(1);
+  });
+  it("periódico sin fase y cifra sin número tampoco", () => {
+    expect(triggerProblems([t({ triggerType: "service_phase_periodic", every_days: 7 }), step], [edge()])).toEqual(["Elegí la fase."]);
+    expect(triggerProblems([t({ triggerType: "service_metric_reached", metric: "points" }), step], [edge()])).toHaveLength(1);
+    expect(triggerProblems([t({ triggerType: "service_metric_reached", metric: "points", threshold: 500 }), step], [edge()])).toEqual([]);
+  });
+  it("lo del `config` del nodo gana (como al publicar)", () => {
+    expect(triggerProblems([t({ triggerType: "service_metric_reached", metric: "points", config: { threshold: 100 } }), step], [edge()])).toEqual([]);
+  });
+});
+// @plantilla-hasta(servicios)
