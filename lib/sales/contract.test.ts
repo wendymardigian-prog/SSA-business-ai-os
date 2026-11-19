@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FormField } from "@/lib/forms/fields";
-import { buildContractPrefill, contractLinkValues, contractMessage, unsignedContracts } from "./contract";
+import { buildContractPrefill, contractLinkValues, contractMessage, paymentPlanLines, unsignedContracts, type ContractPayment } from "./contract";
 
 const field = (key: string, params?: string[]): FormField => ({
   id: key, key, type: "short_text", label: key, required: false, ...(params ? { prefill: { params, behavior: "editable" } } : {}),
@@ -70,5 +70,53 @@ describe("contractLinkValues (variables del contrato en modo Contrato)", () => {
   it("sin venta, solo el contacto; sin nada, todo vacío", () => {
     expect(contractLinkValues(null, contact).venta).toEqual({});
     expect(contractLinkValues(null, null).contacto).toEqual({ nombre: null, email: null, telefono: null });
+  });
+});
+
+describe("paymentPlanLines (variable {{venta.plan_pagos}})", () => {
+  const pay = (p: Partial<ContractPayment>): ContractPayment => ({
+    type: "installment", status: "scheduled", amount: 1000, due_date: null, paid_on: null, paid_at: null, created_at: "2026-11-01T10:00:00Z", ...p,
+  });
+
+  it("un renglón por pago, en orden de vencimiento, con las cuotas numeradas", () => {
+    const lines = paymentPlanLines([
+      pay({ due_date: "2027-01-03", status: "overdue" }),
+      pay({ type: "reservation", amount: 500, status: "paid", due_date: "2026-11-03", paid_on: "2026-11-03" }),
+      pay({ due_date: "2026-12-03" }),
+    ]);
+    expect(lines).toEqual([
+      "Reserva — USD 500,00 — Cobrado el 3 de noviembre de 2026",
+      "Cuota 1 de 2 — USD 1.000,00 — Programado para el 3 de diciembre de 2026",
+      "Cuota 2 de 2 — USD 1.000,00 — Moroso, vencía el 3 de enero de 2027",
+    ]);
+  });
+
+  it("deja afuera los anulados y las devoluciones", () => {
+    const lines = paymentPlanLines([
+      pay({ type: "full", status: "paid", paid_on: "2026-11-03", amount: 1297 }),
+      pay({ status: "cancelled", due_date: "2026-12-03" }),
+      pay({ type: "refund", status: "paid", amount: -100, paid_on: "2026-11-10" }),
+    ]);
+    expect(lines).toEqual(["Pago completo — USD 1.297,00 — Cobrado el 3 de noviembre de 2026"]);
+  });
+
+  it("los otros estados y las fechas que faltan", () => {
+    expect(paymentPlanLines([pay({ status: "uncollectible", due_date: "2026-12-01" })])).toEqual(["Cuota 1 de 1 — USD 1.000,00 — Incobrable"]);
+    expect(paymentPlanLines([pay({ type: "full", status: "refunded" })])).toEqual(["Pago completo — USD 1.000,00 — Reembolsado"]);
+    expect(paymentPlanLines([pay({ type: "full" })])).toEqual(["Pago completo — USD 1.000,00 — Programado"]);
+    expect(paymentPlanLines([pay({ type: "full", status: "paid" })])).toEqual(["Pago completo — USD 1.000,00 — Cobrado"]);
+  });
+
+  it("sin paid_on usa paid_at en la zona del negocio; sin fecha va al final", () => {
+    const lines = paymentPlanLines(
+      [pay({ type: "full", status: "paid", paid_at: "2026-11-04T03:00:00Z" }), pay({ type: "reservation", due_date: "2026-10-01", status: "paid", paid_on: "2026-10-01" })],
+      "America/Costa_Rica",
+    );
+    expect(lines).toEqual(["Reserva — USD 1.000,00 — Cobrado el 1 de octubre de 2026", "Pago completo — USD 1.000,00 — Cobrado el 3 de noviembre de 2026"]);
+  });
+
+  it("contractLinkValues: con pagos arma el plan; si no se pudieron leer, null", () => {
+    expect(contractLinkValues({ ...sale, payments: [pay({ type: "full", amount: 1297 })] }, contact).venta?.plan_pagos).toEqual(["Pago completo — USD 1.297,00 — Programado"]);
+    expect(contractLinkValues({ ...sale, payments: null }, contact).venta?.plan_pagos).toBeNull();
   });
 });
