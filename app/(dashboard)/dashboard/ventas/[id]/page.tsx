@@ -81,6 +81,8 @@ export default async function VentaPage({ params, searchParams }: { params: Prom
     today: wizard.today,
     canManage: ctx.can("sales.manage"),
     canManagePayments: ctx.can("payments.manage"),
+    canDelete: ctx.can("sales.delete"),
+    canDeletePayments: ctx.can("payments.delete"),
     enabledMethods: wizard.enabledMethods,
     methods: wizard.methods,
     origin,

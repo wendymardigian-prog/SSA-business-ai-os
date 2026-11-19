@@ -355,6 +355,8 @@ export async function deleteEvent(
   connectionId: string,
   calendarId: string,
   eventId: string,
+  /** «all» avisa a los invitados (cancelar). Eliminar una agenda (Papelera) pasa «none»: no se le avisa a nadie. */
+  sendUpdates: "all" | "none" = "all",
 ): Promise<void> {
   try {
     await call(
@@ -362,7 +364,7 @@ export async function deleteEvent(
       connectionId,
       "DELETE",
       `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
-      { query: { sendUpdates: "all" }, fallback: "No pude borrar el evento en Google Calendar" },
+      { query: { sendUpdates }, fallback: "No pude borrar el evento en Google Calendar" },
     );
   } catch (err) {
     if (err instanceof GoogleCalendarError && err.kind === "not_found") return;

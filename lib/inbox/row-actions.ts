@@ -7,13 +7,16 @@
  * Mismas reglas que la cabecera del chat (`planHeaderActions`): marcar pide
  * `contacts.edit`; quitar, haberla puesto o `contacts.delete`.
  *
+ * «Eliminar conversación» (la Papelera, docs/papelera.md) va siempre al final
+ * y solo con `conversations.delete`; no depende de que haya contacto.
+ *
  * Puro: lo prueba un test y el componente solo lo dibuja.
  */
 
 import { canUnmarkKnown } from "./known";
 import type { MarkFlags } from "./marks";
 
-export type RowAction = "markKnown" | "unmarkKnown" | "markCustomer" | "unmarkCustomer" | "openContact";
+export type RowAction = "markKnown" | "unmarkKnown" | "markCustomer" | "unmarkCustomer" | "openContact" | "deleteConversation";
 
 export function planRowActions(input: {
   contactId: string | null;
@@ -21,8 +24,11 @@ export function planRowActions(input: {
   viewerId: string;
   canEditContacts: boolean;
   canDeleteContacts: boolean;
+  /** `conversations.delete`: mandar la conversación a la Papelera. */
+  canDeleteConversation?: boolean;
 }): RowAction[] {
-  if (!input.contactId) return [];
+  const tail: RowAction[] = input.canDeleteConversation ? ["deleteConversation"] : [];
+  if (!input.contactId) return tail;
   const c = input.contact ?? {};
   const actions: RowAction[] = [];
   const canUnmark = (markedBy: string | null | undefined) =>
@@ -37,5 +43,5 @@ export function planRowActions(input: {
   } else if (input.canEditContacts) actions.push("markKnown");
 
   actions.push("openContact");
-  return actions;
+  return [...actions, ...tail];
 }

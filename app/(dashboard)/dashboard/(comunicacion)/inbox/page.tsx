@@ -412,6 +412,7 @@ export default async function InboxPage({
       canAssignConversations={canAssignConversations}
       canEditContacts={permissionCtx.can("contacts.edit")}
       canDeleteContacts={permissionCtx.can("contacts.delete")}
+      canDeleteConversations={permissionCtx.can("conversations.delete")}
       replyChannelIds={replyFilterFor(access.permissions)}
       filters={filters}
       dateRange={range}

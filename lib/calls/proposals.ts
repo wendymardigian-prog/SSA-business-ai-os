@@ -4,20 +4,110 @@
  *
  * Nada se ejecuta solo: cada propuesta nace `pending` y una persona la aprueba (tal cual o editada) o la descarta
  * (`proposals-resolve.ts`). Estados: pending → executing → done | failed → (reintentar) | discarded.
+ *
+ * Dos orígenes, en la misma lista `calls.proposals`:
+ *  - el ANALIZADOR (tarea, mensaje, paso, aviso), si el analizador tiene «Proponer acciones» prendido;
+ *  - el RESUMEN de la grabación (idea y borrador de contenido): las ideas ya no entran solas al banco, se proponen
+ *    acá con su cita y entran solo si alguien las aprueba.
+ * Cada origen reemplaza SOLO sus pendientes al volver a correr (`ANALYZER_TYPES`, `CONTENT_TYPES`).
+ *
+ * Toda propuesta que sale de la IA lleva una cita textual de la transcripción (salvo el mensaje para el cliente, que
+ * es un resumen): sin cita verificada, no hay propuesta.
  */
 import { z } from "zod";
 import { headText } from "@/lib/text/safe-slice";
+import { quoteInTranscript } from "./scoring";
 
-export const PROPOSAL_TYPES = ["tarea", "mensaje", "paso", "aviso"] as const;
+export const PROPOSAL_TYPES = ["tarea", "mensaje", "paso", "aviso", "idea", "borrador"] as const;
 export type ProposalType = (typeof PROPOSAL_TYPES)[number];
 export type ProposalStatus = "pending" | "executing" | "done" | "failed" | "discarded";
+
+/** Lo que propone el analizador (el esquema de `acciones`). */
+export const ANALYZER_TYPES = ["tarea", "mensaje", "paso", "aviso"] as const;
+export type AnalyzerProposalType = (typeof ANALYZER_TYPES)[number];
+/** Lo que propone el resumen de la grabación: contenido para publicar. */
+export const CONTENT_TYPES = ["idea", "borrador"] as const;
 
 export const PROPOSAL_TYPE_LABEL: Record<ProposalType, string> = {
   tarea: "Tarea",
   mensaje: "Mensaje para el cliente",
   paso: "Completar un paso",
   aviso: "Aviso al equipo",
+  idea: "Idea de contenido",
+  borrador: "Borrador de contenido",
 };
+
+// ── Quién aprueba cada tipo ──────────────────────────────────────────────────
+
+/**
+ * `admin`: solo el Dueño o un Admin del negocio. `responsable`: el responsable del servicio de la reunión (o, sin
+ * servicio, quien la grabó) o un admin. Siempre hace falta, además, el permiso de la acción (`permissionsForType`).
+ */
+export type ProposalApprover = "admin" | "responsable";
+export type ProposalApprovers = Record<ProposalType, ProposalApprover>;
+
+export const DEFAULT_PROPOSAL_APPROVERS: ProposalApprovers = {
+  tarea: "responsable",
+  mensaje: "responsable",
+  paso: "responsable",
+  aviso: "responsable",
+  // El contenido no es del responsable del cliente: por defecto lo decide un admin (se cambia en Ajustes).
+  idea: "admin",
+  borrador: "admin",
+};
+
+export const APPROVER_LABEL: Record<ProposalApprover, string> = {
+  admin: "Un admin",
+  responsable: "El responsable (o un admin)",
+};
+
+/** El ajuste completo: lo que falta o tiene un valor raro vale el de por defecto. Nunca lanza. */
+export function normalizeApprovers(raw: unknown): ProposalApprovers {
+  const out: ProposalApprovers = { ...DEFAULT_PROPOSAL_APPROVERS };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const t of PROPOSAL_TYPES) {
+    const v = (raw as Record<string, unknown>)[t];
+    if (v === "admin" || v === "responsable") out[t] = v;
+  }
+  return out;
+}
+
+/**
+ * La regla de quién decide: un admin decide todo; el responsable, lo que el ajuste le da. Descartar pide lo mismo
+ * (sin el permiso de la acción: descartar no ejecuta nada).
+ */
+export function canDecideProposal(i: { approver: ProposalApprover; isAdmin: boolean; isResponsible: boolean }): boolean {
+  if (i.isAdmin) return true;
+  return i.approver === "responsable" && i.isResponsible;
+}
+
+/** El responsable de una reunión: el del servicio vinculado; sin servicio (o sin responsable), quien la grabó. */
+export function responsibleFor(input: { serviceOwnerId: string | null; recordedBy: string | null }): string | null {
+  return input.serviceOwnerId ?? input.recordedBy ?? null;
+}
+
+// ── Motivos al descartar ─────────────────────────────────────────────────────
+
+export const DISCARD_REASONS = ["no_hace_falta", "dato_incorrecto", "no_corresponde", "falta_info", "otro"] as const;
+export type DiscardReason = (typeof DISCARD_REASONS)[number];
+export const DISCARD_REASON_LABEL: Record<DiscardReason, string> = {
+  no_hace_falta: "No hace falta",
+  dato_incorrecto: "Dato incorrecto",
+  no_corresponde: "No corresponde a este cliente",
+  falta_info: "Falta información",
+  otro: "Otro (con nota)",
+};
+export const DISCARD_NOTE_MAX = 500;
+
+/** Valida el motivo al descartar: sin motivo, «No hace falta»; con «Otro», la nota es obligatoria. */
+export function parseDiscard(reason: unknown, note: unknown): { ok: true; reason: DiscardReason; note: string | null } | { ok: false; error: string } {
+  const r = reason === undefined || reason === null || reason === "" ? "no_hace_falta" : reason;
+  if (typeof r !== "string" || !(DISCARD_REASONS as readonly string[]).includes(r)) return { ok: false, error: "Elegí un motivo de la lista." };
+  const clean = typeof note === "string" ? note.trim() : "";
+  if (clean.length > DISCARD_NOTE_MAX) return { ok: false, error: `La nota puede tener hasta ${DISCARD_NOTE_MAX} caracteres.` };
+  if (r === "otro" && !clean) return { ok: false, error: "Con «Otro», escribí el motivo." };
+  return { ok: true, reason: r as DiscardReason, note: clean || null };
+}
 
 export const MAX_PROPOSALS = 8;
 /** Con menos de esto de transcripción no hay contexto suficiente: no se propone nada (regla de RER). */
@@ -25,6 +115,9 @@ export const MIN_PROPOSAL_TRANSCRIPT_CHARS = 600;
 export const PROPOSAL_TEXT_MAX = 1500;
 export const PROPOSAL_TITLE_MAX = 200;
 export const PROPOSAL_DETAIL_MAX = 2000;
+/** El guion de un borrador de contenido. */
+export const PROPOSAL_SCRIPT_MAX = 6000;
+export const PROPOSAL_QUOTE_MAX = 400;
 export const MAX_PENDING_ITEMS_IN_PROMPT = 30;
 
 /**
@@ -32,7 +125,7 @@ export const MAX_PENDING_ITEMS_IN_PROMPT = 30;
  * los proveedores con salida estructurada limitan cuántos campos opcionales acepta un esquema.
  */
 export const proposalActionSchema = z.object({
-  tipo: z.enum(PROPOSAL_TYPES),
+  tipo: z.enum(ANALYZER_TYPES),
   titulo: z.string(),
   detalle: z.string(),
   vence_en_dias: z.number().int().min(0).max(60).nullable(),
@@ -40,6 +133,8 @@ export const proposalActionSchema = z.object({
   texto: z.string().nullable(),
   item_key: z.string().nullable(),
   para: z.enum(["cliente", "servicio", "grabo"]).nullable(),
+  /** La frase textual de la transcripción que la justifica. Sin cita verificada no hay propuesta (salvo el mensaje). */
+  cita: z.string().nullable(),
 });
 export type ProposalAction = z.infer<typeof proposalActionSchema>;
 
@@ -51,9 +146,15 @@ export type ProposalOriginal = {
   texto?: string | null;
   item_key?: string | null;
   para?: "cliente" | "servicio" | "grabo" | null;
+  /** La cita de la transcripción que la justifica. */
+  cita?: string | null;
+  /** Idea y borrador: el formato (Reel, Carrusel…) como lo guarda el banco de ideas. */
+  formato?: string | null;
+  /** Borrador: el texto completo de la pieza. */
+  guion?: string | null;
 };
 
-export type ProposalResult = { task_id?: string; message_id?: string; item_id?: string; notification_id?: string };
+export type ProposalResult = { task_id?: string; message_id?: string; item_id?: string; notification_id?: string; idea_id?: string; post_id?: string };
 
 export type Proposal = {
   id: string;
@@ -65,6 +166,9 @@ export type Proposal = {
   reason?: string | null;
   resolved_by?: string | null;
   resolved_at?: string | null;
+  /** Al descartar: por qué (y la nota, con «Otro»). Queda en el historial. */
+  discard_reason?: DiscardReason | null;
+  discard_note?: string | null;
 };
 
 export type ProposalsConfig = { enabled: boolean; client_message: boolean };
@@ -104,6 +208,7 @@ export function buildProposalsInstructions(input: { service: ProposalServiceCont
     lines.push("- paso: completar un paso pendiente del servicio, solo si en la reunión quedó claro que se cumplió. `item_key` = la clave del paso de la lista.");
   }
   lines.push("- aviso: un aviso interno. `titulo`, `detalle` y `para` (`servicio` o `grabo`).");
+  lines.push("Cada acción lleva en `cita` la frase TEXTUAL de la transcripción que la justifica (en el mensaje puede ir null). Sin una cita textual, no la propongas.");
   lines.push("En los campos que no aplican a ese tipo, poné null.");
   if (input.clientMessage && input.hasContact) {
     lines.push("Siempre incluí UNA acción de tipo mensaje para el cliente: un resumen breve de la reunión y los próximos pasos, en el tono de las instrucciones.");
@@ -124,6 +229,7 @@ const clip = (s: string | null | undefined, max: number) => (typeof s === "strin
 
 /**
  * Normaliza lo que propuso la IA a `calls.proposals`. Descarta solas:
+ *   - una tarea, un paso o un aviso sin una cita que esté en la transcripción (con `transcriptText`);
  *   - un `paso` con una clave que no es un paso pendiente de ESE servicio;
  *   - un `mensaje` sin texto;
  *   - cualquier propuesta en una reunión sin contacto, salvo `aviso`.
@@ -131,15 +237,18 @@ const clip = (s: string | null | undefined, max: number) => (typeof s === "strin
  */
 export function normalizeProposals(
   actions: readonly ProposalAction[] | null | undefined,
-  ctx: { hasContact: boolean; pendingItemKeys: readonly string[]; clientMessage: boolean; summary?: string | null; nextSteps?: readonly string[] | null },
+  ctx: { hasContact: boolean; pendingItemKeys: readonly string[]; clientMessage: boolean; summary?: string | null; nextSteps?: readonly string[] | null; transcriptText?: string | null },
   newId: () => string,
 ): Proposal[] {
   const out: Proposal[] = [];
   const pending = new Set(ctx.pendingItemKeys);
   for (const a of actions ?? []) {
     if (out.length >= MAX_PROPOSALS) break;
+    if (!(ANALYZER_TYPES as readonly string[]).includes(a.tipo)) continue;
     if (!ctx.hasContact && a.tipo !== "aviso") continue;
-    const original: ProposalOriginal = { titulo: clip(a.titulo, PROPOSAL_TITLE_MAX), detalle: clip(a.detalle, PROPOSAL_DETAIL_MAX) };
+    const cita = clip(a.cita, PROPOSAL_QUOTE_MAX) || null;
+    if (a.tipo !== "mensaje" && typeof ctx.transcriptText === "string" && !quoteInTranscript(cita, ctx.transcriptText)) continue;
+    const original: ProposalOriginal = { titulo: clip(a.titulo, PROPOSAL_TITLE_MAX), detalle: clip(a.detalle, PROPOSAL_DETAIL_MAX), ...(cita ? { cita } : {}) };
     if (a.tipo === "tarea") {
       original.vence_en_dias = typeof a.vence_en_dias === "number" ? Math.max(0, Math.min(60, Math.round(a.vence_en_dias))) : null;
       original.responsable = a.responsable ?? null;
@@ -169,9 +278,13 @@ export function normalizeProposals(
   return out;
 }
 
-/** Regenerar el análisis reemplaza solo las propuestas pendientes; las resueltas (y la que está en curso) quedan. */
-export function mergeOnRegenerate(previous: unknown, fresh: readonly Proposal[]): Proposal[] {
-  const kept = readProposals(previous).filter((p) => p.status !== "pending");
+/**
+ * Volver a correr reemplaza solo las propuestas pendientes de ESE origen (`types`); las resueltas, la que está en curso
+ * y las pendientes del otro origen quedan. Sin `types`, las del analizador. Gemela de `call_proposals_replace_pending`
+ * (00450), que hace lo mismo con la reunión bloqueada.
+ */
+export function mergeOnRegenerate(previous: unknown, fresh: readonly Proposal[], types: readonly ProposalType[] = ANALYZER_TYPES): Proposal[] {
+  const kept = readProposals(previous).filter((p) => p.status !== "pending" || !types.includes(p.type));
   return [...kept, ...fresh];
 }
 

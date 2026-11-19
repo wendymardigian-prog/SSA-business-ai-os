@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { Suspense, use, useCallback, useMemo } from "react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { computeTotals, money, objectiveLabel, type AdsTotalsWithSource } from "@/lib/dashboards/ads";
@@ -19,6 +19,8 @@ import { detailHref } from "./ads/hierarchy-tables";
 import type { RowAction } from "./ads/row-actions-menu";
 import { useAdsNavigation } from "./ads/use-ads-navigation";
 import { useAdsTableUrl } from "./ads/use-ads-table-url";
+import { BlockSkeleton } from "./chat/block";
+import { periodQuery } from "@/lib/dashboards/period-filter";
 
 /**
  * La pantalla Anuncios: la tabla de campañas, conjuntos y anuncios, con todo lo que la controla en la barra superior: la pestaña,
@@ -26,13 +28,12 @@ import { useAdsTableUrl } from "./ads/use-ads-table-url";
  *
  * Pestaña, filtros y orden viven en la URL (`use-ads-table-url.ts`): cambiarlos no le pide nada al servidor. Cuenta y período si,
  * porque traen otros datos.
+ *
+ * El alcance en vivo y el CRM llegan como promesas: mientras viajan se ve la cabecera (cuenta, período, pestaña y
+ * actualizar) con un skeleton de la tabla. La tabla espera a los dos para no mostrar un total que despues cambia.
  */
 export function AdsTablePage(props: AdsTablePageData) {
   const nav = useAdsNavigation();
-  const totals = useMemo(
-    () => computeTotals(props.rows.filter((r) => r.level === "account"), props.uniqueReach, props.uniqueFrequency),
-    [props.rows, props.uniqueReach, props.uniqueFrequency],
-  );
 
   if (props.accounts.length === 0 || !props.crm) {
     return (
@@ -43,7 +44,53 @@ export function AdsTablePage(props: AdsTablePageData) {
     );
   }
 
-  return <AdsTableScreen data={props} crm={props.crm} totals={totals} nav={nav} />;
+  // Otra cuenta u otro periodo es una tabla nueva, con su skeleton, en vez de dejar los numeros viejos a la vista.
+  const loadKey = periodQuery(props.period, { cuenta: props.adAccountId });
+  return (
+    <Suspense key={loadKey} fallback={<AdsTableLoading data={props} nav={nav} />}>
+      <AdsTableLoaded data={props} crm={props.crm} nav={nav} />
+    </Suspense>
+  );
+}
+
+function AdsTableLoaded({
+  data,
+  crm: crmPromise,
+  nav,
+}: {
+  data: AdsTablePageData;
+  crm: Promise<CrmTableData>;
+  nav: ReturnType<typeof useAdsNavigation>;
+}) {
+  const reach = use(data.reach);
+  const crm = use(crmPromise);
+  const totals = useMemo(
+    () => computeTotals(data.rows.filter((r) => r.level === "account"), reach.uniqueReach, reach.uniqueFrequency),
+    [data.rows, reach.uniqueReach, reach.uniqueFrequency],
+  );
+  return <AdsTableScreen data={data} crm={crm} totals={totals} liveError={reach.liveError} nav={nav} />;
+}
+
+/** La cabecera que no depende de lo que viaja (cuenta, período, pestaña, actualizar) y un skeleton de la tabla. */
+function AdsTableLoading({ data, nav }: { data: AdsTablePageData; nav: ReturnType<typeof useAdsNavigation> }) {
+  const { level, setLevel } = useAdsTableUrl();
+  return (
+    <div className="flex h-full flex-col">
+      <PageHeader
+        route="/dashboard/anuncios"
+        filtersBreakpoint="wide"
+        left={<SyncedPill label={data.syncedLabel} />}
+        tabs={<LevelTabs level={level} onChange={setLevel} />}
+        filters={
+          <HeaderFilters accounts={data.accounts} adAccountId={data.adAccountId} period={data.period} onChange={nav.navigate} onApplyPeriod={nav.applyPeriod} />
+        }
+        right={<RefreshButton refreshing={nav.pending} onRefresh={nav.refresh} />}
+      />
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-6" role="status" aria-label="Cargando la tabla">
+        <BlockSkeleton kind="table" className="min-h-[320px]" />
+      </div>
+    </div>
+  );
 }
 
 /** Los nombres que se conocen de cada campaña o conjunto: los del catalogo y, si no, los de las metricas. */
@@ -63,7 +110,19 @@ function nameOptions(data: AdsTablePageData, crm: CrmTableData, level: "campaign
     .sort((a, b) => a.label.localeCompare(b.label, "es"));
 }
 
-function AdsTableScreen({ data, crm, totals, nav }: { data: AdsTablePageData; crm: CrmTableData; totals: AdsTotalsWithSource; nav: ReturnType<typeof useAdsNavigation> }) {
+function AdsTableScreen({
+  data,
+  crm,
+  totals,
+  liveError,
+  nav,
+}: {
+  data: AdsTablePageData;
+  crm: CrmTableData;
+  totals: AdsTotalsWithSource;
+  liveError: string | null;
+  nav: ReturnType<typeof useAdsNavigation>;
+}) {
   const { level, filters, setFilters, setLevel, drillTo } = useAdsTableUrl();
   const { adAccountId, period, currency } = data;
 
@@ -139,7 +198,7 @@ function AdsTableScreen({ data, crm, totals, nav }: { data: AdsTablePageData; cr
       />
 
       <div className={`min-h-0 flex-1 space-y-3 overflow-y-auto p-4 transition-opacity sm:p-6 ${nav.pending ? "opacity-60" : ""}`} aria-busy={nav.pending}>
-        {data.liveError && <UniqueReachNotice error={data.liveError} />}
+        {liveError && <UniqueReachNotice error={liveError} />}
         <section className="space-y-3 rounded-xl border border-border bg-card p-4" aria-label="Campañas, AdSets y anuncios">
           {(chips.length > 0 || crm.unmatchedCount > 0) && (
             <div className="flex flex-wrap items-center gap-2">

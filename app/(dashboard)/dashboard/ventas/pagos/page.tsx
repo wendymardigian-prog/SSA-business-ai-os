@@ -120,6 +120,7 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
     totalsTruncated: totalsRes.truncated,
     totalsFailed: !!totalsRes.error,
     scopeAll: hasSalesAllScope(ctx),
+    canDelete: ctx.can("payments.delete"),
     members: members.map((m) => ({ id: m.userId, name: m.name })),
     enabledMethods: methods.enabledKeys,
     methods: methods.defs,

@@ -24,12 +24,15 @@ export async function loadBookingLastTouches(
 
   const rows: LastTouchRow[] = [];
   try {
-    for (let i = 0; i < ids.length; i += PER_CALL) {
-      const { data, error } = await service.rpc("booking_last_touches", {
-        p_workspace_id: workspaceId,
-        p_booking_ids: ids.slice(i, i + PER_CALL),
-        p_limit: LAST_TOUCHES_SHOWN,
-      });
+    // Las tandas no dependen una de otra: van en paralelo y se juntan en orden.
+    const slices: string[][] = [];
+    for (let i = 0; i < ids.length; i += PER_CALL) slices.push(ids.slice(i, i + PER_CALL));
+    const results = await Promise.all(
+      slices.map((slice) =>
+        service.rpc("booking_last_touches", { p_workspace_id: workspaceId, p_booking_ids: slice, p_limit: LAST_TOUCHES_SHOWN }),
+      ),
+    );
+    for (const { data, error } of results) {
       if (error) {
         console.error("[atribucion] no pude leer los ultimos toques, code=", error.code);
         return {};

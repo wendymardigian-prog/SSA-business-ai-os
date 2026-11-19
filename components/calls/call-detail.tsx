@@ -1,8 +1,8 @@
 "use client";
 import { CallServiceChip, ManualSummaryCard, type CallServiceInfo } from "@/components/calls/call-service"; // @plantilla-quitar(servicios)
 import type { ManualSummary } from "@/lib/calls/manual-summary";
-import { CallProposals } from "@/components/calls/call-proposals"; // @plantilla-quitar(servicios)
-import type { Proposal } from "@/lib/calls/proposals";
+import { CallProposals, type ProposalViewer } from "@/components/calls/call-proposals"; // @plantilla-quitar(servicios)
+import { DEFAULT_PROPOSAL_APPROVERS, type Proposal } from "@/lib/calls/proposals";
 import { CommentThread } from "@/components/team-comments/comment-thread";
 import { EMPTY_ACTIVITY, type ActivityEntry } from "@/lib/calls/activity";
 
@@ -26,6 +26,11 @@ import { callBadgeClass, scoreBadgeTone } from "@/lib/calls/badges";
 import { typeDeciderText } from "@/lib/calls/list";
 import type { DetailTab, DetailView } from "@/lib/calls/detail-view";
 import { useRouter } from "next/navigation";
+import { DeleteButton } from "@/components/trash/delete-dialog";
+
+/** «Eliminar grabación» chiquito, al lado de las otras acciones (rojo: va a la Papelera). */
+const DELETE_CHIP_CLASS =
+  "inline-flex items-center gap-1 rounded-md border border-red-500/40 px-2 py-0.5 text-xs text-red-700 hover:bg-red-500/10 dark:text-red-400 [&_svg]:h-3 [&_svg]:w-3";
 
 /**
  * La ficha de una llamada (F13). Escritorio: el analisis a la izquierda (60 %)
@@ -34,6 +39,8 @@ import { useRouter } from "next/navigation";
  */
 
 export interface CallDetailData extends TabsData {
+  /** `calls.delete`: «Eliminar grabación» (va a la Papelera 30 días). */
+  canDelete?: boolean;
   title: string;
   recordedAt: string;
   contact: { id: string; name: string } | null;
@@ -70,6 +77,8 @@ export interface CallDetailData extends TabsData {
   canCreateTasks?: boolean;
   /** Servicios A4 (F143): las propuestas del analizador y los nombres de los pasos pendientes. */
   proposals?: Proposal[];
+  /** Quién mira, para «Quién aprueba» (servicios). */
+  proposalViewer?: ProposalViewer; // @plantilla-quitar(servicios)
   pendingStepNames?: Record<string, string>;
   /** F145: lo que pasó (vínculo, propuestas, carga a mano), las menciones sin leer y la pestaña de entrada. */
   activity?: ActivityEntry[];
@@ -177,6 +186,7 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
                 <ContactLink callId={data.callId} contact={data.contact} canEdit={canEdit} />
                 <BookingLink callId={data.callId} booking={data.booking} canEdit={canEdit} />
                 {data.service && <CallServiceChip callId={data.callId} info={data.service} />} {/* @plantilla-quitar(servicios) */}
+                {data.canDelete && <DeleteButton entity="call" id={data.callId} label="Eliminar grabación" redirectTo="/dashboard/llamadas" className={DELETE_CHIP_CLASS} />}
                 {data.source === "fathom" && (data.shareUrl || data.fathomUrl) && (
                   <a href={(data.shareUrl || data.fathomUrl) as string} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs hover:bg-muted">
                     <Video className="h-3 w-3" aria-hidden /> Ver en Fathom <ExternalLink className="h-3 w-3" aria-hidden />
@@ -207,7 +217,7 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
 
             {data.showManual && <ManualSummaryCard callId={data.callId} manual={data.manual ?? null} canEdit={canEdit} canCreateTask={canEdit && (data.canCreateTasks ?? false)} />} {/* @plantilla-quitar(servicios) */}
             {data.proposals && data.proposals.length > 0 && (
-              <CallProposals callId={data.callId} proposals={data.proposals} canEdit={canEdit} permissions={data.permissions ?? []} pendingStepNames={data.pendingStepNames ?? {}} />
+              <CallProposals callId={data.callId} proposals={data.proposals} canEdit={canEdit} permissions={data.permissions ?? []} pendingStepNames={data.pendingStepNames ?? {}} viewer={data.proposalViewer ?? { approvers: DEFAULT_PROPOSAL_APPROVERS, isAdmin: false, isResponsible: false }} />
             )} {/* @plantilla-quitar(servicios) */}
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

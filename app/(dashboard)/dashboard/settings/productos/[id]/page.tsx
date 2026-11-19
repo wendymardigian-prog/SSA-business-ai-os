@@ -32,7 +32,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     const sp = await loadServiceProduct(supabase, workspace.id, id);
     if (!sp) notFound();
     const team = await getWorkspaceMembers(workspace.id);
-    return <ServiceProductPage product={sp} userNames={Object.fromEntries(memberLabels(team))} timeZone={await resolveViewerTimezone((workspace as { timezone?: string }).timezone)} linksCard={linksFor(sp.variants)} />;
+    return <ServiceProductPage product={sp} userNames={Object.fromEntries(memberLabels(team))} timeZone={await resolveViewerTimezone((workspace as { timezone?: string }).timezone)} linksCard={linksFor(sp.variants)} canDelete={ctx.can("products.delete")} />;
   }
   // @plantilla-hasta(servicios)
 
@@ -41,5 +41,5 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   const members = await getWorkspaceMembers(workspace.id);
 
-  return <ProductDetail product={product} userNames={Object.fromEntries(memberLabels(members))} timeZone={await resolveViewerTimezone((workspace as { timezone?: string }).timezone)} linksCard={linksFor(product.variants)} />;
+  return <ProductDetail product={product} userNames={Object.fromEntries(memberLabels(members))} timeZone={await resolveViewerTimezone((workspace as { timezone?: string }).timezone)} linksCard={linksFor(product.variants)} canDelete={ctx.can("products.delete")} />;
 }

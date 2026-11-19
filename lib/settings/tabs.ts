@@ -5,6 +5,8 @@
  * dejan marcada" (`also`), como Roles dentro de Equipo.
  */
 
+import { TRASH_PERMISSION_KEYS } from "@/lib/trash/entities";
+
 export interface SettingsTab {
   name: string;
   href: string;
@@ -48,6 +50,8 @@ export const SETTINGS_TABS: SettingsTab[] = [
   // Reglas de asignacion (F13): como se asignan solos setter, vendedor y referido.
   { name: "Asignación", href: "/dashboard/settings/asignacion", permissions: ["assignment.manage"] },
   { name: "Integraciones", href: "/dashboard/settings/integrations", permissions: ["integrations.view", "integrations.manage", "channels.manage"] },
+  // La Papelera (00410): lo eliminado en los últimos 30 días. La ve quien pueda eliminar algo.
+  { name: "Papelera", href: "/dashboard/settings/papelera", permissions: [...TRASH_PERMISSION_KEYS] },
   // "Tareas" se mudo a Agentes IA (Bloque Agentes IA): /dashboard/settings/background  @plantilla-quitar(proyecto)
   // ahora solo redirige, ya no es una pestana de Ajustes.  @plantilla-quitar(proyecto)
 ];

@@ -45,6 +45,8 @@ import { RecordNotFound } from "./record-not-found";
 import { ServiceRecordView, ServiceRecordHeader, type ServiceRecordData } from "./service-record-view";
 import { ServiceMeetingsBlock } from "./service-meetings-block";
 import { loadServiceMeetings } from "@/lib/services/screens/service-meetings-load";
+import { loadServiceChurn } from "@/lib/calls/contact-section";
+import { ChurnNotice } from "@/components/calls/churn-notice";
 
 type Ctx = Pick<PermissionContext, "workspace" | "supabase" | "can" | "permissions" | "user">;
 
@@ -310,8 +312,13 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     endsOn: s.ends_on,
     itemIds: live.map((i) => i.id),
   }).catch(() => []);
+  // La causa de baja más reciente que detectó el analizador (o puso una persona) en sus reuniones.
+  const churn = ctx.can("calls.view") ? await loadServiceChurn(supabase, { workspaceId: workspace.id, serviceId: s.id }) : null;
   const meetings = ctx.can("calls.view") ? (
-    <ServiceMeetingsBlock serviceId={s.id} rows={meetingRows} userNames={Object.fromEntries(memberLabels(team))} timeZone={timeZone} canLink={ctx.can("calls.edit")} />
+    <>
+      {churn && <ChurnNotice churn={churn} timeZone={timeZone} />}
+      <ServiceMeetingsBlock serviceId={s.id} rows={meetingRows} userNames={Object.fromEntries(memberLabels(team))} timeZone={timeZone} canLink={ctx.can("calls.edit")} />
+    </>
   ) : null;
 
   return (

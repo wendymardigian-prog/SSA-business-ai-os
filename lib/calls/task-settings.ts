@@ -12,6 +12,8 @@
 import { z } from "zod";
 import { BASE_CALL_TYPES } from "./classification";
 import { EMPTY_CATEGORIES, normalizeCategories, slugKey, type CallCategories } from "./rubric";
+import { MAX_CHURN_REASONS, normalizeChurnReasons, validateChurnReasons, type ChurnReason } from "./churn";
+import { DEFAULT_PROPOSAL_APPROVERS, normalizeApprovers, type ProposalApprovers } from "./proposals";
 
 export const CALL_TASK_KEYS = ["call_classification", "call_analysis"] as const;
 export type CallTaskKey = (typeof CALL_TASK_KEYS)[number];
@@ -76,6 +78,10 @@ export interface CallAnalysisSettings {
   company_context: string | null;
   categories: CallCategories;
   model: string | null;
+  /** Las causas de baja del negocio (vacía al empezar): el analizador de servicio elige una con su cita. */
+  churn_reasons: ChurnReason[];
+  /** Quién aprueba cada tipo de propuesta: un admin o el responsable (o un admin). */
+  proposal_approvers: ProposalApprovers;
 }
 
 export const DEFAULT_ANALYSIS: CallAnalysisSettings = {
@@ -83,6 +89,8 @@ export const DEFAULT_ANALYSIS: CallAnalysisSettings = {
   company_context: null,
   categories: EMPTY_CATEGORIES,
   model: null,
+  churn_reasons: [],
+  proposal_approvers: DEFAULT_PROPOSAL_APPROVERS,
 };
 
 // ── Esquemas Zod ──────────────────────────────────────────────────────────
@@ -115,6 +123,8 @@ const analysisSchema = z.object({
   company_context: z.string().max(MAX_COMPANY_CONTEXT, `El contexto del negocio puede tener hasta ${MAX_COMPANY_CONTEXT} caracteres`).nullable(),
   categories: z.unknown(),
   model: z.string().nullable(),
+  churn_reasons: z.unknown(),
+  proposal_approvers: z.unknown(),
 });
 
 // ── Lectura tolerante ─────────────────────────────────────────────────────
@@ -142,8 +152,10 @@ function readAnalysis(raw: unknown): CallAnalysisSettings {
   const parsed = analysisSchema.safeParse(merged);
   if (!parsed.success) return structuredClone(DEFAULT_ANALYSIS);
   return {
-    ...(parsed.data as Omit<CallAnalysisSettings, "categories">),
+    ...(parsed.data as Omit<CallAnalysisSettings, "categories" | "churn_reasons" | "proposal_approvers">),
     categories: normalizeCategories(raw.categories ?? EMPTY_CATEGORIES),
+    churn_reasons: normalizeChurnReasons(raw.churn_reasons),
+    proposal_approvers: normalizeApprovers(raw.proposal_approvers),
   };
 }
 
@@ -198,13 +210,20 @@ export function validateCallTaskSettings(task: CallTaskKey, input: unknown): Val
   const parsed = analysisSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
   const categories = normalizeCategories(parsed.data.categories);
+  const churnRaw = Array.isArray(parsed.data.churn_reasons) ? parsed.data.churn_reasons : [];
+  if (churnRaw.length > MAX_CHURN_REASONS) return { ok: false, error: `Pueden ser hasta ${MAX_CHURN_REASONS} causas de baja.` };
+  const churn_reasons = normalizeChurnReasons(churnRaw);
+  const churnProblem = validateChurnReasons(churn_reasons)[0];
+  if (churnProblem) return { ok: false, error: churnProblem };
 
   return {
     ok: true,
     task,
     value: {
-      ...(parsed.data as Omit<CallAnalysisSettings, "categories">),
+      ...(parsed.data as Omit<CallAnalysisSettings, "categories" | "churn_reasons" | "proposal_approvers">),
       categories,
+      churn_reasons,
+      proposal_approvers: normalizeApprovers(parsed.data.proposal_approvers),
     },
   };
 }

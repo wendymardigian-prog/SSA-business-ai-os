@@ -77,9 +77,25 @@ describe("buildGeneralSchema (Servicios A4, F142)", () => {
     expect(buildGeneralSchema({ proposals: false })).toBe(generalAnalysisSchema);
     const s = buildGeneralSchema({ proposals: true });
     const base = { resumen: "r", rubrica: [], feedback: { foco: "", funciono: [], mejorar: [] }, alertas: [] };
-    const a = { tipo: "tarea", titulo: "t", detalle: "d", vence_en_dias: 3, responsable: null, texto: null, item_key: null, para: null };
+    const a = { tipo: "tarea", titulo: "t", detalle: "d", vence_en_dias: 3, responsable: null, texto: null, item_key: null, para: null, cita: "lo dijo así" };
     expect(s.safeParse({ ...base, acciones: [a] }).success).toBe(true);
     expect(s.safeParse({ ...base, acciones: Array.from({ length: 9 }, () => a) }).success).toBe(false);
     expect(s.safeParse({ ...base, acciones: [{ ...a, tipo: "cambiar_fase" }] }).success).toBe(false);
+    // Las de contenido las propone el resumen, no el analizador.
+    expect(s.safeParse({ ...base, acciones: [{ ...a, tipo: "idea" }] }).success).toBe(false);
+    // La cita es obligatoria (puede venir en null): no suma campos opcionales al esquema.
+    const { cita: _cita, ...sinCita } = a;
+    expect(_cita).toBeTruthy();
+    expect(s.safeParse({ ...base, acciones: [sinCita] }).success).toBe(false);
+  });
+
+  it("la causa de baja suma un solo campo obligatorio, y sin lista el esquema no cambia", async () => {
+    const { buildGeneralSchema, generalAnalysisSchema } = await import("./analysis-schema");
+    expect(buildGeneralSchema({ proposals: false, churn: false })).toBe(generalAnalysisSchema);
+    const s = buildGeneralSchema({ proposals: false, churn: true });
+    const base = { resumen: "r", rubrica: [], feedback: { foco: "", funciono: [], mejorar: [] }, alertas: [] };
+    expect(s.safeParse({ ...base, causa_baja: { clave: null, motivo: null, cita: null } }).success).toBe(true);
+    expect(s.safeParse({ ...base, causa_baja: { clave: "precio", motivo: "caro", cita: "es muy caro" } }).success).toBe(true);
+    expect(s.safeParse(base).success).toBe(false);
   });
 });

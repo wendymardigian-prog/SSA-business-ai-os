@@ -54,6 +54,7 @@ export default async function GastoPage({ params }: { params: Promise<{ id: stri
     timeZone,
     today: f.todayLocal,
     canManage: ctx.can("expenses.manage"),
+    canDelete: ctx.can("expenses.delete"),
   };
 
   // Un gasto de liquidación dice qué comisiones paga (Extra I, F62). Se lee DESPUÉS de `expenses.view` y solo trae
