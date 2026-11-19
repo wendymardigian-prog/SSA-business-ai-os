@@ -46,7 +46,8 @@ function Runs({ runs }: { runs: InlineRun[] }) {
 export function ContractText({ text }: { text: string }) {
   const blocks = blocksWithBlankLines(text);
   return (
-    <div className="space-y-3 text-sm leading-relaxed">
+    // `whitespace-pre-wrap`: la sangría y dos espacios seguidos se ven como se escribieron (los saltos ya son `<br>`).
+    <div className="space-y-3 whitespace-pre-wrap break-words text-sm leading-relaxed">
       {blocks.map((block, index) => {
         if (block.type === "heading") {
           if (block.level === 1) {
