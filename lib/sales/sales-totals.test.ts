@@ -48,4 +48,16 @@ describe("totales de Ventas", () => {
     expect(await computeSalesTotals(async () => ({ data: null, error: { message: "x" } }), fetchPayments)).toBeNull();
     expect(await computeSalesTotals(page(sales), async () => ({ data: null, error: { message: "x" } }))).toBeNull();
   });
+
+  it("con withSummaries devuelve cada venta con su plata y su próximo pago, sin cambiar los totales", async () => {
+    const withDates = sales.map((x, i) => ({ ...x, sale_date: `2026-10-0${i + 1}` }));
+    const dated = payments.map((p, i) => ({ ...p, id: `p${i}`, due_date: p.status === "scheduled" ? "2026-12-01" : null }));
+    const totals = await computeSalesTotals(page(withDates), (ids, a, b) => page(dated.filter((p) => ids.includes(p.sale_id)))(a, b), { withSummaries: true });
+    expect(totals).toMatchObject({ count: 3, amount: 3300, paid: 1030, pending: 2270 });
+    expect(totals!.summaries).toEqual([
+      { id: "s1", saleDate: "2026-10-01", amount: 1200, paid: 400, pending: 800, nextDue: "2026-12-01" },
+      { id: "s2", saleDate: "2026-10-02", amount: 600, paid: 600, pending: 0, nextDue: null },
+      { id: "s3", saleDate: "2026-10-03", amount: 1500, paid: 30, pending: 1470, nextDue: null },
+    ]);
+  });
 });

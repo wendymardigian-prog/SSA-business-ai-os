@@ -16,6 +16,8 @@ Estrenado en **Ventas** (`/dashboard/ventas`) y **Pagos** (`/dashboard/ventas/pa
 4. **Barra superior**: `<ViewsMenu …/>` y `<ColumnsMenu state={state}/>` junto a Buscar y Filtros (todo control va en la barra, nunca adentro de la página).
 5. **Totales**: calcularlos en el servidor sobre todo el filtro (`fetchAllPages`, `lib/shared/paginate.ts`, porque PostgREST corta cada respuesta en 1.000 filas) con `sumMoney` / `sumCount` (`lib/ui/data-table/totals.ts`), y pasarlos a `DataTable` como `totals={{ amount: "…" }}`. Un dato que no existe es «—», nunca 0.
 
+**Ordenar (opcional).** Una columna con `sortable: true` se ordena con un clic en el título solo si la tabla recibe `sort` y `onSortChange`; sin eso, el título es el de siempre. La tabla no ordena: la pantalla decide (en la consulta, con la página entera) y guarda el orden en la URL. `nextSort` y `ariaSort` en `lib/ui/data-table/sort.ts`. Ejemplo: Ventas.
+
 En el servidor, la página llama a `loadTableViews(ctx, tableKey, searchParams)` y, si la URL llegó pelada, parsea sus filtros con `resolved.inheritedFilters` (los de la vista predeterminada). Todo link de la pantalla preserva `?vista=` (`withViewParam`).
 
 ## Cómo funcionan las vistas

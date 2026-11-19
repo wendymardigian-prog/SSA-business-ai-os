@@ -8,6 +8,7 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { sanitizeSearch } from "@/lib/url-params";
 import { SALES_TABLE_KEY } from "@/lib/sales/columns";
 import { computeSalesTotals } from "@/lib/sales/sales-totals";
+import { DB_SORT_COLUMNS, isDbSort, pageOfSortedIds } from "@/lib/sales/sort";
 import { loadTableViews } from "@/lib/ui/data-table/views-load";
 import type { PageResult } from "@/lib/shared/paginate";
 import { ensureSalesTemplateFlows } from "@/lib/sales/automation/templates-run";
@@ -114,14 +115,44 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   }
   // Con un filtro por canal o por pieza se suma el toque como `inner` (las ventas cuyo toque no cumple quedan afuera).
   const embed = touchEmbed(filters);
-  const [pageRes, totals] = await Promise.all([
-    filteredSales(`${COLUMNS}${embed}`, { count: "exact" }).order("sale_date", { ascending: false }).order("created_at", { ascending: false }).range(from, from + SALES_PAGE_SIZE - 1),
-    // Los totales del pie son de TODAS las ventas del filtro (no solo de esta página), brutos.
-    computeSalesTotals(
-      (a, b) => filteredSales(`id, final_amount${embed}`).order("id").range(a, b) as unknown as PromiseLike<PageResult<{ id: string; final_amount: unknown }>>,
-      (ids, a, b) => supabase.from("payments").select("sale_id, amount, status").in("sale_id", ids).order("id").range(a, b) as unknown as PromiseLike<PageResult<{ sale_id: string; amount: unknown; status: string }>>,
-    ),
-  ]);
+  // Fecha y Monto los ordena la base; Cobrado, Pendiente y Próximo pago salen de los pagos y se ordenan con la misma
+  // pasada completa de los totales del pie (así ordenan TODAS las ventas del filtro, no solo la página).
+  const dbSort = isDbSort(filters.sort);
+  const totalsPromise = computeSalesTotals(
+    (a, b) => filteredSales(`id, final_amount, sale_date${embed}`).order("id").range(a, b) as unknown as PromiseLike<PageResult<{ id: string; final_amount: unknown; sale_date: string }>>,
+    (ids, a, b) =>
+      supabase.from("payments").select("id, sale_id, amount, status, due_date").in("sale_id", ids).order("id").range(a, b) as unknown as PromiseLike<
+        PageResult<{ id: string; sale_id: string; amount: unknown; status: string; due_date: string | null }>
+      >,
+    { withSummaries: !dbSort },
+  );
+  /** La página por fecha o por monto, ordenada en la consulta. */
+  const dbPage = (column: string, ascending: boolean) => {
+    let query = filteredSales(`${COLUMNS}${embed}`, { count: "exact" }).order(column, { ascending });
+    if (column !== "sale_date") query = query.order("sale_date", { ascending: false });
+    return query.order("created_at", { ascending: false }).range(from, from + SALES_PAGE_SIZE - 1);
+  };
+  let sortFallback = false;
+  let pageRes: { data: unknown[] | null; count: number | null; error: unknown };
+  let totals: Awaited<typeof totalsPromise>;
+  if (dbSort) {
+    const [res, t] = await Promise.all([dbPage(DB_SORT_COLUMNS[filters.sort.key]!, filters.sort.dir === "asc"), totalsPromise]);
+    pageRes = res;
+    totals = t;
+  } else {
+    totals = await totalsPromise;
+    if (!totals?.summaries) {
+      // Sin la pasada completa no se puede ordenar por lo que sale de los pagos: se muestra por fecha y se avisa.
+      sortFallback = true;
+      pageRes = await dbPage("sale_date", false);
+    } else {
+      const ids = pageOfSortedIds(totals.summaries, filters.sort, from, SALES_PAGE_SIZE);
+      const res = ids.length ? await supabase.from("sales").select(COLUMNS).in("id", ids) : { data: [], error: null };
+      const position = new Map(ids.map((id, i) => [id, i]));
+      const ordered = ((res.data ?? []) as unknown as SaleDbRow[]).sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
+      pageRes = { data: ordered, count: totals.count, error: res.error };
+    }
+  }
   const { data, count, error } = pageRes;
 
   const sales = (data ?? []) as unknown as SaleDbRow[];
@@ -131,7 +162,9 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   const canViewAds = ctx.can("dashboards.ads.view");
   // Lo que depende de las filas de esta página, todo en la misma tanda.
   const [payments, contacts, originParts, moduleColumns] = await Promise.all([
-    saleIds.length ? supabase.from("payments").select("sale_id, amount, status").in("sale_id", saleIds) : Promise.resolve({ data: [] as Array<{ sale_id: string; amount: number; status: string }> }),
+    saleIds.length
+      ? supabase.from("payments").select("id, sale_id, amount, status, due_date").in("sale_id", saleIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; sale_id: string; amount: number; status: string; due_date: string | null }> }),
     sales.length ? supabase.from("contacts").select("id, display_name, email").in("id", [...new Set(sales.map((s) => s.contact_id))]) : Promise.resolve({ data: [] as Array<{ id: string; display_name: string | null; email: string | null }> }),
     loadOriginParts(supabase, {
       workspaceId: workspace.id,
@@ -147,7 +180,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   ]);
 
   const byContact = new Map((contacts.data ?? []).map((c) => [c.id, c.display_name || c.email || "Sin nombre"]));
-  const paymentsBySale = new Map<string, Array<{ amount: unknown; status: string }>>();
+  const paymentsBySale = new Map<string, Array<{ id: string; amount: unknown; status: string; due_date: string | null }>>();
   for (const p of payments.data ?? []) paymentsBySale.set(p.sale_id, [...(paymentsBySale.get(p.sale_id) ?? []), p]);
 
   const origins = buildOriginViews(sales, originParts, canViewAds);
@@ -177,7 +210,8 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     members: members.map((m) => ({ id: m.userId, name: m.name })),
     timeZone,
     pieceTitle,
-    totals,
+    totals: totals ? { count: totals.count, amount: totals.amount, paid: totals.paid, pending: totals.pending, truncated: totals.truncated } : null,
+    sortFallback,
     views: {
       items: viewsData.views,
       defaultViewId: viewsData.defaultViewId,
