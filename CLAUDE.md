@@ -2308,7 +2308,7 @@ Casi todo se elimina desde su ficha o su fila (agendas, ventas, pagos, productos
 - **Sin la 00410/00411 aplicadas el código no se rompe**: eliminar responde «No pude revisar qué se elimina» y la Papelera muestra igual contactos y tareas con un aviso.
 - **En la plantilla de estudiantes** `private.trash_plan` nombra tablas de módulos que no viajan (ventas, grabaciones, formularios, finanzas): al sincronizar BAIOS hay que podarla (`poda.sql`, `areas.mjs`).
 
-`00410` y `00411` son aditivas (pueden ir antes o después del deploy) y suman el cron diario `trash-purge` (SQL directo). `verify-trash.mjs` necesita el Supabase local (Docker). **La próxima libre del rango de esta tanda es la `00412`** (confirmar con `list_migrations` y las ramas locales).
+`00410` y `00411` son aditivas y suman el cron diario `trash-purge` (SQL directo). **Aplicadas y registradas el 18/11/2026** (versiones `20261119032117` y `20261119032118`, UTC), después de ensayarlas contra producción en una transacción que se deshizo sola (eliminar y restaurar idénticos en 12 tipos). `verify-trash.mjs` necesita el Supabase local (Docker). **La próxima libre del rango de esta tanda es la `00412`** (confirmar con `list_migrations` y las ramas locales).
 
 # Seguridad
 
