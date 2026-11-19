@@ -25,7 +25,7 @@ import {
   TRASH_RETENTION_DAYS,
   type TrashEntity,
 } from "@/lib/trash/entities";
-import { blockerMessage, deleteErrorMessage, describeCounts, restoreErrorMessage, warningMessage } from "@/lib/trash/messages";
+import { blockerMessage, blockerMessages, deleteErrorMessage, describeCounts, restoreErrorMessage, warningMessage } from "@/lib/trash/messages";
 import type { TrashBulkResult, TrashDeleteResult, TrashListItem, TrashListResult, TrashPreview, TrashRestoreResult } from "@/lib/trash/types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -88,7 +88,7 @@ export async function previewTrashDelete(entityRaw: string, id: string, options?
     ok: true,
     label: res.label ?? "",
     alsoDeleted: describeCounts(res.counts ?? null, ROOT_TABLE[entity]),
-    blockers: Array.from(new Set((res.blockers ?? []).map(blockerMessage))),
+    blockers: blockerMessages(res.blockers ?? []),
     warnings,
     offersServiceOption: entity === "sale" && (res.warnings ?? []).includes("has_service"),
     canDeleteService: ctx.can(TRASH_ENTITIES.service.key),
@@ -135,7 +135,7 @@ async function deleteOne(ctx: PermissionContext, entity: TrashEntity, id: string
   }
   const res = data as { ok: boolean; code?: string; item_id?: string; blockers?: string[] };
   if (!res?.ok) {
-    if (res?.code === "blocked") return { ok: false, error: (res.blockers ?? []).map(blockerMessage).join(" ") || blockerMessage("") };
+    if (res?.code === "blocked") return { ok: false, error: blockerMessages(res.blockers ?? []).join(" ") || blockerMessage("") };
     return { ok: false, error: deleteErrorMessage(res?.code ?? "") };
   }
   return { ok: true, itemId: res.item_id ?? "" };

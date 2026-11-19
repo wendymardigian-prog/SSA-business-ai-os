@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { PERMISSION_KEYS, MEMBER_PERMISSION_KEYS, OWNER_ONLY_KEYS } from "@/lib/auth/permissions";
 import { daysLeft, isTrashEntity, TRASH_ENTITIES, TRASH_PERMISSION_KEYS } from "./entities";
-import { blockerMessage, describeCounts, restoreErrorMessage, warningMessage } from "./messages";
+import { blockerMessage, blockerMessages, describeCounts, restoreErrorMessage, warningMessage } from "./messages";
 
 const MIGRATIONS = path.join(process.cwd(), "supabase/migrations");
 
@@ -64,6 +64,17 @@ describe("Papelera: textos", () => {
   it("un bloqueo del motor nombra la tabla en castellano", () => {
     expect(blockerMessage("in_use:public.sales")).toContain("ventas");
     expect(blockerMessage("in_use:public.algo_nuevo")).toContain("public.algo_nuevo");
+  });
+
+  it("un bloqueo propio no se repite con el genérico «Lo usan otros registros» de la misma tabla", () => {
+    expect(blockerMessages(["contract_signed", "in_use:public.contract_signatures"])).toEqual([blockerMessage("contract_signed")]);
+    expect(blockerMessages(["product_sold", "in_use:public.sales", "in_use:app_servicio.services"])).toEqual([
+      blockerMessage("product_sold"),
+      blockerMessage("in_use:app_servicio.services"),
+    ]);
+    // Sin el bloqueo propio, el genérico sí se muestra; y los iguales van una sola vez.
+    expect(blockerMessages(["in_use:public.contract_signatures"])).toEqual([blockerMessage("in_use:public.contract_signatures")]);
+    expect(blockerMessages(["contract_signed", "contract_signed"])).toHaveLength(1);
   });
 
   it("lo que se va con el registro no cuenta el registro mismo", () => {
