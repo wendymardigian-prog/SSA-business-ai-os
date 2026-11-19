@@ -1,5 +1,5 @@
 -- @plantilla-quitar(servicios)
--- 00380 · Corrida A3 · F129 y F130: las LECTURAS de los puntos y del reto (solo lectura, condición de Wendy 14/11).
+-- 00380 · Corrida A3 · F129 y F130: las LECTURAS de los puntos y del reto (solo lectura, condición de producto 14/11).
 --
 --   * `svc_points_daily(service, days)`: el gráfico «Actividad en el portal» de las fichas (F130.4). Una fila por día
 --     (14, 30 o 90) en la zona del estudiante, con los puntos positivos por grupo, los ajustes negativos aparte y si

@@ -4,7 +4,7 @@
 -- Servicios A3, F126 (decisión 469): entregas de actividades.
 --
 --   * `form_versions.definition.submission = {before_review, after_review}` (0, N o null = sin límite). Una actividad
---     SIN `submission` sigue como antes: sin límites, sin reemplazos y se revisa cualquier entrega (condición de Wendy,
+--     SIN `submission` sigue como antes: sin límites, sin reemplazos y se revisa cualquier entrega (condición de producto,
 --     14/11). El editor escribe los valores por defecto ({before_review: null, after_review: 2}) al guardarla.
 --   * `review_status` suma 'superseded' (la entrega pendiente que se reemplazó antes de la primera revisión). Ninguna
 --     fila existente cambia: el CHECK solo agranda la lista.

@@ -81,7 +81,7 @@ function useDraftDecision(draft: DraftQueueRow, onDone: () => void) {
   }
   function discard() {
     setError(null);
-    // El motivo es opcional (decisión de Wendy); con «Otro», la nota sí hace falta.
+    // El motivo es opcional (decisión de producto); con «Otro», la nota sí hace falta.
     if (reasonKey === "other" && !reason.trim()) return setError("Con «Otro», escribí una nota con el motivo.");
     start(async () => finish(await discardDraftAction(draft.id, { reason: reasonKey || null, note: reason.trim() || null })));
   }

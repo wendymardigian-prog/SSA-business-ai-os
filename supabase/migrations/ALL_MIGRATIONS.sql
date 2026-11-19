@@ -76337,7 +76337,7 @@ ALTER TABLE public.response_assets ADD CONSTRAINT response_assets_link_kind_chec
 -- Servicios A3, F126 (decisión 469): entregas de actividades.
 --
 --   * `form_versions.definition.submission = {before_review, after_review}` (0, N o null = sin límite). Una actividad
---     SIN `submission` sigue como antes: sin límites, sin reemplazos y se revisa cualquier entrega (condición de Wendy,
+--     SIN `submission` sigue como antes: sin límites, sin reemplazos y se revisa cualquier entrega (condición de producto,
 --     14/11). El editor escribe los valores por defecto ({before_review: null, after_review: 2}) al guardarla.
 --   * `review_status` suma 'superseded' (la entrega pendiente que se reemplazó antes de la primera revisión). Ninguna
 --     fila existente cambia: el CHECK solo agranda la lista.
@@ -76559,7 +76559,7 @@ GRANT EXECUTE ON FUNCTION app_servicio.submission_review(uuid, text, jsonb, text
 --   4. Una repetición con required = false no cuenta para `late_light` ni para el semáforo del paso (`svc_compute_light`).
 --   5. Control semanal `challenge.weekly = {min, video, number_field_key?, link_field_key?, stuck_field_key?}`:
 --      `svc_challenge_weeks_plan` (gemela challengeWeeks) y la lectura `svc_challenge_view` para la ficha. El campo
---      «trabado» (decisión de Wendy, 14/11) marca los días con algo escrito.
+--      «trabado» (decisión de producto, 14/11) marca los días con algo escrito.
 --   6. `challenge.start_by = {from: service_start|service_created, days}`: `svc_challenge_start_by`; el cron diario
 --      (`svc_open_due_challenges`, que ya llama svc_daily_run) avisa UNA vez al responsable al pasarse. No bloquea.
 --   7. Certificado según si llegó a tiempo: `ref.templates` en el paso de certificado (validación acá; elegir la
@@ -77564,7 +77564,7 @@ TO authenticated;
 -- ============================================================
 -- Servicios A3, F128 (decisiones 471 y 475): avisos del estudiante, resumen semanal y días activos.
 --
---   * `app_servicio_portal.portal_accounts` suma tres columnas (aprobadas por Wendy el 14/11; ninguna tabla):
+--   * `app_servicio_portal.portal_accounts` suma tres columnas (aprobadas el 14/11; ninguna tabla):
 --       notification_prefs    jsonb NOT NULL DEFAULT '{}'  lo que eligió en Perfil (lo que falta toma el de por defecto)
 --       notifications_seen_at timestamptz NULL             hasta cuándo vio los avisos (el contador de la campana)
 --       active_days           date[] NOT NULL DEFAULT '{}' los días que entró al portal, los últimos 180 (decisión 475)
@@ -77572,7 +77572,7 @@ TO authenticated;
 --   * Solo servidor (las usa el portal en B2): `portal_touch_active_day` (una escritura por día), `portal_save_notification_prefs`,
 --     `portal_mark_notifications_seen` y `portal_notifications_view` («Para hoy» y «Novedades», calculadas, sin guardar).
 --   * `products.portal_settings.notifications = {weekly_digest, due_today_email}`: SIN la clave, el resumen semanal y el
---     «vence hoy» por email están APAGADOS en todos los programas (condición de Wendy: se prenden con el portal en línea).
+--     «vence hoy» por email están APAGADOS en todos los programas (condición de producto: se prenden con el portal en línea).
 --   * `portal_digest_targets(workspace)` y `portal_digest_data(...)`: a quién le toca el resumen y qué lleva. El envío
 --     es código (lib/jobs/handlers/portal-digest.ts) con el Resend del negocio.
 --
@@ -77827,7 +77827,7 @@ BEGIN
       END IF;
     END IF;
   END IF;
-  -- A3 (F128): los avisos del programa. Sin la clave, el resumen semanal está APAGADO (condición de Wendy, 14/11).
+  -- A3 (F128): los avisos del programa. Sin la clave, el resumen semanal está APAGADO (condición de producto, 14/11).
   IF p ? 'notifications' THEN
     a := p -> 'notifications';
     IF jsonb_typeof(a) <> 'object' THEN v := v || 'los avisos no son válidos'::text;
@@ -77871,7 +77871,7 @@ GRANT EXECUTE ON FUNCTION app_servicio.portal_notification_prefs(jsonb), app_ser
 --     solo `award_points` / `revoke_points` / el ajuste a mano (00379). Esquema cerrado: solo service_role.
 --   * Columna `app_servicio.program_items.points jsonb NULL` ({submit, pass}): el valor propio de una actividad o evaluación.
 --   * `products.portal_settings.points = {enabled, values, caps, levels, ranking}`: SIN la clave (o con enabled distinto
---     de true) los puntos están APAGADOS en el programa (condición de Wendy, 14/11).
+--     de true) los puntos están APAGADOS en el programa (condición de producto, 14/11).
 --   * En el camino: `points` de la fase y `ref.points` del paso (validate_journey_template).
 --   * Gemelas puras (lib/portal-points/rules.ts, points.cases.json): points_for, points_daily_cap, level_of,
 --     points_settings_problems.
@@ -78260,7 +78260,7 @@ BEGIN
       END IF;
     END IF;
   END IF;
-  -- A3 (F128): los avisos del programa. Sin la clave, el resumen semanal está APAGADO (condición de Wendy, 14/11).
+  -- A3 (F128): los avisos del programa. Sin la clave, el resumen semanal está APAGADO (condición de producto, 14/11).
   IF p ? 'notifications' THEN
     a := p -> 'notifications';
     IF jsonb_typeof(a) <> 'object' THEN v := v || 'los avisos no son válidos'::text;
@@ -78271,7 +78271,7 @@ BEGIN
       END IF;
     END IF;
   END IF;
-  -- A3 (F129): los puntos. Sin la clave, APAGADOS (condición de Wendy, 14/11).
+  -- A3 (F129): los puntos. Sin la clave, APAGADOS (condición de producto, 14/11).
   IF p ? 'points' THEN v := v || app_servicio.points_settings_problems(p -> 'points'); END IF;
   RETURN v;
 END;
@@ -78930,7 +78930,7 @@ GRANT EXECUTE ON FUNCTION app_servicio.points_adjust(uuid, integer, text), app_s
 -- MIGRATION 380: POINTS READS
 -- ============================================================
 -- @plantilla-quitar(servicios)
--- 00380 · Corrida A3 · F129 y F130: las LECTURAS de los puntos y del reto (solo lectura, condición de Wendy 14/11).
+-- 00380 · Corrida A3 · F129 y F130: las LECTURAS de los puntos y del reto (solo lectura, condición de producto 14/11).
 --
 --   * `svc_points_daily(service, days)`: el gráfico «Actividad en el portal» de las fichas (F130.4). Una fila por día
 --     (14, 30 o 90) en la zona del estudiante, con los puntos positivos por grupo, los ajustes negativos aparte y si
@@ -79112,7 +79112,7 @@ GRANT EXECUTE ON FUNCTION app_servicio.svc_points_daily(uuid, integer), app_serv
 -- MIGRATION 381: POINTS SETTINGS PERMISSION
 -- ============================================================
 -- @plantilla-quitar(servicios)
--- 00381 · Corrida A3 · F129: la configuración de puntos del programa pide el permiso de puntos (Wendy dijo que sí, 15/11).
+-- 00381 · Corrida A3 · F129: la configuración de puntos del programa pide el permiso de puntos (aprobado el 15/11).
 --
 -- Hasta acá, `portal_admin_save_program_settings` pedía `portal.sections` para la clave `points` (caía en el ELSE).
 -- Ahora la clave `points` pide `portal.points` («Puntos del programa»), igual que el ajuste a mano y «Calcular lo ya
@@ -79164,7 +79164,7 @@ $$;
 -- MIGRATION 382: PROGRAM ITEM POINTS
 -- ============================================================
 -- @plantilla-quitar(servicios)
--- 00382 · Corrida A3 · F129: «Puntos al entregar / al aprobar» de una actividad o evaluación (Wendy dijo que sí, 15/11).
+-- 00382 · Corrida A3 · F129: «Puntos al entregar / al aprobar» de una actividad o evaluación (aprobado el 15/11).
 --
 -- `program_update_item` suma la clave `points` ({submit, pass}, cada uno entero de 0 a 10.000; null o {} = los del
 -- programa). Sin la clave en el cambio, el ítem queda como estaba: nada cambia para lo que ya existe. El CHECK
@@ -79236,7 +79236,7 @@ $$;
 -- 00383 · Corrida A3 · F128: a quién le toca el email «Lo que vence hoy» (solo lectura).
 --
 -- Igual que `portal_digest_targets` (00377), pero con el interruptor del programa `notifications.due_today_email`
--- (nace APAGADO) y la preferencia de la persona `due_today_email` (nace apagada, decisión de Wendy 14/11). Lo que vence
+-- (nace APAGADO) y la preferencia de la persona `due_today_email` (nace apagada, decisión de producto 14/11). Lo que vence
 -- hoy de cada persona lo lee el envío con `portal_notifications_view` (00377). Solo para el servidor.
 --
 -- Volver atrás: DROP FUNCTION IF EXISTS app_servicio.portal_due_today_targets(uuid);
@@ -86441,7 +86441,7 @@ ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (type = ANY
 -- @plantilla-quitar(servicios)
 -- 00405 · Comunidad: título en cada post del equipo y aviso por correo a los estudiantes
 --
--- Wendy (18/11/2026): al publicar en la comunidad desde SSA, el post lleva un título (con emojis) y un interruptor
+-- Decisión de producto (18/11/2026): al publicar en la comunidad desde SSA, el post lleva un título (con emojis) y un interruptor
 -- «Avisar por correo a los estudiantes», prendido de entrada. El correo lo arma y lo manda la app (job
 -- `community_post_email`, un envío por persona); la base solo guarda el título y dice a quién le toca.
 --
@@ -88031,7 +88031,7 @@ GRANT EXECUTE ON FUNCTION public.trash_restore(uuid, uuid) TO authenticated, ser
 -- Hasta acá la cola con ritmo por número (00285) la usaban solo los broadcasts: cada automatización mandaba su WhatsApp
 -- al instante. Desde esta migración, los WhatsApp de las automatizaciones que NO arrancan porque el contacto escribió
 -- (etiqueta, alta, formulario, fecha, webhook, ventas…) entran en `send_queue_items` y salen de a uno por el carril del
--- número (`channel_send_lanes`), con su espera al azar, su horario y sus topes. Decisiones de Wendy (18/11/2026):
+-- número (`channel_send_lanes`), con su espera al azar, su horario y sus topes. Decisiones de producto (18/11/2026):
 --   - el ritmo es el del número (`channels.send_policy`), el mismo techo que los broadcasts;
 --   - el 20 % del cupo de la hora queda para lo urgente, también frente a los broadcasts;
 --   - lo que escribe el equipo a mano, desde el celular o el agente cuenta en el cupo, pero nunca se frena;
@@ -88773,7 +88773,7 @@ GRANT EXECUTE ON FUNCTION public.sum_ai_task_spend(uuid, timestamptz, text, text
 -- Aditiva e idempotente. No borra nada ni cambia columnas existentes. Va ANTES de desplegar el código (la pantalla de
 -- Agentes IA, la bandeja de borradores y Aprobaciones leen estas columnas y tablas).
 --
--- 0. `agents.actions_need_approval` (APAGADO de serie: decisión de Wendy del 18/11/2026) y `agents.learning`
+-- 0. `agents.actions_need_approval` (APAGADO de serie: decisión de producto del 18/11/2026) y `agents.learning`
 --    (ejemplos automáticos, apagados, y el umbral de las reglas aprendidas). Con todo apagado, el agente hace
 --    exactamente lo mismo que antes.
 -- 1. `ai_proposals`: cada acción que un agente PROPONE en vez de ejecutar (interruptor del agente prendido y turno en
@@ -88782,7 +88782,7 @@ GRANT EXECUTE ON FUNCTION public.sum_ai_task_spend(uuid, timestamptz, text, text
 --    es de una conversación, puede ver esa conversación) o quien la pidió con `assistant.use`. Sin `contact_id` a
 --    propósito: `merge_contacts` no la tiene que tocar.
 -- 2. `agent_drafts.reject_reason` / `reject_note`: el motivo (lista cerrada) al descartar un borrador. OPCIONAL
---    (decisión de Wendy): sin trigger que lo exija; si la persona elige un motivo, cuenta para aprender.
+--    (decisión de producto): sin trigger que lo exija; si la persona elige un motivo, cuenta para aprender.
 -- 3. `ai_outcomes` (vista, security_invoker): los desenlaces decididos por personas (aprobada, aprobada con edición,
 --    rechazada con su motivo). Un descarte sin motivo cuenta como rechazo «sin motivo».
 -- 4. `ai_quality_weekly(p_workspace_id, p_weeks, p_agent_id)` (SECURITY INVOKER): por semana, cuántas se decidieron,
@@ -88938,7 +88938,7 @@ COMMENT ON COLUMN public.agent_drafts.reject_reason IS
 
 GRANT UPDATE (reject_reason, reject_note) ON public.agent_drafts TO authenticated;
 
--- Sin guardia: el motivo es OPCIONAL (decisión de Wendy, 18/11/2026). En RER un trigger (AI001) lo exigía.
+-- Sin guardia: el motivo es OPCIONAL (decisión de producto, 18/11/2026). En RER un trigger (AI001) lo exigía.
 
 CREATE INDEX IF NOT EXISTS idx_agent_drafts_decided_outcomes ON public.agent_drafts (workspace_id, decided_at DESC)
   WHERE decided_by IS NOT NULL;
@@ -89240,7 +89240,7 @@ GRANT EXECUTE ON FUNCTION public.propose_learned_rule_if_due(uuid, uuid, text, i
 -- 5. `knowledge_chunks.page`: la página del PDF donde empieza cada trozo (sale de las marcas `<!-- pagina N -->` de
 --    la extracción). Un texto, un Word o un enlace no tienen páginas: NULL («sin dato», nunca 0). Los trozos que ya
 --    existían quedan en NULL hasta que se reindexe el documento.
--- 6. `agents.cite_sources` (APAGADO de serie, decisión de Wendy del 18/11/2026): si está prendido y el agente usó
+-- 6. `agents.cite_sources` (APAGADO de serie, decisión de producto del 18/11/2026): si está prendido y el agente usó
 --    Conocimiento, la respuesta cierra con «Fuente: «Documento», pág. N». Apagado, el lead no ve nada nuevo.
 --
 -- Para volver atrás:

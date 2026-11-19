@@ -5,8 +5,8 @@
  * «propuesto → final». «Más instructiva» = la que cambió una parte apreciable del texto sin reescribirlo entero
  * (entre el 15 % y el 80 % de las palabras), y entre ellas, las más recientes primero. Un rechazo no es un ejemplo.
  *
- * Apagados por defecto (respuesta prevista P-81: los ejemplos llevan textos de otros clientes; falta confirmar con
- * Wendy). Viajan como DATOS envueltos, nunca como instrucciones.
+ * Apagados por defecto (respuesta prevista P-81: los ejemplos llevan textos de otros clientes; falta confirmar
+ * el criterio). Viajan como DATOS envueltos, nunca como instrucciones.
  */
 
 export interface OutcomeForExamples {

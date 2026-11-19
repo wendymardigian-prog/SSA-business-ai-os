@@ -2,7 +2,7 @@
  * Ajustes de aprendizaje de un agente (`agents.learning`, 00441). Puro: lo usan la pantalla, el prompt y las reglas.
  *
  * - `examples`: ejemplos automáticos en el prompt. APAGADO por defecto: respuesta prevista P-81 («hasta
- *   ampliar el acuerdo de datos, mandar a la IA solo los últimos mensajes»), falta confirmar con Wendy.
+ *   ampliar el acuerdo de datos, mandar a la IA solo los últimos mensajes»), falta confirmar.
  * - `approvedExamples` / `editExamples`: cuántos de cada uno.
  * - `ruleThreshold`: cuántos rechazos con el mismo motivo hacen falta para proponer una regla.
  */

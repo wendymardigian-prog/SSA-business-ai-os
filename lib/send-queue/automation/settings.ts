@@ -6,7 +6,7 @@
  *
  * En cada PASO de WhatsApp (`data.delivery`): cómo sale (`auto`, `queue` o `immediate`) y la programación.
  *
- * `auto` (lo de un paso viejo, sin la clave) decide por el DISPARADOR (decisión de Wendy del 18/11/2026):
+ * `auto` (lo de un paso viejo, sin la clave) decide por el DISPARADOR (decisión de producto del 18/11/2026):
  *   - si la automatización arranca porque el contacto escribió (palabra clave, botón, respuesta rápida, primer mensaje,
  *     cualquier mensaje, comentario) o por su agenda (confirmación, recordatorio, reprogramación…), sale AL INSTANTE,
  *     como siempre: quien escribió espera la respuesta ya, y un recordatorio no puede esperar al horario;

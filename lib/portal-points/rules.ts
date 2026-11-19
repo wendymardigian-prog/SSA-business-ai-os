@@ -5,7 +5,7 @@
  * contra las dos.
  *
  * Los valores por defecto del programa salen de F245. Un programa con `points.enabled` distinto de true NO suma nada
- * (los puntos nacen apagados: condición de Wendy, 14/11). El valor propio del paso, la fase o la actividad gana al del
+ * (los puntos nacen apagados: condición de producto, 14/11). El valor propio del paso, la fase o la actividad gana al del
  * programa.
  */
 

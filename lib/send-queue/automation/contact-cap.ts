@@ -1,7 +1,7 @@
 /**
  * Tope de WhatsApp automáticos por contacto y día, sumando todas las automatizaciones. PURO.
  *
- * Decisión de Wendy (18/11/2026): se trae APAGADO. Se prende en la pantalla de la cola. Prendido, lo previsto es 3 al
+ * Decisión de producto (18/11/2026): se trae APAGADO. Se prende en la pantalla de la cola. Prendido, lo previsto es 3 al
  * día por contacto y, aparte, 3 al día por grupo; lo urgente no cuenta (ni suma ni se frena). Solo cuenta lo que pasa por
  * la cola: lo que sale al instante (las respuestas a quien acaba de escribir y los avisos de agenda) no. El día es el
  * del negocio (`workspaces.timezone`). Se guarda en `workspaces.send_contact_caps` (00420); null = apagado.

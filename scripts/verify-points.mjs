@@ -10,7 +10,7 @@
  *   3. Comportamiento, en UNA transacción que se deshace sola (termina con un error a propósito): con los puntos
  *      apagados no suma; prendidos suma una sola vez; el valor propio gana; el tope por día; un «me gusta» propio no
  *      cuenta; ocultar un post descuenta; el ajuste a mano; «Calcular lo ya hecho» no duplica; las lecturas (00380).
- *   4. Hoy: ningún programa real tiene los puntos prendidos (nacen apagados, condición de Wendy).
+ *   4. Hoy: ningún programa real tiene los puntos prendidos (nacen apagados, condición de producto).
  *
  *   node scripts/verify-points.mjs
  *

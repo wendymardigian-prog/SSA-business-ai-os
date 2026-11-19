@@ -4,7 +4,7 @@ import { searchKnowledgeForPerson } from "@/lib/knowledge/person-search";
 import { NO_ACCESS_MESSAGE, type PersonToolContext, type PersonToolDefinition } from "./types";
 
 /**
- * Las herramientas del asistente del equipo (traído de RER, adaptado a SSA). Decisión de Wendy (18/11/2026):
+ * Las herramientas del asistente del equipo (traído de RER, adaptado a SSA). Decisión de producto (18/11/2026):
  * lee contactos, conversaciones, tareas, agenda, servicios y Conocimiento con lo que esa persona ya ve; crear una
  * tarea o una nota queda como propuesta que la persona aprueba en el mismo panel. Cuáles ofrece el asistente se elige
  * en su pantalla (Agentes IA → Asistente del equipo → Configuración), sin tocar código.

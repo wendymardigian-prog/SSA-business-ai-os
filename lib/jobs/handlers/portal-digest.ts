@@ -5,7 +5,7 @@
  * tenga PRENDIDO y que la persona no lo haya apagado (puede haber cambiado desde que se encoló), arma las secciones y lo
  * manda con el Resend del negocio. Un negocio sin Resend no manda: queda en el registro de emails como no configurado.
  *
- * Nace apagado en todos los programas (`portal_settings.notifications.weekly_digest`): condición de Wendy, 14/11.
+ * Nace apagado en todos los programas (`portal_settings.notifications.weekly_digest`): condición de producto, 14/11.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";

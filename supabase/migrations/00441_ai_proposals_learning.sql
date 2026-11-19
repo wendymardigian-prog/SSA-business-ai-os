@@ -4,7 +4,7 @@
 -- Aditiva e idempotente. No borra nada ni cambia columnas existentes. Va ANTES de desplegar el código (la pantalla de
 -- Agentes IA, la bandeja de borradores y Aprobaciones leen estas columnas y tablas).
 --
--- 0. `agents.actions_need_approval` (APAGADO de serie: decisión de Wendy del 18/11/2026) y `agents.learning`
+-- 0. `agents.actions_need_approval` (APAGADO de serie: decisión de producto del 18/11/2026) y `agents.learning`
 --    (ejemplos automáticos, apagados, y el umbral de las reglas aprendidas). Con todo apagado, el agente hace
 --    exactamente lo mismo que antes.
 -- 1. `ai_proposals`: cada acción que un agente PROPONE en vez de ejecutar (interruptor del agente prendido y turno en
@@ -13,7 +13,7 @@
 --    es de una conversación, puede ver esa conversación) o quien la pidió con `assistant.use`. Sin `contact_id` a
 --    propósito: `merge_contacts` no la tiene que tocar.
 -- 2. `agent_drafts.reject_reason` / `reject_note`: el motivo (lista cerrada) al descartar un borrador. OPCIONAL
---    (decisión de Wendy): sin trigger que lo exija; si la persona elige un motivo, cuenta para aprender.
+--    (decisión de producto): sin trigger que lo exija; si la persona elige un motivo, cuenta para aprender.
 -- 3. `ai_outcomes` (vista, security_invoker): los desenlaces decididos por personas (aprobada, aprobada con edición,
 --    rechazada con su motivo). Un descarte sin motivo cuenta como rechazo «sin motivo».
 -- 4. `ai_quality_weekly(p_workspace_id, p_weeks, p_agent_id)` (SECURITY INVOKER): por semana, cuántas se decidieron,
@@ -169,7 +169,7 @@ COMMENT ON COLUMN public.agent_drafts.reject_reason IS
 
 GRANT UPDATE (reject_reason, reject_note) ON public.agent_drafts TO authenticated;
 
--- Sin guardia: el motivo es OPCIONAL (decisión de Wendy, 18/11/2026). En RER un trigger (AI001) lo exigía.
+-- Sin guardia: el motivo es OPCIONAL (decisión de producto, 18/11/2026). En RER un trigger (AI001) lo exigía.
 
 CREATE INDEX IF NOT EXISTS idx_agent_drafts_decided_outcomes ON public.agent_drafts (workspace_id, decided_at DESC)
   WHERE decided_by IS NOT NULL;

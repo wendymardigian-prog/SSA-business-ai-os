@@ -9,7 +9,7 @@ import { Checkbox, Notice, Section } from "./fields";
 /**
  * Las herramientas del asistente del equipo. Cada una declara si lee o escribe y qué permiso exige: el asistente
  * solo le ofrece a cada persona las que su rol permite, y lo que escribe espera su aprobación. Respuesta prevista
- * P-80 (falta confirmar con Wendy): de serie, todas.
+ * P-80 (falta confirmar): de serie, todas.
  */
 export function AssistantToolsSection({ data }: { data: AgentScreenData }) {
   const router = useRouter();

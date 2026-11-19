@@ -10,7 +10,7 @@ import { Checkbox, Field, Notice, NumberInput, Section } from "./fields";
 /**
  * Aprobación y aprendizaje del agente (bloque 16):
  *  - «Las acciones esperan aprobación»: en un canal con borradores, lo que escribe en el CRM queda propuesto. Apagado de
- *    serie (decisión de Wendy, 18/11/2026).
+ *    serie (decisión de producto, 18/11/2026).
  *  - Ejemplos automáticos: apagados de serie.
  *  - Umbral de reglas aprendidas.
  */
