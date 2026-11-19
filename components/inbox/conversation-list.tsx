@@ -34,6 +34,7 @@ import { planRowActions, type RowAction } from "@/lib/inbox/row-actions";
 import { setCustomer, setKnown } from "@/lib/actions/contacts";
 import { MarkBadge } from "@/components/contacts/mark-badge";
 import { ConversationRowMenu } from "@/components/inbox/conversation-row-menu";
+import { DeleteDialog } from "@/components/trash/delete-dialog";
 import { colorOf, initialsOf } from "@/lib/shared/people";
 import { Avatar } from "@/components/ui/filter-menu";
 import { Tip } from "@/components/ui/tooltip";
@@ -72,6 +73,8 @@ export function ConversationList({
   currentUserId = "",
   canEditContacts = false,
   canDeleteContacts = false,
+  canDeleteConversations = false,
+  onConversationDeleted,
   hasGroups = false,
   unidentifiedCount = 0,
   groups = [],
@@ -104,6 +107,10 @@ export function ConversationList({
   currentUserId?: string;
   canEditContacts?: boolean;
   canDeleteContacts?: boolean;
+  /** `conversations.delete`: «Eliminar conversación» en el "⋯" de cada fila (la Papelera). */
+  canDeleteConversations?: boolean;
+  /** Una conversación se mandó a la Papelera: la vista saca `?c=` si era la abierta. */
+  onConversationDeleted?: (conversationId: string) => void;
   /** Hay grupos de WhatsApp activados que esta persona ve (00280): los filtros ofrecen elegir entre chats y grupos. */
   hasGroups?: boolean;
   /** Chats que la lista oculta por defecto (00296). */
@@ -124,8 +131,14 @@ export function ConversationList({
   // El "⋯" de una fila: que fila esta guardando y el ultimo error.
   const [rowPending, setRowPending] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  // La conversación que se está por mandar a la Papelera (el diálogo de «Eliminar»).
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function runRowAction(conversation: Conversation, action: Exclude<RowAction, "openContact">) {
+    if (action === "deleteConversation") {
+      setDeletingId(conversation.id);
+      return;
+    }
     const contactId = conversation.contact_id;
     if (!contactId) return;
     setRowPending(conversation.id);
@@ -275,6 +288,20 @@ export function ConversationList({
         </div>
       )}
 
+      {deletingId && (
+        <DeleteDialog
+          entity="conversation"
+          id={deletingId}
+          onClose={() => setDeletingId(null)}
+          onDeleted={() => {
+            const id = deletingId;
+            // Sale de la lista al instante; el servidor confirma con el refresh que hace el diálogo.
+            setConversations((prev) => prev.filter((c) => c.id !== id));
+            onConversationDeleted?.(id);
+          }}
+        />
+      )}
+
       {!filters.onlyUnidentified && !showsOnlyGroups(filters) && <UnidentifiedNotice count={unidentifiedCount} />}
 
       {/* Conversation list */}
@@ -346,6 +373,7 @@ export function ConversationList({
                   viewerId: currentUserId,
                   canEditContacts,
                   canDeleteContacts,
+                  canDeleteConversation: canDeleteConversations,
                 })}
                 contactId={conversation.contact_id}
                 contactName={conversation.contacts?.display_name ?? "este contacto"}

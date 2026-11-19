@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requirePermission } from "@/lib/auth/guards";
 import { parsePermissions, systemRolePermissions } from "@/lib/auth/permissions";
 import { assertCanAssignRole, grantActorOf, type RoleToGive } from "@/lib/team/grant";
-import { isEmailConfigured } from "@/lib/email/send";
+import { loadEmailReadiness } from "@/lib/email/readiness";
 import { TeamView } from "@/components/settings/team-view";
 import { createServiceClient } from "@/lib/supabase/server";
 import { memberDisplayName } from "@/lib/workspace-members";
@@ -64,8 +64,8 @@ export default async function TeamPage() {
   const serviceClient = await createServiceClient();
 
   // Todo en paralelo: los miembros (con email y nombre, de auth.users), los roles para el selector, y,
-  // para quien invita, las invitaciones y si el email esta conectado.
-  const [memberDetails, { data: workspaceRoles }, invitesRes, emailConfigured] = await Promise.all([
+  // para quien invita, las invitaciones y si los emails van a salir (conexion y remitente).
+  const [memberDetails, { data: workspaceRoles }, invitesRes, emailReadiness] = await Promise.all([
     loadTeamMembers(serviceClient, workspace.id),
     supabase.from("workspace_roles").select("id, name, system_role, permissions").eq("workspace_id", workspace.id).order("name"),
     canInvite
@@ -76,7 +76,7 @@ export default async function TeamPage() {
           .order("created_at", { ascending: false })
           .limit(300)
       : Promise.resolve({ data: [] as never[] }),
-    canInvite ? isEmailConfigured(serviceClient as unknown as SupabaseClient, workspace.id) : Promise.resolve(false),
+    canInvite ? loadEmailReadiness(serviceClient as unknown as SupabaseClient, workspace.id) : Promise.resolve(null),
   ]);
 
   // Los roles que quien mira puede dar: la misma regla que aplica el servidor al invitar y asignar.
@@ -110,7 +110,7 @@ export default async function TeamPage() {
       invites={invitesRes.data ?? []}
       workspaceRoles={roleOptions}
       grantableRoleIds={grantableRoleIds}
-      emailConfigured={emailConfigured}
+      emailReadiness={emailReadiness}
       personNames={Object.fromEntries(memberDetails.map((m) => [m.userId, m.name]))}
     />
   );

@@ -63,6 +63,15 @@ export function clearLiveCache(): void {
   cache.clear();
 }
 
+/**
+ * Cuanto se espera a Meta en cada consulta en vivo. Pasado esto, la consulta cuenta como «Meta no lo dio» (un guion en
+ * la pantalla), nunca como cero: un dashboard no puede quedar colgado porque Meta tarda.
+ */
+export const LIVE_TIMEOUT_MS = 8_000;
+
+/** El texto que ve la persona cuando Meta no contesto a tiempo. */
+export const LIVE_TIMEOUT_MESSAGE = "Meta tardó demasiado en responder. Probá de nuevo en un rato.";
+
 export type LiveResult<T> = { ok: true; data: T; fromCache: boolean } | { ok: false; error: string };
 
 /**
@@ -79,6 +88,8 @@ export async function liveQuery<T>(params: {
   query: Record<string, string>;
   fetchImpl?: typeof fetch;
   now?: number;
+  /** Para los tests: cuanto esperar a Meta. */
+  timeoutMs?: number;
 }): Promise<LiveResult<T>> {
   const now = params.now ?? Date.now();
   const cached = readCache<T>(params.key, now);
@@ -89,7 +100,10 @@ export async function liveQuery<T>(params: {
   url.searchParams.set("access_token", params.token);
 
   try {
-    const response = await (params.fetchImpl ?? fetch)(url.toString());
+    // El tiempo limite cubre tambien leer la respuesta: el mismo signal corta el `json()`.
+    const response = await (params.fetchImpl ?? fetch)(url.toString(), {
+      signal: AbortSignal.timeout(params.timeoutMs ?? LIVE_TIMEOUT_MS),
+    });
     const body = (await response.json()) as T & { error?: GraphError };
     if (body?.error) return { ok: false, error: humanizeGraphError(body.error) };
     if (!response.ok) return { ok: false, error: `Meta respondio ${response.status}` };
@@ -97,8 +111,14 @@ export async function liveQuery<T>(params: {
     writeCache(params.key, body, now);
     return { ok: true, data: body as T, fromCache: false };
   } catch (err) {
+    // Un timeout (o cualquier error de red) es «Meta no lo dio»: quien llama muestra un guion, nunca un cero.
+    if (isTimeoutError(err)) return { ok: false, error: LIVE_TIMEOUT_MESSAGE };
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+function isTimeoutError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "name" in err && (err.name === "TimeoutError" || err.name === "AbortError");
 }
 
 export interface UniqueReach {

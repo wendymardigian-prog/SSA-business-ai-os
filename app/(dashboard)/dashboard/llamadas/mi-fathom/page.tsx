@@ -93,7 +93,7 @@ export default async function MiFathomPage({
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader route="/dashboard/llamadas/mi-fathom" backHref={<BackToCalls />} />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <MiFathomCard view={view} connectionId={connectionId} flash={flash} areaId={presetAreaId} />
+        <MiFathomCard view={view} connectionId={connectionId} flash={flash} areaId={presetAreaId} canDeleteImported={can("calls.delete")} />
         {hasApp && (
           <div className="mx-auto w-full max-w-xl px-4 pb-6 md:px-6">
             <FathomRecorderEmails accountEmail={normalizeFathomEmail(user.email)} initialEmails={member?.closer_emails ?? []} />

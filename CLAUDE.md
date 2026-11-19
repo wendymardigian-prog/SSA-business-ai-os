@@ -2292,6 +2292,24 @@ node scripts/verify-servicios-migracion.mjs --a4 M1   # M1 a M9 (o --todas)
 node scripts/backfill-call-services.mjs --dry-run     # vincular las reuniones viejas (--aplicar para escribir)
 ```
 
+# Papelera: eliminar y restaurar (00410, 00411, 18/11/2026, traída de RER-BAIOS)
+
+Casi todo se elimina desde su ficha o su fila (agendas, ventas, pagos, productos, servicios, grabaciones, formularios y respuestas, fin de día, gastos, comisiones, ideas y piezas de contenido, conversaciones) y queda 30 días en **Ajustes → Papelera** para restaurarlo. Una clave por tipo (`<modulo>.delete`, de Owner y Admin; el Member de sistema ninguna). Contactos y tareas siguen con su borrado suave de siempre y la Papelera los lista igual (sin los duplicados unidos con Fusionar: `metadata.merged_into`). Detalle en [docs/papelera.md](docs/papelera.md).
+
+## Lo que no se puede romper
+
+- **No hay `deleted_at` en esas tablas: se guarda una foto y se borra de verdad.** `private.trash_capture` recorre `pg_constraint` (CASCADE entra en la foto, SET NULL se vuelve a enlazar, RESTRICT frena salvo que también se elimine) y la foto va a `private.trash_items`, que nunca viaja al navegador.
+- **Restaurar no dispara triggers** (los apaga por nombre solo en esa transacción, con `lock_timeout` 3 s → `busy`): no se regeneran comisiones, eventos de Meta ni automatizaciones. Un padre obligatorio que falta frena todo (`missing_parent:<tabla>`); uno opcional vuelve en null.
+- **Un tipo nuevo se suma en tres lugares a la vez**: `lib/trash/entities.ts`, `private.trash_can` y `private.trash_plan`. `lib/trash/entities.test.ts` los compara.
+- **Las funciones públicas corren con la SESIÓN** (`trash_preview`, `trash_delete`, `trash_restore`, `trash_list`): la base mira la clave y que la persona vea el registro.
+- **Lo que frena**: contrato firmado, comisión en un gasto, gasto automático, producto vendido, pieza programada. Ventas y pagos recalculan el estado, la marca «Cliente» y encolan Finanzas.
+- **Fathom no revive lo eliminado**: `calls_deleted_external` (sin vencimiento) y `lib/fathom/ingest.ts` lo saltea; si no puede leerla, no trae esa página.
+- **Una agenda futura se borra de Google sin avisar** (`deleteEvent(..., "none")`); para avisar está Cancelar.
+- **Sin la 00410/00411 aplicadas el código no se rompe**: eliminar responde «No pude revisar qué se elimina» y la Papelera muestra igual contactos y tareas con un aviso.
+- **En la plantilla de estudiantes** `private.trash_plan` nombra tablas de módulos que no viajan (ventas, grabaciones, formularios, finanzas): al sincronizar BAIOS hay que podarla (`poda.sql`, `areas.mjs`).
+
+`00410` y `00411` son aditivas y suman el cron diario `trash-purge` (SQL directo). **Aplicadas y registradas el 18/11/2026** (versiones `20261119032117` y `20261119032118`, UTC), después de ensayarlas contra producción en una transacción que se deshizo sola (eliminar y restaurar idénticos en 12 tipos). `verify-trash.mjs` necesita el Supabase local (Docker). **La próxima libre del rango de esta tanda es la `00412`** (confirmar con `list_migrations` y las ramas locales).
+
 # Seguridad
 
 ## Autenticacion y sesiones

@@ -16,6 +16,7 @@ import { CONTENT_PLATFORMS } from "@/lib/content/network-format";
 import { cn } from "@/lib/utils";
 import { ClassificationFields, type TaxonomyOptions } from "../classification-fields";
 import { DialogField, fieldInput } from "../dialog";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { Drawer } from "./drawer";
 import { useToast } from "./toast";
 
@@ -77,7 +78,8 @@ export function IdeaDrawer({
   taxonomy: TaxonomyOptions;
   /** Las redes conectadas. */
   platforms: string[];
-  perms: { approve: boolean; ai: boolean };
+  /** `delete`: `content.delete` (la Papelera). */
+  perms: { approve: boolean; ai: boolean; delete?: boolean };
   aiAvailable: boolean;
   aiReason?: string;
   userId: string;
@@ -203,6 +205,12 @@ export function IdeaDrawer({
     else onClose();
   }
 
+  // La idea se fue a la Papelera: nada que guardar al cerrar (lo escrito ya se guardó al salir del campo).
+  function afterDelete() {
+    dirty.current = false;
+    onClose();
+  }
+
   // Entre que la idea sale de la lista (recien aprobada o descartada) y que la
   // URL pasa a la siguiente pasan unos milisegundos: se sigue dibujando la
   // ultima conocida, para que el drawer no parpadee ni pierda el foco. Es
@@ -264,6 +272,9 @@ export function IdeaDrawer({
       footer={
         perms.approve ? (
           <>
+            {perms.delete && (
+              <DeleteButton entity="content_idea" id={shown.id} label="Eliminar" onDeleted={afterDelete} className={IDEA_DELETE_CLASS} />
+            )}
             {actions
               .filter((a) => a.action === "discard")
               .map((a) => (
@@ -300,9 +311,17 @@ export function IdeaDrawer({
               ))}
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            Solo Owner y Admin deciden sobre las ideas. Lo que edites se guarda.
-          </p>
+          <>
+            <p className="text-xs text-muted-foreground">
+              Solo Owner y Admin deciden sobre las ideas. Lo que edites se guarda.
+            </p>
+            {perms.delete && (
+              <>
+                <span className="flex-1" />
+                <DeleteButton entity="content_idea" id={shown.id} label="Eliminar" onDeleted={afterDelete} className={IDEA_DELETE_CLASS} />
+              </>
+            )}
+          </>
         )
       }
     >
@@ -375,6 +394,10 @@ export function IdeaDrawer({
     </Drawer>
   );
 }
+
+/** «Eliminar» al lado de «Descartar»: mismo tamaño, en rojo (la Papelera). */
+const IDEA_DELETE_CLASS =
+  "inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 px-3 py-1.5 text-sm text-red-700 hover:bg-red-500/10 dark:text-red-400";
 
 const EMPTY: BoardIdea = {
   kind: "idea",

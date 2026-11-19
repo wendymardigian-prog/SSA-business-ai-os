@@ -129,7 +129,11 @@ export function NotificationsTab({ sections, initialPrefs, email, whatsapp, slac
           <li className="flex items-start gap-2">
             <Bell className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span>
-              <span className="font-medium">Campana:</span> el aviso aparece en la campana del panel, en el momento.
+              <span className="font-medium">Campana:</span> el aviso aparece en la campana del panel, en el momento, y queda en{" "}
+              <Link href="/dashboard/notificaciones" className="font-medium text-foreground underline underline-offset-2">
+                Notificaciones
+              </Link>
+              .
             </span>
           </li>
           <li className="flex items-start gap-2">
@@ -206,7 +210,10 @@ export function NotificationsTab({ sections, initialPrefs, email, whatsapp, slac
             <span className="text-muted-foreground">Guardando…</span>
           ) : savedOnce ? (
             <span className="text-emerald-600 dark:text-emerald-400">Guardado ✓</span>
-          ) : null}
+          ) : (
+            // No hay botón de guardar: que se sepa desde el principio.
+            <span className="text-muted-foreground">Los cambios se guardan al momento</span>
+          )}
         </span>
         {hasChanges && (
           <button type="button" className={cn(secondaryButtonClass, "min-h-8 px-2.5 py-1 text-xs")} onClick={reset}>

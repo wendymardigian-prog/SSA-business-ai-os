@@ -134,18 +134,31 @@ export async function loadCrmData(
   };
 
   try {
-    // 1. El CRM, por nivel. Cada uno por su cuenta: si uno falla, los otros se muestran.
-    const results = await Promise.all(
-      LEVELS.map((level) =>
-        supabase.rpc("ads_crm_metrics_v2", {
-          p_level: level,
-          p_since: params.since,
-          p_until: params.until,
-          p_ad_account_id: params.adAccountId,
-          p_workspace_id: params.workspaceId,
-        }),
+    // Cada tanda va junta: lo que no depende de lo anterior no lo espera (cada ida y vuelta a la base cuesta).
+    // 1. El CRM, por nivel, y cuantos toques quedaron sin vincular (no depende de nada). Cada nivel por su cuenta:
+    // si uno falla, los otros se muestran.
+    const since90 = new Date((params.now ?? new Date()).getTime() - UNMATCHED_DAYS * 86_400_000).toISOString();
+    const [results, unmatched] = await Promise.all([
+      Promise.all(
+        LEVELS.map((level) =>
+          supabase.rpc("ads_crm_metrics_v2", {
+            p_level: level,
+            p_since: params.since,
+            p_until: params.until,
+            p_ad_account_id: params.adAccountId,
+            p_workspace_id: params.workspaceId,
+          }),
+        ),
       ),
-    );
+      // El contador que lleva a «Sin vincular».
+      supabase
+        .from("contact_touches")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", params.workspaceId)
+        .eq("meta_match_status", "unmatched")
+        .gte("occurred_at", since90),
+    ]);
+    data.unmatchedCount = unmatched.count ?? 0;
     results.forEach((result, index) => {
       if (result.error) {
         console.error(`[ads] no pude leer las metricas del CRM (${LEVELS[index]}):`, result.error.message);
@@ -164,11 +177,19 @@ export async function loadCrmData(
     const adsetIds = ids("adset");
     const adIds = ids("ad");
 
-    const [campaigns, adsets, ads] = await Promise.all([
+    // «# anuncios» va en la misma tanda: todos los anuncios del catalogo de las campañas que se muestran (no solo los
+    // que tuvieron metricas).
+    const [campaigns, adsets, ads, linkPages] = await Promise.all([
       Promise.all(chunks(campaignIds, CHUNK).map((c) => supabase.from("meta_campaigns").select("campaign_id, name, effective_status, objective").eq("workspace_id", params.workspaceId).in("campaign_id", c))),
       Promise.all(chunks(adsetIds, CHUNK).map((c) => supabase.from("meta_adsets").select("adset_id, name, effective_status, campaign_id").eq("workspace_id", params.workspaceId).in("adset_id", c))),
       Promise.all(chunks(adIds, CHUNK).map((c) => supabase.from("meta_ads").select("ad_id, name, effective_status, adset_id, campaign_id, creative, thumbnail_path, object_story_id, social_post_id").eq("workspace_id", params.workspaceId).in("ad_id", c))),
+      Promise.all(chunks(campaignIds, CHUNK).map((c) => supabase.from("meta_ads").select("ad_id, adset_id, campaign_id").eq("workspace_id", params.workspaceId).in("campaign_id", c))),
     ]);
+    for (const page of linkPages) {
+      for (const l of (page.data ?? []) as Array<{ ad_id: string; adset_id: string | null; campaign_id: string | null }>) {
+        data.adLinks.push({ adId: l.ad_id, adsetId: l.adset_id, campaignId: l.campaign_id });
+      }
+    }
 
     const campaignRows = campaigns.flatMap((x) => (x.data ?? []) as Array<{ campaign_id: string; name: string | null; effective_status: string | null; objective: string | null }>);
     const campaignName = new Map<string, string | null>();
@@ -192,11 +213,27 @@ export async function loadCrmData(
         }>,
     );
 
-    // Los nombres de los niveles de arriba que no estan en la tabla (un conjunto o una campaña sin metricas) se piden aparte.
+    // 3. Lo que falta para pintar las filas, todo en una tanda: los nombres de los niveles de arriba que no estan en la
+    // tabla (un conjunto o una campaña sin metricas), las miniaturas y la publicacion que promociona cada anuncio.
+    const knownAdsets = new Set(adsetRows.map((r) => r.adset_id));
     const missingCampaigns = [...new Set([...adsetRows.map((a) => a.campaign_id), ...adRows.map((a) => a.campaign_id)].filter((id): id is string => !!id && !campaignName.has(id)))];
-    for (const c of chunks(missingCampaigns, CHUNK)) {
-      const { data: more } = await supabase.from("meta_campaigns").select("campaign_id, name").eq("workspace_id", params.workspaceId).in("campaign_id", c);
-      for (const r of (more ?? []) as Array<{ campaign_id: string; name: string | null }>) campaignName.set(r.campaign_id, r.name);
+    const missingAdsets = [...new Set(adRows.map((a) => a.adset_id).filter((id): id is string => !!id && !knownAdsets.has(id)))];
+    // Las miniaturas, firmadas de una vez (el bucket es privado; la policy exige dashboards.ads.view).
+    const withThumb = adRows.filter((a) => a.thumbnail_path);
+    // La publicacion que promociona cada anuncio: la de Contenido si esta vinculada, si no la de Facebook que arma su id.
+    const socialIds = [...new Set(adRows.map((a) => a.social_post_id).filter((id): id is string => !!id))];
+
+    const [moreCampaigns, moreAdsets, thumbs, posts] = await Promise.all([
+      Promise.all(chunks(missingCampaigns, CHUNK).map((c) => supabase.from("meta_campaigns").select("campaign_id, name").eq("workspace_id", params.workspaceId).in("campaign_id", c))),
+      Promise.all(chunks(missingAdsets, CHUNK).map((c) => supabase.from("meta_adsets").select("adset_id, name").eq("workspace_id", params.workspaceId).in("adset_id", c))),
+      withThumb.length > 0
+        ? supabase.storage.from("ad-creatives").createSignedUrls(withThumb.map((a) => a.thumbnail_path as string), THUMBNAIL_SECONDS)
+        : Promise.resolve(null),
+      Promise.all(chunks(socialIds, CHUNK).map((c) => supabase.from("social_posts").select("id, url").eq("workspace_id", params.workspaceId).in("id", c))),
+    ]);
+
+    for (const page of moreCampaigns) {
+      for (const r of (page.data ?? []) as Array<{ campaign_id: string; name: string | null }>) campaignName.set(r.campaign_id, r.name);
     }
 
     const adsetName = new Map<string, string | null>();
@@ -205,26 +242,16 @@ export async function loadCrmData(
       const campaign = r.campaign_id ? (campaignName.get(r.campaign_id) ?? null) : null;
       data.catalog.adset[r.adset_id] = { name: r.name, effectiveStatus: r.effective_status, parentName: campaign, campaignName: campaign, campaignId: r.campaign_id };
     }
-    const missingAdsets = [...new Set(adRows.map((a) => a.adset_id).filter((id): id is string => !!id && !adsetName.has(id)))];
-    for (const c of chunks(missingAdsets, CHUNK)) {
-      const { data: more } = await supabase.from("meta_adsets").select("adset_id, name").eq("workspace_id", params.workspaceId).in("adset_id", c);
-      for (const r of (more ?? []) as Array<{ adset_id: string; name: string | null }>) adsetName.set(r.adset_id, r.name);
+    for (const page of moreAdsets) {
+      for (const r of (page.data ?? []) as Array<{ adset_id: string; name: string | null }>) adsetName.set(r.adset_id, r.name);
     }
 
-    // Las miniaturas, firmadas de una vez (el bucket es privado; la policy exige dashboards.ads.view).
-    const withThumb = adRows.filter((a) => a.thumbnail_path);
     const signed = new Map<string, string>();
-    if (withThumb.length > 0) {
-      const { data: urls } = await supabase.storage.from("ad-creatives").createSignedUrls(withThumb.map((a) => a.thumbnail_path as string), THUMBNAIL_SECONDS);
-      for (const u of urls ?? []) if (u.path && u.signedUrl) signed.set(u.path, u.signedUrl);
-    }
+    for (const u of thumbs?.data ?? []) if (u.path && u.signedUrl) signed.set(u.path, u.signedUrl);
 
-    // La publicacion que promociona cada anuncio: la de Contenido si esta vinculada, si no la de Facebook que arma su id.
-    const socialIds = [...new Set(adRows.map((a) => a.social_post_id).filter((id): id is string => !!id))];
     const socialUrl = new Map<string, string | null>();
-    for (const c of chunks(socialIds, CHUNK)) {
-      const { data: posts } = await supabase.from("social_posts").select("id, url").eq("workspace_id", params.workspaceId).in("id", c);
-      for (const p of (posts ?? []) as Array<{ id: string; url: string | null }>) socialUrl.set(p.id, p.url);
+    for (const page of posts) {
+      for (const p of (page.data ?? []) as Array<{ id: string; url: string | null }>) socialUrl.set(p.id, p.url);
     }
 
     for (const r of adRows) {
@@ -244,24 +271,6 @@ export async function loadCrmData(
       };
     }
 
-    // «# anuncios»: todos los anuncios del catalogo de las campañas y conjuntos que se muestran (no solo los que tuvieron metricas).
-    const parentIds = [...new Set([...campaignIds])];
-    for (const c of chunks(parentIds, CHUNK)) {
-      const { data: links } = await supabase.from("meta_ads").select("ad_id, adset_id, campaign_id").eq("workspace_id", params.workspaceId).in("campaign_id", c);
-      for (const l of (links ?? []) as Array<{ ad_id: string; adset_id: string | null; campaign_id: string | null }>) {
-        data.adLinks.push({ adId: l.ad_id, adsetId: l.adset_id, campaignId: l.campaign_id });
-      }
-    }
-
-    // 3. Cuantos toques quedaron sin vincular (el contador que lleva a «Sin vincular»).
-    const since90 = new Date((params.now ?? new Date()).getTime() - UNMATCHED_DAYS * 86_400_000).toISOString();
-    const { count } = await supabase
-      .from("contact_touches")
-      .select("id", { count: "exact", head: true })
-      .eq("workspace_id", params.workspaceId)
-      .eq("meta_match_status", "unmatched")
-      .gte("occurred_at", since90);
-    data.unmatchedCount = count ?? 0;
   } catch (err) {
     // Lo que sea que falle aca no tumba el dashboard: se muestra con lo que haya y avisa.
     console.error("[ads] no pude armar los datos del CRM:", err instanceof Error ? err.message : err);

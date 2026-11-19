@@ -94,7 +94,7 @@ export interface PermissionDefinition {
  * La etiqueta importa tanto como la clave: la pantalla de roles la muestra
  * tal cual, y "contacts.merge" no le dice nada a nadie.
  *
- * Son 72 claves; 70 visibles (dos estan reservadas). La bandeja no tiene claves: se da por
+ * Son 136 claves; 134 visibles (dos estan reservadas). Las 13 de «Eliminar …» (Papelera, 00410) son de Owner y Admin. La bandeja no tiene claves: se da por
  * cuenta conectada (`channels`, 00249). Cada clave nueva se suma
  * aca, en la pantalla, en el guard, en la RLS y en `catalog-usage.test.ts` en el
  * MISMO cambio (ver `docs/roles.md`, "Como sumar una clave nueva").
@@ -122,6 +122,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "contacts.delete", module: "contacts", label: "Borrar contactos", description: "Borrado suave, con 30 días de retención. También quita la marca de no contactar." },
   { key: "contacts.assign", module: "contacts", label: "Reasignar contactos", description: "Cambiar el setter, el vendedor o la persona a cargo de un contacto." },
   { key: "contacts.merge", module: "contacts", label: "Fusionar contactos", description: "Unir dos fichas en una. No se puede deshacer." },
+  { key: "conversations.delete", module: "contacts", label: "Eliminar conversaciones", description: "Una conversación con todos sus mensajes, de las que ve. Va a la Papelera: se puede restaurar durante 30 días." },
   { key: "tags.manage", module: "contacts", label: "Administrar etiquetas", description: "Renombrar y borrar etiquetas, y definir las que apagan el agente o asignan." },
   { key: "custom_fields.manage", module: "contacts", label: "Administrar campos personalizados", description: "Crear, editar y borrar los campos de la ficha. Completar su valor es de «Editar contactos»." },
   { key: "contact_statuses.manage", module: "contacts", label: "Administrar estados del pipeline", description: "Crear, renombrar, ordenar y archivar los estados de setter y de vendedor. Cambiar el estado de un contacto es de «Editar contactos»." },
@@ -161,6 +162,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "content.approve", module: "content", label: "Aprobar y devolver piezas", description: "Decidir si una pieza pasa a programarse." },
   { key: "content.publish", module: "content", label: "Programar y publicar", description: "Lo que sale a las redes de verdad." },
   { key: "content.ai", module: "content", label: "Generar copy con IA", description: "Gasta del presupuesto de IA del negocio." },
+  { key: "content.delete", module: "content", label: "Eliminar ideas y piezas", description: "Ideas y piezas de contenido. Una pieza programada primero se desprograma; una publicada no se baja de la red. Va a la Papelera: se puede restaurar durante 30 días." },
 
   // @plantilla-desde(disenador)
   // ── Diseñador IA ────────────────────────────────────────────────────────
@@ -178,24 +180,32 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "scheduling.manage_categories", module: "scheduling", label: "Administrar áreas y tipos de agenda", description: "Crear, renombrar, reordenar y archivar categorías." },
   { key: "bookings.view", module: "scheduling", label: "Ver agendas", description: "El alcance decide si ve todas o solo las que es anfitrión." },
   { key: "bookings.manage", module: "scheduling", label: "Gestionar agendas", description: "Cancelar, reagendar, marcar, editar y agendar a mano. Mismo alcance que ver." },
+  { key: "bookings.delete", module: "scheduling", label: "Eliminar agendas", description: "Las agendas que ve, por ejemplo las de prueba. Una futura se saca del calendario sin avisarle al invitado (para avisar está Cancelar). Va a la Papelera: se puede restaurar durante 30 días." },
 
   // ── Llamadas (Fathom + analizador de llamadas) ────────────────────────── // @plantilla-quitar(llamadas)
   { key: "calls.view", module: "calls", label: "Ver las llamadas", description: "La lista, la ficha, el análisis y el dashboard, según el alcance. También conectar su propio Fathom e importar su historial." }, // @plantilla-quitar(llamadas)
   { key: "calls.edit", module: "calls", label: "Editar las llamadas", description: "Cambiar el tipo, vincular contacto y agenda, analizar, corregir, regenerar, resumir, mandar a Conocimiento e importar." }, // @plantilla-quitar(llamadas)
   { key: "calls.configure", module: "calls", label: "Configurar el análisis de llamadas", description: "Reglas, tipos, rúbrica, categorías y contexto del negocio de las tareas Clasificación y Análisis de llamadas." }, // @plantilla-quitar(llamadas)
+  { key: "calls.delete", module: "calls", label: "Eliminar grabaciones", description: "Grabaciones que ve, una por una o todo lo importado de una conexión de Fathom. No vuelven a entrar al sincronizar. Va a la Papelera: se puede restaurar durante 30 días." }, // @plantilla-quitar(llamadas)
 
   // ── Formularios (personalizado, encuesta/NPS y contrato) ──────────────── // @plantilla-quitar(formularios)
   { key: "forms.view", module: "forms", label: "Ver formularios y respuestas", description: "La lista, el editor en solo lectura, las métricas y el panel de encuesta. De las respuestas, solo las de los contactos que puede ver." }, // @plantilla-quitar(formularios)
   { key: "forms.manage", module: "forms", label: "Crear y publicar formularios", description: "Crear, editar, duplicar, publicar, pausar y archivar; mapear a contacto; vincular respuestas a mano; marcar spam; reenviar la copia del contrato." }, // @plantilla-quitar(formularios)
+  { key: "forms.delete", module: "forms", label: "Eliminar formularios", description: "Un formulario con sus versiones y respuestas. Uno con un contrato firmado no se elimina. Va a la Papelera: se puede restaurar durante 30 días." }, // @plantilla-quitar(formularios)
+  { key: "forms.delete_responses", module: "forms", label: "Eliminar respuestas", description: "Respuestas de formularios que ve. El contacto que creó queda; una respuesta con un contrato firmado no se elimina. Va a la Papelera: se puede restaurar durante 30 días." }, // @plantilla-quitar(formularios)
   // Reportes de fin de dia (E10). Completar uno no necesita permiso: alcanza con estar en su // @plantilla-quitar(formularios)
   // audiencia. Cada persona ve siempre los suyos. La RLS lo lee en `can_view_eod_all` (00180). // @plantilla-quitar(formularios)
   { key: "eod.view_all", module: "forms", label: "Ver los reportes de fin de día de todo el equipo", description: "Los reportes ENVIADOS de todas las personas, sus totales y quién falta hoy. Los borradores ajenos no los ve nadie." }, // @plantilla-quitar(formularios)
+  { key: "eod.delete", module: "forms", label: "Eliminar reportes de fin de día", description: "Reportes de fin de día de cualquier persona del equipo. Va a la Papelera: se puede restaurar durante 30 días." }, // @plantilla-quitar(formularios)
 
   // ── Ventas y pagos (Etapa 5, Fase 1) ──────────────────────────────────── // @plantilla-quitar(ventas)
   { key: "sales.view", module: "sales", label: "Ver las ventas", description: "La lista, la ficha, los pagos y el historial de cada venta, según el alcance." }, // @plantilla-quitar(ventas)
   { key: "sales.manage", module: "sales", label: "Cargar y editar ventas", description: "Cargar, editar y cancelar ventas; enviar el contrato. Pasar el tope de descuento exige alcance «todos»." }, // @plantilla-quitar(ventas)
   { key: "payments.manage", module: "sales", label: "Gestionar los pagos", description: "Cobrar, revertir un cobro, agregar una cuota, reprogramar, marcar incobrable y reembolsar." }, // @plantilla-quitar(ventas)
+  { key: "sales.delete", module: "sales", label: "Eliminar ventas", description: "Una venta con sus pagos y comisiones, por ejemplo una duplicada o de prueba. No se elimina si tiene un contrato firmado o una comisión en un gasto. Va a la Papelera: se puede restaurar durante 30 días." }, // @plantilla-quitar(ventas)
+  { key: "payments.delete", module: "sales", label: "Eliminar pagos", description: "Un pago con sus reembolsos y comisiones; la venta se recalcula. No se elimina si una comisión ya está en un gasto. Va a la Papelera: se puede restaurar durante 30 días." }, // @plantilla-quitar(ventas)
   { key: "products.manage", module: "sales", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." }, // @plantilla-quitar(ventas)
+  { key: "products.delete", module: "sales", label: "Eliminar productos", description: "Un producto que nunca se vendió, con sus variantes. Uno vendido se archiva. Va a la Papelera: se puede restaurar durante 30 días." }, // @plantilla-quitar(ventas)
   // @plantilla-sin(ventas): { key: "products.manage", module: "catalogo", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." },
   // Afiliados y links de producto (Servicios A1, bloque AF): son de BAIOS y viajan juntos.
   { key: "product_links.manage", module: "sales", label: "Administrar los links de los productos", description: "La tarjeta Links de cada producto: agregar, editar, activar y elegir los dos principales." }, // @plantilla-quitar(ventas)
@@ -209,11 +219,13 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   // ── Finanzas (Extra I) ────────────────────────────────────────────────── // @plantilla-quitar(finanzas)
   { key: "expenses.view", module: "finance", label: "Ver Finanzas", description: "Los gastos, comprobantes, recurrentes, proveedores y el panel de Finanzas, con los ingresos cobrados totales. Exportar a CSV." }, // @plantilla-quitar(finanzas)
   { key: "expenses.manage", module: "finance", label: "Administrar gastos", description: "Crear, editar, pagar, revertir y anular gastos; plantillas recurrentes; proveedores; categorías y gastos automáticos." }, // @plantilla-quitar(finanzas)
+  { key: "expenses.delete", module: "finance", label: "Eliminar gastos", description: "Gastos cargados a mano y ajustes. Los automáticos se anulan, porque el sistema los volvería a crear. Va a la Papelera: se puede restaurar durante 30 días." }, // @plantilla-quitar(finanzas)
 
   // ── Comisiones (Extra I) ──────────────────────────────────────────────── // @plantilla-quitar(comisiones)
   { key: "commissions.view", module: "commissions", label: "Ver comisiones", description: "La lista de Comisiones y el detalle de cada una. El alcance decide si ve todas o solo las que tiene a su nombre." }, // @plantilla-quitar(comisiones)
   { key: "commissions.manage", module: "commissions", label: "Administrar comisiones", description: "Crear y editar reglas y roles de comisión, generar gastos de liquidación, asignar persona, anular y crear ajustes." }, // @plantilla-quitar(comisiones)
   { key: "commissions.edit", module: "commissions", label: "Editar una comisión a mano", description: "Cambiar el monto, la persona o el rol de una comisión pendiente y sin gasto, o anularla, con motivo." }, // @plantilla-quitar(comisiones)
+  { key: "commissions.delete", module: "commissions", label: "Eliminar comisiones", description: "Comisiones que todavía no están en un gasto. Va a la Papelera: se puede restaurar durante 30 días." }, // @plantilla-quitar(comisiones)
 
   // ── Tareas (Extra A) ──────────────────────────────────────────────────── // @plantilla-quitar(tareas)
   { key: "tasks.view", module: "tasks", label: "Ver las tareas", description: "La tabla y el tablero de Tareas. El alcance decide si ve todas o solo las que creó, tiene a cargo o sigue." }, // @plantilla-quitar(tareas)
@@ -231,6 +243,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "services.extend", module: "services", label: "Extender servicios", description: "Extender un servicio y revertir una extensión." }, // @plantilla-quitar(servicios)
   { key: "services.complete", module: "services", label: "Completar servicios", description: "Dar por completado un servicio a mano, con motivo." }, // @plantilla-quitar(servicios)
   { key: "services.cancel", module: "services", label: "Cancelar servicios", description: "Cancelar un servicio, con motivo. No se puede deshacer." }, // @plantilla-quitar(servicios)
+  { key: "services.delete", module: "services", label: "Eliminar servicios", description: "Un servicio con todo su camino, accesos y alertas, por ejemplo uno de prueba. Va a la Papelera: se puede restaurar durante 30 días." }, // @plantilla-quitar(servicios)
   { key: "services.change_owner", module: "services", label: "Cambiar el responsable", description: "Cambiar el responsable de un servicio y reasignar en bloque." }, // @plantilla-quitar(servicios)
   { key: "services.import", module: "services", label: "Importar servicios", description: "Cargar servicios por CSV." }, // @plantilla-quitar(servicios)
   { key: "services.access", module: "services", label: "Accesos al portal de un servicio", description: "En la ficha del servicio: dar un acceso extra, extenderlo, quitarlo o darlo ahora, con motivo." }, // @plantilla-quitar(servicios)

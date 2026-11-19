@@ -9,6 +9,7 @@ import { CancelDialog, RebuildPlanDialog } from "@/components/sales/sale-action-
 import { SaleEditDialog, type EditableSale } from "@/components/sales/sale-edit-dialog";
 import { SaleOrigin } from "@/components/sales/sale-origin";
 import { StatusChip } from "@/components/sales/sales-list";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import type { WizardConfig, WizardMember } from "@/components/sales/wizard/types";
 import { describeAttribution, type SaleAttribution } from "@/lib/attribution/attribution";
 import type { SaleAttributionViewModel } from "@/lib/sales/attribution-view";
@@ -58,6 +59,10 @@ export interface SaleDetailData {
   today: string;
   canManage: boolean;
   canManagePayments: boolean;
+  /** Con `sales.delete`: «Eliminar venta» (Papelera). */
+  canDelete?: boolean;
+  /** Con `payments.delete`: «Eliminar» en cada pago del plan (Papelera). */
+  canDeletePayments?: boolean;
   enabledMethods: string[];
   methods: PaymentMethodDef[];
   /** De donde vino la venta (F49), armado en el servidor con la sesion de quien mira. */
@@ -115,17 +120,22 @@ export function SaleDetail({ data, wizard, contracts, commissions, services, aff
           </Link>
         }
         right={
-          data.canManage ? (
+          data.canManage || data.canDelete ? (
             <div className="flex shrink-0 items-center gap-2">
-              <button type="button" onClick={() => { setEditAttribution(false); setDialog("edit"); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent" aria-label="Editar la venta">
-                <Pencil className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Editar</span>
-              </button>
-              {!closed && !isSubscription && (
-                <button type="button" onClick={() => setDialog("cancel")} className="inline-flex h-9 items-center rounded-lg border border-red-500/40 px-2.5 text-sm text-red-700 hover:bg-red-500/10 dark:text-red-400">Cancelar venta</button>
+              {data.canManage && (
+                <>
+                  <button type="button" onClick={() => { setEditAttribution(false); setDialog("edit"); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent" aria-label="Editar la venta">
+                    <Pencil className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Editar</span>
+                  </button>
+                  {!closed && !isSubscription && (
+                    <button type="button" onClick={() => setDialog("cancel")} className="inline-flex h-9 items-center rounded-lg border border-red-500/40 px-2.5 text-sm text-red-700 hover:bg-red-500/10 dark:text-red-400">Cancelar venta</button>
+                  )}
+                  {sale.status === "subscription_active" && (
+                    <button type="button" onClick={() => setDialog("subscription")} className="inline-flex h-9 items-center rounded-lg border border-red-500/40 px-2.5 text-sm text-red-700 hover:bg-red-500/10 dark:text-red-400">Dar de baja</button>
+                  )}
+                </>
               )}
-              {sale.status === "subscription_active" && (
-                <button type="button" onClick={() => setDialog("subscription")} className="inline-flex h-9 items-center rounded-lg border border-red-500/40 px-2.5 text-sm text-red-700 hover:bg-red-500/10 dark:text-red-400">Dar de baja</button>
-              )}
+              {data.canDelete && <DeleteButton entity="sale" id={sale.id} redirectTo="/dashboard/ventas" variant="icon" label="Eliminar" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-500/40 text-red-700 hover:bg-red-500/10 dark:text-red-400" />}
             </div>
           ) : undefined
         }
@@ -208,6 +218,7 @@ export function SaleDetail({ data, wizard, contracts, commissions, services, aff
             timeZone={data.timeZone}
             names={data.names}
             canAdjustCommissions={data.canAdjustCommissions}
+            canDelete={data.canDeletePayments}
           />
 
           {services /* Servicios A1 (F33): la seccion del modulo, si esta prendido */}

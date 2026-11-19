@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { activeSettingsTab, settingsEntryHref, SETTINGS_TABS, visibleSettingsTabs } from "./tabs";
 
 describe("SETTINGS_TABS", () => {
-  it("tiene las ocho pestañas en orden (Tareas se mudo a Agentes IA; Asignación se suma con Ventas; Estados con el pipeline)", () => {
+  it("tiene las nueve pestañas en orden (Tareas se mudo a Agentes IA; Asignación se suma con Ventas; Estados con el pipeline; Papelera con 00410)", () => {
     expect(SETTINGS_TABS.map((t) => t.name)).toEqual([
       "General",
       "Equipo y roles",
@@ -12,7 +12,15 @@ describe("SETTINGS_TABS", () => {
       "Productos",
       "Asignación",
       "Integraciones",
+      "Papelera",
     ]);
+  });
+
+  it("la Papelera la ve quien puede eliminar algo, y un Member de sistema no", () => {
+    const only = (key: string) => (k: string) => k === key;
+    expect(visibleSettingsTabs(only("sales.delete")).map((t) => t.name)).toContain("Papelera");
+    expect(visibleSettingsTabs(only("tasks.delete")).map((t) => t.name)).toContain("Papelera");
+    expect(visibleSettingsTabs(only("sales.manage")).map((t) => t.name)).not.toContain("Papelera");
   });
 });
 

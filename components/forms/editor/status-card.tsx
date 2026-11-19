@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Notice } from "@/components/agents/fields";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { setFormStatus } from "@/lib/actions/forms/forms";
 import { FORM_STATUS_LABELS, type FormStatus } from "@/lib/forms/fields";
 import { canTransition } from "@/lib/forms/list";
@@ -21,7 +22,24 @@ const EXPLAIN: Record<FormStatus, string> = {
   archived: "Archivado: no recibe respuestas ni se puede editar. Las respuestas ya recibidas se conservan.",
 };
 
-export function StatusCard({ formId, formName, status, canManage, onStatus, hasVersion }: { formId: string; formName: string; status: FormStatus; canManage: boolean; onStatus: (next: FormStatus) => void; hasVersion: boolean }) {
+export function StatusCard({
+  formId,
+  formName,
+  status,
+  canManage,
+  canDelete = false,
+  onStatus,
+  hasVersion,
+}: {
+  formId: string;
+  formName: string;
+  status: FormStatus;
+  canManage: boolean;
+  /** `forms.delete`: «Eliminar formulario» (va a la Papelera 30 días; después vuelve a la lista). */
+  canDelete?: boolean;
+  onStatus: (next: FormStatus) => void;
+  hasVersion: boolean;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -57,9 +75,9 @@ export function StatusCard({ formId, formName, status, canManage, onStatus, hasV
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">{EXPLAIN[status]}</p>
       </div>
-      {canManage && actions.length > 0 && (
+      {((canManage && actions.length > 0) || canDelete) && (
         <div className="flex flex-wrap gap-2">
-          {actions.map((a) => (
+          {canManage && actions.map((a) => (
             <button
               key={a.to}
               type="button"
@@ -71,6 +89,7 @@ export function StatusCard({ formId, formName, status, canManage, onStatus, hasV
               {a.label}
             </button>
           ))}
+          {canDelete && <DeleteButton entity="form" id={formId} label="Eliminar formulario" redirectTo="/dashboard/formularios" className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 px-3 py-1.5 text-sm text-red-700 hover:bg-red-500/10 dark:text-red-400" />}
         </div>
       )}
       {message && (
