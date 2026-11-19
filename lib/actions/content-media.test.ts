@@ -16,6 +16,10 @@ let db: MemoryDb;
 const removeFromBucket = vi.fn(async (_paths: string[]) => ({ error: null as { message: string } | null }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// Lo que de verdad quedó en el bucket (attachMedia lo vuelve a mirar). Por defecto, un JPEG.
+const JPEG_HEAD = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1]);
+const storedHead = vi.hoisted(() => ({ value: null as Uint8Array | null }));
+vi.mock("@/lib/content/stored-head", () => ({ readStoredHead: async () => storedHead.value }));
 vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({
     user: { id: "user-1" },
@@ -33,6 +37,10 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 const { attachMedia, removeMedia } = await import("./content-media");
+
+beforeEach(() => {
+  storedHead.value = JPEG_HEAD;
+});
 
 const entry = (id: string, kind: "image" | "video" = "image", withId = true) => ({
   ...(withId ? { id } : {}),
@@ -223,6 +231,22 @@ describe("subir un archivo a la biblioteca (F92)", () => {
   it("rechaza un tipo que no cuadra con el mime", async () => {
     expect((await attachMedia({ ...base, kind: "video" })).ok).toBe(false);
     expect((await attachMedia({ ...base, mime: "audio/mpeg" })).ok).toBe(false);
+  });
+
+  it("si lo que quedó en el bucket no es del tipo declarado, lo borra y no lo anota", async () => {
+    storedHead.value = new TextEncoder().encode("<html><script>alert(1)</script></html>");
+    const before = (db.rows("content_posts")[0].media as unknown[]).length;
+
+    const result = await attachMedia(base);
+
+    expect(result.ok).toBe(false);
+    expect(removeFromBucket).toHaveBeenCalledWith([base.path]);
+    expect((db.rows("content_posts")[0].media as unknown[]).length).toBe(before);
+  });
+
+  it("si no puede leer el archivo subido, no lo anota", async () => {
+    storedHead.value = null;
+    expect((await attachMedia(base)).ok).toBe(false);
   });
 
   it("no agrega nada a una pieza que no existe", async () => {

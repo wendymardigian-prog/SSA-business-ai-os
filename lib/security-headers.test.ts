@@ -53,3 +53,14 @@ describe("encabezados por ruta (§15)", () => {
     expect(xfo("/dashboard/formularios")).toBe("DENY");
   });
 });
+
+describe("encabezados comunes de seguridad (auditoría 19/11/2026)", () => {
+  it("todas las rutas, embebibles o no, piden HTTPS (HSTS) y apagan cámara y ubicación", () => {
+    for (const path of ["/dashboard", "/calendario/ana/llamada", "/embed/x", "/f/x"]) {
+      const headers = Object.fromEntries(securityHeadersFor(path).map((h) => [h.key, h.value]));
+      expect(headers["Strict-Transport-Security"]).toContain("max-age=31536000");
+      expect(headers["Permissions-Policy"]).toContain("camera=()");
+      expect(headers["Permissions-Policy"]).toContain("microphone=(self)");
+    }
+  });
+});
