@@ -112,7 +112,7 @@ export async function GET(
   const landing = // @plantilla-quitar(llamadas)
     adapter.provider === "fathom" ? perUserLanding("fathom") : result.ok && adapter.perUser ? perUserLanding(adapter.provider) : result.redirectTo; // @plantilla-quitar(llamadas)
     // @plantilla-sin(llamadas): const landing = result.ok && adapter.perUser ? perUserLanding(adapter.provider) : result.redirectTo;
-  const destination = new URL(landing, appUrl() || url.origin);
+  const destination = new URL(landing, `${appUrl()}/`);
   if (result.ok) destination.searchParams.set("connected", adapter.perUser ? "1" : adapter.provider);
   else destination.searchParams.set("error", result.error);
 

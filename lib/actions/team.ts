@@ -19,8 +19,9 @@ import { memberDisplayName } from "@/lib/workspace-members";
 /**
  * Como termino el email de la invitacion.
  * - "sent": salio por Resend.
- * - "not_configured": Resend no esta conectado. La invitacion igual existe:
- *   la UI muestra el link para pasarlo a mano. Es el estado normal hoy.
+ * - "not_configured": Resend no esta conectado, o le falta el remitente o la
+ *   API key (el motivo viaja en `emailError`). La invitacion igual existe: la UI
+ *   muestra el link para pasarlo a mano (`inviteResultMessage`).
  * - "failed": Resend esta conectado pero rechazo el envio.
  */
 export type InviteEmailStatus = "sent" | "not_configured" | "failed";
