@@ -8,7 +8,6 @@ import { z } from "zod";
 import { snapshotProductId } from "@/lib/sales/sale-text";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
-import { findOrCreateContact } from "@/lib/contacts/find-or-create";
 import { logAudit } from "@/lib/audit";
 import { sanitizeSearch } from "@/lib/url-params";
 import { isProductStatus } from "@/lib/content/taxonomy";
@@ -19,7 +18,8 @@ import { registerManualSaleTouch } from "@/lib/sales/manual-touch";
 import { diffFields } from "@/lib/audit";
 import { validatePlanBalances } from "@/lib/sales/payment-plan";
 import { applySaleRules, createSaleInputSchema, mapCreateSaleError, type CreateSaleInput, type SaleCode } from "@/lib/sales/create";
-import { manualContactSchema, resolveFoundContact, type ManualContactInput } from "@/lib/sales/contacts";
+import type { ManualContactInput, QuickContactResult } from "@/lib/contacts/manual-contact";
+import { quickCreateContact } from "@/lib/contacts/quick-create";
 import { buildProductSnapshot } from "@/lib/sales/sale-math";
 import { hasPrice } from "@/lib/catalog/price";
 import { toCents } from "@/lib/shared/money";
@@ -169,68 +169,17 @@ export async function createSale(rawInput: CreateSaleInput): Promise<CreateSaleR
 
 // ── F18: el alta rápida de un contacto ────────────────────────────────────
 
-export type ContactForSaleResult =
-  | { ok: true; contactId: string; created: boolean; notice: string | null }
-  | { ok: false; error: string };
+export type ContactForSaleResult = QuickContactResult;
 
 /**
- * Resuelve el contacto del asistente. Busca por TELÉFONO primero y después por email con
- * la regla única (`find_or_create_contact`): con un contacto existente se usa ese; si no, se crea
- * uno nuevo. Nunca `find_or_link_contact` ni deduplicar por nombre.
- *
- * Un Member con alcance `own` queda como setter del contacto nuevo: si no, no podría verlo
- * después de crearlo (la RLS de contactos lo esconde).
+ * Resuelve el contacto del asistente con el núcleo compartido del alta rápida
+ * (`lib/contacts/quick-create.ts`): teléfono primero, después email; con un contacto existente se
+ * usa ese, si no se crea uno nuevo. Un Member con alcance `own` queda como setter del contacto nuevo.
  */
 export async function createContactForSale(input: ManualContactInput): Promise<ContactForSaleResult> {
   const ctx = await getPermissionAction("sales.manage");
   if (!ctx) return { ok: false, error: NOT_ALLOWED };
-  const { workspace, user } = ctx;
-
-  const parsed = manualContactSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Los datos del contacto no son válidos" };
-  const { name } = parsed.data;
-  const email = parsed.data.email?.trim() || null;
-  const phone = parsed.data.phone?.trim() || null;
-
-  const service = await createServiceClient();
-  const ownsOnly = !(ctx.role === "owner" || ctx.role === "admin" || ctx.scope("leads") === "all");
-
-  // La regla unica (00200): teléfono primero, después email, con el teléfono normalizado; busca y, si no
-  // está, crea el contacto (con bloqueo por dato). Un error de la base ya NO se toma como "no está".
-  let result;
-  try {
-    result = await findOrCreateContact(service, {
-      workspaceId: workspace.id,
-      identity: { phone, email },
-      defaults: { display_name: name, ...(ownsOnly ? { setter_id: user.id } : {}) },
-      mode: "create",
-    });
-  } catch (err) {
-    console.error("[sales] no pude buscar o crear el contacto:", err instanceof Error ? err.message : "error desconocido");
-    return { ok: false, error: "No pude crear el contacto" };
-  }
-  if (result.status === "no_identity" || !result.contactId) {
-    return { ok: false, error: "Poné un email o un teléfono válido (con código de país)" };
-  }
-  if (!result.created) {
-    const resolution = resolveFoundContact({ contact_id: result.contactId, matched_by: result.matchedBy, conflict_contact_id: result.conflictContactId });
-    if (resolution.kind === "existing") {
-      return { ok: true, contactId: resolution.contactId, created: false, notice: resolution.notice };
-    }
-  }
-
-  const data = { id: result.contactId };
-
-  await logAudit({
-    supabase: ctx.supabase,
-    workspaceId: workspace.id,
-    entityType: "contact",
-    entityId: data.id,
-    action: "create",
-    metadata: { source: "sale_wizard" },
-    performedBy: user.id,
-  });
-  return { ok: true, contactId: data.id, created: true, notice: null };
+  return quickCreateContact(ctx, input, "sale_wizard");
 }
 
 export interface SaleContactOption {
