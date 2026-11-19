@@ -3,8 +3,12 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Download, Inbox, Loader2 } from "lucide-react";
-import { ColumnCell } from "@/components/attribution/column-cell";
-import { ColumnsMenu, useColumnPrefs } from "@/components/attribution/columns-menu";
+import { ColumnCellContent } from "@/components/attribution/column-cell";
+import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
+import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
+import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
+import { basePrefsFor } from "@/lib/ui/data-table/prefs";
+import { RESPONSES_TABLE_KEY, responseBaseColumns, responseDataColumns } from "@/lib/forms/response-table-columns";
 import { Notice } from "@/components/agents/fields";
 import { Pagination, useUrlFilters } from "@/components/agents/filters";
 import { exportResponsesCsv } from "@/lib/actions/forms/responses";
@@ -14,11 +18,10 @@ import { DIMENSION_LABELS, type GroupCount, type ResponseDimension } from "@/lib
 import type { MultiFilterOption } from "@/lib/ui/multi-filter";
 import { ResponseGroups } from "./response-groups";
 import { ResponsesFilterChips, ResponsesToolbarFilters, type ToolbarFilters } from "./responses-toolbar";
-import { RESPONSE_COLUMN_GROUPS, originSummary, responseColumnDefs, responseColumnsStorageKey } from "@/lib/forms/response-columns";
+import { originSummary } from "@/lib/forms/response-columns";
 import { cellFor, statusLabel, type ResponseColumn, type StoredAnswer, type SubmissionStatus } from "@/lib/forms/responses";
 import { formatInZone } from "@/lib/forms/responses-query";
 import { cn } from "@/lib/utils";
-import { ClickableTr } from "@/components/ui/clickable-row";
 import { InlineSelect } from "@/components/ui/inline-select";
 import { setSubmissionSpam } from "@/lib/actions/forms/forms";
 
@@ -96,8 +99,36 @@ export function ResponsesTable({
     countMenuFilters(filters, dimensions) + (filters.q ? 1 : 0) + (filters.legacyRange ? 1 : 0) +
     (filters.period.period !== "historico" || filters.period.from ? 1 : 0);
   const showScore = formType === "survey";
-  const columnDefs = useMemo(() => responseColumnDefs(columns), [columns]);
-  const { visible: visibleDefs, toggle, showAll, reset } = useColumnPrefs(responseColumnsStorageKey(formId), columnDefs);
+  const tableColumns = useMemo<DataColumn<ResponseTableRow>[]>(() => {
+    const base: Record<string, DataColumn<ResponseTableRow>["render"]> = {
+      date: (row) => formatInZone(row.createdAt, timeZone),
+      // La fila entera abre la respuesta; el contacto es texto (docs/tablas.md).
+      contact: (row) => (row.contactId ? row.contactName : <span className="text-muted-foreground">Sin contacto</span>),
+      status: (row) => (
+        <InlineSelect
+          label="Marcar o desmarcar como spam"
+          value={row.status === "spam" ? "spam" : "ok"}
+          display={<span className={cn("whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px]", STATUS_STYLE[row.status])}>{statusLabel(row.status)}</span>}
+          canEdit={canManage}
+          width={200}
+          options={[
+            { value: "ok", label: row.contactId ? statusLabel("received") : statusLabel("no_contact") },
+            { value: "spam", label: statusLabel("spam") },
+          ]}
+          onSelect={async (v) => {
+            const res = await setSubmissionSpam({ submissionId: row.id, spam: v === "spam" });
+            return res.ok ? { ok: true } : { ok: false, error: res.error };
+          }}
+        />
+      ),
+      score: (row) => row.score ?? "—",
+    };
+    const baseColumns = responseBaseColumns(showScore).map((m): DataColumn<ResponseTableRow> => ({ ...m, render: base[m.key] }));
+    const dataColumns = responseDataColumns(columns).map(({ def, ...meta }): DataColumn<ResponseTableRow> => ({ ...meta, render: (row) => <ColumnCellContent def={def} row={row} /> }));
+    return [...baseColumns, ...dataColumns];
+  }, [columns, showScore, timeZone, canManage]);
+  const tableBase = useMemo(() => basePrefsFor(tableColumns), [tableColumns]);
+  const tablePrefs = useTablePrefs(RESPONSES_TABLE_KEY, "base", tableColumns, tableBase);
 
   function exportCsv() {
     setMessage(null);
@@ -143,7 +174,7 @@ export function ResponsesTable({
           <div className="ml-auto flex items-center gap-2">
             {!groups && (
               <div className="hidden md:block">
-                <ColumnsMenu defs={columnDefs} groups={RESPONSE_COLUMN_GROUPS} visible={visibleDefs} onToggle={toggle} onShowAll={showAll} onReset={reset} />
+                <ColumnsMenu state={tablePrefs} />
               </div>
             )}
             {/* Exportar es `canExport` (equipo y roles, M2): quien no puede, no ve el boton. */}
@@ -185,60 +216,15 @@ export function ResponsesTable({
         ) : (
           <>
             {/* Tabla (pantallas anchas) */}
-            <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-muted/50 text-xs text-muted-foreground">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 font-medium">Fecha</th>
-                    {/* Fijo al desplazar: con tantas columnas, si no se pierde de quién es cada fila. */}
-                    <th scope="col" className="sticky left-0 z-10 border-r border-border bg-muted px-3 py-2 font-medium">Contacto</th>
-                    <th scope="col" className="px-3 py-2 font-medium">Estado</th>
-                    {showScore && <th scope="col" className="px-3 py-2 font-medium">Puntaje</th>}
-                    {visibleDefs.map((def) => (
-                      <th key={def.key} scope="col" className={cn("whitespace-nowrap px-3 py-2 font-medium", def.removed && "italic")} title={def.hint}>
-                        {def.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {rows.map((row) => (
-                    <ClickableTr key={row.id} href={`/dashboard/formularios/${formId}/respuestas/${row.id}`} className="group hover:bg-muted/30">
-                      <td className="whitespace-nowrap px-3 py-2">{formatInZone(row.createdAt, timeZone)}</td>
-                      <td className="sticky left-0 z-10 max-w-[14rem] truncate border-r border-border bg-background px-3 py-2 group-hover:bg-[color-mix(in_oklab,var(--muted)_30%,var(--background))]">
-                        {/* La fila entera abre la respuesta; el contacto es texto (docs/tablas.md). */}
-                        {row.contactId ? (
-                          <span>{row.contactName}</span>
-                        ) : (
-                          <span className="text-muted-foreground">Sin contacto</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <InlineSelect
-                          label="Marcar o desmarcar como spam"
-                          value={row.status === "spam" ? "spam" : "ok"}
-                          display={<span className={cn("whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px]", STATUS_STYLE[row.status])}>{statusLabel(row.status)}</span>}
-                          canEdit={canManage}
-                          width={200}
-                          options={[
-                            { value: "ok", label: row.contactId ? statusLabel("received") : statusLabel("no_contact") },
-                            { value: "spam", label: statusLabel("spam") },
-                          ]}
-                          onSelect={async (v) => {
-                            const res = await setSubmissionSpam({ submissionId: row.id, spam: v === "spam" });
-                            return res.ok ? { ok: true } : { ok: false, error: res.error };
-                          }}
-                        />
-                      </td>
-                      {showScore && <td className="px-3 py-2">{row.score ?? "—"}</td>}
-                      {visibleDefs.map((def) => (
-                        <ColumnCell key={def.key} def={def} row={row} />
-                      ))}
-                    </ClickableTr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              className="hidden md:block"
+              columns={tableColumns}
+              rows={rows}
+              rowKey={(row) => row.id}
+              state={tablePrefs}
+              caption="Respuestas"
+              rowHref={(row) => `/dashboard/formularios/${formId}/respuestas/${row.id}`}
+            />
 
             {/* Tarjetas (celular) */}
             <ul className="space-y-2 md:hidden">

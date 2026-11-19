@@ -56,13 +56,3 @@ export function ColumnCellContent<Row>({ def, row }: { def: ColumnDef<Row>; row:
     </div>
   );
 }
-
-export function ColumnCell<Row>({ def, row, className }: { def: ColumnDef<Row>; row: Row; className?: string }) {
-  const value = def.value(row);
-  if (!value) return <td className={cn("px-3 py-2 text-muted-foreground", className)}>—</td>;
-  return (
-    <td className={cn("max-w-[16rem] px-3 py-2", className)} title={value}>
-      <ColumnCellContent def={def} row={row} />
-    </td>
-  );
-}

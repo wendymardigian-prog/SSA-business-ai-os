@@ -48,7 +48,6 @@ const LEGACY = [
   "components/forms/editor/prefill-card.tsx", // @plantilla-quitar(formularios)
   "components/forms/responses/metrics-view.tsx", // @plantilla-quitar(formularios)
   "components/forms/responses/response-groups.tsx", // @plantilla-quitar(formularios)
-  "components/forms/responses/responses-table.tsx", // @plantilla-quitar(formularios)
   "components/inbox/assignment/known-assignment-view.tsx",
   "components/sales/payment-plan.tsx", // @plantilla-quitar(ventas)
   "components/sales/wizard/step3-financing.tsx", // @plantilla-quitar(ventas)

@@ -94,16 +94,6 @@ export function LastClickContent({ touches }: { touches: readonly BookingTouchVi
   );
 }
 
-export function LastClickCell({ touches, className }: { touches: readonly BookingTouchView[] | undefined; className?: string }) {
-  const last = touches?.[0];
-  if (!touches || !last) return <td className={cn("px-3 py-2 text-muted-foreground", className)}>—</td>;
-  return (
-    <td className={cn("max-w-[18rem] px-3 py-2", className)}>
-      <LastClickContent touches={touches} />
-    </td>
-  );
-}
-
 /** Una fila del panel: la miniatura, el canal, el nombre (con link a la pieza si la hay) y cuándo y por dónde entró. */
 function TouchRowView({ touch, timeZone, featured }: { touch: BookingTouchView; timeZone: string; featured?: boolean }) {
   const title = touch.pieceId ? (
