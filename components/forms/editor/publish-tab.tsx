@@ -49,6 +49,7 @@ export function PublishTab({
   form,
   versions,
   canManage,
+  canDelete = false,
   publicBase,
   published,
   onSlugChanged,
@@ -59,6 +60,8 @@ export function PublishTab({
   form: EditorForm;
   versions: EditorVersion[];
   canManage: boolean;
+  /** `forms.delete`: «Eliminar formulario» en la tarjeta de Estado. */
+  canDelete?: boolean;
   /** La base de los links públicos del negocio (`publicBaseUrl`): su dominio o el principal. */
   publicBase: string;
   published: boolean;
@@ -246,7 +249,7 @@ export function PublishTab({
 
         {/* Derecha: el estado y las versiones. */}
         <div className="min-w-0 space-y-4">
-          <StatusCard formId={form.id} formName={form.name} status={form.status} canManage={canManage} onStatus={onStatusChanged} hasVersion={versions.length > 0} />
+          <StatusCard formId={form.id} formName={form.name} status={form.status} canManage={canManage} canDelete={canDelete} onStatus={onStatusChanged} hasVersion={versions.length > 0} />
           {versionsCard}
         </div>
       </div>

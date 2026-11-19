@@ -18,7 +18,7 @@ const meeting = (i: number, email = "ana@negocio.io"): Meeting => ({
   calendar_invitees: [{ name: "Lead", email: "lead@x.com", is_external: true }],
 });
 
-function world(opts: { watermark?: string | null; cursor?: string | null; permission?: boolean; noEmails?: boolean; status?: string; callsPre?: string[]; settings?: unknown } = {}) {
+function world(opts: { watermark?: string | null; cursor?: string | null; permission?: boolean; noEmails?: boolean; status?: string; callsPre?: string[]; settings?: unknown; removed?: string[]; removedError?: boolean } = {}) {
   const conn = {
     id: CONN, workspace_id: WS, user_id: "user-ana", status: opts.status ?? "active", vault_secret_prefix: "oauth_fathom_c1",
     token_expires_at: "2026-10-10T19:00:00Z", account_label: "ana@negocio.io",
@@ -42,6 +42,11 @@ function world(opts: { watermark?: string | null; cursor?: string | null; permis
       "calls:select": (c) => {
         const ids = (c.filters.find((f) => f.method === "in")?.value ?? []) as string[];
         return { data: calls.filter((x) => ids.includes(String(x.external_id))).map((x) => ({ external_id: x.external_id })) };
+      },
+      "calls_deleted_external:select": (c) => {
+        if (opts.removedError) return { error: { message: "boom" } };
+        const ids = (c.filters.find((f) => f.method === "in")?.value ?? []) as string[];
+        return { data: (opts.removed ?? []).filter((x) => ids.includes(x)).map((x) => ({ external_id: x })) };
       },
       "calls:insert": (c) => {
         const v = c.values as Record<string, unknown>;
@@ -85,6 +90,22 @@ const baseDeps = (w: ReturnType<typeof world>, fetchImpl: unknown): IngestDeps =
 });
 
 beforeEach(() => vi.spyOn(console, "error").mockImplementation(() => {}));
+
+describe("lo eliminado a mano no vuelve (Papelera, 00474)", () => {
+  it("una grabación eliminada se saltea; las demás entran", async () => {
+    const w = world({ removed: [String(meeting(2).recording_id)] });
+    const r = await syncFathomConnection(baseDeps(w, fathom({ pages: { first: { items: [meeting(1), meeting(2), meeting(3)] } }, log: [] })), CONN);
+    expect(r.ingested).toBe(2);
+    expect(w.calls.map((c) => String(c.external_id))).not.toContain(String(meeting(2).recording_id));
+  });
+
+  it("si no se puede leer la lista de eliminadas, no entra nada de esa página", async () => {
+    const w = world({ removedError: true });
+    const r = await syncFathomConnection(baseDeps(w, fathom({ pages: { first: { items: [meeting(1), meeting(2)] } }, log: [] })), CONN);
+    expect(r.ingested).toBe(0);
+    expect(w.calls).toHaveLength(0);
+  });
+});
 
 describe("que importa cada conexion", () => {
   it("en manual no consulta nada, ni pide un token", async () => {

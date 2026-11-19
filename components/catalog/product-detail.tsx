@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Historial } from "@/components/historial/historial";
 import { ContentDialog, fieldInput } from "@/components/content/dialog";
 import { PageHeader } from "@/components/page-header";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -47,12 +48,15 @@ export function ProductDetail({
   userNames,
   timeZone,
   linksCard,
+  canDelete = false,
 }: {
   product: ProductDetailData;
   userNames: Record<string, string>;
   timeZone: string;
   /** La tarjeta Links (afiliados, F70), si la persona puede editarla. Sin la prop, la ficha es la de siempre. */
   linksCard?: React.ReactNode;
+  /** Con `products.delete`: «Eliminar producto» (Papelera). */
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -102,6 +106,7 @@ export function ProductDetail({
             <ArrowLeft className="h-4 w-4" />
           </Link>
         }
+        right={canDelete ? <DeleteButton entity="product" id={product.id} redirectTo="/dashboard/settings/productos" variant="icon" label="Eliminar" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-500/40 text-red-700 hover:bg-red-500/10 dark:text-red-400" /> : undefined}
       />
 
       <div className="min-h-0 flex-1 overflow-auto">

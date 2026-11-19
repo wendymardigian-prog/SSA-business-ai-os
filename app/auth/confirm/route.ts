@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appRedirectUrl } from "@/lib/app-url";
 import { createClient } from "@/lib/supabase/server";
 import { parseConfirmType, RESET_REQUEST_PATH, safeNextPath } from "@/lib/account/password-reset";
 
@@ -11,7 +12,7 @@ import { parseConfirmType, RESET_REQUEST_PATH, safeNextPath } from "@/lib/accoun
  * navegador: el token viaja en el link y se verifica aca.
  */
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const tokenHash = searchParams.get("token_hash");
   const type = parseConfirmType(searchParams.get("type"));
   const next = safeNextPath(searchParams.get("next"));
@@ -19,10 +20,10 @@ export async function GET(request: Request) {
   if (tokenHash && type) {
     const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-    if (!error) return NextResponse.redirect(`${origin}${next}`);
+    if (!error) return NextResponse.redirect(appRedirectUrl(next));
   }
 
   // Un link de recuperacion vencido o usado vuelve a pedir uno nuevo, con el aviso.
-  if (type === "recovery") return NextResponse.redirect(`${origin}${RESET_REQUEST_PATH}?vencido=1`);
-  return NextResponse.redirect(`${origin}/login?error=auth`);
+  if (type === "recovery") return NextResponse.redirect(appRedirectUrl(`${RESET_REQUEST_PATH}?vencido=1`));
+  return NextResponse.redirect(appRedirectUrl("/login?error=auth"));
 }

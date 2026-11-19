@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useTransition, useId } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Bell, CheckCheck, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,7 @@ interface Props {
 export function NotificationBell({ workspaceId, initialUnread, variant = "icon", placement = "down" }: Props) {
   const isRow = variant === "row";
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(initialUnread);
   const [items, setItems] = useState<NotificationItem[] | null>(null);
@@ -161,6 +162,34 @@ export function NotificationBell({ workspaceId, initialUnread, variant = "icon",
       // Si fallo, se vuelve a la verdad del servidor en vez de mentir en cero.
       if (!result.ok) void refresh(true);
     });
+  }
+
+  // En el menú lateral es un ítem más: lleva a la pantalla completa de notificaciones, con su número. El panel
+  // flotante queda para la campana de la barra del teléfono, que además tiene «Ver todas».
+  if (isRow) {
+    const active = pathname === "/dashboard/notificaciones";
+    return (
+      <Link
+        href="/dashboard/notificaciones"
+        aria-current={active ? "page" : undefined}
+        aria-label={bellAriaLabel(unread)}
+        title="Notificaciones"
+        className={cn(
+          "relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors collapsed:justify-center collapsed:gap-0 collapsed:px-0",
+          active
+            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        )}
+      >
+        <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="collapsed:hidden">Notificaciones</span>
+        {unread > 0 && (
+          <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white collapsed:absolute collapsed:right-1 collapsed:top-1 collapsed:ml-0">
+            {bellBadgeText(unread)}
+          </span>
+        )}
+      </Link>
+    );
   }
 
   return (
@@ -282,7 +311,14 @@ export function NotificationBell({ workspaceId, initialUnread, variant = "icon",
             )}
           </div>
 
-          <div className="border-t border-border px-4 py-2">
+          <div className="flex items-center justify-between border-t border-border px-4 py-2">
+            <Link
+              href="/dashboard/notificaciones"
+              onClick={() => setOpen(false)}
+              className="text-xs font-medium text-primary-ink transition-colors hover:underline"
+            >
+              Ver todas
+            </Link>
             <Link
               href="/dashboard/inbox"
               onClick={() => setOpen(false)}

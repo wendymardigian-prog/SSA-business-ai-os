@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Download, Loader2 } from "lucide-react";
 import { Notice } from "@/components/agents/fields";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { exportEodReportsCsv } from "@/lib/actions/eod/export";
 import { metricCell, metricColumns, periodTotals, reportStatusLabel, REPORTS_PAGE_SIZE } from "@/lib/eod/reports";
 import type { ReportsPageData } from "@/lib/eod/reports-load";
@@ -15,7 +16,17 @@ import { cn } from "@/lib/utils";
  * hoy y una fila por persona y día con el total de cada métrica. Solo compone: las cuentas
  * son de `lib/eod/reports.ts`.
  */
-export function ReportsView({ data, canExport = false }: { data: ReportsPageData; /** `data.export` (Equipo y roles, F24). */ canExport?: boolean }) {
+export function ReportsView({
+  data,
+  canExport = false,
+  canDelete = false,
+}: {
+  data: ReportsPageData;
+  /** `data.export` (Equipo y roles, F24). */
+  canExport?: boolean;
+  /** `eod.delete`: «Eliminar reporte» en cada fila (va a la Papelera 30 días). */
+  canDelete?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
@@ -189,6 +200,11 @@ export function ReportsView({ data, canExport = false }: { data: ReportsPageData
                     {c.label}
                   </th>
                 ))}
+                {canDelete && (
+                  <th className="w-10 px-2 py-2">
+                    <span className="sr-only">Acciones</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -210,6 +226,11 @@ export function ReportsView({ data, canExport = false }: { data: ReportsPageData
                       </td>
                     );
                   })}
+                  {canDelete && (
+                    <td className="px-2 py-1 text-right">
+                      <DeleteButton entity="eod_report" id={row.id} variant="icon" label="Eliminar reporte" />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

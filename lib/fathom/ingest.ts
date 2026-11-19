@@ -49,6 +49,19 @@ import { requeueFathomSync } from "./queue";
 import { normalizeFathomEmail, recorderEmailsFor, teamEmailsOf, type RecorderCandidate } from "./recorder-emails";
 import { meetingPassesRules, parseFathomSettings, syncCreatedAfter, type FathomSettings } from "./settings";
 
+/** `calls_deleted_external` (00474) todavía no está en los tipos generados. */
+type UntypedDb = {
+  from: (table: string) => {
+    select: (cols: string) => {
+      eq: (c: string, v: string) => {
+        eq: (c: string, v: string) => {
+          in: (c: string, v: string[]) => PromiseLike<{ data: Array<{ external_id: string | null }> | null; error: { message: string } | null }>;
+        };
+      };
+    };
+  };
+};
+
 type Db = SupabaseClient<Database>;
 
 /** Cuanto se mira hacia atras la primera vez, y cuanto se solapa la marca de agua. */
@@ -297,6 +310,20 @@ export async function ingestItems(
       .eq("source", "fathom")
       .in("external_id", mine.map((x) => x.externalId));
     for (const row of existing ?? []) if (row.external_id) known.add(row.external_id);
+    // Las que una persona eliminó a mano (Papelera, 00474) no vuelven a entrar: ni al sincronizar ni al importar
+    // el historial. Si la consulta falla, no se trae nada de esta página (mejor esperar a la próxima que revivir
+    // una grabación eliminada).
+    const { data: removed, error: removedError } = await (db as unknown as UntypedDb)
+      .from("calls_deleted_external")
+      .select("external_id")
+      .eq("workspace_id", run.connection.workspace_id)
+      .eq("source", "fathom")
+      .in("external_id", mine.map((x) => x.externalId));
+    if (removedError) {
+      console.error("[fathom] no pude leer las grabaciones eliminadas:", removedError.message);
+      for (const item of mine) known.add(item.externalId);
+    }
+    for (const row of removed ?? []) if (row.external_id) known.add(row.external_id);
   }
 
   for (const item of mine) {

@@ -47,7 +47,8 @@ export function ContentShell({
   /** Un aviso para mostrar al cargar (una pieza que no existe, por ejemplo). */
   notice?: string | null;
   userId: string;
-  perms: { approve: boolean; ai: boolean };
+  /** `delete`: `content.delete`, «Eliminar» en el drawer de la idea (la Papelera). */
+  perms: { approve: boolean; ai: boolean; delete?: boolean };
   platforms: string[];
   taxonomy: TaxonomyOptions;
   aiAvailable: boolean;

@@ -9,10 +9,10 @@ import { loadMeetContext } from "@/lib/scheduling/data/meet-availability";
 import { loadConfirmationConfigs } from "@/lib/scheduling/data/manual-options";
 import { meetAvailableFor } from "@/lib/scheduling/meet-availability";
 import { brokenCalendarAccounts } from "@/lib/scheduling/data/attention";
-import { bookingUtmOptions, hostNames, listBookingStatuses, listBookings } from "@/lib/scheduling/data/bookings";
+import { bookingUtmOptions, hostNames, listBookingStatuses, listBookings, type BookingListItem } from "@/lib/scheduling/data/bookings";
 import { metaLinkFromTouch, touchMetaIds, type MetaLink } from "@/lib/attribution/meta-link";
 import { EMPTY_META_NAMES, loadMetaNamesByIds } from "@/lib/attribution/meta-names";
-import { loadBookingMatches } from "@/lib/attribution/source-touches";
+import { loadBookingMatches, type BookingMatch } from "@/lib/attribution/source-touches";
 import { loadBookingLastTouches } from "@/lib/attribution/last-touches-load";
 import { listCategories, listEventTypes, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { expandCategoryFilter, categoryLabel } from "@/lib/scheduling/categories";
@@ -201,11 +201,41 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
             ...(quick === "needs_outcome" ? { endTo: now.toISOString() } : {}),
           };
 
-  // Segunda tanda, en paralelo: la lista, los contadores de las pastillas y quien
-  // puede crear un Meet. Los contadores miran todo el período con los demás
-  // filtros, no la pastilla elegida ni la página; traen solo estado y horario.
-  const [{ items, total }, forCounts, meetContext] = await Promise.all([
-    impossible ? Promise.resolve({ items: [], total: 0 }) : listBookings(ctx.supabase, ctx.workspace.id, listQuery),
+  const publicBase = publicBaseUrl(ctx.workspace as { scheduling_public_base_url?: string | null });
+
+  // El vinculo con Meta de la lista (solo en esa vista). El detalle de una reunion se pide aparte
+  // (`loadBookingDetail`): abrirlo ya no recarga la pagina. Las reuniones ya las leyo la sesion, asi
+  // que la RLS decidio cuales ve; el toque va con el cliente de servicio porque quien atiende una
+  // reunion puede no ver su contacto. Los nombres, con la sesion: sin `dashboards.ads.view` se ven los ids.
+  // El vínculo (con sus nombres, que dependen de él) y el «último click» de cada reunión (los últimos 3 toques de
+  // cualquier canal antes de agendar) no dependen uno del otro: van en paralelo.
+  const loadListLinks = async (items: BookingListItem[]) => {
+    const linkTargets = view === "list" ? items.map((i) => ({ id: i.id, contactId: i.contactId, createdAt: i.createdAt })) : [];
+    const [{ bookingMatches, metaNames }, lastTouches] = await Promise.all([
+      (async () => {
+        const bookingMatches: Map<string, BookingMatch> = linkTargets.length
+          ? await loadBookingMatches(service, ctx.workspace.id, linkTargets)
+          : new Map();
+        const matchedTouches = [...bookingMatches.values()].flatMap((m) => (m.touch ? [m.touch] : []));
+        const metaNames =
+          ctx.can("dashboards.ads.view") && matchedTouches.length
+            ? await loadMetaNamesByIds(ctx.supabase, ctx.workspace.id, matchedTouches.map(touchMetaIds))
+            : EMPTY_META_NAMES;
+        return { bookingMatches, metaNames };
+      })(),
+      linkTargets.length ? loadBookingLastTouches(service, ctx.supabase, ctx.workspace.id, linkTargets.map((t) => t.id)) : Promise.resolve({}),
+    ]);
+    return { bookingMatches, metaNames, lastTouches };
+  };
+
+  // Segunda tanda, en paralelo: la lista (y, apenas llega, su vínculo con Meta y su último click), los contadores de
+  // las pastillas y quien puede crear un Meet. Los contadores miran todo el período con los demás filtros, no la
+  // pastilla elegida ni la página; traen solo estado y horario.
+  const listPromise: Promise<{ items: BookingListItem[]; total: number }> = impossible
+    ? Promise.resolve({ items: [], total: 0 })
+    : listBookings(ctx.supabase, ctx.workspace.id, listQuery);
+  const [{ items, total, bookingMatches, metaNames, lastTouches }, forCounts, meetContext] = await Promise.all([
+    listPromise.then(async (list) => ({ ...list, ...(await loadListLinks(list.items)) })),
     listBookingStatuses(ctx.supabase, ctx.workspace.id, { from: resolvedPeriod.from, to: resolvedPeriod.to, ...base, statuses: fineStatuses }),
     // Quien puede crear un Google Meet al agendar a mano (lo vuelve a comprobar el servidor al agendar).
     loadMeetContext(service, ctx.workspace.id, [...names.keys(), ...events.map((e) => e.owner_user_id)]),
@@ -213,18 +243,6 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const quickCounts = quickFilterCounts(forCounts, now);
   const counts: Record<QuickPick, number> = { all: forCounts.length, ...quickCounts };
 
-  const publicBase = publicBaseUrl(ctx.workspace as { scheduling_public_base_url?: string | null });
-
-  // El vinculo con Meta de la lista (solo en esa vista). El detalle de una reunion se pide aparte
-  // (`loadBookingDetail`): abrirlo ya no recarga la pagina. Las reuniones ya las leyo la sesion, asi
-  // que la RLS decidio cuales ve; el toque va con el cliente de servicio porque quien atiende una
-  // reunion puede no ver su contacto. Los nombres, con la sesion: sin `dashboards.ads.view` se ven los ids.
-  const linkTargets = view === "list" ? items.map((i) => ({ id: i.id, contactId: i.contactId, createdAt: i.createdAt })) : [];
-  const bookingMatches = linkTargets.length ? await loadBookingMatches(service, ctx.workspace.id, linkTargets) : new Map();
-  const matchedTouches = [...bookingMatches.values()].flatMap((m) => (m.touch ? [m.touch] : []));
-  const metaNames = ctx.can("dashboards.ads.view") && matchedTouches.length ? await loadMetaNamesByIds(ctx.supabase, ctx.workspace.id, matchedTouches.map(touchMetaIds)) : EMPTY_META_NAMES;
-  // El «último click» de cada reunión (los últimos 3 toques de cualquier canal antes de agendar): solo en la lista.
-  const lastTouches = linkTargets.length ? await loadBookingLastTouches(service, ctx.supabase, ctx.workspace.id, linkTargets.map((t) => t.id)) : {};
   const metaLinks: Record<string, MetaLink> = {};
   for (const [id, match] of bookingMatches) {
     if (match.touch) metaLinks[id] = metaLinkFromTouch(match.touch, metaNames, { ownTouchId: match.ownTouchId, inherited: match.inherited });
@@ -334,6 +352,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       timeFormat={profile?.time_format ?? "24h"}
       scopeAll={ctx.scope("bookings") === "all"}
       canManage={ctx.can("bookings.manage")}
+      canDelete={ctx.can("bookings.delete")}
       showConfig={canOpenConfig(ctx.can)}
       brokenAccounts={broken}
       needsProfile={ctx.can("scheduling.use") && !profile}

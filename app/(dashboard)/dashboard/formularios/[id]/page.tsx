@@ -115,6 +115,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
       form={editorForm}
       versions={versions}
       canManage={ctx.can("forms.manage")}
+      canDelete={ctx.can("forms.delete")}
       publicBase={publicBaseUrl(workspace)}
       timeZone={timeZone}
       extras={extras}

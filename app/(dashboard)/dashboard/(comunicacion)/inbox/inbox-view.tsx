@@ -37,6 +37,7 @@ export function InboxView({
   canAssignConversations = false,
   canEditContacts = false,
   canDeleteContacts = false,
+  canDeleteConversations = false,
   replyChannelIds,
   workspaceName,
   selected: selectedFromServer,
@@ -79,6 +80,8 @@ export function InboxView({
   /** `contacts.edit` / `contacts.delete`: marcar y quitar "Conocido". */
   canEditContacts?: boolean;
   canDeleteContacts?: boolean;
+  /** `conversations.delete`: «Eliminar conversación» en el "⋯" de cada fila (la Papelera). */
+  canDeleteConversations?: boolean;
   /** Las cuentas donde puede responder (00249): `null` = en todas las que ve. */
   replyChannelIds?: string[] | null;
   workspaceName: string;
@@ -232,6 +235,18 @@ export function InboxView({
     [pathname, router, searchParams],
   );
 
+  /** Una conversación se mandó a la Papelera: si era la abierta, se cierra (saca ?c=). El diálogo refresca la lista. */
+  const handleConversationDeleted = useCallback(
+    (conversationId: string) => {
+      if (searchParams.get("c") !== conversationId) return;
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("c");
+      setContactSheetOpen(false);
+      replaceQuery(next);
+    },
+    [replaceQuery, searchParams],
+  );
+
   useGroupListRealtime(workspaceId, hasGroups && filters.listType !== "chats");
 
   /** Telefono: volver del hilo a la lista (saca ?c= y ?g= de la URL). */
@@ -309,6 +324,8 @@ export function InboxView({
           currentUserId={currentUserId}
           canEditContacts={canEditContacts}
           canDeleteContacts={canDeleteContacts}
+          canDeleteConversations={canDeleteConversations}
+          onConversationDeleted={handleConversationDeleted}
           hasGroups={hasGroups}
           unidentifiedCount={unidentifiedCount}
           groups={groups}

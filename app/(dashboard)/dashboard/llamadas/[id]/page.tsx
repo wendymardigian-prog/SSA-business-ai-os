@@ -174,6 +174,7 @@ export default async function LlamadaPage({ params, searchParams }: { params: Pr
     // «Cargar a mano» (F141): en una reunión sin análisis, o si ya tiene algo cargado.
     showManual: manualSummaryOf(call.summary) !== null || (status !== "analyzed" && status !== "analyzing" && status !== "classifying"),
     canCreateTasks: ctx.can("tasks.edit"),
+    canDelete: ctx.can("calls.delete"),
   };
   // @plantilla-desde(servicios)
   let serviceInfo: CallServiceInfo | null = null;
