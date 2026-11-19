@@ -13,7 +13,7 @@ import { eligibleBookings } from "@/lib/sales/booking-link";
 import { formatCallDate } from "@/lib/calls/format";
 import { saleStatusLabel } from "@/lib/sales/labels";
 import type { WizardConfig, WizardMember } from "./types";
-import { PhoneInput } from "@/components/ui/phone-input";
+import { QuickCreateContact } from "@/components/contacts/quick-create-contact";
 import { searchAffiliates, type AffiliateOption } from "@/lib/actions/affiliates";
 
 export interface Step1Values {
@@ -80,7 +80,7 @@ export function Step1Contact({
             )}
           </div>
         ) : creating ? (
-          <QuickCreate onCancel={() => setCreating(false)} onCreated={(c) => { setCreating(false); onContact(c); }} />
+          <QuickCreateContact create={createContactForSale} onCancel={() => setCreating(false)} onCreated={(c) => { setCreating(false); onContact({ id: c.id, name: c.name }); }} />
         ) : (
           <ContactSearch onPick={onContact} onCreate={() => setCreating(true)} />
         )}
@@ -185,44 +185,6 @@ export function ContactSearch({ onPick, onCreate }: { onPick: (c: { id: string; 
       <button type="button" onClick={onCreate} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-medium hover:bg-accent">
         <Plus className="h-3.5 w-3.5" aria-hidden /> Crear contacto
       </button>
-    </div>
-  );
-}
-
-function QuickCreate({ onCancel, onCreated }: { onCancel: () => void; onCreated: (c: { id: string; name: string }) => void }) {
-  const [form, setForm] = useState({ name: "", email: "", phone: "" });
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-
-  function submit() {
-    setError(null);
-    start(async () => {
-      const r = await createContactForSale({ name: form.name, email: form.email || undefined, phone: form.phone || undefined });
-      if (!r.ok) return setError(r.error);
-      if (r.notice) {
-        setNotice(r.notice);
-      }
-      onCreated({ id: r.contactId, name: form.name.trim() || "Contacto" });
-    });
-  }
-
-  return (
-    <div className="space-y-2 rounded-lg border border-border p-3">
-      <div className="grid gap-2 sm:grid-cols-3">
-        <DialogField label="Nombre"><input className={fieldInput} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="off" /></DialogField>
-        <DialogField label="Email"><input type="email" className={fieldInput} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} autoComplete="off" /></DialogField>
-        <DialogField label="Teléfono"><PhoneInput label="Teléfono" value={form.phone} onChange={(next) => setForm({ ...form, phone: next })} /></DialogField>
-      </div>
-      <p className="text-[11px] text-muted-foreground">Hace falta el nombre y al menos un email o un teléfono. Si ya existía, uso ese contacto.</p>
-      {notice && <p role="status" className="text-xs">{notice}</p>}
-      {error && <p role="alert" className="text-xs text-red-700 dark:text-red-400">{error}</p>}
-      <div className="flex gap-2">
-        <button type="button" disabled={pending} onClick={submit} className="inline-flex h-8 items-center gap-1 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">
-          {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />} Crear y usar
-        </button>
-        <button type="button" onClick={onCancel} className="h-8 rounded-lg border border-border px-3 text-xs hover:bg-accent">Cancelar</button>
-      </div>
     </div>
   );
 }

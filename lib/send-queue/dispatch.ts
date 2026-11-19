@@ -27,7 +27,7 @@ import { isValidTimeZone } from "@/lib/timezone";
 import { recordSend, sendChannelMessage } from "@/lib/flow-engine/send";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { emailSendCapacity, DEFER_MESSAGES, type DeferReason } from "@/lib/email/delivery-guard";
-import { notifyWorkspaceAdmins } from "@/lib/notifications";
+import { pauseLane } from "./lane-pause";
 import { loadBroadcastChannel, type BroadcastChannel } from "@/lib/broadcasts/channels";
 import { loadRenderData } from "@/lib/broadcasts/audience-load";
 import { filterValues, parseContactListFilters } from "@/lib/contacts/list-query";
@@ -172,7 +172,8 @@ async function runLane(service: Client, channelId: string, broadcasts: Broadcast
     await service.from("channel_send_lanes").upsert({ channel_id: channelId, workspace_id: workspaceId }, { onConflict: "channel_id", ignoreDuplicates: true });
     return; // el próximo tic lo toma
   }
-  if (lane.paused_at || new Date(lane.next_send_at).getTime() > Date.now()) return;
+  // Un broadcast es masivo: con lo masivo del número pausado desde la cola de mensajes (00420), espera.
+  if (lane.paused_at || lane.bulk_paused_at || new Date(lane.next_send_at).getTime() > Date.now()) return;
 
   const channel = await loadBroadcastChannel(service, workspaceId, channelId);
   if (!channel) {
@@ -209,7 +210,7 @@ async function runLane(service: Client, channelId: string, broadcasts: Broadcast
   for (let i = 0; i < maxSends; i++) {
     if (Date.now() - started > TICK_BUDGET_MS) break;
     const now = new Date();
-    counts ??= await laneCounts(service, { channelId }, now, timeZone);
+    counts ??= await laneCounts(service, { channelId, whatsapp: channel.kind === "whatsapp" }, now, timeZone);
 
     const laneDecision = paceDecision(channel.policy, counts, now, timeZone);
     if (!laneDecision.ok) {
@@ -311,8 +312,29 @@ async function pickBroadcast(
   return { broadcast: null, policy: ceiling, retryAt };
 }
 
-/** Cuántos salieron (o están saliendo) en el último minuto, la última hora y hoy, del canal o de un broadcast. */
-async function laneCounts(service: Client, scope: { channelId?: string; broadcastId?: string }, now: Date, timeZone: string): Promise<LaneCounts> {
+/**
+ * Cuántos salieron (o están saliendo) en el último minuto, la última hora y hoy, del canal o de un broadcast.
+ *
+ * Un número de WhatsApp cuenta TODO lo que sale por él (`send_lane_counts`, 00420): broadcasts, la cola de las
+ * automatizaciones, lo que escribe el equipo, el celular, el agente y los grupos. El bloqueo lo sufre el número.
+ * Si la cuenta falla, cae a la de siempre (solo broadcasts): nunca frena el despachador.
+ */
+async function laneCounts(
+  service: Client,
+  scope: { channelId?: string; broadcastId?: string; whatsapp?: boolean },
+  now: Date,
+  timeZone: string,
+): Promise<LaneCounts> {
+  if (scope.whatsapp && scope.channelId && !scope.broadcastId) {
+    const { data, error } = await service.rpc("send_lane_counts", {
+      p_channel_id: scope.channelId,
+      p_day_start: startOfZonedDay(now, timeZone).toISOString(),
+      p_now: now.toISOString(),
+    });
+    const row = (data ?? [])[0];
+    if (!error && row) return { lastMinute: row.last_minute ?? 0, lastHour: row.last_hour ?? 0, today: row.today ?? 0 };
+    console.error("[send-queue] no pude contar el cupo del número, uso solo los broadcasts:", error?.message ?? "sin fila");
+  }
   const since = (ms: number) => new Date(now.getTime() - ms).toISOString();
   const count = async (from: string) => {
     let sent = service.from("broadcast_recipients").select("id", { count: "exact", head: true }).eq("status", "sent").gte("sent_at", from);
@@ -339,25 +361,6 @@ async function laneCounts(service: Client, scope: { channelId?: string; broadcas
 /** Corre la próxima mirada del carril (nunca para atrás). */
 async function deferLane(service: Client, channelId: string, at: Date): Promise<void> {
   await service.from("channel_send_lanes").update({ next_send_at: at.toISOString() }).eq("channel_id", channelId).lt("next_send_at", at.toISOString());
-}
-
-async function pauseLane(service: Client, channelId: string, workspaceId: string, reason: string, label: string | null): Promise<void> {
-  const { data } = await service
-    .from("channel_send_lanes")
-    .update({ paused_at: new Date().toISOString(), paused_reason: reason.slice(0, 500) })
-    .eq("channel_id", channelId)
-    .is("paused_at", null)
-    .select("channel_id");
-  if (!data || data.length === 0) return; // ya estaba pausado: no se avisa dos veces
-  await notifyWorkspaceAdmins({
-    supabase: service,
-    workspaceId,
-    kind: "channel_error",
-    title: "Se pausaron los envíos masivos",
-    body: `${label ?? "Un canal"}: ${reason} Revisá el canal y reanudá desde el broadcast.`,
-    entityId: channelId,
-    metadata: { source: "send_queue" },
-  });
 }
 
 /** Un destinatario: vuelve a mirar al contacto, arma el mensaje y lo manda. Nunca lanza. */

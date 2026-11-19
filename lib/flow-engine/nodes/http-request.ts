@@ -3,7 +3,10 @@ import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import type { HttpRequestNodeData } from "../types";
 import { interpolateVariables } from "../interpolate";
 import { httpRequestOutputs } from "../node-outputs";
-import { safeFetch } from "@/lib/net/safe-fetch";
+import { assertPublicUrl, safeFetch } from "@/lib/net/safe-fetch";
+import { readSecret } from "@/lib/vault";
+import { SECRET_NAMES } from "@/lib/secret-names";
+import { signWebhook, webhookDeliveryId } from "@/lib/automations/webhook-signature";
 
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 
@@ -17,7 +20,32 @@ const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
  *
  * Desde la auditoria de automatizaciones la llamada pasa por `safeFetch`: no deja pedir direcciones internas, corta a
  * los 10 s y no guarda mas de 256 KB. Los headers tambien llevan variables.
+ *
+ * «Firmar la llamada» (traído de RER): con `sign`, la llamada sale con los headers de `lib/automations/webhook-signature.ts`
+ * (id estable por paso de la ejecución, hora y HMAC-SHA256 con la clave del negocio, que vive en la bóveda). Sin la
+ * clave guardada NO se manda nada sin firmar: el paso queda fallido con su motivo y la automatización sigue.
  */
+
+/**
+ * Solo para el receptor local de los tests: con `AUTOMATION_HTTP_ALLOW_LOOPBACK=1` y fuera de producción, la llamada
+ * puede ir a 127.0.0.1 / localhost. Cualquier otra dirección interna sigue bloqueada, y en producción no hay atajo.
+ */
+function loopbackCheckForTests(): ((raw: string) => Promise<URL>) | undefined {
+  if (process.env.NODE_ENV === "production" || process.env.AUTOMATION_HTTP_ALLOW_LOOPBACK !== "1") return undefined;
+  return async (raw: string) => {
+    const url = new URL(raw);
+    if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return url;
+    return assertPublicUrl(raw);
+  };
+}
+
+function markFailed(context: FlowExecutionContext, responseVariable: string) {
+  if (responseVariable && context.variables) {
+    context.variables[`${responseVariable}_status`] = "0";
+    context.variables[`${responseVariable}_ok`] = "false";
+  }
+}
+
 export const httpRequestNode: NodeDefinition<HttpRequestNodeData> = {
   needsContact: false,
   type: "httpRequest",
@@ -26,7 +54,7 @@ export const httpRequestNode: NodeDefinition<HttpRequestNodeData> = {
   persistsVariables: true,
   // La respuesta queda en la variable elegida: los caminos condicionales la pueden comparar.
   outputs: httpRequestOutputs,
-  async execute({ data, context, node }: NodeExecutionArgs<HttpRequestNodeData, FlowExecutionContext>) {
+  async execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<HttpRequestNodeData, FlowExecutionContext>) {
     const variables = context.variables ?? {};
     const responseVariable = typeof data.responseVariable === "string" ? data.responseVariable.trim() : "";
     try {
@@ -44,7 +72,27 @@ export const httpRequestNode: NodeDefinition<HttpRequestNodeData> = {
         headers[key.trim()] = interpolateVariables(String(value ?? ""), variables);
       }
 
-      const response = await safeFetch(url, { method, headers, body: method !== "GET" ? body : undefined });
+      const sentBody = method !== "GET" ? body : undefined;
+      if (data.sign === true) {
+        let secret: string | null = null;
+        try {
+          // El motor corre con el cliente de servicio: `read_secret` solo lo ejecuta el servidor (00143).
+          secret = await readSecret(supabase as never, context.workspaceId, SECRET_NAMES.automationWebhookSecret);
+        } catch (error) {
+          console.error(`[flow-engine] la Llamada HTTP ${node.id} no pudo leer su clave de firma:`, error instanceof Error ? error.message : "error");
+          context.noteStep?.({ status: "failed", reason: "No se pudo leer la clave para firmar la llamada. No se mandó nada." });
+          markFailed(context, responseVariable);
+          return;
+        }
+        if (!secret) {
+          context.noteStep?.({ status: "failed", reason: "Falta la clave para firmar la llamada: generala o pegala en el paso «Llamada HTTP». No se mandó nada." });
+          markFailed(context, responseVariable);
+          return;
+        }
+        Object.assign(headers, signWebhook(secret, webhookDeliveryId(sessionId, node.id), sentBody ?? "", Math.floor(Date.now() / 1000)));
+      }
+
+      const response = await safeFetch(url, { method, headers, body: sentBody }, { checkUrl: loopbackCheckForTests() });
 
       if (responseVariable && context.variables) {
         try {
@@ -64,10 +112,7 @@ export const httpRequestNode: NodeDefinition<HttpRequestNodeData> = {
       console.error(`[flow-engine] la Llamada HTTP ${node.id} fallo:`, error instanceof Error ? error.message : "error");
       // Sin el mensaje del error: puede traer la direccion, y la direccion puede llevar datos del contacto o claves.
       context.noteStep?.({ status: "failed", reason: "No se pudo conectar con el servidor." });
-      if (responseVariable && context.variables) {
-        context.variables[`${responseVariable}_status`] = "0";
-        context.variables[`${responseVariable}_ok`] = "false";
-      }
+      markFailed(context, responseVariable);
     }
   },
 };

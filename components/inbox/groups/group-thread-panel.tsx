@@ -114,7 +114,7 @@ export function GroupThreadPanel({
           {group.canWrite && group.writeBlockedReason ? (
             <p className="border-t border-border p-3 text-center text-xs text-muted-foreground">{group.writeBlockedReason}</p>
           ) : group.canWrite ? (
-            <GroupComposer groupId={group.id} onSent={() => router.refresh()} />
+            <GroupComposer groupId={group.id} onSent={() => router.refresh()} quotaRefreshKey={thread.length} />
           ) : (
             <p className="border-t border-border p-3 text-center text-xs text-muted-foreground">Tu rol puede leer este grupo pero no escribir.</p>
           )}

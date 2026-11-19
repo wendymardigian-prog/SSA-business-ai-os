@@ -61,6 +61,10 @@ const vault = new Map<string, string>();
 let role = "owner";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// attachMedia vuelve a mirar los primeros bytes de lo subido: acá, un MP4.
+vi.mock("@/lib/content/stored-head", () => ({
+  readStoredHead: async () => new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0]),
+}));
 // `after()` no existe fuera de un pedido de Next: se junta y se corre a mano.
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();

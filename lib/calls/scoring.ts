@@ -114,8 +114,65 @@ export function quoteInTranscript(quote: string | null | undefined, transcript: 
 
 /** Rubrica minima para puntuar (misma forma que `Rubric` de rubric.ts, sin pedirle el resto). */
 export interface ScoringRubric {
-  closer: { clave: string; peso: number; aplica_a?: string[]; archivado?: boolean; subtracts?: true }[];
+  closer: { clave: string; nombre?: string; peso: number; aplica_a?: string[]; archivado?: boolean; subtracts?: true }[];
   lead: { clave: string; peso: number; archivado?: boolean }[];
+}
+
+/**
+ * Lo que resta un criterio «que resta» (F140). Cuenta solo si pasó (puntaje 3 o más) y tiene una cita que está en la
+ * transcripción: sin prueba no se le quita nada a nadie.
+ */
+export interface ScoreDeduction {
+  clave: string;
+  nombre: string;
+  puntaje: number | null;
+  /** Puntos que quita (0 si no cuenta). */
+  puntos: number;
+  cita: string | null;
+  /** Por qué no cuenta, si no cuenta. */
+  motivo: "no_paso" | "sin_cita" | "cita_no_esta" | null;
+}
+
+/** Cómo sale la nota de 0 a 100: la media de los criterios que suman, lo que resta cada criterio que resta y el total. */
+export interface ScoreBreakdown {
+  base: number | null;
+  restas: ScoreDeduction[];
+  total: number | null;
+}
+
+export interface AnalysisScoresWithBreakdown extends AnalysisScores {
+  /** null sin rúbrica o sin criterios que restan: la nota es la media de siempre y no hace falta desglose. */
+  breakdown: ScoreBreakdown | null;
+}
+
+function summingWeight(items: Obj[]): number {
+  let w = 0;
+  for (const r of items) {
+    const s = Number(r.puntaje);
+    if (!Number.isFinite(s) || s < 1 || s > 5) continue;
+    w += Number(r.peso) > 0 ? Number(r.peso) : 1;
+  }
+  return w;
+}
+
+/** Lo que resta cada criterio que resta, en puntos sobre 100. Sin transcripción ninguno cuenta. */
+export function scoreDeductions(
+  items: Obj[],
+  penalties: Array<{ clave: string; nombre: string; peso: number; puntaje: unknown; cita: unknown }>,
+  transcriptText: string | null,
+): ScoreDeduction[] {
+  const w = summingWeight(items);
+  return penalties.map((p) => {
+    const raw = Number(p.puntaje);
+    const puntaje = Number.isFinite(raw) && raw >= 1 && raw <= 5 ? raw : null;
+    const cita = typeof p.cita === "string" && p.cita.trim() ? p.cita.trim() : null;
+    let motivo: ScoreDeduction["motivo"] = null;
+    if (puntaje === null || puntaje < 3) motivo = "no_paso";
+    else if (!cita) motivo = "sin_cita";
+    else if (!transcriptText || !quoteInTranscript(cita, transcriptText)) motivo = "cita_no_esta";
+    const puntos = motivo || w <= 0 ? 0 : Math.round(((p.peso > 0 ? p.peso : 1) / w) * 100);
+    return { clave: p.clave, nombre: p.nombre, puntaje, puntos, cita, motivo };
+  });
 }
 
 /**
@@ -130,37 +187,25 @@ export function closerScoreWithPenalties(
 ): number | null {
   const base = closerScore(items);
   if (penalties.length === 0 || base === null) return base;
-  let w = 0;
-  for (const r of items) {
-    const s = Number(r.puntaje);
-    if (!Number.isFinite(s) || s < 1 || s > 5) continue;
-    w += Number(r.peso) > 0 ? Number(r.peso) : 1;
-  }
-  if (w <= 0) return base;
-  let minus = 0;
-  for (const p of penalties) {
-    const s = Number(p.puntaje);
-    if (!Number.isFinite(s) || s < 3) continue;
-    if (!transcriptText || !quoteInTranscript(typeof p.cita === "string" ? p.cita : null, transcriptText)) continue;
-    minus += p.peso > 0 ? p.peso : 1;
-  }
-  return Math.max(0, Math.round(base - (minus / w) * 100));
+  const minus = scoreDeductions(items, penalties.map((p, i) => ({ ...p, clave: String(i), nombre: "" })), transcriptText).reduce((a, d) => a + d.puntos, 0);
+  return Math.max(0, base - minus);
 }
 
-/** Puntajes usando los pesos y el «Aplica a» de la rúbrica publicada. */
-export function computeScoresWithRubric(analysis: unknown, rubric: ScoringRubric | null, callType: string | null, transcriptText: string | null = null): AnalysisScores {
+/** Puntajes usando los pesos y el «Aplica a» de la rúbrica publicada, con el desglose de la nota si hay criterios que restan. */
+export function computeScoresWithRubric(analysis: unknown, rubric: ScoringRubric | null, callType: string | null, transcriptText: string | null = null): AnalysisScoresWithBreakdown {
   const base = computeScores(analysis);
-  if (!rubric) return base;
+  if (!rubric) return { ...base, breakdown: null };
   const a = isObj(analysis) ? analysis : {};
   const applies = rubric.closer.filter((c) => !c.archivado && (!callType || !c.aplica_a || c.aplica_a.includes(callType)));
   const cw = new Map(applies.filter((c) => !c.subtracts).map((c) => [c.clave, c.peso]));
-  const sw = new Map(applies.filter((c) => c.subtracts).map((c) => [c.clave, c.peso]));
-  const items = Array.isArray(a.rubrica)
-    ? a.rubrica.filter(isObj).filter((r) => cw.has(String(r.codigo))).map((r) => ({ ...r, peso: cw.get(String(r.codigo)) }))
-    : [];
-  const penalties = Array.isArray(a.rubrica)
-    ? a.rubrica.filter(isObj).filter((r) => sw.has(String(r.codigo))).map((r) => ({ peso: sw.get(String(r.codigo)) ?? 1, puntaje: r.puntaje, cita: r.cita }))
-    : [];
+  const sw = new Map(applies.filter((c) => c.subtracts).map((c) => [c.clave, c]));
+  const all = Array.isArray(a.rubrica) ? a.rubrica.filter(isObj) : [];
+  const items = all.filter((r) => cw.has(String(r.codigo))).map((r) => ({ ...r, peso: cw.get(String(r.codigo)) }));
+  // Cada criterio que resta de la rúbrica figura en el desglose, aunque la IA no lo haya devuelto (cuenta como «no pasó»).
+  const penalties = [...sw.values()].map((c) => {
+    const r = all.find((x) => String(x.codigo) === c.clave);
+    return { clave: c.clave, nombre: String(r?.nombre ?? c.nombre ?? c.clave), peso: c.peso, puntaje: r?.puntaje, cita: r?.cita };
+  });
   const lw = new Map(rubric.lead.filter((c) => !c.archivado).map((c) => [c.clave, c.peso]));
   const lead = isObj(a.lead) ? a.lead : {};
   let ls = 0, lt = 0;
@@ -171,9 +216,47 @@ export function computeScoresWithRubric(analysis: unknown, rubric: ScoringRubric
     if (!w || v === null) continue;
     ls += v * w; lt += w;
   }
+  const media = items.length ? closerScore(items) : base.closer_score;
+  let closer = media;
+  let breakdown: ScoreBreakdown | null = null;
+  if (items.length && penalties.length) {
+    const restas = scoreDeductions(items, penalties, transcriptText);
+    closer = media === null ? null : Math.max(0, media - restas.reduce((s, d) => s + d.puntos, 0));
+    breakdown = { base: media, restas, total: closer };
+  }
   return {
-    closer_score: items.length ? closerScoreWithPenalties(items, penalties, transcriptText) : base.closer_score,
+    closer_score: closer,
     lead_score: lt > 0 ? Math.round((ls / lt) * 100) : base.lead_score,
     has_open_alerts: base.has_open_alerts,
+    breakdown,
   };
+}
+
+const DEDUCTION_REASONS: Record<NonNullable<ScoreDeduction["motivo"]>, string> = {
+  no_paso: "No pasó",
+  sin_cita: "No cuenta: sin cita",
+  cita_no_esta: "No cuenta: la cita no está en la transcripción",
+};
+
+/** El texto de por qué un criterio que resta no quitó puntos. */
+export function deductionReason(d: ScoreDeduction): string | null {
+  return d.motivo ? DEDUCTION_REASONS[d.motivo] : null;
+}
+
+const DEDUCTION_MOTIVOS = new Set(["no_paso", "sin_cita", "cita_no_esta"]);
+const numOrNull = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** Lee `analysis.nota` (lo guarda el analizador), tolerante a lo que falte. Sin nota guardada, null. */
+export function readScoreBreakdown(analysis: unknown): ScoreBreakdown | null {
+  const n = isObj(analysis) && isObj(analysis.nota) ? analysis.nota : null;
+  if (!n) return null;
+  const restas = (Array.isArray(n.restas) ? n.restas : []).filter(isObj).map((d): ScoreDeduction => ({
+    clave: String(d.clave ?? ""),
+    nombre: String(d.nombre ?? d.clave ?? ""),
+    puntaje: numOrNull(d.puntaje),
+    puntos: numOrNull(d.puntos) ?? 0,
+    cita: typeof d.cita === "string" ? d.cita : null,
+    motivo: DEDUCTION_MOTIVOS.has(String(d.motivo)) ? (d.motivo as ScoreDeduction["motivo"]) : null,
+  })).filter((d) => d.clave);
+  return { base: numOrNull(n.base), restas, total: numOrNull(n.total) };
 }

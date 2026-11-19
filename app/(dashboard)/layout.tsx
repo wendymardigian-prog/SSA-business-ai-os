@@ -9,6 +9,7 @@ import { getNavFavorites } from "@/lib/nav/favorites";
 import { Sidebar } from "@/components/sidebar";
 import { DashboardChromeProvider } from "@/components/dashboard-chrome";
 import { TimezoneBootstrap } from "@/components/timezone-bootstrap";
+import { AssistantDock } from "@/components/assistant/assistant-dock"; // @plantilla-quitar(disenador)
 import { eodNavFlag } from "@/lib/eod/nav-flag"; // @plantilla-quitar(formularios)
 import { visibleSettingsTabs } from "@/lib/settings/tabs";
 import { getMyProfile } from "@/lib/account/profile";
@@ -110,6 +111,10 @@ export default async function DashboardLayout({
           `relative` quedan adentro de <main>, que ya recorta lo que se sale.
         */}
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
+        {/* @plantilla-desde(disenador) */}
+        {/* El asistente del equipo: botón flotante y, abierto, panel acoplado a la derecha. Solo con «Usar el asistente». */}
+        {permissionContext.can("assistant.use") && <AssistantDock />}
+        {/* @plantilla-hasta(disenador) */}
       </div>
       </MemberAvatarsProvider>
     </DashboardChromeProvider>

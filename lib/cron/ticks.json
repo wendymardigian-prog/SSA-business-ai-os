@@ -18,6 +18,6 @@
     "schedule": "3-59/5 * * * *",
     "periodMinutes": 5,
     "sqlFunction": "private.cron_tick_5_minutes",
-    "parts": ["agent-drafts-sweep", "draft-window-alerts", "drafts-refresh", "whatsapp-health"]
+    "parts": ["agent-drafts-sweep", "draft-window-alerts", "drafts-refresh", "whatsapp-health", "google-calendar-inbound"]
   }
 ]

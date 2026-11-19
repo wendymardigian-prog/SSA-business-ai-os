@@ -64,6 +64,7 @@ import {
   refreshZernioAccounts,
 } from "@/lib/channels/zernio-account-events";
 import { fallbackContactName } from "@/lib/contacts/anonymous";
+import { readTextCapped } from "@/lib/http/read-capped";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
 
@@ -188,7 +189,9 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleWebhook(request: NextRequest) {
-  const body = await request.text();
+  // Tope antes de leerlo entero (y antes de la firma): un pedido enorme sin firma no llega a memoria.
+  const body = await readTextCapped(request, 5_000_000);
+  if (body === null) return NextResponse.json({ error: "Pedido demasiado grande" }, { status: 413 });
   const signature = request.headers.get("x-late-signature");
   const headerEventId = request.headers.get("x-late-event-id");
 
@@ -261,8 +264,24 @@ async function handleWebhook(request: NextRequest) {
     .eq("is_active", true)
     .single();
 
+  // Sin canal no hay secreto contra el que validar: se responde igual que una firma mala, así un pedido sin firmar
+  // no averigua qué cuentas de Zernio son de quién.
   if (!channel) {
-    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  // Firma HMAC-SHA256 contra el secreto del workspace (con fallback al viejo
+  // secreto por canal). Sin secreto no se puede verificar nada, y esta URL es
+  // publica: se rechaza en vez de aceptar a ciegas.
+  const secret = await resolveWebhookSecret(supabase, channel);
+  if (!secret) {
+    console.error(
+      `[webhook] el workspace ${channel.workspace_id} no tiene el secreto en Vault; no puedo validar la firma`
+    );
+    return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
+  }
+  if (!verifyWebhookSignature(secret, body, signature)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
   // Prevent loops: if the sender is another connected account in this
@@ -280,20 +299,6 @@ async function handleWebhook(request: NextRequest) {
     if (senderChannel) {
       return NextResponse.json({ ok: true, skipped: "el remitente es una cuenta propia" });
     }
-  }
-
-  // Firma HMAC-SHA256 contra el secreto del workspace (con fallback al viejo
-  // secreto por canal). Sin secreto no se puede verificar nada, y esta URL es
-  // publica: se rechaza en vez de aceptar a ciegas.
-  const secret = await resolveWebhookSecret(supabase, channel);
-  if (!secret) {
-    console.error(
-      `[webhook] el workspace ${channel.workspace_id} no tiene el secreto en Vault; no puedo validar la firma`
-    );
-    return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
-  }
-  if (!verifyWebhookSignature(secret, body, signature)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
   if (!(await claimWebhookEvent(supabase, eventId))) {
@@ -639,7 +644,7 @@ async function handleConversationStartedWebhook(
     .single();
 
   if (!channel) {
-    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 }); // igual que una firma mala: no revela qué cuentas existen
   }
 
   const secret = await resolveWebhookSecret(supabase, channel);
@@ -711,7 +716,7 @@ async function handleMessageSentWebhook(
     .single();
 
   if (!channel) {
-    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 }); // igual que una firma mala: no revela qué cuentas existen
   }
 
   const secret = await resolveWebhookSecret(supabase, channel);
@@ -789,7 +794,7 @@ async function handleReactionWebhook(
     .eq("is_active", true)
     .maybeSingle();
   if (!channel) {
-    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 }); // igual que una firma mala: no revela qué cuentas existen
   }
 
   const secret = await resolveWebhookSecret(supabase, channel);
@@ -875,7 +880,7 @@ async function handleCommentWebhook(
         .maybeSingle();
 
   if (!channel && !socialAccount) {
-    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 }); // igual que una firma mala: no revela qué cuentas existen
   }
 
   const workspaceId = channel?.workspace_id ?? socialAccount!.workspace_id;

@@ -156,9 +156,11 @@ async function extractFromPdf(buffer: Uint8Array): Promise<ExtractionResult> {
 
   const pages = Array.isArray(text) ? text : [text];
   // Una linea de separacion por pagina: le da al chunker un corte natural y
-  // deja rastro de donde estaba cada cosa.
+  // deja rastro de donde estaba cada cosa. : la marca va tambien en la
+  // primera pagina (y en un PDF de una sola), porque de ahi sale la pagina que
+  // cita el agente (lib/knowledge/pages.ts).
   const markdown = pages
-    .map((page, i) => `${pages.length > 1 ? `\n\n---\n\n<!-- pagina ${i + 1} -->\n\n` : ""}${page}`)
+    .map((page, i) => `${i > 0 ? "\n\n---\n\n" : ""}<!-- pagina ${i + 1} -->\n\n${page}`)
     .join("")
     .trim();
 

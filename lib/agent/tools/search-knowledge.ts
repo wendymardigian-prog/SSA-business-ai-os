@@ -2,6 +2,7 @@ import { z } from "zod";
 import { searchKnowledge } from "../knowledge";
 import { wrapUntrusted } from "../untrusted";
 import type { AgentToolDefinition } from "./types";
+import { citationLabel } from "@/lib/knowledge/pages";
 
 /**
  * buscar_en_conocimiento: el agente busca en la base de conocimiento cuando
@@ -22,6 +23,10 @@ const inputSchema = z.object({
     .max(300)
     .describe("Que buscar, en lenguaje natural. Por ejemplo: horarios de las clases, que incluye el plan avanzado."),
 });
+
+/** : lo que se le pide al modelo. Si igual no cita, el runner agrega la línea «Fuente: …» (lib/knowledge/pages.ts). */
+export const CITE_INSTRUCTION =
+  "Si usás alguno de estos fragmentos en tu respuesta, cerrá con una línea «Fuente: «Documento», pág. N» con el documento y la página de lo que usaste (sin página si no la tiene).";
 
 const configSchema = z.object({
   maxResults: z.number().int().min(1).max(10).default(5),
@@ -47,6 +52,8 @@ export const searchKnowledgeTool: AgentToolDefinition<z.infer<typeof inputSchema
       workspaceId: ctx.workspaceId,
       query: input.consulta,
       tags: ctx.agent.knowledgeTags,
+      documentIds: ctx.agent.knowledgeDocumentIds,
+      folderIds: ctx.agent.knowledgeFolderIds,
       matchCount: config.maxResults,
       minSimilarity: config.minSimilarity,
       run: ctx.run,
@@ -70,13 +77,16 @@ export const searchKnowledgeTool: AgentToolDefinition<z.infer<typeof inputSchema
       return { ok: true, forModel: fallback, stepAlreadyRecorded: true };
     }
 
+    // : cada fragmento con su documento y su página, y la cita al final de la respuesta.
     const body = result.chunks
-      .map((c, i) => `[${i + 1}] ${c.documentTitle}\n${c.content}`)
+      .map((c, i) => `[${i + 1}] ${citationLabel(c.documentTitle, [c.page])}\n${c.content}`)
       .join("\n\n");
     return {
       ok: true,
-      forModel: wrapUntrusted("conocimiento", ctx.nonce, body),
+      // La instrucción de citar va solo si el agente tiene «Citar la fuente» prendido (00443, apagado de serie).
+      forModel: ctx.agent.citeSources ? `${wrapUntrusted("conocimiento", ctx.nonce, body)}\n\n${CITE_INSTRUCTION}` : wrapUntrusted("conocimiento", ctx.nonce, body),
       kbChunkIds: result.chunks.map((c) => c.chunkId),
+      citations: result.chunks.map((c) => ({ document: c.documentTitle, page: c.page })),
       stepAlreadyRecorded: true,
     };
   },

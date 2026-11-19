@@ -135,6 +135,8 @@ export async function checkSpendLimits(
   args: {
     workspaceId: string;
     agentId: string;
+    /** El nombre del agente, para el aviso previo de sus topes. */
+    agentName?: string | null;
     limits: SpendLimits;
     now?: Date;
     timeZone?: string;
@@ -174,14 +176,15 @@ export async function checkSpendLimits(
       console.error("[ai-spend] no pude sumar el gasto:", error.message);
       return { allowed: false, blocking: null, warnings: [], readError: error.message };
     }
-    entries.push({ scope: c.scope, limitUsd: c.limitUsd, action: c.action, spentUsd: Number(data ?? 0), since: c.since });
+    entries.push({ scope: c.scope, limitUsd: c.limitUsd, action: c.action, spentUsd: Number(data ?? 0), since: c.since, agentId: c.agentId });
   }
 
   // El aviso previo (ai_spend_alert_pct): con la suma que ya se hizo, sin otra consulta.
+  // Desde  tambien los topes del agente, al 80 % si el negocio no eligio otro.
   await notifySpendApproaching(supabase, {
     workspaceId: args.workspaceId,
     approaching: approachingThresholds(
-      entries.map((e) => ({ scope: e.scope, limitUsd: e.limitUsd, spentUsd: e.spentUsd, since: e.since })),
+      entries.map((e) => ({ scope: e.scope, limitUsd: e.limitUsd, spentUsd: e.spentUsd, since: e.since, agentId: e.agentId, label: args.agentName ?? null })),
       l.alertPct,
     ),
   });

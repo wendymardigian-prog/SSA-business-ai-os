@@ -57,6 +57,8 @@ interface Pending {
   drop: BookingDrop;
   /** El instante nuevo, ya calculado. */
   startUtc: string;
+  /** la duración nueva, solo al estirar la tarjeta (sin esto, se conserva la que tenía). */
+  durationMinutes?: number;
   reason: string;
   /** La casilla «Reagendar igual (ignorar la disponibilidad)». */
   ignoreAvailability: boolean;
@@ -66,26 +68,44 @@ export type DragConfirmState =
   | { phase: "idle" }
   | ({ phase: "pending" } & Pending)
   | ({ phase: "confirming" } & Pending)
-  | ({ phase: "error"; error: string; offerIgnore: boolean } & Pending)
+  /** `alternatives` (UTC) solo cuando el servidor propuso huecos libres siguientes. */
+  | ({ phase: "error"; error: string; offerIgnore: boolean; alternatives?: string[] } & Pending)
   | { phase: "done"; bookingId: string };
 
 export type DragConfirmEvent =
-  | { type: "drop"; bookingId: string; drop: BookingDrop; startUtc: string }
+  | { type: "drop"; bookingId: string; drop: BookingDrop; startUtc: string; durationMinutes?: number }
   | { type: "reason"; value: string }
   | { type: "ignoreAvailability"; value: boolean }
   | { type: "confirm" }
   | { type: "succeeded" }
-  | { type: "failed"; error: string }
+  | { type: "failed"; error: string; alternatives?: string[] }
+  /** elegir uno de los huecos propuestos vuelve a «pendiente» con ese horario, a confirmar. */
+  | { type: "pickAlternative"; startUtc: string }
   | { type: "cancel" };
 
-const pendingOf = (s: Pending): Pending => ({ bookingId: s.bookingId, drop: s.drop, startUtc: s.startUtc, reason: s.reason, ignoreAvailability: s.ignoreAvailability });
+const pendingOf = (s: Pending): Pending => ({
+  bookingId: s.bookingId,
+  drop: s.drop,
+  startUtc: s.startUtc,
+  ...(s.durationMinutes !== undefined ? { durationMinutes: s.durationMinutes } : {}),
+  reason: s.reason,
+  ignoreAvailability: s.ignoreAvailability,
+});
 
 export function dragConfirmReducer(state: DragConfirmState, event: DragConfirmEvent): DragConfirmState {
   switch (event.type) {
     case "drop":
       // Soltar abre el modal. Con una llamada en vuelo no se acepta otro destino.
       if (state.phase === "confirming") return state;
-      return { phase: "pending", bookingId: event.bookingId, drop: event.drop, startUtc: event.startUtc, reason: "", ignoreAvailability: false };
+      return {
+        phase: "pending",
+        bookingId: event.bookingId,
+        drop: event.drop,
+        startUtc: event.startUtc,
+        ...(event.durationMinutes !== undefined ? { durationMinutes: event.durationMinutes } : {}),
+        reason: "",
+        ignoreAvailability: false,
+      };
 
     case "reason":
       return state.phase === "pending" || state.phase === "error" ? { ...state, reason: event.value } : state;
@@ -103,7 +123,18 @@ export function dragConfirmReducer(state: DragConfirmState, event: DragConfirmEv
 
     case "failed":
       if (state.phase !== "confirming") return state;
-      return { phase: "error", ...pendingOf(state), error: event.error, offerIgnore: classifyRescheduleError(event.error) === "outside_availability" };
+      return {
+        phase: "error",
+        ...pendingOf(state),
+        error: event.error,
+        offerIgnore: classifyRescheduleError(event.error) === "outside_availability",
+        ...(event.alternatives && event.alternatives.length ? { alternatives: event.alternatives } : {}),
+      };
+
+    case "pickAlternative":
+      // Solo desde el error que las propuso, y solo uno de los propuestos: no se acepta un horario cualquiera.
+      if (state.phase !== "error" || !state.alternatives?.includes(event.startUtc)) return state;
+      return { phase: "pending", ...pendingOf(state), startUtc: event.startUtc, ignoreAvailability: false };
 
     case "cancel":
       // Esc, clic afuera o «Cancelar»: vuelve a idle sin efectos. Con la llamada en vuelo no se puede cancelar.
@@ -124,8 +155,12 @@ export function shouldCallAction(prev: DragConfirmState, next: DragConfirmState)
  * recordatorios pendientes se mueven al horario nuevo; el aviso por email solo sale si el negocio publico la automatizacion
  * «Aviso de reagendamiento» (viene apagada de fabrica); queda en el historial. No promete nada mas.
  */
-export function rescheduleEffects(syncStatus: string): string[] {
-  const effects = ["La agenda conserva su duración y queda en estado «Reagenda»."];
+export function rescheduleEffects(syncStatus: string, newDurationMinutes?: number): string[] {
+  const effects = [
+    newDurationMinutes !== undefined
+      ? `La agenda pasa a durar ${durationLabel(newDurationMinutes)} y queda en estado «Reagenda».`
+      : "La agenda conserva su duración y queda en estado «Reagenda».",
+  ];
   if (syncStatus === "not_applicable") {
     effects.push("Esta agenda no está en Google Calendar: ahí no hay nada para actualizar ni avisar.");
   } else {
@@ -135,4 +170,43 @@ export function rescheduleEffects(syncStatus: string): string[] {
   effects.push("Si tu negocio publicó la automatización «Aviso de reagendamiento», el invitado también recibe ese email.");
   effects.push("Queda registrado en el historial de la agenda.");
   return effects;
+}
+
+// ── crear arrastrando y cambiar la duración ─────────────────────────────────────────────────────────────
+
+/** Lo mínimo y lo máximo que dura una reunión hecha desde el calendario. */
+export const MIN_DRAG_MINUTES = 15;
+export const MAX_DRAG_MINUTES = 8 * 60;
+
+/** «45 min», «1 h», «1 h 30 min». */
+export function durationLabel(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
+/**
+ * Crear arrastrando en una columna del día: de dónde se apretó a dónde se soltó (en minutos del día, ya ajustados a la
+ * rejilla). Se puede arrastrar hacia arriba. Un clic sin arrastrar da la duración mínima. Nunca pasa de la medianoche.
+ */
+export function dragCreateRange(fromMinutes: number, toMinutes: number): { startMinutes: number; durationMinutes: number } {
+  const start = Math.max(0, Math.min(fromMinutes, toMinutes));
+  const end = Math.max(fromMinutes, toMinutes);
+  const raw = Math.max(MIN_DRAG_MINUTES, end - start);
+  return { startMinutes: start, durationMinutes: Math.min(raw, MAX_DRAG_MINUTES, 24 * 60 - start) };
+}
+
+/**
+ * Estirar o encoger una reunión desde su borde de abajo: la duración nueva desde su inicio hasta donde se soltó (minutos
+ * del día ya ajustados). Entre 15 minutos y 8 horas, y sin pasar de la medianoche.
+ */
+export function resizeDuration(startMinutes: number, toMinutes: number): number {
+  const raw = toMinutes - startMinutes;
+  return Math.max(MIN_DRAG_MINUTES, Math.min(raw, MAX_DRAG_MINUTES, 24 * 60 - startMinutes));
+}
+
+/** La hora de pared «HH:MM» de unos minutos del día (para abrir «Agendar» con el horario arrastrado). */
+export function wallTimeOfMinutes(minutes: number): string {
+  return minutesToTime(minutes);
 }

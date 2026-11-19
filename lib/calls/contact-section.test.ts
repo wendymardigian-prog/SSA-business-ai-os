@@ -18,7 +18,8 @@ const names = new Map([["u1", "Ana"]]);
 describe("toCallSectionRows", () => {
   it("arma la fila con el nombre del closer, y un closer desconocido queda null", () => {
     expect(toCallSectionRows([row("c1"), row("c2", { recorded_by_user_id: "otro" }), row("c3", { recorded_by_user_id: null })], names).map((r) => r.closerName)).toEqual(["Ana", null, null]);
-    expect(toCallSectionRows([row("c1")], names)[0]).toEqual({ id: "c1", recordedAt: "2026-10-07T15:00:00Z", categoryLabel: "Ventas · Cierre", closerName: "Ana", outcome: "venta", closerScore: 80, leadScore: 70, status: "analyzed" });
+    expect(toCallSectionRows([row("c1")], names)[0]).toEqual({ id: "c1", recordedAt: "2026-10-07T15:00:00Z", categoryLabel: "Ventas · Cierre", closerName: "Ana", outcome: "venta", closerScore: 80, leadScore: 70, status: "analyzed", churnKey: null });
+    expect(toCallSectionRows([row("c1", { causa_baja: { clave: "precio", cita: "es caro", fuente: "ia" } })], names)[0].churnKey).toBe("precio");
   });
 });
 
@@ -58,7 +59,23 @@ describe("loadContactCalls", () => {
 
   it("una falla de lectura no rompe la ficha: devuelve vacio", async () => {
     const db = fakeDb({ "calls:select": { error: { message: "boom" } } });
-    expect(await loadContactCalls(db.client, { workspaceId: "ws1", contactId: "ct1", names })).toEqual({ rows: [], total: 0 });
+    expect(await loadContactCalls(db.client, { workspaceId: "ws1", contactId: "ct1", names })).toEqual({ rows: [], total: 0, churn: null });
+  });
+
+  it("la causa de baja más reciente, con el nombre de la lista del negocio", async () => {
+    const db = fakeDb({
+      "calls:select": { data: [row("c1"), row("c2", { recorded_at: "2026-10-01T15:00:00Z", causa_baja: { clave: "precio", fuente: "ia", cita: "es caro" } })], count: 2 } as never,
+      "workspaces:select": { data: { ai_background_settings: { call_analysis: { churn_reasons: [{ clave: "precio", nombre: "Le parece caro" }] } } } },
+    });
+    const r = await loadContactCalls(db.client, { workspaceId: "ws1", contactId: "ct1", names });
+    expect(r.churn).toEqual({ callId: "c2", at: "2026-10-01T15:00:00Z", label: "Le parece caro" });
+  });
+
+  it("sin causa de baja en ninguna, no lee la configuración", async () => {
+    const db = fakeDb({ "calls:select": { data: [row("c1")], count: 1 } as never });
+    const r = await loadContactCalls(db.client, { workspaceId: "ws1", contactId: "ct1", names });
+    expect(r.churn).toBeNull();
+    expect(db.calls.some((c) => c.table === "workspaces")).toBe(false);
   });
 });
 

@@ -38,6 +38,7 @@ import { emailReplyText, processInboundEmail, type InboundEmail } from "@/lib/em
 import { fetchReceivedEmail } from "@/lib/email/receiving";
 import { runEmailTriggers } from "@/lib/email/triggers";
 import { applyDeliveryEvent, candidateWorkspaces, isDeliveryEvent, type DeliveryEvent } from "@/lib/email/delivery-events";
+import { readTextCapped } from "@/lib/http/read-capped";
 
 interface ResendEvent {
   type?: string;
@@ -62,7 +63,9 @@ export async function POST(request: NextRequest) {
 }
 
 async function handle(request: NextRequest) {
-  const body = await request.text();
+  // Tope antes de leerlo entero (y antes de la firma): un pedido enorme sin firma no llega a memoria.
+  const body = await readTextCapped(request, 10_000_000);
+  if (body === null) return NextResponse.json({ error: "Pedido demasiado grande" }, { status: 413 });
 
   let event: ResendEvent;
   try {

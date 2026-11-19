@@ -15,6 +15,7 @@ export const SALES_COLUMN_METAS: readonly ColumnMeta[] = [
   { key: "amount", label: "Monto", defaultWidth: 120 },
   { key: "paid", label: "Cobrado", defaultWidth: 120 },
   { key: "pending", label: "Pendiente", defaultWidth: 120 },
+  { key: "next_payment", label: "Próximo pago", defaultWidth: 190 },
   { key: "status", label: "Estado", defaultWidth: 170 },
   { key: "seller", label: "Vendedor", defaultWidth: 150 },
   { key: "attribution", label: "Atribución", defaultWidth: 240 },

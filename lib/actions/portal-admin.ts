@@ -80,9 +80,14 @@ export async function inviteToPortal(contactId: string): Promise<SvcResult<{ out
   const service = await createServiceClient();
   const { host, welcome, fromEmail } = await loadPortalHost(service, ctx.workspace.id);
   if (!host) return { ok: true, data: { outcome: "no_host" } };
-  const res = await svcRpc<{ status: string; token?: string; email?: string; account_id?: string; retry_after_seconds?: number }>(ctx.supabase, "portal_admin_invite", {
+  // El alcance se mira con la sesión; el token lo pide el servidor (00500): con la sesión, cualquiera con el permiso
+  // podía llevarse el link sin que saliera el email y entrar al portal como el estudiante.
+  const scope = await svcRpc<boolean>(ctx.supabase, "can_view_as_student", { p_workspace_id: ctx.workspace.id, p_contact_id: contactId });
+  if (!scope.ok || scope.data !== true) return NOT_ALLOWED;
+  const res = await svcRpc<{ status: string; token?: string; email?: string; account_id?: string; retry_after_seconds?: number }>(service, "portal_admin_invite_issue", {
     p_workspace_id: ctx.workspace.id,
     p_contact_id: contactId,
+    p_actor_user_id: ctx.user.id,
   });
   if (!res.ok) return res;
   const d = res.data;

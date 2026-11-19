@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { rescheduleBooking } from "@/lib/scheduling/booking/reschedule";
 import { checkRateLimit, clientIp } from "@/lib/scheduling/antispam";
+import { readTextCapped } from "@/lib/http/read-capped";
 
 /**
  * POST /api/public/scheduling/bookings/<uid>/reschedule (F28).
@@ -13,7 +14,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { uid } = await params;
   let body: Record<string, unknown>;
   try {
-    body = (await request.json()) as Record<string, unknown>;
+    const text = await readTextCapped(request, 64_000);
+    if (text === null) return NextResponse.json({ error: "Pedido demasiado grande" }, { status: 413 });
+    body = JSON.parse(text) as Record<string, unknown>;
   } catch {
     return NextResponse.json({ reason: "bad_request" }, { status: 400 });
   }
@@ -31,6 +34,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     by: "invitee",
     reason: typeof body.reason === "string" ? body.reason.slice(0, 500) : null,
   });
-  if (!result.ok) return NextResponse.json({ reason: result.reason, message: result.message }, { status: result.status });
+  if (!result.ok) return NextResponse.json({ reason: result.reason, message: result.message, alternatives: result.alternatives }, { status: result.status });
   return NextResponse.json({ uid: result.uid, startUtc: result.startUtc, endUtc: result.endUtc });
 }

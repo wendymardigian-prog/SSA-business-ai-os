@@ -17,7 +17,7 @@ export interface RankingRow {
 }
 
 /**
- * Portal › programa › Puntos (F129). Nacen APAGADOS (condición de Wendy, 14/11): con el interruptor apagado no se suma
+ * Portal › programa › Puntos (F129). Nacen APAGADOS (condición de producto, 14/11): con el interruptor apagado no se suma
  * nada. Valores por acción (vacío = el de siempre), topes por día de publicar y comentar (en la zona del estudiante),
  * los 9 niveles, si el ranking se ve en el portal y «Calcular lo ya hecho» (una vez, con confirmación; repetirlo no
  * duplica). Edita quien tiene `portal.points`; la base lo vuelve a pedir (00381).

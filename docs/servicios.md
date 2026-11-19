@@ -29,7 +29,9 @@ pedir la clave con la sesión; las tablas no tienen políticas de escritura.
   de la variante (Productos › variante › Servicio): crear, extender el que ya tiene o renovar. Un producto sin
   configurar vende igual (`verify-services --bloque sv1` lo compara con una venta de siempre).
 - **A mano**: «+ Servicio» (en Clientes, la ficha del contacto o la de la venta), con la regla de la venta en rojo
-  si se sale de ella (motivo obligatorio).
+  si se sale de ella (motivo obligatorio). Si el contacto no existe, «Crear contacto» lo da de alta ahí mismo
+  (`createContactForService`, pide `services.create`): el mismo alta rápida que el asistente de venta
+  (`lib/contacts/quick-create.ts`, regla única; si ya existía, usa ese y avisa).
 - **Importar**: `/dashboard/clientes/importar` (CSV).
 - La única entrada es `app_servicio.svc_create_service`. Dos pagos a la vez crean uno solo.
 
@@ -141,6 +143,8 @@ vencidos (`service_item_overdue`), semáforo, accesos que se abren y mora, renov
 lo que guarda el editor), los disparadores relativos y periódicos (A4, F158: uno por disparador, servicio y día) y la
 purga de la comunidad.
 Si un paso falla, el job lanza al final. Dos veces el mismo día no duplica nada.
+El mismo cron, cada hora y sin esperar a las 02:00, corre `app_servicio.svc_relative_hours_tick`: los relativos en
+horas (00460), uno por automatización, servicio y ancla (`app_servicio.trigger_anchor_fires`).
 
 ## Certificados
 

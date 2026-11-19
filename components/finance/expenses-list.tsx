@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -24,6 +24,10 @@ import type { ExpenseListData } from "@/lib/finance/list-load";
 import { vendorLabel } from "@/lib/finance/vendors";
 import { amountClasses, categoryOptionGroups, driftNotice, exportHref, exportWarning, expenseStatusClasses, formatCivilDate } from "@/lib/finance/view";
 import { toCents } from "@/lib/shared/money";
+import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
+import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
+import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
+import { EXPENSES_TABLE_KEY, EXPENSE_COLUMN_METAS } from "@/lib/finance/expense-columns";
 
 /**
  * Finanzas > Gastos. Todo el estado vive en la URL (`serializeExpenseFilters`): copiar el link muestra lo mismo en
@@ -66,6 +70,39 @@ export function ExpensesList({ data }: { data: ExpenseListData }) {
 
   const labelOfGroup = (key: string) => (filters.groupBy === "categoria" ? categoryName(categories, key) : key === "__sin_proveedor__" ? "Sin proveedor" : vendorLabel(vendors, key));
   const groups = filters.groupBy ? groupExpenses(rows, filters.groupBy, labelOfGroup) : null;
+
+  const columns = useMemo<DataColumn<ExpenseListRow>[]>(() => {
+    const render: Record<string, Pick<DataColumn<ExpenseListRow>, "render" | "align" | "cellClassName">> = {
+      scheduled: { render: (r) => formatCivilDate(r.scheduled_date) },
+      concept: { render: (r) => <ConceptCell r={r} /> },
+      vendor: { cellClassName: "text-muted-foreground", render: (r) => (r.vendor_id ? vendorLabel(data.vendors, r.vendor_id) : "—") },
+      category: { render: (r) => <CategoryChip data={data} categoryKey={r.category_key} /> },
+      amount: { align: "right", render: (r) => <Amount r={r} /> },
+      status: {
+        render: (r) => {
+          const hint = dueHint(r.scheduled_date, data.today, r.status);
+          return (
+            <>
+              <StatusChip status={r.status} />
+              {hint && <span className={`mt-0.5 block truncate text-[11px] ${r.status === "vencido" ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>{hint}</span>}
+            </>
+          );
+        },
+      },
+      paid: { render: (r) => formatCivilDate(r.paid_date) },
+      actions: {
+        align: "right",
+        render: (r) =>
+          data.canManage && PAYABLE.has(r.status) ? (
+            <button type="button" onClick={() => setPaying(r)} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent" aria-label={`Pagar ${r.concept}`}>
+              Pagar
+            </button>
+          ) : null,
+      },
+    };
+    return EXPENSE_COLUMN_METAS.map((m) => ({ ...m, ...render[m.key] }));
+  }, [data]);
+  const prefs = useTablePrefs(EXPENSES_TABLE_KEY, "base", columns, null);
 
   const addButton = canManage ? (
     <button
@@ -167,6 +204,7 @@ export function ExpensesList({ data }: { data: ExpenseListData }) {
   );
   const headerRight = (
     <>
+      <ColumnsMenu state={prefs} />
       <a href={exportHref(filters)} download aria-label="Exportar CSV" className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-2.5 text-sm hover:bg-accent sm:px-3">
         <Download className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Exportar CSV</span>
       </a>
@@ -249,32 +287,21 @@ export function ExpensesList({ data }: { data: ExpenseListData }) {
             </div>
           ) : (
             <>
-              <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
-                <table className="w-full min-w-[920px] text-sm">
-                  <caption className="sr-only">Gastos. Tocá un gasto para ver su ficha.</caption>
-                  <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
-                    <tr>
-                      {["Programado", "Concepto", "Proveedor", "Categoría", "Monto", "Estado", "Pagado el", ""].map((h, i) => (
-                        <th key={i} scope="col" className={`whitespace-nowrap px-3 py-2 font-medium ${i === 4 ? "text-right" : ""}`}>{h || <span className="sr-only">Acciones</span>}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  {(groups ?? [{ key: "", label: "", rows, cents: 0 }]).map((g) => (
-                    <tbody key={g.key} className="divide-y divide-border border-t border-border">
-                      {groups && (
-                        <tr className="bg-muted/30">
-                          <th scope="rowgroup" colSpan={8} className="px-3 py-2 text-left text-xs font-semibold">
-                            {g.label} <span className="font-normal text-muted-foreground">· {g.rows.length} {g.rows.length === 1 ? "gasto" : "gastos"} · subtotal de esta página {formatUsd(g.cents)}</span>
-                          </th>
-                        </tr>
-                      )}
-                      {g.rows.map((r) => (
-                        <ExpenseRow key={r.id} r={r} data={data} onPay={() => setPaying(r)} onOpen={() => router.push(`/dashboard/finanzas/gastos/${r.id}`)} />
-                      ))}
-                    </tbody>
-                  ))}
-                </table>
-              </div>
+              <DataTable
+                className="hidden md:block"
+                columns={columns}
+                rows={groups ? [] : rows}
+                groups={groups?.map((g) => ({
+                  key: g.key,
+                  label: g.label,
+                  aside: `${g.rows.length} ${g.rows.length === 1 ? "gasto" : "gastos"} · subtotal de esta página ${formatUsd(g.cents)}`,
+                  rows: g.rows,
+                }))}
+                rowKey={(r) => r.id}
+                state={prefs}
+                caption="Gastos. Tocá un gasto para ver su ficha."
+                rowHref={(r) => `/dashboard/finanzas/gastos/${r.id}`}
+              />
 
               <div className="space-y-4 md:hidden">
                 {(groups ?? [{ key: "", label: "", rows, cents: 0 }]).map((g) => (
@@ -367,35 +394,6 @@ function ConceptCell({ r }: { r: ExpenseListRow }) {
         </span>
       )}
     </span>
-  );
-}
-
-function ExpenseRow({ r, data, onPay, onOpen }: { r: ExpenseListRow; data: ExpenseListData; onPay: () => void; onOpen: () => void }) {
-  const hint = dueHint(r.scheduled_date, data.today, r.status);
-  return (
-    <tr
-      className="cursor-pointer hover:bg-muted/30"
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest("a,button")) return;
-        onOpen();
-      }}
-    >
-      <td className="whitespace-nowrap px-3 py-2">{formatCivilDate(r.scheduled_date)}</td>
-      <td className="max-w-[280px] px-3 py-2"><ConceptCell r={r} /></td>
-      <td className="max-w-[180px] truncate px-3 py-2 text-muted-foreground">{r.vendor_id ? vendorLabel(data.vendors, r.vendor_id) : "—"}</td>
-      <td className="max-w-[200px] px-3 py-2"><CategoryChip data={data} categoryKey={r.category_key} /></td>
-      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums"><Amount r={r} /></td>
-      <td className="px-3 py-2">
-        <StatusChip status={r.status} />
-        {hint && <span className={`mt-0.5 block text-[11px] ${r.status === "vencido" ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>{hint}</span>}
-      </td>
-      <td className="whitespace-nowrap px-3 py-2">{formatCivilDate(r.paid_date)}</td>
-      <td className="px-3 py-2 text-right">
-        {data.canManage && PAYABLE.has(r.status) && (
-          <button type="button" onClick={onPay} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent" aria-label={`Pagar ${r.concept}`}>Pagar</button>
-        )}
-      </td>
-    </tr>
   );
 }
 

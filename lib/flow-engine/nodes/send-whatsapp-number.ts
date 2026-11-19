@@ -25,6 +25,7 @@ import { recordSend, sendChannelMessage, sendEvolutionDirect } from "../send";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { findContact } from "@/lib/contacts/find-or-create";
 import { WHATSAPP_HOURLY_LIMIT } from "@/lib/channels/whatsapp-limits";
+import { decideWhatsappDelivery, enqueueWhatsapp } from "@/lib/send-queue/automation/enqueue";
 import { deferFlowNode } from "../defer-node";
 import { sendWindowOf, windowOpening } from "../send-window";
 import { businessTimeZone } from "@/lib/scheduled-flows/jobs";
@@ -183,6 +184,28 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   if (claimError) {
     if (claimError.code === "23505") return skip("Este paso ya le mandó un mensaje a ese número en esta ejecución.", { duplicate: true });
     return skip("No pude reservar el envío, así que no se mandó.", { error: claimError.message.slice(0, 200) });
+  }
+
+  // 5b. La cola de WhatsApp (00420): según el paso o, en `auto`, el disparador, el mensaje entra en la cola del número y
+  //     lo saca el despachador con el ritmo del número (el tope de 200/h y el envío los hace la entrega). Si es de un
+  //     contacto con conversación en este canal, el mensaje queda en su conversación. Al instante: lo de siempre (6 y 7).
+  const decision = await decideWhatsappDelivery(supabase, context.flowId, (data as { delivery?: unknown }).delivery);
+  if (decision.mode === "queue") {
+    const result = await enqueueWhatsapp({
+      supabase,
+      context,
+      sessionId,
+      node,
+      index: 0,
+      target:
+        contactId && conversationId
+          ? { kind: "conversation", conversationId, contactId, channelId: channel.id }
+          : { kind: "number", phone, channelId: channel.id, contactId },
+      payload: { text, ...(mediaUrl ? { mediaUrl, mediaType: data.mediaType || "image" } : {}) },
+      decision,
+    });
+    if (result.status === "skipped") return skip(result.reason);
+    return;
   }
 
   // 6. El tope por hora del canal. Si la función falla (no por tope, sino por un error), se deja pasar: es lo que hace el resto del motor.

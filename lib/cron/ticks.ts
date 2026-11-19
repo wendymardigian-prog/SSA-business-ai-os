@@ -33,4 +33,6 @@ export const CRON_TICKS: readonly CronTick[] = ticksConfig;
 export const TICK_DB_PARTS: Readonly<Record<string, string>> = {
   "agent-drafts-sweep": "private.sweep_agent_drafts",
   "draft-window-alerts": "private.alert_draft_windows",
+  // 00430: solo encola en scheduled_jobs la lectura de cambios de Google Calendar.
+  "google-calendar-inbound": "private.enqueue_google_calendar_inbound",
 };

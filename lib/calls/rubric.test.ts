@@ -116,3 +116,17 @@ describe("«Resta si pasa» (Servicios A4, F140)", () => {
     expect(rubricScoringChanged(a, b)).toBe(true);
   });
 });
+
+describe("validar una rúbrica con criterios que restan (traído de RER)", () => {
+  it("los que restan no cuentan para el mínimo de 3 ni para el 100, y restan entre 1 y 100 puntos", async () => {
+    const { validateRubric, penaltyProblems } = await import("./rubric");
+    const lead = DEFAULT_RUBRIC.lead;
+    const ok = { version: 1, lead, closer: [...DEFAULT_RUBRIC.closer, { clave: "promesa", nombre: "Promete algo fuera de las normas", peso: 20, subtracts: true as const, aplica_a: ["cierre" as const] }] };
+    expect(validateRubric(ok)).toEqual([]);
+    const pocos = { version: 1, lead, closer: [{ clave: "a", nombre: "A", peso: 50, aplica_a: ["cierre" as const] }, { clave: "b", nombre: "B", peso: 50, aplica_a: ["cierre" as const] }, { clave: "p", nombre: "P", peso: 10, subtracts: true as const, aplica_a: ["cierre" as const] }] };
+    expect(validateRubric(pocos).some((e) => /3 criterios activos que sumen/.test(e))).toBe(true);
+    expect(penaltyProblems([{ clave: "p", nombre: "P", peso: 0, subtracts: true }])).toEqual(["«P» tiene que restar entre 1 y 100 puntos."]);
+    expect(penaltyProblems([{ clave: "p", nombre: "P", peso: 150, subtracts: true }])).toHaveLength(1);
+    expect(penaltyProblems([{ clave: "p", nombre: "P", peso: 0, subtracts: true, archivado: true }])).toEqual([]);
+  });
+});

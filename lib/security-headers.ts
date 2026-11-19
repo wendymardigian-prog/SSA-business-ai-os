@@ -26,6 +26,10 @@ export function securityHeadersFor(path: string): SecurityHeader[] {
   const common: SecurityHeader[] = [
     { key: "X-Content-Type-Options", value: "nosniff" },
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+    // Solo HTTPS por un año, también la primera visita después de esta (sin el, un wifi hostil puede bajar a HTTP).
+    { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+    // El micrófono lo usa el grabador de notas de voz de la bandeja; cámara, ubicación y pagos no los usa nada.
+    { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=()" },
   ];
   if (isEmbeddablePath(path)) {
     return [{ key: "Content-Security-Policy", value: "frame-ancestors *" }, ...common];

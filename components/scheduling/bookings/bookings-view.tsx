@@ -19,15 +19,18 @@ import { CalendarDays, KanbanSquare, List, Plus, Settings } from "lucide-react";
 import { ViewToggle } from "@/components/ui/view-toggle";
 import { PageHeader } from "@/components/page-header";
 import { ReconnectBanner } from "../reconnect-banner";
+import { NoGoogleNotice } from "../no-google-notice";
 import type { MetaLink } from "@/lib/attribution/meta-link";
 import { BookingsList } from "./list";
-import { ColumnsMenu } from "@/components/attribution/columns-menu";
-import { AGENDA_COLUMN_GROUPS } from "@/lib/attribution/columns";
+import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
+import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
+import { AGENDA_TABLE_KEY, agendaColumnMetas } from "@/lib/scheduling/agenda-columns";
+import { basePrefsFor } from "@/lib/ui/data-table/prefs";
 import type { BookingTouchView } from "@/lib/attribution/last-touches";
-import { useAgendaColumns } from "./use-agenda-columns";
 import { BookingsKanban } from "./kanban-board";
 import { BookingsCalendar } from "./calendar-grid";
 import { useRescheduleDrag } from "./reschedule-dialog";
+import { wallTimeOfMinutes } from "@/lib/scheduling/booking-drag";
 import { TaskWorkbench } from "@/components/tasks/task-workbench"; // @plantilla-quitar(tareas)
 import { tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(tareas)
 import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
@@ -119,8 +122,10 @@ export function BookingsScreen({
   timeFormat,
   scopeAll,
   canManage,
+  canDelete = false,
   showConfig,
   brokenAccounts,
+  noGoogle = false,
   needsProfile,
   tasks,
 }: {
@@ -171,8 +176,12 @@ export function BookingsScreen({
   timeFormat: "12h" | "24h";
   scopeAll: boolean;
   canManage: boolean;
+  /** `bookings.delete`: «Eliminar» en el detalle (va a la Papelera). */
+  canDelete?: boolean;
   showConfig: boolean;
   brokenAccounts: string[];
+  /** La persona no tiene Google Calendar conectado (y ninguna cuenta rota, que tiene su propio aviso). */
+  noGoogle?: boolean;
   needsProfile: boolean;
   /**  @plantilla-quitar(tareas)
    * Tareas × CRM (R7): las tareas del calendario. `undefined` = el contacto no puede ver tareas (no hay interruptor). Con  @plantilla-quitar(tareas)
@@ -184,13 +193,18 @@ export function BookingsScreen({
   const searchParams = useSearchParams();
   const { pending: navigating, setParam, setPeriod, clearAll } = useAgendaUrl();
   const [manualOpen, setManualOpen] = useState(false);
+  // el horario arrastrado en el calendario (sin esto, «Agendar» arranca en la próxima media hora).
+  const [manualSlot, setManualSlot] = useState<{ date: string; time: string; durationMinutes: number } | null>(null);
   const [cancelDrop, setCancelDrop] = useState<{ id: string; status: BookingStatus } | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const reschedule = useRescheduleDrag({ items, timezone, timeFormat });
   // Las columnas de la lista viven acá porque su botón está en la barra de arriba, al lado de los filtros.
-  const columns = useAgendaColumns();
+  // Las columnas de la lista: el catálogo, lo normal (el contacto fijo) y lo que eligió cada persona en su navegador.
+  const columnMetas = useMemo(() => agendaColumnMetas(), []);
+  const columnBase = useMemo(() => basePrefsFor(columnMetas), [columnMetas]);
+  const columns = useTablePrefs(AGENDA_TABLE_KEY, "base", columnMetas, columnBase);
 
   const now = useMemo(() => new Date(), []);
   const hostOptions = useMemo(() => Object.entries(hostNames).map(([userId, label]) => ({ userId, label })).sort((a, b) => a.label.localeCompare(b.label)), [hostNames]);
@@ -346,15 +360,7 @@ export function BookingsScreen({
             {view === "list" && (
               // En el celular la lista son tarjetas: no hay columnas que elegir.
               <div className="hidden md:block">
-                <ColumnsMenu
-                  defs={columns.defs}
-                  groups={AGENDA_COLUMN_GROUPS}
-                  visible={columns.visible}
-                  onToggle={columns.toggle}
-                  onShowAll={columns.showAll}
-                  onReset={columns.reset}
-                  onResetWidths={columns.hasCustomWidths ? columns.resetAllWidths : undefined}
-                />
+                <ColumnsMenu state={columns} />
               </div>
             )}
 
@@ -375,6 +381,7 @@ export function BookingsScreen({
       </div>
       {navigating && <span className="sr-only" role="status">Cargando…</span>}
       <ReconnectBanner accounts={brokenAccounts} />
+      {noGoogle && <NoGoogleNotice state="none" />}
       <AgendaFilterSummary filters={filters} catalog={catalog} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6 pt-3 md:px-6">
@@ -408,7 +415,7 @@ export function BookingsScreen({
               now={now}
               metaLinks={metaLinks}
               lastTouches={lastTouches}
-              columns={columns}
+              prefs={columns}
               canManage={canManage}
               busy={pending}
               onOpen={openDetail}
@@ -470,6 +477,15 @@ export function BookingsScreen({
                 taskControls={tasks ? { mode: tasks.mode, onMode: (m) => setParam("tareas", tasksModeParam(m)) } : undefined} // @plantilla-quitar(tareas)
                 canDragBookings={canManage}
                 onDropBooking={reschedule.onDrop}
+                onResizeBooking={canManage ? reschedule.onResize : undefined}
+                onCreateRange={
+                  canManage
+                    ? (date, startMinutes, durationMinutes) => {
+                        setManualSlot({ date, time: wallTimeOfMinutes(startMinutes), durationMinutes });
+                        setManualOpen(true);
+                      }
+                    : undefined
+                }
                 ghost={reschedule.ghost}
               />
             }
@@ -513,6 +529,7 @@ export function BookingsScreen({
           timezone={timezone}
           timeFormat={timeFormat}
           canManage={canManage}
+          canDelete={canDelete}
           canReassign={canReassign}
           hostOptions={reassignHostOptions.filter((h) => h.userId !== detail.hostUserId)}
           onClose={closeDetail}
@@ -524,7 +541,11 @@ export function BookingsScreen({
           events={events}
           timezone={timezone}
           timeFormat={timeFormat}
-          onClose={() => setManualOpen(false)}
+          initialSlot={manualSlot}
+          onClose={() => {
+            setManualOpen(false);
+            setManualSlot(null);
+          }}
           onCreated={(bookingId) => {
             router.refresh();
             openDetail(bookingId);

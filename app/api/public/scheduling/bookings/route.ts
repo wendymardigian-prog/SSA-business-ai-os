@@ -8,6 +8,7 @@ import { notifyBooking } from "@/lib/scheduling/notifications";
 import { bookingUtmPayload, fillFromRequestCookies } from "@/lib/scheduling/booker/attribution";
 import { rememberCapiRequestContext } from "@/lib/meta/capi/run";
 import { capiEventId } from "@/lib/meta/capi/build-event";
+import { readTextCapped } from "@/lib/http/read-capped";
 
 /**
  * POST /api/public/scheduling/bookings (F26): crea la agenda.
@@ -18,7 +19,9 @@ import { capiEventId } from "@/lib/meta/capi/build-event";
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
   try {
-    body = (await request.json()) as Record<string, unknown>;
+    const text = await readTextCapped(request, 64_000);
+    if (text === null) return NextResponse.json({ error: "Pedido demasiado grande" }, { status: 413 });
+    body = JSON.parse(text) as Record<string, unknown>;
   } catch {
     return NextResponse.json({ reason: "bad_request" }, { status: 400 });
   }
@@ -52,7 +55,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (!result.ok) {
-    return NextResponse.json({ reason: result.reason, message: result.message, fields: result.fields }, { status: result.status });
+    return NextResponse.json({ reason: result.reason, message: result.message, fields: result.fields, alternatives: result.alternatives }, { status: result.status });
   }
   if (!result.uid) {
     // El campo trampa: respuesta que parece exitosa, sin nada creado.

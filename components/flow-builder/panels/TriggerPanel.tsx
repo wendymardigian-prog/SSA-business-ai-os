@@ -20,6 +20,7 @@ import { SalesTriggerPanel } from "./SalesTriggerPanel"; // @plantilla-quitar(ve
 import { ServiceTriggerPanel, isServiceTrigger } from "./ServiceTriggerPanel"; // @plantilla-quitar(servicios)
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
 import { ONCE_PER_CONTACT_DETAIL, ONCE_PER_CONTACT_TITLE, supportsOncePerContact } from "@/lib/flow-engine/once-per-contact";
+import { WhatsappQueueSettings } from "./whatsapp-queue-settings";
 
 interface Keyword {
   value: string;
@@ -622,6 +623,16 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
 
       {/* «En una fecha y hora»: una vez o repetido, en la hora del negocio */}
       {triggerType === "scheduled_time" && <ScheduledTriggerPanel data={data as Record<string, unknown>} onChange={onChange as (d: Record<string, unknown>) => void} />}
+
+      {/* Cola de WhatsApp (00420): prioridad, caducidad y límite por hora de los WhatsApp que van por la cola. */}
+      {triggerType && (
+        <WhatsappQueueSettings
+          value={(data as { whatsappQueue?: unknown }).whatsappQueue}
+          onChange={(whatsappQueue) => onChange({ ...data, whatsappQueue })}
+          flowId={flowId}
+          triggerType={triggerType}
+        />
+      )}
 
       {supportsOncePerContact(triggerType) && (
         <div className="space-y-1">

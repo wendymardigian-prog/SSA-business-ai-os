@@ -4,6 +4,7 @@ import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useMemo, useState } from "react";
 import { platformLabel } from "@/lib/platforms";
 import type { PostDailyRow, PublishedPost } from "@/lib/dashboards/content";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * La tabla "Tus posts" (F48, punto 8).
@@ -169,7 +170,7 @@ export function PostsTable({
           </thead>
           <tbody>
             {pageRows.map((row) => (
-              <tr key={row.socialPostId} className="border-b border-border last:border-0">
+              <ClickableTr key={row.socialPostId} onOpen={() => onOpen(row.socialPostId)} className="border-b border-border last:border-0 hover:bg-muted/30">
                 <td className="p-2">
                   <button
                     type="button"
@@ -222,7 +223,7 @@ export function PostsTable({
                     </td>
                   );
                 })}
-              </tr>
+              </ClickableTr>
             ))}
           </tbody>
         </table>

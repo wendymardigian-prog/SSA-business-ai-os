@@ -21,6 +21,7 @@
  */
 
 import { sendWindowProblem, type SendWindowData } from "./send-window";
+import { deliveryProblem } from "@/lib/send-queue/automation/settings";
 import { canonicalNodeType } from "./node-outputs";
 import { designGenerateProblem, hasDesignStepBefore, isDesignGenerateNode, type DesignGenerateNodeData } from "@/lib/designer/automation/node-config"; // @plantilla-quitar(disenador)
 // @plantilla-desde(disenador)
@@ -180,6 +181,19 @@ export function requirementProblems(blocked: readonly BlockedNode[]): string[] {
  * Lo que le falta a la CONFIGURACIÓN de un paso para poder publicarse (no una conexión): hoy, «Generar desde plantilla»
  * sin plantilla (Diseñador IA, F57). Como los bloqueos de arriba, cuenta solo lo que se alcanza desde el disparador.
  */
+/** Los pasos que mandan WhatsApp y pueden ir por la cola del número (00420), y si mandan a un grupo. */
+const WHATSAPP_QUEUE_STEPS: Record<string, "chat" | "group"> = {
+  sendMessage: "chat",
+  send_whatsapp_number: "chat",
+  send_to_group: "group",
+  send_poll: "group",
+};
+
+export function whatsappQueueStepOf(node: { type?: string; data?: unknown }): "chat" | "group" | null {
+  const actionType = (node.data as { actionType?: string } | undefined)?.actionType;
+  return WHATSAPP_QUEUE_STEPS[actionType ?? ""] ?? WHATSAPP_QUEUE_STEPS[node.type ?? ""] ?? null;
+}
+
 export function configProblems(nodes: GraphNodeLike[], edges: GraphEdgeLike[]): string[] {
   const reachable = reachableFromTrigger(nodes, edges);
   const problems = new Set<string>();
@@ -206,6 +220,11 @@ export function configProblems(nodes: GraphNodeLike[], edges: GraphEdgeLike[]): 
     if ((node.data as { actionType?: string } | undefined)?.actionType === "send_whatsapp_number" || node.type === "send_whatsapp_number") {
       const windowProblem = sendWindowProblem(node.data as SendWindowData | undefined);
       if (windowProblem) problems.add(windowProblem);
+    }
+    // Cola de WhatsApp (00420): una programación mal armada, o «al instante» con programación. Solo se mira al PUBLICAR.
+    if (whatsappQueueStepOf(node as { type?: string; data?: unknown })) {
+      const problem = deliveryProblem((node.data as { delivery?: unknown } | undefined)?.delivery);
+      if (problem) problems.add(problem);
     }
     // «Adjuntar el PDF del diseño generado» (F59) sin un «Generar desde plantilla» antes: nunca habría PDF que adjuntar.
     // @plantilla-desde(disenador)

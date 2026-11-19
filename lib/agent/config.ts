@@ -11,6 +11,7 @@ import { getAgentType } from "./agent-types";
 import { validateRules } from "./rules/schema";
 import type { Rule } from "./rules/evaluate";
 import type { RuleAction } from "./rules/fields";
+import { parseLearningSettings, type LearningSettings } from "@/lib/ai-learning/settings";
 
 /**
  * La configuracion del agente, normalizada, y su estado efectivo.
@@ -74,6 +75,15 @@ export interface AgentConfig {
   responseRules: Rule[];
   /** Acción por defecto de las reglas si ninguna coincide (00077). */
   responseRulesDefault: RuleAction;
+  /** En un turno en borrador, las acciones que escriben esperan aprobación (00441). Apagado de serie. */
+  actionsNeedApproval: boolean;
+  /** Ejemplos automáticos y umbral de reglas aprendidas (00441). */
+  learning: LearningSettings;
+  /** Al usar Conocimiento, la respuesta cierra con «Fuente: documento, pág. N» (00443). Apagado de serie. */
+  citeSources: boolean;
+  /** A qué documentos y carpetas de Conocimiento llega (00443). Vacíos, con etiquetas vacías: toda la base. */
+  knowledgeDocumentIds: string[];
+  knowledgeFolderIds: string[];
   createdAt: string;
 }
 
@@ -126,6 +136,11 @@ export function toAgentConfig(row: AgentRow): AgentConfig {
     externalReplyCooldownMinutes: row.external_reply_cooldown_minutes ?? 10,
     responseRules: parseResponseRules(row.response_rules),
     responseRulesDefault: parseRulesDefault(row.response_rules_default),
+    actionsNeedApproval: row.actions_need_approval ?? false,
+    learning: parseLearningSettings(row.learning),
+    citeSources: row.cite_sources ?? false,
+    knowledgeDocumentIds: row.knowledge_document_ids ?? [],
+    knowledgeFolderIds: row.knowledge_folder_ids ?? [],
     createdAt: row.created_at,
   };
 }

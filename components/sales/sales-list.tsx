@@ -12,7 +12,9 @@ import { DataTable, type DataColumn } from "@/components/ui/data-table/data-tabl
 import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 import { ViewsMenu } from "@/components/ui/data-table/views-menu";
 import { ChannelChip } from "@/components/shared/channel-chip";
+import { BulkDeleteButton } from "@/components/trash/bulk-delete-button";
 import { SearchPicker } from "@/components/sales/search-picker";
+import { PendingBreakdown } from "@/components/sales/pending-breakdown";
 import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
 import { searchPiecesForSale, type PieceOption } from "@/lib/actions/sales-attribution";
 import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
@@ -26,7 +28,12 @@ import { MODULE_CELL_TONE_CLASS, type ModuleColumn } from "@/lib/sales/module-co
 import { SALES_COLUMN_METAS, SALES_TABLE_KEY, moduleColumnMeta } from "@/lib/sales/columns";
 import type { SalesTotals } from "@/lib/sales/sales-totals";
 import { isColumnVisible, type TablePrefs } from "@/lib/ui/data-table/prefs";
+import { keepVisible } from "@/lib/ui/data-table/selection";
+import { BULK_NOUNS } from "@/lib/trash/bulk-summary";
 import { viewFilterString, withViewParam, type TableViewItem } from "@/lib/ui/data-table/views";
+import { nextSort } from "@/lib/ui/data-table/sort";
+import { SALES_SORT_DEFAULT_DIR, type SalesSortKey } from "@/lib/sales/sort";
+import type { OpenPayment } from "@/lib/sales/next-payment";
 
 export type SalesListRowView = SaleListRow & { contactName: string; vendedorName: string | null };
 
@@ -41,6 +48,8 @@ export interface SalesListData {
   hasAnySale: boolean;
   scopeAll: boolean;
   canManage: boolean;
+  /** Con `sales.delete`: casillas en la tabla y «Eliminar seleccionadas» (Papelera). */
+  canDelete?: boolean;
   products: Array<{ id: string; name: string }>;
   variants: Array<{ id: string; product_id: string; name: string }>;
   members: Array<{ id: string; name: string }>;
@@ -49,6 +58,8 @@ export interface SalesListData {
   pieceTitle: string | null;
   /** Monto, Cobrado y Pendiente de TODAS las ventas del filtro (null si no se pudieron calcular). */
   totals: SalesTotals | null;
+  /** Se pidió ordenar por algo que sale de los pagos y no se pudo: la tabla quedó por fecha. */
+  sortFallback?: boolean;
   /** Las vistas guardadas de esta persona para la tabla. */
   views: {
     items: TableViewItem[];
@@ -71,6 +82,9 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
   const router = useRouter();
   const pathname = usePathname();
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  // Lo elegido que sigue a la vista: al cambiar de página o de filtro, lo que ya no se ve se suelta.
+  const selected = useMemo(() => keepVisible(picked, rows.map((r) => r.id)), [picked, rows]);
 
   const active = countActiveSalesFilters(filters);
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -224,7 +238,7 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
               <span className="text-xs text-muted-foreground">{menuActive === 1 ? "1 filtro activo" : `${menuActive} filtros activos`}</span>
               <button
                 type="button"
-                onClick={() => go({ ...parseSalesFilters({}), q: filters.q })}
+                onClick={() => go({ ...parseSalesFilters({}), q: filters.q, sort: filters.sort })}
                 className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <X className="h-3 w-3" aria-hidden />
@@ -256,11 +270,16 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
         left={<SalesViewToggle active="ventas" />}
         filters={barFilters}
         right={
-          data.canManage && hasProducts ? (
-            <button type="button" onClick={() => setWizardOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 sm:px-3" aria-label="Nueva venta">
-              <Plus className="h-4 w-4" aria-hidden />
-              <span className="hidden sm:inline">Nueva venta</span>
-            </button>
+          (data.canDelete && selected.size > 0) || (data.canManage && hasProducts) ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {data.canDelete && <BulkDeleteButton entity="sale" ids={[...selected]} noun={BULK_NOUNS.sale} onDone={() => setPicked(new Set())} />}
+              {data.canManage && hasProducts && (
+                <button type="button" onClick={() => setWizardOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 sm:px-3" aria-label="Nueva venta">
+                  <Plus className="h-4 w-4" aria-hidden />
+                  <span className="hidden sm:inline">Nueva venta</span>
+                </button>
+              )}
+            </div>
           ) : undefined
         }
       />
@@ -289,10 +308,19 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
                   rowKey={(r) => r.id}
                   state={state}
                   caption="Ventas"
+                  rowHref={(r) => `/dashboard/ventas/${r.id}`}
                   totals={totalCells(data.totals)}
+                  sort={data.sortFallback ? null : filters.sort}
+                  onSortChange={(key) => {
+                    const k = key as SalesSortKey;
+                    const next = nextSort(filters.sort, k, SALES_SORT_DEFAULT_DIR[k]);
+                    go({ sort: { key: k, dir: next.dir } });
+                  }}
+                  selection={data.canDelete ? { selected, onChange: setPicked, rowLabel: (r) => `Elegir la venta de ${r.contactName}` } : undefined}
                 />
                 {data.totals?.truncated && <p className="mt-1 hidden text-[11px] text-muted-foreground md:block">Hay más de 20.000 ventas con este filtro: los totales cuentan las primeras 20.000. Acotá el filtro para ver el total exacto.</p>}
                 {!data.totals && <p className="mt-1 hidden text-[11px] text-muted-foreground md:block">No pude calcular los totales. Recargá la página para intentarlo de nuevo.</p>}
+                {data.sortFallback && <p className="mt-1 text-[11px] text-muted-foreground">No pude ordenar por esa columna: se muestran por fecha. Recargá la página para intentarlo de nuevo.</p>}
 
                 <ul className="space-y-2 md:hidden">
                   {rows.map((r) => (
@@ -310,6 +338,12 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
                           <div><dt className="text-muted-foreground">Cobrado</dt><dd className="font-medium tabular-nums text-emerald-700 dark:text-emerald-400">{formatMoney(r.paid)}</dd></div>
                           <div><dt className="text-muted-foreground">Pendiente</dt><dd className="font-medium tabular-nums">{formatMoney(r.pending)}</dd></div>
                         </dl>
+                        {r.nextPayment && (
+                          <p className="mt-1.5 text-xs">
+                            <span className="text-muted-foreground">Próximo pago: </span>
+                            <NextPaymentText payment={r.nextPayment} />
+                          </p>
+                        )}
                         <p className="mt-1.5 truncate text-[11px] text-muted-foreground">{r.attribution}</p>
                         {showOrigin && (
                           <div className="mt-1 flex items-center gap-1.5">
@@ -345,14 +379,20 @@ const DATE_LINK = "underline-offset-2 hover:underline";
 
 /** Las celdas de cada columna de BAIOS y de cada módulo. El orden, la visibilidad y los anchos no se deciden acá. */
 function buildColumns(moduleColumns: ModuleColumn[]): DataColumn<SalesListRowView>[] {
-  const cells: Record<string, Pick<DataColumn<SalesListRowView>, "render" | "align" | "cellClassName">> = {
-    date: { render: (r) => <Link href={`/dashboard/ventas/${r.id}`} className={DATE_LINK}>{formatDate(r.saleDate)}</Link> },
-    contact: { render: (r) => <Link href={`/dashboard/contacts/${r.contactId}`} className={`font-medium ${DATE_LINK}`}>{r.contactName}</Link> },
+  const cells: Record<string, Pick<DataColumn<SalesListRowView>, "render" | "align" | "cellClassName" | "sortable">> = {
+    // La fila entera abre la venta (`rowHref`); el contacto es texto: en una tabla nunca es un link (docs/tablas.md).
+    date: { sortable: true, render: (r) => formatDate(r.saleDate) },
+    contact: { render: (r) => <span className="font-medium">{r.contactName}</span> },
     product: { render: (r) => r.productName },
     variant: { render: (r) => r.variantName ?? "—", cellClassName: "text-muted-foreground" },
-    amount: { align: "right", render: (r) => formatMoney(r.finalAmount) },
-    paid: { align: "right", cellClassName: "text-emerald-700 dark:text-emerald-400", render: (r) => formatMoney(r.paid) },
-    pending: { align: "right", render: (r) => formatMoney(r.pending) },
+    amount: { align: "right", sortable: true, render: (r) => formatMoney(r.finalAmount) },
+    paid: { align: "right", sortable: true, cellClassName: "text-emerald-700 dark:text-emerald-400", render: (r) => formatMoney(r.paid) },
+    pending: {
+      align: "right",
+      sortable: true,
+      render: (r) => (r.pending !== 0 || r.openPayments.length > 0 ? <PendingBreakdown amount={r.pending} payments={r.openPayments} formatDate={formatDate} /> : formatMoney(r.pending)),
+    },
+    next_payment: { sortable: true, render: (r) => (r.nextPayment ? <NextPaymentText payment={r.nextPayment} /> : <span className="text-muted-foreground">—</span>) },
     status: { render: (r) => <StatusChip status={r.status} /> },
     seller: { render: (r) => r.vendedorName ?? "—" },
     attribution: { cellClassName: "text-xs text-muted-foreground", render: (r) => <span title={r.attribution}>{r.attribution}</span> },
@@ -441,6 +481,18 @@ function CampaignInput({ value, onCommit }: { value: string; onCommit: (v: strin
         }
       }}
     />
+  );
+}
+
+/** «12 dic 2026 · $500,00»: la fecha en rojo si el pago ya está vencido. */
+function NextPaymentText({ payment }: { payment: OpenPayment }) {
+  return (
+    <>
+      <span className={payment.overdue ? "font-medium text-red-700 dark:text-red-400" : ""} title={payment.overdue ? "Vencido" : undefined}>
+        {payment.dueDate ? formatDate(payment.dueDate) : "Sin fecha"}
+      </span>
+      <span className="text-muted-foreground"> · <span className="tabular-nums">{formatMoney(payment.amount)}</span></span>
+    </>
   );
 }
 

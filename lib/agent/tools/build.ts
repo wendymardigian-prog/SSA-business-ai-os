@@ -26,7 +26,17 @@ export interface BuiltToolSet {
    * quedo como sugerencia en vez de ejecutarse. applied: lo que el turno ya
    * aplico en el CRM, para mostrarlo en el borrador.
    */
-  state: { turnEnded: boolean; escalated: boolean; suggestions: SuggestedAction[]; applied: AppliedAction[]; intent: { category_id: string; confidence: number } | null };
+  state: {
+    turnEnded: boolean;
+    escalated: boolean;
+    suggestions: SuggestedAction[];
+    applied: AppliedAction[];
+    intent: { category_id: string; confidence: number } | null;
+    /** Lo que en modo proponer quedó como propuesta para aprobar: ids de `ai_proposals`. */
+    proposed: Array<{ id: string; tool: string; label: string }>;
+    /** : documento y página de los fragmentos de la base que vio el modelo en este turno. */
+    citations: Array<{ document: string; page: number | null }>;
+  };
 }
 
 function resolveConfig(
@@ -42,8 +52,10 @@ function resolveConfig(
 }
 
 export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet> {
-  const state: BuiltToolSet["state"] = { turnEnded: false, escalated: false, suggestions: [], applied: [], intent: null };
+  const state: BuiltToolSet["state"] = { turnEnded: false, escalated: false, suggestions: [], applied: [], intent: null, proposed: [], citations: [] };
   const draft = ctx.mode === "draft";
+  // : en modo proponer, lo que escribe en el CRM no se ejecuta; queda propuesto para que una persona lo apruebe.
+  const proposeActions = draft && ctx.agent.actionsNeedApproval && typeof ctx.propose === "function";
   const tools: ToolSet = {};
 
   // `toolsForTurn` saca las que no pueden correr en borrador: su efecto sale
@@ -93,8 +105,24 @@ export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet>
             });
             return deferred.forModel;
           }
+          if (proposeActions && definition.auditAction && !definition.defersInDraftAsync) {
+            const proposal = await ctx.propose!({ toolKey: definition.name, label: definition.label, input, config: resolved.config });
+            if (proposal) state.proposed.push({ id: proposal.id, tool: definition.name, label: definition.label });
+            await ctx.run.step({
+              kind: "tool_call",
+              name: definition.name,
+              input,
+              output: proposal ? { propuesta: proposal.id } : null,
+              durationMs: Date.now() - startedAt,
+              error: proposal ? null : "no se pudo dejar la propuesta",
+            });
+            return proposal
+              ? "Queda propuesto: una persona lo va a aprobar o rechazar. No lo des por hecho ni se lo cuentes al lead."
+              : "No pude dejarlo propuesto. No se hizo nada.";
+          }
           const result = await definition.execute({ input, config: resolved.config, ctx });
           if (result.suggestion) state.suggestions.push(result.suggestion);
+          if (result.ok && result.citations) state.citations.push(...result.citations);
           if (definition.capturesIntent && result.ok) {
             const ii = input as { category_id?: string; confidence?: number };
             if (typeof ii.category_id === "string" && typeof ii.confidence === "number") {

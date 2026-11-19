@@ -62,6 +62,8 @@ export async function reactToMessage(input: {
     channels?: { platform?: string } | null;
   } | null;
   if (!conversation || conversation.deleted_at) return { ok: false, error: "No encontré esa conversación." };
+  // Los permisos de `access` son del negocio ACTIVO: un chat de otro negocio de la misma persona no se juzga con ellos.
+  if (conversation.workspace_id !== access.workspace.id) return { ok: false, error: "No encontré esa conversación." };
   if (!canReplyChannel(access.permissions, conversation.channel_id)) {
     return { ok: false, error: "Tu rol no puede responder por esta cuenta." };
   }

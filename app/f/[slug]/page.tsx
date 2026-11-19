@@ -99,12 +99,19 @@ export default async function PublicFormPage({
     );
   }
 
-  // Plano formularios-ui, D9: el formulario publico ya no muestra el logo de la marca, tenga o no el dato guardado
-  // (el valor se conserva en el diseño, pero nadie lo usa).
+  // «Mostrar el logo del negocio» (18/11/2026): arriba de todo, solo en el link propio. Incrustado en otra web no:
+  // esa página ya tiene su marca. `business_logo_url` ya viene null si el formulario lo tiene apagado.
+  const logo = !embed ? form.business_logo_url : null;
   return (
     <main className={embed ? "px-1 py-1" : "px-4 py-8"}>
       {/* Fuera de un iframe, la página anota de dónde vino la persona (cookie `ssa_attr`). */}
       {!embed && !preview && <AttributionTracker />}
+      {logo && (
+        <div className="mx-auto mb-6 flex w-full max-w-[640px] justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element -- logo del bucket público de marca (el optimizador de imágenes está apagado) */}
+          <img src={logo} alt={form.business_name ?? brandName()} className="h-12 w-auto max-w-full object-contain" />
+        </div>
+      )}
       <PublicForm form={form} params={query} mode={embed ? "embed" : "public_page"} preview={preview} linkToken={query.c} contractContext={contractContext} explicitPrefill={linkPrefill} />
     </main>
   );

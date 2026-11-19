@@ -64,6 +64,26 @@ const INITIAL_VISIBLE = 15;
 type HistoryEntry = AuditHistoryItem;
 
 const ACTION_LABELS: Record<AuditAction, string> = {
+  // Propuestas de la IA y reglas aprendidas (00441, 00442): se ven en Agentes IA, no en la ficha.
+  "ai_proposal.approved": "aprobó una propuesta de la IA",
+  "ai_proposal.rejected": "rechazó una propuesta de la IA",
+  "ai_rule.proposed": "propuso una regla aprendida",
+  "ai_rule.accepted": "aceptó una regla aprendida",
+  "ai_rule.discarded": "descartó una regla aprendida",
+  "ai_rule.retired": "retiró una regla aprendida",
+  "cap_changed": "cambió el tope de gasto de una tarea de IA",
+  // La Papelera (00410): eliminar un registro y restaurarlo.
+  "trash.deleted": "lo eliminó (quedó en la Papelera)",
+  "trash.restored": "lo restauró desde la Papelera",
+  // Cola de WhatsApp (00420): se audita sobre el workspace o el envío; no se ve en la ficha de un contacto.
+  "send_queue.paused": "pausó un envío de la cola de WhatsApp",
+  "send_queue.resumed": "reanudó un envío de la cola de WhatsApp",
+  "send_queue.bulk_paused": "pausó varios envíos de la cola de WhatsApp",
+  "send_queue.bulk_resumed": "reanudó varios envíos de la cola de WhatsApp",
+  "send_queue.emptied": "vació la cola de WhatsApp",
+  "send_queue.warmup": "cambió el calentamiento del número de WhatsApp",
+  "send_queue.settings": "cambió los ajustes de la cola de WhatsApp",
+  "send_queue.schedule_applied": "aplicó el horario de la cola de WhatsApp",
   // El historial de un anuncio (entity meta_ad) no se muestra en la ficha del contacto; las etiquetas existen por el tipo.
   // Extra I (MP): los métodos de pago del negocio se auditan sobre el workspace; no se ven en la ficha de un contacto.  @plantilla-quitar(ventas)
   "payment_methods.updated": "cambió los métodos de pago", // @plantilla-quitar(ventas)
@@ -142,6 +162,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "booking.status_changed": "cambió el estado de una agenda",
   "booking.sync_ok": "sincronizó la agenda con Google",
   "booking.sync_failed": "no pudo sincronizar la agenda con Google",
+  "booking.google_move_rejected": "no pudo mover la reunión a la hora elegida en Google (estaba ocupada)",
   "booking.slot_released": "liberó el espacio de una agenda",
   "booking.slot_occupied": "volvió a ocupar el espacio de una agenda",
   "booking.host_changed": "reasignó el anfitrión de una agenda",

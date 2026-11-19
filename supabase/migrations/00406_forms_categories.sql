@@ -2,7 +2,7 @@
 -- 00406 — Formularios: categorías tipo etiqueta
 -- ============================================================================
 --
--- Wendy (18/11/2026): los formularios se ordenan con categorías libres, como las automatizaciones (00254): se
+-- Decisión de producto (18/11/2026): los formularios se ordenan con categorías libres, como las automatizaciones (00254): se
 -- escriben a mano o se eligen de las que ya usan los demás formularios, varias por formulario, y la lista se filtra
 -- por ellas. No hay catálogo aparte: viven en la columna; renombrar o quitar una reescribe las filas que la tienen
 -- (Server Actions con `forms.manage`, cliente de servicio, como el resto de las escrituras de `forms`).

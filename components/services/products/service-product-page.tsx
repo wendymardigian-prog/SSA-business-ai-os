@@ -17,9 +17,12 @@ import { ContentDialog, DialogField, fieldInput } from "@/components/content/dia
 import { Historial } from "@/components/historial/historial";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { VariantDialog, emptyVariantForm, type VariantFormValues } from "@/components/catalog/variant-dialog";
 import { formFrom } from "@/components/catalog/product-detail";
 import { cn } from "@/lib/utils";
+import { ClickableTr } from "@/components/ui/clickable-row";
+import { InlineSelect } from "@/components/ui/inline-select";
 
 /** La variante en la forma que pide el diálogo de siempre. */
 export function asCatalogVariant(v: ServiceVariant): CatalogVariant {
@@ -43,7 +46,7 @@ export function asCatalogVariant(v: ServiceVariant): CatalogVariant {
  * «Editar producto»; la tarjeta Variantes (precio, «Al cobrarse», camino, portal y servicios activos; cada fila abre
  * la variante) y el historial del producto.
  */
-export function ServiceProductPage({ product, userNames, timeZone, linksCard }: { product: ServiceProduct; userNames: Record<string, string>; timeZone: string; /** La tarjeta Links (afiliados, F70), si la persona puede editarla. */ linksCard?: React.ReactNode }) {
+export function ServiceProductPage({ product, userNames, timeZone, linksCard, canDelete = false }: { product: ServiceProduct; userNames: Record<string, string>; timeZone: string; /** La tarjeta Links (afiliados, F70), si la persona puede editarla. */ linksCard?: React.ReactNode; /** Con `products.delete`: «Eliminar producto» (Papelera). */ canDelete?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +77,7 @@ export function ServiceProductPage({ product, userNames, timeZone, linksCard }: 
             <ArrowLeft className="h-4 w-4" />
           </Link>
         }
+        right={canDelete ? <DeleteButton entity="product" id={product.id} redirectTo="/dashboard/settings/productos" variant="icon" label="Eliminar" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-500/40 text-red-700 hover:bg-red-500/10 dark:text-red-400" /> : undefined}
       />
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 md:px-8">
@@ -131,6 +135,7 @@ export function ServiceProductPage({ product, userNames, timeZone, linksCard }: 
                       <th className="px-4 py-2 font-medium">Camino</th>
                       <th className="px-4 py-2 font-medium">Portal</th>
                       <th className="px-4 py-2 font-medium">Activos</th>
+                      <th className="w-32 px-4 py-2 font-medium">Estado</th>
                       <th className="px-4 py-2" aria-label="Acciones" />
                     </tr>
                   </thead>
@@ -138,18 +143,32 @@ export function ServiceProductPage({ product, userNames, timeZone, linksCard }: 
                     {rows.map((r) => {
                       const v = product.variants.find((x) => x.id === r.id)!;
                       return (
-                        <tr key={r.id} className={cn("border-t border-border", r.archived && "opacity-60")}>
+                        <ClickableTr key={r.id} href={r.href} className={cn("border-t border-border hover:bg-accent/30", r.archived && "opacity-60")}>
                           <td className="px-4 py-2.5">
-                            <Link href={r.href} className="font-medium text-foreground hover:underline">
-                              {r.name}
-                            </Link>
-                            {r.archived && <span className="ml-2 text-xs text-muted-foreground">Archivada</span>}
+                            <span className="font-medium text-foreground">{r.name}</span>
                           </td>
                           <td className="px-4 py-2.5">{r.priceLabel}</td>
                           <td className="px-4 py-2.5 text-muted-foreground">{r.modeLabel}</td>
                           <td className={cn("px-4 py-2.5", r.journeyMissing ? "font-medium text-warn" : "text-muted-foreground")}>{r.journeyLabel}</td>
                           <td className="px-4 py-2.5 text-muted-foreground">{r.portalLabel}</td>
                           <td className="px-4 py-2.5 text-muted-foreground">{r.activeServices}</td>
+                          <td className="whitespace-nowrap px-4 py-2.5">
+                            <InlineSelect
+                              label={`Activar o archivar ${r.name}`}
+                              value={r.archived ? "archived" : "active"}
+                              display={<span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", r.archived ? "bg-muted text-muted-foreground" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400")}>{r.archived ? "Archivada" : "Activa"}</span>}
+                              canEdit={!pending}
+                              width={180}
+                              options={[
+                                { value: "active", label: "Activa" },
+                                { value: "archived", label: "Archivada", onPick: !r.archived && liveCount <= 1 ? () => setConfirmArchive(r.id) : undefined },
+                              ]}
+                              onSelect={async (v) => {
+                                const res = v === "archived" ? await archiveVariant(r.id) : await restoreVariant(r.id);
+                                return res.ok ? { ok: true } : { ok: false, error: res.error ?? "No se pudo guardar" };
+                              }}
+                            />
+                          </td>
                           <td className="px-4 py-2.5">
                             <div className="flex justify-end gap-1">
                               <button type="button" onClick={() => setVariantForm(formFrom(asCatalogVariant(v), product.type))} aria-label={`Editar ${r.name}`} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
@@ -175,7 +194,7 @@ export function ServiceProductPage({ product, userNames, timeZone, linksCard }: 
                               )}
                             </div>
                           </td>
-                        </tr>
+                        </ClickableTr>
                       );
                     })}
                   </tbody>

@@ -334,7 +334,7 @@ describe("transcribeAudio: el tope de gasto de IA del negocio (noviembre 2026)",
 
     expect(calls).toHaveLength(0);
     expect(result).toEqual({ ok: false, code: "BUDGET_EXCEEDED", message: "Tope diario alcanzado", retryable: false });
-    expect(checkBudget).toHaveBeenCalledWith(expect.anything(), WS, expect.any(Date), { model: { provider: "groq", model: "whisper-large-v3-turbo", kind: "audio" } });
+    expect(checkBudget).toHaveBeenCalledWith(expect.anything(), WS, expect.any(Date), { model: { provider: "groq", model: "whisper-large-v3-turbo", kind: "audio" }, task: "audio_transcription" });
   });
 
   it("un proveedor sin precio (con un tope que corta) se saltea y se usa el respaldo", async () => {

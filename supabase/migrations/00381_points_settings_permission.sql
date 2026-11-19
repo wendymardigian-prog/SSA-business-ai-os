@@ -1,5 +1,5 @@
 -- @plantilla-quitar(servicios)
--- 00381 · Corrida A3 · F129: la configuración de puntos del programa pide el permiso de puntos (Wendy dijo que sí, 15/11).
+-- 00381 · Corrida A3 · F129: la configuración de puntos del programa pide el permiso de puntos (aprobado el 15/11).
 --
 -- Hasta acá, `portal_admin_save_program_settings` pedía `portal.sections` para la clave `points` (caía en el ELSE).
 -- Ahora la clave `points` pide `portal.points` («Puntos del programa»), igual que el ajuste a mano y «Calcular lo ya

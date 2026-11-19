@@ -5,6 +5,7 @@ import { AssetSelect } from "@/components/response-assets/asset-select";
 import type { SendToGroupData } from "@/lib/flow-engine/nodes/send-to-group";
 import type { InviteToGroupData } from "@/lib/flow-engine/nodes/invite-to-group";
 import { GroupSelect } from "./group-select";
+import { WhatsappDeliveryFields } from "./whatsapp-delivery-fields";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -47,6 +48,7 @@ export function SendToGroupPanel({ data: raw, onChange }: { data: Record<string,
         />
         <p className={hintClass}>Una imagen, un video o un archivo van adjuntos; un texto o un enlace se suman al mensaje. Los audios no se mandan a grupos.</p>
       </div>
+      <WhatsappDeliveryFields idPrefix="group-send" groupStep value={(data as { delivery?: unknown }).delivery} onChange={(delivery) => onChange({ ...data, delivery })} />
     </div>
   );
 }

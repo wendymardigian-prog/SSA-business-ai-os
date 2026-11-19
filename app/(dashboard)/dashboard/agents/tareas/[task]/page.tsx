@@ -10,6 +10,7 @@ import { taskAbout } from "@/lib/ai-tasks/about";
 import { loadAgentCloseSettings } from "@/lib/ai-tasks/agent-close-settings";
 import { resolveTaskTab } from "@/lib/ai-tasks/tabs";
 import { taskModelOf } from "@/lib/ai-tasks/model";
+import { taskLimitsOf } from "@/lib/ai-tasks/limits";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { PROVIDERS } from "@/lib/integrations/providers";
 import { resolveBackgroundSettings } from "@/lib/background/settings";
@@ -183,8 +184,18 @@ export default async function TaskDetailPage({
       instructions,
       model,
       runs,
+      cap: tab === "config" ? await loadCap() : undefined,
     };
   };
+
+  // El tope mensual de la tarea (00440): lo guardado y si quien mira lo puede cambiar.
+  async function loadCap(): Promise<TaskScreenData["cap"]> {
+    const permissions = await getPermissionContext();
+    return {
+      monthlyCapUsd: taskLimitsOf((workspace as { ai_task_limits?: unknown }).ai_task_limits, task!.id).monthlyCapUsd,
+      canEdit: permissions.can("ai_limits.manage"),
+    };
+  }
 
   const mode = settings && task.backgroundTask ? settings[task.backgroundTask].mode : null;
   return (

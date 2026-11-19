@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ClipboardList, Copy, ExternalLink, Link2, Loader2, MoreHorizontal, Pause, Pencil, Play, Plus, RotateCcw, Tags, X } from "lucide-react";
+import { Archive, ClipboardList, Copy, ExternalLink, Link2, Loader2, MoreHorizontal, Pause, Pencil, Play, Plus, RotateCcw, Tags, Trash2, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { Popover } from "@/components/ui/popover";
@@ -13,6 +13,7 @@ import { ContentDialog } from "@/components/content/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CategoryInput } from "@/components/ui/category-input";
 import { ManageCategoriesDialog, type CategoryChange } from "@/components/ui/manage-categories-dialog";
+import { DeleteDialog } from "@/components/trash/delete-dialog";
 import { FormStatusPill, FormTypeIcon, FORM_TYPE_TONE } from "@/components/forms/type-visual";
 import { createForm, deleteFormCategory, duplicateForm, renameFormCategory, setFormCategories, setFormStatus } from "@/lib/actions/forms/forms";
 import { categoryKey, categorySuggestions } from "@/lib/categories";
@@ -46,6 +47,7 @@ export const FORMS_LIST_QUERY_KEY = "formularios-lista-query";
 export function FormsList({
   rows,
   canManage,
+  canDelete = false,
   loadError,
   initialQuery,
   publicBase,
@@ -55,6 +57,8 @@ export function FormsList({
 }: {
   rows: FormListRow[];
   canManage: boolean;
+  /** `forms.delete`: «Eliminar» en el menú de cada tarjeta (va a la Papelera 30 días). */
+  canDelete?: boolean;
   loadError: boolean;
   /** Lo que dice la URL al cargar (`?q=&estado=&tipo=&categoria=`), ya validado en el servidor. */
   initialQuery: ListQuery;
@@ -74,6 +78,7 @@ export function FormsList({
   const [confirmArchive, setConfirmArchive] = useState<FormListRow | null>(null);
   const [categorizing, setCategorizing] = useState<FormListRow | null>(null);
   const [managingCategories, setManagingCategories] = useState(false);
+  const [deleting, setDeleting] = useState<FormListRow | null>(null);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
   // Los filtros y la busqueda viven en la URL (se pueden compartir y sobreviven a recargar). Se escribe con
@@ -300,6 +305,8 @@ export function FormsList({
                       <CardMenu
                         row={row}
                         canManage={canManage}
+                        canDelete={canDelete}
+                        onDelete={() => setDeleting(row)}
                         onCopy={() => copyLink(row)}
                         onCopyWithCode={myRefCode ? () => copyLink(row, true) : undefined}
                         onDuplicate={() => run(() => duplicateForm(row.id), "Duplicado como borrador")}
@@ -363,6 +370,8 @@ export function FormsList({
           onClose={() => setManagingCategories(false)}
         />
       )}
+      {/* El diálogo vive acá y no adentro del menú: el menú se cierra al elegir y se lo llevaría. */}
+      {deleting && <DeleteDialog entity="form" id={deleting.id} onClose={() => setDeleting(null)} />}
 
       <ConfirmDialog
         open={!!confirmArchive}
@@ -457,6 +466,8 @@ function FormCard({ view, categories, menu }: { view: FormCardView; categories: 
 function CardMenu({
   row,
   canManage,
+  canDelete,
+  onDelete,
   onCopy,
   onCopyWithCode,
   onDuplicate,
@@ -468,6 +479,8 @@ function CardMenu({
 }: {
   row: FormListRow;
   canManage: boolean;
+  canDelete: boolean;
+  onDelete: () => void;
   onCopy: () => void;
   onCopyWithCode?: () => void;
   onDuplicate: () => void;
@@ -522,6 +535,11 @@ function CardMenu({
               </MenuItem>
             )}
           </>
+        )}
+        {canDelete && (
+          <MenuItem icon={<Trash2 className="h-4 w-4" />} onClick={onDelete} danger>
+            Eliminar formulario
+          </MenuItem>
         )}
       </div>
     </Popover>

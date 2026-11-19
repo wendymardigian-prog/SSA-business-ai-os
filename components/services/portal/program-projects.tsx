@@ -191,7 +191,8 @@ function Payments({ payments, filter, can, base }: { payments: { counts: { unver
   };
   const render: Record<string, (r: PaymentRow) => ReactNode> = {
     date: (r) => <span className="tabular-nums">{r.received_on}</span>,
-    student: (r) => (r.service_id ? <Link href={serviceHref(r.service_id)} className="hover:underline">{r.name}</Link> : r.name),
+    // La fila entera abre el servicio (`rowHref`): el estudiante es texto.
+    student: (r) => r.name,
     payment: (r) => (
       <div>
         <div>{r.title}</div>
@@ -238,7 +239,7 @@ function Payments({ payments, filter, can, base }: { payments: { counts: { unver
       {payments.rows.length === 0 ? (
         <p className={`${card} p-6 text-center text-sm text-muted-foreground`}>{filter === "all" ? "Todavía no hay pagos reportados." : "No hay pagos con este filtro."}</p>
       ) : (
-        <DataTable columns={paymentColumns} rows={payments.rows} rowKey={(r) => r.id} state={prefs} caption="Pagos reportados" totals={{ amount: formatCents(total) }} />
+        <DataTable columns={paymentColumns} rows={payments.rows} rowKey={(r) => r.id} state={prefs} caption="Pagos reportados" totals={{ amount: formatCents(total) }} rowHref={(r) => (r.service_id ? serviceHref(r.service_id) : null)} />
       )}
       <p className="text-xs text-muted-foreground">Sin comprobante, el pago queda sin verificar y no cuenta en la Sala de la fama si el programa cuenta solo verificados. Cargar un pago o ajustar el total se hace desde la ficha del servicio.</p>
     </section>

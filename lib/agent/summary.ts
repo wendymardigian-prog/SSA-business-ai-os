@@ -307,6 +307,7 @@ export async function summarizeConversationOnClose(
   // resumen se hace en el proximo cierre (no se marca `summarized_at`).
   const budget = await (deps.checkBudget ?? withinWorkspaceBudget)(supabase, conversation.workspace_id, deps.now(), {
     model: agent.provider && agent.model ? { provider: agent.provider, model: agent.model } : null,
+    task: "conversation_summary",
   });
   if (!budget.allowed) {
     const message = budget.message ?? "Se alcanzó el tope de gasto de IA del negocio.";

@@ -269,6 +269,6 @@ describe("describeMessageMedia: el tope de gasto de IA del negocio (noviembre 20
     expect(generateText).not.toHaveBeenCalled();
     expect(result).toEqual({ kind: "failed", reason: "Tope diario alcanzado" });
     expect(row(memory)).toMatchObject({ media_description: null, interpretability: "unreadable" });
-    expect(withinWorkspaceBudget).toHaveBeenCalledWith(memory.client, WS, expect.any(Date), { model: { provider: "openai", model: "gpt-5" } });
+    expect(withinWorkspaceBudget).toHaveBeenCalledWith(memory.client, WS, expect.any(Date), { model: { provider: "openai", model: "gpt-5" }, task: "media_description" });
   });
 });

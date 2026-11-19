@@ -9,6 +9,7 @@ import { CHAT_MEDIA_BUCKET, extensionForMime } from "@/lib/chat-media/bucket";
 import { fileRejection, MAX_ASSET_BYTES } from "@/lib/response-assets/files";
 import { findDriveConnection, getDriveAccessToken, getDriveFileMeta, readDriveFileBytes } from "@/lib/google-drive/client";
 import { planDriveItem } from "@/lib/google-drive/import-plan";
+import { driveScopesAreNarrow } from "@/lib/social/google-drive";
 import { createAsset } from "./response-assets";
 
 /**
@@ -45,9 +46,10 @@ export type DrivePickerConfig =
 /**
  * Lo que necesita el selector de Google en el navegador.
  *
- * El token viaja al navegador porque el Picker lo exige. Es de vida corta y su
- * unico permiso es `drive.file`: alcanza para ver los archivos que la persona
- * elige, no el Drive entero ni YouTube.
+ * El token viaja al navegador porque el Picker lo exige. Es de vida corta y
+ * solo se entrega si la conexion tiene `drive.file` y nada mas
+ * (`driveScopesAreNarrow`): una conexion con YouTube o Calendar de la misma
+ * cuenta se rechaza y pide reconectar.
  */
 export async function getDrivePickerConfig(): Promise<DrivePickerConfig> {
   const ctx = await getPermissionAction(MANAGE);
@@ -71,16 +73,23 @@ export async function getDrivePickerConfig(): Promise<DrivePickerConfig> {
     };
   }
 
+  const { data: row } = await service
+    .from("oauth_connections")
+    .select("account_label, granted_scopes")
+    .eq("id", connection.id)
+    .maybeSingle();
+  if (!driveScopesAreNarrow((row as { granted_scopes?: string[] | null } | null)?.granted_scopes)) {
+    return {
+      ok: false,
+      needsSetup: true,
+      error: "Hay que volver a conectar Google Drive para usar el selector. Reconectalo en Integraciones → Google.",
+    };
+  }
+
   const accessToken = await getDriveAccessToken(service, ctx.workspace.id);
   if (!accessToken) {
     return { ok: false, needsSetup: true, error: "No pude abrir Google Drive. Reconectalo en Integraciones → Google." };
   }
-
-  const { data: row } = await service
-    .from("oauth_connections")
-    .select("account_label")
-    .eq("id", connection.id)
-    .maybeSingle();
 
   return { ok: true, accessToken, apiKey, appId, accountLabel: row?.account_label ?? null };
 }

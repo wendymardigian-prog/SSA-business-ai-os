@@ -42,6 +42,17 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
     const { data } = await supabase.from("sales").select("id").eq("workspace_id", workspace.id).eq("vendedor_id", filters.vendedorId).limit(2000);
     intersect((data ?? []).map((s) => s.id));
   }
+  // Producto y variante salen del SNAPSHOT de la venta (como en Ventas): una venta de un producto archivado sigue apareciendo.
+  if (filters.productId || filters.variantId) {
+    const res = await fetchAllPages((a, b) => {
+      let q = supabase.from("sales").select("id").eq("workspace_id", workspace.id);
+      if (filters.productId) q = q.eq("product_snapshot->>product_id", filters.productId);
+      if (filters.variantId) q = q.eq("product_snapshot->>variant_id", filters.variantId);
+      return q.order("id").range(a, b) as unknown as PromiseLike<PageResult<{ id: string }>>;
+    });
+    // Si la consulta falla no se muestra nada de más: lista vacía.
+    intersect(res.error ? [] : res.rows.map((s) => s.id));
+  }
   if (filters.q) {
     const q = sanitizeSearch(filters.q, 60);
     const { data: contacts } = await supabase.from("contacts").select("id").eq("workspace_id", workspace.id).is("deleted_at", null).or(`display_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`).limit(50);
@@ -70,7 +81,7 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
   const month = monthRange(today);
   const from = (filters.page - 1) * PAYMENTS_PAGE_SIZE;
   const head = () => supabase.from("payments").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id);
-  const [page, totalsRes, thisWeek, overdue, paidMonth, uncollectible, members] = await Promise.all([
+  const [page, totalsRes, thisWeek, overdue, paidMonth, uncollectible, members, products, variants] = await Promise.all([
     filtered(supabase.from("payments").select(COLUMNS, { count: "exact" }).eq("workspace_id", workspace.id) as never as ReturnType<typeof head>)
       .order("due_date", { ascending: true })
       .order("created_at", { ascending: true })
@@ -87,6 +98,9 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
     head().eq("status", "paid").neq("type", "refund").gte("paid_on", month.from).lte("paid_on", month.to),
     head().eq("status", "uncollectible"),
     getWorkspaceMembers(workspace.id),
+    // Las opciones de los filtros Producto y Variante (las mismas que en Ventas).
+    supabase.from("products").select("id, name").eq("workspace_id", workspace.id).order("name"),
+    supabase.from("product_variants").select("id, product_id, name").eq("workspace_id", workspace.id).order("name"),
   ]);
 
   const payments = (page.data ?? []) as unknown as Row[];
@@ -120,7 +134,10 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
     totalsTruncated: totalsRes.truncated,
     totalsFailed: !!totalsRes.error,
     scopeAll: hasSalesAllScope(ctx),
+    canDelete: ctx.can("payments.delete"),
     members: members.map((m) => ({ id: m.userId, name: m.name })),
+    products: products.data ?? [],
+    variants: variants.data ?? [],
     enabledMethods: methods.enabledKeys,
     methods: methods.defs,
     today,

@@ -11,6 +11,10 @@ export type Json =
 export type { Platform };
 
 export type FlowStatus = "draft" | "published" | "archived";
+/** Cola de WhatsApp de las automatizaciones (00420). */
+export type SendQueueStatus = "scheduled" | "queued" | "sending" | "sent" | "failed" | "overdue" | "expired" | "discarded";
+export type SendQueuePriority = "urgent" | "normal" | "bulk";
+export type SendQueueTargetKind = "conversation" | "group" | "number";
 export type ConversationStatus = "open" | "closed" | "snoozed";
 export type MessageDirection = "inbound" | "outbound";
 export type MessageStatus = "pending" | "sent" | "delivered" | "failed";
@@ -470,6 +474,8 @@ export type AuditEntityType =
   | "agent"
   /** Instrucciones de una tarea de IA, no un agente (migracion 00137). */
   | "ai_task"
+  /** Una propuesta de un agente o del asistente del equipo, aprobada o rechazada (00441). */
+  | "ai_proposal"
   /** Una etiqueta del workspace: su efecto sobre el agente (Bloque 2d-A). */
   | "tag"
   /** Patrones de mensajes (Bloque 4): categorías y textos. */
@@ -526,6 +532,18 @@ export type AuditEntityType =
 export type AuditAction =
   | "create"
   | "update"
+  /** La Papelera (00410): se eliminó un registro con su foto, o se restauró. */
+  | "trash.deleted"
+  | "trash.restored"
+  /** Cola de WhatsApp (00420): pausar, reanudar, vaciar, lo masivo, el calentamiento y los ajustes de la cola. */
+  | "send_queue.paused"
+  | "send_queue.resumed"
+  | "send_queue.bulk_paused"
+  | "send_queue.bulk_resumed"
+  | "send_queue.emptied"
+  | "send_queue.warmup"
+  | "send_queue.settings"
+  | "send_queue.schedule_applied"
   /** La guardia de entrega (00287): el freno automatico pauso el marketing; una persona lo reanudo; cambio el tope. */
   | "email_marketing.paused"
   | "email_marketing.resumed"
@@ -574,8 +592,17 @@ export type AuditAction =
   | "agent_resumed"
   /** Se guardo o se restauro una version del system prompt. */
   | "prompt_version"
+  /** Propuestas de la IA y reglas aprendidas (00441, 00442). */
+  | "ai_proposal.approved"
+  | "ai_proposal.rejected"
+  | "ai_rule.proposed"
+  | "ai_rule.accepted"
+  | "ai_rule.discarded"
+  | "ai_rule.retired"
   /** Se eligio (o se saco) el modelo de una tarea de IA (00138). changes.model {old,new}. */
   | "model_changed"
+  /** Se cambio el tope mensual de gasto de una tarea de IA (00440). changes.monthly_cap_usd {old,new}. */
+  | "cap_changed"
   /** El agente etiqueto un contacto (Fase 3, Bloque 2b). changes.tags {old,new}. */
   | "tag"
   /** El agente cambio la temperatura del lead. */
@@ -626,6 +653,8 @@ export type AuditAction =
   | "booking.status_changed"
   | "booking.sync_ok"
   | "booking.sync_failed"
+  /** 00430: una reunión movida en Google Calendar a una hora que acá estaba ocupada. */
+  | "booking.google_move_rejected"
   /** Agenda v2 (00130): su horario dejó/volvió a contar como ocupado. */
   | "booking.slot_released"
   | "booking.slot_occupied"
@@ -660,6 +689,8 @@ export type AuditAction =
   | "call.proposal_discarded" // @plantilla-quitar(servicios)
   | "call.proposal_failed" // @plantilla-quitar(servicios)
   | "call.manual_summary" // @plantilla-quitar(servicios)
+  /** La causa de baja corregida o quitada a mano desde la reunión. */
+  | "call.churn_cause_set" // @plantilla-quitar(llamadas)
   /** Servicios A4: el aviso de reunión sin grabación (F139), la evidencia de un paso (F147) y los topes de cartera (F151). */
   | "svc.call_missing_recording" // @plantilla-quitar(servicios)
   | "svc.evidence_added" // @plantilla-quitar(servicios)
@@ -914,6 +945,8 @@ export type AgentRunSource =
   | "call_prompt_test" // @plantilla-quitar(llamadas)
   /** El tutor del programa en el portal (Servicios A1, 00352). Lo escribe el portal (Parte 2). */ // @plantilla-quitar(servicios)
   | "portal_tutor" // @plantilla-quitar(servicios)
+  /** El asistente del equipo (00444): cada respuesta, con sus consultas y propuestas. */
+  | "assistant"
   | "portal_project_review"; // @plantilla-quitar(proyectos)
 export type AgentRunTrigger =
   | "inbound_message"
@@ -1040,6 +1073,7 @@ export type TriggerType =
   | "portal_access_expired" // @plantilla-quitar(servicios)
   | "service_relative" // @plantilla-quitar(servicios)
   | "service_phase_periodic" // @plantilla-quitar(servicios)
+  | "service_metric_reached" // @plantilla-quitar(servicios)
   | "affiliate_lead_created" // @plantilla-quitar(ventas)
   | "affiliate_sale_created" // @plantilla-quitar(ventas)
   | "affiliate_assignment_expired" // @plantilla-quitar(ventas)
@@ -1260,6 +1294,10 @@ export interface Database {
           id: string;
           name: string;
           slug: string;
+          /** Tope de WhatsApp automáticos por contacto y día (00420). null = apagado. */
+          send_contact_caps?: Json | null;
+          /** Alerta de un número que deja de entregar (00420). null = 30 minutos. */
+          send_lane_alert?: Json | null;
           ai_api_key: string | null;
           ai_provider: string;
           global_keywords: Json | null;
@@ -1333,6 +1371,7 @@ export interface Database {
           ai_task_prompt_active: Json;
           /** 00138: el modelo elegido por tarea de IA. */
           ai_task_models: Json;
+          ai_task_limits: Json;
           created_at: string;
           updated_at: string;
         };
@@ -1386,10 +1425,13 @@ export interface Database {
           ai_spend_alert_pct?: number | null;
           ai_task_prompt_active?: Json;
           ai_task_models?: Json;
+          ai_task_limits?: Json;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
+          send_contact_caps?: Json | null;
+          send_lane_alert?: Json | null;
           /** Roles de comision (00231): { roles: [...] }. */ // @plantilla-quitar(comisiones)
           commission_settings?: Json; // @plantilla-quitar(comisiones)
           /** Atribución orgánica (00230): comentarios que crean contactos, días de herencia y valores por defecto de los links. */
@@ -1439,6 +1481,7 @@ export interface Database {
           ai_spend_alert_pct?: number | null;
           ai_task_prompt_active?: Json;
           ai_task_models?: Json;
+          ai_task_limits?: Json;
           updated_at?: string;
         };
         Relationships: [];
@@ -3263,6 +3306,10 @@ export interface Database {
           consecutive_failures: number;
           paused_at: string | null;
           paused_reason: string | null;
+          /** Lo masivo de la cola de WhatsApp pausado (00420). */
+          bulk_paused_at: string | null;
+          /** Desde cuándo podía mandar, tenía pendientes y no entregó ninguno (00420). */
+          undelivered_since: string | null;
           updated_at: string;
         };
         Insert: {
@@ -3272,6 +3319,8 @@ export interface Database {
           consecutive_failures?: number;
           paused_at?: string | null;
           paused_reason?: string | null;
+          bulk_paused_at?: string | null;
+          undelivered_since?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -3279,6 +3328,92 @@ export interface Database {
           consecutive_failures?: number;
           paused_at?: string | null;
           paused_reason?: string | null;
+          bulk_paused_at?: string | null;
+          undelivered_since?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      /** Cola de WhatsApp de las automatizaciones (00420). Lee quien tiene `channels.manage`; escribe solo el servidor. */
+      send_queue_items: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          channel_id: string;
+          flow_id: string | null;
+          flow_session_id: string | null;
+          node_id: string | null;
+          target_kind: SendQueueTargetKind;
+          conversation_id: string | null;
+          whatsapp_group_id: string | null;
+          to_number: string | null;
+          payload: Json;
+          preview: string | null;
+          client_label: string | null;
+          priority: SendQueuePriority;
+          status: SendQueueStatus;
+          reason_code: string | null;
+          reason: string | null;
+          anchor_at: string | null;
+          schedule: Json | null;
+          scheduled_for: string;
+          expires_at: string | null;
+          attempts: number;
+          next_attempt_at: string | null;
+          claimed_at: string | null;
+          error_kind: "transport" | "rejected" | null;
+          sent_at: string | null;
+          platform_message_id: string | null;
+          dedupe_key: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          channel_id: string;
+          flow_id?: string | null;
+          flow_session_id?: string | null;
+          node_id?: string | null;
+          target_kind: SendQueueTargetKind;
+          conversation_id?: string | null;
+          whatsapp_group_id?: string | null;
+          to_number?: string | null;
+          payload?: Json;
+          preview?: string | null;
+          client_label?: string | null;
+          priority?: SendQueuePriority;
+          status?: SendQueueStatus;
+          reason_code?: string | null;
+          reason?: string | null;
+          anchor_at?: string | null;
+          schedule?: Json | null;
+          scheduled_for?: string;
+          expires_at?: string | null;
+          attempts?: number;
+          next_attempt_at?: string | null;
+          claimed_at?: string | null;
+          error_kind?: "transport" | "rejected" | null;
+          sent_at?: string | null;
+          platform_message_id?: string | null;
+          dedupe_key: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: SendQueueStatus;
+          priority?: SendQueuePriority;
+          reason_code?: string | null;
+          reason?: string | null;
+          schedule?: Json | null;
+          scheduled_for?: string;
+          expires_at?: string | null;
+          attempts?: number;
+          next_attempt_at?: string | null;
+          claimed_at?: string | null;
+          error_kind?: "transport" | "rejected" | null;
+          sent_at?: string | null;
+          platform_message_id?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -4257,8 +4392,15 @@ export interface Database {
           created_at: string;
           updated_at: string;
           deleted_at: string | null;
+          /** 00443: carpeta, tipo de fuente y dirección del enlace. */
+          folder_id: string | null;
+          source_kind: "file" | "link" | "text";
+          source_url: string | null;
         };
         Insert: {
+          folder_id?: string | null;
+          source_kind?: "file" | "link" | "text";
+          source_url?: string | null;
           id?: string;
           workspace_id: string;
           title: string;
@@ -4280,6 +4422,9 @@ export interface Database {
           deleted_at?: string | null;
         };
         Update: {
+          folder_id?: string | null;
+          source_kind?: "file" | "link" | "text";
+          source_url?: string | null;
           title?: string;
           tags?: string[];
           source_file_path?: string | null;
@@ -4323,8 +4468,11 @@ export interface Database {
           token_estimate: number | null;
           embedding: string;
           created_at: string;
+          /** 00443: página del PDF donde empieza el trozo; null sin páginas. */
+          page: number | null;
         };
         Insert: {
+          page?: number | null;
           id?: string;
           workspace_id: string;
           document_id: string;
@@ -4406,6 +4554,15 @@ export interface Database {
           /** Reglas de respuesta condición→acción (00077). */
           response_rules: Json;
           response_rules_default: ResponseRuleAction;
+          /** 00441: en borrador, las acciones esperan aprobación. */
+          actions_need_approval: boolean;
+          /** 00441: ejemplos automáticos y umbral de reglas aprendidas. */
+          learning: Json;
+          /** 00443: cerrar con «Fuente: documento, pág. N» al usar Conocimiento. */
+          cite_sources: boolean;
+          /** 00443: documentos y carpetas de Conocimiento a los que llega. */
+          knowledge_document_ids: string[];
+          knowledge_folder_ids: string[];
           /** Espera tras un saliente externo, en minutos (00077, F7). */
           external_reply_cooldown_minutes: number;
           config: Json;
@@ -4452,6 +4609,11 @@ export interface Database {
           channel_modes?: Json;
           response_rules?: Json;
           response_rules_default?: ResponseRuleAction;
+          actions_need_approval?: boolean;
+          learning?: Json;
+          cite_sources?: boolean;
+          knowledge_document_ids?: string[];
+          knowledge_folder_ids?: string[];
           external_reply_cooldown_minutes?: number;
           config?: Json;
           created_by?: string | null;
@@ -4495,6 +4657,11 @@ export interface Database {
           channel_modes?: Json;
           response_rules?: Json;
           response_rules_default?: ResponseRuleAction;
+          actions_need_approval?: boolean;
+          learning?: Json;
+          cite_sources?: boolean;
+          knowledge_document_ids?: string[];
+          knowledge_folder_ids?: string[];
           external_reply_cooldown_minutes?: number;
           config?: Json;
           created_by?: string | null;
@@ -4504,6 +4671,145 @@ export interface Database {
         Relationships: [];
       };
       /** Historial inmutable del system prompt (migracion 00058). */
+      agent_learned_rules: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          agent_id: string;
+          reason_key: string;
+          text: string;
+          evidence: Json;
+          source_ids: string[];
+          rejections: number;
+          status: "proposed" | "active" | "discarded" | "retired";
+          proposed_at: string;
+          decided_by: string | null;
+          decided_at: string | null;
+          version: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          agent_id: string;
+          reason_key: string;
+          text: string;
+          evidence?: Json;
+          source_ids?: string[];
+          rejections?: number;
+          status?: "proposed" | "active" | "discarded" | "retired";
+          decided_by?: string | null;
+          decided_at?: string | null;
+          version?: number | null;
+        };
+        Update: {
+          text?: string;
+          status?: "proposed" | "active" | "discarded" | "retired";
+          decided_by?: string | null;
+          decided_at?: string | null;
+          version?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      ai_proposals: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          agent_id: string | null;
+          run_id: string | null;
+          requested_by: string | null;
+          channel_id: string | null;
+          conversation_id: string | null;
+          subject_type: string | null;
+          subject_id: string | null;
+          kind: "action" | "message";
+          tool_key: string;
+          label: string;
+          summary: string | null;
+          params_proposed: Json;
+          params_final: Json | null;
+          tool_config: Json;
+          status: "pending" | "approving" | "approved" | "approved_edited" | "rejected" | "failed" | "expired";
+          reject_reason: string | null;
+          reject_note: string | null;
+          result: Json | null;
+          error: string | null;
+          audit_log_id: string | null;
+          decided_by: string | null;
+          decided_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          agent_id?: string | null;
+          run_id?: string | null;
+          requested_by?: string | null;
+          channel_id?: string | null;
+          conversation_id?: string | null;
+          subject_type?: string | null;
+          subject_id?: string | null;
+          kind?: "action" | "message";
+          tool_key: string;
+          label: string;
+          summary?: string | null;
+          params_proposed?: Json;
+          params_final?: Json | null;
+          tool_config?: Json;
+          status?: "pending" | "approving" | "approved" | "approved_edited" | "rejected" | "failed" | "expired";
+          reject_reason?: string | null;
+          reject_note?: string | null;
+          result?: Json | null;
+          error?: string | null;
+          audit_log_id?: string | null;
+          decided_by?: string | null;
+          decided_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          params_final?: Json | null;
+          status?: "pending" | "approving" | "approved" | "approved_edited" | "rejected" | "failed" | "expired";
+          reject_reason?: string | null;
+          reject_note?: string | null;
+          result?: Json | null;
+          error?: string | null;
+          audit_log_id?: string | null;
+          decided_by?: string | null;
+          decided_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      knowledge_folders: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: {
+          name?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Relationships: [];
+      };
       agent_prompt_versions: {
         Row: {
           id: string;
@@ -4514,6 +4820,9 @@ export interface Database {
           note: string | null;
           created_by: string | null;
           created_at: string;
+          /** 00442: la foto de las reglas aprendidas activas en esta versión. */
+          learned_rules: Json;
+          change_kind: "prompt" | "learned_rules" | "restore";
         };
         Insert: {
           id?: string;
@@ -4524,6 +4833,8 @@ export interface Database {
           note?: string | null;
           variant?: string | null;
           created_by?: string | null;
+          learned_rules?: Json;
+          change_kind?: "prompt" | "learned_rules" | "restore";
           created_at?: string;
         };
         // Inmutable: sin UPDATE en la RLS.
@@ -4740,6 +5051,9 @@ export interface Database {
           send_error: string | null;
           sent_message_id: string | null;
           discard_reason: string | null;
+          /** 00441: motivo de la lista cerrada (opcional) y su nota. */
+          reject_reason: string | null;
+          reject_note: string | null;
           regenerate_instruction: string | null;
           previous_draft_id: string | null;
           decided_at: string | null;
@@ -4772,6 +5086,8 @@ export interface Database {
           send_error?: string | null;
           sent_message_id?: string | null;
           discard_reason?: string | null;
+          reject_reason?: string | null;
+          reject_note?: string | null;
           regenerate_instruction?: string | null;
           previous_draft_id?: string | null;
           decided_at?: string | null;
@@ -4789,6 +5105,8 @@ export interface Database {
           send_error?: string | null;
           sent_message_id?: string | null;
           discard_reason?: string | null;
+          reject_reason?: string | null;
+          reject_note?: string | null;
           regenerate_instruction?: string | null;
           decided_at?: string | null;
           decided_by?: string | null;
@@ -7157,7 +7475,25 @@ export interface Database {
       // @plantilla-hasta(comisiones)
     };
     Views: {
-      [_ in never]: never;
+      ai_outcomes: {
+        Row: {
+          source: "draft" | "proposal";
+          id: string;
+          workspace_id: string;
+          agent_id: string | null;
+          channel_id: string | null;
+          kind: string;
+          tool_key: string;
+          outcome: "approved" | "approved_edited" | "rejected";
+          proposed_text: string | null;
+          final_text: string | null;
+          reject_reason: string | null;
+          reject_note: string | null;
+          decided_by: string | null;
+          decided_at: string;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       /** Vistas de tablas (00360): crea o edita una vista. Compartir es de Owner/Admin. */
@@ -8115,6 +8451,45 @@ export interface Database {
         Args: { p_workspace_id: string; p_event_type_id: string; p_expected_host_id: string; p_new_host_id: string };
         Returns: Json;
       };
+      /** Cola de WhatsApp (00420): el turno del carril con un reloj dado. Solo service_role. */
+      claim_lane_slot_at: {
+        Args: { p_channel_id: string; p_now: string; p_next: string };
+        Returns: boolean;
+      };
+      /** Cola de WhatsApp (00420): el próximo envío listo de un número, por prioridad. Solo service_role. */
+      claim_send_queue_item: {
+        Args: { p_channel_id: string; p_now: string; p_priorities: string[] };
+        Returns: Database["public"]["Tables"]["send_queue_items"]["Row"][];
+      };
+      release_scheduled_send_queue_items: {
+        Args: { p_now: string };
+        Returns: number;
+      };
+      expire_send_queue_items: {
+        Args: { p_now: string };
+        Returns: number;
+      };
+      /** El cupo usado de un número: TODO lo que sale por él (00420). Solo service_role. */
+      send_lane_counts: {
+        Args: { p_channel_id: string; p_day_start: string; p_now: string };
+        Returns: { last_minute: number; last_hour: number; today: number }[];
+      };
+      empty_send_queue: {
+        Args: { p_workspace_id: string; p_channel_id: string; p_reason: string };
+        Returns: number;
+      };
+      send_contact_day_count: {
+        Args: {
+          p_workspace_id: string;
+          p_contact_id: string | null;
+          p_group_id: string | null;
+          p_phone: string | null;
+          p_day_start: string;
+          p_urgent_counts: boolean;
+          p_exclude: string | null;
+        };
+        Returns: number;
+      };
       claim_lane_slot: {
         Args: { p_channel_id: string; p_next: string };
         Returns: boolean;
@@ -8256,6 +8631,35 @@ export interface Database {
        * Busqueda semantica con el filtro de acceso del agente adentro del SQL
        * (migracion 00062): tags permitidos y exclusion de internal_only.
        */
+      propose_learned_rule_if_due: {
+        Args: { p_workspace_id: string; p_agent_id: string; p_reason: string; p_threshold: number; p_window_days: number; p_text: string };
+        Returns: string | null;
+      };
+      /** Calidad semanal de la IA (00441). SECURITY INVOKER. */
+      ai_quality_weekly: {
+        Args: { p_workspace_id: string; p_weeks?: number; p_agent_id?: string | null };
+        Returns: Array<{ week_start: string; decided: number; approved: number; approved_edited: number; rejected: number; reasons: Json }>;
+      };
+      match_knowledge_chunks_scoped: {
+        Args: {
+          p_workspace_id: string;
+          p_query_embedding: string;
+          p_match_count: number;
+          p_min_similarity: number;
+          p_tags: string[] | null;
+          p_document_ids: string[] | null;
+          p_folder_ids: string[] | null;
+          p_include_internal: boolean;
+        };
+        Returns: {
+          chunk_id: string;
+          document_id: string;
+          document_title: string;
+          chunk_index: number;
+          content: string;
+          similarity: number;
+        }[];
+      };
       match_knowledge_chunks_filtered: {
         Args: {
           p_workspace_id: string;
@@ -8326,6 +8730,23 @@ export interface Database {
         Returns: Json;
       };
       /** Gasto de IA en USD desde un instante (migracion 00064). Solo service_role. */
+      sum_ai_task_spend: {
+        Args: {
+          p_workspace_id: string;
+          p_since: string;
+          p_source: string;
+          p_detail_like?: string | null;
+        };
+        Returns: number;
+      };
+      set_ai_task_cap: {
+        Args: {
+          p_workspace_id: string;
+          p_task: string;
+          p_monthly_cap_usd: number | null;
+        };
+        Returns: Json;
+      };
       sum_ai_spend: {
         Args: {
           p_workspace_id: string;

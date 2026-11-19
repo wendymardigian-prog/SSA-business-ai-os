@@ -10,6 +10,7 @@ import { EmptyHint } from "@/components/contacts/ui";
 import { PageHeader } from "@/components/page-header";
 import { TopbarTabs } from "@/components/ui/topbar-tabs";
 import { SettingsLinkButton } from "@/components/ui/settings-link-button";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 export const dynamic = "force-dynamic";
 
@@ -84,18 +85,10 @@ export default async function AfiliadosPage({
               </thead>
               <tbody className="divide-y divide-border">
                 {rows.map((r) => (
-                  <tr key={`${r.type}:${r.id}`}>
+                  <ClickableTr key={`${r.type}:${r.id}`} href={r.type === "contact" ? `/dashboard/contacts/${r.id}` : null} className="hover:bg-muted/30">
                     <td className="px-3 py-2 text-foreground">
-                      {r.type === "contact" ? (
-                        <Link
-                          href={`/dashboard/contacts/${r.id}`}
-                          className="hover:underline"
-                        >
-                          {r.name}
-                        </Link>
-                      ) : (
-                        r.name
-                      )}
+                      {/* La fila es la persona: abre su ficha (docs/tablas.md). El nombre es texto. */}
+                      {r.name}
                       <span className="ml-2 text-xs text-muted-foreground">
                         {r.departed
                           ? "dado de baja"
@@ -125,7 +118,7 @@ export default async function AfiliadosPage({
                     <td className="px-3 py-2 text-right tabular-nums">
                       {usd(r.pendingCents)}
                     </td>
-                  </tr>
+                  </ClickableTr>
                 ))}
               </tbody>
               <tfoot className="border-t border-border font-medium">

@@ -15,9 +15,10 @@ describe("ai_threads / ai_messages: forma por canal", () => {
     expect(parseMessageResult("designer", { summary: "sin páginas" }).ok).toBe(false);
   });
 
-  it("portal y asistente aceptan un objeto (los completa su módulo)", () => {
+  it("portal acepta un objeto; el asistente exige sus pasos", () => {
     expect(parseMessageContext("portal", { program_item_id: "x" }).ok).toBe(true);
-    expect(parseMessageResult("assistant", { a: 1 }).ok).toBe(true);
+    expect(parseMessageResult("assistant", { a: 1 }).ok).toBe(false);
+    expect(parseMessageResult("assistant", { steps: [], run_id: null }).ok).toBe(true);
   });
 
   it("adjuntos: hasta 10, con ruta, nombre y tipo", () => {

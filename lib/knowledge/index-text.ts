@@ -19,7 +19,7 @@ import type { Database } from "@/lib/types/database";
 import { openAiRun } from "@/lib/ai/run";
 import { estimateTokens } from "./voyage";
 import { generateEmbeddings } from "./embeddings";
-import { writeChunks } from "./index-document";
+import { retireChunks, writeChunks } from "./index-document";
 
 type Db = SupabaseClient<Database>;
 
@@ -37,6 +37,10 @@ export interface IndexTextInput {
   chunks: string[];
   /** Si ya hay un documento de esta fuente, se reemplaza en vez de crear otro. */
   replaceDocumentId?: string | null;
+  /** 00412: de dónde sale ('text' por defecto; 'link' para un enlace), su dirección y su carpeta. */
+  sourceKind?: "text" | "link";
+  sourceUrl?: string | null;
+  folderId?: string | null;
   createdBy?: string | null;
   /** Para atar el run al documento. */
   now?: Date;
@@ -65,6 +69,9 @@ export async function indexText(db: Db, input: IndexTextInput): Promise<IndexTex
     status: "processing" as const,
     error_detail: null,
     chunk_count: 0,
+    source_kind: input.sourceKind ?? ("text" as const),
+    source_url: input.sourceUrl ?? null,
+    ...(input.folderId !== undefined ? { folder_id: input.folderId } : {}),
   };
 
   // Reemplazar: se reusa la fila (mismo id, mismo lugar en la lista) y se reindexa.
@@ -78,6 +85,8 @@ export async function indexText(db: Db, input: IndexTextInput): Promise<IndexTex
       .is("deleted_at", null)
       .select("id");
     documentId = updated?.[0]?.id ?? null;
+    // : la versión vieja deja de existir YA, no cuando termine el indexado nuevo.
+    if (documentId) await retireChunks(db, documentId);
   }
   if (!documentId) {
     const { data, error } = await db
@@ -93,6 +102,7 @@ export async function indexText(db: Db, input: IndexTextInput): Promise<IndexTex
   }
 
   const fail = async (detail: string, retryable: boolean): Promise<IndexTextOutcome> => {
+    await retireChunks(db, documentId!);
     await db.from("knowledge_base").update({ status: "error", error_detail: detail, chunk_count: 0 }).eq("id", documentId!);
     return { documentId, status: "error", chunks: 0, detail, retryable };
   };

@@ -6,7 +6,7 @@ Toda tabla con columnas se arma con `DataTable` (`components/ui/data-table/`). D
 - **Totales** al pie de las columnas con plata o cantidades, calculados sobre **todo el filtro** (no solo la página).
 - **Vistas guardadas**: cada persona guarda cómo mira una tabla (columnas y filtros), con varias vistas y una predeterminada. Owner y Admin pueden compartirlas con todo el equipo o con personas elegidas, y dejarlas como predeterminada de otras personas.
 
-Estrenado en **Ventas** (`/dashboard/ventas`) y **Pagos** (`/dashboard/ventas/pagos`). Las demás tablas se migran por tandas: la lista de las que faltan está en `lib/ui/data-table/no-raw-table.test.ts` (`LEGACY`). Ese test falla si alguien arma una tabla nueva con `<table>` a mano.
+Estrenado en **Ventas** (`/dashboard/ventas`) y **Pagos** (`/dashboard/ventas/pagos`); desde el 19/11/2026 también la usan **Contactos, Agenda (lista), Llamadas, Respuestas de formularios, Comisiones, Gastos y Servicios** (con el menú «Columnas» y lo elegido en el navegador de cada persona, sin vistas guardadas todavía). Las demás tablas se migran por tandas: la lista de las que faltan está en `lib/ui/data-table/no-raw-table.test.ts` (`LEGACY`). Ese test falla si alguien arma una tabla nueva con `<table>` a mano.
 
 ## Cómo armar una tabla nueva (5 pasos)
 
@@ -16,7 +16,28 @@ Estrenado en **Ventas** (`/dashboard/ventas`) y **Pagos** (`/dashboard/ventas/pa
 4. **Barra superior**: `<ViewsMenu …/>` y `<ColumnsMenu state={state}/>` junto a Buscar y Filtros (todo control va en la barra, nunca adentro de la página).
 5. **Totales**: calcularlos en el servidor sobre todo el filtro (`fetchAllPages`, `lib/shared/paginate.ts`, porque PostgREST corta cada respuesta en 1.000 filas) con `sumMoney` / `sumCount` (`lib/ui/data-table/totals.ts`), y pasarlos a `DataTable` como `totals={{ amount: "…" }}`. Un dato que no existe es «—», nunca 0.
 
+**Ordenar (opcional).** Una columna con `sortable: true` se ordena con un clic en el título solo si la tabla recibe `sort` y `onSortChange`; sin eso, el título es el de siempre. La tabla no ordena: la pantalla decide (en la consulta, con la página entera) y guarda el orden en la URL. `nextSort` y `ariaSort` en `lib/ui/data-table/sort.ts`. Ejemplo: Ventas.
+
 En el servidor, la página llama a `loadTableViews(ctx, tableKey, searchParams)` y, si la URL llegó pelada, parsea sus filtros con `resolved.inheritedFilters` (los de la vista predeterminada). Todo link de la pantalla preserva `?vista=` (`withViewParam`).
+
+## Lo que se le sumó para las pantallas grandes (19/11/2026)
+
+- **`rowClassName(row)`**: clases de una fila (atenuar una anulada, marcar la elegida).
+- **`wrap` en una columna**: el contenido puede ocupar varias líneas (nombre con insignias, etiquetas). Sin `wrap`, una línea con «…».
+- **`groups`**: filas agrupadas con su título (y un dato a la derecha, por ejemplo el subtotal) adentro de la misma tabla, en vez de una tabla por grupo. Los grupos vacíos no se dibujan.
+- **`defaultPinned` en `ColumnMeta`** + **`basePrefsFor(metas)`** como base de `useTablePrefs`: la columna arranca fija (el contacto en Agenda y Respuestas) y la persona la puede soltar.
+- **`selection.isSelectable` / `disabledReason`**: filas que no se pueden elegir (Comisiones); la casilla del encabezado no las cuenta.
+- **Columnas de atribución** (UTM, Meta, último click): `attributionColumnMetas` (`lib/attribution/table-columns.ts`) y la celda `ColumnCellContent`.
+- **Una clave por tipo de tabla**, aunque cambien las columnas (por ejemplo `form_responses` para todos los formularios): la regla de `table_key` no admite un id, y las columnas que no existen en esa pantalla se ignoran al leer.
+
+## Clic en la fila y editar en la tabla (18/11/2026)
+
+- **La fila entera abre el registro**, no solo la primera columna. En `DataTable`: `rowHref={(row) => "/ruta"}` (o `onRowClick` para abrir un diálogo; `beforeRowNavigate` para recordar la fila que abre un modal por URL). En una tabla a mano: `<ClickableTr href=… | onOpen=…>` en vez de `<tr>`; para una fila o tarjeta que no es de tabla, `<ClickableBox>`. Todo sale de `useRowOpen` (`components/ui/clickable-row.tsx`) y la regla pura `rowClickIntent` (`lib/ui/row-click.ts`).
+- **Qué no abre la fila**: lo que es un control adentro (links a otra cosa, botones, casillas, selects, menús; `ROW_INTERACTIVE_SELECTOR`), seleccionar texto y los clics que vienen de un portal. **Cmd/Ctrl/Shift + clic o el botón del medio** abren `href` en otra pestaña. Con el teclado, Tab llega a la fila y Enter la abre.
+- **El contacto nunca es un link en una tabla**: es texto. Donde la fila ES la persona (Contactos, Clientes, Inscriptos de una secuencia, Afiliados), la ficha es el destino de la fila. `lib/ui/no-contact-link-in-tables.test.ts` lo controla.
+- **Editar en la tabla**: `InlineSelect` (`components/ui/inline-select.tsx`) sobre `PortalMenu`. Recibe `display` (el chip de siempre), `options`, `canEdit` (sin permiso, solo el valor) y `onSelect` (la acción del servidor; refresca al terminar y muestra el motivo si falla). Una opción con `onPick` no guarda: abre lo que pide más datos (el cobro de un pago, el motivo de incobrable, la confirmación de pausar).
+- **Hoy se editan en la tabla**: Contactos (estado del setter y del vendedor, setter, vendedor y calificación), el estado de un pago (cada opción abre su diálogo; regla pura `paymentStatusMenu`), variantes (activa/archivada), webhooks y gastos recurrentes (activo/pausado), respuestas de formularios (spam). Agenda ya tenía su Estado y Tareas edita cada celda.
+- **No se ofrece un desplegable** para un estado que calcula el sistema (venta, cola de envíos, ejecuciones) ni para uno que pide un dato que el desplegable no tiene (fase de un servicio, pagar un gasto).
 
 ## Cómo funcionan las vistas
 

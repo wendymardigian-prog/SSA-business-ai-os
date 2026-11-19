@@ -14,6 +14,7 @@
  */
 import { z } from "zod";
 import { MAX_PROPOSALS, proposalActionSchema } from "./proposals";
+import { churnCauseSchema } from "./churn";
 import { OUTCOME_CATEGORIES } from "./rubric";
 
 /** Los estados de una creencia del lead (los que entiende `beliefValue`). */
@@ -112,9 +113,13 @@ export type GeneralCallAnalysis = z.infer<typeof generalAnalysisSchema>;
  * El formato general con las acciones propuestas (Servicios A4, F142): suma `acciones` (hasta 8) SOLO si el analizador
  * tiene «Proponer acciones» prendido. Sin eso, el esquema es exactamente el de siempre.
  */
-export function buildGeneralSchema(opts: { proposals: boolean }) {
-  if (!opts.proposals) return generalAnalysisSchema;
-  return generalAnalysisSchema.extend({ acciones: z.array(proposalActionSchema).max(MAX_PROPOSALS) });
+export function buildGeneralSchema(opts: { proposals: boolean; churn?: boolean }) {
+  if (!opts.proposals && !opts.churn) return generalAnalysisSchema;
+  // Los dos agregados son obligatorios (pueden venir en null por dentro): no suman campos opcionales al esquema.
+  return generalAnalysisSchema.extend({
+    ...(opts.proposals ? { acciones: z.array(proposalActionSchema).max(MAX_PROPOSALS) } : {}),
+    ...(opts.churn ? { causa_baja: churnCauseSchema } : {}),
+  });
 }
 
 /** Las secciones de texto que el resumen y el contacto usan, sin tener que conocer el esquema entero. */

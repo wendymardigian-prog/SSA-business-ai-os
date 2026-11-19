@@ -9,6 +9,8 @@ import { saleBalance, salePaid } from "./sale-math";
 import { describeAttribution, type SaleAttribution } from "@/lib/attribution/attribution";
 import { CHANNELS, type TouchChannelKey } from "@/lib/contacts/taxonomy";
 import { snapshotProductName, snapshotText, snapshotVariantName } from "./sale-text";
+import { nextPayment, openPayments, type OpenPayment, type PaymentLike } from "./next-payment";
+import { parseSalesSort, salesSortToParams, type SalesSort } from "./sort";
 
 export const SALES_PAGE_SIZE = 50;
 
@@ -47,6 +49,8 @@ export interface SalesFilters {
   from: string | null;
   to: string | null;
   q: string | null;
+  /** El orden de la tabla (`?orden=&dir=`): no es un filtro, pero viaja en la URL y se guarda con las vistas. */
+  sort: SalesSort;
   page: number;
 }
 
@@ -85,6 +89,7 @@ export function parseSalesFilters(params: Params): SalesFilters {
     from: date("desde"),
     to: date("hasta"),
     q: one(params.q),
+    sort: parseSalesSort(params),
     page: Number.isInteger(page) && page > 0 ? page : 1,
   };
 }
@@ -162,12 +167,16 @@ export interface SaleListRow {
   attribution: string;
   /** El origen de la venta (F49): el canal y una linea corta. Lo completa la pagina con el toque de la venta. */
   origin: { channel: string | null; channelLabel: string; summary: string };
+  /** El primer pago sin cobrar (moroso o programado), aunque ya esté vencido; null si no queda ninguno. */
+  nextPayment: OpenPayment | null;
+  /** Todos los morosos y programados, por fecha: el detalle del Pendiente. */
+  openPayments: OpenPayment[];
 }
 
 /** Cobrado y pendiente salen de `saleBalance` en céntimos. */
 export function saleListRow(
   sale: SaleListRowInput,
-  payments: ReadonlyArray<{ amount: unknown; status: string }>,
+  payments: ReadonlyArray<PaymentLike>,
   now: Date,
   timeZone: string,
 ): SaleListRow {
@@ -182,6 +191,8 @@ export function saleListRow(
     finalAmount: Number(sale.final_amount) || 0,
     paid: salePaid(payments),
     pending: saleBalance(sale.final_amount, payments),
+    nextPayment: nextPayment(payments),
+    openPayments: openPayments(payments),
     status: sale.status,
     vendedorId: sale.vendedor_id,
     origin: { channel: null, channelLabel: "Sin origen", summary: "Sin origen identificado" },
@@ -217,6 +228,7 @@ export function salesFiltersToParams(f: SalesFilters): URLSearchParams {
   if (f.from) p.set("desde", f.from);
   if (f.to) p.set("hasta", f.to);
   if (f.q) p.set("q", f.q);
+  salesSortToParams(f.sort, p);
   if (f.page > 1) p.set("pagina", String(f.page));
   return p;
 }

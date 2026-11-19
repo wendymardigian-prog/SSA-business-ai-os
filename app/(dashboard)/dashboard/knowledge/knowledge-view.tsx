@@ -16,6 +16,9 @@ import {
   FileText,
   Clock,
   Play,
+  Link2,
+  FileUp,
+  Folder,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { formatDateTime } from "@/components/contacts/ui";
@@ -26,6 +29,8 @@ import {
   reprocessDocument,
   indexPendingDocuments,
 } from "@/lib/actions/knowledge";
+import { moveDocumentToFolder, refreshLinkDocument, replaceDocumentFile } from "@/lib/actions/knowledge-sources";
+import { FOLDER_ALL, FOLDER_NONE, FolderBar, LinkDialog, type FolderItem } from "./knowledge-folders";
 import { countPending } from "@/lib/knowledge/pending-count";
 import {
   validateFileSize,
@@ -37,6 +42,7 @@ import {
 } from "@/lib/knowledge/validate";
 import type { KnowledgeStatus } from "@/lib/types/database";
 import { PageHeader } from "@/components/page-header";
+import { ClickableBox } from "@/components/ui/clickable-row";
 
 export interface KnowledgeDocument {
   id: string;
@@ -51,14 +57,22 @@ export interface KnowledgeDocument {
   sizeBytes: number | null;
   createdAt: string;
   indexedAt: string | null;
+  /** Carpeta, tipo de fuente y dirección del enlace (00443). */
+  folderId?: string | null;
+  sourceKind?: "file" | "link" | "text";
+  sourceUrl?: string | null;
 }
 
 interface Props {
   documents: KnowledgeDocument[];
+  /** Carpetas vivas de la base (00443). */
+  folders?: Array<{ id: string; name: string }>;
+  /** Puede crear carpetas, enlaces y reemplazar (`knowledge.edit`). */
+  canEdit?: boolean;
   voyageConnected: boolean;
 }
 
-export function KnowledgeView({ documents, voyageConnected }: Props) {
+export function KnowledgeView({ documents: allDocuments, folders: rawFolders = [], canEdit = true, voyageConnected }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [uploading, setUploading] = useState(false);
@@ -68,8 +82,24 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
   const [deleting, setDeleting] = useState<KnowledgeDocument | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const pendingCount = countPending(documents);
-  const hasProcessing = documents.some((d) => d.status === "processing");
+  const replaceRef = useRef<HTMLInputElement>(null);
+  const [replacing, setReplacing] = useState<KnowledgeDocument | null>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [folder, setFolder] = useState<string>(FOLDER_ALL);
+  const folderNames = new Map(rawFolders.map((f) => [f.id, f.name]));
+  const folders: FolderItem[] = rawFolders.map((f) => ({ ...f, count: allDocuments.filter((d) => d.folderId === f.id).length }));
+  const isLoose = (d: KnowledgeDocument) => !d.folderId || !folderNames.has(d.folderId);
+  const looseCount = allDocuments.filter(isLoose).length;
+  const activeFolder = folder === FOLDER_ALL || folder === FOLDER_NONE || folderNames.has(folder) ? folder : FOLDER_ALL;
+  const documents =
+    activeFolder === FOLDER_ALL
+      ? allDocuments
+      : activeFolder === FOLDER_NONE
+        ? allDocuments.filter(isLoose)
+        : allDocuments.filter((d) => d.folderId === activeFolder);
+  const uploadFolderId = activeFolder !== FOLDER_ALL && activeFolder !== FOLDER_NONE ? activeFolder : null;
+  const pendingCount = countPending(allDocuments);
+  const hasProcessing = allDocuments.some((d) => d.status === "processing");
 
   // Mientras algo se procesa, la lista se refresca sola (antes habia que recargar a mano para ver "Listo").
   // Tope de ~3 minutos: si un documento sigue "procesando" mas que eso, pasa algo y recargar no lo arregla.
@@ -125,6 +155,7 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
 
       const data = new FormData();
       data.set("file", file);
+      if (uploadFolderId) data.set("folderId", uploadFolderId);
 
       const result = await uploadDocument(data);
       if (result.ok) {
@@ -167,6 +198,56 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
     });
   }
 
+  /** : una versión nueva del archivo; los trozos viejos se retiran antes de reindexar. */
+  async function handleReplace(files: FileList | null) {
+    const target = replacing;
+    if (replaceRef.current) replaceRef.current.value = "";
+    setReplacing(null);
+    const file = files?.[0];
+    if (!target || !file) return;
+    setError(null);
+    setNotice(null);
+    const size = validateFileSize(file.size);
+    if (!size.ok) {
+      setError(`${file.name}: ${size.error}`);
+      return;
+    }
+    const data = new FormData();
+    data.set("documentId", target.id);
+    data.set("file", file);
+    setUploading(true);
+    const result = await replaceDocumentFile(data);
+    setUploading(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setNotice(
+      result.pending
+        ? "Versión nueva guardada. Se indexa cuando conectes Voyage AI; mientras, el agente no usa este documento."
+        : "Versión nueva subida. Se está reindexando; el agente ya no usa la anterior.",
+    );
+    router.refresh();
+  }
+
+  function handleRefreshLink(document: KnowledgeDocument) {
+    setError(null);
+    setNotice(null);
+    startTransition(async () => {
+      const result = await refreshLinkDocument(document.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setNotice(
+        result.pending
+          ? "Página leída de nuevo. Se indexa cuando conectes Voyage AI."
+          : "Página leída de nuevo. Se está reindexando; el agente ya no usa la versión anterior.",
+      );
+      router.refresh();
+    });
+  }
+
   function handleReprocess(document: KnowledgeDocument) {
     setError(null);
     setNotice(null);
@@ -199,6 +280,18 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
                 Indexar pendientes ({pendingCount})
               </button>
             )}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setLinkOpen(true)}
+                disabled={uploading}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                <Link2 className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Agregar enlace</span>
+                <span className="sm:hidden">Enlace</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
@@ -225,9 +318,17 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
         aria-label="Elegir documentos para subir"
         onChange={(e) => handleFiles(e.target.files)}
       />
+      <input
+        ref={replaceRef}
+        type="file"
+        accept={ACCEPTED_EXTENSIONS}
+        className="sr-only"
+        aria-label="Elegir la versión nueva del documento"
+        onChange={(e) => handleReplace(e.target.files)}
+      />
 
       <div
-        className="flex-1 overflow-auto px-8 py-6"
+        className="flex-1 overflow-auto px-4 py-6 sm:px-8"
         onDragOver={(e) => {
           e.preventDefault();
           setDragging(true);
@@ -284,8 +385,31 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
           </div>
         )}
 
-        {documents.length === 0 ? (
+        {(allDocuments.length > 0 || folders.length > 0) && (
+          <FolderBar
+            folders={folders}
+            selected={activeFolder}
+            onSelect={setFolder}
+            totalCount={allDocuments.length}
+            looseCount={looseCount}
+            canEdit={canEdit}
+            onChanged={(text) => {
+              setError(null);
+              setNotice(text);
+              router.refresh();
+            }}
+            onError={(text) => setError(text)}
+          />
+        )}
+
+        {allDocuments.length === 0 ? (
           <EmptyState onPick={() => inputRef.current?.click()} />
+        ) : documents.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+            {activeFolder === FOLDER_NONE
+              ? "Todos los documentos están en alguna carpeta."
+              : "Esta carpeta está vacía. Subí un documento o agregá un enlace con la carpeta abierta y se guarda acá."}
+          </div>
         ) : (
           <div className="space-y-3">
             {documents.map((document) => (
@@ -294,9 +418,19 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
                 document={document}
                 disabled={pending || uploading}
                 voyageConnected={voyageConnected}
+                folderName={document.folderId ? (folderNames.get(document.folderId) ?? null) : null}
                 onEdit={() => setEditing(document)}
                 onDelete={() => setDeleting(document)}
                 onReprocess={() => handleReprocess(document)}
+                onReplace={
+                  canEdit && (document.sourceKind ?? "file") === "file"
+                    ? () => {
+                        setReplacing(document);
+                        replaceRef.current?.click();
+                      }
+                    : undefined
+                }
+                onRefreshLink={canEdit && document.sourceKind === "link" ? () => handleRefreshLink(document) : undefined}
               />
             ))}
           </div>
@@ -306,6 +440,7 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
       {editing && (
         <EditDialog
           document={editing}
+          folders={rawFolders}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -325,6 +460,20 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
         onConfirm={handleDelete}
         onCancel={() => setDeleting(null)}
       />
+
+      {linkOpen && (
+        <LinkDialog
+          folders={folders}
+          defaultFolderId={uploadFolderId}
+          onClose={() => setLinkOpen(false)}
+          onSaved={(isPending) => {
+            setLinkOpen(false);
+            setError(null);
+            setNotice(isPending ? "Enlace guardado. Se indexa cuando conectes Voyage AI." : "Enlace agregado. Se está procesando: en un momento pasa a listo.");
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -360,49 +509,67 @@ function DocumentRow({
   document,
   disabled,
   voyageConnected,
+  folderName,
   onEdit,
   onDelete,
   onReprocess,
+  onReplace,
+  onRefreshLink,
 }: {
   document: KnowledgeDocument;
   disabled: boolean;
   voyageConnected: boolean;
+  folderName?: string | null;
   onEdit: () => void;
   onDelete: () => void;
   onReprocess: () => void;
+  /** : subir una versión nueva (solo documentos-archivo). */
+  onReplace?: () => void;
+  /** : volver a leer la página (solo enlaces). */
+  onRefreshLink?: () => void;
 }) {
   const timeZone = useViewerTimezone();
-  const label = document.mime
-    ? (MIME_LABELS[document.mime as SupportedMime] ?? "Documento")
-    : "Documento";
+  const isLink = document.sourceKind === "link";
+  const label = isLink
+    ? "Enlace"
+    : document.mime
+      ? (MIME_LABELS[document.mime as SupportedMime] ?? "Documento")
+      : "Documento";
+  const linkHost = isLink && document.sourceUrl ? safeHost(document.sourceUrl) : null;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <ClickableBox href={`/dashboard/knowledge/${document.id}`} className="rounded-xl border border-border bg-card p-5 hover:bg-accent/30">
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <FileText className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          {isLink ? (
+            <Link2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          ) : (
+            <FileText className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          )}
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/dashboard/knowledge/${document.id}`}
-              className="font-medium transition-colors hover:text-primary-ink"
-            >
-              {document.title}
-            </Link>
+            <span className="font-medium">{document.title}</span>
             <StatusBadge status={document.status} />
           </div>
 
           <p className="mt-1 text-xs text-muted-foreground">
             {label}
-            {document.sizeBytes ? ` · ${formatBytes(document.sizeBytes)}` : ""}
+            {linkHost ? ` · ${linkHost}` : ""}
+            {document.sizeBytes && !isLink ? ` · ${formatBytes(document.sizeBytes)}` : ""}
             {document.status === "ready" ? ` · ${fragmentLabel(document.chunkCount)}` : ""}
             {` · Subido el ${formatDateTime(document.createdAt, timeZone)}`}
           </p>
 
-          {(document.tags.length > 0 || document.internalOnly) && (
+          {(document.tags.length > 0 || document.internalOnly || folderName) && (
             <div className="mt-2 flex flex-wrap gap-1.5">
+              {folderName && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  <Folder className="h-3 w-3" aria-hidden="true" />
+                  {folderName}
+                </span>
+              )}
               {document.internalOnly && (
                 <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                   Uso interno
@@ -442,6 +609,16 @@ function DocumentRow({
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
             </IconButton>
           )}
+          {onReplace && (
+            <IconButton label="Reemplazar por una versión nueva" onClick={onReplace} disabled={disabled}>
+              <FileUp className="h-4 w-4" aria-hidden="true" />
+            </IconButton>
+          )}
+          {onRefreshLink && (
+            <IconButton label="Volver a leer la página" onClick={onRefreshLink} disabled={disabled}>
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            </IconButton>
+          )}
           <IconButton label="Editar" onClick={onEdit} disabled={disabled}>
             <Pencil className="h-4 w-4" aria-hidden="true" />
           </IconButton>
@@ -450,8 +627,16 @@ function DocumentRow({
           </IconButton>
         </div>
       </div>
-    </div>
+    </ClickableBox>
   );
+}
+
+function safeHost(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
 }
 
 function fragmentLabel(count: number): string {
@@ -525,13 +710,16 @@ export function StatusBadge({ status }: { status: KnowledgeStatus }) {
 
 function EditDialog({
   document,
+  folders = [],
   onClose,
   onSaved,
 }: {
   document: KnowledgeDocument;
+  folders?: Array<{ id: string; name: string }>;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const [folderId, setFolderId] = useState(document.folderId ?? "");
   const [title, setTitle] = useState(document.title);
   const [tags, setTags] = useState(document.tags.join(", "));
   const [internalOnly, setInternalOnly] = useState(document.internalOnly);
@@ -542,8 +730,18 @@ function EditDialog({
     setError(null);
     startTransition(async () => {
       const result = await updateDocumentMetadata(document.id, title, tags, internalOnly);
-      if (result.ok) onSaved();
-      else setError(result.error);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      if ((document.folderId ?? "") !== folderId) {
+        const moved = await moveDocumentToFolder(document.id, folderId || null);
+        if (!moved.ok) {
+          setError(moved.error);
+          return;
+        }
+      }
+      onSaved();
     });
   }
 
@@ -585,6 +783,27 @@ function EditDialog({
             />
             <p className="mt-1 text-xs text-muted-foreground">Separadas por coma.</p>
           </div>
+
+          {folders.length > 0 && (
+            <div>
+              <label htmlFor="kb-carpeta" className="block text-sm font-medium">
+                Carpeta
+              </label>
+              <select
+                id="kb-carpeta"
+                value={folderId}
+                onChange={(e) => setFolderId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Sin carpeta</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3">
             <input

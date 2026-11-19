@@ -19,6 +19,8 @@ import { dateInTz } from "@/lib/scheduling/time/tz";
 import { formatDateLong, formatDateTimeWithZone, gmtOffsetLabel, timezoneCityLabel } from "@/lib/scheduling/booker/format";
 import { OUT_OF_OFFICE_REASON_LABELS } from "@/lib/scheduling/out-of-office";
 import { eventsForSchedule } from "@/lib/scheduling/schedule-rules";
+import { googleStateTag, type GoogleCalendarState } from "@/lib/scheduling/google-notice";
+import { NoGoogleNotice } from "../no-google-notice";
 import type { AvailabilitySchedule, DateOverride, WeeklyHours } from "@/lib/scheduling/types";
 import type { EventUsingSchedule, OutOfOfficeRow } from "@/lib/scheduling/data/schedules";
 import {
@@ -47,6 +49,7 @@ export function AvailabilityView({
   isSelf,
   canManageOthers,
   members,
+  googleStates = {},
 }: {
   schedules: AvailabilitySchedule[];
   selectedId: string | null;
@@ -57,6 +60,8 @@ export function AvailabilityView({
   isSelf: boolean;
   canManageOthers: boolean;
   members: Array<{ userId: string; label: string }>;
+  /** Si cada persona tiene Google Calendar conectado (la propia siempre; las demás, con scheduling.manage_others). */
+  googleStates?: Record<string, GoogleCalendarState>;
 }) {
   const router = useRouter();
   const selected = schedules.find((s) => s.id === selectedId) ?? schedules[0] ?? null;
@@ -113,13 +118,23 @@ export function AvailabilityView({
             <span>Persona</span>
             <select aria-label="Persona" value={targetUserId} onChange={(e) => router.push(`/dashboard/agenda/configuracion/disponibilidad?persona=${e.target.value}`)} className="h-8 rounded-lg border border-input bg-background px-2 text-sm text-foreground">
               {members.map((m) => (
-                <option key={m.userId} value={m.userId}>{m.label}</option>
+                <option key={m.userId} value={m.userId}>
+                  {m.label}
+                  {googleStateTag(googleStates[m.userId]) ? ` · ${googleStateTag(googleStates[m.userId])}` : ""}
+                </option>
               ))}
             </select>
           </label>
         ) : undefined
       }
     >
+      {googleStates[targetUserId] && (
+        <NoGoogleNotice
+          state={googleStates[targetUserId]}
+          variant="card"
+          personName={isSelf ? undefined : (members.find((m) => m.userId === targetUserId)?.label ?? "Esta persona")}
+        />
+      )}
       {toast && <Notice tone="success">{toast}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 

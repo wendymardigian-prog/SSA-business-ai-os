@@ -4,6 +4,7 @@
  * persona. Los totales se calculan en céntimos y coinciden con la suma de las filas.
  */
 import { addDays, isDateOnly } from "@/lib/shared/dates";
+import { paymentStatusMenu, type PaymentStatusMenuOption } from "./payment-status-menu";
 import { delayChip, type DelayChip } from "./delay";
 import { fromCents, toCents } from "@/lib/shared/money";
 import { paymentMethodName, type PaymentMethodDef } from "./payment-methods";
@@ -30,6 +31,9 @@ export interface PaymentsFilters {
   paidFrom: string | null;
   paidTo: string | null;
   vendedorId: string | null;
+  /** Producto y variante de la VENTA (por su snapshot): se resuelven a las ventas que cumplen, no son columnas de `payments`. */
+  productId: string | null;
+  variantId: string | null;
   /** «Cobrados con más de N días de atraso»: `delay_days > N`. */
   delayOver: number | null;
   q: string | null;
@@ -60,6 +64,8 @@ export function parsePaymentsFilters(params: Params): PaymentsFilters {
     paidFrom: date("cobro_desde"),
     paidTo: date("cobro_hasta"),
     vendedorId: one(params.vendedor),
+    productId: one(params.producto),
+    variantId: one(params.variante),
     delayOver: Number.isInteger(over) && over >= 0 && one(params.atraso) !== null ? over : null,
     q: one(params.q),
     page: Number.isInteger(page) && page > 0 ? page : 1,
@@ -76,6 +82,8 @@ export function paymentsFiltersToParams(f: PaymentsFilters): URLSearchParams {
   if (f.paidFrom) p.set("cobro_desde", f.paidFrom);
   if (f.paidTo) p.set("cobro_hasta", f.paidTo);
   if (f.vendedorId) p.set("vendedor", f.vendedorId);
+  if (f.productId) p.set("producto", f.productId);
+  if (f.variantId) p.set("variante", f.variantId);
   if (f.delayOver !== null) p.set("atraso", String(f.delayOver));
   if (f.q) p.set("q", f.q);
   if (f.page > 1) p.set("pagina", String(f.page));
@@ -83,7 +91,7 @@ export function paymentsFiltersToParams(f: PaymentsFilters): URLSearchParams {
 }
 
 export function countActivePaymentFilters(f: PaymentsFilters): number {
-  return [f.status.length > 0, f.method, f.dueFrom, f.dueTo, f.paidFrom, f.paidTo, f.vendedorId, f.delayOver !== null].filter(Boolean).length;
+  return [f.status.length > 0, f.method, f.dueFrom, f.dueTo, f.paidFrom, f.paidTo, f.vendedorId, f.productId, f.variantId, f.delayOver !== null].filter(Boolean).length;
 }
 
 export interface QueryFilter {
@@ -158,6 +166,8 @@ export interface PaymentListRow {
   fee: number | null;
   net: number | null;
   canAct: { markPaid: boolean; reschedule: boolean };
+  /** Lo que ofrece el Estado de la tabla (cada opción abre su diálogo). Vacío = el estado se ve, no se cambia. */
+  statusMenu: PaymentStatusMenuOption[];
 }
 
 export function paymentListRow(p: PaymentListInput, canManage: boolean, catalog?: readonly PaymentMethodDef[] | null): PaymentListRow {
@@ -178,6 +188,7 @@ export function paymentListRow(p: PaymentListInput, canManage: boolean, catalog?
     fee: hasFee ? fromCents(feeCents) : null,
     net: hasFee ? fromCents(toCents(p.amount) - feeCents) : null,
     canAct: { markPaid: canManage && open && p.type !== "refund", reschedule: canManage && open && p.type !== "refund" },
+    statusMenu: paymentStatusMenu({ status: p.status, isRefund: p.type === "refund" }, canManage),
   };
 }
 

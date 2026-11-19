@@ -77,7 +77,7 @@ describe("el tope de gasto de IA del negocio (noviembre 2026)", () => {
     expect(outcome).toMatchObject({ kind: "run", status: "error", detail: "budget_exceeded" });
     expect(w.db.rows("agent_runs")[0]).toMatchObject({ source: "conversation_summary", status: "error", error: "Tope mensual alcanzado" });
     expect(w.db.rows("conversations")[0].summarized_at).toBeNull();
-    expect(checkBudget).toHaveBeenCalledWith(w.db.client, "ws-1", NOW, { model: expect.objectContaining({ provider: expect.any(String), model: expect.any(String) }) });
+    expect(checkBudget).toHaveBeenCalledWith(w.db.client, "ws-1", NOW, { model: expect.objectContaining({ provider: expect.any(String), model: expect.any(String) }), task: "conversation_summary" });
   });
 });
 

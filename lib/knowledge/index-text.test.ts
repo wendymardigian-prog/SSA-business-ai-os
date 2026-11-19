@@ -8,10 +8,10 @@ const run = vi.hoisted(() => ({
   close: vi.fn().mockResolvedValue({ costUsd: 0, pricingMissing: [] }),
   runId: "run-1",
 }));
-const mocks = vi.hoisted(() => ({ openAiRun: vi.fn(), embed: vi.fn(), write: vi.fn() }));
+const mocks = vi.hoisted(() => ({ openAiRun: vi.fn(), embed: vi.fn(), write: vi.fn(), retire: vi.fn(async () => true) }));
 vi.mock("@/lib/ai/run", () => ({ openAiRun: mocks.openAiRun }));
 vi.mock("./embeddings", () => ({ generateEmbeddings: mocks.embed }));
-vi.mock("./index-document", () => ({ writeChunks: mocks.write }));
+vi.mock("./index-document", () => ({ writeChunks: mocks.write, retireChunks: mocks.retire }));
 
 import { indexText } from "./index-text";
 
@@ -79,6 +79,9 @@ describe("indexText", () => {
     expect(r.documentId).toBe("doc-old");
     expect(db.writesTo("knowledge_base").some((c) => c.op === "insert")).toBe(false);
     expect(mocks.write.mock.calls[0][1].documentId).toBe("doc-old");
+    // : los trozos de la versión vieja se retiran antes de indexar la nueva.
+    expect(mocks.retire).toHaveBeenCalledWith(db.client, "doc-old");
+    expect(mocks.retire.mock.invocationCallOrder[0]).toBeLessThan(mocks.write.mock.invocationCallOrder[0]);
   });
 
   it("si el documento a reemplazar ya no existe (se borro), crea uno nuevo", async () => {
@@ -95,6 +98,8 @@ describe("indexText", () => {
     expect(db.writesTo("knowledge_base").at(-1)!.values).toMatchObject({ status: "error", error_detail: "Conectá Voyage en Integraciones.", chunk_count: 0 });
     expect(mocks.write).not.toHaveBeenCalled();
     expect(run.close).toHaveBeenCalledWith(expect.objectContaining({ status: "error", statusDetail: "permanent" }));
+    // : un documento en error no conserva trozos.
+    expect(mocks.retire).toHaveBeenCalledWith(db.client, "doc-new");
   });
 
   it("un fallo transitorio de Voyage se marca como reintentable", async () => {

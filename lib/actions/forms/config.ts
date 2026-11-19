@@ -12,6 +12,8 @@ import { isBusinessSignaturePath, validateContractConfig } from "@/lib/forms/con
 import { businessSignaturePath, parseBusinessSignature } from "@/lib/forms/contract/business-signer";
 import { CONTRACTS_BUCKET } from "@/lib/forms/contract/storage";
 import { signFormLink } from "@/lib/forms/signed-link";
+import { formLinkSlugs } from "@/lib/forms/link-variables";
+import { unavailableFormLink } from "@/lib/forms/contract/copy-email";
 import { isPublicFormType, type FormDefinition, type FormField } from "@/lib/forms/fields";
 import { mergeEodConfig, parseStoredEodConfig } from "@/lib/eod/config";
 import type { Json } from "@/lib/types/database";
@@ -96,6 +98,20 @@ export async function saveContractConfig(input: { formId: string; config: unknow
   const signaturePath = checked.config.businessSigner.signaturePath;
   if (signaturePath && !isBusinessSignaturePath(signaturePath, ctx.workspace.id, form.id)) {
     return { ok: false, error: "La imagen de la firma no es válida: volvé a dibujarla o subirla" };
+  }
+  // El correo de la copia firmada solo puede enlazar formularios publicados de ESTE negocio con página pública.
+  const copy = checked.config.copyEmail;
+  const linkSlugs = copy ? formLinkSlugs([copy.subject, copy.body]) : [];
+  if (linkSlugs.length > 0) {
+    const { data: linkable } = await service
+      .from("forms")
+      .select("slug")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("status", "published")
+      .in("type", ["custom", "survey", "contract"])
+      .in("slug", linkSlugs);
+    const missing = unavailableFormLink(linkSlugs, Array.isArray(linkable) ? linkable.map((f) => f.slug) : []);
+    if (missing) return { ok: false, error: `El link al formulario «${missing}» no sirve: no existe o no está publicado. Publicalo o sacá ese link del correo.` };
   }
 
   const { error } = await service

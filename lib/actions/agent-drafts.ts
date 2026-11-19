@@ -5,6 +5,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
 import { getMemberAction } from "@/lib/auth/guards";
 import { canReplyChannel } from "@/lib/inbox/channel-access";
+import { maybeProposeLearnedRule } from "@/lib/ai-learning/rules-run";
 import { approveDraft, discardDraft, regenerateDraft, type DraftActionResult } from "@/lib/agent/drafts/actions";
 import { requestSuggestion } from "@/lib/agent/drafts/suggest";
 import { loadLastDiscardedDraft, loadLastExpiredDraft, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
@@ -36,7 +37,13 @@ const NO_REPLY: DraftActionResult = { ok: false, code: "unknown", error: "Tu rol
 async function canReplyToDraft(supabase: Awaited<ReturnType<typeof createClient>>, draftId: string): Promise<boolean> {
   const access = await getMemberAction();
   if (!access) return false;
-  const { data } = await supabase.from("agent_drafts").select("channel_id").eq("id", draftId).maybeSingle();
+  const { data } = await supabase
+    .from("agent_drafts")
+    .select("channel_id")
+    .eq("id", draftId)
+    // Los permisos de `access` son del negocio ACTIVO: un chat de otro negocio de la misma persona no se juzga con ellos.
+    .eq("workspace_id", access.workspace.id)
+    .maybeSingle();
   return canReplyChannel(access.permissions, (data as { channel_id?: string | null } | null)?.channel_id ?? null);
 }
 
@@ -67,11 +74,27 @@ export async function sendDraftAction(
   return result;
 }
 
-export async function discardDraftAction(draftId: string, reason?: string | null): Promise<DraftActionResult> {
+/**
+ * Descartar. El motivo de la lista cerrada es OPCIONAL (decisión de producto): si viene, cuenta para que la IA aprenda y
+ * un rechazo repetido puede proponer una regla. Acepta el texto libre de siempre (string) para no romper a nadie.
+ */
+export async function discardDraftAction(draftId: string, input?: { reason?: string | null; note?: string | null } | string | null): Promise<DraftActionResult> {
   const { supabase, user } = await session();
   if (!user) return SESSION_EXPIRED;
   if (!(await canReplyToDraft(supabase, draftId))) return NO_REPLY;
-  const result = await discardDraft({ user: supabase, userId: user.id, draftId, reason });
+  const reasonKey = typeof input === "object" && input ? input.reason ?? null : null;
+  const note = typeof input === "string" ? input : typeof input === "object" && input ? input.note ?? null : null;
+  const result = await discardDraft({ user: supabase, userId: user.id, draftId, rejectReason: reasonKey, rejectNote: note });
+  if (result.ok && reasonKey) {
+    // Proponer una regla nunca tumba el descarte (que ya está hecho).
+    try {
+      const service = await createServiceClient();
+      const { data } = await service.from("agent_drafts").select("agent_id, workspace_id").eq("id", draftId).maybeSingle();
+      if (data?.agent_id) await maybeProposeLearnedRule(service, { workspaceId: data.workspace_id, agentId: data.agent_id, reason: reasonKey });
+    } catch (err) {
+      console.error("[drafts] no pude revisar las reglas aprendidas:", err instanceof Error ? err.message : String(err));
+    }
+  }
   revalidate();
   return result;
 }
@@ -145,6 +168,8 @@ export async function requestSuggestionAction(conversationId: string): Promise<D
     channels?: { platform?: string } | null;
   } | null;
   if (!conversation || conversation.deleted_at) return { ok: false, code: "not_found", error: "No encontré esa conversación." };
+  // Los permisos de `access` son del negocio ACTIVO: un chat de otro negocio de la misma persona no se juzga con ellos.
+  if (conversation.workspace_id !== access.workspace.id) return { ok: false, code: "not_found", error: "No encontré esa conversación." };
   if (!canReplyChannel(access.permissions, conversation.channel_id)) return NO_REPLY;
   const service = await createServiceClient();
   const result = await requestSuggestion({ service, conversation });

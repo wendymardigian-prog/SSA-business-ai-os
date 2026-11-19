@@ -17,6 +17,7 @@ import {
   type VendorDraft, type VendorRow, type VendorTotals, type VendorView,
 } from "@/lib/finance/vendor-totals";
 import { formatCivilDate } from "@/lib/finance/view";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * Finanzas > Proveedores. Un proveedor no se borra: se archiva (los gastos viejos lo siguen mostrando y deja de
@@ -166,7 +167,7 @@ export function VendorsList({
                   </thead>
                   <tbody className="divide-y divide-border">
                     {shown.map((v) => (
-                      <tr key={v.id} className="hover:bg-muted/30">
+                      <ClickableTr key={v.id} onOpen={canManage ? () => openEdit(v) : undefined} className="hover:bg-muted/30">
                         <td className="max-w-[240px] px-3 py-2"><NameCell v={v} /></td>
                         <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{countryName(v.country)}</td>
                         <td className="max-w-[200px] truncate px-3 py-2 text-muted-foreground">{v.email ?? "—"}</td>
@@ -174,7 +175,7 @@ export function VendorsList({
                         <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatUsd(v.paidYearCents)}</td>
                         <td className="whitespace-nowrap px-3 py-2">{formatCivilDate(v.lastPaid)}</td>
                         <td className="px-3 py-2"><RowActions v={v} canManage={canManage} onEdit={() => openEdit(v)} onArchive={() => askArchive(v)} onRestore={() => archive(v, false)} disabled={pending} /></td>
-                      </tr>
+                      </ClickableTr>
                     ))}
                   </tbody>
                 </table>

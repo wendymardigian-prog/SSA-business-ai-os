@@ -67,7 +67,7 @@ export default async function ComisionesPage({ searchParams }: { searchParams: P
         filters={filters}
         timeZone={timeZone}
         names={names}
-        can={{ expenses: ctx.can("expenses.view"), sales: ctx.can("sales.view"), content: ctx.can("content.view"), ads: ctx.can("dashboards.ads.view"), edit: ctx.can("commissions.edit") }}
+        can={{ expenses: ctx.can("expenses.view"), sales: ctx.can("sales.view"), content: ctx.can("content.view"), ads: ctx.can("dashboards.ads.view"), edit: ctx.can("commissions.edit"), delete: ctx.can("commissions.delete") }}
       />
     );
   }

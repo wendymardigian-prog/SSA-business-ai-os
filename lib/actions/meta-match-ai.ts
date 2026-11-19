@@ -72,10 +72,10 @@ export async function proposeMetaMatchesWithAi(input: { days?: string | number }
   const groups = [...unmatched.groups, ...noAd.groups].filter((g) => g.rule).slice(0, AI_MATCH_MAX_GROUPS);
   if (groups.length === 0) return { ok: false, error: "No hay grupos con UTMs para analizar: lo que queda se vincula a mano." };
 
-  const budget = await withinWorkspaceBudget(ctx.supabase, ctx.workspace.id);
-  if (!budget.allowed) return { ok: false, error: budget.message ?? "Tope de gasto de IA alcanzado" };
-
   const service = await createServiceClient();
+  // El gasto se suma con el cliente del servidor: `sum_ai_spend` y `sum_ai_task_spend` son solo de service_role.
+  const budget = await withinWorkspaceBudget(service, ctx.workspace.id, new Date(), { task: "ads_matching" });
+  if (!budget.allowed) return { ok: false, error: budget.message ?? "Tope de gasto de IA alcanzado" };
   const [model, instructions, catalog, examples] = await Promise.all([
     resolveTaskModel(service, ctx.workspace.id, "ads_matching"),
     loadTaskInstructionsForRun(service, ctx.workspace.id, "ads_matching"),

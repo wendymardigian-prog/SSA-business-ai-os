@@ -659,19 +659,41 @@ try {
 
     console.log("\nac · Invitación y vista previa (F41, F42)");
     const sha = (t) => createHash("sha256").update(t).digest("hex");
-    const inv1 = await rpcAs(owner, "portal_admin_invite", { p_workspace_id: ws.id, p_contact_id: cP.id });
+    // 00500: el token lo pide el servidor (portal_admin_invite_issue, solo service_role) con quien invita; con la
+    // sesión ya no se puede (ni el Owner): así nadie se lleva el link sin que salga el email.
+    const issue = () => {
+      try {
+        return { data: sql(`SELECT app_servicio.portal_admin_invite_issue(${lit(ws.id)}, ${lit(cP.id)}, ${lit(owner.id)}) r`)[0]?.r ?? null, error: null };
+      } catch (e) {
+        return { data: null, error: String(e?.message ?? e) };
+      }
+    };
+    const inv1 = issue();
     check(!inv1.error && inv1.data?.status === "ok" && /^[0-9a-f]{64}$/.test(inv1.data?.token ?? ""), "invitar devuelve el token una sola vez", inv1.error ?? JSON.stringify({ status: inv1.data?.status }));
+    check(sql(`SELECT count(*)::int n FROM public.audit_log WHERE entity_id = ${lit(cP.id)} AND action = 'portal.invited' AND performed_by = ${lit(owner.id)}`)[0]?.n >= 1, "el historial dice quién invitó");
     const stored = sql(`SELECT invite_token_hash h FROM app_servicio_portal.portal_accounts WHERE contact_id = ${lit(cP.id)}`)[0]?.h;
     check(stored === sha(inv1.data?.token ?? "") && stored !== inv1.data?.token, "la base guarda solo la huella");
     check(sql(`SELECT app_servicio.portal_invite_token_valid(${lit(stored)}) v`)[0]?.v === true, "y la huella vale");
-    const inv2 = await rpcAs(owner, "portal_admin_invite", { p_workspace_id: ws.id, p_contact_id: cP.id });
+    const inv2 = issue();
     check(inv2.data?.status === "rate_limited", "reenviar enseguida espera un minuto");
     sql(`UPDATE app_servicio_portal.portal_accounts SET invite_sent_at = now() - interval '2 minutes' WHERE contact_id = ${lit(cP.id)}`);
-    const inv3 = await rpcAs(owner, "portal_admin_invite", { p_workspace_id: ws.id, p_contact_id: cP.id });
+    const inv3 = issue();
     check(inv3.data?.status === "ok" && inv3.data?.token !== inv1.data?.token, "reenviar después genera un token nuevo");
     check(sql(`SELECT app_servicio.portal_invite_token_valid(${lit(stored)}) v`)[0]?.v === false && sql(`SELECT app_servicio.portal_invite_token_valid(${lit(sha(inv3.data?.token ?? ""))}) v`)[0]?.v === true, "el anterior deja de valer");
-    const memberInv = asUser(member.id, `SELECT app_servicio.portal_admin_invite(${lit(ws.id)}, ${lit(cP.id)}) r`);
-    check(!memberInv.ok, "un Member no invita (portal.accounts)", memberInv.error);
+    const ownerInv = await rpcAs(owner, "portal_admin_invite", { p_workspace_id: ws.id, p_contact_id: cP.id });
+    check(!!ownerInv.error && !ownerInv.data?.token, "con la sesión nadie saca el token de la invitación, ni el Owner (00500)", ownerInv.error);
+    const ownerIssue = await rpcAs(owner, "portal_admin_invite_issue", { p_workspace_id: ws.id, p_contact_id: cP.id, p_actor_user_id: owner.id });
+    check(!!ownerIssue.error && !ownerIssue.data?.token, "portal_admin_invite_issue tampoco se puede llamar con la sesión", ownerIssue.error);
+    const strangerIssue = (() => {
+      try {
+        return sql(`SELECT app_servicio.portal_admin_invite_issue(${lit(ws.id)}, ${lit(cP.id)}, gen_random_uuid()) r`)[0]?.r ?? null;
+      } catch {
+        return "rejected";
+      }
+    })();
+    check(strangerIssue === "rejected", "quien invita tiene que ser del equipo de ese negocio");
+    const recs = await rpcAs(member, "program_live_recordings", { p_product_id: cP.id });
+    check(!!recs.error, "las grabaciones de un programa no se piden con la sesión (00500)", recs.error);
 
     const notSeen = asUser(member2.id, `SELECT app_servicio.portal_admin_create_preview_pass(${lit(ws.id)}, ${lit(cP.id)}) r`);
     check(!notSeen.ok, "un Member que no ve al cliente no puede «Ver como estudiante»", notSeen.error);

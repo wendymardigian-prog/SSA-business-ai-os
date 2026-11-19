@@ -33,6 +33,7 @@ import { AvailableTimeSlots } from "./available-time-slots";
 import { BookForm, type BookFormValues } from "./book-form";
 import { UnavailableState } from "./states";
 import { useEmbedBridge } from "./use-embed-bridge";
+import { NextSlotsOffer } from "./next-slots-offer";
 
 type Step = "pick" | "form";
 
@@ -50,6 +51,8 @@ interface State {
   unavailable: UnavailableKey | null;
   error: string | null;
   fieldErrors: Record<string, string>;
+  /** los huecos libres siguientes que propuso el servidor al ocuparse el elegido. */
+  alternatives: string[];
 }
 
 type Action =
@@ -62,7 +65,7 @@ type Action =
   | { type: "pickSlot"; slot: Slot }
   | { type: "back" }
   | { type: "submitting" }
-  | { type: "failed"; message: string | null; fields?: Record<string, string> }
+  | { type: "failed"; message: string | null; fields?: Record<string, string>; alternatives?: string[] }
   | { type: "retry" };
 
 function reducer(state: State, action: Action): State {
@@ -87,13 +90,13 @@ function reducer(state: State, action: Action): State {
     case "pickDate":
       return { ...state, selectedDate: action.date, selectedSlot: null };
     case "pickSlot":
-      return { ...state, selectedSlot: action.slot, step: "form", error: null, fieldErrors: {} };
+      return { ...state, selectedSlot: action.slot, step: "form", error: null, fieldErrors: {}, alternatives: [] };
     case "back":
-      return { ...state, step: "pick", selectedSlot: null, error: null, fieldErrors: {} };
+      return { ...state, step: "pick", selectedSlot: null, error: null, fieldErrors: {}, alternatives: [] };
     case "submitting":
       return { ...state, submitting: true, error: null, fieldErrors: {} };
     case "failed":
-      return { ...state, submitting: false, error: action.message, fieldErrors: action.fields ?? {} };
+      return { ...state, submitting: false, error: action.message, fieldErrors: action.fields ?? {}, alternatives: action.alternatives ?? [] };
     case "retry":
       return { ...state, slots: {}, fetched: [], unavailable: null, loading: true };
     default:
@@ -144,6 +147,7 @@ export function Booker({
     fetched: initialUnavailable ? [] : [initialMonth],
     selectedDate: embed.date ?? null,
     selectedSlot: null,
+    alternatives: [],
     step: "pick",
     loading: false,
     submitting: false,
@@ -249,10 +253,16 @@ export function Booker({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const body = (await res.json()) as { uid?: string; redirectUrl?: string | null; message?: string; fields?: Record<string, string>; reason?: string; metaEventId?: string };
+      const body = (await res.json()) as { uid?: string; redirectUrl?: string | null; message?: string; fields?: Record<string, string>; reason?: string; metaEventId?: string; alternatives?: string[] };
 
       if (!res.ok) {
-        dispatch({ type: "failed", message: body.message ?? messageFor(body.reason), fields: body.fields });
+        const alternatives = Array.isArray(body.alternatives) ? body.alternatives.filter((a): a is string => typeof a === "string") : [];
+        dispatch({
+          type: "failed",
+          message: alternatives.length ? `${body.message ?? messageFor(body.reason)} Te proponemos los próximos horarios libres.` : (body.message ?? messageFor(body.reason)),
+          fields: body.fields,
+          alternatives,
+        });
         // Si el horario se ocupó, los horarios que se ven ya no sirven.
         if (body.reason === "slot_taken" || body.reason === "slot_unavailable") dispatch({ type: "retry" });
         return;
@@ -326,6 +336,14 @@ export function Booker({
               onBack={() => dispatch({ type: "back" })}
               onConfirm={() => void submit({ responses: {}, honeypot: "" })}
             />
+            <NextSlotsOffer
+              alternatives={state.alternatives}
+              durationMinutes={event.durationMinutes}
+              timezone={state.timezone}
+              timeFormat={event.timeFormat}
+              disabled={state.submitting}
+              onPick={(slot) => dispatch({ type: "pickSlot", slot })}
+            />
           </div>
         ) : state.step === "form" && state.selectedSlot ? (
           <div className="md:col-span-2">
@@ -341,6 +359,14 @@ export function Booker({
               fieldErrors={state.fieldErrors}
               onBack={() => dispatch({ type: "back" })}
               onSubmit={submit}
+            />
+            <NextSlotsOffer
+              alternatives={state.alternatives}
+              durationMinutes={event.durationMinutes}
+              timezone={state.timezone}
+              timeFormat={event.timeFormat}
+              disabled={state.submitting}
+              onPick={(slot) => dispatch({ type: "pickSlot", slot })}
             />
           </div>
         ) : !state.loading && !view.hasAnySlots && state.fetched.length > 0 ? (

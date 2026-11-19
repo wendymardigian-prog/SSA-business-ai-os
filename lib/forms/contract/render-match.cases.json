@@ -15,5 +15,6 @@
   { "name": "pedazos fuera de orden", "template": "uno {{respuesta.a}} dos {{respuesta.b}} tres", "rendered": "uno x tres y dos", "matches": false },
   { "name": "el último pedazo no puede pisar al anterior", "template": "ab{{respuesta.a}}bc", "rendered": "abc", "matches": false },
   { "name": "Markdown con formato alrededor", "template": "# Contrato\n\nEntre **{{respuesta.empresa}}** y [nosotros](https://a.com).", "rendered": "# Contrato\n\nEntre **Acme \\*SA\\*** y [nosotros](https://a.com).", "matches": true },
-  { "name": "llaves que no son variables quedan fijas", "template": "Un {{1}} y {{respuesta.a}}", "rendered": "Un {{1}} y x", "matches": true }
+  { "name": "llaves que no son variables quedan fijas", "template": "Un {{1}} y {{respuesta.a}}", "rendered": "Un {{1}} y x", "matches": true },
+  {"name": "plan de pagos en su renglón (varios renglones en el hueco)", "template": "Pagos:\n\n{{venta.plan_pagos}}\n\nFin.", "rendered": "Pagos:\n\n1. Reserva — USD 500,00 — Cobrado\n2. Cuota 1 de 2 — USD 1.000,00 — Programado\n\nFin.", "matches": true}
 ]

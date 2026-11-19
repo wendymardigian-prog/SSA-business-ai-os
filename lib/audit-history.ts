@@ -53,6 +53,21 @@ export function actorName(
   return (row.performed_by && names.users?.[row.performed_by]) || "Alguien del equipo";
 }
 
+/**
+ * Quién aprobó lo que hizo un agente (00441): la acción queda con el agente como autor y, si salió de una propuesta
+ * aprobada, con la persona que la aprobó (`metadata.approved_by`). null si no hubo aprobación.
+ */
+export function approverName(
+  row: Pick<HistoryRow, "performed_by_agent_id" | "metadata">,
+  names: { users?: Record<string, string> } = {},
+): string | null {
+  if (!row.performed_by_agent_id) return null;
+  const meta = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata) ? (row.metadata as Record<string, unknown>) : null;
+  const approvedBy = meta && typeof meta.approved_by === "string" ? meta.approved_by : null;
+  if (!approvedBy) return null;
+  return names.users?.[approvedBy] ?? "Alguien del equipo";
+}
+
 // ── El diff legible ───────────────────────────────────────────────────────
 
 const FIELD_LABELS: Record<string, string> = {
@@ -271,6 +286,7 @@ export const CALL_ACTION_LABELS: Record<Extract<AuditAction, `call.${string}`>, 
   "call.proposal_discarded": "descartó una propuesta", // @plantilla-quitar(servicios)
   "call.proposal_failed": "no se pudo hacer una propuesta", // @plantilla-quitar(servicios)
   "call.manual_summary": "cargó la reunión a mano", // @plantilla-quitar(servicios)
+  "call.churn_cause_set": "cambió la causa de baja", // @plantilla-quitar(llamadas)
 };
 // @plantilla-hasta(llamadas)
 

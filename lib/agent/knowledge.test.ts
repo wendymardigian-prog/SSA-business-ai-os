@@ -13,7 +13,7 @@ import type { AiRunHandle } from "@/lib/ai/run";
 /**
  * Acceso del agente a la base de conocimiento (F27).
  *
- * El filtro vive en el SQL (match_knowledge_chunks_filtered, 00062) y se
+ * El filtro vive en el SQL (match_knowledge_chunks_scoped, 00412) y se
  * verifica contra la base real en scripts/verify-rls.mjs. Aca se fija el
  * contrato del lado de la app: que SIEMPRE se pide excluir lo interno, que se
  * pasan los tags del agente, que los pasos del run guardan los fragmentos, y
@@ -21,9 +21,9 @@ import type { AiRunHandle } from "@/lib/ai/run";
  */
 
 const DOCS = [
-  { chunk_id: "ch-publico", document_id: "doc-precios", document_title: "Precios", tags: ["ventas"], internal_only: false, content: "El plan cuesta 100" },
-  { chunk_id: "ch-interno", document_id: "doc-margenes", document_title: "Margenes internos", tags: ["ventas"], internal_only: true, content: "Margen 70%" },
-  { chunk_id: "ch-otro-tag", document_id: "doc-rrhh", document_title: "RRHH", tags: ["equipo"], internal_only: false, content: "Vacaciones" },
+  { chunk_id: "ch-publico", document_id: "doc-precios", document_title: "Precios", tags: ["ventas"], folder_id: "f-ventas", internal_only: false, content: "El plan cuesta 100" },
+  { chunk_id: "ch-interno", document_id: "doc-margenes", document_title: "Margenes internos", tags: ["ventas"], folder_id: null, internal_only: true, content: "Margen 70%" },
+  { chunk_id: "ch-otro-tag", document_id: "doc-rrhh", document_title: "RRHH", tags: ["equipo"], folder_id: "f-equipo", internal_only: false, content: "Vacaciones" },
 ];
 
 function fakeRun() {
@@ -41,18 +41,23 @@ function fakeRun() {
   return { run, steps, embeddings };
 }
 
-/** La RPC en memoria replica la semantica del WHERE de la 00062. */
+/** La RPC en memoria replica la semantica del WHERE de la 00412 (alcance: etiquetas, documentos o carpetas). */
 function db() {
   return memoryDb(
     {},
     {
       rpc: {
-        match_knowledge_chunks_filtered: (args) =>
-          DOCS.filter(
+        match_knowledge_chunks_scoped: (args) => {
+          const tags = (args.p_tags as string[] | null) ?? [];
+          const docs = (args.p_document_ids as string[] | null) ?? [];
+          const folders = (args.p_folder_ids as string[] | null) ?? [];
+          const all = tags.length === 0 && docs.length === 0 && folders.length === 0;
+          return DOCS.filter(
             (d) =>
               (args.p_include_internal || !d.internal_only) &&
-              (!args.p_tags || (args.p_tags as string[]).some((t) => d.tags.includes(t))),
-          ),
+              (all || tags.some((t) => d.tags.includes(t)) || docs.includes(d.document_id) || (d.folder_id !== null && folders.includes(d.folder_id))),
+          );
+        },
       },
     },
   );
@@ -64,6 +69,22 @@ beforeEach(() => {
 });
 
 describe("busqueda filtrada en la base de conocimiento", () => {
+  it(": pasa los documentos y carpetas del agente y solo llega a esos", async () => {
+    const d = db();
+    const { run } = fakeRun();
+    const result = await searchKnowledge(d.client, { workspaceId: "ws-1", query: "x", tags: [], documentIds: [], folderIds: ["f-equipo"], matchCount: 5, minSimilarity: 0.3, run });
+    expect(d.rpcCalls[0].args.p_folder_ids).toEqual(["f-equipo"]);
+    expect(d.rpcCalls[0].args.p_document_ids).toBeNull();
+    expect(result.ok && result.chunks.map((c) => c.chunkId)).toEqual(["ch-otro-tag"]);
+  });
+
+  it(": documentos sueltos y carpetas suman (uno u otro)", async () => {
+    const d = db();
+    const { run } = fakeRun();
+    const result = await searchKnowledge(d.client, { workspaceId: "ws-1", query: "x", tags: [], documentIds: ["doc-precios"], folderIds: ["f-equipo"], matchCount: 5, minSimilarity: 0.3, run });
+    expect(result.ok && result.chunks.map((c) => c.chunkId).sort()).toEqual(["ch-otro-tag", "ch-publico"]);
+  });
+
   it("siempre pide excluir los documentos internos, y un documento internal_only no llega al resultado", async () => {
     const d = db();
     const { run, steps } = fakeRun();

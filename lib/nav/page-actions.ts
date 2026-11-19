@@ -98,6 +98,11 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Plantillas de automatizaciones",
     tooltip: "Automatizaciones armadas para copiar y ajustar.",
   },
+  "/dashboard/flows/cola": {
+    title: "Cola de mensajes",
+    tooltip:
+      "Los WhatsApp de las automatizaciones que esperan su turno en cada número: salen de a uno, con esperas al azar, dentro del horario de envío del número y sin pasar su cupo. Lo que escribe el equipo cuenta en el cupo pero nunca espera.",
+  },
   "/dashboard/inbox": {
     title: "Bandeja",
     tooltip: "Todas las conversaciones de todos los canales, en un solo lugar.",
@@ -126,6 +131,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Contenido",
     tooltip:
       "De la idea a la publicacion: el guion, el caption, la media y en que redes sale cada pieza.",
+  },
+  "/dashboard/content/ideas": {
+    title: "Ideas",
+    tooltip: "Cada idea del banco con su estado, la pieza que salió de ella y de dónde salió: una grabación, un agente o una persona.",
   },
   "/dashboard/social": {
     title: "Social",
@@ -176,6 +185,18 @@ export const PAGE_META: Record<string, PageMeta> = {
   "/dashboard/agents/tareas/[task]": {
     title: "Tarea de IA",
     tooltip: "Cuando corre, sus instrucciones (si las tiene) y sus corridas.",
+  },
+  "/dashboard/agents/aprobaciones": {
+    title: "Aprobaciones",
+    tooltip: "Lo que proponen los agentes, una por una: aprobala, editala o rechazala con un motivo. Nada se aplica solo.",
+  },
+  "/dashboard/asistente": {
+    title: "Asistente del equipo",
+    tooltip: "Preguntale lo que necesites: consulta con lo que tu rol puede ver y lo que quiera crear te lo deja propuesto para que lo apruebes.",
+  },
+  "/dashboard/agents/calidad": {
+    title: "Calidad de la IA",
+    tooltip: "Por semana: cuánto se aprueba tal cual, cuánto se edita y por qué se rechaza.",
   },
   "/dashboard/agents/runs": {
     title: "Corridas",
@@ -309,6 +330,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Mi cuenta",
     tooltip: "Tu nombre, tu foto, tus datos de contacto, tu contraseña y qué avisos te llegan y por dónde. Es tuyo: no cambia nada para el resto del equipo.",
   },
+  "/dashboard/notificaciones": {
+    title: "Notificaciones",
+    tooltip: "Todos tus avisos: lo tuyo y lo general del negocio, sin lo que silenciaste en Mi cuenta → Notificaciones.",
+  },
   // ── Agenda (Etapa 4) ──────────────────────────────────────────────────
   "/dashboard/agenda": {
     title: "Agenda",
@@ -387,13 +412,18 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip:
       "Los estados que puede tener un contacto: uno del setter y uno del vendedor. El contacto muestra siempre el último que se cambió. No se borran: se archivan.",
   },
+  "/dashboard/settings/papelera": {
+    title: "Papelera",
+    tooltip:
+      "Lo que se eliminó en los últimos 30 días: ventas, pagos, agendas, servicios, grabaciones y más. Desde acá se restaura tal como estaba; pasado ese plazo se borra solo. Cada persona ve solo lo que puede eliminar.",
+  },
   "/dashboard/settings/recursos": {
     title: "Banca de recursos",
     tooltip: "Textos, audios, videos, imágenes, archivos y enlaces guardados para mandar desde la bandeja con un clic, o para que el asistente los use solo.",
   },
   "/dashboard/settings/productos": {
     title: "Productos",
-    tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para cargar ventas y para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.", // @plantilla-quitar(ventas)
+    tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para cargar ventas y para clasificar tus ideas y piezas. Uno vendido no se borra: se pone inactivo o discontinuado. Uno sin ventas se puede eliminar.", // @plantilla-quitar(ventas)
     // @plantilla-sin(ventas): tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
   },
   "/dashboard/settings/productos/[id]": {

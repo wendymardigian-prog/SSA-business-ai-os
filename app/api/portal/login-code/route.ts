@@ -7,7 +7,7 @@
  * La respuesta es SIEMPRE la misma exista o no el email (no se revela quién es estudiante), salvo el tope (6.º pedido
  * en una hora): `{ ok: false, reason: "rate_limited" }`. Los logs no llevan ni el email ni el código.
  */
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { svcRpc } from "@/lib/services/db";
 import { verifyPortalRequest } from "@/lib/portal-admin/portal-signature";
@@ -15,6 +15,7 @@ import { loadPortalHost, portalUrl } from "@/lib/portal-admin/load";
 import { portalLoginCodeEmail } from "@/lib/email/templates";
 import { resolveBrand } from "@/lib/brand";
 import { sendTransactionalEmail } from "@/lib/email/send";
+import { readTextCapped } from "@/lib/http/read-capped";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,8 @@ interface Issued {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.text();
-  if (body.length > 2000) return NextResponse.json({ ok: false }, { status: 413 });
+  const body = await readTextCapped(request, 2000);
+  if (body === null) return NextResponse.json({ ok: false }, { status: 413 });
   const okSig = verifyPortalRequest({
     secret: process.env.PORTAL_SHARED_SECRET,
     timestamp: request.headers.get("x-portal-timestamp"),
@@ -60,26 +61,35 @@ export async function POST(request: NextRequest) {
   if (d.reason === "rate_limited") return NextResponse.json({ ok: false, reason: "rate_limited" });
   if (!d.send || !d.code || !d.email || !d.workspace_id) return NextResponse.json({ ok: true });
 
-  const [{ data: ws }, host] = await Promise.all([
-    service.from("workspaces").select("name, brand_name, brand_logo_path, brand_color" as never).eq("id", d.workspace_id).maybeSingle(),
-    loadPortalHost(service as never, d.workspace_id),
-  ]);
-  const w = (ws ?? null) as { name?: string } | null;
-  const magicUrl = host.host ? portalUrl(host.host, `/entrar/codigo?${new URLSearchParams({ e: d.email, c: d.code })}`) : null;
-  const content = portalLoginCodeEmail({ brand: resolveBrand(w as never), workspaceName: w?.name ?? "", code: d.code, magicUrl, studentName: d.display_name ?? null });
-  const sent = await sendTransactionalEmail({
-    workspaceId: d.workspace_id,
-    to: d.email,
-    subject: content.subject,
-    html: content.html,
-    kind: "portal_login_code",
-    category: "transactional",
-    contactId: d.contact_id,
-    relatedEntityType: "contact",
-    relatedEntityId: d.contact_id,
-    fromOverride: host.fromEmail,
-    deps: { supabase: service },
+  // El email sale DESPUÉS de responder: así la respuesta tarda lo mismo exista o no la cuenta, y nadie averigua
+  // quién es estudiante midiendo el tiempo.
+  const { code, email, workspace_id: workspaceId, contact_id: contactId, display_name: studentName } = d;
+  after(async () => {
+    try {
+      const [{ data: ws }, host] = await Promise.all([
+        service.from("workspaces").select("name, brand_name, brand_logo_path, brand_color" as never).eq("id", workspaceId).maybeSingle(),
+        loadPortalHost(service as never, workspaceId),
+      ]);
+      const w = (ws ?? null) as { name?: string } | null;
+      const magicUrl = host.host ? portalUrl(host.host, `/entrar/codigo?${new URLSearchParams({ e: email, c: code })}`) : null;
+      const content = portalLoginCodeEmail({ brand: resolveBrand(w as never), workspaceName: w?.name ?? "", code, magicUrl, studentName: studentName ?? null });
+      const sent = await sendTransactionalEmail({
+        workspaceId,
+        to: email,
+        subject: content.subject,
+        html: content.html,
+        kind: "portal_login_code",
+        category: "transactional",
+        contactId,
+        relatedEntityType: "contact",
+        relatedEntityId: contactId,
+        fromOverride: host.fromEmail,
+        deps: { supabase: service },
+      });
+      if (!sent.ok) console.error("[portal-login] no salió el email:", sent.reason);
+    } catch (err) {
+      console.error("[portal-login] no salió el email:", err instanceof Error ? err.message : String(err));
+    }
   });
-  if (!sent.ok) console.error("[portal-login] no salió el email:", sent.reason);
   return NextResponse.json({ ok: true });
 }

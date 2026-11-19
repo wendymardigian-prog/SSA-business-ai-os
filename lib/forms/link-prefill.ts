@@ -9,6 +9,10 @@
  * Qué campo recibe qué dato lo dice el mapeo al contacto del formulario (`contact_config.map`). Si el formulario no
  * tiene mapeo para un dato, se usa el primer campo de ese tipo (el primer email, el primer teléfono). Un nombre de
  * relleno ("Instagram User", un id) no se prellena: no es un dato de la persona.
+ *
+ * Un formulario con «Nombre» y «Apellidos» por separado (mapeados a `contact.first_name_part` y
+ * `contact.last_name_part`) recibe el nombre partido: la primera palabra en el nombre y el resto en el apellido. La
+ * persona lo corrige si quedó mal partido ("María José Pérez" → "María" / "José Pérez").
  */
 import { isPlaceholderName } from "@/lib/contacts/anonymous";
 
@@ -29,10 +33,12 @@ export interface LinkPrefillMapEntry {
   target: string;
 }
 
-type Kind = "name" | "email" | "phone";
+type Kind = "name" | "first_name" | "last_name" | "email" | "phone";
 
 const TARGET_KIND: Record<string, Kind> = {
   "contact.display_name": "name",
+  "contact.first_name_part": "first_name",
+  "contact.last_name_part": "last_name",
   "contact.email": "email",
   "contact.phone": "phone",
   "contact.whatsapp_phone": "phone",
@@ -41,6 +47,8 @@ const TARGET_KIND: Record<string, Kind> = {
 /** Qué tipos de campo pueden recibir cada dato. */
 const ACCEPTS: Record<Kind, readonly string[]> = {
   name: ["short_text"],
+  first_name: ["short_text"],
+  last_name: ["short_text"],
   email: ["email", "short_text"],
   phone: ["phone", "short_text"],
 };
@@ -48,9 +56,12 @@ const ACCEPTS: Record<Kind, readonly string[]> = {
 const clean = (v: string | null | undefined): string => (typeof v === "string" ? v.trim() : "");
 
 function valueFor(contact: LinkPrefillContact, kind: Kind, target?: string): string {
-  if (kind === "name") {
-    const name = clean(contact.display_name).replace(/\s+/g, " ");
-    return name && !isPlaceholderName(name) ? name : "";
+  if (kind === "name" || kind === "first_name" || kind === "last_name") {
+    const raw = clean(contact.display_name).replace(/\s+/g, " ");
+    const name = raw && !isPlaceholderName(raw) ? raw : "";
+    if (kind === "name" || !name) return name;
+    const [first, ...rest] = name.split(" ");
+    return kind === "first_name" ? first : rest.join(" ");
   }
   if (kind === "email") return clean(contact.email);
   // El campo de WhatsApp prefiere el WhatsApp; el de teléfono, el teléfono. Si falta uno, sirve el otro.

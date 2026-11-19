@@ -15,8 +15,15 @@
  *
  * El portal (otro repositorio) lee lo mismo: `community-text.cases.json` son los casos que corren las dos copias.
  */
-import { renderContractMarkdown, safeHref, type ContractBlock, type InlineRun } from "@/lib/forms/contract/markdown";
-import { markdownToEditorDoc, editorDocToMarkdown, type DocNode } from "@/lib/forms/contract/editor-markdown";
+import { safeHref, type ContractBlock, type InlineRun } from "@/lib/forms/contract/markdown";
+import type { DocNode } from "@/lib/forms/contract/editor-markdown";
+import {
+  blocksWithBlankLines,
+  editorDocToMarkdownWithBlankLines,
+  looksLikeMarkdown,
+  markdownToEditorDocWithBlankLines,
+  splitBlankLines,
+} from "@/lib/forms/contract/blank-lines";
 import { normalizeVideoUrl, type VideoProvider } from "@/lib/program/video-url";
 
 export type CommunityBlock = ContractBlock;
@@ -45,37 +52,9 @@ function linkifyRun(run: InlineRun): InlineRun[] {
 
 const linkify = (runs: InlineRun[]) => runs.flatMap(linkifyRun);
 
-/** Un tramo de texto o un renglón vacío. */
-type Piece = { text: string } | { blank: true };
-
-/**
- * Corta el texto donde hay cuatro o más saltos de línea seguidos: cada par de más (después de los dos que separan
- * párrafos) es un renglón vacío. Lo que queda entre esos cortes se lee como siempre. Los del principio y el final no
- * cuentan.
- */
-export function splitBlankLines(body: string): Piece[] {
-  const text = (body ?? "").replace(/\r\n?/g, "\n").replace(/^\n+|\n+$/g, "");
-  const out: Piece[] = [];
-  let last = 0;
-  for (const m of text.matchAll(/\n{4,}/g)) {
-    const at = m.index ?? 0;
-    out.push({ text: text.slice(last, at) });
-    for (let i = 0; i < Math.floor((m[0].length - 2) / 2); i++) out.push({ blank: true });
-    last = at + m[0].length;
-  }
-  out.push({ text: text.slice(last) });
-  return out;
-}
-
-/** Los bloques para dibujar una publicación. Un renglón vacío es un párrafo sin texto. */
+/** Los bloques para dibujar una publicación. Un renglón vacío es un párrafo sin texto (`lib/forms/contract/blank-lines.ts`). */
 export function communityBlocks(body: string): CommunityBlock[] {
-  return splitBlankLines(body).flatMap((piece): CommunityBlock[] =>
-    "blank" in piece
-      ? [{ type: "paragraph", runs: [] }]
-      : renderContractMarkdown(piece.text).map((b) =>
-          b.type === "list" ? { ...b, items: b.items.map(linkify) } : { ...b, runs: linkify(b.runs) },
-        ),
-  );
+  return blocksWithBlankLines(body).map((b) => (b.type === "list" ? { ...b, items: b.items.map(linkify) } : { ...b, runs: linkify(b.runs) }));
 }
 
 /** Todas las direcciones de un texto (las de los links y las sueltas), en orden y sin repetir. */
@@ -122,40 +101,12 @@ export function communityPlainText(body: string): string {
 // ---------------------------------------------------------------------------
 
 /** Lo guardado → el documento del editor (un renglón vacío vuelve a ser un párrafo vacío). */
-export function communityToEditorDoc(body: string): DocNode {
-  const content: DocNode[] = [];
-  for (const piece of splitBlankLines(body)) {
-    if ("blank" in piece) content.push({ type: "paragraph" });
-    else if (piece.text.trim()) content.push(...(markdownToEditorDoc(piece.text).content ?? []).filter((n) => !isEmptyParagraph(n)));
-  }
-  return { type: "doc", content: content.length ? content : [{ type: "paragraph" }] };
-}
+export const communityToEditorDoc = (body: string): DocNode => markdownToEditorDocWithBlankLines(body);
 
-const isEmptyParagraph = (node: DocNode) => node.type === "paragraph" && !(node.content ?? []).some((c) => c.type !== "hardBreak" && !(c.type === "text" && !c.text?.trim()));
+/** El documento del editor → lo que se guarda (los párrafos vacíos entre bloques son renglones vacíos). */
+export const communityFromEditorDoc = (doc: DocNode): string => editorDocToMarkdownWithBlankLines(doc);
 
-/**
- * El documento del editor → lo que se guarda. Un párrafo vacío ENTRE dos bloques con texto es un renglón vacío (se
- * guarda como dos saltos de línea de más); los vacíos del principio y el final se descartan.
- */
-export function communityFromEditorDoc(doc: DocNode): string {
-  const parts: string[] = [];
-  for (const node of doc.content ?? []) {
-    const md = editorDocToMarkdown({ type: "doc", content: [node] });
-    if (md.trim()) parts.push(md);
-    else if (isEmptyParagraph(node)) parts.push("");
-  }
-  while (parts.length && parts[0] === "") parts.shift();
-  while (parts.length && parts[parts.length - 1] === "") parts.pop();
-  return parts.join("\n\n").trim();
-}
-
-/**
- * Un texto pegado que ya viene en Markdown (de Claude, de ChatGPT, de Notion como texto) se abre con su formato; uno
- * sin marcas de Markdown se pega como siempre. Devuelve null cuando no hay nada que interpretar.
- */
-export function looksLikeMarkdown(text: string): boolean {
-  return /(^|\n)(#{1,3}\s|[-*]\s|\d+[.)]\s)|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\((https?:|mailto:|tel:)/.test(text);
-}
+export { looksLikeMarkdown, splitBlankLines };
 
 /** El título de un post del equipo (00405): obligatorio en uno nuevo, hasta 200 caracteres (emojis incluidos). */
 export const COMMUNITY_TITLE_MAX = 200;

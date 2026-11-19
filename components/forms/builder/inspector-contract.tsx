@@ -9,6 +9,9 @@ import { SignatureCanvas } from "@/components/forms/public/signature-canvas";
 import type { BusinessSigner, ContractMode } from "@/lib/forms/defaults";
 import { MAX_CC_EMAILS, parseCcInput, validateContractConfig, type ContractConfig } from "@/lib/forms/contract/config";
 import type { EmailReadiness } from "@/lib/email/readiness";
+import { RichTextEditor } from "@/components/editor/rich-text-editor";
+import { COPY_EMAIL_VARIABLES } from "@/lib/forms/contract/copy-email";
+import { formLinkVariable } from "@/lib/forms/link-variables";
 
 /**
  * El panel del contrato en Diseño (antes, la pestaña Contrato): el modo (Aceptación de términos o Contrato), el título,
@@ -24,6 +27,7 @@ export function InspectorContract({
   hasSignerEmail,
   emailReadiness,
   signatureUrl,
+  linkableForms = [],
 }: {
   formId: string;
   config: ContractConfig;
@@ -36,6 +40,8 @@ export function InspectorContract({
   emailReadiness?: EmailReadiness;
   /** Link temporal a la firma del negocio guardada (para mostrarla). */
   signatureUrl?: string | null;
+  /** Los formularios publicados que se pueden enlazar desde el correo de la copia firmada. */
+  linkableForms?: Array<{ name: string; slug: string }>;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(config.title);
@@ -45,6 +51,9 @@ export function InspectorContract({
   const [copyToOwner, setCopyToOwner] = useState(config.copyToOwner);
   const [mode, setMode] = useState<ContractMode>(config.mode);
   const [signer, setSigner] = useState<BusinessSigner>(config.businessSigner);
+  const [customCopy, setCustomCopy] = useState(!!config.copyEmail);
+  const [copySubject, setCopySubject] = useState(config.copyEmail?.subject ?? "");
+  const [copyBody, setCopyBody] = useState(config.copyEmail?.body ?? "");
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [saving, start] = useTransition();
 
@@ -58,7 +67,13 @@ export function InspectorContract({
     mode,
     // La firma de ambas partes solo existe en modo Contrato.
     businessSigner: mode === "contract" ? signer : { ...signer, enabled: false },
+    // Apagado, el correo de siempre (lo escrito no se guarda).
+    copyEmail: customCopy ? { subject: copySubject, body: copyBody } : null,
   };
+  const copyVariables = [
+    ...COPY_EMAIL_VARIABLES.map((v) => ({ name: v.key, label: v.label })),
+    ...linkableForms.map((f) => ({ name: formLinkVariable(f.slug), label: `Link a «${f.name}»` })),
+  ];
   const validation = validateContractConfig(next);
 
   function save() {
@@ -124,6 +139,40 @@ export function InspectorContract({
         label="Mandarme una copia firmada"
         description="Cada vez que alguien firma, el Owner del negocio recibe el PDF por correo."
       />
+      <section className="space-y-3 rounded-lg border border-border p-3">
+        <Checkbox
+          checked={customCopy}
+          onChange={setCustomCopy}
+          label="Escribir el correo con la copia firmada"
+          description="Sin esto, quien firma recibe el correo de siempre («Tu copia firmada: …»). Con o sin esto, el PDF firmado va adjunto."
+        />
+        {customCopy && (
+          <div className="space-y-3">
+            <Field label="Asunto">
+              {(id) => (
+                <input
+                  id={id}
+                  className={inputClass}
+                  disabled={disabled}
+                  value={copySubject}
+                  maxLength={200}
+                  onChange={(e) => setCopySubject(e.target.value)}
+                  placeholder="¡Contrato firmado! Vamos con el paso 2"
+                />
+              )}
+            </Field>
+            <div>
+              <p className="mb-1 text-xs font-semibold">Texto del correo</p>
+              <RichTextEditor id={`copy-email-${formId}`} label="Texto del correo con la copia firmada" value={copyBody} onChange={setCopyBody} variables={copyVariables} disabled={disabled} />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Las variables se completan con los datos de quien firma. «Link a…» es el link personal a otro formulario: sale con el contacto, el servicio y la
+                venta de esa persona. Para que un texto lleve a ese link, seleccionalo, tocá Enlace y elegí la ficha como destino.
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
+
       {!validation.ok && <p className="text-xs text-destructive">{validation.errors[0]}</p>}
 
       {message && (

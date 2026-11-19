@@ -36,6 +36,7 @@ export function FieldsTab({
   issues,
   focusRequest,
   onOpenContact,
+  businessLogoUrl,
   contract,
 }: {
   draft: Draft;
@@ -52,6 +53,8 @@ export function FieldsTab({
   /** Pedido de la barra: "llevame al primer problema" (la `nonce` cambia en cada pedido). */
   focusRequest: { fieldKey: string | null; nonce: number } | null;
   onOpenContact: () => void;
+  /** El logo de la marca del negocio (o null): para la opción «Mostrar el logo». */
+  businessLogoUrl?: string | null;
   /** Solo un contrato: su texto va en el lienzo y sus ajustes en el panel (antes, la pestaña Contrato). */
   contract?: {
     formId: string;
@@ -60,6 +63,7 @@ export function FieldsTab({
     canManage: boolean;
     emailReadiness?: EmailReadiness;
     signatureUrl?: string | null;
+    linkableForms?: Array<{ name: string; slug: string }>;
   };
 }) {
   const fields = draft.definition.fields;
@@ -123,6 +127,7 @@ export function FieldsTab({
         hasSignerEmail={!!signerEmailField(fields)}
         emailReadiness={contract.emailReadiness}
         signatureUrl={contract.signatureUrl}
+        linkableForms={contract.linkableForms ?? []}
       />
     </div>
   ) : null;
@@ -162,6 +167,8 @@ export function FieldsTab({
       contactConfig={contactConfig}
       disabled={disabled}
       onOpenContact={onOpenContact}
+      logoUrl={businessLogoUrl ?? null}
+      isContract={type === "contract"}
     />
   );
 

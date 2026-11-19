@@ -41,6 +41,7 @@ export function FormEditor({
   form,
   versions,
   canManage,
+  canDelete = false,
   publicBase,
   timeZone,
   extras,
@@ -48,6 +49,8 @@ export function FormEditor({
   form: EditorForm;
   versions: EditorVersion[];
   canManage: boolean;
+  /** `forms.delete`: «Eliminar formulario» en la tarjeta de Estado (va a la Papelera 30 días). */
+  canDelete?: boolean;
   /** La base de los links públicos del negocio (`publicBaseUrl`). */
   publicBase: string;
   timeZone: string;
@@ -342,9 +345,10 @@ export function FormEditor({
                 issues={disabled ? NO_ISSUES : issues}
                 focusRequest={focusRequest}
                 onOpenContact={() => setSection("contacto")}
+                businessLogoUrl={extras.businessLogoUrl ?? null}
                 contract={
                   form.type === "contract" && contractConfig
-                    ? { formId: form.id, config: contractConfig, onConfigSaved: setContractConfig, canManage, emailReadiness: extras.emailReadiness, signatureUrl: extras.businessSignatureUrl }
+                    ? { formId: form.id, config: contractConfig, onConfigSaved: setContractConfig, canManage, emailReadiness: extras.emailReadiness, signatureUrl: extras.businessSignatureUrl, linkableForms: extras.linkableForms }
                     : undefined
                 }
               />
@@ -367,6 +371,7 @@ export function FormEditor({
                 form={{ ...form, slug, status, contactConfig }}
                 versions={versions}
                 canManage={canManage}
+                canDelete={canDelete}
                 publicBase={publicBase}
                 published={status === "published"}
                 onSlugChanged={setSlug}

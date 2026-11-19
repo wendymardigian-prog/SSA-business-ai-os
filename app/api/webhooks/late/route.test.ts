@@ -291,18 +291,18 @@ describe("webhook de Zernio: que eventos procesa", () => {
     expect(res.status).toBe(400);
   });
 
-  it("una cuenta que no es un canal activo responde 404", async () => {
+  it("una cuenta que no es un canal activo responde 401 (igual que una firma mala)", async () => {
     db({ channels: [channelRow({ late_account_id: "otra-cuenta" })] });
     const res = await callRoute(post(dm()));
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
   });
 
-  it("un canal desactivado tambien responde 404", async () => {
+  it("un canal desactivado tambien responde 401 (igual que una firma mala)", async () => {
     db({ channels: [channelRow({ is_active: false })] });
     const res = await callRoute(post(dm()));
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
   });
 
   it("un evento que no nos interesa se ignora con 200 y sin mirar la firma", async () => {
@@ -320,13 +320,20 @@ describe("webhook de Zernio: que eventos procesa", () => {
     expect(await res.json()).toEqual({ ok: true, skipped: "mensaje saliente" });
   });
 
-  it("un mensaje de otra cuenta propia del workspace se ignora antes de la firma", async () => {
+  it("un mensaje de otra cuenta propia del workspace se ignora (después de la firma)", async () => {
+    db();
+    const res = await callRoute(post(dm({ message: { sender: { id: "s", username: "minegocio" } } })));
+
+    expect(await res.json()).toEqual({ ok: true, skipped: "el remitente es una cuenta propia" });
+  });
+
+  it("sin firma, una cuenta propia como remitente no se distingue de una firma mala", async () => {
     db();
     const res = await callRoute(
       post(dm({ message: { sender: { id: "s", username: "minegocio" } } }), { signature: null }),
     );
 
-    expect(await res.json()).toEqual({ ok: true, skipped: "el remitente es una cuenta propia" });
+    expect(res.status).toBe(401);
   });
 
   it("el mismo evento dos veces se procesa una sola vez", async () => {
@@ -444,11 +451,11 @@ describe("webhook de Zernio: conversation.started (00267)", () => {
     expect(await res.json()).toEqual({ ok: true, skipped: "conversacion sin persona" });
   });
 
-  it("una cuenta que no es un canal activo responde 404", async () => {
+  it("una cuenta que no es un canal activo responde 401 (igual que una firma mala)", async () => {
     db({ channels: [] });
     const res = await callRoute(post(started()));
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
   });
 });
 
@@ -625,13 +632,13 @@ describe("webhook de Zernio: comentarios", () => {
     expect(processComment).not.toHaveBeenCalled();
   });
 
-  it("una cuenta que no es un canal responde 404", async () => {
+  it("una cuenta que no es un canal responde 401 (igual que una firma mala)", async () => {
     // Una cuenta que no es un canal ni una cuenta de social_accounts no es de
     // nadie: el comentario rebota.
     db({ channels: [channelRow({ late_account_id: "cuenta-de-tiktok" })] });
     const res = await callRoute(post(comment()));
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
   });
 
   it("el mismo comentario dos veces se procesa una sola vez", async () => {

@@ -247,6 +247,8 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
   const [transcript, setTranscript] = useState("");
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [pending, start] = useTransition();
+  // Una clase de video también puede llevar una página: el portal la muestra debajo del video (00490).
+  const hasPage = item.kind === "lesson" && (item.lesson_type === "html" || item.lesson_type === "video");
 
   function save() {
     const unlock: Record<string, unknown> = { type: ruleType };
@@ -257,7 +259,7 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
     else if ((ruleType === "journey_item" || ruleType === "automation") && lockedText) unlock.locked_text = lockedText;
     const patch: Record<string, unknown> = { title, description, required, comments_enabled: comments, unlock_rule: unlock };
     if (item.kind === "lesson" && item.lesson_type === "video") patch.video_url = videoUrl;
-    if (item.kind === "lesson" && item.lesson_type === "html") patch.html_content = html;
+    if (hasPage) patch.html_content = html;
     if (item.kind === "module") patch.is_extra = extra;
     start(async () => {
       const res = await updateProgramItem(productId, item.id, patch);
@@ -325,10 +327,10 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
             }}
           />
         )}
-        {item.kind === "lesson" && item.lesson_type === "html" && (
+        {hasPage && (
           <div className="space-y-1">
             <label className="block text-xs text-muted-foreground">
-              Página (pegala acá o subí un .html de hasta 1 MB)
+              {item.lesson_type === "video" ? "Página debajo del video (opcional): pegala acá o subí un .html de hasta 1 MB" : "Página (pegala acá o subí un .html de hasta 1 MB)"}
               <textarea className={cn(fieldInput, "font-mono")} rows={6} value={html} disabled={disabled} onChange={(e) => setHtml(e.target.value)} />
             </label>
             {canManage && <input type="file" accept=".html,text/html" aria-label="Subir página HTML" onChange={(e) => upload("html", e.target.files?.[0])} className="text-xs" />}

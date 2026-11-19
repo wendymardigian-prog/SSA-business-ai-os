@@ -1046,7 +1046,8 @@ Menu con la seccion **Herramientas** colapsable, Formularios rediseñado (lista 
 - **El editor de un formulario es lienzo + panel** (`components/forms/builder/`, pestaña Campos). Las reglas son puras y viven en `lib/forms/` (`builder-ops`, `contact-map`, `publish-issues`, `canvas-view`, `editor-bar`, `list`, `form-card`); los componentes solo las componen. **Ni un `<details>` en `components/forms/editor` ni en `components/forms/builder`** (`components/forms/no-details.test.ts`). Escribir en una pregunta no puede redibujar las otras ni perder el foco (las tarjetas son `React.memo` y reciben acciones estables).
 - **"Se guarda en el contacto" y la tabla de la pestaña Contacto son el mismo dato** (`contactConfig.map`, `setFieldMapping`): un dato del contacto lo usa una sola pregunta.
 - **La pestaña del editor vive en `?tab=`** y se cambia con `window.history.pushState(null, ...)` (sin pedirle la pagina al servidor).
-- **El formulario publico ya no muestra el logo** (`design.showLogo` queda guardado, nadie lo usa).
+- **El logo del formulario es opcional** (`design.showLogo`, `lib/forms/show-logo.ts`; prendido salvo que se apague): el de la marca del NEGOCIO (`resolveBrand`), arriba de `/f/<slug>` y nunca incrustado; en un contrato, también arriba de la primera hoja del PDF (`lib/forms/contract/pdf-logo.ts`, a PNG con `sharp`; un logo roto deja el PDF sin logo, nunca lo frena).
+- **Renglones vacíos del contrato**: dos saltos de línea de más (`\n{4,}`) son un renglón vacío, igual que en la comunidad (`lib/forms/contract/blank-lines.ts`, un solo lugar). La página, el PDF y el editor leen con `blocksWithBlankLines`; la huella es sobre el texto guardado y no cambia.
 - **`entry_url`**: la direccion completa por la que entro la persona, con todos sus parametros menos los sensibles (`lib/attribution/sensitive-params.ts`), los internos y el `#`; tope de 2000. Se arma y se vuelve a sanear en UN solo lugar (`lib/attribution/entry-url.ts`), viaja en `form_submissions.attribution.entry_url` y en `contact_touches.entry_url`, y se ve en el detalle de una respuesta y en las visitas del contacto. **Nunca se loguea.** `landing_page` y `page_url` siguen filtradas, la lista de claves de `lib/attribution/keys.ts` no cambio y `contacts.attribution` (copia derivada) no la incluye.
 - **Las columnas de la tabla de respuestas salen de `lib/forms/response-columns.ts`**, encima del catálogo común de `lib/attribution/columns.ts` (preguntas + atribución, con menú «Columnas»; lo elegido se guarda por tabla en `localStorage`, como diferencia con lo normal). La URL que se muestra es `bestEntryUrl`: `entry_url` o, si la web externa no la mandó, `landing_page` saneada.
 - **`record_contact_touch` cambio A PROPOSITO en la 00215** y solo para escribir `entry_url` (misma firma, mismo comportamiento): su huella ahora es `2f51ddbf060e31528b89ce7481b38e3d` (la vieja era `f364db1862cc0f90291ca14ef855a214`; la definicion completa esta en la cabecera de la migracion y `lib/contacts/record-touch-00215-diff.test.ts` fija el diff). `create_booking` NO se toco: la Agenda manda la URL dentro de `p_utm` y llega por `raw.utm`.
@@ -1237,7 +1238,7 @@ Mismas reglas que los demas: crean y limpian sus datos (prefijo `zz-test-`) y no
 
 # Tablas del sistema: DataTable y vistas guardadas (10/11/2026)
 
-Toda tabla con columnas se arma con `DataTable` (`components/ui/data-table/`): columnas que se prenden, apagan, reordenan, fijan y ensanchan, totales al pie sobre todo el filtro y **vistas guardadas** por persona (privadas, para el equipo o para personas elegidas; una predeterminada, que Owner y Admin pueden dejar a otras personas). Estrenado en Ventas y Pagos; el resto se migra por tandas. Cómo armar una: [docs/tablas.md](docs/tablas.md).
+Toda tabla con columnas se arma con `DataTable` (`components/ui/data-table/`): columnas que se prenden, apagan, reordenan, fijan y ensanchan, totales al pie sobre todo el filtro y **vistas guardadas** por persona (privadas, para el equipo o para personas elegidas; una predeterminada, que Owner y Admin pueden dejar a otras personas). Estrenado en Ventas y Pagos; desde el 19/11/2026 también Contactos, Agenda (lista), Llamadas, Respuestas, Comisiones, Gastos y Servicios (menú «Columnas», sin vistas guardadas); el resto se migra por tandas. Cómo armar una: [docs/tablas.md](docs/tablas.md).
 
 ## Lo que no se puede romper
 
@@ -1247,6 +1248,7 @@ Toda tabla con columnas se arma con `DataTable` (`components/ui/data-table/`): c
 - **Las vistas las escribe SOLO la base por funciones** (`save_table_view`, `delete_table_view`, `set_table_view_default`, migración 00360, SECURITY DEFINER): compartir y asignar predeterminadas a otras personas es de Owner y Admin **por su rol** (sin clave en el catálogo de permisos). La app lee con la RLS: un Admin no ve las privadas de otra persona. `scripts/verify-table-views.mjs` lo prueba.
 - **La vista activa vive en la URL** (`?vista=<id>`, `?vista=base` = la del sistema); sus filtros se aplican al elegirla o cuando la URL llega pelada. Todo link de la pantalla preserva `?vista=` (`withViewParam`).
 - **Lo que se ajusta sin guardar** vive en `localStorage` (`ssa:table:<tabla>:<vista>`, siempre en `try/catch`) hasta que la persona lo guarda en una vista.
+- **La fila entera abre el registro** (18/11/2026): `rowHref`/`onRowClick` en `DataTable`, `ClickableTr`/`ClickableBox` en una tabla a mano (`components/ui/clickable-row.tsx`, regla pura `lib/ui/row-click.ts`); los controles de adentro no abren la fila y Cmd/Ctrl + clic abre otra pestaña. **El contacto nunca es un link en una tabla** (`lib/ui/no-contact-link-in-tables.test.ts`). Un valor que se cambia en la tabla va con `InlineSelect` (`components/ui/inline-select.tsx`); lo que pide más datos abre su diálogo (`onPick`). Detalle en docs/tablas.md.
 
 ## Migración
 
@@ -1666,7 +1668,9 @@ Auditoría del motor, los disparadores, los pasos y la pantalla, con lista con b
 - **Republicar reconcilia todas las filas del lienzo** (sin canal, o con `config.origin = "canvas"`) de los tipos que arma el editor (`persistableTriggerTypes`) y no toca ni reactiva las reglas viejas de Growth (con canal y sin la marca).
 - **Tres catálogos, una sola lista cada uno**: disparadores (`trigger-catalog.ts`, comparado con el registro y el CHECK de la base), sus valores por defecto (`trigger-defaults.ts`) y las variables por disparador (`variable-catalog.ts`). El motor siembra `contact.*` y `workspace.*` en todos los pasos.
 - **Categorías**: `flows.categories` (text[], hasta 10, normalizadas en `lib/flows/categories.ts`); las sugerencias salen de las que usan las demás automatizaciones. La lista filtra por URL (`?q=&estado=&origen=&categoria=`, `lib/flows/list.ts`).
-- **Llamada HTTP solo por `lib/net/safe-fetch.ts`** (sin direcciones internas, 10 s, 256 KB). Un test que la use simula el DNS (`vi.mock("node:dns/promises")`).
+- **Categorías de formularios (00406, aplicada y registrada el 18/11/2026, versión `20261118234038`)**: `forms.categories`, mismas reglas que las de automatizaciones y UN solo módulo para las dos (`lib/categories.ts`: normalizar, sugerencias, renombrar y quitar); cada lista tiene las suyas, no se mezclan. Renombrar o quitar una categoría reescribe las filas que la tienen (`renameFormCategory`/`deleteFormCategory` con `forms.manage`, `renameFlowCategory`/`deleteFlowCategory` con `flows.edit`), desde «Gestionar categorías» (`components/ui/manage-categories-dialog.tsx`). El campo es `components/ui/category-input.tsx`.
+- **Llamada HTTP solo por `lib/net/safe-fetch.ts`** (sin direcciones internas, 10 s, 256 KB). Un test que la use simula el DNS (`vi.mock("node:dns/promises")`). Con «Firmar la llamada» (`sign`) sale con HMAC de la clave del negocio (`automation_webhook_secret`) y sin clave NO sale; el receptor local de prueba usa `AUTOMATION_HTTP_ALLOW_LOOPBACK=1` (nunca en producción).
+- **Disparadores de Servicios para UNA automatización** (relativo en horas y «Una cifra del estudiante llega a…», 00460/00461): el evento lleva `flow_id` y se compara por la automatización, no por la fila de `triggers`; un envío por automatización, servicio y ocurrencia en `app_servicio.trigger_anchor_fires`.
 - **Adjuntos del email = recursos de la banca** (`attachments: [{ assetId }]`), hasta 10 y 25 MB; se bajan una vez por paso; un recurso que falta no frena el email y avisa en la campana.
 - **«Agregar/Quitar etiqueta» decide por el tipo del paso**, nunca por `data.action` (el lienzo no lo guarda).
 
@@ -2182,6 +2186,33 @@ Auditoria completa en cuatro lotes (PRs #171 dependencias, #168 Altas, #172 Medi
 - DNS rebinding en `safeFetch` (fijar la IP validada con undici).
 - No hay CSP de scripts (solo `frame-ancestors`).
 
+# Auditoria de seguridad (19/11/2026)
+
+Segunda pasada (superficie publica, migraciones 00317 a 00461 y el codigo sumado desde el 7/11). Nada critico; un alto (Drive), cuatro medios y bajos. Migraciones `00500` (portal y grabaciones) y `00501` (afiliados y servicios). La `00500` va **ANTES** de desplegar el codigo (invitar al portal llama a `portal_admin_invite_issue`). En `main` la `00462` y la `00490` son de otras sesiones: **la proxima libre es la `00502`** (confirmar con `list_migrations` y las ramas locales).
+
+## Lo que no se puede romper
+
+- **El token de Google Drive que va al navegador trae SOLO `drive.file`**: Drive autoriza sin `include_granted_scopes` (`googleAuthorizeUrl({ includeGrantedScopes: false })`) y `getDrivePickerConfig` no entrega el token si `granted_scopes` trae algo mas (`driveScopesAreNarrow`). Con el mismo cliente OAuth que YouTube y Calendar, ese token arrastraba esos permisos. Una conexion vieja pide reconectar.
+- **El token de invitacion al portal lo pide solo el servidor** (`portal_admin_invite_issue`, solo `service_role`, con quien invita en el historial). La app mira `portal.accounts` y `can_view_as_student` con la sesion antes. `portal_admin_invite` y `program_live_recordings` ya no se llaman con la sesion.
+- **Un intento fallido que tiene que contar se DEVUELVE, no se lanza**: un RAISE deshace tambien el `bump_rate_limit`. `portal_login_password` responde `{ok:false, code:'PO401'}` como `portal_login_verify`.
+- **Lo que hace una funcion SECURITY DEFINER con el cliente de servicio tiene que validar igual los ids que recibe** (el `IF auth.uid() IS NOT NULL` saltea todo): `affiliate_set_sale` exige que el afiliado sea del negocio de la venta, y `previous_service_id` del mismo negocio (trigger).
+- **Toda SECURITY DEFINER nueva revoca el EXECUTE de PUBLIC**: `lib/migrations-definer-revoke.test.ts` lo exige desde la 00317 (tambien entiende los bucles `DO $$ ... EXECUTE format('REVOKE ...')`). El `ALTER DEFAULT PRIVILEGES IN SCHEMA app_servicio` no alcanza.
+- **Las rutas publicas leen el cuerpo con tope ANTES de la firma** (`readTextCapped`, `lib/http/read-capped.ts`): webhooks, `/api/portal/*` y la agenda publica. Un webhook responde igual a "cuenta desconocida" y a "firma mala" (401) y nada se busca antes de verificar la firma.
+- **Lo que responde una ruta del portal ante un error de la base** pasa por `portalDenied`: solo los codigos propios del modulo.
+- **El email de un codigo de acceso sale en `after()`**: la respuesta tarda lo mismo exista o no la cuenta.
+- **Una accion de la bandeja juzga con los permisos del negocio ACTIVO solo chats de ese negocio** (`conversation.workspace_id === access.workspace.id`): borrar para todos, reacciones, la marca de respuesta y los borradores.
+- **Los valores que se pegan en un mensaje de Slack se escapan** (`slackSafeVariables`); la plantilla del equipo conserva sus menciones.
+- **Lo que se sube directo al bucket de Contenido se vuelve a mirar** (`readStoredHead` + `sniffMime`) antes de anotarlo en la pieza; si no es lo que dice ser, se borra.
+- **La Papelera respeta el alcance** de contactos y tareas (lo leia con el cliente de servicio sin filtrar).
+- **`constantTimeEquals` compara HMAC** de los dos valores: no filtra el largo del secreto.
+- **HSTS y Permissions-Policy** en todas las rutas (`lib/security-headers.ts`); el microfono queda para el propio sitio (grabador de notas de voz).
+
+## Pendiente
+- Restringir la API key de Google por referrer (viaja al navegador para el selector de Drive) y reconectar Google Drive despues del deploy.
+- La Papelera de ventas y agendas (`trash_plan`, SQL) todavia no mira `can_see_sale` / `can_see_booking`; solo afecta a un rol con `<x>.delete` y alcance acotado.
+- El HTML de las lecciones del portal (`html_content`) se guarda sin limpiar: el portal lo tiene que pintar en un iframe aislado.
+- Los topes por IP dejan pasar si la base falla (decision a proposito); se reevalua con el CSP.
+
 # Diseñador IA (construido, 8/11/2026)
 
 Diseñar piezas visuales con IA o a mano (carruseles, historias, presentaciones, PDF, certificados, páginas web), publicarlas con un link `/d/<código>` o exportarlas, y generar piezas desde **plantillas** (a mano, para varios o desde una automatización), conectado con Contenido. En el código es `designer` / `design_*` y `/dashboard/disenos`; en lo visible, **Diseñador IA**. Resumen en [docs/designer.md](docs/designer.md); avance, pruebas y auditorías en `docs/PROGRESS-designer.md`; decisiones en `docs/PENDIENTE-designer.md`; contratos en `docs/designer/contratos.md`; el servicio de render en Railway, en `docs/designer/puesta-en-marcha.md`.
@@ -2291,6 +2322,33 @@ node scripts/verify-services.mjs --bloque a4
 node scripts/verify-servicios-migracion.mjs --a4 M1   # M1 a M9 (o --todas)
 node scripts/backfill-call-services.mjs --dry-run     # vincular las reuniones viejas (--aplicar para escribir)
 ```
+
+# Papelera: eliminar y restaurar (00410, 00411, 18/11/2026, traída de RER-BAIOS)
+
+Casi todo se elimina desde su ficha o su fila (agendas, ventas, pagos, productos, servicios, grabaciones, formularios y respuestas, fin de día, gastos, comisiones, ideas y piezas de contenido, conversaciones) y queda 30 días en **Ajustes → Papelera** para restaurarlo. Una clave por tipo (`<modulo>.delete`, de Owner y Admin; el Member de sistema ninguna). Contactos y tareas siguen con su borrado suave de siempre y la Papelera los lista igual (sin los duplicados unidos con Fusionar: `metadata.merged_into`). Detalle en [docs/papelera.md](docs/papelera.md).
+
+## Lo que no se puede romper
+
+- **No hay `deleted_at` en esas tablas: se guarda una foto y se borra de verdad.** `private.trash_capture` recorre `pg_constraint` (CASCADE entra en la foto, SET NULL se vuelve a enlazar, RESTRICT frena salvo que también se elimine) y la foto va a `private.trash_items`, que nunca viaja al navegador.
+- **Restaurar no dispara triggers** (los apaga por nombre solo en esa transacción, con `lock_timeout` 3 s → `busy`): no se regeneran comisiones, eventos de Meta ni automatizaciones. Un padre obligatorio que falta frena todo (`missing_parent:<tabla>`); uno opcional vuelve en null.
+- **Un tipo nuevo se suma en tres lugares a la vez**: `lib/trash/entities.ts`, `private.trash_can` y `private.trash_plan`. `lib/trash/entities.test.ts` los compara.
+- **Las funciones públicas corren con la SESIÓN** (`trash_preview`, `trash_delete`, `trash_restore`, `trash_list`): la base mira la clave y que la persona vea el registro.
+- **Lo que frena**: contrato firmado, comisión en un gasto, gasto automático, producto vendido, pieza programada. Ventas y pagos recalculan el estado, la marca «Cliente» y encolan Finanzas.
+- **Fathom no revive lo eliminado**: `calls_deleted_external` (sin vencimiento) y `lib/fathom/ingest.ts` lo saltea; si no puede leerla, no trae esa página.
+- **Una agenda futura se borra de Google sin avisar** (`deleteEvent(..., "none")`); para avisar está Cancelar.
+- **Sin la 00410/00411 aplicadas el código no se rompe**: eliminar responde «No pude revisar qué se elimina» y la Papelera muestra igual contactos y tareas con un aviso.
+- **En la plantilla de estudiantes** `private.trash_plan` nombra tablas de módulos que no viajan (ventas, grabaciones, formularios, finanzas): al sincronizar BAIOS hay que podarla (`poda.sql`, `areas.mjs`).
+
+`00410` y `00411` son aditivas y suman el cron diario `trash-purge` (SQL directo). **Aplicadas y registradas el 18/11/2026** (versiones `20261119032117` y `20261119032118`, UTC), después de ensayarlas contra producción en una transacción que se deshizo sola (eliminar y restaurar idénticos en 12 tipos). `verify-trash.mjs` necesita el Supabase local (Docker). **La próxima libre del rango de esta tanda es la `00412`** (confirmar con `list_migrations` y las ramas locales).
+
+# Contratos y correos: tres mejoras traídas de ALMA-BAIOS (18/11/2026, sin migración)
+
+El correo de la copia firmada se personaliza por contrato, un enlace de un correo puede apuntar a una variable, el link firmado completa «Nombre» y «Apellidos» por separado, y el contrato conserva la sangría y los espacios dobles. Detalle en [docs/formularios.md](docs/formularios.md) y [docs/flow-registry.md](docs/flow-registry.md). La regla de Servicios «Al crear la venta» de ALMA **no** se trajo: si algún día se trae, su `validate_service_settings` parte de la 00332 y acá la 00402 la redefinió.
+
+- **Sin `copyEmail`, el correo de la copia sale byte por byte igual** (snapshot en `lib/forms/contract/email-run.test.ts`). Las copias al equipo no cambian.
+- **Un enlace a una variable se revisa DESPUÉS de completarla** (la lista blanca de `lib/email/html.ts`), nunca en el editor; lo que no queda http(s), mailto o tel pierde el enlace.
+- **No se guarda un `{{form_link.<slug>}}` a un formulario sin publicar** (`saveContractConfig`), y un link que no se pudo firmar se saca del correo.
+- **La sangría y los espacios dobles no cambian la huella** (es sobre el texto guardado) ni la regla de los renglones vacíos.
 
 # Seguridad
 
@@ -2511,6 +2569,23 @@ Disparador de SISTEMA (`scheduled_time`, sin contacto ni persona): una automatiz
 
 `00339_scheduled_time_trigger` (aditiva: el CHECK de `triggers.type` suma `scheduled_time`) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 8/11/2026 UTC (version `20261108163107`), despues de ensayarla en una transaccion que se deshizo sola. En produccion conservo los 29 tipos de Servicios (67 en total). Si la base ya acepta tipos que su lista no conoce (en produccion, la `00336` de Servicios se aplico antes de que su codigo llegara a `main`), arma el CHECK con TODO lo que la base acepta + `scheduled_time`, sin sacar nada (siempre como `ARRAY['x'::text, ...]`). **Cuando Servicios mergee, su lista tiene que ir en una migracion posterior a la 00339 que sume `scheduled_time`**: la ultima definicion escrita es la que lee `registry/consistency.test.ts`. La `00330` a la `00336`, la `00340` y la `00343` son de Servicios (rama `feat/servicios-a1`; la 00343 ya esta aplicada) y la `00337`/`00338` de la guardia de email y los avisos. **La proxima libre es la `00344`** (confirmar con `list_migrations` y las ramas locales).
 
+# Cola de WhatsApp de las automatizaciones (00420 y 00421, 18/11/2026, traída de RER)
+
+Los WhatsApp de las automatizaciones que pueden salir en ráfaga entran en `send_queue_items` y salen de a uno por el carril del número (el de los broadcasts). Pantalla `/dashboard/flows/cola` (`channels.manage`). Detalle en [docs/cola-whatsapp.md](docs/cola-whatsapp.md).
+
+## Lo que no se puede romper
+
+- **Qué va por la cola lo decide `resolveDeliveryMode`** (`lib/send-queue/automation/settings.ts`): en «Según el disparador», lo que arranca porque el contacto escribió o por su agenda sale al instante, igual que un paso a un grupo; lo demás va por la cola. `instant-triggers.test.ts` ata la lista al registro. Sin la automatización (simulacro, no encontrada, error al leerla), al instante.
+- **El camino «al instante» no se tocó**: cada paso decide primero (`decideWhatsappDelivery`) y solo por la cola llama a `enqueueWhatsapp`. La cola entrega por los caminos de siempre (`sendChannelMessage`, `sendEvolutionDirect`, `sendToGroup`), con el tope único de 200/h.
+- **El ritmo es el del número** (`parseQueuePolicy` sobre `DEFAULT_WHATSAPP_POLICY`), nunca el de RER. La reserva y el calentamiento viven en `channels.send_policy` y guardar el ritmo no los pisa (`mergeQueueKeys`). El techo de un broadcast por WhatsApp sale de `broadcastCeiling` (calentamiento + sin la reserva).
+- **El cupo del número cuenta todo lo que sale por él** (`send_lane_counts`, 00420): si un canal nuevo empieza a mandar sin dejar fila en `messages`, `whatsapp_group_messages`, `broadcast_recipients` o `send_queue_items`, hay que sumarlo ahí.
+- **La guarda del cron `send-queue` mira la cola** (00421): si el despachador empieza a leer otra cosa, se amplía la guarda y `lib/cron/guards.test.ts`.
+- **`EVOLUTION_FAKE_API` nunca en producción**: `fake-mode.test.ts` lo controla.
+
+## Migraciones
+
+`00420_whatsapp_send_queue` (aditiva) va **ANTES** de desplegar (los pasos y la pantalla leen la tabla). `00421_send_queue_cron_guard` (aditiva, reescribe `private.cron_work_send_queue` desde la definición de producción del 18/11/2026) va después de la 00420. **Aplicadas y registradas** el 19/11/2026 UTC (versiones `20261119041841` y `20261119041842`), con el OK de Wendy, después de ensayarlas dos veces seguidas en una transacción que se deshizo sola: idempotentes, el cupo real del número dio 22 en el día, la guarda «sin trabajo» y el cron de 15 s siguió sin fallas. El rango 00420–00429 es de esta tanda (la 00430 en adelante, de otras sesiones; confirmar con `list_migrations` y las ramas locales).
+
 # Buenas practicas de desarrollo
 
 Un trabajo no esta terminado hasta cumplir la "Definicion de terminado" de `.claude/rules/00-protocolo-de-trabajo.md` (compila, lint, tests, pantalla mirada, `.env.example` al dia, migracion idempotente, sin secretos). No se dice "listo" si algo fallo.
@@ -2563,3 +2638,18 @@ El modelo de datos y la arquitectura se disenan pensando en todas las etapas, au
 
 - **Fuera del horario el paso se deja para después, no falla** (`deferFlowNode`, `reason: "send_window"`), antes de la reserva `flow_send_claims` y del tope por hora. Reglas puras en `lib/flow-engine/send-window.ts`. Un horario al revés (21:00 a 08:00) no se publica; un paso sin horario prendido sale igual que siempre.
 - **`booking.days_since_end` es el único dato de la reunión que se compara como número**, y se cuenta al armar el contexto del evento (no cambia mientras el flujo espera).
+
+# IA: topes por tarea, aprendizaje, asistente y Conocimiento (18/11/2026, traído de RER)
+
+Rama `feat/ia-aprendizaje-asistente` (PR #268). Migraciones `00440` a `00444`, aditivas: **aplicadas y registradas el 18/11/2026** (versiones `20261119040506`, `…510`, `…514`, `…517` y `…522`, UTC), antes de desplegar el código y después de ensayarlas juntas contra producción en una transacción que se deshizo sola. La 00444 dejó un «Asistente del equipo» APAGADO en cada negocio. **La próxima libre de esta tanda es la `00445`** (confirmar con `list_migrations` y las ramas locales).
+
+## Lo que no se puede romper
+
+- **Tope mensual por tarea** (`workspaces.ai_task_limits`, 00440; `lib/ai-tasks/limits.ts`): `withinWorkspaceBudget(..., { task })` mira primero los topes del negocio y después el de la tarea; avisa una vez al pasar el porcentaje (el del negocio o 80 %) y frena al llegar. Si no puede leer el gasto, no llama al modelo. Se edita en la pestaña Configuración de cada tarea con `ai_limits.manage` (`set_ai_task_cap`, solo service_role). Los topes del agente también avisan al 80 % sin porcentaje guardado; los del negocio siguen sin aviso si no se eligió uno. El chequeo de gasto usa SIEMPRE el cliente de servicio (`sum_ai_spend`/`sum_ai_task_spend` son de service_role).
+- **Motivo al descartar un borrador: OPCIONAL** (decisión de Wendy). `agent_drafts.reject_reason` con lista cerrada (`lib/ai-learning/reject-reasons.ts` = CHECK de la 00441); sin trigger que lo exija. Con motivo, un rechazo puede proponer una regla (`propose_learned_rule_if_due`, 00442, umbral por agente).
+- **Reglas aprendidas**: solo entran al prompt las ACEPTADAS por una persona, en su sección aparte; cada aceptar/retirar es una versión del prompt y «volver a esta» restaura sus reglas. Sin reglas ni ejemplos, el prompt es idéntico al de antes.
+- **Acciones que esperan aprobación** (`agents.actions_need_approval`) y **ejemplos automáticos** (`agents.learning.examples`): APAGADOS de serie. Con el interruptor prendido y el canal en borrador, una herramienta que escribe deja una fila en `ai_proposals` (Agentes IA › Aprobaciones). Aprueba quien tiene el permiso de esa acción (`lib/ai-proposals/agent-tools.ts`); una propuesta del asistente, solo quien la pidió. Reclamo `pending → approving`: dos clics = una ejecución.
+- **Asistente del equipo** (`lib/assistant`, `components/assistant`, `/dashboard/asistente`): permiso `assistant.use` (Owner/Admin sí, Member no). Corre con la SESIÓN de la persona (`lib/ai-tools/registry.ts`): lee contactos, conversaciones, tareas, agenda, servicios y Conocimiento; crear tarea o nota queda propuesto y la ejecución se pausa hasta que la persona decida. Plan y pasos se guardan al momento en `ai_messages.result`: se reanuda aunque se cierre la pestaña. Un agente `type = 'assistant'` por negocio (índice único, 00444), nace APAGADO. En la plantilla de estudiantes viaja con el Diseñador (usa `ai_threads`).
+- **Conocimiento** (00443): carpetas (escribe solo el servidor), enlaces (se bajan con `safeFetch`), alcance del agente por etiqueta/documento/carpeta (`match_knowledge_chunks_scoped`, solo documentos `ready`: reemplazar o reprocesar retira los trozos viejos). La página de cada trozo sale de las marcas `<!-- pagina N -->` del PDF; los trozos viejos quedan sin página hasta reindexar. «Citar la fuente» (`agents.cite_sources`) APAGADO de serie: apagado, el lead no ve nada nuevo.
+- **Estado de las claves de IA** en Agentes IA (`lib/ai/provider-states.ts`): un 401/403 del proveedor deja `integration_configs.last_error` y la clave «Con error» hasta volver a guardarla.
+- **`agent_runs_source_check`** suma `assistant` en la 00444: si otra rama redefine ese CHECK, partir del vigente en la base.

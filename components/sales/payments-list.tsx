@@ -11,8 +11,11 @@ import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
 import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
 import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 import { ViewsMenu } from "@/components/ui/data-table/views-menu";
-import { MarkPaidDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
+import { MarkPaidDialog, ReasonDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
+import { InlineSelect } from "@/components/ui/inline-select";
 import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
+import { BulkDeleteButton } from "@/components/trash/bulk-delete-button";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { DELAY_TONE_CLASSES } from "@/lib/sales/delay";
 import { formatMoney } from "@/lib/shared/format";
 import { PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, type PaymentStatus } from "@/lib/sales/labels";
@@ -24,6 +27,8 @@ import {
 import { paymentStatusClasses } from "@/lib/sales/status-colors";
 import { PAYMENTS_COLUMN_METAS, PAYMENTS_TABLE_KEY } from "@/lib/sales/payments-columns";
 import type { TablePrefs } from "@/lib/ui/data-table/prefs";
+import { keepVisible } from "@/lib/ui/data-table/selection";
+import { BULK_NOUNS } from "@/lib/trash/bulk-summary";
 import { viewFilterString, withViewParam, type TableViewItem } from "@/lib/ui/data-table/views";
 
 export type PaymentListRowView = PaymentListRow & { contactName: string; contactId: string | null; product: string; variant: string | null; saleDate: string };
@@ -42,7 +47,12 @@ export interface PaymentsListData {
   /** No se pudieron calcular los totales. */
   totalsFailed: boolean;
   scopeAll: boolean;
+  /** Con `payments.delete`: casillas, «Eliminar seleccionados» y «Eliminar» en cada fila (Papelera). */
+  canDelete?: boolean;
   members: Array<{ id: string; name: string }>;
+  /** Las opciones de los filtros Producto y Variante. */
+  products: Array<{ id: string; name: string }>;
+  variants: Array<{ id: string; product_id: string; name: string }>;
   enabledMethods: string[];
   methods: PaymentMethodDef[];
   today: string;
@@ -66,16 +76,22 @@ function formatDate(date: string | null): string {
   return new Intl.DateTimeFormat("es-AR", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 
+type PaymentRowAction = "paid" | "reschedule" | "uncollectible" | "revert";
+
 /** La pantalla de Pagos (F33). Qué se ve lo decide la base (RLS); los filtros viven en la URL. */
 export function PaymentsList({ data }: { data: PaymentsListData }) {
   const { rows, total, page, pageSize, filters, totals } = data;
   const router = useRouter();
   const pathname = usePathname();
-  const [action, setAction] = useState<{ kind: "paid" | "reschedule"; row: PaymentListRowView } | null>(null);
+  const [action, setAction] = useState<{ kind: PaymentRowAction; row: PaymentListRowView } | null>(null);
   const active = countActivePaymentFilters(filters);
   const pages = Math.max(1, Math.ceil(total / pageSize));
 
-  const columns = useMemo<DataColumn<PaymentListRowView>[]>(() => buildColumns(setAction), []);
+  const canDelete = !!data.canDelete;
+  const columns = useMemo<DataColumn<PaymentListRowView>[]>(() => buildColumns(setAction, canDelete), [canDelete]);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  // Lo elegido que sigue a la vista: al cambiar de página o de filtro, lo que ya no se ve se suelta.
+  const selected = useMemo(() => keepVisible(picked, rows.map((r) => r.id)), [picked, rows]);
   const state = useTablePrefs(PAYMENTS_TABLE_KEY, data.views.activeId ?? "base", columns, data.views.activeBase);
   const basePath = data.views.viewParam ? `${pathname}?vista=${data.views.viewParam}` : pathname;
 
@@ -85,6 +101,8 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
   const toggleStatus = (s: string) => go({ status: filters.status.includes(s) ? filters.status.filter((x) => x !== s) : [...filters.status, s], pill: null });
+  // Con un producto elegido, la lista de variantes muestra solo las suyas.
+  const variantsOfProduct = filters.productId ? data.variants.filter((v) => v.product_id === filters.productId) : data.variants;
   const payable = action ? { id: action.row.id, amount: action.row.amount, due: action.row.dueDate } : null;
   // El estado del pago (las pastillas) tambien vive adentro de «Filtros»: cuenta para el globito.
   const menuActive = active + (filters.pill ? 1 : 0);
@@ -135,6 +153,18 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
             ))}
           </fieldset>
           <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Producto">
+              <select className={selectClass} value={filters.productId ?? ""} onChange={(e) => go({ productId: e.target.value || null, variantId: null })}>
+                <option value="">Todos</option>
+                {data.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Variante">
+              <select className={selectClass} value={filters.variantId ?? ""} onChange={(e) => go({ variantId: e.target.value || null })}>
+                <option value="">Todas</option>
+                {variantsOfProduct.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </Field>
             <Field label="Método">
               <select className={selectClass} value={filters.method ?? ""} onChange={(e) => go({ method: e.target.value || null })}>
                 <option value="">Todos</option>
@@ -196,7 +226,12 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader route="/dashboard/ventas/pagos" left={<SalesViewToggle active="pagos" />} filters={barFilters} />
+      <PageHeader
+        route="/dashboard/ventas/pagos"
+        left={<SalesViewToggle active="pagos" />}
+        filters={barFilters}
+        right={canDelete && selected.size > 0 ? <BulkDeleteButton entity="payment" ids={[...selected]} noun={BULK_NOUNS.payment} onDone={() => setPicked(new Set())} /> : undefined}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         {data.loadError ? (
@@ -218,7 +253,9 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
               rowKey={(r) => r.id}
               state={state}
               caption="Pagos"
+              rowHref={(r) => `/dashboard/ventas/${r.saleId}`}
               totals={totalCells(totals)}
+              selection={canDelete ? { selected, onChange: setPicked, rowLabel: (r) => `Elegir el pago de ${r.contactName}` } : undefined}
             />
 
             <ul className="mt-4 space-y-2 md:hidden">
@@ -240,6 +277,7 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
                     <Link href={`/dashboard/ventas/${r.saleId}`} className="text-xs text-primary-ink underline-offset-2 hover:underline">Ver venta</Link>
                     {r.canAct.markPaid && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "paid", row: r })}>Cobrar</button>}
                     {r.canAct.reschedule && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "reschedule", row: r })}>Reprogramar</button>}
+                    {canDelete && <DeleteButton entity="payment" id={r.id} variant="icon" label="Eliminar" className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-700 dark:hover:text-red-400" />}
                   </div>
                 </li>
               ))}
@@ -277,6 +315,7 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
 
       {action?.kind === "paid" && payable && <MarkPaidDialog saleId={action.row.saleId} payment={payable} saleDate={action.row.saleDate} today={data.today} enabledMethods={data.enabledMethods} methods={data.methods} onClose={() => setAction(null)} />}
       {action?.kind === "reschedule" && payable && <RescheduleDialog payment={payable} onClose={() => setAction(null)} />}
+      {(action?.kind === "uncollectible" || action?.kind === "revert") && payable && <ReasonDialog payment={payable} kind={action.kind} onClose={() => setAction(null)} />}
     </div>
   );
 }
@@ -299,18 +338,30 @@ function FooterTotal({ label, value, tone }: { label: string; value: string; ton
   );
 }
 
-const LINK = "underline-offset-2 hover:underline";
 
 /** Las celdas de cada columna. El orden, la visibilidad y los anchos no se deciden acá. */
-function buildColumns(setAction: Dispatch<SetStateAction<{ kind: "paid" | "reschedule"; row: PaymentListRowView } | null>>): DataColumn<PaymentListRowView>[] {
+function buildColumns(setAction: Dispatch<SetStateAction<{ kind: PaymentRowAction; row: PaymentListRowView } | null>>, canDelete: boolean): DataColumn<PaymentListRowView>[] {
   const money = (value: number | null) => (value === null ? "—" : formatMoney(value));
   const cells: Record<string, Pick<DataColumn<PaymentListRowView>, "render" | "align" | "cellClassName">> = {
     due: { render: (r) => formatDate(r.dueDate) },
-    contact: { render: (r) => (r.contactId ? <Link href={`/dashboard/contacts/${r.contactId}`} className={`font-medium ${LINK}`}>{r.contactName}</Link> : r.contactName) },
-    product: { render: (r) => <Link href={`/dashboard/ventas/${r.saleId}`} className={LINK} title="Ver la venta">{r.product}</Link> },
+    // La fila entera abre la venta (`rowHref`); el contacto es texto: en una tabla nunca es un link (docs/tablas.md).
+    contact: { render: (r) => <span className="font-medium">{r.contactName}</span> },
+    product: { render: (r) => r.product },
     variant: { render: (r) => r.variant ?? "—", cellClassName: "text-muted-foreground" },
     amount: { align: "right", render: (r) => formatMoney(r.amount) },
-    status: { render: (r) => <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusClasses(r.status)}`}>{r.statusLabel}</span> },
+    // El estado se cambia desde la tabla: cada opción abre el diálogo de siempre (pide fecha, método o motivo).
+    status: {
+      render: (r) => (
+        <InlineSelect
+          label="Cambiar el estado del pago"
+          value={null}
+          display={<span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusClasses(r.status)}`}>{r.statusLabel}</span>}
+          canEdit={r.statusMenu.length > 0}
+          width={220}
+          options={r.statusMenu.map((o) => ({ value: o.action, label: o.label, onPick: () => setAction({ kind: o.action, row: r }) }))}
+        />
+      ),
+    },
     delay: { render: (r) => <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${DELAY_TONE_CLASSES[r.delay.tone]}`}>{r.delay.label}</span> },
     method: { render: (r) => r.method ?? "—" },
     paidOn: { render: (r) => formatDate(r.paidOn) },
@@ -321,6 +372,7 @@ function buildColumns(setAction: Dispatch<SetStateAction<{ kind: "paid" | "resch
         <div className="flex justify-end gap-1 whitespace-nowrap">
           {r.canAct.markPaid && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "paid", row: r })}>Cobrar</button>}
           {r.canAct.reschedule && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "reschedule", row: r })}>Reprogramar</button>}
+          {canDelete && <DeleteButton entity="payment" id={r.id} variant="icon" label="Eliminar" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-700 dark:hover:text-red-400" />}
         </div>
       ),
     },

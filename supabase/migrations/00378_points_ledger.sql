@@ -9,7 +9,7 @@
 --     solo `award_points` / `revoke_points` / el ajuste a mano (00379). Esquema cerrado: solo service_role.
 --   * Columna `app_servicio.program_items.points jsonb NULL` ({submit, pass}): el valor propio de una actividad o evaluación.
 --   * `products.portal_settings.points = {enabled, values, caps, levels, ranking}`: SIN la clave (o con enabled distinto
---     de true) los puntos están APAGADOS en el programa (condición de Wendy, 14/11).
+--     de true) los puntos están APAGADOS en el programa (condición de producto, 14/11).
 --   * En el camino: `points` de la fase y `ref.points` del paso (validate_journey_template).
 --   * Gemelas puras (lib/portal-points/rules.ts, points.cases.json): points_for, points_daily_cap, level_of,
 --     points_settings_problems.
@@ -398,7 +398,7 @@ BEGIN
       END IF;
     END IF;
   END IF;
-  -- A3 (F128): los avisos del programa. Sin la clave, el resumen semanal está APAGADO (condición de Wendy, 14/11).
+  -- A3 (F128): los avisos del programa. Sin la clave, el resumen semanal está APAGADO (condición de producto, 14/11).
   IF p ? 'notifications' THEN
     a := p -> 'notifications';
     IF jsonb_typeof(a) <> 'object' THEN v := v || 'los avisos no son válidos'::text;
@@ -409,7 +409,7 @@ BEGIN
       END IF;
     END IF;
   END IF;
-  -- A3 (F129): los puntos. Sin la clave, APAGADOS (condición de Wendy, 14/11).
+  -- A3 (F129): los puntos. Sin la clave, APAGADOS (condición de producto, 14/11).
   IF p ? 'points' THEN v := v || app_servicio.points_settings_problems(p -> 'points'); END IF;
   RETURN v;
 END;

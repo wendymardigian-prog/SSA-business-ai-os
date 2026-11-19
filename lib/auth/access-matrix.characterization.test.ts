@@ -72,6 +72,10 @@ const MANUAL: Record<string, Triple> = {
   "lib/actions/team.ts#removeTeamMember": [true, false, false],
   // `isAdminRole` solo decide que contadores mostrar; la RLS decide que ve cada quien.
   "lib/actions/agent-drafts.ts#countPendingDrafts": [true, true, true],
+  // Analizador (PR #266): cualquier miembro llega; quién aprueba lo decide la regla «quién aprueba» del análisis y la
+  // RLS de la grabación (lee con la sesión). Se clasificó al traer main a la rama de IA (18/11/2026).
+  "lib/actions/call-action-proposals.ts#resolveCallProposal": [true, true, true], // @plantilla-quitar(llamadas)
+  "lib/actions/calls-badge.ts#countMyPendingProposals": [true, true, true], // @plantilla-quitar(llamadas)
   // Poner la marca puede cualquiera; QUITARLA exige `getAdminContext` (rama parcial).
   "lib/actions/contacts.ts#setDoNotContact": [true, true, "partial"],
 };
@@ -309,6 +313,8 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     // @plantilla-sin(servicios): const ADDED_AGENT_TYPES: string[] = [];
     // Corrida C (F119): el revisor de proyectos de un programa, otro tipo nuevo con sus pestañas.
     ADDED_AGENT_TYPES.push("project_reviewer"); // @plantilla-quitar(proyectos)
+    // IA (18/11/2026, traído de RER): el asistente del equipo, otro tipo nuevo con sus pestañas.
+    ADDED_AGENT_TYPES.push("assistant"); // @plantilla-quitar(disenador)
     const withoutAdded = (r: Record<string, unknown>): Record<string, unknown> => {
       const tabs = { ...((r.agentTabs ?? {}) as Record<string, unknown>) };
       for (const t of ADDED_AGENT_TYPES) delete tabs[t];

@@ -42,6 +42,7 @@ import { SaleWizard } from "@/components/sales/wizard/sale-wizard"; // @plantill
 import type { WizardConfig, WizardInitial } from "@/components/sales/wizard/types"; // @plantilla-quitar(ventas)
 import { StatusChip as SaleStatusChip } from "@/components/sales/sales-list"; // @plantilla-quitar(ventas)
 import { formatMoney } from "@/lib/shared/format";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 
 export interface BookingDetailData {
   id: string;
@@ -301,6 +302,7 @@ export function BookingDetailPanel({
   timezone,
   timeFormat,
   canManage,
+  canDelete = false,
   canLinkMeta,
   canEditContact,
   canReassign,
@@ -312,6 +314,8 @@ export function BookingDetailPanel({
   timezone: string;
   timeFormat: "12h" | "24h";
   canManage: boolean;
+  /** `bookings.delete`: «Eliminar» (va a la Papelera 30 días). */
+  canDelete?: boolean;
   /** `settings.general`: vincular, ignorar o quitar el vínculo con Meta. */
   canLinkMeta: boolean;
   /** `contacts.edit`: el nombre del contacto se edita en el lugar (la base repite el permiso y ve si lo puede ver). */
@@ -347,7 +351,8 @@ export function BookingDetailPanel({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // Con una ventana abierta encima (por ejemplo, «Eliminar»), Esc cierra solo esa ventana.
+      if (e.key === "Escape" && !document.querySelector('[role="dialog"][aria-modal="true"]')) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -468,6 +473,8 @@ export function BookingDetailPanel({
               </div>
             )}
           </div>
+          {/* Eliminar (Papelera, 30 días): después se cierra el panel, porque la reunión ya no existe. */}
+          {canDelete && <DeleteButton entity="booking" id={booking.id} variant="icon" onDeleted={onClose} />}
           <button type="button" onClick={onClose} aria-label="Cerrar" className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted">
             <X className="h-4 w-4" />
           </button>

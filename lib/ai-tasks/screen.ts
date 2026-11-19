@@ -48,6 +48,8 @@ export interface TaskScreenData {
   };
   /** Clasificacion y Analisis de llamadas: su configuracion propia (reglas, rubrica, categorias…). */ // @plantilla-quitar(llamadas)
   callConfig?: CallConfigData; // @plantilla-quitar(llamadas)
+  /** El tope mensual de gasto de la tarea (00440), en la pestaña Configuración. */
+  cap?: { monthlyCapUsd: number | null; canEdit: boolean };
   /** Solo cuando la pestaña activa es Corridas. */
   runs?: RunsTabData;
 }

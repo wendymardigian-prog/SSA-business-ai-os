@@ -10,6 +10,7 @@ import type { CardVariation, SummaryCard } from "@/lib/finance/dashboard-view";
 import { formatPct } from "@/lib/finance/dashboard-view";
 import { formatUsd } from "@/lib/finance/format";
 import { cn } from "@/lib/utils";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * El Resumen de Finanzas (GF25 a GF28). Solo pinta: todo lo que muestra sale de `loadFinanceDashboard` y de las
@@ -138,7 +139,7 @@ export function SummaryDashboard({ data }: { data: FinanceDashboardData }) {
                   </thead>
                   <tbody>
                     {data.vendors.top.map((v) => (
-                      <tr key={v.vendorId} className="border-t border-border/60">
+                      <ClickableTr key={v.vendorId} href={v.href} className="border-t border-border/60 hover:bg-muted/30">
                         <td className="max-w-[12rem] truncate py-1.5 pr-2">
                           <Link href={v.href} className="hover:underline">
                             {v.name}
@@ -147,7 +148,7 @@ export function SummaryDashboard({ data }: { data: FinanceDashboardData }) {
                         <td className="py-1.5 pr-2 text-right tabular-nums">{v.count}</td>
                         <td className="py-1.5 pr-2 text-right tabular-nums">{formatUsd(v.cents)}</td>
                         <td className="py-1.5 text-right tabular-nums">{formatPct(v.pct)}</td>
-                      </tr>
+                      </ClickableTr>
                     ))}
                   </tbody>
                 </table>

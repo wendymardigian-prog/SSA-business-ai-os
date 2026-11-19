@@ -128,6 +128,17 @@ describe("frontera: una sola fuente de los dominios", () => {
     expect(offenders.map(rel)).toEqual([]);
   });
 
+  it("ninguna ruta del servidor redirige con el host del pedido (en Railway es localhost:8080)", () => {
+    // Para redirigir: `appRedirectUrl` o `appUrl()` (lib/app-url.ts). El header «origin» de un pedido CORS no es esto.
+    const fromRequest = [/redirect\(`\$\{origin\}/, /\b(?:url|nextUrl)\.origin\b/, /\{[^}]*\borigin\b[^}]*\}\s*=\s*new URL\((?:request|req)\.url\)/];
+    const routes = source.filter((p) => rel(p).startsWith("app/") && /\/route\.ts$/.test(p));
+    const offenders = routes.filter((p) => {
+      const code = readFileSync(p, "utf8");
+      return fromRequest.some((re) => re.test(code));
+    });
+    expect(offenders.map(rel)).toEqual([]);
+  });
+
   it("ningún link se arma con el dominio del navegador (window.location.origin)", () => {
     // trend-explorer copia la URL de la MISMA pantalla que se está mirando: no es un link público.
     const allowed = new Set(["components/dashboards/trend-explorer.tsx"]);

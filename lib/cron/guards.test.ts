@@ -202,6 +202,7 @@ const THRESHOLDS: Threshold[] = [
   { what: "turno trabado", file: "app/api/cron/agent-bursts/route.ts", pattern: /const STALE_CLAIM_MS = ([\d_ *]+);/, unit: "ms", sqlFunction: "private.cron_work_agent_bursts", sql: minutesInterval },
   { what: "corrida de IA abierta", file: "lib/ai/run.ts", pattern: /olderThanMinutes = (\d+)/, unit: "minutes", sqlFunction: "private.cron_work_agent_bursts", sql: minutesInterval },
   { what: "destinatario en sending", file: "lib/send-queue/dispatch.ts", pattern: /export const STALE_SENDING_MS = ([\d_ *]+);/, unit: "ms", sqlFunction: "private.cron_work_send_queue", sql: minutesInterval },
+  { what: "envio de la cola de WhatsApp en sending", file: "lib/send-queue/automation/run-queue.ts", pattern: /export const QUEUE_STALE_SENDING_MS = ([\d_ *]+);/, unit: "ms", sqlFunction: "private.cron_work_send_queue", sql: minutesInterval },
   { what: "subida reclamada", file: "app/api/cron/content-upload/route.ts", pattern: /const STALE_CLAIM_MS = ([\d_ *]+);/, unit: "ms", sqlFunction: "private.cron_work_content_upload", sql: minutesInterval },
   { what: "job reclamado", file: "app/api/cron/jobs/route.ts", pattern: /const STALE_INVOCATION_MS = ([\d_ *]+);/, unit: "ms", sqlFunction: "private.cron_work_jobs", sql: minutesInterval },
   { what: "documento borrado", file: "app/api/cron/jobs/route.ts", pattern: /const RETENTION_DAYS = (\d+);/, unit: "days", sqlFunction: "private.cron_work_jobs", sql: (n) => `interval '${n} days'` },
@@ -277,7 +278,8 @@ const ENTRY_POINTS: Record<string, EntryPoint[]> = {
     { file: "app/api/cron/agent-bursts/route.ts", fn: "GET", calls: ["closeStaleRuns", "createServiceClient", "expireStuckJobs", "markAgentError", "runAgentTurn"], tables: ["scheduled_jobs"] },
   ],
   "send-queue": [
-    { file: "app/api/cron/send-queue/route.ts", fn: "GET", calls: ["createServiceClient", "runSendQueue"], tables: [] },
+    { file: "app/api/cron/send-queue/route.ts", fn: "GET", calls: ["createServiceClient", "runAutomationQueue", "runSendQueue"], tables: [] },
+    { file: "lib/send-queue/automation/run-queue.ts", fn: "runAutomationQueue", calls: ["reapStaleQueueSending", "runQueueLane"], tables: ["channel_send_lanes", "expire_send_queue_items", "release_scheduled_send_queue_items", "send_queue_items"] },
     { file: "lib/send-queue/dispatch.ts", fn: "runSendQueue", calls: ["activateScheduled", "reapStaleSending", "runLane"], tables: ["broadcasts"] },
     { file: "lib/send-queue/dispatch.ts", fn: "runLane", calls: ["deferLane", "deliver", "emailSendCapacity", "laneCounts", "loadBroadcastChannel", "pauseLane", "pickBroadcast"], tables: ["broadcast_recipients", "channel_send_lanes", "claim_broadcast_recipient", "claim_lane_slot", "refresh_broadcast_counts", "workspaces"] },
   ],

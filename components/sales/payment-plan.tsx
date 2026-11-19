@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { getPaymentReceiptUrl, uploadPaymentReceipt } from "@/lib/actions/payments";
 import { AddPaymentDialog, FeeCorrectionDialog, MarkPaidDialog, ReasonDialog, RefundDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
 import { Historial } from "@/components/historial/historial";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { refundAdjustHref } from "@/lib/commissions/list-view";
 import { DELAY_TONE_CLASSES } from "@/lib/sales/delay";
 import { formatMoney } from "@/lib/shared/format";
@@ -51,6 +52,7 @@ export function PaymentPlan({
   timeZone,
   names,
   canAdjustCommissions = false,
+  canDelete = false,
 }: {
   saleId: string;
   saleDate: string;
@@ -66,6 +68,8 @@ export function PaymentPlan({
   names: Record<string, string>;
   /** Con `commissions.manage`: en un reembolso cobrado, el link para ajustar las comisiones de ese reembolso (Extra I, F64). */
   canAdjustCommissions?: boolean;
+  /** Con `payments.delete`: «Eliminar» en cada pago (Papelera; el servidor dice si se puede y por qué no). */
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -134,6 +138,7 @@ export function PaymentPlan({
                   timeZone={timeZone}
                   names={names}
                   adjustHref={canAdjustCommissions && byId.get(r.id)?.type === "refund" && r.status === "paid" ? refundAdjustHref(r.id) : undefined}
+                  canDelete={canDelete}
                 />
               ))}
             </tbody>
@@ -164,7 +169,7 @@ export function PaymentPlan({
 }
 
 function PaymentRowView({
-  row, expanded, onToggle, onAction, onReceipt, busy, timeZone, names, adjustHref,
+  row, expanded, onToggle, onAction, onReceipt, busy, timeZone, names, adjustHref, canDelete,
 }: {
   row: ReturnType<typeof paymentRows>[number];
   expanded: boolean;
@@ -175,6 +180,7 @@ function PaymentRowView({
   timeZone: string;
   names: Record<string, string>;
   adjustHref?: string;
+  canDelete: boolean;
 }) {
   const a = row.actions;
   const btn = "rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50";
@@ -221,6 +227,7 @@ function PaymentRowView({
                 <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="sr-only" onChange={(e) => { onReceipt("upload", e.target.files?.[0]); e.target.value = ""; }} />
               </label>
             )}
+            {canDelete && <DeleteButton entity="payment" id={row.id} variant="icon" label="Eliminar" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-700 dark:hover:text-red-400" />}
           </div>
         </td>
       </tr>

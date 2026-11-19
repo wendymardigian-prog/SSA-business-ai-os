@@ -2,8 +2,8 @@
  * El PDF firmado de un contrato (F27). SOLO servidor: usa `pdf-lib` (JS puro,
  * sin binarios) y nunca se importa desde un Client Component.
  *
- * Sale del texto de la VERSIÓN con la que se firmó (el mismo `renderContractMarkdown`
- * que ve la persona en la página) más los datos del firmante, sus respuestas, la
+ * Sale del texto de la VERSIÓN con la que se firmó (los mismos bloques que ve la
+ * persona en la página: `blocksWithBlankLines`, con sus renglones vacíos) más los datos del firmante, sus respuestas, la
  * firma dibujada y el bloque "Datos de aceptación". Al pie de CADA página va la
  * huella SHA-256 y la versión: ese es el vínculo entre el papel y lo que se firmó.
  *
@@ -13,7 +13,8 @@
  * Los links del texto salen subrayados y se pueden tocar (una anotación por palabra).
  */
 import { PDFDocument, PDFString, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { renderContractMarkdown, type InlineRun } from "./markdown";
+import type { InlineRun } from "./markdown";
+import { blocksWithBlankLines } from "./blank-lines";
 import { toWinAnsi } from "./pdf-charset";
 
 const PAGE = { width: 595.28, height: 841.89 };
@@ -37,8 +38,20 @@ export function textWidth(font: PDFFont, text: string, size: number): number {
   return width;
 }
 
+/** El logo del negocio, ya convertido a PNG (`lib/forms/contract/pdf-logo.ts`). */
+export interface ContractPdfLogo {
+  png: Uint8Array;
+  width: number;
+  height: number;
+}
+
+/** El tamaño máximo del logo arriba de la primera hoja (en puntos), siempre con su proporción. */
+export const PDF_LOGO_MAX = { width: 160, height: 36 } as const;
+
 export interface ContractPdfInput {
   businessName: string;
+  /** El logo del negocio arriba de la primera hoja (con «Mostrar el logo» prendido y un logo cargado en Marca). */
+  logo?: ContractPdfLogo | null;
   title: string;
   /** El texto normalizado de la versión firmada. */
   text: string;
@@ -130,6 +143,9 @@ class Writer {
 
     let line: Word[] = [];
     let width = 0;
+    // Al principio de un renglón que empezó la persona (el primero o después de un salto) los espacios son una
+    // sangría y se dibujan; al principio de un renglón que cortó el ancho, no.
+    let explicitStart = true;
     const flush = () => {
       this.ensure(lineHeight);
       let x = MARGIN.left + indent;
@@ -148,6 +164,7 @@ class Writer {
     for (const word of words) {
       if (word.newline) {
         flush();
+        explicitStart = true;
         continue;
       }
       const w = textWidth(word.font, word.text, size);
@@ -156,8 +173,9 @@ class Writer {
         // Se corta antes de la palabra; el espacio que quedó al final no se escribe.
         while (line.length > 0 && /^\s+$/.test(line[line.length - 1].text)) line.pop();
         flush();
+        explicitStart = false;
       }
-      if (isSpace && line.length === 0) continue; // sin espacios al inicio de línea
+      if (isSpace && line.length === 0 && !explicitStart) continue; // sin espacios al inicio de un renglón cortado por el ancho
       // Una palabra más ancha que la línea (un hash, una URL) se parte por caracteres.
       if (!isSpace && w > maxWidth) {
         for (const chunk of splitToWidth(word.text, word.font, size, maxWidth)) {
@@ -169,6 +187,7 @@ class Writer {
       }
       line.push(word);
       width += w;
+      if (!isSpace) explicitStart = false;
     }
     if (line.length > 0) flush();
   }
@@ -214,6 +233,9 @@ function splitToWidth(text: string, font: PDFFont, size: number, maxWidth: numbe
 }
 
 const HEADING_SIZE = { 1: 15, 2: 12.5, 3: 11 } as const;
+/** El cuerpo del contrato y el aire entre dos párrafos (antes 5: casi lo mismo que un salto de línea). */
+const BODY_SIZE = 10.5;
+export const PARAGRAPH_GAP = 9;
 
 /** Una imagen de firma (PNG del lienzo, o PNG/JPG subido para la del negocio). */
 async function embedSignature(doc: PDFDocument, bytes: Uint8Array) {
@@ -348,21 +370,35 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
   };
   const w = new Writer(doc, fonts);
 
-  // Encabezado: el negocio y el título.
+  // Encabezado: el logo (si va), el negocio y el título. Un logo que no se puede incrustar no frena el PDF.
+  if (input.logo) {
+    try {
+      const image = await doc.embedPng(input.logo.png);
+      const scale = Math.min(PDF_LOGO_MAX.width / image.width, PDF_LOGO_MAX.height / image.height, 1);
+      const width = image.width * scale;
+      const height = image.height * scale;
+      w.page.drawImage(image, { x: MARGIN.left, y: w.y - height, width, height });
+      w.y -= height + 12;
+    } catch (error) {
+      console.error("[contrato] no pude poner el logo en el PDF; sale sin logo:", error instanceof Error ? error.message : String(error));
+    }
+  }
   w.text(input.businessName, 9, fonts.bold, { color: GRAY });
   w.space(6);
   w.runs([{ text: input.title, bold: true }], 20);
   w.space(10);
 
-  // El texto del contrato, con el mismo renderizador que la página.
-  for (const block of renderContractMarkdown(input.text)) {
+  // El texto del contrato, con los mismos bloques que la página. Entre párrafos queda un aire claramente mayor que
+  // entre dos líneas del mismo párrafo (un Shift+Enter), y un renglón vacío ocupa el alto de una línea.
+  for (const block of blocksWithBlankLines(input.text)) {
     if (block.type === "heading") {
-      w.space(block.level === 1 ? 8 : block.level === 2 ? 5 : 4);
+      w.space(block.level === 1 ? 12 : block.level === 2 ? 9 : 7);
       w.runs(block.runs.map((r) => ({ ...r, bold: true })), HEADING_SIZE[block.level]);
-      w.space(3);
+      w.space(4);
     } else if (block.type === "paragraph") {
-      w.runs(block.runs, 10.5);
-      w.space(5);
+      if (block.runs.length === 0) w.space(BODY_SIZE * 1.25);
+      else w.runs(block.runs, BODY_SIZE);
+      w.space(PARAGRAPH_GAP);
     } else {
       block.items.forEach((item, index) => {
         const marker = block.ordered ? `${index + 1}.` : "•";
@@ -374,9 +410,9 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
         const target = w.page === pageBefore ? pageBefore : w.page;
         const markerY = w.page === pageBefore ? yBefore - 10.5 : PAGE.height - MARGIN.top - 10.5;
         target.drawText(toWinAnsi(marker), { x: MARGIN.left + 2, y: markerY, size: 10.5, font: fonts.regular, color: BLACK });
-        w.space(2);
+        w.space(3);
       });
-      w.space(4);
+      w.space(PARAGRAPH_GAP - 3);
     }
   }
 

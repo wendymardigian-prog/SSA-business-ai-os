@@ -110,3 +110,31 @@ describe("filtros ↔ URL", () => {
     expect(countActiveSalesFilters(parseSalesFilters({ estado: "paid", producto: "p1", desde: "2026-10-01" }))).toBe(3);
   });
 });
+
+describe("orden ↔ URL", () => {
+  it("viaja en la URL, ida y vuelta, y no cuenta como filtro", () => {
+    const f = parseSalesFilters({ orden: "next_payment", dir: "asc", estado: "paid" });
+    expect(f.sort).toEqual({ key: "next_payment", dir: "asc" });
+    expect(salesFiltersToParams(f).toString()).toBe("estado=paid&orden=next_payment&dir=asc");
+    expect(parseSalesFilters(Object.fromEntries(salesFiltersToParams(f).entries()))).toEqual(f);
+    expect(countActiveSalesFilters(f)).toBe(1);
+  });
+});
+
+describe("próximo pago y detalle del pendiente en la fila", () => {
+  it("la fila trae el primer pago sin cobrar y la lista por fecha", () => {
+    const row = saleListRow(
+      { id: "s1", sale_date: "2026-10-10", status: "overdue", final_amount: 900, product_snapshot: {}, attribution: null, attribution_type: "none", contact_id: "c1", vendedor_id: null },
+      [
+        { id: "p1", amount: 300, status: "paid", due_date: "2026-10-10" },
+        { id: "p3", amount: 300, status: "scheduled", due_date: "2026-12-10" },
+        { id: "p2", amount: 300, status: "overdue", due_date: "2026-11-10" },
+      ],
+      new Date("2026-11-18T00:00:00Z"),
+      "UTC",
+    );
+    expect(row.nextPayment).toEqual({ id: "p2", dueDate: "2026-11-10", amount: 300, overdue: true });
+    expect(row.openPayments.map((p) => p.id)).toEqual(["p2", "p3"]);
+    expect(row.pending).toBe(600);
+  });
+});

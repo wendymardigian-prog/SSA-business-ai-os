@@ -10,6 +10,7 @@ import {
   splitCodeSpans,
   type AttributionDefaults,
 } from "@/lib/attribution/panel-view";
+import { WhatsappDeliveryFields } from "./whatsapp-delivery-fields";
 
 interface QuickReply {
   title: string;
@@ -167,6 +168,9 @@ export function SendMessagePanel({ data: rawData, onChange, availableVariables, 
           </li>
         </ul>
       </div>
+
+      {/* Cola de WhatsApp (00420): solo cuenta si la conversación es de un WhatsApp conectado por QR. */}
+      <WhatsappDeliveryFields idPrefix="send-message" value={(data as { delivery?: unknown }).delivery} onChange={(delivery) => onChange({ ...data, delivery })} />
     </div>
   );
 }

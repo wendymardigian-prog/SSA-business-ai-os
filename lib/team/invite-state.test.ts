@@ -5,6 +5,9 @@ import {
   inviteIsOpen,
   inviteState,
   invalidInviteMessage,
+  inviteEmailHint,
+  inviteEmailSendable,
+  inviteResultMessage,
   MAX_SENDS,
   renewedExpiry,
   RESEND_COOLDOWN_SECONDS,
@@ -79,5 +82,38 @@ describe("renovar y mostrar", () => {
     expect(invalidInviteMessage("revoked")).toEqual({ title: "Esta invitación ya no es válida", hint: null });
     expect(invalidInviteMessage("accepted").hint).toBeNull();
     expect(invalidInviteMessage("expired").hint).toContain("renueve");
+  });
+});
+
+describe("el aviso del email al invitar", () => {
+  it("se puede elegir email salvo sin conexión o sin remitente", () => {
+    expect(inviteEmailSendable(null)).toBe(true);
+    expect(inviteEmailSendable({ ok: true })).toBe(true);
+    expect(inviteEmailSendable({ ok: false, reason: "rejected", message: "x" })).toBe(true);
+    expect(inviteEmailSendable({ ok: false, reason: "not_connected", message: "x" })).toBe(false);
+    expect(inviteEmailSendable({ ok: false, reason: "no_sender", message: "x" })).toBe(false);
+  });
+
+  it("el texto del selector nombra el motivo", () => {
+    expect(inviteEmailHint({ ok: true })).toBeNull();
+    expect(inviteEmailHint(null)).toBeNull();
+    expect(inviteEmailHint({ ok: false, reason: "not_connected", message: "x" })?.lead).toContain("no está conectado");
+    const sender = inviteEmailHint({ ok: false, reason: "no_sender", message: "x" });
+    expect(sender?.lead).toContain("remitente");
+    expect(sender?.link).toContain("Resend");
+    expect(inviteEmailHint({ ok: false, reason: "rejected", message: "Resend rechaza" })).toEqual({ lead: "Resend rechaza", link: null, tail: "" });
+  });
+
+  it("después de mandar: el motivo real, nunca el error crudo", () => {
+    expect(inviteResultMessage({ status: "sent", error: null, email: "a@b.co" })).toBe("Invitación enviada a a@b.co.");
+    expect(inviteResultMessage({ status: "sent", error: null })).toBe("Email enviado.");
+    expect(inviteResultMessage({ status: null, error: null, email: "a@b.co" })).toContain("Pasale este link");
+    // Los textos de `sendTransactionalEmail` (lib/email/send.ts) cuando no puede mandar.
+    expect(inviteResultMessage({ status: "not_configured", error: "Falta configurar el remitente de Resend" })).toContain("Falta el remitente");
+    expect(inviteResultMessage({ status: "not_configured", error: "Resend figura conectado pero no hay API key guardada" })).toContain("clave de Resend");
+    expect(inviteResultMessage({ status: "not_configured", error: "No se pudo leer la API key de Resend" })).toContain("clave de Resend");
+    expect(inviteResultMessage({ status: "not_configured", error: "Resend no esta conectado" })).toContain("no está conectado");
+    const failed = inviteResultMessage({ status: "failed", error: "Resend respondio 403: The x.com domain is not verified" });
+    expect(failed).toBe("Resend no pudo mandar el email. Pasale este link.");
   });
 });

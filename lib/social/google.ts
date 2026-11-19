@@ -11,7 +11,8 @@
  *     un refresh token la primera vez y nunca mas. Al reconectar quedaria una
  *     conexion que funciona una hora y despues no.
  *   - `include_granted_scopes=true`: conserva los permisos ya otorgados en vez
- *     de reemplazarlos.
+ *     de reemplazarlos. Drive lo apaga (`includeGrantedScopes: false`): su
+ *     token viaja al navegador y no puede arrastrar YouTube ni Calendar.
  *
  * Endpoints: developers.google.com/identity/protocols/oauth2/web-server y
  * developers.google.com/youtube/v3/docs/channels/list.
@@ -55,6 +56,12 @@ export function googleAuthorizeUrl(params: {
    * esto, Google entra solo con la sesion abierta y vuelve el mismo canal.
    */
   selectAccount?: boolean;
+  /**
+   * Sumar al token los permisos que la cuenta ya le dio a este cliente (por
+   * defecto, si). En `false` el token trae SOLO `scopes`: lo usa Drive, cuyo
+   * token se entrega al navegador para el selector de Google.
+   */
+  includeGrantedScopes?: boolean;
 }): string {
   const url = new URL(AUTHORIZE);
   url.searchParams.set("client_id", params.clientId);
@@ -63,7 +70,7 @@ export function googleAuthorizeUrl(params: {
   url.searchParams.set("scope", (params.scopes ?? GOOGLE_SCOPES).join(" "));
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", params.selectAccount ? "consent select_account" : "consent");
-  url.searchParams.set("include_granted_scopes", "true");
+  if (params.includeGrantedScopes !== false) url.searchParams.set("include_granted_scopes", "true");
   if (params.loginHint) url.searchParams.set("login_hint", params.loginHint);
   url.searchParams.set("state", params.state);
   return url.toString();
