@@ -82,6 +82,10 @@ export const SECRET_NAMES = {
   // ── Atribución orgánica (Extra I) ────────────────────────────────────────
   /** Firma los links con seguimiento `/l/<token>` de los mensajes de los flujos (HMAC). Se genera la primera vez. */
   attributionLinkSecret: "attribution_link_secret",
+
+  // ── Automatizaciones ──────────────────────────────────────────────────────
+  /** Firma la «Llamada HTTP» de las automatizaciones (HMAC). La genera o la pega una persona: es la que comparte con quien recibe. */
+  automationWebhookSecret: "automation_webhook_secret",
 } as const;
 
 export type SecretName = (typeof SECRET_NAMES)[keyof typeof SECRET_NAMES] | (string & {});

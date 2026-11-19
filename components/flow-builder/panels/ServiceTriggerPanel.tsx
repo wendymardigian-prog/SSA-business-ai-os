@@ -5,7 +5,8 @@ import { SERVICE_TRIGGER_TYPES, type ServiceTriggerConfig } from "@/lib/services
 import { serviceTriggerFilters } from "@/lib/services/service-picker";
 import { ServiceKeySelect, ServiceVariantSelect } from "./service-key-select";
 import { useServicePicker } from "./use-service-picker";
-import { PERIODIC_PRESETS, RELATIVE_ANCHORS, periodicConfigProblems, relativeConfigProblems, type RelativeAnchor } from "@/lib/services/relative-triggers";
+import { ANCHORS_KNOWN_AHEAD, MAX_OFFSET_HOURS, PERIODIC_PRESETS, RELATIVE_ANCHORS, periodicConfigProblems, relativeConfigProblems, relativeUnit, type RelativeAnchor } from "@/lib/services/relative-triggers";
+import { MAX_THRESHOLD, METRIC_HINTS, METRIC_LABELS, METRICS, isMetric, metricConfigProblems } from "@/lib/services/metric-trigger";
 
 const ANCHOR_LABELS: Record<RelativeAnchor, string> = {
   service_created: "la creación del servicio",
@@ -40,12 +41,20 @@ export function ServiceTriggerPanel({ triggerType, data, onChange }: { triggerTy
   const products = picker?.products ?? [];
   const relative = triggerType === "service_relative";
   const periodic = triggerType === "service_phase_periodic";
+  const metric = triggerType === "service_metric_reached";
   const raw = c as Record<string, unknown>;
   const anchor = (raw.anchor as RelativeAnchor | undefined) ?? null;
-  const offset = typeof raw.offset_days === "number" ? raw.offset_days : null;
+  // En horas (00460) el número va en `offset_hours` y `offset_days` queda vacío: el barrido diario no lo toma.
+  const hours = relativeUnit(raw) === "hours";
+  const offsetKey = hours ? "offset_hours" : "offset_days";
+  const maxOffset = hours ? MAX_OFFSET_HOURS : 365;
+  const offset = typeof raw[offsetKey] === "number" ? (raw[offsetKey] as number) : null;
+  const canBefore = anchor === null || ANCHORS_KNOWN_AHEAD.includes(anchor);
   const every = typeof raw.every_days === "number" ? raw.every_days : null;
+  const metricKey = isMetric(raw.metric) ? raw.metric : null;
+  const threshold = typeof raw.threshold === "number" ? raw.threshold : null;
   const setRaw = (patch: Record<string, unknown>) => set(patch as Partial<ServiceTriggerConfig>);
-  const problems = relative ? relativeConfigProblems(raw) : periodic ? periodicConfigProblems(raw) : [];
+  const problems = relative ? relativeConfigProblems(raw) : periodic ? periodicConfigProblems(raw) : metric ? metricConfigProblems(raw) : [];
 
   return (
     <div className="space-y-4">
@@ -69,7 +78,17 @@ export function ServiceTriggerPanel({ triggerType, data, onChange }: { triggerTy
         <div className="space-y-3">
           <div>
             <label htmlFor="svt-anchor" className={labelClass}>Desde qué momento se cuenta</label>
-            <select id="svt-anchor" value={anchor ?? ""} onChange={(e) => setRaw({ anchor: e.target.value || null, phase_key: null, item_key: null })} className={inputClass}>
+            <select
+              id="svt-anchor"
+              value={anchor ?? ""}
+              onChange={(e) => {
+                const next = (e.target.value || null) as RelativeAnchor | null;
+                // «Antes» solo con el inicio o el fin: con otra ancla pasa a «después».
+                const flip = next !== null && !ANCHORS_KNOWN_AHEAD.includes(next) && offset !== null && offset < 0;
+                setRaw({ anchor: next, phase_key: null, item_key: null, ...(flip ? { [offsetKey]: -offset } : {}) });
+              }}
+              className={inputClass}
+            >
               <option value="">Elegí…</option>
               {RELATIVE_ANCHORS.map((a) => (
                 <option key={a} value={a}>
@@ -92,30 +111,70 @@ export function ServiceTriggerPanel({ triggerType, data, onChange }: { triggerTy
           )}
           <div>
             <span className={labelClass}>Cuándo</span>
-            <div className="grid grid-cols-[6rem_1fr] gap-2">
+            <div className="grid grid-cols-[5rem_1fr_1fr] gap-2">
               <input
-                aria-label="Cantidad de días"
+                aria-label={hours ? "Cantidad de horas" : "Cantidad de días"}
                 type="number"
                 min={0}
-                max={365}
+                max={maxOffset}
                 value={offset === null ? "" : Math.abs(offset)}
                 onChange={(e) => {
-                  const n = e.target.value === "" ? null : Math.max(0, Math.min(365, Math.floor(Number(e.target.value))));
-                  setRaw({ offset_days: n === null ? null : (offset !== null && offset < 0 ? -n : n) });
+                  const n = e.target.value === "" ? null : Math.max(0, Math.min(maxOffset, Math.floor(Number(e.target.value))));
+                  setRaw({ [offsetKey]: n === null ? null : (offset !== null && offset < 0 ? -n : n) });
                 }}
                 className={inputClass}
               />
               <select
-                aria-label="Antes o después"
-                value={offset !== null && offset < 0 ? "before" : "after"}
-                onChange={(e) => setRaw({ offset_days: offset === null ? null : e.target.value === "before" ? -Math.abs(offset) : Math.abs(offset) })}
+                aria-label="Días u horas"
+                value={hours ? "hours" : "days"}
+                onChange={(e) => {
+                  const toHours = e.target.value === "hours";
+                  if (toHours === hours) return;
+                  const n = offset === null ? null : Math.max(-(toHours ? MAX_OFFSET_HOURS : 365), Math.min(toHours ? MAX_OFFSET_HOURS : 365, offset));
+                  setRaw(toHours ? { unit: "hours", offset_hours: n, offset_days: null } : { unit: null, offset_days: n, offset_hours: null });
+                }}
                 className={inputClass}
               >
-                <option value="after">días después</option>
-                <option value="before">días antes</option>
+                <option value="days">días</option>
+                <option value="hours">horas</option>
+              </select>
+              <select
+                aria-label="Antes o después"
+                value={offset !== null && offset < 0 ? "before" : "after"}
+                onChange={(e) => setRaw({ [offsetKey]: offset === null ? null : e.target.value === "before" ? -Math.abs(offset) : Math.abs(offset) })}
+                className={inputClass}
+              >
+                <option value="after">después</option>
+                <option value="before" disabled={!canBefore}>antes</option>
               </select>
             </div>
-            <p className={hintClass}>0 = el mismo día. Se manda una vez por servicio, en la hora del negocio.</p>
+            <p className={hintClass}>
+              {hours
+                ? "0 = en el momento. Se revisa cada hora y sale dentro de la hora que toca; si al publicar ya pasó, no se manda. El inicio cuenta desde las 00:00 del primer día y el fin desde las 24:00 del último (hora del negocio). Un solo envío por servicio."
+                : "0 = el mismo día. Se manda una vez por servicio, en la hora del negocio."}
+              {!canBefore && " «Antes» solo con el inicio o el fin: lo demás no se sabe de antemano."}
+            </p>
+          </div>
+        </div>
+      )}
+      {metric && (
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="svt-metric" className={labelClass}>Qué cifra</label>
+            <select id="svt-metric" value={metricKey ?? ""} onChange={(e) => setRaw({ metric: e.target.value || null })} className={inputClass}>
+              <option value="">Elegí…</option>
+              {METRICS.map((m) => (
+                <option key={m} value={m}>
+                  {METRIC_LABELS[m]}
+                </option>
+              ))}
+            </select>
+            {metricKey && <p className={hintClass}>{METRIC_HINTS[metricKey]}</p>}
+          </div>
+          <div>
+            <label htmlFor="svt-threshold" className={labelClass}>Llega a</label>
+            <input id="svt-threshold" type="number" inputMode="numeric" min={1} max={MAX_THRESHOLD} value={threshold ?? ""} placeholder="Ej.: 500" onChange={(e) => setRaw({ threshold: e.target.value ? Math.max(1, Math.min(MAX_THRESHOLD, Math.floor(Number(e.target.value)))) : null })} className={inputClass} />
+            <p className={hintClass}>Salta en el momento en que la cifra pasa ese número, una sola vez por servicio. Si ya estaba arriba cuando publicás, no le escribe.</p>
           </div>
         </div>
       )}
@@ -165,7 +224,7 @@ export function ServiceTriggerPanel({ triggerType, data, onChange }: { triggerTy
           <p className={hintClass}>Vacío: con cualquier aviso de «está por terminar».</p>
         </div>
       )}
-      {!relative && !periodic && <p className={hintClass}>Lo que dejes vacío no filtra.</p>}
+      {!relative && !periodic && !metric && <p className={hintClass}>Lo que dejes vacío no filtra.</p>}
     </div>
   );
 }

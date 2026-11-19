@@ -1,0 +1,13 @@
+{
+  "_comment": "Casos de relativeHoursDue (00460). Corren contra la gemela TS (lib/services/relative-triggers.ts) y contra app_servicio.svc_relative_hours_due (scripts/verify-disparadores-relativos.mjs). Horas en UTC.",
+  "cases": [
+    { "name": "3 h después: a las 2h59 todavía no", "anchor_at": "2026-11-15T10:00:00Z", "offset_hours": 3, "now": "2026-11-15T12:59:00Z", "due": false },
+    { "name": "3 h después: a las 3h23 sale", "anchor_at": "2026-11-15T10:00:00Z", "offset_hours": 3, "now": "2026-11-15T13:23:00Z", "due": true },
+    { "name": "3 h después: justo a la hora sale", "anchor_at": "2026-11-15T10:00:00Z", "offset_hours": 3, "now": "2026-11-15T13:00:00Z", "due": true },
+    { "name": "3 h después: pasadas las 2 h de gracia ya no (nace vencido)", "anchor_at": "2026-11-15T10:00:00Z", "offset_hours": 3, "now": "2026-11-15T15:00:00Z", "due": false },
+    { "name": "2 h antes: 1h30 antes sale", "anchor_at": "2026-11-15T10:00:00Z", "offset_hours": -2, "now": "2026-11-15T08:30:00Z", "due": true },
+    { "name": "2 h antes: 3 h antes todavía no", "anchor_at": "2026-11-15T10:00:00Z", "offset_hours": -2, "now": "2026-11-15T07:00:00Z", "due": false },
+    { "name": "0 h: en el momento sale", "anchor_at": "2026-11-15T10:00:00Z", "offset_hours": 0, "now": "2026-11-15T10:40:00Z", "due": true },
+    { "name": "721 h: fuera de rango, nunca", "anchor_at": "2026-11-15T10:00:00Z", "offset_hours": 721, "now": "2026-12-15T11:00:00Z", "due": false }
+  ]
+}

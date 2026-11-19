@@ -1045,6 +1045,7 @@ export type TriggerType =
   | "portal_access_expired" // @plantilla-quitar(servicios)
   | "service_relative" // @plantilla-quitar(servicios)
   | "service_phase_periodic" // @plantilla-quitar(servicios)
+  | "service_metric_reached" // @plantilla-quitar(servicios)
   | "affiliate_lead_created" // @plantilla-quitar(ventas)
   | "affiliate_sale_created" // @plantilla-quitar(ventas)
   | "affiliate_assignment_expired" // @plantilla-quitar(ventas)

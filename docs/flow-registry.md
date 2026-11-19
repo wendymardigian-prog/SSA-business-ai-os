@@ -891,6 +891,30 @@ rechaza, como en los demás flujos sin contacto.
   persona que cargó su ID de Slack en Mi cuenta. Un fallo queda anotado en el paso y no frena el flujo.
 - **«Completar tarea»** deja el motivo cuando la tarea es de un paso bloqueado o sin evidencia.
 
+## Traídos de RER-BAIOS (18/11/2026, 00460 y 00461)
+
+- **«Días u horas antes o después de…»**: el mismo `service_relative`, ahora también en HORAS (`unit: "hours"`,
+  `offset_hours` de −720 a 720; sin `offset_days`, así el barrido diario no lo toma). Lo emite
+  `app_servicio.svc_relative_hours_tick` desde el cron horario `svc-daily` (`private.enqueue_svc_daily`, SQL directo):
+  sale si su hora llegó hace menos de 2 h, lo que nace vencido no se manda. El inicio cuenta desde las 00:00 del primer
+  día y el fin desde las 24:00 del último (hora del negocio). «Antes» solo con el inicio o el fin (publicar lo exige,
+  también en días).
+- **«Una cifra del estudiante llega a…»** (`service_metric_reached`): puntos del programa, facturación cargada (como la
+  Sala de la fama: por defecto solo pagos verificados; la cifra va en unidades de la moneda) o proyectos reales ganados
+  (estas dos con la extensión de proyectos). La emite la base en el momento en que la cifra CAMBIA (triggers de sentencia
+  en `points_ledger`, `student_revenue_entries` y `student_projects`) y solo si CRUZA el número: publicar no le escribe a
+  quien ya estaba arriba. Variables `{{cifra.nombre}}`, `{{cifra.meta}}`, `{{cifra.valor}}`.
+- Los dos van para UNA automatización: un solo envío por automatización, servicio y ocurrencia
+  (`app_servicio.trigger_anchor_fires`, por `flow_id`) y el evento lleva `flow_id`, que es lo que compara
+  `serviceEventMatches` (republicar recrea las filas de `triggers`; el `trigger_id` de la fila vieja ya no existe).
+- **«Firmar la llamada»** en la Llamada HTTP (`sign: true`): headers `X-Webhook-Id` (sesión:nodo, el mismo en un
+  reintento), `X-Webhook-Timestamp` (segundos) y `X-Webhook-Signature: v1=<hex>`, el HMAC-SHA256 de
+  `<id>.<timestamp>.<cuerpo>` con la clave del negocio (`automation_webhook_secret` en la bóveda; se genera o se pega
+  desde el paso, con `flows.edit`). Quien recibe compara en tiempo constante y rechaza firmas de más de 5 minutos
+  (`verifyWebhook` en `lib/automations/webhook-signature.ts` es la referencia). Sin la clave guardada el paso NO manda
+  nada y queda fallido con su motivo. Probado contra un receptor local de verdad en `webhook-signature.test.ts`.
+- **«Completar una tarea»** ya estaba en el lienzo (`complete_task`): no se trajo nada.
+
 ## Horario de envío del WhatsApp y vigencia de una reunión (9/11/2026)
 
 Dos cosas que hicieron falta para las series de Admisión (confirmación, recordatorios, no show y cancelada).
