@@ -664,8 +664,8 @@ function TableCell({
     case "contact":
       return (
         <span className="text-sm">
-          <span className="block text-muted-foreground">{contact.email ?? "—"}</span>
-          {contact.phone && <span className="block text-xs text-muted-foreground/70">{contact.phone}</span>}
+          <span className="block truncate text-muted-foreground" title={contact.email ?? undefined}>{contact.email ?? "—"}</span>
+          {contact.phone && <span className="block truncate text-xs text-muted-foreground/70">{contact.phone}</span>}
         </span>
       );
     case "setter":

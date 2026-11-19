@@ -24,7 +24,7 @@ const WIDTHS: Record<string, number> = {
 };
 
 /** Columnas que muestran varias cosas y pueden ocupar más de una línea (el nombre con sus marcas, las etiquetas). */
-export const WRAPPING_CONTACT_COLUMNS: ReadonlySet<string> = new Set(["name", "tags", "contact"]);
+export const WRAPPING_CONTACT_COLUMNS: ReadonlySet<string> = new Set(["name", "tags"]);
 
 export type ContactColumnMeta = ColumnMeta & { def: ContactColumnDef };
 
