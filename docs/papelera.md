@@ -82,6 +82,11 @@ finanzas y comisiones, crons), y un olvido mostraría lo eliminado en un número
    - Comprueba que cada padre exista. Si falta uno obligatorio, no restaura nada y dice cuál («restaurá primero la venta»). Si falta uno opcional (`SET NULL`), la fila vuelve sin ese vínculo.
    - Apaga los triggers de esas tablas solo en esa transacción, por nombre, para que no se regeneren comisiones, eventos de Meta, servicios ni automatizaciones.
    - Inserta las mismas filas con los mismos ids, vuelve a enlazar y prende los triggers.
+   - Si una fila entra antes que su padre (dos hijos del mismo registro van en orden alfabético de tabla: los pasos de
+     un servicio antes que sus fases, las respuestas de un formulario antes que sus versiones), se reintenta en la
+     vuelta siguiente; solo si una vuelta entera no avanza es un error real. Las claves diferidas (el formulario
+     apunta a su versión vigente) se chequean al final, con todo adentro. Esto lo encontró el ensayo del 18/11/2026
+     en SSA: en RER el motor tiene el mismo problema.
 
    Las claves foráneas se siguen controlando.
 
@@ -110,7 +115,12 @@ Un tipo de tabla hija nuevo queda cubierto solo. **Un tipo de registro nuevo** s
 `00411_trash_entities` (las reglas de cada tipo, vista previa, eliminar y restaurar). Las dos son aditivas y pueden
 ir antes o después del código: sin ellas, eliminar responde un error claro y la Papelera muestra igual los contactos
 y las tareas borrados. Traídas de RER-BAIOS (allá 00474/00475) el 18/11/2026: en SSA **todavía sin aplicar**; antes de
-aplicarlas, ensayarlas en una transacción que se deshace sola.
+aplicarlas, ensayarlas en una transacción que se deshace sola. **Ensayadas contra producción el 18/11/2026** (todo
+dentro de `BEGIN … ROLLBACK`, cada caso en su propio bloque que se deshace): se aplican dos veces sin error, los
+permisos dan lo esperado, la vista previa de cada tipo responde, y eliminar y restaurar dejan idénticas una venta con 3
+pagos, un pago, una agenda, una grabación (con su marca de Fathom), una respuesta, un formulario con 2 versiones y 8
+respuestas, una comisión, un producto sin ventas, un servicio con fases, pasos y accesos, una pieza, una idea y una
+conversación. Producción quedó igual después.
 
 Diferencias con RER: sin tickets (SSA no los tiene) y sin la cola de avisos de agenda (`discard_booking_send_queue`);
 una agenda eliminada cancela sus trabajos pendientes en `scheduled_jobs`. La lista de la Papelera no muestra los

@@ -325,6 +325,10 @@ DECLARE
   v_nulls text;
   v_entries jsonb;
   v_missing bigint;
+  v_pending jsonb;
+  v_retry jsonb;
+  v_progress boolean;
+  v_fk_error text;
 BEGIN
   SELECT array_agg(DISTINCT (e ->> 't')::regclass) INTO v_tables
   FROM jsonb_array_elements(COALESCE(p_snapshot -> 'entries', '[]'::jsonb)) AS e;
@@ -370,6 +374,12 @@ BEGIN
   END LOOP;
 
   -- 2. Los triggers de usuario de esas tablas, apagados solo en esta transaccion.
+  -- `ALTER TABLE` no se puede con chequeos diferidos pendientes (el formulario apunta a su version vigente con una
+  -- clave DEFERRABLE): primero se corren los que haya (en la llamada de la app no hay ninguno; sirve si antes, en la
+  -- misma transaccion, se borro algo de esas tablas). Despues, diferidos hasta que este todo adentro: el formulario
+  -- entra antes que la version a la que apunta.
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
   PERFORM set_config('lock_timeout', '3s', true);
   FOR v_trg IN
     SELECT t.tgrelid::regclass AS rel, t.tgname
@@ -381,15 +391,34 @@ BEGIN
     v_off := v_off || jsonb_build_object('rel', v_trg.rel::text, 'name', v_trg.tgname);
   END LOOP;
 
-  -- 3. Las filas, en el orden de la foto (el padre antes que el hijo).
-  FOR v_entry IN SELECT value FROM jsonb_array_elements(v_entries) LOOP
-    v_rel := (v_entry ->> 't')::regclass;
-    SELECT string_agg(quote_ident(a.attname), ', ' ORDER BY a.attnum) INTO v_cols
-    FROM pg_catalog.pg_attribute a
-    WHERE a.attrelid = v_rel AND a.attnum > 0 AND NOT a.attisdropped AND a.attgenerated = '';
-    EXECUTE format('INSERT INTO %s (%s) OVERRIDING SYSTEM VALUE SELECT %s FROM jsonb_populate_record(NULL::%s, $1)',
-                   v_rel, v_cols, v_cols, v_rel)
-      USING v_entry -> 'r';
+  -- 3. Las filas. La foto pone el padre antes que sus hijos, pero entre dos hijos del mismo registro el orden es
+  -- el alfabetico de la tabla (los pasos de un servicio antes que sus fases, las respuestas de un formulario antes
+  -- que sus versiones) y una tabla puede apuntarse a si misma. Una fila cuyo padre todavia no entro se deja para
+  -- la vuelta siguiente; si una vuelta entera no avanza, el error es real y se devuelve.
+  v_pending := v_entries;
+  LOOP
+    v_retry := '[]'::jsonb;
+    v_progress := false;
+    FOR v_entry IN SELECT value FROM jsonb_array_elements(v_pending) LOOP
+      v_rel := (v_entry ->> 't')::regclass;
+      SELECT string_agg(quote_ident(a.attname), ', ' ORDER BY a.attnum) INTO v_cols
+      FROM pg_catalog.pg_attribute a
+      WHERE a.attrelid = v_rel AND a.attnum > 0 AND NOT a.attisdropped AND a.attgenerated = '';
+      BEGIN
+        EXECUTE format('INSERT INTO %s (%s) OVERRIDING SYSTEM VALUE SELECT %s FROM jsonb_populate_record(NULL::%s, $1)',
+                       v_rel, v_cols, v_cols, v_rel)
+          USING v_entry -> 'r';
+        v_progress := true;
+      EXCEPTION WHEN foreign_key_violation THEN
+        v_retry := v_retry || jsonb_build_array(v_entry);
+        v_fk_error := SQLERRM;
+      END;
+    END LOOP;
+    EXIT WHEN jsonb_array_length(v_retry) = 0;
+    IF NOT v_progress THEN
+      RAISE EXCEPTION '%', v_fk_error USING ERRCODE = 'foreign_key_violation';
+    END IF;
+    v_pending := v_retry;
   END LOOP;
 
   -- 4. Volver a enlazar lo que habia quedado sin vinculo, si nadie lo enlazo con otra cosa mientras tanto.
@@ -410,7 +439,9 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  -- 5. Los triggers, prendidos otra vez (los mismos, por nombre).
+  -- 5. Los triggers, prendidos otra vez (los mismos, por nombre). Antes, los chequeos diferidos de lo que se
+  -- inserto (si no, `ALTER TABLE` se niega); como ya esta todo adentro, pasan.
+  SET CONSTRAINTS ALL IMMEDIATE;
   FOR v_trg IN SELECT value AS v FROM jsonb_array_elements(v_off) LOOP
     EXECUTE format('ALTER TABLE %s ENABLE TRIGGER %I', (v_trg.v ->> 'rel')::regclass, v_trg.v ->> 'name');
   END LOOP;

@@ -57,6 +57,8 @@ const COUNT_LABELS: Record<string, [string, string]> = {
   "public.messages": ["mensaje", "mensajes"],
   "public.form_submissions": ["respuesta", "respuestas"],
   "public.form_versions": ["versión", "versiones"],
+  "public.forms": ["formulario", "formularios"],
+  "app_servicio_portal.portal_access": ["acceso al portal", "accesos al portal"],
   "public.eod_reports": ["reporte de fin de día", "reportes de fin de día"],
   "public.call_comments": ["comentario", "comentarios"],
   "public.product_variants": ["variante", "variantes"],
