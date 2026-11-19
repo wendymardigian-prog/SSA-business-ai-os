@@ -13,7 +13,6 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { snapshotText } from "@/lib/sales/sale-text";
 import { loadAffiliateOf } from "@/lib/affiliates/load";
-import { AffiliateField } from "@/components/affiliates/affiliate-field";
 import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
 import { loadContactServices } from "@/lib/services/screens/load-services"; // @plantilla-quitar(servicios)
 import { loadNewServiceOptions } from "@/lib/services/screens/load-new-service"; // @plantilla-quitar(servicios)
@@ -111,12 +110,11 @@ export default async function VentaPage({ params, searchParams }: { params: Prom
   // El afiliado de la venta (Servicios A1, F74/F104): la venta ya se comprobó con la sesión; el nombre se resuelve con el
   // cliente de servicio, del negocio de la sesión.
   const affiliateRecord = await loadAffiliateOf(service, workspace.id, "sale", sale.id, members.map((m) => ({ userId: m.userId, name: m.name })));
-  const affiliate = affiliateRecord.affiliate || ctx.can("affiliates.assign") ? <AffiliateField target="sale" id={sale.id} record={affiliateRecord} canAssign={ctx.can("affiliates.assign")} /> : undefined;
   return (
     <SaleDetail
       data={data}
       wizard={wizard}
-      affiliate={affiliate}
+      affiliate={{ record: affiliateRecord, canAssign: ctx.can("affiliates.assign") }}
       services={servicesSection} // @plantilla-quitar(servicios)
       commissions={
         // Quien ve solo las suyas y no tiene ninguna en esta venta no ve la sección: "no se generó ninguna" sería engañoso.

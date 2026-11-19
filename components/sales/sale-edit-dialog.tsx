@@ -4,6 +4,9 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, X } from "lucide-react";
 import { updateSale, type SaleActionResult } from "@/lib/actions/sales";
+import { setSaleAffiliate } from "@/lib/actions/affiliates";
+import { AffiliateEditFields, AffiliateName, affiliateSummary, initialAffiliateEdit, type AffiliateEditValue } from "@/components/affiliates/affiliate-field";
+import type { AffiliateOfRecord } from "@/lib/affiliates/load";
 import { SaleModal } from "@/components/shared/sale-modal";
 import { AttributionField } from "@/components/sales/attribution-field";
 import { ContactSearch } from "@/components/sales/wizard/step1-contact";
@@ -36,8 +39,12 @@ export interface EditableSale {
  * Editar una venta (F26). Una venta cancelada, reembolsada o en disputa solo deja cambiar las
  * notas. Cambiar el producto o el precio con cobros pide una confirmación y un motivo: lo
  * cobrado no se toca y, si el plan deja de cuadrar, la ficha ofrece «Rearmar el plan».
+ *
+ * El afiliado (`affiliate`, solo con `affiliates.assign`) se guarda aparte con `setSaleAffiliate`, DESPUÉS de la venta: su
+ * UPDATE cambia `updated_at` y, al revés, `updateSale` daría conflicto. Sin `sales.manage` (`canEditSale` falso) la
+ * ventana muestra solo el afiliado.
  */
-export function SaleEditDialog({ sale, contactName, config, onClose, openAttribution = false }: { sale: EditableSale; contactName: string; config: WizardConfig; onClose: () => void; openAttribution?: boolean }) {
+export function SaleEditDialog({ sale, contactName, config, onClose, openAttribution = false, canEditSale = true, affiliate }: { sale: EditableSale; contactName: string; config: WizardConfig; onClose: () => void; openAttribution?: boolean; canEditSale?: boolean; affiliate?: AffiliateOfRecord }) {
   const router = useRouter();
   const locked = isLockedForEdit(sale.status);
   const productId = snapshotProductId(sale.product_snapshot) ?? "";
@@ -63,6 +70,10 @@ export function SaleEditDialog({ sale, contactName, config, onClose, openAttribu
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [pending, start] = useTransition();
+  const [affMode, setAffMode] = useState<"keep" | "change" | "remove">("keep");
+  const [affEdit, setAffEdit] = useState<AffiliateEditValue>(() => (affiliate ? initialAffiliateEdit(affiliate) : { picked: null, kind: "influenced", expiresAt: "", reason: "" }));
+  // Si la venta ya se guardó y falló solo el afiliado, reintentar no vuelve a mandar la venta (daría conflicto).
+  const [saleSaved, setSaleSaved] = useState(false);
 
   const product = config.catalog.find((p) => p.id === prodId) ?? null;
   const variant = product?.variants.find((v) => v.id === variantId) ?? null;
@@ -74,37 +85,80 @@ export function SaleEditDialog({ sale, contactName, config, onClose, openAttribu
 
   function submit(confirmed = false) {
     setError(null);
+    const affiliateChanged = !!affiliate && affMode !== "keep";
+    if (affiliateChanged) {
+      if (affMode === "change" && !affEdit.picked) return setError("Elegí el afiliado");
+      if (!affEdit.reason.trim()) return setError("Escribí el motivo del cambio de afiliado");
+    }
+    const raw = Number(discountValue);
+    const changes = {
+      ...(contact.id !== sale.contact_id ? { contactId: contact.id } : {}),
+      ...(setterId !== sale.setter_id ? { setterId } : {}),
+      ...(vendedorId !== sale.vendedor_id ? { vendedorId } : {}),
+      ...(attributionTouched ? { attribution } : {}),
+      ...(pricingChanged ? { discount: discountValue.trim() && raw > 0 ? { type: discountType, value: raw } : null, discountReason: discountReason.trim() || null } : {}),
+      ...(variantChanged && variant?.price != null ? { variantId: variant.id, shownPrice: variant.price } : {}),
+      ...(notes !== (sale.notes ?? "") ? { notes } : {}),
+      ...(serviceStart !== (sale.service_starts_at ?? "") ? { serviceStartsAt: serviceStart || null } : {}),
+      ...(confirmed ? { confirmRepricing: true, repricingReason: repriceReason } : {}),
+    };
+    const saleChanged = canEditSale && !saleSaved && Object.keys(changes).length > 0;
+    if (!saleChanged && !affiliateChanged) return onClose();
     start(async () => {
-      const raw = Number(discountValue);
-      const result: SaleActionResult = await updateSale({
-        saleId: sale.id,
-        expectedUpdatedAt: sale.updated_at,
-        ...(contact.id !== sale.contact_id ? { contactId: contact.id } : {}),
-        ...(setterId !== sale.setter_id ? { setterId } : {}),
-        ...(vendedorId !== sale.vendedor_id ? { vendedorId } : {}),
-        ...(attributionTouched ? { attribution } : {}),
-        ...(pricingChanged ? { discount: discountValue.trim() && raw > 0 ? { type: discountType, value: raw } : null, discountReason: discountReason.trim() || null } : {}),
-        ...(variantChanged && variant?.price != null ? { variantId: variant.id, shownPrice: variant.price } : {}),
-        ...(notes !== (sale.notes ?? "") ? { notes } : {}),
-        ...(serviceStart !== (sale.service_starts_at ?? "") ? { serviceStartsAt: serviceStart || null } : {}),
-        ...(confirmed ? { confirmRepricing: true, repricingReason: repriceReason } : {}),
-      });
-      if (result.ok) {
-        onClose();
-        router.refresh();
-        return;
+      if (saleChanged) {
+        const result: SaleActionResult = await updateSale({ saleId: sale.id, expectedUpdatedAt: sale.updated_at, ...changes });
+        if (!result.ok) {
+          if (result.code === "confirm_required") return setConfirm({ paid: result.paidAmount ?? 0 });
+          if (result.code === "conflict") setConflict(true);
+          return setError(result.error);
+        }
+        setSaleSaved(true);
       }
-      if (result.code === "confirm_required") return setConfirm({ paid: result.paidAmount ?? 0 });
-      if (result.code === "conflict") setConflict(true);
-      setError(result.error);
+      if (affiliateChanged) {
+        const ref = affMode === "remove" || !affEdit.picked ? null : { type: affEdit.picked.type, id: affEdit.picked.id };
+        const res = await setSaleAffiliate(sale.id, ref, { kind: affMode === "remove" ? null : affEdit.kind, reason: affEdit.reason });
+        if (!res.ok) {
+          router.refresh();
+          return setError(saleChanged || saleSaved ? `La venta se guardó, pero el afiliado no: ${res.error.message}` : res.error.message);
+        }
+      }
+      onClose();
+      router.refresh();
     });
   }
+
+  const currentAffiliate = affiliate?.affiliate ?? null;
+  const currentSummary = affiliate ? affiliateSummary(affiliate, "sale") : "";
+  const affiliateSection = affiliate ? (
+    <section aria-label="Afiliado" className="space-y-1.5">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Afiliado</h3>
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+        <span className="min-w-0 flex-1">
+          {currentAffiliate ? <><AffiliateName affiliate={currentAffiliate} />{currentSummary && <span className="ml-2 text-xs text-muted-foreground">{currentSummary}</span>}</> : <span className="text-muted-foreground">Sin afiliado</span>}
+        </span>
+        {affMode === "keep" ? (
+          <>
+            <button type="button" onClick={() => setAffMode("change")} className="text-xs font-medium text-primary-ink underline-offset-2 hover:underline">{currentAffiliate ? "Cambiar" : "Asignar"}</button>
+            {currentAffiliate && <button type="button" onClick={() => setAffMode("remove")} className="text-xs font-medium text-red-700 underline-offset-2 hover:underline dark:text-red-400">Quitar</button>}
+          </>
+        ) : (
+          <button type="button" onClick={() => { setAffMode("keep"); setAffEdit({ ...affEdit, picked: null, reason: "" }); }} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><X className="h-3 w-3" aria-hidden /> No cambiar el afiliado</button>
+        )}
+      </div>
+      {affMode === "change" && <AffiliateEditFields target="sale" value={affEdit} onChange={setAffEdit} disabled={pending} />}
+      {affMode === "remove" && (
+        <DialogField label="Motivo para quitar el afiliado">
+          <textarea className={fieldInput} rows={2} value={affEdit.reason} disabled={pending} onChange={(e) => setAffEdit({ ...affEdit, reason: e.target.value })} placeholder="Por qué se quita" />
+        </DialogField>
+      )}
+    </section>
+  ) : null;
 
   return (
     <SaleModal
       size="lg"
-      title="Editar venta"
-      label="Editar venta"
+      title={canEditSale ? "Editar venta" : "Cambiar el afiliado"}
+      label={canEditSale ? "Editar venta" : "Cambiar el afiliado"}
       onClose={onClose}
       footer={
         <>
@@ -124,6 +178,7 @@ export function SaleEditDialog({ sale, contactName, config, onClose, openAttribu
         </>
       }
     >
+      {!canEditSale ? affiliateSection : (<>
       {locked && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">{LOCKED_REASON[sale.status]}</p>}
 
       <section aria-label="Contacto" className="space-y-1.5">
@@ -146,6 +201,8 @@ export function SaleEditDialog({ sale, contactName, config, onClose, openAttribu
           </DialogField>
         ))}
       </section>
+
+      {affiliateSection}
 
       <section aria-label="Atribución" className="space-y-1.5">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Atribución</h3>
@@ -215,6 +272,7 @@ export function SaleEditDialog({ sale, contactName, config, onClose, openAttribu
           <button type="button" onClick={() => setConfirm(null)} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><X className="h-3 w-3" aria-hidden /> No cambiar el precio</button>
         </div>
       )}
+      </>)}
     </SaleModal>
   );
 }
