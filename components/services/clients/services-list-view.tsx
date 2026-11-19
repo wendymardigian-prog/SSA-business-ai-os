@@ -1,7 +1,7 @@
 // @plantilla-quitar(servicios)
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bookmark, KanbanSquare, Table2, Upload } from "lucide-react";
@@ -28,7 +28,10 @@ import { ClientesTabs } from "./clientes-tabs";
 import { cn } from "@/lib/utils";
 import { NewServiceDialog, type NewServiceOptions } from "./new-service-dialog";
 import { useSavedView } from "./use-saved-view";
-import { ClickableTr } from "@/components/ui/clickable-row";
+import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
+import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
+import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
+import { SERVICES_TABLE_KEY, serviceColumnMetas } from "@/lib/services/screens/services-columns";
 
 const LIGHT_DOT: Record<string, string> = { red: "bg-bad", yellow: "bg-warn", green: "bg-good", gray: "bg-muted-foreground/40" };
 const GROUP_LABELS: Record<GroupBy, string> = { none: "Sin agrupar", phase: "Fase", light: "Semáforo", owner: "Responsable" };
@@ -88,6 +91,38 @@ export function ServicesListView({
     { key: "save", label: saved ? "Vista guardada ✓" : "Guardar vista", icon: <Bookmark className="h-4 w-4" aria-hidden />, onSelect: () => setSaved(saveView()) },
   ];
   const boardGroup: GroupBy = filters.groupBy === "none" ? "phase" : filters.groupBy;
+  const columns = useMemo<DataColumn<ServiceListItem>[]>(() => {
+    const view = (s: ServiceListItem) => serviceRowView(s, today);
+    const render: Record<string, (s: ServiceListItem) => React.ReactNode> = {
+      // La fila entera abre el servicio; el cliente es texto (docs/tablas.md).
+      client: (s) => {
+        const r = view(s);
+        return (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-medium text-foreground">{r.client}</span>
+            {r.reviewChip && <span className="shrink-0 rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-medium text-warn">{r.reviewChip.label}</span>}
+          </span>
+        );
+      },
+      product: (s) => view(s).product,
+      owner: (s) => view(s).owner,
+      light: (s) => {
+        const r = view(s);
+        return (
+          <span className="flex min-w-0 items-center gap-2">
+            <LightDot light={r.light} label={r.lightLabel} />
+            <span className="truncate text-xs text-muted-foreground">{r.lightReason || r.lightLabel}</span>
+          </span>
+        );
+      },
+      phase: (s) => view(s).phase,
+      day: (s) => view(s).day,
+      progress: (s) => view(s).progress,
+      portal: (s) => view(s).portal,
+    };
+    return serviceColumnMetas(anyPortal).map((m) => ({ ...m, render: render[m.key], cellClassName: m.key === "client" || m.key === "light" ? undefined : "text-muted-foreground" }));
+  }, [anyPortal, today]);
+  const prefs = useTablePrefs(SERVICES_TABLE_KEY, "base", columns, null);
 
   return (
     <div className="flex h-full flex-col">
@@ -116,7 +151,12 @@ export function ServicesListView({
         }
         search={<ExpandableSearch value={filters.q} onCommit={(q) => go({ q })} label="Buscar un cliente" placeholder="Buscar un cliente…" pending={pending} />}
         group={<GroupMenu<GroupBy> value={filters.groupBy} noneKey="none" options={GROUP_BY.map((g) => ({ key: g, label: GROUP_LABELS[g] }))} onSelect={(g) => go({ groupBy: g })} />}
-        more={<TopbarMoreMenu actions={more} />}
+        more={
+          <>
+            {filters.view !== "board" && <ColumnsMenu state={prefs} />}
+            <TopbarMoreMenu actions={more} />
+          </>
+        }
         primary={canCreate ? <PrimaryButton label="Nuevo servicio" text="Servicio" onClick={() => setCreating(true)} /> : undefined}
       />
       <div className="min-h-0 flex-1 overflow-auto">
@@ -167,57 +207,16 @@ export function ServicesListView({
               ))}
             </div>
           ) : (
-            groupServices(items, filters.groupBy).map((g) => (
-              <section key={g.key} className="space-y-1">
-                {filters.groupBy !== "none" && (
-                  <h3 className="text-xs font-semibold text-muted-foreground">
-                    {g.label} · {g.items.length}
-                  </h3>
-                )}
-                <div className="overflow-x-auto rounded-xl border border-border">
-                  <table className="w-full min-w-[860px] text-sm">
-                    <thead className="text-left text-xs text-muted-foreground">
-                      <tr>
-                        <th className="px-3 py-2 font-medium">Cliente</th>
-                        <th className="px-3 py-2 font-medium">Producto · variante</th>
-                        <th className="px-3 py-2 font-medium">Responsable</th>
-                        <th className="px-3 py-2 font-medium">Semáforo</th>
-                        <th className="px-3 py-2 font-medium">Fase</th>
-                        <th className="px-3 py-2 font-medium">Día</th>
-                        <th className="px-3 py-2 font-medium">Avance</th>
-                        {anyPortal && <th className="px-3 py-2 font-medium">Portal</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {g.items.map((s) => {
-                        const r = serviceRowView(s, today);
-                        return (
-                          <ClickableTr key={s.id} href={open(s.id)} beforeNavigate={rememberRecordOpener} className="border-t border-border hover:bg-accent/30">
-                            <td className="px-3 py-2">
-                              {/* La fila entera abre el servicio; el cliente es texto (docs/tablas.md). */}
-                              <span className="font-medium text-foreground">{r.client}</span>
-                              {r.reviewChip && <span className="ml-2 rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-medium text-warn">{r.reviewChip.label}</span>}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">{r.product}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{r.owner}</td>
-                            <td className="px-3 py-2">
-                              <span className="flex items-center gap-2">
-                                <LightDot light={r.light} label={r.lightLabel} />
-                                <span className="text-xs text-muted-foreground">{r.lightReason || r.lightLabel}</span>
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">{r.phase}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{r.day}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{r.progress}</td>
-                            {anyPortal && <td className="px-3 py-2 text-muted-foreground">{r.portal}</td>}
-                          </ClickableTr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            ))
+            <DataTable
+              columns={columns}
+              rows={filters.groupBy === "none" ? items : []}
+              groups={filters.groupBy === "none" ? undefined : groupServices(items, filters.groupBy).map((g) => ({ key: g.key, label: g.label, aside: g.items.length, rows: g.items }))}
+              rowKey={(s) => s.id}
+              state={prefs}
+              caption="Servicios"
+              rowHref={(s) => open(s.id)}
+              beforeRowNavigate={rememberRecordOpener}
+            />
           )}
 
           {pages > 1 && (
