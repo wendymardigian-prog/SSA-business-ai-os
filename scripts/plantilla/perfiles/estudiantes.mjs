@@ -282,6 +282,7 @@ export const MODULES = {
       "lib/program",
       "components/services",
       "lib/actions/services.ts",
+      "lib/actions/services-contact.test.ts",
       "lib/actions/portal-admin.ts",
       "lib/actions/program.ts",
       "lib/actions/live-sessions.ts",

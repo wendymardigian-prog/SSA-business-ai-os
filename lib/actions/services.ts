@@ -5,6 +5,9 @@ import { revalidatePath } from "next/cache";
 import { getAnyPermissionAction, getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { findContact } from "@/lib/contacts/find-or-create";
+import { quickCreateContact } from "@/lib/contacts/quick-create";
+import type { ManualContactInput, QuickContactResult } from "@/lib/contacts/manual-contact";
+import { sanitizeSearch } from "@/lib/url-params";
 import { svcRpc, svcSchema, type SvcResult } from "@/lib/services/db";
 import { parseServicesImport } from "@/lib/services/import";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
@@ -440,18 +443,36 @@ export async function importServices(csv: string, commit: boolean): Promise<{ ok
 }
 
 // ── «+ Servicio» (F30): buscar el contacto y sus ventas sin servicio ───────
-export async function searchContactsForService(q: string): Promise<Array<{ id: string; name: string; email: string | null }>> {
+export async function searchContactsForService(q: string): Promise<Array<{ id: string; name: string; email: string | null; phone: string | null }>> {
   const ctx = await getPermissionAction("services.create");
-  if (!ctx || q.trim().length < 2) return [];
-  const term = q.trim().replace(/[%_,()]/g, "").slice(0, 60);
+  if (!ctx) return [];
+  const term = sanitizeSearch(q, 60);
+  if (term.length < 2) return [];
+  // El mismo buscador que el asistente de venta: nombre, emails, teléfonos y el @ de Instagram.
   const { data } = await ctx.supabase
     .from("contacts")
-    .select("id, display_name, email")
+    .select("id, display_name, email, phone")
     .eq("workspace_id", ctx.workspace.id)
     .is("deleted_at", null)
-    .or(`display_name.ilike.%${term}%,email.ilike.%${term}%`)
+    .or(`display_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,whatsapp_phone.ilike.%${term}%,instagram_username.ilike.%${term}%`)
+    .order("display_name", { ascending: true })
     .limit(10);
-  return ((data ?? []) as Array<{ id: string; display_name: string | null; email: string | null }>).map((c) => ({ id: c.id, name: c.display_name ?? "Sin nombre", email: c.email }));
+  return ((data ?? []) as Array<{ id: string; display_name: string | null; email: string | null; phone: string | null }>).map((c) => ({
+    id: c.id,
+    name: c.display_name || c.email || "Sin nombre",
+    email: c.email,
+    phone: c.phone,
+  }));
+}
+
+/**
+ * «Crear contacto» del modal «Nuevo servicio»: el mismo alta rápida que el asistente de venta
+ * (`lib/contacts/quick-create.ts`, regla única, sin duplicar). Lo puede quien puede crear servicios.
+ */
+export async function createContactForService(input: ManualContactInput): Promise<QuickContactResult> {
+  const ctx = await getPermissionAction("services.create");
+  if (!ctx) return { ok: false, error: NOT_ALLOWED.error.message };
+  return quickCreateContact(ctx, input, "service_dialog");
 }
 
 export async function contactSalesWithoutService(contactId: string): Promise<Array<{ id: string; label: string; variantId: string }>> {
