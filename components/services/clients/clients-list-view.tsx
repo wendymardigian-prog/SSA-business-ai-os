@@ -140,11 +140,8 @@ export function ClientsListView({
 
   const columns = useMemo<DataColumn<ClientRow>[]>(() => {
     const render: Record<string, (r: ClientRow) => React.ReactNode> = {
-      name: (r) => (
-        <Link href={openClient(r.contactId)} scroll={false} onClick={(e) => rememberRecordOpener(e.currentTarget)} className="font-medium text-foreground hover:underline">
-          {r.name}
-        </Link>
-      ),
+      // La fila entera abre la ficha (`rowHref`): el nombre es texto.
+      name: (r) => <span className="font-medium text-foreground">{r.name}</span>,
       light: (r) => <LightPill r={r} />,
       active: (r) => <span className="text-muted-foreground">{r.activeCount} {r.activeCount === 1 ? "activo" : "activos"}</span>,
       progress: (r) =>
@@ -282,7 +279,15 @@ export function ClientsListView({
                     {g.label} · {g.rows.length}
                   </h3>
                 )}
-                <DataTable columns={columns} rows={g.rows} rowKey={(r) => r.contactId} state={prefs} caption={state.group === "none" ? "Clientes" : `Clientes · ${g.label}`} />
+                <DataTable
+                  columns={columns}
+                  rows={g.rows}
+                  rowKey={(r) => r.contactId}
+                  state={prefs}
+                  caption={state.group === "none" ? "Clientes" : `Clientes · ${g.label}`}
+                  rowHref={(r) => openClient(r.contactId)}
+                  beforeRowNavigate={rememberRecordOpener}
+                />
               </section>
             ))
           )}

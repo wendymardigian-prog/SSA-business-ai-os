@@ -27,6 +27,9 @@ const TONE_CLASS: Record<IdeaTone, string> = {
   red: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300",
 };
 
+/** La fila entera abre la primera pieza o, si todavía no tiene, la idea. */
+const ideaHref = (r: IdeaListRow) => `/dashboard/content?${r.pieces[0] ? `piece=${r.pieces[0].id}` : `idea=${r.id}`}`;
+
 export function IdeasTable({ rows, timeZone }: { rows: IdeaListRow[]; timeZone: string }) {
   const prefs = useTablePrefs(IDEAS_TABLE_KEY, "base", META, null);
   const dateFmt = useMemo(() => new Intl.DateTimeFormat("es", { day: "numeric", month: "short", year: "numeric", timeZone }), [timeZone]);
@@ -34,7 +37,7 @@ export function IdeasTable({ rows, timeZone }: { rows: IdeaListRow[]; timeZone: 
 
   const columns: DataColumn<IdeaListRow>[] = useMemo(
     () => [
-      { ...META[0], cellClassName: "font-medium", render: (r) => <Link href={`/dashboard/content?${r.pieces[0] ? `piece=${r.pieces[0].id}` : `idea=${r.id}`}`} className="hover:underline">{r.title}</Link> },
+      { ...META[0], cellClassName: "font-medium", render: (r) => r.title },
       { ...META[1], render: (r) => <IdeaStatusPill row={r} /> },
       { ...META[2], render: (r) => <IdeaPieces row={r} /> },
       { ...META[3], render: (r) => <IdeaOrigin row={r} dateFmt={dateFmt} /> },
@@ -49,7 +52,7 @@ export function IdeasTable({ rows, timeZone }: { rows: IdeaListRow[]; timeZone: 
         <div className="flex justify-end">
           <ColumnsMenu state={prefs} />
         </div>
-        <DataTable caption="Ideas de contenido" columns={columns} rows={sorted} rowKey={(r) => r.id} state={prefs} />
+        <DataTable caption="Ideas de contenido" columns={columns} rows={sorted} rowKey={(r) => r.id} state={prefs} rowHref={ideaHref} />
       </div>
 
       <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card md:hidden">
