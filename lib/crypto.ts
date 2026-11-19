@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
  * Comparaciones que no filtran informacion por el tiempo que tardan.
@@ -11,15 +11,16 @@ import { timingSafeEqual } from "node:crypto";
  * Compara dos strings en tiempo constante.
  *
  * Con `===` el tiempo de comparacion depende de cuantos caracteres coinciden, y
- * eso alcanza para adivinar un secreto de a un byte. La diferencia de largo si
- * se filtra, pero eso no ayuda a adivinar el contenido.
+ * eso alcanza para adivinar un secreto de a un byte.
  *
- * El chequeo de largo ademas es obligatorio: timingSafeEqual lanza si los
- * buffers no miden lo mismo.
+ * Se comparan los HMAC de los dos valores (con una clave al azar de este
+ * proceso), que siempre miden 32 bytes: asi tampoco se filtra el LARGO del
+ * secreto, y timingSafeEqual (que lanza con largos distintos) nunca lanza.
  */
+const COMPARE_KEY = randomBytes(32);
+
 export function constantTimeEquals(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+  const macA = createHmac("sha256", COMPARE_KEY).update(a, "utf8").digest();
+  const macB = createHmac("sha256", COMPARE_KEY).update(b, "utf8").digest();
+  return timingSafeEqual(macA, macB);
 }

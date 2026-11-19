@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { cancelBooking } from "@/lib/scheduling/booking/cancel";
 import { checkRateLimit, clientIp } from "@/lib/scheduling/antispam";
+import { readTextCapped } from "@/lib/http/read-capped";
 
 /**
  * POST /api/public/scheduling/bookings/<uid>/cancel (F28).
@@ -13,7 +14,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { uid } = await params;
   let body: Record<string, unknown> = {};
   try {
-    body = (await request.json()) as Record<string, unknown>;
+    const text = await readTextCapped(request, 64_000);
+    if (text === null) return NextResponse.json({ error: "Pedido demasiado grande" }, { status: 413 });
+    body = JSON.parse(text) as Record<string, unknown>;
   } catch {
     // Cancelar sin motivo es válido.
   }

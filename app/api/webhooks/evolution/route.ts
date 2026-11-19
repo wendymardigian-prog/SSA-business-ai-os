@@ -67,6 +67,7 @@ import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
 import { discardPendingDrafts, supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
 import { AUTO_DISCARD } from "@/lib/agent/drafts/types";
 import { UNKNOWN_WHATSAPP_NAME } from "@/lib/contacts/anonymous";
+import { readTextCapped } from "@/lib/http/read-capped";
 
 interface EvolutionPayload {
   event?: string;
@@ -105,7 +106,9 @@ async function handleWebhook(request: NextRequest) {
   // cuerpo. Leer el cuerpo antes de validar no abre nada: lo unico que se hace
   // con el es buscar un canal por su nombre de instancia, y sin token valido
   // no se procesa ni se escribe nada.
-  const body = await request.text();
+  // Tope antes de leerlo entero (y antes de la firma): un pedido enorme sin firma no llega a memoria.
+  const body = await readTextCapped(request, 25_000_000);
+  if (body === null) return NextResponse.json({ error: "Pedido demasiado grande" }, { status: 413 });
   let payload: EvolutionPayload;
   try {
     payload = JSON.parse(body);

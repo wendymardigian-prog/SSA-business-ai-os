@@ -16,6 +16,7 @@ import { getWorkspaceModel } from "@/lib/ai/provider";
 import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { newNonce } from "@/lib/agent/untrusted";
 import { analysisRules, analysisUserMessage, parseAnalysis } from "@/lib/projects/analysis";
+import { readTextCapped } from "@/lib/http/read-capped";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -36,8 +37,8 @@ interface Begin {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.text();
-  if (body.length > 2000) return NextResponse.json({ ok: false }, { status: 413 });
+  const body = await readTextCapped(request, 2000);
+  if (body === null) return NextResponse.json({ ok: false }, { status: 413 });
   const okSig = verifyPortalRequest({
     secret: process.env.PORTAL_SHARED_SECRET,
     timestamp: request.headers.get("x-portal-timestamp"),

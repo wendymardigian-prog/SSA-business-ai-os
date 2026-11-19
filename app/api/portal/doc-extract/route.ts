@@ -10,6 +10,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { svcRpc } from "@/lib/services/db";
 import { verifyPortalRequest } from "@/lib/portal-admin/portal-signature";
 import { detectMimeType, extractMarkdown } from "@/lib/knowledge/extract";
+import { readTextCapped } from "@/lib/http/read-capped";
+import { portalDenied } from "@/lib/portal-admin/denied";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,8 +19,8 @@ export const maxDuration = 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request: NextRequest) {
-  const body = await request.text();
-  if (body.length > 2000) return NextResponse.json({ ok: false }, { status: 413 });
+  const body = await readTextCapped(request, 2000);
+  if (body === null) return NextResponse.json({ ok: false }, { status: 413 });
   const okSig = verifyPortalRequest({
     secret: process.env.PORTAL_SHARED_SECRET,
     timestamp: request.headers.get("x-portal-timestamp"),
@@ -38,7 +40,7 @@ export async function POST(request: NextRequest) {
   }
   const db = await createServiceClient();
   const grant = await svcRpc<{ bucket: string; path: string }>(db, "portal_project_file_grant", { p_session: input.session, p_kind: "project_doc", p_item_id: input.project_id, p_ref: input.path });
-  if (!grant.ok) return NextResponse.json({ ok: false, code: grant.error.code, message: grant.error.message }, { status: 403 });
+  if (!grant.ok) return NextResponse.json(portalDenied(grant.error), { status: 403 });
   const { data } = await db.storage.from(grant.data.bucket).download(grant.data.path);
   if (!data) return NextResponse.json({ ok: false, message: "No encontramos el archivo" }, { status: 404 });
   const bytes = new Uint8Array(await data.arrayBuffer());
