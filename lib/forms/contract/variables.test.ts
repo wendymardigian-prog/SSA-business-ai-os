@@ -75,3 +75,53 @@ describe("armar el texto", () => {
     expect(contractDate(new Date("2026-10-22T02:00:00Z"), "zona/rota")).toBe("22 de octubre de 2026");
   });
 });
+
+describe("el plan de pagos ({{venta.plan_pagos}})", () => {
+  const plan = ["Reserva — USD 500,00 — Cobrado el 3 de noviembre de 2026", "Cuota 1 de 2 — USD 1.000,00 — Programado para el 3 de diciembre de 2026"];
+  const template = "## Pagos\n\nEl cliente paga así:\n\n{{venta.plan_pagos}}\n\nFirmado el {{fecha}}.";
+
+  it("sola en su renglón es una lista numerada que el contrato dibuja como lista", () => {
+    const text = renderContractTemplate(template, { "venta.plan_pagos": plan, fecha: "hoy" });
+    expect(text).toBe(
+      "## Pagos\n\nEl cliente paga así:\n\n1. Reserva — USD 500,00 — Cobrado el 3 de noviembre de 2026\n2. Cuota 1 de 2 — USD 1.000,00 — Programado para el 3 de diciembre de 2026\n\nFirmado el hoy.",
+    );
+    const list = renderContractMarkdown(text).find((b) => b.type === "list");
+    expect(list).toMatchObject({ type: "list", ordered: true });
+    expect(list && list.type === "list" ? list.items.length : 0).toBe(2);
+    expect(renderMatchesTemplate(template, text)).toBe(true);
+  });
+
+  it("también va pegada a un párrafo (sin renglón vacío alrededor)", () => {
+    const text = renderContractTemplate("Pagos:\n{{venta.plan_pagos}}\nGracias.", { "venta.plan_pagos": plan });
+    const blocks = renderContractMarkdown(text);
+    expect(blocks.map((b) => b.type)).toEqual(["paragraph", "list", "paragraph"]);
+  });
+
+  it("dentro de una frase es una sola línea separada por «; »", () => {
+    const text = renderContractTemplate("Pagos: {{venta.plan_pagos}}.", { "venta.plan_pagos": plan });
+    expect(text).toBe(`Pagos: ${plan[0]}; ${plan[1]}.`);
+    expect(renderMatchesTemplate("Pagos: {{venta.plan_pagos}}.", text)).toBe(true);
+  });
+
+  it("sin pagos o sin venta, «—»", () => {
+    expect(renderContractTemplate("{{venta.plan_pagos}}", { "venta.plan_pagos": [] })).toBe("—");
+    expect(renderContractTemplate("{{venta.plan_pagos}}", { "venta.plan_pagos": null })).toBe("—");
+    expect(renderContractTemplate("{{venta.plan_pagos}}", {})).toBe("—");
+  });
+
+  it("cada renglón se escapa: un * no se vuelve formato", () => {
+    const text = renderContractTemplate("{{venta.plan_pagos}}", { "venta.plan_pagos": ["Pago *raro*"] });
+    expect(text).toBe("1. Pago \\*raro\\*");
+  });
+
+  it("los otros valores no cambian aunque haya plan de pagos", () => {
+    const text = renderContractTemplate("Hola {{contacto.nombre}}\n{{venta.plan_pagos}}", { "contacto.nombre": "Ana", "venta.plan_pagos": ["A"] });
+    expect(text).toBe("Hola Ana\n1. A");
+  });
+
+  it("contractValues pasa el plan del link y es una variable conocida", () => {
+    const values = contractValues({ answers: {}, link: { venta: { plan_pagos: plan } }, businessName: "X", date: "hoy" });
+    expect(values["venta.plan_pagos"]).toEqual(plan);
+    expect(unknownVariables("{{venta.plan_pagos}}", [])).toEqual([]);
+  });
+});

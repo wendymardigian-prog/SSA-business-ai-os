@@ -6,6 +6,9 @@
  * `{{contacto.*}}` y `{{venta.*}}` (solo con un link firmado desde una venta), `{{negocio.nombre}}` y `{{fecha}}`
  * (el día de la firma). Una variable que no está en esta lista no deja publicar.
  *
+ * `{{venta.plan_pagos}}` es la única con VARIOS renglones (un pago por renglón): sola en su renglón se vuelve una
+ * lista numerada; dentro de una frase, una sola línea separada por «; ».
+ *
  * El texto final lo arma SIEMPRE el servidor (`renderContractTemplate`) con la plantilla congelada de la versión y
  * las respuestas ya validadas; la base comprueba con `contract_render_matches` (la gemela de `renderMatchesTemplate`)
  * que sea la plantilla con solo los huecos completados. Lo que manda el navegador nunca entra.
@@ -23,6 +26,7 @@ export const FIXED_VARIABLES: ReadonlyArray<{ name: string; label: string; needs
   { name: "venta.variante", label: "Variante de la venta", needsLink: true },
   { name: "venta.monto", label: "Monto de la venta (USD)", needsLink: true },
   { name: "venta.inicio_servicio", label: "Inicio del servicio", needsLink: true },
+  { name: "venta.plan_pagos", label: "Plan de pagos de la venta", needsLink: true },
   { name: "negocio.nombre", label: "Nombre del negocio" },
   { name: "fecha", label: "Fecha de la firma" },
 ];
@@ -57,9 +61,39 @@ export function markdownValue(value: string | null | undefined): string {
   return flat ? escapeInline(flat) : MISSING_VALUE;
 }
 
-/** El texto con cada variable reemplazada por su valor (o "—" si no hay). Los pedazos fijos quedan intactos. */
-export function renderContractTemplate(template: string, values: Readonly<Record<string, string | null | undefined>>): string {
-  return template.replace(VARIABLE_PATTERN, (_token, name: string) => markdownValue(values[name]));
+/** El valor de una variable: un texto, o varios renglones (el plan de pagos). */
+export type ContractValue = string | readonly string[] | null | undefined;
+
+/** Una variable sola en su renglón (sin nada más que espacios alrededor). */
+const ALONE_ON_LINE = /^(\s*)\{\{\s*([a-zA-Z][\w.]*)\s*\}\}\s*$/;
+
+/** Varios renglones dentro de una frase: una sola línea separada por «; ». */
+function inlineValue(value: ContractValue): string {
+  if (Array.isArray(value)) return value.length > 0 ? value.map((line) => markdownValue(line)).join("; ") : MISSING_VALUE;
+  return markdownValue(value as string | null | undefined);
+}
+
+/**
+ * El texto con cada variable reemplazada por su valor (o "—" si no hay). Los pedazos fijos quedan intactos. Un valor de
+ * varios renglones sola en su renglón se escribe como lista numerada (`1. …`), cada renglón escapado.
+ */
+export function renderContractTemplate(template: string, values: Readonly<Record<string, ContractValue>>): string {
+  // Sin ningún valor de varios renglones, exactamente el reemplazo de siempre (los contratos de antes no cambian ni un byte).
+  if (!Object.values(values).some((value) => Array.isArray(value) && value.length > 0)) {
+    return template.replace(VARIABLE_PATTERN, (_token, name: string) => inlineValue(values[name]));
+  }
+  return template
+    .split("\n")
+    .map((line) => {
+      const alone = ALONE_ON_LINE.exec(line.replace(/\r$/, ""));
+      const value = alone ? values[alone[2]] : undefined;
+      if (alone && Array.isArray(value) && value.length > 0) {
+        const items = value.map((item, i) => `${i + 1}. ${markdownValue(item)}`).join("\n");
+        return line.replace(/\{\{\s*[a-zA-Z][\w.]*\s*\}\}/, () => items);
+      }
+      return line.replace(VARIABLE_PATTERN, (_token, name: string) => inlineValue(values[name]));
+    })
+    .join("\n");
 }
 
 /**
@@ -95,7 +129,14 @@ export function contractDate(date: Date, timeZone: string): string {
 
 export interface ContractLinkContext {
   contacto?: { nombre?: string | null; email?: string | null; telefono?: string | null };
-  venta?: { producto?: string | null; variante?: string | null; monto?: string | null; inicio_servicio?: string | null };
+  venta?: {
+    producto?: string | null;
+    variante?: string | null;
+    monto?: string | null;
+    inicio_servicio?: string | null;
+    /** Un renglón por pago (`paymentPlanLines`); null si no se pudieron leer. */
+    plan_pagos?: readonly string[] | null;
+  };
 }
 
 /** Todos los valores de las variables: las respuestas (ya en texto), el link firmado, el negocio y la fecha. */
@@ -104,8 +145,8 @@ export function contractValues(input: {
   link?: ContractLinkContext | null;
   businessName: string;
   date: string;
-}): Record<string, string | null> {
-  const values: Record<string, string | null> = {};
+}): Record<string, string | readonly string[] | null> {
+  const values: Record<string, string | readonly string[] | null> = {};
   for (const [key, value] of Object.entries(input.answers)) values[`respuesta.${key}`] = value;
   const c = input.link?.contacto;
   const v = input.link?.venta;
@@ -116,6 +157,7 @@ export function contractValues(input: {
   values["venta.variante"] = v?.variante ?? null;
   values["venta.monto"] = v?.monto ?? null;
   values["venta.inicio_servicio"] = v?.inicio_servicio ?? null;
+  values["venta.plan_pagos"] = v?.plan_pagos ?? null;
   values["negocio.nombre"] = input.businessName;
   values["fecha"] = input.date;
   return values;

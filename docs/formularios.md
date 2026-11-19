@@ -154,7 +154,7 @@ El puntaje es un campo de estrellas o de NPS **obligatorio** (se valida al publi
 | | **Aceptación de términos** (`mode: "terms"`, el de siempre) | **Contrato** (`mode: "contract"`) |
 |---|---|---|
 | Orden | Texto → preguntas → casilla y firma | **Paso 1**: las preguntas → **Paso 2**: el contrato con esos datos, «Volver a mis datos», casilla y firma |
-| Texto | Igual para todos (sin variables: no deja publicar con `{{…}}`) | Con **variables**: `{{respuesta.<clave>}}`, `{{contacto.*}}` y `{{venta.*}}` (solo con un link firmado de una venta), `{{negocio.nombre}}`, `{{fecha}}` (`lib/forms/contract/variables.ts`). Una variable que no existe no deja publicar |
+| Texto | Igual para todos (sin variables: no deja publicar con `{{…}}`) | Con **variables**: `{{respuesta.<clave>}}`, `{{contacto.*}}` y `{{venta.*}}` (solo con un link firmado de una venta), `{{negocio.nombre}}`, `{{fecha}}` (`lib/forms/contract/variables.ts`). `{{venta.plan_pagos}}` lista cada pago de la venta (menos anulados y devoluciones) con monto, estado y fecha: sola en su renglón es una lista numerada; dentro de una frase, una línea separada por «; » (`paymentPlanLines`, `lib/sales/contract.ts`). Una variable que no existe no deja publicar |
 | Firmas | La de quien acepta | La de la persona y, con **«Firma de ambas partes»**, la del negocio (dibujada o subida una vez, con nombre y cargo), lado a lado abajo del texto |
 | PDF | Texto, firmante, respuestas, firma y «Datos de aceptación» | Texto firmado, las firmas abajo, lo que completó la persona y una página **«Certificado de firma»** con la evidencia y las dos huellas |
 
