@@ -10,7 +10,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { logAudit } from "@/lib/audit";
-import { isSlotAvailable } from "@/lib/scheduling/slots";
+import { availableSlots, isSlotAvailable } from "@/lib/scheduling/slots";
+import { pickNextSlots, suggestNextSlots } from "@/lib/scheduling/next-slots";
 import { buildSlotsInput } from "@/lib/scheduling/data/slots-input";
 import { inviteeActions, LATE_ACTION_MESSAGE } from "@/lib/scheduling/booking-page";
 import { notifyBooking } from "@/lib/scheduling/notifications";
@@ -29,12 +30,23 @@ export interface RescheduleInput {
   actorUserId?: string | null;
   /** Solo el equipo (F36): mover a un horario que el motor no ofreceria. */
   ignoreAvailability?: boolean;
+  /** solo el equipo, al estirar la reunión en el calendario. Entre 15 minutos y 8 horas. */
+  durationMinutes?: number;
+  /** 00430: quien atiende la movió en su Google Calendar. No se vuelve a escribir ahí (sería eco). */
+  fromGoogle?: boolean;
   now?: Date;
 }
 
 export type RescheduleResult =
   | { ok: true; bookingId: string; uid: string; startUtc: string; endUtc: string }
-  | { ok: false; status: number; reason: "not_found" | "too_late" | "slot_unavailable" | "slot_taken" | "temporarily_unavailable"; message?: string };
+  | {
+      ok: false;
+      status: number;
+      reason: "not_found" | "too_late" | "slot_unavailable" | "slot_taken" | "temporarily_unavailable";
+      message?: string;
+      /** los huecos libres siguientes (UTC), a confirmar. */
+      alternatives?: string[];
+    };
 
 export async function rescheduleBooking(service: Db, input: RescheduleInput): Promise<RescheduleResult> {
   const now = input.now ?? new Date();
@@ -60,7 +72,11 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
   const startUtc = new Date(input.startUtc).toISOString();
   // La duracion de ESTA reunion, no la del evento: una reunion a mano de 90 minutos no pasa a 30 al moverla.
   const currentMs = Date.parse(booking.end_at) - Date.parse(booking.start_at);
-  const durationMs = currentMs > 0 ? currentMs : event.duration_minutes * 60_000;
+  const wantedMinutes = input.by === "host" && input.durationMinutes !== undefined ? Math.round(input.durationMinutes) : null;
+  if (wantedMinutes !== null && (!Number.isFinite(wantedMinutes) || wantedMinutes < 15 || wantedMinutes > 8 * 60)) {
+    return { ok: false, status: 400, reason: "slot_unavailable", message: "La duración tiene que ir de 15 minutos a 8 horas." };
+  }
+  const durationMs = wantedMinutes !== null ? wantedMinutes * 60_000 : currentMs > 0 ? currentMs : event.duration_minutes * 60_000;
   const endUtc = new Date(new Date(startUtc).getTime() + durationMs).toISOString();
 
   if (!input.ignoreAvailability) {
@@ -78,7 +94,8 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
     });
     if (!built.ok) return { ok: false, status: 503, reason: "temporarily_unavailable" };
     if (!isSlotAvailable(built.input, startUtc)) {
-      return { ok: false, status: 409, reason: "slot_unavailable", message: "Ese horario ya no está disponible." };
+      const alternatives = pickNextSlots(availableSlots(built.input).map((s) => s.startUtc), startUtc);
+      return { ok: false, status: 409, reason: "slot_unavailable", message: "Ese horario ya no está disponible.", alternatives };
     }
   }
 
@@ -97,7 +114,18 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
     .eq("status_group", "active");
   if (error) {
     // 23P01 = la exclusion: el horario nuevo se ocupo entre la consulta y esto.
-    if (error.code === "23P01") return { ok: false, status: 409, reason: "slot_taken", message: "Ese horario se acaba de ocupar." };
+    if (error.code === "23P01") {
+      // se proponen los huecos siguientes del mismo anfitrión, con la duración de ESTA reunión.
+      const alternatives = await suggestNextSlots(service, event, profile, {
+        requestedUtc: startUtc,
+        inviteeTz: booking.booker_timezone ?? "UTC",
+        now,
+        excludeBookingId: booking.id,
+        ignoreMinimumNotice: input.by === "host",
+        durationMinutes: durationMs / 60_000,
+      });
+      return { ok: false, status: 409, reason: "slot_taken", message: "Ese horario se acaba de ocupar.", alternatives };
+    }
     console.error("[agenda] no pude reagendar:", error.message);
     return { ok: false, status: 500, reason: "temporarily_unavailable" };
   }
@@ -109,7 +137,7 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
     entityId: booking.id,
     action: "booking.rescheduled",
     changes: { start_at: { old: previous.start_at, new: startUtc }, end_at: { old: previous.end_at, new: endUtc } },
-    metadata: { by: input.by, reason: input.reason ?? null },
+    metadata: { by: input.by, reason: input.reason ?? null, ...(input.fromGoogle ? { source: "google" } : {}) },
     performedBy: input.by === "host" ? input.actorUserId ?? null : null,
   });
 
@@ -131,17 +159,19 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
   // relativos los vuelve a agendar syncRelativeJobs (B7a).
   await cancelPendingJobs(service, booking.id);
   await service.from("scheduled_jobs").insert([
-    {
-      type: BOOKING_GOOGLE_SYNC_JOB,
-      payload: { booking_id: booking.id, action: booking.google_event_id ? "update" : "create", attempt: 0 } as unknown as Json,
-      run_at: now.toISOString(),
-      status: "pending",
-    },
+    ...(input.fromGoogle
+      ? []
+      : [{
+          type: BOOKING_GOOGLE_SYNC_JOB,
+          payload: { booking_id: booking.id, action: booking.google_event_id ? "update" : "create", attempt: 0 } as unknown as Json,
+          run_at: now.toISOString(),
+          status: "pending" as const,
+        }]),
     {
       type: BOOKING_ENDED_JOB,
       payload: { booking_id: booking.id } as unknown as Json,
       run_at: endUtc,
-      status: "pending",
+      status: "pending" as const,
     },
   ]);
 

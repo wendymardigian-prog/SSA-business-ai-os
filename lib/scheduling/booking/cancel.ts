@@ -28,6 +28,8 @@ export interface CancelInput {
   status?: CancelStatus;
   reason?: string | null;
   actorUserId?: string | null;
+  /** 00430: quien atiende la canceló en su Google Calendar. No se vuelve a borrar ahí (ya no está). */
+  fromGoogle?: boolean;
   now?: Date;
 }
 
@@ -77,7 +79,7 @@ export async function cancelBooking(service: Db, input: CancelInput): Promise<Ca
     entityType: "booking",
     entityId: booking.id,
     action: "booking.cancelled",
-    metadata: { by: input.by, status, reason: input.reason ?? null },
+    metadata: { by: input.by, status, reason: input.reason ?? null, ...(input.fromGoogle ? { source: "google" } : {}) },
     performedBy: input.by === "host" ? input.actorUserId ?? null : null,
   });
 
@@ -96,12 +98,14 @@ export async function cancelBooking(service: Db, input: CancelInput): Promise<Ca
   });
 
   await cancelPendingJobs(service, booking.id);
-  await service.from("scheduled_jobs").insert({
-    type: BOOKING_GOOGLE_SYNC_JOB,
-    payload: { booking_id: booking.id, action: "delete", attempt: 0 } as unknown as Json,
-    run_at: now.toISOString(),
-    status: "pending",
-  });
+  if (!input.fromGoogle) {
+    await service.from("scheduled_jobs").insert({
+      type: BOOKING_GOOGLE_SYNC_JOB,
+      payload: { booking_id: booking.id, action: "delete", attempt: 0 } as unknown as Json,
+      run_at: now.toISOString(),
+      status: "pending",
+    });
+  }
 
   // Si canceló el invitado, el anfitrión se entera por el aviso.
   await notifyBooking(service, booking.id, "booking_cancelled", {

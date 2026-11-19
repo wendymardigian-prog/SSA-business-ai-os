@@ -494,7 +494,7 @@ Ninguno se desactiva.
 - Arrastrar y soltar con **HTML5 nativo**, el patrón de `tasks-board.tsx`. Se arrastra solo desde el asa, nunca con el foco en un input de esa tarjeta, con una línea que marca dónde cae. También Subir y Bajar.
 - **Salen:** `design-cards.tsx` (y con él la opción del logo), el panel y la vista previa al costado de `fields-tab.tsx`, y el `<details>` de `field-editor.tsx`, que se reparte en el panel.
 - En el EOD, la pestaña Preguntas usa el mismo lienzo con los tipos que acepta y los ajustes de número que ya existen (`eod-number-settings`).
-- **D9:**
+- **D9** (revertida a pedido el 18/11/2026: el logo vuelve como opción, con el de la marca del negocio y nunca incrustado; ver docs/formularios.md):
   - `app/f/[slug]/page.tsx` deja de dibujar el logo para cualquier `showLogo`;
   - `saveFormDraft` conserva el valor guardado tal cual (no se migra nada);
   - `defaults.ts` no cambia.

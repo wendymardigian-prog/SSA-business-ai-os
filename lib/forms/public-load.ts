@@ -8,6 +8,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveBrand } from "@/lib/brand";
+import { showsLogo } from "./show-logo";
 import type { Database } from "@/lib/types/database";
 import { SLUG_PATTERN } from "./list";
 import { fieldsOf } from "./server-ports";
@@ -26,23 +27,27 @@ export async function loadPublicFormData(service: Db, slug: string): Promise<Pub
   if (error || !data || typeof data !== "object") return { status: "unavailable" };
   const result = data as unknown as PublicFormResult;
   if (result.status !== "available") return { status: "unavailable" };
-  const withName = { ...result, business_name: await formBusinessName(service, slug) };
+  const brand = await formBrand(service, slug);
+  const withName = { ...result, business_name: brand.name, business_logo_url: showsLogo(result.design) ? brand.logoUrl : null };
   return withSignerUrl(service, withName);
 }
 
 /**
- * El nombre del negocio dueño del formulario (00266): con dos negocios en la instalación, un contrato de uno no
- * puede decir el nombre del otro. Es la misma regla que usa el servidor al firmar (`loadPublishedForm`). Ante
- * cualquier error, el de la instalación (lo de siempre): la página nunca se cae por esto.
+ * El nombre y el logo del negocio dueño del formulario (00266): con dos negocios en la instalación, un contrato de
+ * uno no puede decir el nombre (ni mostrar el logo) del otro. Es la misma regla que usa el servidor al firmar
+ * (`loadPublishedForm`). Ante cualquier error, el nombre de la instalación y sin logo: la página nunca se cae por
+ * esto (y nunca muestra un logo que podría ser de otro negocio).
  */
-async function formBusinessName(db: Db, slug: string): Promise<string> {
+async function formBrand(db: Db, slug: string): Promise<{ name: string; logoUrl: string | null }> {
   try {
     const { data: form } = await db.from("forms").select("workspace_id").ilike("slug", slug).maybeSingle();
-    if (!form) return resolveBrand(null).name;
-    const { data: workspace } = await db.from("workspaces").select("brand_name").eq("id", form.workspace_id).maybeSingle();
-    return resolveBrand(workspace).name;
+    if (!form) return { name: resolveBrand(null).name, logoUrl: null };
+    const { data: workspace } = await db.from("workspaces").select("brand_name, brand_logo_path, brand_color").eq("id", form.workspace_id).maybeSingle();
+    if (!workspace) return { name: resolveBrand(null).name, logoUrl: null };
+    const brand = resolveBrand(workspace);
+    return { name: brand.name, logoUrl: brand.logoUrl };
   } catch {
-    return resolveBrand(null).name;
+    return { name: resolveBrand(null).name, logoUrl: null };
   }
 }
 
@@ -161,8 +166,13 @@ export async function loadPreviewFormData(userClient: Db, slug: string): Promise
         : null,
     signature_required: form.type === "contract" ? (contract?.signatureRequired ?? true) : false,
     survey: form.type === "survey" ? { scoreFieldKey: (form.survey_config as { scoreFieldKey?: string } | null)?.scoreFieldKey ?? null } : null,
-    business_name: await formBusinessName(userClient, slug),
+    ...(await previewBrand(userClient, slug, design)),
   };
+}
+
+async function previewBrand(db: Db, slug: string, design: PublicFormData["design"]) {
+  const brand = await formBrand(db, slug);
+  return { business_name: brand.name, business_logo_url: showsLogo(design) ? brand.logoUrl : null };
 }
 
 /**

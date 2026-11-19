@@ -12,6 +12,8 @@ import { ProfileTab } from "@/components/account/profile-tab";
 import { NotificationsTab } from "@/components/account/notifications-tab";
 import { WhatsAppTestButton } from "@/components/account/whatsapp-test-button";
 import { ConnectionsTab } from "@/components/account/connections-tab";
+import { NoGoogleNotice } from "@/components/scheduling/no-google-notice";
+import { googleCalendarState } from "@/lib/scheduling/google-notice";
 
 /**
  * Mi cuenta (00273/00274): lo de cada persona, no del negocio. No pide ningun
@@ -25,13 +27,17 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   // Lo del negocio (si hay email conectado, desde que WhatsApp se avisa): con el
   // cliente de servicio, siempre para el workspace de la sesion. No sale ninguna clave.
   const service = await createServiceClient();
-  const [timezone, hasEmail, alertsChannel, slackRow] = await Promise.all([
+  const [timezone, hasEmail, alertsChannel, slackRow, { data: googleRows }] = await Promise.all([
     resolveViewerTimezone(workspace.timezone),
     emailConfigured(service, workspace.id),
     loadTeamAlertsChannel(service, workspace.id),
     // Slack (Servicios A4, F133): solo si está conectado; la columna de Notificaciones aparece con eso.
     service.from("integration_configs").select("is_active").eq("workspace_id", workspace.id).eq("type", "slack").eq("provider", "slack").maybeSingle(),
+    // Solo el estado de las cuentas de Google Calendar de la persona (sin tokens), para el aviso sin Google.
+    service.from("oauth_connections").select("status").eq("workspace_id", workspace.id).eq("provider", "google_calendar").eq("user_id", user.id),
   ]);
+  // Solo a quien usa la agenda: a los demás no les cambia nada no tener Google.
+  const googleState = ctx.can("scheduling.use") ? googleCalendarState((googleRows ?? []).map((r) => r.status)) : "connected";
   const slack = { connected: Boolean(slackRow.data?.is_active), userId: profile.slackUserId };
 
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
@@ -54,6 +60,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   return (
     <AccountView
       initialTab={parseAccountTab(params.tab)}
+      notice={<NoGoogleNotice state={googleState} variant="card" />}
       profile={
         <ProfileTab
           email={user.email ?? ""}

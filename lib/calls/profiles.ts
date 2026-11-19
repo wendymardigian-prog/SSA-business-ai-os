@@ -6,7 +6,7 @@
  * uno nuevo no cambia nada por sorpresa.
  */
 import { countPeople, normalizeText, type MeetingForRules } from "./classification";
-import { DEFAULT_RUBRIC, activeWeight, normalizeRubric, type Rubric } from "./rubric";
+import { DEFAULT_RUBRIC, activeWeight, normalizeRubric, penaltyProblems, type Rubric } from "./rubric";
 
 export const PROFILE_SHAPES = ["sales", "general"] as const;
 export type ProfileShape = (typeof PROFILE_SHAPES)[number];
@@ -160,12 +160,13 @@ export function profileState(profile: CallAnalysisProfile | null | undefined): P
 export function validateProfileRubric(rubric: Rubric, shape: ProfileShape): string[] {
   const out: string[] = [];
   const side = (list: Rubric["closer"], label: string) => {
-    if (list.filter((x) => !x.archivado).length < 3) out.push(`La rúbrica ${label} necesita al menos 3 criterios activos.`);
+    if (list.filter((x) => !x.archivado && !x.subtracts).length < 3) out.push(`La rúbrica ${label} necesita al menos 3 criterios activos que sumen.`);
     const w = activeWeight(list);
     if (w !== 100) out.push(`Los pesos ${label} suman ${w}, no 100.`);
     if (list.some((x) => !x.nombre.trim())) out.push(`Hay un criterio ${label} sin nombre.`);
   };
   side(rubric.closer, shape === "sales" ? "del closer" : "de quien atendió");
+  out.push(...penaltyProblems(rubric.closer));
   if (shape === "sales") side(rubric.lead, "del lead");
   return out;
 }

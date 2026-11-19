@@ -17,7 +17,8 @@ import { analysisSchema, buildGeneralSchema, type CallAnalysis, type GeneralCall
 import { sanitizeAnalysisCategories } from "./categories";
 import type { ProfileShape } from "./profiles";
 import { buildAnalysisTechnical, buildGeneralAnalysisTechnical, type CallCategories, type Rubric } from "./rubric";
-import { computeScoresWithRubric, type AnalysisScores } from "./scoring";
+import { activeChurnReasons, churnTechnical, sanitizeChurnCause, type ChurnReason } from "./churn";
+import { computeScoresWithRubric, type AnalysisScoresWithBreakdown } from "./scoring";
 import { transcriptText } from "./transcript-text";
 import { headText, tailText } from "@/lib/text/safe-slice";
 
@@ -48,6 +49,8 @@ export interface RunAnalysisInput {
    * (`buildProposalsInstructions`). Sin esto, el pedido y el esquema son exactamente los de siempre.
    */
   proposals?: { instructions: string } | null;
+  /** Las causas de baja del negocio. Con alguna activa, el formato general detecta la causa (con su cita). */
+  churnReasons?: ChurnReason[] | null;
 }
 
 export type AnalysisFailureKind = "truncated" | "schema" | "ai";
@@ -56,7 +59,7 @@ export type RunAnalysisResult =
   | {
       ok: true;
       analysis: CallAnalysis | GeneralCallAnalysis;
-      scores: AnalysisScores;
+      scores: AnalysisScoresWithBreakdown;
       /** El texto contra el que se verifican las citas. */
       transcriptText: string;
       system: string;
@@ -86,7 +89,9 @@ export function buildAnalysisSystem(input: Pick<RunAnalysisInput, "instructions"
 export async function runCallAnalysis(input: RunAnalysisInput): Promise<RunAnalysisResult> {
   // Con un analizador por tipo, la rubrica ya es la de ese tipo y se usa entera.
   const withProposals = input.shape === "general" && Boolean(input.proposals);
-  const system = buildAnalysisSystem({ ...input, callType: null }) + (withProposals ? `\n${input.proposals!.instructions}` : "");
+  const churnList = input.shape === "general" ? activeChurnReasons(input.churnReasons ?? []) : [];
+  const withChurn = churnList.length > 0;
+  const system = buildAnalysisSystem({ ...input, callType: null }) + (withProposals ? `\n${input.proposals!.instructions}` : "") + (withChurn ? churnTechnical(churnList) : "");
   const fullText = transcriptText(input.call.transcript);
   const nonce = input.nonce ?? newNonce();
 
@@ -103,9 +108,13 @@ export async function runCallAnalysis(input: RunAnalysisInput): Promise<RunAnaly
 
   try {
     if (input.shape === "general") {
-      const result = await input.generate({ system, prompt, schema: buildGeneralSchema({ proposals: withProposals }), maxOutputTokens: ANALYZER_MAX_TOKENS });
+      const result = await input.generate({ system, prompt, schema: buildGeneralSchema({ proposals: withProposals, churn: withChurn }), maxOutputTokens: ANALYZER_MAX_TOKENS });
       const scores = computeScoresWithRubric(result.object, input.rubric, null, fullText);
-      return { ok: true, analysis: result.object, scores, transcriptText: fullText, system, usage: result.usage };
+      // La causa de baja: solo de la lista y con una cita que está en la transcripción; si no, no queda nada.
+      const { causa_baja: rawChurn, ...rest } = result.object as GeneralCallAnalysis & { causa_baja?: unknown };
+      const cause = withChurn ? sanitizeChurnCause(rawChurn, churnList, fullText) : null;
+      const analysis = (cause ? { ...rest, causa_baja: cause } : rest) as GeneralCallAnalysis;
+      return { ok: true, analysis, scores, transcriptText: fullText, system, usage: result.usage };
     }
     const result = await input.generate({ system, prompt, schema: analysisSchema, maxOutputTokens: ANALYZER_MAX_TOKENS });
     // Con las categorias nuevas apagadas, lo que no esta en la lista pasa a "otra".

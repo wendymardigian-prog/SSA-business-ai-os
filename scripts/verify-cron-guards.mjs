@@ -48,7 +48,7 @@ const guards = JSON.parse(readFileSync(repoFile("lib/cron/guards.json"), "utf8")
 const ticks = JSON.parse(readFileSync(repoFile("lib/cron/ticks.json"), "utf8"));
 const after00350 = process.argv.includes("--despues-de-00350");
 // Las partes que corren en la base (gemela de TICK_DB_PARTS en lib/cron/ticks.ts).
-const TICK_DB_PARTS = { "agent-drafts-sweep": "private.sweep_agent_drafts", "draft-window-alerts": "private.alert_draft_windows" };
+const TICK_DB_PARTS = { "agent-drafts-sweep": "private.sweep_agent_drafts", "draft-window-alerts": "private.alert_draft_windows", "google-calendar-inbound": "private.enqueue_google_calendar_inbound" };
 const decideCases = JSON.parse(readFileSync(repoFile("lib/cron/guard-decide.cases.json"), "utf8"));
 const realtimeTables = [
   ...readFileSync(repoFile("lib/realtime/tables.ts"), "utf8").match(/REALTIME_TABLES = \[([\s\S]*?)\]/)[1].matchAll(/"([a-z_]+)"/g),

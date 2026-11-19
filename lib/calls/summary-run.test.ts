@@ -38,16 +38,16 @@ const summary = (over: Record<string, unknown> = {}) => ({
   puntos_clave: ["a"],
   sentimiento: "neutral",
   ideas: [
-    { gancho: "Idea 1", angulo: "A1", formato: "reel", cita: "no me llegan clientes" },
-    { gancho: "Idea 2", angulo: "A2", formato: "post" },
-    { gancho: "Idea 3", angulo: "A3", formato: "video" },
+    { gancho: "Idea 1", angulo: "A1", formato: "reel", cita: "no me llegan clientes", guion: null },
+    { gancho: "Idea 2", angulo: "A2", formato: "post", cita: null, guion: null },
+    { gancho: "Idea 3", angulo: "A3", formato: "video", cita: "esto nadie lo dijo", guion: null },
   ],
   memoria: "Memoria integrada",
   ...over,
 });
 
 interface Contact { memory: string | null; updatedAt: string | null }
-function setup(over: { call?: Record<string, unknown> | null; contact?: Contact | null; ideasLast?: number | null } = {}) {
+function setup(over: { call?: Record<string, unknown> | null; contact?: Contact | null; ideasLast?: number | null; rpcError?: { code: string; message: string } } = {}) {
   const contact: Contact | null = over.contact === undefined ? { memory: "Memoria vieja", updatedAt: "2026-10-01T00:00:00Z" } : over.contact;
   const hooks: Array<() => void> = [];
   const state = contact ? { ...contact } : null;
@@ -74,7 +74,7 @@ function setup(over: { call?: Record<string, unknown> | null; contact?: Contact 
     "content_ideas:select": { data: over.ideasLast === null ? null : { position: over.ideasLast ?? 30 } },
     "content_ideas:insert": { data: null },
     "scheduled_jobs:insert": { data: { id: "j" } },
-  });
+  }, { call_proposals_replace_pending: over.rpcError ? { data: null, error: over.rpcError } : { data: 1 } });
   return { db, state, beforeNextContactUpdate: (fn: () => void) => hooks.push(fn) };
 }
 const gen = (obj: Record<string, unknown> = summary()) => vi.fn().mockResolvedValue({ object: obj, usage: { inputTokens: 10 } });
@@ -100,41 +100,40 @@ describe("runCallSummaryJob: el resumen y las ideas (F29)", () => {
     expect(mocks.openAiRun.mock.calls[0][1]).toMatchObject({ source: "call_summary", threadId: "c1", contactId: "ct1" });
   });
 
-  it("con 3 ideas, crea 3 content_ideas con source 'call', status 'nueva' y el call_id", async () => {
-    const s = setup({ ideasLast: 30 });
+  it("las ideas con una cita de la transcripción quedan como propuestas de la grabación: no tocan el banco", async () => {
+    const s = setup();
     await runCallSummaryJob({ db: s.db.client, now: NOW, generate: gen() }, { callId: "c1" });
-    const rows = s.db.writesTo("content_ideas")[0].values as Array<Record<string, unknown>>;
-    expect(rows).toHaveLength(3);
-    expect(rows.every((r) => r.source === "call" && r.status === "nueva" && r.call_id === "c1" && r.created_by === null && r.workspace_id === "ws1")).toBe(true);
-    expect(rows.map((r) => r.position)).toEqual([40, 50, 60]);
-    expect(rows[0]).toMatchObject({ title: "Idea 1", format: "Reel" });
-    expect(String(rows[0].content)).toContain("De la llamada del 9 de octubre de 2026 con Ana Pérez");
-    expect(callUpdates(s).at(-1)).toMatchObject({ ideas_created_at: NOW.toISOString() });
-  });
-
-  it("al volver a resumir la misma llamada NO crea ideas nuevas", async () => {
-    const s = setup({ call: { ideas_created_at: "2026-10-09T20:00:00Z" } });
-    await runCallSummaryJob({ db: s.db.client, now: NOW, generate: gen() }, { callId: "c1", manual: true });
     expect(s.db.writesTo("content_ideas")).toHaveLength(0);
+    expect(s.db.rpcCalls).toHaveLength(1);
+    const args = s.db.rpcCalls[0].args as { p_call_id: string; p_types: string[]; p_fresh: Array<Record<string, unknown>> };
+    expect(s.db.rpcCalls[0].name).toBe("call_proposals_replace_pending");
+    expect(args.p_call_id).toBe("c1");
+    expect(args.p_types).toEqual(["idea", "borrador"]);
+    // Solo «Idea 1» tiene una cita que está en la transcripción.
+    expect(args.p_fresh).toHaveLength(1);
+    expect(args.p_fresh[0]).toMatchObject({ type: "idea", status: "pending", original: { titulo: "Idea 1", cita: "no me llegan clientes", formato: "Reel" } });
     expect(callUpdates(s).at(-1)).not.toHaveProperty("ideas_created_at");
   });
 
-  it("si no se pudieron crear las ideas, el resumen igual sale y ideas_created_at queda vacio para reintentar", async () => {
-    const s = setup();
-    const failing = fakeDb({
-      "calls:select": { data: callRow() },
-      "calls:update": { data: [{ id: "c1" }] },
-      "workspaces:select": { data: { timezone: "UTC" } },
-      "contacts:select": { data: { ai_conversation_summary: null, ai_summary_updated_at: null, display_name: "Ana" } },
-      "contacts:update": { data: [{ id: "ct1" }] },
-      "content_ideas:select": { data: null },
-      "content_ideas:insert": { error: { message: "boom" } },
-    });
-    const r = await runCallSummaryJob({ db: failing.client, now: NOW, generate: gen() }, { callId: "c1" });
+  it("una grabación cuyas ideas ya entraron solas al banco (antes de las propuestas) no las vuelve a proponer", async () => {
+    const s = setup({ call: { ideas_created_at: "2026-10-09T20:00:00Z" } });
+    await runCallSummaryJob({ db: s.db.client, now: NOW, generate: gen() }, { callId: "c1", manual: true });
+    expect(s.db.rpcCalls).toHaveLength(0);
+    expect(s.db.writesTo("content_ideas")).toHaveLength(0);
+  });
+
+  it("sin la 00450 aplicada, cae a leer y escribir: deja las propuestas del analizador y reemplaza solo las de contenido", async () => {
+    const previous = [
+      { id: "a1", type: "tarea", status: "pending", original: { titulo: "T", detalle: "" }, edited: null, result: null },
+      { id: "x1", type: "idea", status: "pending", original: { titulo: "Vieja", detalle: "" }, edited: null, result: null },
+    ];
+    const s = setup({ call: { proposals: previous }, rpcError: { code: "PGRST202", message: "Could not find the function" } });
+    const r = await runCallSummaryJob({ db: s.db.client, now: NOW, generate: gen() }, { callId: "c1" });
     expect(r.outcome).toBe("done");
-    const final = failing.writesTo("calls").map((c) => c.values as Record<string, unknown>).at(-1)!;
-    expect(final.summary_status).toBe("done");
-    expect(final).not.toHaveProperty("ideas_created_at");
+    const write = callUpdates(s).find((v) => "proposals" in v)!;
+    const ids = (write.proposals as Array<{ id: string; type: string }>).map((p) => p.type);
+    expect(ids).toEqual(["tarea", "idea"]);
+    expect((write.proposals as Array<{ id: string }>)[1].id).not.toBe("x1");
   });
 
   it("una llamada de equipo no llama al modelo ni abre run", async () => {

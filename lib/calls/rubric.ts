@@ -162,17 +162,25 @@ export function activeWeight(list: Criterion[]): number {
   return Math.round(list.filter((x) => !x.archivado && !x.subtracts).reduce((a, x) => a + (Number(x.peso) || 0), 0) * 100) / 100;
 }
 
+/** Un criterio que resta quita entre 1 y 100 puntos (su peso): con 0 no haría nada y con más de 100 se come la nota entera. */
+export function penaltyProblems(list: Criterion[]): string[] {
+  return list
+    .filter((x) => x.subtracts && !x.archivado && !(Number(x.peso) >= 1 && Number(x.peso) <= 100))
+    .map((x) => `«${x.nombre.trim() || "Criterio que resta"}» tiene que restar entre 1 y 100 puntos.`);
+}
+
 /** Motivos por los que no se puede guardar (vacio = se puede). */
 export function validateRubric(r: Rubric): string[] {
   const out: string[] = [];
   for (const [k, label] of [["closer", "del closer"], ["lead", "del lead"]] as const) {
-    const act = r[k].filter((x) => !x.archivado);
-    if (act.length < 3) out.push(`La rúbrica ${label} necesita al menos 3 criterios activos.`);
+    const act = r[k].filter((x) => !x.archivado && !x.subtracts);
+    if (act.length < 3) out.push(`La rúbrica ${label} necesita al menos 3 criterios activos que sumen.`);
     const w = activeWeight(r[k]);
     if (w !== 100) out.push(`Los pesos ${label} suman ${w}, no 100.`);
     if (r[k].some((x) => !x.nombre.trim())) out.push(`Hay un criterio ${label} sin nombre.`);
-    if (k === "closer" && act.some((x) => !x.aplica_a?.length)) out.push("Hay un criterio del closer que no aplica a ningún tipo.");
+    if (k === "closer" && r[k].some((x) => !x.archivado && !x.aplica_a?.length)) out.push("Hay un criterio del closer que no aplica a ningún tipo.");
   }
+  out.push(...penaltyProblems(r.closer));
   return out;
 }
 

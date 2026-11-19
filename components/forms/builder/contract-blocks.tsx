@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import { FileSignature, PenLine } from "lucide-react";
 import { RichTextEditor, type RichTextFormat } from "@/components/editor/rich-text-editor";
-import { editorDocToMarkdown, markdownToEditorDoc } from "@/lib/forms/contract/editor-markdown";
+import type { JSONContent } from "@tiptap/react";
+import { contractPasteText, editorDocToMarkdownWithBlankLines, markdownToEditorDocWithBlankLines } from "@/lib/forms/contract/blank-lines";
 import { unsupportedPdfChars } from "@/lib/forms/contract/pdf-charset";
 import { MAX_CONTRACT_TEXT } from "@/lib/forms/definition-schema";
 import { FIXED_VARIABLES, templateVariables, unknownVariables } from "@/lib/forms/contract/variables";
@@ -15,8 +16,16 @@ import { cn } from "@/lib/utils";
  * lugar) y la ACEPTACIÓN Y FIRMA (una vista de cómo lo ve quien firma; se configura en el panel). Solo dibujan.
  */
 
-/** El contrato se guarda en Markdown acotado: el editor lo abre y lo vuelve a armar (constante: no cambia entre dibujos). */
-const CONTRACT_FORMAT: RichTextFormat = { load: markdownToEditorDoc, save: editorDocToMarkdown };
+/**
+ * El contrato se guarda en Markdown acotado: el editor lo abre y lo vuelve a armar (constante: no cambia entre
+ * dibujos). Los renglones vacíos (Enter dos veces) se guardan y vuelven. Un texto pegado sin formato conserva sus
+ * renglones vacíos; uno en Markdown, su formato. Un pegado con formato (Word, una web) lo arma el editor.
+ */
+const CONTRACT_FORMAT: RichTextFormat = {
+  load: (value) => markdownToEditorDocWithBlankLines(value) as JSONContent,
+  save: (doc) => editorDocToMarkdownWithBlankLines(doc as never),
+  pasteText: (text) => contractPasteText(text) as JSONContent | null,
+};
 
 const blockClass = (selected: boolean) =>
   cn("rounded-xl border p-3 transition-colors", selected ? "border-primary-edge ring-1 ring-primary-edge" : "border-border hover:border-primary-edge/40");
@@ -66,6 +75,7 @@ export function ContractTextBlock({
         variables={variables}
         onChange={onText}
       />
+      <p className="mt-1.5 text-xs text-muted-foreground">Enter: párrafo nuevo (dos veces deja un renglón en blanco) · Shift + Enter: salto de línea en el mismo párrafo.</p>
       {unknown.length > 0 && (
         <p role="alert" className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
           {fieldKeys

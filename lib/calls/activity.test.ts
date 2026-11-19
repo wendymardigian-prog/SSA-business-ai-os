@@ -30,6 +30,20 @@ describe("activityText", () => {
   });
 });
 
+describe("lo nuevo del analizador (traído de RER)", () => {
+  it("el descarte dice el motivo (y la nota de «Otro»)", () => {
+    expect(activityText(row({ action: "call.proposal_discarded", metadata: { type: "idea", discard_reason: "dato_incorrecto" } }), names)).toBe("Ana descartó una idea de contenido (dato incorrecto).");
+    expect(activityText(row({ action: "call.proposal_discarded", metadata: { type: "tarea", discard_reason: "otro", discard_note: "ya estaba hecho" } }), names)).toBe("Ana descartó una tarea (ya estaba hecho).");
+  });
+  it("aprobar un borrador y cambiar el guion", () => {
+    expect(activityText(row({ action: "call.proposal_edited", metadata: { type: "borrador" }, changes: { guion: { old: "a", new: "b" } } }), names)).toBe("Ana editó y aprobó un borrador de contenido (cambió el guion).");
+  });
+  it("la causa de baja puesta o quitada a mano", () => {
+    expect(activityText(row({ action: "call.churn_cause_set", metadata: { label: "Le parece caro" } }), names)).toBe("Ana puso como causa de baja «Le parece caro».");
+    expect(activityText(row({ action: "call.churn_cause_set", metadata: { label: null } }), names)).toBe("Ana quitó la causa de baja.");
+  });
+});
+
 describe("activityEntries", () => {
   it("ordena por fecha", () => {
     const out = activityEntries([row({ id: "b", performed_at: "2026-11-12T11:00:00Z" }), row({ id: "a", performed_at: "2026-11-12T09:00:00Z" }), row({ id: "x", action: "call.analyzed" })], names);

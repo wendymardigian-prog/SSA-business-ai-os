@@ -67,6 +67,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "flow_scheduled_run",
       // Auditoria de automatizaciones: el vencimiento de un "Esperar respuesta".
       "flow_wait_timeout",
+      // 00430: lo que quien atiende mueve o cancela en su Google Calendar.
+      "google_calendar_inbound",
       // La importacion de conversaciones de Zernio, por partes y sin tope (00267).
       "inbox_import",
       "inbox_import_pass",

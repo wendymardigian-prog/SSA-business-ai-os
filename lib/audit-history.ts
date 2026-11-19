@@ -271,6 +271,7 @@ export const CALL_ACTION_LABELS: Record<Extract<AuditAction, `call.${string}`>, 
   "call.proposal_discarded": "descartó una propuesta", // @plantilla-quitar(servicios)
   "call.proposal_failed": "no se pudo hacer una propuesta", // @plantilla-quitar(servicios)
   "call.manual_summary": "cargó la reunión a mano", // @plantilla-quitar(servicios)
+  "call.churn_cause_set": "cambió la causa de baja", // @plantilla-quitar(llamadas)
 };
 // @plantilla-hasta(llamadas)
 
