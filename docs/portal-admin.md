@@ -57,6 +57,9 @@ sin contestar).
 | Afiliados | Qué links ven los estudiantes | `portal.sections` |
 | ⚙ Ajustes del programa (`/dashboard/portal/<id>/ajustes`) | Secciones, términos al entrar y el resumen de las variantes | `portal.sections` |
 
+- **Una clase de video también puede llevar una página HTML** (00490): el cajón de la clase muestra «Página debajo del
+  video (opcional)» y el portal la dibuja debajo del video (o del botón de Fathom), en el mismo marco aislado que una
+  clase de tipo Página. Solo la clase de tipo Página se marca vista sola al abrirla.
 - **Evaluaciones y actividades** son formularios de tipo `quiz` / `activity` atados al programa (no aparecen en
   Formularios ni tienen página pública). La nota la calcula la base; las respuestas correctas nunca salen. Portal ›
   Por revisar tiene las entregas (`submissions.review`) y los comentarios sin contestar.
