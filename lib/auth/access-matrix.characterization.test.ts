@@ -72,6 +72,10 @@ const MANUAL: Record<string, Triple> = {
   "lib/actions/team.ts#removeTeamMember": [true, false, false],
   // `isAdminRole` solo decide que contadores mostrar; la RLS decide que ve cada quien.
   "lib/actions/agent-drafts.ts#countPendingDrafts": [true, true, true],
+  // Analizador (PR #266): cualquier miembro llega; quién aprueba lo decide la regla «quién aprueba» del análisis y la
+  // RLS de la grabación (lee con la sesión). Se clasificó al traer main a la rama de IA (18/11/2026).
+  "lib/actions/call-action-proposals.ts#resolveCallProposal": [true, true, true], // @plantilla-quitar(llamadas)
+  "lib/actions/calls-badge.ts#countMyPendingProposals": [true, true, true], // @plantilla-quitar(llamadas)
   // Poner la marca puede cualquiera; QUITARLA exige `getAdminContext` (rama parcial).
   "lib/actions/contacts.ts#setDoNotContact": [true, true, "partial"],
 };
