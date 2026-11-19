@@ -34,7 +34,9 @@ El trigger sobre `contact_touches` (`trg_affiliate_touch`) toma el `ref` del toq
 ## Ventas y comisiones
 
 - La venta hereda el afiliado vigente del contacto (`inheritContactAffiliate`, después de `create_sale`, que no se
-  tocó). Se cambia desde la ficha de la venta. La sesión no puede tocar `sales` (AF010).
+  tocó). En la ficha de la venta es una fila de «Datos de la venta» (debajo de Setter y Vendedor) y se cambia desde
+  «Editar venta», con motivo, después de guardar la venta (`setSaleAffiliate`). Quien solo tiene `affiliates.assign`
+  ve «Editar» con únicamente el afiliado. La sesión no puede tocar `sales` (AF010).
 - El destinatario «El afiliado de la venta» (`sale_affiliate`) en las reglas de comisión, con «si también es el
   vendedor: pagar las dos / solo la mayor» (`when-also-seller.cases.json`) y la condición por tipo de afiliado.
 - Una comisión se puede editar a mano (`commission_edit`, queda `edited_manually`); los recálculos nunca la pisan.
@@ -45,7 +47,7 @@ El trigger sobre `contact_touches` (`trg_affiliate_touch`) toma el `ref` del toq
 - **Afiliados** (grupo Ventas): pestañas Resumen y Afiliados en la barra, «+ Agregar afiliado» (uno externo) como botón
   principal y las Reglas en el engranaje (`/dashboard/afiliados/reglas`, `affiliates.settings`).
 - **Mis links** (menú de usuario).
-- La tarjeta **Links** del producto, el campo Afiliado en las fichas del contacto y de la venta, «Editar» en la ficha
+- La tarjeta **Links** del producto, el recuadro Afiliado en la ficha del contacto y la fila Afiliado en la de la venta, «Editar» en la ficha
   de una comisión. Tres disparadores: `affiliate_lead_created`, `affiliate_sale_created`, `affiliate_assignment_expired`.
 - Portal › programa › Afiliados: qué links ven los estudiantes en el portal.
 
