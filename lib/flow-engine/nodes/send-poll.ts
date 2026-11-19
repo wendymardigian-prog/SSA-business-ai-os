@@ -20,6 +20,7 @@ import { interpolateVariables } from "../interpolate";
 import { validatePoll } from "@/lib/whatsapp-groups/poll";
 import { sendToGroup } from "@/lib/whatsapp-groups/send";
 import { WHATSAPP_HOURLY_LIMIT } from "@/lib/channels/whatsapp-limits";
+import { decideWhatsappDelivery, enqueueWhatsapp } from "@/lib/send-queue/automation/enqueue";
 
 export interface SendPollData {
   /** El grupo (`whatsapp_groups.id`). */
@@ -92,6 +93,24 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     if (claimError) {
       if (claimError.code === "23505") return await skip("Este paso ya mandó la encuesta a ese grupo en esta ejecución.", { duplicate: true });
       return await skip("No pude reservar el envío, así que no se mandó.");
+    }
+
+    // Cola de WhatsApp (00420): un paso a un grupo sale al instante salvo que se elija «Por la cola del número» (es un solo
+    // mensaje y suele tener hora fija). Por la cola, lo saca el despachador con el ritmo del número.
+    const decision = await decideWhatsappDelivery(supabase, context.flowId, (data as { delivery?: unknown }).delivery, { groupStep: true });
+    if (decision.mode === "queue") {
+      const queued = await enqueueWhatsapp({
+        supabase,
+        context,
+        sessionId,
+        node,
+        index: 0,
+        target: { kind: "group", groupId: group.id, channelId: group.channel_id, label: group.subject ?? null },
+        payload: { poll: validation.poll },
+        decision,
+      });
+      if (queued.status === "skipped") await skip(queued.reason);
+      return;
     }
 
     const { data: allowed, error: capError } = await supabase.rpc("claim_automated_send", { p_channel_id: channel.id, p_limit: WHATSAPP_HOURLY_LIMIT });

@@ -30,7 +30,10 @@ export interface GroupSendTarget {
   group_jid: string;
 }
 
-export type GroupSendResult = { ok: true; messageId: string | null } | { ok: false; error: string; messageId: string | null };
+export type GroupSendResult =
+  | { ok: true; messageId: string | null }
+  /** `status`: el estado HTTP de Evolution al fallar (null = no respondió). La cola de WhatsApp separa transporte de rechazo. */
+  | { ok: false; error: string; messageId: string | null; status?: number | null };
 
 function previewOf(out: GroupOutbound): string {
   if (out.poll) return `📊 ${out.poll.name}`;
@@ -60,6 +63,7 @@ export async function sendToGroup(
 
   let platformId: string | null = null;
   let sendError: string | null = null;
+  let sendStatus: number | null = null;
   /** Si el mensaje llego a pedirse a WhatsApp (un archivo que no se pudo leer, no). */
   let attempted = false;
   const attachments: ChatAttachment[] = [];
@@ -97,6 +101,7 @@ export async function sendToGroup(
       platformId = (await sendText(config, instance, group.group_jid, out.text ?? "")).id;
     }
   } catch (err) {
+    sendStatus = err instanceof EvolutionError ? (err.status ?? null) : null;
     sendError = err instanceof EvolutionError ? `WhatsApp no lo aceptó (${err.status ?? "sin respuesta"}).` : err instanceof Error ? err.message.slice(0, 300) : "No se pudo mandar.";
   }
   // Un mensaje a un grupo sale por el mismo numero: la cola de broadcasts de ese numero espera su espera minima.
@@ -126,5 +131,5 @@ export async function sendToGroup(
     await db.from("whatsapp_groups").update({ last_message_at: new Date().toISOString(), last_message_preview: previewOf(out), unread_count: 0 }).eq("id", group.id);
     return { ok: true, messageId: saved?.id ?? null };
   }
-  return { ok: false, error: sendError, messageId: saved?.id ?? null };
+  return { ok: false, error: sendError, messageId: saved?.id ?? null, status: sendStatus };
 }
