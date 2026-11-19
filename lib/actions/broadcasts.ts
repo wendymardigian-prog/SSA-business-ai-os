@@ -27,6 +27,7 @@ import {
   type MessagePatch,
 } from "@/lib/broadcasts/core";
 import type { Json } from "@/lib/types/database";
+import { mergeQueueKeys } from "@/lib/send-queue/automation/policy";
 
 /**
  * Las acciones de Broadcasts (docs/broadcasts.md). Cada una pide
@@ -271,9 +272,12 @@ export async function saveChannelSendPolicy(channelId: string, raw: unknown): Pr
   const channel = await loadBroadcastChannel(service, ctx.workspace.id, channelId);
   if (!channel || channel.kind !== "whatsapp") return { ok: false, error: "El ritmo se configura en un número de WhatsApp." };
   const policy = parsePolicy(raw, DEFAULT_WHATSAPP_POLICY);
+  // La reserva de urgentes y el calentamiento de la cola de WhatsApp (00420) viven en la misma fila: guardar el ritmo no
+  // los pisa.
+  const { data: current } = await service.from("channels").select("send_policy").eq("id", channelId).eq("workspace_id", ctx.workspace.id).maybeSingle();
   const { error } = await service
     .from("channels")
-    .update({ send_policy: policy as unknown as Json })
+    .update({ send_policy: mergeQueueKeys(policy, current?.send_policy ?? null) as unknown as Json })
     .eq("id", channelId)
     .eq("workspace_id", ctx.workspace.id);
   if (error) {

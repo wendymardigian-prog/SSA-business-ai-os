@@ -41,6 +41,7 @@ import { planHeaderActions } from "@/lib/inbox/header-actions";
 import { canMarkNoReply } from "@/lib/inbox/awaiting";
 import { formatReplyTime, replyTimesByMessage, type MessageReplyTime } from "@/lib/messages/reply-time";
 import { NoReplyBanner } from "@/components/inbox/no-reply-banner";
+import { ManualQuotaNotice } from "@/components/inbox/manual-quota-notice";
 import { canRetrySend } from "@/lib/inbox/send-failure";
 import { threadDayLabel } from "@/lib/inbox/day-label";
 import { isoToDateInput } from "@/lib/dates";
@@ -1678,6 +1679,8 @@ export function MessageThread({
       <div className="border-t border-border p-3 md:p-4">
         <div className="relative mx-auto max-w-2xl">
           <ActionError message={mediaError} />
+          {/* El número ya gastó su cupo de la hora o del día (cola de WhatsApp, 00420). Solo avisa: lo manual sale igual. */}
+          <ManualQuotaNotice conversationId={conversation.id} provider={channelProvider} refreshKey={messages.length} />
 
           {/* El widget de recursos guardados: el mismo para "/", el boton y el atajo. */}
           <AssetPicker

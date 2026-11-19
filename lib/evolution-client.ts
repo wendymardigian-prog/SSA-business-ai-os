@@ -16,6 +16,7 @@
 
 import type { WhatsappMessageKey } from "@/lib/whatsapp-sender";
 import { normalizeGroupJid, toEvolutionNumber } from "@/lib/phone";
+import { evolutionFakeFetch } from "@/lib/evolution/fake-mode";
 
 /**
  * A quien se le manda: un grupo (su JID entero) o una persona (telefono o @lid,
@@ -101,7 +102,10 @@ async function request<T>(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const res = await fetch(`${config.baseUrl}${path}`, {
+      // El adaptador: con `EVOLUTION_FAKE_API=1` y fuera de producción, el WhatsApp simulado (nada sale de la PC);
+      // si no, el de verdad. Ver lib/evolution/fake-mode.ts.
+      const doFetch = evolutionFakeFetch() ?? fetch;
+      const res = await doFetch(`${config.baseUrl}${path}`, {
         method,
         headers: {
           apikey: config.apiKey,

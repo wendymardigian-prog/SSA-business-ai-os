@@ -12,6 +12,7 @@ import { emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib
 import { deferFlowNode, takeAlreadySent } from "../defer-node";
 import { deliverPrivateReply } from "./comment-reply";
 import { doNotContactSkipReason, skipForDoNotContact } from "../do-not-contact";
+import { decideWhatsappDelivery, enqueueWhatsapp, type WhatsappDeliveryDecision } from "@/lib/send-queue/automation/enqueue";
 
 /** Los kinds que un flow puede declarar en mediaType; cualquier otra cosa cae en "image", como siempre. */
 const VALID_MEDIA_KINDS = new Set<AttachmentKind>(["image", "video", "audio", "voice", "document"]);
@@ -64,6 +65,13 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
       return sendFirstMessageAsPrivateReply(supabase, data, context, node.id, sessionId);
     }
 
+    // Cola de WhatsApp (00420): un WhatsApp por Evolution sale al instante (lo de siempre) o entra en la cola de su
+    // número, según el paso o, en `auto`, el disparador. Los demás canales siguen igual que siempre.
+    const queue = context.platform === "whatsapp" && (await isEvolutionChannel(supabase, context.channelId))
+      ? await decideWhatsappDelivery(supabase, context.flowId, (data as { delivery?: unknown }).delivery)
+      : null;
+    const queued: WhatsappDeliveryDecision | null = queue?.mode === "queue" ? queue : null;
+
     // Por email, un mensaje de marketing que la guardia de entrega deja para despues (00287): el paso se vuelve a
     // correr a esa hora sin repetir los mensajes que ya salieron (se recuerdan por su posicion).
     const alreadySent = takeAlreadySent(context, node.id);
@@ -104,6 +112,26 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
         { text, buttons: adapted.buttons, template: adapted.template, replyMarkup: adapted.replyMarkup } as OutgoingMessage,
       );
       const finalText = outgoing.text;
+
+      if (queued) {
+        await enqueueWhatsapp({
+          supabase,
+          context,
+          sessionId,
+          node,
+          index,
+          target: { kind: "conversation", conversationId: context.conversationId, contactId: context.contactId, channelId: context.channelId },
+          payload: {
+            text: finalText,
+            mediaUrl: mediaUrl ?? null,
+            mediaType: mediaType ?? null,
+            buttons: (outgoing.buttons as unknown[] | undefined) ?? null,
+            quickReplies: (adapted.quickReplies as unknown[] | undefined) ?? null,
+          },
+          decision: queued,
+        });
+        continue;
+      }
 
       const outcome = await sendChannelMessage(supabase, context, {
         text: finalText,
@@ -161,6 +189,12 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
     }
   },
 };
+
+/** ¿El canal es un WhatsApp por Evolution? (lo único que puede ir por la cola de WhatsApp, 00420). */
+async function isEvolutionChannel(supabase: SupabaseClient<Database>, channelId: string): Promise<boolean> {
+  const { data } = await supabase.from("channels").select("provider, platform").eq("id", channelId).maybeSingle();
+  return data?.provider === "evolution" && data?.platform === "whatsapp";
+}
 
 /**
  * True cuando el flow nacio de un comentario y todavia no hay DM abierto.

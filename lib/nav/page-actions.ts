@@ -98,6 +98,11 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Plantillas de automatizaciones",
     tooltip: "Automatizaciones armadas para copiar y ajustar.",
   },
+  "/dashboard/flows/cola": {
+    title: "Cola de mensajes",
+    tooltip:
+      "Los WhatsApp de las automatizaciones que esperan su turno en cada número: salen de a uno, con esperas al azar, dentro del horario de envío del número y sin pasar su cupo. Lo que escribe el equipo cuenta en el cupo pero nunca espera.",
+  },
   "/dashboard/inbox": {
     title: "Bandeja",
     tooltip: "Todas las conversaciones de todos los canales, en un solo lugar.",

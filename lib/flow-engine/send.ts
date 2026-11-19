@@ -132,6 +132,11 @@ export interface SendOutcome {
    * fallo: quien manda lo reagenda a `retryAt` y NO deja un mensaje fallido en el hilo.
    */
   deferred?: { reason: DeferReason; retryAt: Date };
+  /**
+   * Solo WhatsApp (Evolution): el estado HTTP con el que respondio el proveedor al fallar (null = no respondio). Lo usa
+   * la cola de WhatsApp para separar un fallo de transporte (se reintenta) de un rechazo (no).
+   */
+  providerStatus?: number | null;
 }
 
 interface ChannelRow {
@@ -609,6 +614,7 @@ async function sendEvolutionDirectOnce(
         hint: "Puede que el numero se haya desconectado. Conviene revisar el estado del canal.",
         retryable: true,
       },
+      providerStatus: error instanceof EvolutionError ? (error.status ?? null) : null,
     };
   }
 }

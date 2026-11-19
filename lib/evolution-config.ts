@@ -28,6 +28,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { readSecret, SECRET_NAMES } from "@/lib/vault";
+import { fakeEvolutionConfig } from "@/lib/evolution/fake-mode";
 import type { EvolutionConfig } from "@/lib/evolution-client";
 
 /** Lo que se guarda en `integration_configs.config` de Evolution. */
@@ -60,6 +61,9 @@ export async function getEvolutionConfig(
   supabase: SupabaseClient<Database>,
   workspaceId: string,
 ): Promise<EvolutionConfig | null> {
+  // WhatsApp simulado (solo fuera de producción): nunca se lee ni se usa una clave real, y nada sale de la PC.
+  const fake = fakeEvolutionConfig();
+  if (fake) return fake;
   const env = evolutionEnvConfig();
 
   const { data: row } = await supabase

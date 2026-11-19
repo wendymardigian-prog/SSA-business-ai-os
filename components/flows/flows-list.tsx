@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { GitBranch, Sparkles, Tags, X } from "lucide-react";
+import { GitBranch, ListOrdered, Sparkles, Tags, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { FilterMenu, MenuOption } from "@/components/ui/filter-menu";
@@ -45,12 +45,15 @@ export function FlowsList({
   rows,
   initialQuery,
   canEdit,
+  canManageQueue = false,
   hasChannels,
   timeZone,
 }: {
   rows: FlowListRow[];
   initialQuery: FlowListQuery;
   canEdit: boolean;
+  /** Ve la cola de WhatsApp (`channels.manage`). */
+  canManageQueue?: boolean;
   hasChannels: boolean;
   timeZone: string;
 }) {
@@ -114,19 +117,34 @@ export function FlowsList({
         route="/dashboard/flows"
         filters={rows.length > 0 ? filters : undefined}
         right={
-          canEdit ? (
+          canEdit || canManageQueue ? (
             <div className="flex items-center gap-2">
-              <ImportFlowButton compact />
-              <Link
-                href="/dashboard/flows/templates"
-                aria-label="Plantillas"
-                title="Plantillas"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
-                <Sparkles className="h-4 w-4" />
-                <span className="hidden 2xl:inline">Plantillas</span>
-              </Link>
-              <CreateFlowButton />
+              {canManageQueue && (
+                <Link
+                  href="/dashboard/flows/cola"
+                  aria-label="Cola de mensajes"
+                  title="Cola de mensajes de WhatsApp"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <ListOrdered className="h-4 w-4" />
+                  <span className="hidden 2xl:inline">Cola</span>
+                </Link>
+              )}
+              {canEdit && (
+                <>
+                  <ImportFlowButton compact />
+                  <Link
+                    href="/dashboard/flows/templates"
+                    aria-label="Plantillas"
+                    title="Plantillas"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    <span className="hidden 2xl:inline">Plantillas</span>
+                  </Link>
+                  <CreateFlowButton />
+                </>
+              )}
             </div>
           ) : null
         }

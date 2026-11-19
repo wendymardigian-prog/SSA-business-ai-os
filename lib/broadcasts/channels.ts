@@ -8,6 +8,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { DEFAULT_EMAIL_POLICY, DEFAULT_WHATSAPP_POLICY, parsePolicy, type SendPolicy } from "@/lib/send-queue/pace";
 import type { BroadcastChannelKind } from "./audience";
+import { effectiveQueuePolicy, parseQueuePolicy } from "@/lib/send-queue/automation/policy";
+import { bulkCeiling } from "@/lib/send-queue/automation/quota";
 
 export interface BroadcastChannel {
   id: string;
@@ -31,9 +33,21 @@ interface ChannelRow {
   connection_status: string | null;
   is_active: boolean;
   send_policy: Json | null;
+  created_at: string | null;
 }
 
-const COLUMNS = "id, platform, provider, display_name, username, email_address, evolution_instance, connection_status, is_active, send_policy";
+const COLUMNS = "id, platform, provider, display_name, username, email_address, evolution_instance, connection_status, is_active, send_policy, created_at";
+
+/**
+ * El techo de un broadcast por este canal. WhatsApp (cola de WhatsApp, 00420): el ritmo del número con su calentamiento
+ * y, por hora, sin la reserva de lo urgente (un broadcast es masivo y nunca se come el lugar de un recordatorio). Email:
+ * lo guardado, como siempre.
+ */
+export function broadcastCeiling(kind: BroadcastChannelKind, raw: Json | null, createdAt: string | null, now: Date = new Date()): SendPolicy {
+  if (kind !== "whatsapp") return parsePolicy(raw, defaultPolicyFor(kind));
+  const since = createdAt ? new Date(createdAt) : null;
+  return bulkCeiling(effectiveQueuePolicy(parseQueuePolicy(raw), since, now));
+}
 
 /** El tipo de canal de un broadcast, o null si ese canal no sirve para mandar masivos. Rama explícita por proveedor. */
 export function broadcastKindOf(row: Pick<ChannelRow, "platform" | "provider" | "evolution_instance" | "email_address" | "is_active">): BroadcastChannelKind | null {
@@ -56,7 +70,7 @@ function toChannel(row: ChannelRow): BroadcastChannel | null {
     kind,
     label: kind === "whatsapp" ? `WhatsApp · ${name}` : `Email · ${row.email_address ?? name}`,
     evolutionInstance: row.evolution_instance,
-    policy: parsePolicy(row.send_policy, defaultPolicyFor(kind)),
+    policy: broadcastCeiling(kind, row.send_policy, row.created_at),
     connectionStatus: row.connection_status,
   };
 }
