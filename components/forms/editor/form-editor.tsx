@@ -348,7 +348,7 @@ export function FormEditor({
                 businessLogoUrl={extras.businessLogoUrl ?? null}
                 contract={
                   form.type === "contract" && contractConfig
-                    ? { formId: form.id, config: contractConfig, onConfigSaved: setContractConfig, canManage, emailReadiness: extras.emailReadiness, signatureUrl: extras.businessSignatureUrl }
+                    ? { formId: form.id, config: contractConfig, onConfigSaved: setContractConfig, canManage, emailReadiness: extras.emailReadiness, signatureUrl: extras.businessSignatureUrl, linkableForms: extras.linkableForms }
                     : undefined
                 }
               />

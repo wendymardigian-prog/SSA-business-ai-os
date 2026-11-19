@@ -51,6 +51,8 @@ export interface EditorExtras {
   businessSignatureUrl?: string | null;
   /** El logo de la marca del negocio (Ajustes → General → Marca), o null si no tiene: para «Mostrar el logo». */
   businessLogoUrl?: string | null;
+  /** Solo un contrato: los formularios publicados que se pueden enlazar desde el correo de la copia firmada. */
+  linkableForms?: Array<{ name: string; slug: string }>;
 }
 
 export interface EditorVersion {

@@ -11,6 +11,9 @@
  *    (NO lanza: la cola reintentaría a los 10 s encima). Uno permanente (un 4xx que no
  *    sea 429), Resend sin conectar o agotados los reintentos deja `not_sent` con el motivo.
  *  - La firma y el PDF NUNCA dependen de esto: un email que no sale no deshace nada.
+ *  - Con `copyEmail` en la configuración del contrato, quien firma recibe ESE asunto y ese texto (con sus variables y
+ *    los links personales a otros formularios, firmados con el contacto, el servicio y la venta de la firma); sin él,
+ *    el texto de siempre. Las copias al equipo no cambian.
  *  - Tope por DIRECCION (seguridad): el formulario es publico y el tope por IP no alcanza para que alguien use el
  *    contrato para llenarle la bandeja a un tercero cambiando de IP. Mas de `CONTRACT_COPY_LIMITS.perAddressPerDay`
  *    copias automaticas por dia a la misma direccion desde el mismo formulario: la firma queda guardada y la copia
@@ -28,6 +31,10 @@ import { brandedEmailHtml } from "@/lib/email/templates";
 import { resolveBrand, type WorkspaceBrandFields } from "@/lib/brand";
 import { checkLimit, type LimitResult, type LimitSpec } from "@/lib/antispam/rate-limit";
 import { hashIp } from "@/lib/scheduling/antispam";
+import { finalizeEmailHtml } from "@/lib/email/html";
+import { hasFormLinkVariables } from "@/lib/forms/link-variables";
+import { resolveFormLinkVariables } from "@/lib/response-assets/bank-variables";
+import { copyEmailVariables, renderCopyEmail, stripUnresolvedFormLinks } from "./copy-email";
 
 /** Copias automaticas por dia a una misma direccion desde un mismo formulario. */
 export const CONTRACT_COPY_LIMITS = { perAddressPerDay: 3 } as const;
@@ -52,6 +59,8 @@ export interface EmailRunDeps {
   ownerEmails?: (workspaceId: string) => Promise<string[]>;
   /** El tope por direccion (`bump_rate_limit`). Por defecto, `checkLimit` con el cliente de servicio. */
   limit?: (spec: LimitSpec) => Promise<LimitResult>;
+  /** Firma los `{{form_link.…}}` del correo personalizado. Por defecto, `resolveFormLinkVariables` (pide el Vault). */
+  resolveFormLinks?: (context: { workspaceId: string; contactId: string; variables: Record<string, unknown> }, texts: string[]) => Promise<string[]>;
 }
 
 /** Los Owner del workspace, con el cliente de servicio (`auth.admin`). Sin dato o con un error, ninguno. */
@@ -122,6 +131,47 @@ const safeFileName = (text: string) =>
     .toLowerCase()
     .slice(0, 60) || "contrato";
 
+/**
+ * El correo personalizado de quien firma: asunto y cuerpo (ya limpio) con las variables y los links firmados.
+ * Nunca lanza por un link: sin contacto, o si firmar falla, el link se saca y el correo sale igual.
+ */
+async function customCopyEmail(
+  deps: EmailRunDeps,
+  sig: { workspace_id: string; contact_id: string | null; signer_name: string; signer_email: string; service_id?: string | null; sale_id?: string | null },
+  copy: { subject: string; body: string },
+  facts: { title: string; signedAt: string; workspaceName: string | null },
+): Promise<{ subject: string; html: string }> {
+  let contactName: string | null = null;
+  if (sig.contact_id) {
+    const { data: contact } = await deps.db.from("contacts").select("display_name").eq("id", sig.contact_id).maybeSingle();
+    contactName = (contact as { display_name?: string | null } | null)?.display_name ?? null;
+  }
+  const variables = copyEmailVariables({
+    contactName,
+    signerName: sig.signer_name,
+    signerEmail: sig.signer_email,
+    workspaceName: facts.workspaceName,
+    title: facts.title,
+    signedAtText: facts.signedAt,
+    serviceId: sig.service_id ?? null,
+    saleId: sig.sale_id ?? null,
+  });
+  const rendered = renderCopyEmail(copy, variables);
+  let body = rendered.body;
+  if (sig.contact_id && hasFormLinkVariables(body)) {
+    const resolve =
+      deps.resolveFormLinks ??
+      ((context: { workspaceId: string; contactId: string; variables: Record<string, unknown> }, texts: string[]) =>
+        resolveFormLinkVariables(deps.db, context, texts));
+    try {
+      body = (await resolve({ workspaceId: sig.workspace_id, contactId: sig.contact_id, variables }, [body]))[0] ?? body;
+    } catch (error) {
+      console.error(`[contract_email] no pude armar el link a un formulario: ${error instanceof Error ? error.message : "error"}`);
+    }
+  }
+  return { subject: rendered.subject, html: finalizeEmailHtml(stripUnresolvedFormLinks(body), rendered.bodyIsHtml) };
+}
+
 export async function runContractEmail(deps: EmailRunDeps, input: { signatureId: string; attempt?: number; manual?: boolean }): Promise<EmailRunResult> {
   const { db } = deps;
   const storage = deps.storage ?? contractStorage(db);
@@ -160,22 +210,31 @@ export async function runContractEmail(deps: EmailRunDeps, input: { signatureId:
   const [{ data: form }, { data: version }, { data: workspace }] = await Promise.all([
     db.from("forms").select("name, contract_config").eq("id", sig.form_id).maybeSingle(),
     db.from("form_versions").select("version_number").eq("id", sig.form_version_id).maybeSingle(),
-    db.from("workspaces").select("timezone, brand_name, brand_logo_path, brand_color").eq("id", sig.workspace_id).maybeSingle(),
+    db.from("workspaces").select("name, timezone, brand_name, brand_logo_path, brand_color").eq("id", sig.workspace_id).maybeSingle(),
   ]);
   const config = parseStoredContractConfig(form?.contract_config, form?.name ?? "Contrato");
   const title = config.title || form?.name || "Contrato";
   const signedAt = signedAtText(sig.signed_at, (workspace as { timezone?: string } | null)?.timezone);
   const fingerprint = `${sig.text_sha256.slice(0, 16)}…`;
-  const subject = `Tu copia firmada: ${title}`;
   // Con la marca del negocio (logo, color y nombre): el firmante lo recibe de ESE negocio.
   const brand = resolveBrand(workspace as WorkspaceBrandFields | null);
-  const html = brandedEmailHtml({
+  let subject = `Tu copia firmada: ${title}`;
+  let html = brandedEmailHtml({
     brand,
     preheader: `Tu copia firmada de «${title}»`,
     body: bodyToHtml(
       `Hola${sig.signer_name ? ` ${sig.signer_name}` : ""},\n\nAdjuntamos la copia firmada de «${title}».\n\nFecha de la firma: ${signedAt}.\nLa huella del documento es ${fingerprint}\n\nGuardá este archivo: es tu constancia.`,
     ),
   });
+  if (config.copyEmail) {
+    const custom = await customCopyEmail(deps, sig, config.copyEmail, {
+      title,
+      signedAt,
+      workspaceName: (workspace as { name?: string | null } | null)?.name ?? null,
+    });
+    subject = custom.subject || subject;
+    html = brandedEmailHtml({ brand, preheader: custom.subject || `Tu copia firmada de «${title}»`, body: custom.html });
+  }
   const copySubject = `Se firmó: ${title}`;
   const copyHtml = brandedEmailHtml({
     brand,

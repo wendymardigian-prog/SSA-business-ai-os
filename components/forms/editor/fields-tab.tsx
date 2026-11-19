@@ -63,6 +63,7 @@ export function FieldsTab({
     canManage: boolean;
     emailReadiness?: EmailReadiness;
     signatureUrl?: string | null;
+    linkableForms?: Array<{ name: string; slug: string }>;
   };
 }) {
   const fields = draft.definition.fields;
@@ -126,6 +127,7 @@ export function FieldsTab({
         hasSignerEmail={!!signerEmailField(fields)}
         emailReadiness={contract.emailReadiness}
         signatureUrl={contract.signatureUrl}
+        linkableForms={contract.linkableForms ?? []}
       />
     </div>
   ) : null;

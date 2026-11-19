@@ -33,6 +33,17 @@ export interface ContractConfig {
   mode: ContractMode;
   /** "Firma de ambas partes" (solo en modo Contrato): la firma del negocio que se estampa abajo del texto. */
   businessSigner: BusinessSigner;
+  /**
+   * El correo que recibe quien firma, con su copia en PDF. Sin esto (o `null`), el texto de siempre
+   * («Tu copia firmada: …»). Con esto, el asunto y el texto de este contrato (ver `lib/forms/contract/copy-email.ts`).
+   */
+  copyEmail?: ContractCopyEmail | null;
+}
+
+/** El correo personalizado de la copia firmada: asunto y texto (HTML del editor de correos o texto), con variables. */
+export interface ContractCopyEmail {
+  subject: string;
+  body: string;
 }
 
 export type ContractMode = "terms" | "contract";

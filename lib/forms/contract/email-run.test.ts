@@ -34,14 +34,17 @@ function setup(
     pdf?: Uint8Array | null;
     /** El tope por direccion ya se paso. */
     overLimit?: boolean;
+    copyEmail?: { subject: string; body: string };
+    contactName?: string | null;
   } = {},
 ) {
   const db = fakeDb({
     "contract_signatures:select": { data: over.sig === null ? null : signature(over.sig ?? {}) },
     "forms:select": {
-      data: { name: "Mi contrato", contract_config: { title: "Acuerdo", signatureRequired: true, acceptLabel: "Acepto", ccEmails: over.ccEmails ?? [], ...(over.copyToOwner === undefined ? {} : { copyToOwner: over.copyToOwner }) } },
+      data: { name: "Mi contrato", contract_config: { title: "Acuerdo", signatureRequired: true, acceptLabel: "Acepto", ccEmails: over.ccEmails ?? [], ...(over.copyToOwner === undefined ? {} : { copyToOwner: over.copyToOwner }), ...(over.copyEmail ? { copyEmail: over.copyEmail } : {}) } },
     },
-    "workspaces:select": { data: { timezone: over.timezone ?? "America/Costa_Rica" } },
+    "workspaces:select": { data: { name: "ALMA Expeditions", timezone: over.timezone ?? "America/Costa_Rica" } },
+    "contacts:select": { data: over.contactName === undefined ? { display_name: "Ana María Pérez" } : over.contactName === null ? null : { display_name: over.contactName } },
     "form_versions:select": { data: { version_number: 1 } },
     "contract_signatures:update": { data: null },
   });
@@ -53,6 +56,11 @@ function setup(
     return next as never;
   });
   const scheduled: Array<{ type: string; payload: Record<string, unknown>; runAt: Date; key: string }> = [];
+  const linkCalls: Array<{ context: { workspaceId: string; contactId: string; variables: Record<string, unknown> }; texts: string[] }> = [];
+  const resolveFormLinks = vi.fn(async (context: { workspaceId: string; contactId: string; variables: Record<string, unknown> }, texts: string[]) => {
+    linkCalls.push({ context, texts });
+    return texts.map((t) => t.replace(/\{\{\s*form_link\.onboarding_islandia\s*\}\}/g, "https://alma.example/f/onboarding-islandia?c=TOKEN"));
+  });
   const limit = vi.fn(async (spec: { max: number }) => ({ allowed: !over.overLimit, count: over.overLimit ? spec.max + 1 : 1, max: spec.max }));
   const deps = {
     db: db.client,
@@ -61,11 +69,12 @@ function setup(
     now: () => NOW,
     send: send as never,
     ownerEmails: vi.fn(async () => over.owners ?? []),
+    resolveFormLinks,
     schedule: async (type: string, payload: Record<string, unknown>, runAt: Date, key: string) => {
       scheduled.push({ type, payload, runAt, key });
     },
   };
-  return { db, deps, sent, scheduled, send, limit };
+  return { db, deps, sent, scheduled, send, limit, linkCalls, resolveFormLinks };
 }
 
 const lastUpdate = (db: ReturnType<typeof setup>["db"]) => db.writesTo("contract_signatures").at(-1)!.values as Record<string, unknown>;
@@ -236,5 +245,69 @@ describe("runContractEmail: suscripcion a emails (cambio aprobado)", () => {
     expect(await runContractEmail(deps, { signatureId: SIG })).toBe("not_sent");
     expect(lastUpdate(db)).toMatchObject({ email_status: "not_sent", email_last_error: "No se mandó: el email de esta persona rebota." });
     expect(scheduled).toEqual([]);
+  });
+});
+
+describe("runContractEmail: caracterizacion del correo de siempre (antes del correo personalizable)", () => {
+  it("sin correo personalizado, el firmante y el Owner reciben exactamente lo de siempre", async () => {
+    const { deps, sent } = setup({ owners: ["owner@x.com"] });
+    await runContractEmail(deps, { signatureId: SIG });
+    expect(sent.map((s) => ({ to: s.to, subject: s.subject, html: s.html }))).toMatchSnapshot();
+  });
+});
+
+describe("runContractEmail: correo personalizado de la copia firmada", () => {
+  const SERVICE = "22222222-2222-4222-8222-222222222222";
+  const SALE = "33333333-3333-4333-8333-333333333333";
+  const copyEmail = {
+    subject: "¡Contrato firmado, {{contact.first_name}}! Vamos con el paso 2",
+    body: '<p>Hola, {{contact.first_name|}}:</p><p>Recibimos «{{contract.title}}».</p><p><a href="{{form_link.onboarding_islandia}}">COMPLETAR MI ONBOARDING</a></p>',
+  };
+
+  it("quien firma recibe el asunto y el texto del negocio, con el PDF adjunto y el link firmado con el servicio y la venta", async () => {
+    const { deps, sent, linkCalls } = setup({ copyEmail, sig: { service_id: SERVICE, sale_id: SALE }, owners: ["owner@x.com"] });
+    expect(await runContractEmail(deps, { signatureId: SIG })).toBe("sent");
+    expect(sent[0]).toMatchObject({ to: "ana@x.com", subject: "¡Contrato firmado, Ana! Vamos con el paso 2", kind: "contract_copy", category: "transactional" });
+    const html = String(sent[0].html);
+    expect(html).toContain("Hola, Ana:");
+    expect(html).toContain("Recibimos «Acuerdo»");
+    expect(html).toContain('href="https://alma.example/f/onboarding-islandia?c=TOKEN"');
+    expect(html).toContain("COMPLETAR MI ONBOARDING");
+    expect((sent[0].attachments as unknown[]).length).toBe(1);
+    expect(linkCalls[0].context).toMatchObject({ workspaceId: "ws1", contactId: "contact1" });
+    expect(linkCalls[0].context.variables).toMatchObject({ service: { id: SERVICE }, sale: { id: SALE } });
+    // La copia al Owner no cambia.
+    expect(sent[1]).toMatchObject({ to: "owner@x.com", subject: "Se firmó: Acuerdo" });
+  });
+
+  it("los datos de la persona se pegan escapados: un nombre con etiquetas no se vuelve HTML", async () => {
+    const { deps, sent } = setup({ copyEmail, contactName: "<b>Ana</b> Pérez" });
+    await runContractEmail(deps, { signatureId: SIG });
+    expect(String(sent[0].html)).not.toContain("<b>Ana</b>");
+  });
+
+  it("sin contacto no hay link firmado: el link se saca y el correo sale igual", async () => {
+    const { deps, sent, resolveFormLinks } = setup({ copyEmail, sig: { contact_id: null }, contactName: null });
+    expect(await runContractEmail(deps, { signatureId: SIG })).toBe("sent");
+    expect(resolveFormLinks).not.toHaveBeenCalled();
+    const html = String(sent[0].html);
+    expect(html).not.toContain("form_link");
+    expect(html).not.toContain("href=");
+    expect(html).toContain("COMPLETAR MI ONBOARDING");
+  });
+
+  it("si firmar el link falla, el correo sale igual sin el link", async () => {
+    const { deps, sent } = setup({ copyEmail });
+    deps.resolveFormLinks = vi.fn(async () => {
+      throw new Error("vault caido");
+    });
+    expect(await runContractEmail(deps, { signatureId: SIG })).toBe("sent");
+    expect(String(sent[0].html)).not.toContain("form_link");
+  });
+
+  it("un texto plano con un link a la vista se arma como siempre (links clicables)", async () => {
+    const { deps, sent } = setup({ copyEmail: { subject: "Paso 2", body: "Hola {{contact.first_name}}\n\nSeguí acá: {{form_link.onboarding_islandia}}" } });
+    await runContractEmail(deps, { signatureId: SIG });
+    expect(String(sent[0].html)).toContain('href="https://alma.example/f/onboarding-islandia?c=TOKEN"');
   });
 });

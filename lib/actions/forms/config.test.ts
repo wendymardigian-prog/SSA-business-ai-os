@@ -83,6 +83,23 @@ describe("saveContractConfig", () => {
     setup({ type: "custom" });
     expect((await saveContractConfig({ formId: FORM, config })).ok).toBe(false);
   });
+  it("el correo de la copia firmada guarda asunto y texto; un link a un formulario que no está publicado no se guarda", async () => {
+    const { service } = setup({ type: "contract" });
+    const copyEmail = { subject: "Paso 2", body: "<p>Hola {{contact.first_name}}</p>" };
+    expect(await saveContractConfig({ formId: FORM, config: { ...config, copyEmail } })).toEqual({ ok: true });
+    expect(service.writesTo("forms")[0].values).toMatchObject({ contract_config: { copyEmail } });
+
+    const other = setup({ type: "contract" });
+    const withLink = { subject: "Paso 2", body: '<p><a href="{{form_link.no_publicado}}">Seguir</a></p>' };
+    const res = await saveContractConfig({ formId: FORM, config: { ...config, copyEmail: withLink } });
+    expect(res).toMatchObject({ ok: false, error: expect.stringContaining("no-publicado") });
+    expect(other.service.writes()).toHaveLength(0);
+  });
+  it("un correo personalizado sin asunto o sin texto no se guarda", async () => {
+    setup({ type: "contract" });
+    expect((await saveContractConfig({ formId: FORM, config: { ...config, copyEmail: { subject: "", body: "<p>Hola</p>" } } })).ok).toBe(false);
+    expect((await saveContractConfig({ formId: FORM, config: { ...config, copyEmail: { subject: "Hola", body: "<p></p>" } } })).ok).toBe(false);
+  });
 });
 
 describe("createSignedFormLink", () => {
