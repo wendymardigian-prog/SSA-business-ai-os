@@ -29,7 +29,9 @@ pedir la clave con la sesión; las tablas no tienen políticas de escritura.
   de la variante (Productos › variante › Servicio): crear, extender el que ya tiene o renovar. Un producto sin
   configurar vende igual (`verify-services --bloque sv1` lo compara con una venta de siempre).
 - **A mano**: «+ Servicio» (en Clientes, la ficha del contacto o la de la venta), con la regla de la venta en rojo
-  si se sale de ella (motivo obligatorio).
+  si se sale de ella (motivo obligatorio). Si el contacto no existe, «Crear contacto» lo da de alta ahí mismo
+  (`createContactForService`, pide `services.create`): el mismo alta rápida que el asistente de venta
+  (`lib/contacts/quick-create.ts`, regla única; si ya existía, usa ese y avisa).
 - **Importar**: `/dashboard/clientes/importar` (CSV).
 - La única entrada es `app_servicio.svc_create_service`. Dos pagos a la vez crean uno solo.
 
