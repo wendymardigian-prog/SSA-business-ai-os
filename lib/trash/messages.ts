@@ -78,6 +78,26 @@ export function blockerMessage(code: string): string {
   return "No se puede eliminar.";
 }
 
+/**
+ * Las tablas que un bloqueo propio ya explica: si la base devuelve los dos (por ejemplo `contract_signed` y
+ * `in_use:public.contract_signatures`), el genérico «Lo usan otros registros» sobra y se ve repetido.
+ */
+const EXPLAINED_BY: Record<string, string> = {
+  "public.contract_signatures": "contract_signed",
+  "public.sales": "product_sold",
+};
+
+/** Los textos de los bloqueos, sin repetir: sin códigos iguales ni el genérico de una tabla que otro ya explica. */
+export function blockerMessages(codes: readonly string[]): string[] {
+  const set = new Set(codes);
+  const shown = codes.filter((code) => {
+    if (!code.startsWith("in_use:")) return true;
+    const explainedBy = EXPLAINED_BY[code.slice("in_use:".length)];
+    return !(explainedBy && set.has(explainedBy));
+  });
+  return Array.from(new Set(shown.map(blockerMessage)));
+}
+
 export function warningMessage(code: string): string | null {
   const text = WARNINGS[code];
   return text ? text : null;
