@@ -7,11 +7,22 @@
  * id de lo creado) o `failed` (con el motivo en palabras; se puede reintentar o descartar).
  *
  * Nada sale solo: esto lo llama SOLO una persona desde la reunión.
+ *
+ * Quién decide (aprobar o descartar): un admin, o el responsable de la reunión si el ajuste «Quién aprueba» le da ese
+ * tipo (`canDecideProposal`). Para aprobar hace falta además el permiso de la acción (`permissionsForType`).
  */
 import {
+  APPROVER_LABEL,
+  canDecideProposal,
   effectiveProposal,
+  parseDiscard,
   proposalDiff,
   readProposals,
+  responsibleFor,
+  PROPOSAL_DETAIL_MAX,
+  PROPOSAL_SCRIPT_MAX,
+  PROPOSAL_TITLE_MAX,
+  type ProposalApprovers,
   type Proposal,
   type ProposalOriginal,
   type ProposalResult,
@@ -46,6 +57,13 @@ export interface ResolveDeps {
   /** Manda el mensaje por el envío de la bandeja (de a uno). `retryOf` = el mensaje fallido de un intento anterior. */
   sendMessage(input: { destination: MessageDestination; text: string; retryOf: string | null }): Promise<StepOutcome & { messageId?: string | null }>;
   notify(input: { recipientId: string; title: string; body: string; callId: string }): Promise<StepOutcome>;
+  /** La idea entra al banco de Contenido como «nueva» (por aprobar en Contenido), con la grabación de origen. */
+  createIdea(input: { proposal: ProposalOriginal; callId: string }): Promise<StepOutcome>;
+  /** El borrador: la idea se aprueba en el acto y la pieza nace en Borrador con el guion. Devuelve el id de la pieza. */
+  createDraft(input: { proposal: ProposalOriginal; callId: string }): Promise<StepOutcome & { ideaId?: string }>;
+  /** Quién aprueba cada tipo (el ajuste del negocio) y si quien decide es admin. */
+  approvers: ProposalApprovers;
+  isAdmin: boolean;
   audit(input: { action: "call.proposal_approved" | "call.proposal_edited" | "call.proposal_discarded" | "call.proposal_failed"; callId: string; changes: Record<string, unknown>; metadata: Record<string, unknown> }): Promise<void>;
   now(): Date;
 }
@@ -56,6 +74,9 @@ export type ResolveInput = {
   decision: ProposalDecision;
   edits?: Partial<ProposalOriginal> | null;
   destination?: MessageDestination | null;
+  /** Al descartar: el motivo (sin motivo, «No hace falta») y la nota (obligatoria con «Otro»). */
+  discardReason?: string | null;
+  discardNote?: string | null;
   actorId: string;
 };
 
@@ -64,33 +85,55 @@ export type ResolveOutcome =
   | { ok: false; status: "failed"; error: string }
   | { ok: false; status: "rejected"; error: string };
 
-/** La clave de permiso de lo que hace cada tipo (además de `calls.edit`). El mensaje lo mira el envío (por canal). */
-export function permissionForType(type: ProposalType): string | null {
+/** Las claves de permiso de lo que hace cada tipo (además de `calls.edit`). El mensaje lo mira el envío (por canal). */
+export function permissionsForType(type: ProposalType): string[] {
   switch (type) {
     case "tarea":
-      return "tasks.edit";
+      return ["tasks.edit"];
     case "paso":
-      return "services.items";
+      return ["services.items"];
+    // Lo mismo que en Contenido: crear la idea; el borrador además la aprueba (crea la pieza).
+    case "idea":
+      return ["content.create"];
+    case "borrador":
+      return ["content.create", "content.approve"];
     case "mensaje":
     case "aviso":
-      return null;
+      return [];
   }
 }
 
 export function missingPermissionMessage(type: ProposalType): string {
-  return type === "tarea" ? "Para aprobarla necesitás poder editar tareas." : type === "paso" ? "Para aprobarla necesitás poder completar pasos de servicios." : "No tenés permiso para aprobarla.";
+  switch (type) {
+    case "tarea":
+      return "Para aprobarla necesitás poder editar tareas.";
+    case "paso":
+      return "Para aprobarla necesitás poder completar pasos de servicios.";
+    case "idea":
+      return "Para aprobarla necesitás poder crear contenido.";
+    case "borrador":
+      return "Para aprobarla necesitás poder crear y aprobar contenido.";
+    default:
+      return "No tenés permiso para aprobarla.";
+  }
+}
+
+/** El texto de solo lectura para quien no puede decidir esa propuesta. */
+export function approverHint(type: ProposalType, approvers: ProposalApprovers): string {
+  return `La decide: ${APPROVER_LABEL[approvers[type]].toLowerCase()}.`;
 }
 
 function cleanEdits(type: ProposalType, edits: Partial<ProposalOriginal> | null | undefined): ProposalOriginal | null {
   if (!edits) return null;
   const out: Partial<ProposalOriginal> = {};
-  if (typeof edits.titulo === "string") out.titulo = edits.titulo.trim().slice(0, 200);
-  if (typeof edits.detalle === "string") out.detalle = edits.detalle.trim().slice(0, 2000);
+  if (typeof edits.titulo === "string") out.titulo = edits.titulo.trim().slice(0, PROPOSAL_TITLE_MAX);
+  if (typeof edits.detalle === "string") out.detalle = edits.detalle.trim().slice(0, PROPOSAL_DETAIL_MAX);
   if (type === "tarea") {
     if (edits.vence_en_dias === null || typeof edits.vence_en_dias === "number") out.vence_en_dias = edits.vence_en_dias === null ? null : Math.max(0, Math.min(60, Math.round(edits.vence_en_dias)));
     if (edits.responsable === null || edits.responsable === "servicio" || edits.responsable === "grabo") out.responsable = edits.responsable;
   }
   if (type === "mensaje" && typeof edits.texto === "string") out.texto = edits.texto.trim().slice(0, 1500);
+  if (type === "borrador" && typeof edits.guion === "string") out.guion = edits.guion.trim().slice(0, PROPOSAL_SCRIPT_MAX);
   if (type === "aviso" && (edits.para === "servicio" || edits.para === "grabo")) out.para = edits.para;
   return Object.keys(out).length ? (out as ProposalOriginal) : null;
 }
@@ -105,15 +148,24 @@ export async function resolveProposal(deps: ResolveDeps, input: ResolveInput): P
 
   const at = deps.now().toISOString();
 
+  // Quién decide: un admin, o el responsable si el ajuste le da ese tipo.
+  const serviceOwnerId = call.serviceId ? await deps.serviceOwner(call.serviceId) : null;
+  const isResponsible = responsibleFor({ serviceOwnerId, recordedBy: call.recordedBy }) === input.actorId;
+  if (!canDecideProposal({ approver: deps.approvers[proposal.type], isAdmin: deps.isAdmin, isResponsible })) {
+    return { ok: false, status: "rejected", error: approverHint(proposal.type, deps.approvers) };
+  }
+
   if (input.decision === "discard") {
+    const why = parseDiscard(input.discardReason, input.discardNote);
+    if (!why.ok) return { ok: false, status: "rejected", error: why.error };
     if (!(await deps.claim(call.id, proposal.id))) return { ok: false, status: "rejected", error: "Ya la resolvió otra persona." };
-    await deps.patch(call.id, proposal.id, { status: "discarded", resolved_by: input.actorId, resolved_at: at, reason: null });
-    await deps.audit({ action: "call.proposal_discarded", callId: call.id, changes: {}, metadata: { proposal_id: proposal.id, type: proposal.type } });
+    await deps.patch(call.id, proposal.id, { status: "discarded", resolved_by: input.actorId, resolved_at: at, reason: null, discard_reason: why.reason, discard_note: why.note });
+    await deps.audit({ action: "call.proposal_discarded", callId: call.id, changes: {}, metadata: { proposal_id: proposal.id, type: proposal.type, discard_reason: why.reason, ...(why.note ? { discard_note: why.note } : {}) } });
     return { ok: true, status: "discarded", result: null };
   }
 
-  const perm = permissionForType(proposal.type);
-  if (perm && !deps.can(perm)) return { ok: false, status: "rejected", error: missingPermissionMessage(proposal.type) };
+  const missingPerm = permissionsForType(proposal.type).find((k) => !deps.can(k));
+  if (missingPerm) return { ok: false, status: "rejected", error: missingPermissionMessage(proposal.type) };
   if (proposal.type === "mensaje" && !input.destination) return { ok: false, status: "rejected", error: "Elegí a dónde mandar el mensaje." };
   if ((proposal.type === "tarea" || proposal.type === "paso" || proposal.type === "mensaje") && !call.contactId) {
     return { ok: false, status: "rejected", error: "La reunión no tiene contacto." };
@@ -121,6 +173,10 @@ export async function resolveProposal(deps: ResolveDeps, input: ResolveInput): P
 
   const edited = cleanEdits(proposal.type, input.edits) ?? proposal.edited;
   const effective = effectiveProposal({ ...proposal, edited });
+  if ((proposal.type === "idea" || proposal.type === "borrador") && !effective.titulo.trim()) {
+    return { ok: false, status: "rejected", error: "Ponele un título." };
+  }
+  if (proposal.type === "borrador" && !(effective.guion ?? "").trim()) return { ok: false, status: "rejected", error: "Escribí el guion del borrador." };
 
   if (!(await deps.claim(call.id, proposal.id))) return { ok: false, status: "rejected", error: "Ya la resolvió otra persona." };
 
@@ -131,7 +187,7 @@ export async function resolveProposal(deps: ResolveDeps, input: ResolveInput): P
       case "tarea": {
         const ownerId =
           effective.responsable === "servicio"
-            ? (call.serviceId ? await deps.serviceOwner(call.serviceId) : null) ?? input.actorId
+            ? serviceOwnerId ?? input.actorId
             : effective.responsable === "grabo"
               ? call.recordedBy ?? input.actorId
               : null;
@@ -167,13 +223,24 @@ export async function resolveProposal(deps: ResolveDeps, input: ResolveInput): P
         break;
       }
       case "aviso": {
-        const to = effective.para === "grabo" ? call.recordedBy : call.serviceId ? await deps.serviceOwner(call.serviceId) : call.recordedBy;
+        const to = effective.para === "grabo" ? call.recordedBy : call.serviceId ? serviceOwnerId : call.recordedBy;
         if (!to) {
           outcome = { ok: false, reason: "No hay a quién avisar: la reunión no tiene responsable ni quien la grabó." };
           break;
         }
         outcome = await deps.notify({ recipientId: to, title: effective.titulo, body: effective.detalle, callId: call.id });
         if (outcome.ok) result = { notification_id: outcome.id };
+        break;
+      }
+      case "idea": {
+        outcome = await deps.createIdea({ proposal: effective, callId: call.id });
+        if (outcome.ok) result = { idea_id: outcome.id };
+        break;
+      }
+      case "borrador": {
+        const r = await deps.createDraft({ proposal: effective, callId: call.id });
+        outcome = r;
+        if (r.ok) result = { post_id: r.id, ...(r.ideaId ? { idea_id: r.ideaId } : {}) };
         break;
       }
     }

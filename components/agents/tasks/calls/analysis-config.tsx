@@ -12,6 +12,8 @@ import type { CallConfigData } from "@/lib/calls/config-data";
 import { PROFILE_STATE_LABELS, profileState, type CallAnalysisProfile } from "@/lib/calls/profiles";
 import { CATEGORY_GROUPS, CATEGORY_GROUP_LABELS, uniqueKey, type CategoryGroup } from "@/lib/calls/rubric";
 import { MAX_COMPANY_CONTEXT, type CallAnalysisSettings } from "@/lib/calls/task-settings";
+import { CHURN_REASON_NAME_MAX, MAX_CHURN_REASONS, newChurnReason } from "@/lib/calls/churn";
+import { APPROVER_LABEL, PROPOSAL_TYPES, PROPOSAL_TYPE_LABEL, type ProposalApprover } from "@/lib/calls/proposals";
 import { ProfileEditor, type ProfileTarget } from "./profile-editor";
 
 type Data = Extract<CallConfigData, { task: "call_analysis" }>;
@@ -74,6 +76,14 @@ export function AnalysisConfig({ data }: { data: Data }) {
         {CATEGORY_GROUPS.map((group) => (
           <CategoryList key={group} group={group} settings={settings} readOnly={readOnly} onChange={(categories) => patch({ categories })} />
         ))}
+      </Section>
+
+      <Section title="Causas de baja" description="La lista de tu negocio. En las reuniones de servicio (formato general), si el cliente habla de irse, cancelar o no renovar, el analizador elige una de estas causas con la frase textual del cliente. Se ve en la reunión y en la ficha del cliente. Vacía, no se busca nada.">
+        <ChurnReasonList settings={settings} readOnly={readOnly} onChange={(churn_reasons) => patch({ churn_reasons })} />
+      </Section>
+
+      <Section title="Quién aprueba las propuestas" description="Lo que proponen los analizadores y el resumen de cada grabación no se hace solo: alguien lo aprueba, lo edita o lo descarta. Acá elegís quién decide cada tipo. Un admin puede decidir todo, y siempre hace falta además el permiso de lo que se hace (por ejemplo, crear contenido).">
+        <ApproverList settings={settings} readOnly={readOnly} onChange={(proposal_approvers) => patch({ proposal_approvers })} />
       </Section>
 
       {!readOnly && (
@@ -175,6 +185,73 @@ function CategoryList({ group, settings, readOnly, onChange }: { group: Category
           </button>
         </form>
       )}
+    </div>
+  );
+}
+
+/** Las causas de baja: renombrar no cambia la clave; archivar deja de ofrecerla (las reuniones viejas la siguen mostrando). */
+function ChurnReasonList({ settings, readOnly, onChange }: { settings: CallAnalysisSettings; readOnly: boolean; onChange: (c: CallAnalysisSettings["churn_reasons"]) => void }) {
+  const list = settings.churn_reasons;
+  const [name, setName] = useState("");
+  return (
+    <div>
+      {list.length === 0 && <p className="text-xs text-muted-foreground">Todavía no hay causas. Por ejemplo: «No ve resultados», «Precio», «Falta de tiempo».</p>}
+      <ul className="space-y-1">
+        {list.map((c) => (
+          <li key={c.clave} className={cn("flex items-center gap-2", c.archivado && "opacity-60")}>
+            <input aria-label={`Nombre de la causa ${c.nombre}`} value={c.nombre} maxLength={CHURN_REASON_NAME_MAX} disabled={readOnly} onChange={(e) => onChange(list.map((x) => (x.clave === c.clave ? { ...x, nombre: e.target.value } : x)))} className={cn(inputClass, "py-1.5")} />
+            {!readOnly && (
+              <button type="button" onClick={() => onChange(list.map((x) => (x.clave === c.clave ? { ...x, archivado: !x.archivado } : x)))} aria-label={c.archivado ? `Volver a activar ${c.nombre}` : `Archivar ${c.nombre}`} className="rounded-md p-1.5 text-muted-foreground hover:bg-accent">
+                {c.archivado ? <ArchiveRestore className="h-4 w-4" aria-hidden /> : <Archive className="h-4 w-4" aria-hidden />}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {!readOnly && list.length < MAX_CHURN_REASONS && (
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const trimmed = name.trim();
+            if (!trimmed) return;
+            onChange([...list, newChurnReason(trimmed, list)]);
+            setName("");
+          }}
+        >
+          <input aria-label="Nueva causa de baja" placeholder="Nueva causa de baja" value={name} maxLength={CHURN_REASON_NAME_MAX} onChange={(e) => setName(e.target.value)} className={cn(inputClass, "py-1.5")} />
+          <button type="submit" disabled={!name.trim()} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-50">
+            <Plus className="h-3.5 w-3.5" aria-hidden /> Agregar
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+/** Por cada tipo de propuesta: «Un admin» o «El responsable (o un admin)». */
+function ApproverList({ settings, readOnly, onChange }: { settings: CallAnalysisSettings; readOnly: boolean; onChange: (a: CallAnalysisSettings["proposal_approvers"]) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <ul className="divide-y divide-border rounded-lg border border-border">
+        {PROPOSAL_TYPES.map((t) => (
+          <li key={t} className="flex flex-col gap-1.5 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-sm">{PROPOSAL_TYPE_LABEL[t]}</span>
+            <select
+              aria-label={`Quién aprueba: ${PROPOSAL_TYPE_LABEL[t]}`}
+              value={settings.proposal_approvers[t]}
+              disabled={readOnly}
+              onChange={(e) => onChange({ ...settings.proposal_approvers, [t]: e.target.value as ProposalApprover })}
+              className={cn(inputClass, "py-1.5 sm:w-64")}
+            >
+              {(["responsable", "admin"] as const).map((a) => (
+                <option key={a} value={a}>{APPROVER_LABEL[a]}</option>
+              ))}
+            </select>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-muted-foreground">El responsable es el del servicio de la reunión; si la reunión no tiene servicio, quien la grabó.</p>
     </div>
   );
 }

@@ -661,6 +661,8 @@ export type AuditAction =
   | "call.proposal_discarded" // @plantilla-quitar(servicios)
   | "call.proposal_failed" // @plantilla-quitar(servicios)
   | "call.manual_summary" // @plantilla-quitar(servicios)
+  /** La causa de baja corregida o quitada a mano desde la reunión. */
+  | "call.churn_cause_set" // @plantilla-quitar(llamadas)
   /** Servicios A4: el aviso de reunión sin grabación (F139), la evidencia de un paso (F147) y los topes de cartera (F151). */
   | "svc.call_missing_recording" // @plantilla-quitar(servicios)
   | "svc.evidence_added" // @plantilla-quitar(servicios)

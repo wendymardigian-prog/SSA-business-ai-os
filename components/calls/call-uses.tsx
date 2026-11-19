@@ -137,13 +137,13 @@ export function CallUsesCard({ data }: { data: CallUsesData }) {
 
       {data.ideas.length > 0 && (
         <div>
-          <h4 className="flex items-center gap-1 text-xs font-medium text-muted-foreground"><Lightbulb className="h-3.5 w-3.5" aria-hidden /> Ideas de contenido que salieron de esta llamada</h4>
+          <h4 className="flex items-center gap-1 text-xs font-medium text-muted-foreground"><Lightbulb className="h-3.5 w-3.5" aria-hidden /> Ideas de contenido de esta llamada que entraron al banco</h4>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm">
             {data.ideas.map((i) => (
               <li key={i.id}>{i.title}</li>
             ))}
           </ul>
-          <Link href="/dashboard/content" className="mt-1 inline-block text-xs text-primary-ink underline-offset-2 hover:underline">Verlas en el banco de ideas</Link>
+          <Link href="/dashboard/content/ideas?estado=todas" className="mt-1 inline-block text-xs text-primary-ink underline-offset-2 hover:underline">Verlas en Contenido › Ideas</Link>
         </div>
       )}
 
