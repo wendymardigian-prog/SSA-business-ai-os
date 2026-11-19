@@ -12,6 +12,7 @@ import { loadTableViews } from "@/lib/ui/data-table/views-load";
 import type { PageResult } from "@/lib/shared/paginate";
 import { ensureSalesTemplateFlows } from "@/lib/sales/automation/templates-run";
 import { createServiceClient } from "@/lib/supabase/server";
+import { after } from "next/server";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import type { ModuleColumn } from "@/lib/sales/module-columns"; // @plantilla-quitar(servicios)
 import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
@@ -45,35 +46,56 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   const ctx = await requirePermission("sales.view");
   const { supabase, workspace } = ctx;
   const sp = await searchParams;
+  const today = localToday(new Date(), workspace.timezone);
+  const weekEnd = addDays(today, 7);
+
+  // Los cuatro flujos de cobranza (apagados) se crean la primera vez que un Owner o Admin abre Ventas; es idempotente
+  // y respeta la opcion de Ajustes. No hay backfill durante el deploy. Va en `after()`: la pantalla no los muestra, así
+  // que no tiene por qué esperar sus consultas.
+  if (ctx.role === "owner" || ctx.role === "admin") after(async () => {
+      await ensureSalesTemplateFlows(await createServiceClient(), workspace.id);
+    });
+
+  // Todo lo que NO depende de los filtros sale en la misma tanda: la app y la base están lejos, y cada consulta en fila
+  // suma una ida y vuelta entera.
+  const independent = Promise.all([
+    resolveViewerTimezone(workspace.timezone),
+    // «Por cobrar esta semana»: ventas con algún pago programado que vence en los próximos 7 días.
+    supabase.from("payments").select("sale_id").eq("workspace_id", workspace.id).eq("status", "scheduled").gte("due_date", today).lte("due_date", weekEnd).limit(1000),
+    getWorkspaceMembers(workspace.id),
+    loadWizardConfig(ctx),
+    supabase.from("products").select("id, name").eq("workspace_id", workspace.id).order("name"),
+    supabase.from("product_variants").select("id, product_id, name").eq("workspace_id", workspace.id).order("name"),
+    supabase.from("sales").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
+    Promise.all((["al_dia", "con_mora", "canceladas"] as const).map((p) => supabase.from("sales").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).in("status", [...PILL_STATUSES[p]] as never[]))),
+  ]);
+  // Que una falla de la tanda no quede como promesa rechazada sin escuchar mientras se esperan las vistas (se vuelve a lanzar abajo).
+  independent.catch(() => undefined);
+
   // Las vistas guardadas de esta persona: si la URL llegó pelada, los filtros de su vista predeterminada se aplican acá.
   const viewsData = await loadTableViews(ctx, SALES_TABLE_KEY, sp);
   const inherited = viewsData.resolved.inheritedFilters;
   const filters = parseSalesFilters(inherited ? { ...Object.fromEntries(new URLSearchParams(inherited)), pagina: sp.pagina } : sp);
-  const timeZone = await resolveViewerTimezone(workspace.timezone);
-  const today = localToday(new Date(), workspace.timezone);
 
-  // Los cuatro flujos de cobranza (apagados) se crean la primera vez que un Owner o Admin abre Ventas; es idempotente
-  // y respeta la opcion de Ajustes. No hay backfill durante el deploy.
-  if (ctx.role === "owner" || ctx.role === "admin") await ensureSalesTemplateFlows(await createServiceClient(), workspace.id);
-
-  // «Por cobrar esta semana»: ventas con algún pago programado que vence en los próximos 7 días.
-  const weekEnd = addDays(today, 7);
-  const dueSoon = await supabase.from("payments").select("sale_id").eq("workspace_id", workspace.id).eq("status", "scheduled").gte("due_date", today).lte("due_date", weekEnd).limit(1000);
+  // La búsqueda mira los contactos que coinciden (los que esta persona ve). El título de la pieza, si se filtra por una.
+  const q = filters.q ? sanitizeSearch(filters.q, 60) : null;
+  const [[timeZone, dueSoon, members, config, products, variants, anySale, pillCounts], searchRes, pieceTitle] = await Promise.all([
+    independent,
+    q !== null
+      ? supabase
+          .from("contacts")
+          .select("id")
+          .eq("workspace_id", workspace.id)
+          .is("deleted_at", null)
+          .or(`display_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`)
+          .limit(50)
+      : Promise.resolve(null),
+    filters.pieceId
+      ? supabase.from("content_posts").select("title").eq("id", filters.pieceId).eq("workspace_id", workspace.id).maybeSingle().then((r) => r.data?.title ?? null)
+      : Promise.resolve(null),
+  ]);
   const dueSoonIds = [...new Set((dueSoon.data ?? []).map((p) => p.sale_id))];
-
-  // La búsqueda mira los contactos que coinciden (los que esta persona ve).
-  let contactIds: string[] | null = null;
-  if (filters.q) {
-    const q = sanitizeSearch(filters.q, 60);
-    const { data } = await supabase
-      .from("contacts")
-      .select("id")
-      .eq("workspace_id", workspace.id)
-      .is("deleted_at", null)
-      .or(`display_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`)
-      .limit(50);
-    contactIds = (data ?? []).map((c) => c.id);
-  }
+  const contactIds: string[] | null = searchRes ? (searchRes.data ?? []).map((c) => c.id) : null;
 
   const from = (filters.page - 1) * SALES_PAGE_SIZE;
   /** Los filtros aplicados a una consulta de `sales`: la de la página y la de los totales cuentan EXACTAMENTE lo mismo. */
@@ -104,28 +126,30 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
 
   const sales = (data ?? []) as unknown as SaleDbRow[];
   const saleIds = sales.map((s) => s.id);
-  const [payments, contacts, members, config, anySale, ...pillCounts] = await Promise.all([
+  const memberName = new Map(members.map((m) => [m.userId, m.name]));
+  // De donde vino cada venta (F49): el toque, la pieza o el anuncio, en una consulta por tabla (no una por venta).
+  const canViewAds = ctx.can("dashboards.ads.view");
+  // Lo que depende de las filas de esta página, todo en la misma tanda.
+  const [payments, contacts, originParts, moduleColumns] = await Promise.all([
     saleIds.length ? supabase.from("payments").select("sale_id, amount, status").in("sale_id", saleIds) : Promise.resolve({ data: [] as Array<{ sale_id: string; amount: number; status: string }> }),
     sales.length ? supabase.from("contacts").select("id, display_name, email").in("id", [...new Set(sales.map((s) => s.contact_id))]) : Promise.resolve({ data: [] as Array<{ id: string; display_name: string | null; email: string | null }> }),
-    getWorkspaceMembers(workspace.id),
-    loadWizardConfig(ctx),
-    supabase.from("sales").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
-    ...(["al_dia", "con_mora", "canceladas"] as const).map((p) => supabase.from("sales").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).in("status", [...PILL_STATUSES[p]] as never[])),
+    loadOriginParts(supabase, {
+      workspaceId: workspace.id,
+      touchIds: sales.map((s) => s.attribution_touch_id).filter((id): id is string => !!id),
+      memberNames: memberName,
+      canViewAds,
+    }),
+    // @plantilla-desde(servicios)
+    // F95: con el modulo de Servicios prendido, la columna Servicio por el punto de extension de Ventas (por id de venta).
+    isModuleEnabled(workspace as { services_enabled?: boolean | null }) ? servicesSalesColumn(supabase, workspace.id, saleIds, ctx.can).then((col): ModuleColumn[] => (col ? [col] : [])) : Promise.resolve([] as ModuleColumn[]),
+    // @plantilla-hasta(servicios)
+    // @plantilla-sin(servicios): Promise.resolve([]),
   ]);
 
   const byContact = new Map((contacts.data ?? []).map((c) => [c.id, c.display_name || c.email || "Sin nombre"]));
-  const memberName = new Map(members.map((m) => [m.userId, m.name]));
   const paymentsBySale = new Map<string, Array<{ amount: unknown; status: string }>>();
   for (const p of payments.data ?? []) paymentsBySale.set(p.sale_id, [...(paymentsBySale.get(p.sale_id) ?? []), p]);
 
-  // De donde vino cada venta (F49): el toque, la pieza o el anuncio, en una consulta por tabla (no una por venta).
-  const canViewAds = ctx.can("dashboards.ads.view");
-  const originParts = await loadOriginParts(supabase, {
-    workspaceId: workspace.id,
-    touchIds: sales.map((s) => s.attribution_touch_id).filter((id): id is string => !!id),
-    memberNames: memberName,
-    canViewAds,
-  });
   const origins = buildOriginViews(sales, originParts, canViewAds);
 
   const now = new Date();
@@ -135,13 +159,6 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     contactName: byContact.get(s.contact_id) ?? "Sin nombre",
     vendedorName: s.vendedor_id ? memberName.get(s.vendedor_id) ?? null : null,
   }));
-
-  const pieceTitle = filters.pieceId ? (await supabase.from("content_posts").select("title").eq("id", filters.pieceId).eq("workspace_id", workspace.id).maybeSingle()).data?.title ?? null : null;
-
-  const [products, variants] = await Promise.all([
-    supabase.from("products").select("id, name").eq("workspace_id", workspace.id).order("name"),
-    supabase.from("product_variants").select("id, product_id, name").eq("workspace_id", workspace.id).order("name"),
-  ]);
 
   const props: SalesListData = {
     rows,
@@ -172,12 +189,6 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   };
 
   // @plantilla-desde(servicios)
-  // F95: con el modulo de Servicios prendido, la columna Servicio por el punto de extension de Ventas.
-  const moduleColumns: ModuleColumn[] = [];
-  if (isModuleEnabled(workspace as { services_enabled?: boolean | null })) {
-    const col = await servicesSalesColumn(supabase, workspace.id, rows.map((r) => r.id), ctx.can);
-    if (col) moduleColumns.push(col);
-  }
   return <SalesList data={props} wizard={config} moduleColumns={moduleColumns} />;
   // @plantilla-hasta(servicios)
   // @plantilla-sin(servicios): return <SalesList data={props} wizard={config} />;

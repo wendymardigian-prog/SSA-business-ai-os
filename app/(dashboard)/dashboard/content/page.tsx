@@ -89,9 +89,16 @@ export default async function ContentPage({
   // La zona de QUIEN MIRA: en esta se ve y se escribe la hora de una pieza
   // (lib/dates.ts). Tiene que ser la misma que usan loadPiece y movePieceToDay.
   // El tope diario NO: ese es una regla y cuenta en la del negocio.
-  const timeZone = await resolveViewerTimezone(workspace.timezone);
-
-  const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy, attributed, paidPieceIds, designedPieceIds] = await Promise.all([
+  //
+  // Todo sale en una sola tanda: cada consulta en fila suma una ida y vuelta entera a la base.
+  const [timeZone, authorNames, accountsRes, openPiece, ideasRes, postsRes, publicationsRes, aiProviders, taxonomy, attributed, paidPieceIds, designedPieceIds] = await Promise.all([
+    resolveViewerTimezone(workspace.timezone),
+    // Los nombres del equipo, para la columna Autor, su filtro y las tarjetas.
+    getWorkspaceMembers(workspace.id).then(memberLabels),
+    // Lo que necesitan las altas: las redes conectadas.
+    supabase.from("social_accounts").select("platform").eq("workspace_id", workspace.id).eq("is_active", true),
+    // El drawer: la pieza se lee aca, en el mismo viaje que el tablero.
+    target?.kind === "piece" ? loadPiece(ctx, target.id) : Promise.resolve(null),
     supabase
       .from("content_ideas")
       .select("id, title, content, format, reference, platforms, pillar_id, offer_id, funnel_stage, status, created_by, position, created_at, updated_at")
@@ -139,9 +146,6 @@ export default async function ContentPage({
     });
     publicationsByPost.set(row.content_post_id, list);
   }
-
-  // Los nombres del equipo, para la columna Autor, su filtro y las tarjetas.
-  const authorNames = memberLabels(await getWorkspaceMembers(workspace.id));
 
   const ideas: BoardIdea[] = (ideasRes.data ?? []).map((idea) => ({
     kind: "idea",
@@ -245,26 +249,18 @@ export default async function ContentPage({
     matchesPlatform(p.networks.map((n) => n.platform), filters.platform),
   );
 
-  // El drawer: la pieza se lee aca, en el mismo viaje que el tablero. Una que
-  // no existe (o de otro negocio) no abre nada y avisa.
+  // El drawer: una pieza que no existe (o de otro negocio) no abre nada y avisa.
   let piece: PieceData | null = null;
   let notice: string | null = null;
   if (target?.kind === "piece") {
-    piece = await loadPiece(ctx, target.id);
+    piece = openPiece;
     if (!piece) notice = "No encontré esa pieza, o no tenés acceso a ella.";
   } else if (target?.kind === "idea" && !ideas.some((i) => i.id === target.id)) {
     notice = "Esa idea ya no está en el tablero: la aprobaron o la descartaron.";
   }
 
-  // Lo que necesitan las altas: las redes conectadas.
-  const { data: accountsRes } = await supabase
-    .from("social_accounts")
-    .select("platform")
-    .eq("workspace_id", workspace.id)
-    .eq("is_active", true);
-
   // Sin repetir: con varias cuentas de la misma red (00236) hay una fila por cuenta.
-  const platforms = [...new Set((accountsRes ?? []).map((a) => a.platform as string))];
+  const platforms = [...new Set((accountsRes.data ?? []).map((a) => a.platform as string))];
   const copywriter = {
     available: canUseAi && aiProviders.length > 0,
     reason: !canUseAi
