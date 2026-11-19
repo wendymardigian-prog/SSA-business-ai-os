@@ -9,12 +9,22 @@ import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { headBase64Of } from "@/lib/content/media";
 import { requestGroupUpload, sendGroupMessage, sendGroupPoll } from "@/lib/actions/whatsapp-group-inbox";
 import { POLL_MAX_OPTIONS } from "@/lib/whatsapp-groups/poll";
+import { ManualQuotaNotice } from "@/components/inbox/manual-quota-notice";
 
 /**
  * Escribir en un grupo: texto, emoji, una foto / video / archivo (con el texto como pie) o una encuesta. Enter manda;
  * Shift+Enter hace un salto de línea.
  */
-export function GroupComposer({ groupId, onSent }: { groupId: string; onSent: () => void }) {
+export function GroupComposer({
+  groupId,
+  onSent,
+  quotaRefreshKey = 0,
+}: {
+  groupId: string;
+  onSent: () => void;
+  /** Cambia con el hilo (el número de mensajes) para volver a mirar el cupo del número. */
+  quotaRefreshKey?: number;
+}) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [pollOpen, setPollOpen] = useState(false);
@@ -65,6 +75,8 @@ export function GroupComposer({ groupId, onSent }: { groupId: string; onSent: ()
           </button>
         </div>
       )}
+      {/* El número ya gastó su cupo de la hora o del día (cola de WhatsApp, 00420). Solo avisa: el mensaje sale igual. */}
+      <ManualQuotaNotice groupId={groupId} provider="evolution" refreshKey={quotaRefreshKey} />
       {error && (
         <p role="alert" className="mb-1.5 rounded-md bg-red-50 px-2 py-1 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
           {error}

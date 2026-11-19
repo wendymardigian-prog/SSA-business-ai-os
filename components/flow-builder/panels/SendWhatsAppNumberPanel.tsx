@@ -11,6 +11,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { BusinessTimeNote } from "@/components/ui/business-time-note";
 import { DEFAULT_SEND_WINDOW, sendWindowProblem } from "@/lib/flow-engine/send-window";
 import { MAX_HOURS_BEFORE, normalizeHoursBefore } from "@/lib/flow-engine/team-wrote";
+import { WhatsappDeliveryFields } from "./whatsapp-delivery-fields";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -197,6 +198,8 @@ export function SendWhatsAppNumberPanel({
           </div>
         </div>
       )}
+
+      <WhatsappDeliveryFields idPrefix="wa-number" value={(data as { delivery?: unknown }).delivery} onChange={(delivery) => onChange({ ...data, delivery })} />
     </div>
   );
 }

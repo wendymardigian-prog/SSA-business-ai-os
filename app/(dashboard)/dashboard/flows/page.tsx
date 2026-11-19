@@ -63,6 +63,7 @@ export default async function FlowsPage({ searchParams }: { searchParams: Promis
       rows={rows}
       initialQuery={parseFlowListQuery(sp)}
       canEdit={ctx.can("flows.edit")}
+      canManageQueue={ctx.can("channels.manage")}
       hasChannels={(channelCount ?? 0) > 0}
       timeZone={timeZone}
     />
