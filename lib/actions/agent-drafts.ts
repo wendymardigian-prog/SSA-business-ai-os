@@ -69,7 +69,7 @@ export async function sendDraftAction(
 }
 
 /**
- * Descartar. El motivo de la lista cerrada es OPCIONAL (decisión de Wendy): si viene, cuenta para que la IA aprenda y
+ * Descartar. El motivo de la lista cerrada es OPCIONAL (decisión de producto): si viene, cuenta para que la IA aprenda y
  * un rechazo repetido puede proponer una regla. Acepta el texto libre de siempre (string) para no romper a nadie.
  */
 export async function discardDraftAction(draftId: string, input?: { reason?: string | null; note?: string | null } | string | null): Promise<DraftActionResult> {

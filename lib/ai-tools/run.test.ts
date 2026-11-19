@@ -37,7 +37,7 @@ describe("capa de herramientas propia", () => {
       expect(t.permission).toMatch(/^[a-z_]+\.[a-z_]+$/);
       expect(t.params).toBeDefined();
     }
-    // Decisión de Wendy (18/11/2026): lee contactos, conversaciones, tareas, agenda, servicios y Conocimiento; propone tarea y nota.
+    // Decisión de producto (18/11/2026): lee contactos, conversaciones, tareas, agenda, servicios y Conocimiento; propone tarea y nota.
     expect([...DEFAULT_ASSISTANT_TOOL_KEYS].sort()).toEqual(
       [
         "buscar_conocimiento",

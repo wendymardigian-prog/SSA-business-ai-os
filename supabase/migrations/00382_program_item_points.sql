@@ -1,5 +1,5 @@
 -- @plantilla-quitar(servicios)
--- 00382 · Corrida A3 · F129: «Puntos al entregar / al aprobar» de una actividad o evaluación (Wendy dijo que sí, 15/11).
+-- 00382 · Corrida A3 · F129: «Puntos al entregar / al aprobar» de una actividad o evaluación (aprobado el 15/11).
 --
 -- `program_update_item` suma la clave `points` ({submit, pass}, cada uno entero de 0 a 10.000; null o {} = los del
 -- programa). Sin la clave en el cambio, el ítem queda como estaba: nada cambia para lo que ya existe. El CHECK

@@ -1,7 +1,7 @@
 -- @plantilla-quitar(servicios)
 -- 00405 · Comunidad: título en cada post del equipo y aviso por correo a los estudiantes
 --
--- Wendy (18/11/2026): al publicar en la comunidad desde SSA, el post lleva un título (con emojis) y un interruptor
+-- Decisión de producto (18/11/2026): al publicar en la comunidad desde SSA, el post lleva un título (con emojis) y un interruptor
 -- «Avisar por correo a los estudiantes», prendido de entrada. El correo lo arma y lo manda la app (job
 -- `community_post_email`, un envío por persona); la base solo guarda el título y dice a quién le toca.
 --

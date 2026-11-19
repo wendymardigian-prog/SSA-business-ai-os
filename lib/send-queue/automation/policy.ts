@@ -1,7 +1,7 @@
 /**
  * El ritmo de la cola de WhatsApp de un número (traída de RER-BAIOS, 18/11/2026). PURO.
  *
- * Decisión de Wendy (18/11/2026): la cola usa el MISMO ritmo que ya tiene el número para los broadcasts
+ * Decisión de producto (18/11/2026): la cola usa el MISMO ritmo que ya tiene el número para los broadcasts
  * (`channels.send_policy`; sin guardar, `DEFAULT_WHATSAPP_POLICY`), no el de RER (120/h y 600/día era el doble). Encima
  * de ese techo, la cola suma:
  *   - la reserva para lo urgente (`urgentReservePct`, 20 % por defecto): lo normal y lo masivo, broadcasts incluidos,

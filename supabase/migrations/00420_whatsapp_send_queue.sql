@@ -3,7 +3,7 @@
 -- Hasta acá la cola con ritmo por número (00285) la usaban solo los broadcasts: cada automatización mandaba su WhatsApp
 -- al instante. Desde esta migración, los WhatsApp de las automatizaciones que NO arrancan porque el contacto escribió
 -- (etiqueta, alta, formulario, fecha, webhook, ventas…) entran en `send_queue_items` y salen de a uno por el carril del
--- número (`channel_send_lanes`), con su espera al azar, su horario y sus topes. Decisiones de Wendy (18/11/2026):
+-- número (`channel_send_lanes`), con su espera al azar, su horario y sus topes. Decisiones de producto (18/11/2026):
 --   - el ritmo es el del número (`channels.send_policy`), el mismo techo que los broadcasts;
 --   - el 20 % del cupo de la hora queda para lo urgente, también frente a los broadcasts;
 --   - lo que escribe el equipo a mano, desde el celular o el agente cuenta en el cupo, pero nunca se frena;
