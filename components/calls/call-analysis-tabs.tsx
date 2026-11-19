@@ -10,9 +10,11 @@ import {
 import { humanize } from "@/lib/calls/format";
 import { typeDeciderText } from "@/lib/calls/list";
 import type { CallAttendee } from "@/lib/types/database";
-import type { AnalysisSection } from "@/lib/calls/scoring";
+import { deductionReason, readScoreBreakdown, type AnalysisSection } from "@/lib/calls/scoring";
 import { SectionTools } from "@/components/calls/section-tools";
 import { CallUsesCard, type CallUsesData } from "@/components/calls/call-uses";
+import { ChurnCauseCard } from "@/components/calls/churn-cause-card";
+import type { ChurnReason } from "@/lib/calls/churn";
 
 /**
  * Las pestañas del analisis de una llamada (F13, F14). Solo muestran: lo que
@@ -80,6 +82,8 @@ export interface TabsData {
   emptyMessage: string | null;
   /** El resumen, las ideas, la memoria y Conocimiento (L3). Solo si la llamada ya se analizo. */
   uses?: CallUsesData;
+  /** Las causas de baja del negocio y si quien mira puede corregirla (formato general). */
+  churn?: { reasons: ChurnReason[]; canEdit: boolean } | null;
 }
 
 function AlertsCard({ alerts, className }: { alerts: ReadAnalysis["alerts"]; className?: string }) {
@@ -128,6 +132,7 @@ export function SummaryTab({ data, onJump }: { data: TabsData; onJump: (ts: stri
           <Card title="Próximos pasos">
             {a.nextSteps.length ? <ul className="list-disc space-y-1 pl-4 text-sm">{a.nextSteps.map((step, i) => <li key={i}>{step}</li>)}</ul> : <Empty t="Sin próximos pasos." />}
           </Card>
+          {data.churn && <ChurnCauseCard callId={data.callId} analysis={data.analysis} reasons={data.churn.reasons} canEdit={data.churn.canEdit} />}
           {a.alerts.length > 0 && <AlertsCard alerts={a.alerts} />}
         </div>
       ) : (
@@ -215,6 +220,7 @@ export function CloserTab({ data, onJump }: { data: TabsData; onJump: (ts: strin
   if (data.emptyMessage) return <Empty t={data.emptyMessage} />;
   return (
     <div className="space-y-4">
+      <ScoreBreakdownCard analysis={data.analysis} />
       <div>
         <h3 className="mb-1.5 text-xs font-medium text-muted-foreground">Rúbrica</h3>
         {a.rubric.length > 0 && <div className="mb-2"><SectionTools section="rubrica" /></div>}
@@ -256,6 +262,42 @@ export function CloserTab({ data, onJump }: { data: TabsData; onJump: (ts: strin
         </Card>
       </div>
     </div>
+  );
+}
+
+/** Cómo sale la nota de 0 a 100: la media de los criterios, lo que resta cada criterio que resta y la nota final. */
+function ScoreBreakdownCard({ analysis }: { analysis: unknown }) {
+  const nota = useMemo(() => readScoreBreakdown(analysis), [analysis]);
+  if (!nota) return null;
+  return (
+    <section aria-label="Cómo sale la nota" className="rounded-lg border border-border p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-xs font-medium text-muted-foreground">Nota de 0 a 100</h3>
+        <span className="text-xl font-semibold tabular-nums">{nota.total ?? "Sin dato"}</span>
+      </div>
+      <dl className="mt-2 space-y-1.5 text-sm">
+        <div className="flex justify-between gap-2">
+          <dt>Media de los criterios</dt>
+          <dd className="tabular-nums">{nota.base ?? "Sin dato"}</dd>
+        </div>
+        {nota.restas.map((d) => {
+          const why = deductionReason(d);
+          return (
+            <div key={d.clave} className="flex justify-between gap-2">
+              <dt className="min-w-0">
+                Resta: {d.nombre}
+                {why && <span className="block text-xs text-muted-foreground">{why}</span>}
+                {!why && d.cita && <span className="flex gap-1 text-xs italic text-muted-foreground"><Quote className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />{d.cita}</span>}
+              </dt>
+              <dd className={d.puntos > 0 ? "shrink-0 font-medium tabular-nums text-red-700 dark:text-red-400" : "shrink-0 tabular-nums text-muted-foreground"}>
+                {d.puntos > 0 ? `−${d.puntos}` : "0"}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+      <p className="mt-2 text-xs text-muted-foreground">La calcula el sistema con la rúbrica del analizador, no la IA. Un criterio que resta solo cuenta con una cita de la transcripción.</p>
+    </section>
   );
 }
 

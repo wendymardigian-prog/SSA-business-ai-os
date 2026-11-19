@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveProposal, type ResolveDeps, type ResolveCall } from "./proposals-resolve";
-import type { Proposal } from "./proposals";
+import { DEFAULT_PROPOSAL_APPROVERS, type Proposal } from "./proposals";
 
 const NOW = new Date("2026-11-12T10:00:00Z");
 const prop = (over: Partial<Proposal> = {}): Proposal => ({
@@ -34,6 +34,10 @@ function deps(over: Partial<ResolveDeps> & { call?: ResolveCall; perms?: string[
     completeStep: vi.fn(async () => ({ ok: true as const, id: "it1" })),
     sendMessage: vi.fn(async () => ({ ok: true as const, id: "m1" })),
     notify: vi.fn(async () => ({ ok: true as const, id: "n1" })),
+    createIdea: vi.fn(async () => ({ ok: true as const, id: "idea1" })),
+    createDraft: vi.fn(async () => ({ ok: true as const, id: "post1", ideaId: "idea2" })),
+    approvers: DEFAULT_PROPOSAL_APPROVERS,
+    isAdmin: true,
     audit: vi.fn(async () => undefined),
     now: () => NOW,
     ...over,
@@ -83,7 +87,73 @@ describe("resolveProposal", () => {
     const r = await resolveProposal(d, { ...base, decision: "discard" });
     expect(r).toEqual({ ok: true, status: "discarded", result: null });
     expect(d.createTask).not.toHaveBeenCalled();
-    expect(d.patch).toHaveBeenCalledWith("c1", "p1", expect.objectContaining({ status: "discarded", resolved_by: "u-me", resolved_at: NOW.toISOString() }));
+    expect(d.patch).toHaveBeenCalledWith("c1", "p1", expect.objectContaining({ status: "discarded", resolved_by: "u-me", resolved_at: NOW.toISOString(), discard_reason: "no_hace_falta", discard_note: null }));
+  });
+
+  it("descartar con motivo lo guarda y queda en el historial; «Otro» pide la nota", async () => {
+    const d = deps();
+    await resolveProposal(d, { ...base, decision: "discard", discardReason: "dato_incorrecto" });
+    expect(d.patch).toHaveBeenCalledWith("c1", "p1", expect.objectContaining({ discard_reason: "dato_incorrecto" }));
+    expect(d.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "call.proposal_discarded", metadata: expect.objectContaining({ discard_reason: "dato_incorrecto" }) }));
+    const d2 = deps();
+    expect(await resolveProposal(d2, { ...base, decision: "discard", discardReason: "otro" })).toMatchObject({ ok: false, status: "rejected", error: expect.stringMatching(/Otro/) });
+    expect(d2.claim).not.toHaveBeenCalled();
+    const d3 = deps();
+    await resolveProposal(d3, { ...base, decision: "discard", discardReason: "otro", discardNote: "  ya lo hicimos  " });
+    expect(d3.patch).toHaveBeenCalledWith("c1", "p1", expect.objectContaining({ discard_reason: "otro", discard_note: "ya lo hicimos" }));
+  });
+
+  describe("quién aprueba", () => {
+    it("el responsable del servicio decide lo que el ajuste le da", async () => {
+      const d = deps({ isAdmin: false });
+      expect(await resolveProposal(d, { ...base, actorId: "u-owner", decision: "approve" })).toMatchObject({ ok: true, status: "done" });
+    });
+    it("otra persona (ni admin ni responsable) no puede ni aprobar ni descartar", async () => {
+      for (const decision of ["approve", "discard"] as const) {
+        const d = deps({ isAdmin: false });
+        expect(await resolveProposal(d, { ...base, actorId: "u-otro", decision })).toMatchObject({ ok: false, status: "rejected", error: expect.stringMatching(/La decide/) });
+        expect(d.claim).not.toHaveBeenCalled();
+      }
+    });
+    it("sin servicio, el responsable es quien grabó", async () => {
+      const d = deps({ isAdmin: false, call: call([prop()], { serviceId: null }) });
+      expect(await resolveProposal(d, { ...base, actorId: "u-rec", decision: "approve" })).toMatchObject({ ok: true });
+    });
+    it("lo que el ajuste deja en «Un admin», el responsable no lo puede decidir", async () => {
+      const d = deps({ isAdmin: false, approvers: { ...DEFAULT_PROPOSAL_APPROVERS, tarea: "admin" } });
+      expect(await resolveProposal(d, { ...base, actorId: "u-owner", decision: "approve" })).toMatchObject({ ok: false, status: "rejected" });
+    });
+  });
+
+  describe("contenido (idea y borrador)", () => {
+    const idea = prop({ type: "idea", original: { titulo: "De 3 a 12 visitas", detalle: "Caso real", cita: "pasamos de 3 a 12", formato: "Reel" } });
+    const draft = prop({ type: "borrador", original: { titulo: "El anuncio que nadie explica", detalle: "", cita: "nadie nos explicó", formato: "Reel", guion: "Nadie te explica esto." } });
+    const contentPerms = ["calls.edit", "content.create", "content.approve"];
+    it("aprobar una idea la manda al banco y guarda su id", async () => {
+      const d = deps({ call: call([idea], { contactId: null }), perms: contentPerms });
+      expect(await resolveProposal(d, { ...base, decision: "approve" })).toEqual({ ok: true, status: "done", result: { idea_id: "idea1" } });
+      expect(d.createIdea).toHaveBeenCalledWith({ proposal: expect.objectContaining({ titulo: "De 3 a 12 visitas", cita: "pasamos de 3 a 12" }), callId: "c1" });
+    });
+    it("aprobar un borrador crea la pieza con el guion editado", async () => {
+      const d = deps({ call: call([draft]), perms: contentPerms });
+      const r = await resolveProposal(d, { ...base, decision: "approve", edits: { guion: "Te lo cuento." } });
+      expect(r).toEqual({ ok: true, status: "done", result: { post_id: "post1", idea_id: "idea2" } });
+      expect(d.createDraft).toHaveBeenCalledWith({ proposal: expect.objectContaining({ guion: "Te lo cuento." }), callId: "c1" });
+      expect(d.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "call.proposal_edited", changes: { guion: { old: "Nadie te explica esto.", new: "Te lo cuento." } } }));
+    });
+    it("un borrador sin guion no se aprueba", async () => {
+      const d = deps({ call: call([draft]), perms: contentPerms });
+      expect(await resolveProposal(d, { ...base, decision: "approve", edits: { guion: "   " } })).toMatchObject({ ok: false, status: "rejected", error: expect.stringMatching(/guion/) });
+      expect(d.createDraft).not.toHaveBeenCalled();
+    });
+    it("los permisos son los de Contenido: crear la idea; el borrador además aprobar", async () => {
+      const d = deps({ call: call([draft]), perms: ["calls.edit", "content.create"] });
+      expect(await resolveProposal(d, { ...base, decision: "approve" })).toMatchObject({ ok: false, status: "rejected", error: expect.stringMatching(/aprobar contenido/) });
+    });
+    it("por defecto, el contenido lo decide un admin (no el responsable)", async () => {
+      const d = deps({ call: call([idea]), perms: contentPerms, isAdmin: false });
+      expect(await resolveProposal(d, { ...base, actorId: "u-owner", decision: "approve" })).toMatchObject({ ok: false, status: "rejected" });
+    });
   });
 
   it("un paso bloqueado o sin evidencia queda failed con el motivo y el paso pendiente", async () => {

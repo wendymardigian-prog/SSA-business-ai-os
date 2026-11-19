@@ -6,7 +6,7 @@
  * Portado de prevxcrm (`call-analysis-store.ts`). Cambios: sin `thinkingLevel`,
  * y la version del prompt es un numero (`prompt_version`), no un id.
  */
-import { hasOpenAlerts, quoteInTranscript } from "./scoring";
+import { hasOpenAlerts, quoteInTranscript, type ScoreBreakdown } from "./scoring";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -48,7 +48,7 @@ export function collectQuotes(analysis: unknown): string[] {
 
 export interface StoredAnalysisInput {
   analysis: Obj;
-  scores: { closer_score: number | null; lead_score: number | null };
+  scores: { closer_score: number | null; lead_score: number | null; breakdown?: ScoreBreakdown | null };
   transcriptText: string;
   model: string;
   costUsd: number;
@@ -71,6 +71,8 @@ export function buildStoredAnalysis(i: StoredAnalysisInput): Obj {
     closer_score: i.scores.closer_score,
     lead_score: i.scores.lead_score,
     has_open_alerts: hasOpenAlerts(a.alertas),
+    // Cómo sale la nota (criterios que restan): la ficha la muestra sin recalcular nada.
+    ...(i.scores.breakdown ? { nota: i.scores.breakdown } : {}),
     outcome,
     followup_at: validFollowupDate(resultado.fecha),
     main_objection: str(objecion.categoria),

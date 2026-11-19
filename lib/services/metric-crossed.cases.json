@@ -1,0 +1,14 @@
+{
+  "_comment": "Casos de metricCrossed (00460). Corren contra la gemela TS (lib/services/metric-trigger.ts) y contra app_servicio.svc_metric_crossed (scripts/verify-disparadores-relativos.mjs). Unidades de la base: puntos, centavos o proyectos.",
+  "cases": [
+    { "name": "de 480 a 510 cruza 500", "before": 480, "after": 510, "threshold": 500, "crossed": true },
+    { "name": "llegar justo al número cuenta", "before": 499, "after": 500, "threshold": 500, "crossed": true },
+    { "name": "ya estaba en el número: no", "before": 500, "after": 520, "threshold": 500, "crossed": false },
+    { "name": "ya estaba arriba al publicar: no", "before": 800, "after": 810, "threshold": 500, "crossed": false },
+    { "name": "todavía no llega", "before": 100, "after": 499, "threshold": 500, "crossed": false },
+    { "name": "bajó: no", "before": 510, "after": 480, "threshold": 500, "crossed": false },
+    { "name": "facturación 1.000 USD en centavos", "before": 90000, "after": 120000, "threshold": 100000, "crossed": true },
+    { "name": "primer proyecto real", "before": 0, "after": 1, "threshold": 1, "crossed": true },
+    { "name": "número 0 nunca", "before": -5, "after": 3, "threshold": 0, "crossed": false }
+  ]
+}

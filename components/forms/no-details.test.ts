@@ -1,7 +1,8 @@
 /**
  * Plano formularios-ui (F9-F16): el editor de formularios no esconde nada en secciones plegables. Ni un `<details>`
  * en `components/forms/editor` ni en `components/forms/builder`: lo que se configura se ve.
- * Y el formulario publico no muestra el logo de la marca (D9), tenga o no `showLogo` guardado.
+ * El logo (18/11/2026, revierte D9 a pedido): la página pública lo muestra solo con «Mostrar el logo» prendido, con
+ * el logo de la marca del NEGOCIO (nunca el de la instalación leído directo) y nunca incrustada en otra web.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -22,15 +23,15 @@ describe("el editor de formularios", () => {
     });
   }
 
-  it("la pagina publica no dibuja el logo ni lee brandLogoUrl", () => {
+  it("la pagina publica dibuja el logo del negocio solo fuera del iframe", () => {
     const page = readFileSync(join(process.cwd(), "app/f/[slug]/page.tsx"), "utf8");
+    // El logo sale de `loadPublicFormData` (la marca del negocio del formulario, ya filtrada por `showLogo`).
     expect(page).not.toMatch(/brandLogoUrl/);
-    expect(page).not.toMatch(/<img/);
-    expect(page).not.toMatch(/showLogo/);
+    expect(page).toMatch(/const logo = !embed \? form\.business_logo_url : null;/);
   });
 
-  it("ya no queda la opcion de mostrar el logo en el editor", () => {
+  it("el editor tiene la opcion de mostrar el logo", () => {
     const hits = files(join(process.cwd(), "components/forms")).filter((f) => /Mostrar el logo/.test(readFileSync(f, "utf8")));
-    expect(hits).toEqual([]);
+    expect(hits.length).toBeGreaterThan(0);
   });
 });

@@ -640,6 +640,8 @@ export type AuditAction =
   | "booking.status_changed"
   | "booking.sync_ok"
   | "booking.sync_failed"
+  /** 00430: una reunión movida en Google Calendar a una hora que acá estaba ocupada. */
+  | "booking.google_move_rejected"
   /** Agenda v2 (00130): su horario dejó/volvió a contar como ocupado. */
   | "booking.slot_released"
   | "booking.slot_occupied"
@@ -674,6 +676,8 @@ export type AuditAction =
   | "call.proposal_discarded" // @plantilla-quitar(servicios)
   | "call.proposal_failed" // @plantilla-quitar(servicios)
   | "call.manual_summary" // @plantilla-quitar(servicios)
+  /** La causa de baja corregida o quitada a mano desde la reunión. */
+  | "call.churn_cause_set" // @plantilla-quitar(llamadas)
   /** Servicios A4: el aviso de reunión sin grabación (F139), la evidencia de un paso (F147) y los topes de cartera (F151). */
   | "svc.call_missing_recording" // @plantilla-quitar(servicios)
   | "svc.evidence_added" // @plantilla-quitar(servicios)
@@ -1054,6 +1058,7 @@ export type TriggerType =
   | "portal_access_expired" // @plantilla-quitar(servicios)
   | "service_relative" // @plantilla-quitar(servicios)
   | "service_phase_periodic" // @plantilla-quitar(servicios)
+  | "service_metric_reached" // @plantilla-quitar(servicios)
   | "affiliate_lead_created" // @plantilla-quitar(ventas)
   | "affiliate_sale_created" // @plantilla-quitar(ventas)
   | "affiliate_assignment_expired" // @plantilla-quitar(ventas)

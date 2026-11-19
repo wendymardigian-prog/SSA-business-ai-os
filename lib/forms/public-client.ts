@@ -30,6 +30,11 @@ export interface PublicFormData {
    * `get_public_form`: lo suma `loadPublicFormData` (es público, va en el contrato). Sin dato, el de la instalación.
    */
   business_name?: string;
+  /**
+   * El logo del negocio para arriba de la página (18/11/2026): solo con «Mostrar el logo» prendido y un logo en la
+   * marca. Lo suma `loadPublicFormData` (no sale de `get_public_form`); la página lo dibuja solo fuera de un iframe.
+   */
+  business_logo_url?: string | null;
 }
 
 export type PublicFormResult = PublicFormData | { status: "unavailable" };

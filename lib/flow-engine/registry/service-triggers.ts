@@ -1,6 +1,6 @@
 // @plantilla-quitar(servicios)
 /**
- * Los 26 disparadores del modulo de Servicios en el registro (F25). Todos son de CONTACTO (el estudiante
+ * Los disparadores del modulo de Servicios en el registro (F25). Todos son de CONTACTO (el estudiante
  * o cliente del servicio) y viajan por la cola `automation_events`: los emite la base
  * (`app_servicio.emit`) y nunca hacen fallar lo que los origina. Con el modulo apagado en el negocio no
  * se emiten.
@@ -20,6 +20,7 @@ import {
   serviceFlowVariables,
   type ServiceForVariables,
 } from "@/lib/services/automation";
+import { METRIC_TRIGGER, METRIC_VARIABLE_FIELDS, metricFlowVariables } from "@/lib/services/metric-trigger";
 
 for (const type of SERVICE_TRIGGER_TYPES) {
   registerTrigger({
@@ -31,22 +32,27 @@ for (const type of SERVICE_TRIGGER_TYPES) {
     sourceType: "contact",
     eventTypes: [type],
 
-    eventMatches: (args) => serviceEventMatches(args.config, args.event.payload, args.trigger.id),
+    eventMatches: (args) => serviceEventMatches(args.config, args.event.payload, args.trigger.id, args.trigger.flow_id),
 
     dedupeKeyFor: (args) => serviceDedupeKey(type, args.event.id),
 
-    variableSchema: () => SERVICE_VARIABLE_FIELDS.map((f) => ({ path: f.path, label: f.label, type: "text" as const, group: "Del servicio" })),
+    variableSchema: () => [
+      ...SERVICE_VARIABLE_FIELDS.map((f) => ({ path: f.path, label: f.label, type: "text" as const, group: "Del servicio" })),
+      // «Una cifra llega a…» (00460): qué cifra, el número y cuánto tenía al llegar.
+      ...(type === METRIC_TRIGGER ? METRIC_VARIABLE_FIELDS.map((f) => ({ path: f.path, label: f.label, type: "text" as const, group: "De la cifra" })) : []),
+    ],
 
     variablesFor: async (args) => {
+      const metric = type === METRIC_TRIGGER ? metricFlowVariables(args.event.payload) : {};
       const serviceId = (args.event.payload as { service_id?: unknown } | null)?.service_id;
-      if (typeof serviceId !== "string") return {};
+      if (typeof serviceId !== "string") return metric;
       try {
         const { data } = await svcSchema(args.supabase)
           .from("services")
           .select("id, status, product_snapshot, starts_on, ends_on, light, sale_id")
           .eq("id", serviceId)
           .maybeSingle();
-        if (!data) return {};
+        if (!data) return metric;
         const { data: phase } = await svcSchema(args.supabase)
           .from("service_phases")
           .select("name")
@@ -55,10 +61,10 @@ for (const type of SERVICE_TRIGGER_TYPES) {
           .maybeSingle();
         const row = data as ServiceForVariables & { sale_id?: string | null };
         // Anidado y con la venta: asi `{{form_link.*}}` firma el link con el servicio y la venta (contrato con variante y monto).
-        return serviceFlowVariables({ ...row, phase_name: (phase as { name?: string } | null)?.name ?? null }, row.sale_id);
+        return { ...metric, ...serviceFlowVariables({ ...row, phase_name: (phase as { name?: string } | null)?.name ?? null }, row.sale_id) };
       } catch (error) {
         console.error("[servicios] no pude leer el servicio para las variables:", error instanceof Error ? error.message : "error");
-        return {};
+        return metric;
       }
     },
   });

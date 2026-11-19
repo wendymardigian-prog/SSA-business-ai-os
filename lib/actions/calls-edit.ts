@@ -24,6 +24,7 @@ import { canAnalyze } from "@/lib/calls/status";
 import { resolveProfile, statusAfterClassification } from "@/lib/calls/profiles";
 import { loadCallProfiles } from "@/lib/calls/profiles-load";
 import { resolveCallTaskSettings } from "@/lib/calls/task-settings";
+import { churnReasonLabel, parseManualChurnCause, readChurnCause } from "@/lib/calls/churn";
 import { callCategoryLabel, readCategorySnapshot } from "@/lib/calls/catalog";
 import { derivedCallType } from "@/lib/calls/legacy-type";
 import { categorySnapshot } from "@/lib/scheduling/categories";
@@ -424,4 +425,59 @@ export async function regenerateCall(input: { callId: string; reason: string; co
   if (!queued) return { ok: false, error: "Ya hay un análisis en la cola para esta llamada" };
   refresh(call.id);
   return { ok: true, message: "Se está regenerando" };
+}
+
+// ── Causa de baja: corregirla o quitarla a mano ───────────────────────────
+
+/** Pone (o quita, con `clave` vacía) la causa de baja de la reunión. Gana sobre la de la IA hasta el próximo análisis. */
+export async function saveCallChurnCause(input: { callId: string; clave: string | null; motivo?: string | null }): Promise<CallEditResult> {
+  const ctx = await getPermissionAction("calls.edit");
+  if (!ctx) return { ok: false, error: NOT_ALLOWED };
+  if (!UUID.test(input.callId)) return { ok: false, error: "Los datos no son válidos" };
+
+  const service = await createServiceClient();
+  const { data: ws } = await service.from("workspaces").select("ai_background_settings").eq("id", ctx.workspace.id).maybeSingle();
+  const reasons = resolveCallTaskSettings(ws?.ai_background_settings).call_analysis.churn_reasons;
+  const parsed = parseManualChurnCause({ clave: input.clave, motivo: input.motivo ?? null }, reasons);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+
+  const { data: call } = await ctx.supabase
+    .from("calls")
+    .select("id, analysis, analysis_status, updated_at")
+    .eq("id", input.callId)
+    .eq("workspace_id", ctx.workspace.id)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (!call) return { ok: false, error: NOT_FOUND };
+  if (call.analysis_status !== "analyzed" || !call.analysis || typeof call.analysis !== "object") return { ok: false, error: "La llamada todavía no tiene un análisis" };
+
+  const before = readChurnCause(call.analysis);
+  const next: Record<string, unknown> = { ...(call.analysis as Record<string, unknown>) };
+  if (parsed.cause) next.causa_baja = parsed.cause;
+  else delete next.causa_baja;
+  const { data: updated, error } = await service
+    .from("calls")
+    .update({ analysis: next as unknown as Json, analysis_edited: true })
+    .eq("id", call.id)
+    // Si alguien guardó en el medio, no se pisa su cambio.
+    .eq("updated_at", call.updated_at)
+    .select("id");
+  if (error) {
+    console.error("[llamadas] no pude guardar la causa de baja:", error.message);
+    return { ok: false, error: "No pude guardar el cambio" };
+  }
+  if (!updated || updated.length === 0) return { ok: false, error: "Otra persona modificó esta llamada mientras la editabas. Recargá y volvé a intentar." };
+
+  await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspace.id,
+    entityType: "call",
+    entityId: call.id,
+    action: "call.churn_cause_set",
+    changes: { causa_baja: { old: (before?.clave ?? null) as Json, new: (parsed.cause?.clave ?? null) as Json } },
+    metadata: { label: churnReasonLabel(parsed.cause?.clave ?? null, reasons) },
+    performedBy: ctx.user.id,
+  });
+  refresh(call.id);
+  return { ok: true };
 }

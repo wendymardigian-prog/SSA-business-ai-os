@@ -10,7 +10,7 @@
 import { collectQuotes, leadQualification, validFollowupDate, analyzerCallType } from "./analysis-store";
 import { BELIEF_STATES } from "./analysis-schema";
 import { OUTCOME_CATEGORIES } from "./rubric";
-import { computeScoresWithRubric, getSection, isAnalysisSection, quoteInTranscript, setSection, type AnalysisSection, type ScoringRubric } from "./scoring";
+import { computeScoresWithRubric, getSection, isAnalysisSection, quoteInTranscript, setSection, type AnalysisSection, type ScoreBreakdown, type ScoringRubric } from "./scoring";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -78,7 +78,7 @@ export interface DerivedColumns {
 }
 
 /** Lo que se copia del analisis a las columnas de `calls`, con los puntajes recalculados por codigo. */
-export function deriveColumns(analysis: unknown, rubric: ScoringRubric | null, callType: string | null, transcript: string): DerivedColumns {
+export function deriveColumns(analysis: unknown, rubric: ScoringRubric | null, callType: string | null, transcript: string): DerivedColumns & { breakdown: ScoreBreakdown | null } {
   const a = isObj(analysis) ? analysis : {};
   // Sin tipo: se analizo con un analizador propio y su rubrica se usa entera.
   const scores = computeScoresWithRubric(a, rubric, callType ? analyzerCallType(callType) : null, transcript);
@@ -96,6 +96,7 @@ export function deriveColumns(analysis: unknown, rubric: ScoringRubric | null, c
     followup_at: validFollowupDate(resultado.fecha),
     quotes_total: quotes.length,
     quotes_verified: quotes.filter((q) => quoteInTranscript(q, transcript)).length,
+    breakdown: scores.breakdown,
   };
 }
 
@@ -127,7 +128,7 @@ export function applySectionEdits(
     next = setSection(next, e.section, e.value);
   }
 
-  const columns = deriveColumns(next, ctx.rubric, ctx.callType, ctx.transcript);
+  const { breakdown, ...columns } = deriveColumns(next, ctx.rubric, ctx.callType, ctx.transcript);
   // Lo que el analisis guarda duplicado para la pantalla se mantiene al dia.
   next = {
     ...next,
@@ -140,6 +141,9 @@ export function applySectionEdits(
     lead_qualification: columns.lead_qualification,
     citas_verificadas: { total: columns.quotes_total, verificadas: columns.quotes_verified },
   };
+  // El desglose de la nota se mantiene al día (o se va, si la rúbrica ya no tiene criterios que restan).
+  if (breakdown) next.nota = breakdown;
+  else delete next.nota;
   return { ok: true, analysis: next, columns, changes };
 }
 

@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { extractText, getDocumentProxy } from "unpdf";
-import { buildContractPdf, textWidth, toWinAnsi, type ContractPdfInput } from "./pdf";
+import { buildContractPdf, textWidth, toWinAnsi, PDF_LOGO_MAX, type ContractPdfInput } from "./pdf";
+import { pdfLogoFromBytes } from "./pdf-logo";
+import sharp from "sharp";
 import { StandardFonts } from "pdf-lib";
 import { pdfSkippedKeys } from "./config";
 import { newField } from "../fields";
@@ -250,5 +252,60 @@ describe("los espacios entre palabras (kerning)", () => {
     // Entre el comienzo de «PARTICIPANTE» y el de «dependen» entran la palabra dibujada (sin kerning) y un espacio entero.
     const drawnWidth = [..."PARTICIPANTE "].reduce((sum, c) => sum + font.widthOfTextAtSize(c, word.size), 0);
     expect(next.x - word.x).toBeCloseTo(drawnWidth, 3);
+  });
+});
+
+describe("buildContractPdf: renglones vacíos, párrafos y logo", () => {
+  /** Las imágenes de la primera hoja (XObject). */
+  const imagesOnFirstPage = async (bytes: Uint8Array) => {
+    const doc = await PDFDocument.load(bytes);
+    const resources = doc.getPages()[0].node.Resources();
+    const xobjects = resources?.lookupMaybe(PDFName.of("XObject"), (await import("pdf-lib")).PDFDict);
+    return xobjects ? xobjects.keys().length : 0;
+  };
+  /** La altura (y) donde arranca cada línea de texto de la primera hoja. */
+  const lineYs = async (bytes: Uint8Array, words: string[]) => {
+    const pdf = await getDocumentProxy(new Uint8Array(bytes));
+    const page = await pdf.getPage(1);
+    const content = await page.getTextContent();
+    return words.map((w) => {
+      const item = (content.items as Array<{ str: string; transform: number[] }>).find((i) => i.str.includes(w));
+      return item ? item.transform[5] : NaN;
+    });
+  };
+
+  it("un renglón vacío ocupa lugar: «B» queda más abajo que sin él", async () => {
+    const [, bWithout] = await lineYs(await buildContractPdf(base({ text: "Alfa\n\nBravo" })), ["Alfa", "Bravo"]);
+    const [, bWith] = await lineYs(await buildContractPdf(base({ text: "Alfa\n\n\n\nBravo" })), ["Alfa", "Bravo"]);
+    expect(bWithout - bWith).toBeGreaterThan(12);
+  });
+
+  it("entre dos párrafos queda más aire que entre dos líneas del mismo párrafo", async () => {
+    const [a1, b1] = await lineYs(await buildContractPdf(base({ text: "Alfa\nBravo" })), ["Alfa", "Bravo"]);
+    const [a2, b2] = await lineYs(await buildContractPdf(base({ text: "Alfa\n\nBravo" })), ["Alfa", "Bravo"]);
+    expect(a2 - b2 - (a1 - b1)).toBeGreaterThanOrEqual(8);
+  });
+
+  it("con logo lleva una imagen arriba de la primera hoja; sin logo, ninguna", async () => {
+    const png = await sharp({ create: { width: 400, height: 100, channels: 4, background: "#1d4ed8" } }).png().toBuffer();
+    const logo = await pdfLogoFromBytes(new Uint8Array(png));
+    expect(logo).not.toBeNull();
+    expect(await imagesOnFirstPage(await buildContractPdf(base({ logo })))).toBe(1);
+    expect(await imagesOnFirstPage(await buildContractPdf(base()))).toBe(0);
+    expect(PDF_LOGO_MAX.height).toBeLessThanOrEqual(40);
+  });
+
+  it("un logo WebP se convierte a PNG", async () => {
+    const webp = await sharp({ create: { width: 200, height: 80, channels: 3, background: "#000" } }).webp().toBuffer();
+    const logo = await pdfLogoFromBytes(new Uint8Array(webp));
+    expect(logo?.png.slice(0, 4)).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+  });
+
+  it("un logo roto no rompe el PDF: sale sin logo", async () => {
+    expect(await pdfLogoFromBytes(new Uint8Array([1, 2, 3]))).toBeNull();
+    const bytes = await buildContractPdf(base({ logo: { png: new Uint8Array([1, 2, 3]), width: 10, height: 10 } }));
+    const { all } = await read(bytes);
+    expect(all).toContain("Acuerdo de servicios");
+    expect(await imagesOnFirstPage(bytes)).toBe(0);
   });
 });

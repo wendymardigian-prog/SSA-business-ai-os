@@ -13,11 +13,35 @@
  *
  * Un servicio pausado (o que no está activo) no emite. Un ancla que todavía no ocurrió no emite. No hay recuperación
  * de días pasados: un disparador nuevo o editado no emite por días que ya pasaron.
+ *
+ * En HORAS (traído de RER, 00460): `unit: "hours"` con `offset_hours` de −720 a 720 (el de días guarda `offset_days`;
+ * el de horas no lo lleva, así el barrido diario no lo toma). Lo emite `app_servicio.svc_relative_hours_tick`, desde el
+ * cron horario `svc-daily`: sale si su hora llegó hace menos de 2 h (lo que nace vencido no se manda). Un solo envío
+ * por automatización, servicio y ancla (`app_servicio.trigger_anchor_fires`, por `flow_id`: republicar no repite).
+ * El inicio cuenta desde las 00:00 del día de inicio y el fin desde las 24:00 del último día (hora del negocio). «Antes»
+ * solo con el inicio y el fin: son las únicas anclas que se conocen de antemano. Gemela: `svc_relative_hours_due`, con
+ * `relative-hours.cases.json`.
  */
 
 export const RELATIVE_ANCHORS = ["service_created", "service_start", "service_end", "phase_start", "item_completed"] as const;
 export type RelativeAnchor = (typeof RELATIVE_ANCHORS)[number];
 export const PERIODIC_PRESETS = [1, 7, 15, 30] as const;
+/** Las anclas que se conocen de antemano: las únicas que admiten «antes». */
+export const ANCHORS_KNOWN_AHEAD: readonly RelativeAnchor[] = ["service_start", "service_end"];
+export const RELATIVE_UNITS = ["days", "hours"] as const;
+export type RelativeUnit = (typeof RELATIVE_UNITS)[number];
+export const MAX_OFFSET_HOURS = 720;
+/** Cuánto tarde puede salir uno de horas (el cron pasa una vez por hora). Igual que «En una fecha y hora». */
+export const HOURS_GRACE_MS = 2 * 60 * 60 * 1000;
+
+/** Si uno de horas sale ahora: ya llegó su hora y no pasaron más de 2 h. Gemela de `svc_relative_hours_due`. */
+export function relativeHoursDue(anchorAtMs: number, offsetHours: number, nowMs: number): boolean {
+  if (!Number.isFinite(anchorAtMs) || !Number.isInteger(offsetHours) || Math.abs(offsetHours) > MAX_OFFSET_HOURS) return false;
+  const due = anchorAtMs + offsetHours * 3_600_000;
+  return due <= nowMs && due > nowMs - HOURS_GRACE_MS;
+}
+
+export const relativeUnit = (c: { unit?: unknown }): RelativeUnit => (c.unit === "hours" ? "hours" : "days");
 
 export type RelativeDueInput = {
   kind: "relative" | "periodic";
@@ -63,6 +87,9 @@ export type RelativeTriggerConfig = {
   phase_key?: string | null;
   item_key?: string | null;
   offset_days: number;
+  /** En horas (00460): `unit: "hours"` y `offset_hours`, sin `offset_days`. */
+  unit?: RelativeUnit | null;
+  offset_hours?: number | null;
   product_id?: string | null;
   variant_id?: string | null;
 };
@@ -74,8 +101,14 @@ export function relativeConfigProblems(c: Partial<RelativeTriggerConfig>): strin
   if (!c.anchor || !(RELATIVE_ANCHORS as readonly string[]).includes(c.anchor)) p.push("Elegí desde qué momento se cuenta.");
   if (c.anchor === "phase_start" && !c.phase_key) p.push("Elegí la fase.");
   if (c.anchor === "item_completed" && !c.item_key) p.push("Elegí el paso.");
-  const off = Number(c.offset_days);
-  if (!Number.isInteger(off) || off < -365 || off > 365) p.push("Los días van de −365 a 365.");
+  if (c.unit != null && !(RELATIVE_UNITS as readonly string[]).includes(String(c.unit))) p.push("Elegí días u horas.");
+  const hours = relativeUnit(c) === "hours";
+  const raw = hours ? c.offset_hours : c.offset_days;
+  // Vacío no es 0: sin el número guardado, la base no lo emite nunca.
+  const off = typeof raw === "number" ? raw : Number.NaN;
+  const max = hours ? MAX_OFFSET_HOURS : 365;
+  if (!Number.isInteger(off) || off < -max || off > max) p.push(hours ? `Las horas van de −${max} a ${max}.` : "Los días van de −365 a 365.");
+  else if (off < 0 && c.anchor && !ANCHORS_KNOWN_AHEAD.includes(c.anchor)) p.push("«Antes» solo con el inicio o el fin del servicio: lo demás no se sabe de antemano.");
   return p;
 }
 
@@ -89,7 +122,8 @@ export function periodicConfigProblems(c: Partial<PeriodicTriggerConfig>): strin
 
 /** La frase del disparador, para el lienzo y la lista. */
 export function relativeTriggerLabel(c: Partial<RelativeTriggerConfig>, names: { phase?: string | null; item?: string | null } = {}): string {
-  const off = Number(c.offset_days) || 0;
+  const hours = relativeUnit(c) === "hours";
+  const off = Number(hours ? c.offset_hours : c.offset_days) || 0;
   const what =
     c.anchor === "service_created" ? "la creación del servicio"
     : c.anchor === "service_start" ? "el inicio del servicio"
@@ -98,6 +132,6 @@ export function relativeTriggerLabel(c: Partial<RelativeTriggerConfig>, names: {
     : c.anchor === "item_completed" ? `completar ${names.item ? `«${names.item}»` : "el paso"}`
     : "…";
   const de = what.startsWith("el ") ? `del ${what.slice(3)}` : `de ${what}`;
-  if (off === 0) return `El día ${de}`;
-  return `${Math.abs(off)} día(s) ${off < 0 ? "antes" : "después"} ${de}`;
+  if (off === 0) return hours ? `En el momento ${de}` : `El día ${de}`;
+  return `${Math.abs(off)} ${hours ? "hora(s)" : "día(s)"} ${off < 0 ? "antes" : "después"} ${de}`;
 }

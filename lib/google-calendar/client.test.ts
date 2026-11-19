@@ -12,7 +12,7 @@ vi.mock("@/lib/vault", async (importOriginal) => {
 });
 
 import { getAccessToken, resetTokenCache, TOKEN_MARGIN_MS } from "./auth";
-import { buildEventBody, createEvent, deleteEvent, freeBusyChunks, getBusy, listCalendars, updateEvent } from "./client";
+import { buildEventBody, createEvent, deleteEvent, freeBusyChunks, getBusy, listCalendars, listEvents, updateEvent } from "./client";
 import { classifyGoogleError, GoogleCalendarError } from "./errors";
 
 const NOW = new Date("2026-10-01T12:00:00.000Z");
@@ -170,6 +170,46 @@ describe("eventos", () => {
     await expect(deleteEvent(deps, CONN, "cal-a", "ev-1")).resolves.toBeUndefined();
     status = 503;
     await expect(deleteEvent(deps, CONN, "cal-a", "ev-1")).rejects.toMatchObject({ kind: "temporary", status: 503 });
+  });
+
+  it("listEvents: con token pide solo los cambios; pagina; 410 → lectura completa desde la fecha", async () => {
+    const database = db();
+    let gone = false;
+    const { fetchImpl, calls } = fakeFetch((url) => {
+      if (url.searchParams.get("syncToken") && gone) return { status: 410, body: { error: { message: "gone" } } };
+      if (!url.searchParams.get("pageToken") && !gone) {
+        return { status: 200, body: { items: [{ id: "a", status: "confirmed", start: { dateTime: "2026-10-02T10:00:00+02:00" }, end: { dateTime: "2026-10-02T10:30:00+02:00" } }], nextPageToken: "p2" } };
+      }
+      return { status: 200, body: { items: [{ id: "b", status: "cancelled" }, { id: "c", start: { date: "2026-10-03" }, end: { date: "2026-10-04" } }, { status: "confirmed" }], nextSyncToken: "tok-nuevo" } };
+    });
+    const deps = { supabase: database.client, fetchImpl, now: () => NOW };
+    const r = await listEvents(deps, CONN, "cal a", { syncToken: "tok-viejo", fullSyncFrom: "2026-09-30T12:00:00.000Z" });
+    expect(r.fullSync).toBe(false);
+    expect(r.nextSyncToken).toBe("tok-nuevo");
+    expect(r.items).toEqual([
+      { id: "a", status: "confirmed", startUtc: "2026-10-02T08:00:00.000Z", endUtc: "2026-10-02T08:30:00.000Z" },
+      { id: "b", status: "cancelled", startUtc: null, endUtc: null },
+      { id: "c", status: "confirmed", startUtc: null, endUtc: null },
+    ]);
+    const first = new URL(calls[0].url);
+    expect(first.pathname).toBe("/calendar/v3/calendars/cal%20a/events");
+    expect(first.searchParams.get("syncToken")).toBe("tok-viejo");
+    expect(first.searchParams.get("showDeleted")).toBe("true");
+    expect(first.searchParams.get("timeMin")).toBeNull();
+    expect(new URL(calls[1].url).searchParams.get("pageToken")).toBe("p2");
+
+    gone = true;
+    const full = await listEvents(deps, CONN, "cal a", { syncToken: "tok-viejo", fullSyncFrom: "2026-09-30T12:00:00.000Z" });
+    expect(full.fullSync).toBe(true);
+    const last = new URL(calls.at(-1)!.url);
+    expect(last.searchParams.get("syncToken")).toBeNull();
+    expect(last.searchParams.get("timeMin")).toBe("2026-09-30T12:00:00.000Z");
+  });
+
+  it("listEvents: un error que no es 410 se propaga (no se pierde el token)", async () => {
+    const database = db();
+    const { fetchImpl } = fakeFetch(() => ({ status: 503, body: { error: { message: "caído" } } }));
+    await expect(listEvents({ supabase: database.client, fetchImpl, now: () => NOW }, CONN, "cal-a", { syncToken: "t", fullSyncFrom: NOW.toISOString() })).rejects.toMatchObject({ kind: "temporary", status: 503 });
   });
 
   it("updateEvent hace PATCH con sendUpdates=all", async () => {

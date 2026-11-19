@@ -5,6 +5,7 @@
  * servicio, las propuestas aprobadas, editadas (con qué cambió), descartadas o fallidas, y la carga a mano. Acá se
  * traduce cada acción a una frase; los componentes solo la dibujan.
  */
+import { DISCARD_REASON_LABEL, type DiscardReason } from "./proposals";
 
 export type CallAuditRow = {
   id: string;
@@ -25,11 +26,19 @@ export const ACTIVITY_ACTIONS = [
   "call.proposal_discarded",
   "call.proposal_failed",
   "call.manual_summary",
+  "call.churn_cause_set",
 ] as const;
 
-const TYPE_LABEL: Record<string, string> = { tarea: "una tarea", mensaje: "un mensaje para el cliente", paso: "completar un paso", aviso: "un aviso al equipo" };
+const TYPE_LABEL: Record<string, string> = {
+  tarea: "una tarea",
+  mensaje: "un mensaje para el cliente",
+  paso: "completar un paso",
+  aviso: "un aviso al equipo",
+  idea: "una idea de contenido",
+  borrador: "un borrador de contenido",
+};
 
-const FIELD_LABEL: Record<string, string> = { titulo: "el título", detalle: "el detalle", vence_en_dias: "el vencimiento", responsable: "el responsable", texto: "el texto", para: "el destinatario" };
+const FIELD_LABEL: Record<string, string> = { titulo: "el título", detalle: "el detalle", vence_en_dias: "el vencimiento", responsable: "el responsable", texto: "el texto", para: "el destinatario", guion: "el guion" };
 
 function who(row: CallAuditRow, names: Record<string, string>): string {
   if (row.performed_by) return names[row.performed_by] ?? "Alguien del equipo";
@@ -56,8 +65,16 @@ export function activityText(row: CallAuditRow, names: Record<string, string>, s
       const fields = Object.keys(row.changes ?? {}).map((k) => FIELD_LABEL[k] ?? k);
       return `${actor} editó y aprobó ${typeLabel}${fields.length ? ` (cambió ${fields.join(", ")})` : ""}.`;
     }
-    case "call.proposal_discarded":
-      return `${actor} descartó ${typeLabel}.`;
+    case "call.proposal_discarded": {
+      const reason = String(m.discard_reason ?? "") as DiscardReason;
+      const note = typeof m.discard_note === "string" && m.discard_note.trim() ? m.discard_note.trim() : null;
+      const why = reason === "otro" ? note : DISCARD_REASON_LABEL[reason] ? `${DISCARD_REASON_LABEL[reason].toLowerCase()}${note ? `: ${note}` : ""}` : null;
+      return why ? `${actor} descartó ${typeLabel} (${why}).` : `${actor} descartó ${typeLabel}.`;
+    }
+    case "call.churn_cause_set": {
+      const label = typeof m.label === "string" && m.label ? m.label : null;
+      return label ? `${actor} puso como causa de baja «${label}».` : `${actor} quitó la causa de baja.`;
+    }
     case "call.proposal_failed":
       return `No se pudo hacer ${typeLabel}${typeof m.reason === "string" && m.reason ? `: ${m.reason}` : "."}`;
     case "call.manual_summary":
