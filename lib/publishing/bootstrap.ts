@@ -48,6 +48,7 @@ import { registerCallIndexKnowledgeHandler } from "@/lib/jobs/handlers/call-inde
 import { registerContractPdfHandler } from "@/lib/jobs/handlers/contract-pdf"; // @plantilla-quitar(formularios)
 import { registerSalesContactEvalHandler } from "@/lib/jobs/handlers/sales-contact-eval";
 import { registerPaymentsOverdueSweepHandler } from "@/lib/jobs/handlers/payments-overdue-sweep"; // @plantilla-quitar(ventas)
+import { registerGoogleCalendarInboundHandler } from "@/lib/jobs/handlers/google-calendar-inbound";
 import { registerTasksDueSweepHandler } from "@/lib/jobs/handlers/tasks-due-sweep"; // @plantilla-quitar(tareas)
 import { registerFinanceDailyHandler } from "@/lib/jobs/handlers/finance-daily"; // @plantilla-quitar(finanzas)
 import { registerCommentBackfillHandlers } from "@/lib/jobs/handlers/comment-backfill";
@@ -165,6 +166,8 @@ export function registerPublishing(): void {
   // La asignacion automatica de setter, vendedor y referido (F15).
   registerSalesContactEvalHandler();
   registerPaymentsOverdueSweepHandler(); // @plantilla-quitar(ventas)
+  // Lo que quien atiende mueve o cancela en su Google Calendar (00430).
+  registerGoogleCalendarInboundHandler();
   registerTasksDueSweepHandler(); // @plantilla-quitar(tareas)
   registerFinanceDailyHandler(); // @plantilla-quitar(finanzas)
   registerCommentBackfillHandlers();

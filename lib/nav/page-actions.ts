@@ -127,6 +127,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip:
       "De la idea a la publicacion: el guion, el caption, la media y en que redes sale cada pieza.",
   },
+  "/dashboard/content/ideas": {
+    title: "Ideas",
+    tooltip: "Cada idea del banco con su estado, la pieza que salió de ella y de dónde salió: una grabación, un agente o una persona.",
+  },
   "/dashboard/social": {
     title: "Social",
     tooltip: "Tu perfil de cada red y sus publicaciones, con las metricas que la red no muestra.",

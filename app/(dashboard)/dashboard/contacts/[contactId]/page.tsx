@@ -282,7 +282,7 @@ export default async function ContactDetailPage({
   const canViewCalls = (await getPermissionContext()).can("calls.view");
   const contactCalls = canViewCalls
     ? await loadContactCalls(supabase, { workspaceId: workspace.id, contactId, names: new Map(members.map((m) => [m.userId, m.name])) })
-    : { rows: [], total: 0 };
+    : { rows: [], total: 0, churn: null };
   // @plantilla-hasta(llamadas)
 
   // Las ventas del contacto (Ventas, B3): solo con `sales.view`; la RLS decide cuáles ve. El asistente // @plantilla-quitar(ventas)
@@ -677,7 +677,7 @@ export default async function ContactDetailPage({
             <ContactBookingsSection bookings={contactBookings} timezone={viewerTimezone} timeFormat={bookingTimeFormat} />
 
             {/* @plantilla-desde(llamadas) */}
-            <ContactCallsSection calls={contactCalls.rows} total={contactCalls.total} contactId={contact.id} timeZone={viewerTimezone} />
+            <ContactCallsSection calls={contactCalls.rows} total={contactCalls.total} contactId={contact.id} timeZone={viewerTimezone} churn={contactCalls.churn} />
             {/* @plantilla-hasta(llamadas) */}
 
             {/* @plantilla-desde(ventas) */}

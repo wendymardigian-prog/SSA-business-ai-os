@@ -12,6 +12,8 @@
  */
 
 import { chosenType } from "./trigger-catalog";
+import { periodicConfigProblems, relativeConfigProblems } from "@/lib/services/relative-triggers"; // @plantilla-quitar(servicios)
+import { metricConfigProblems } from "@/lib/services/metric-trigger"; // @plantilla-quitar(servicios)
 import { scheduleProblems, SCHEDULED_TRIGGER_TYPE } from "@/lib/scheduled-flows/schedule";
 
 type RawNode = { id?: unknown; type?: unknown; data?: unknown };
@@ -72,6 +74,10 @@ export function triggerProblems(nodes: unknown[], edges: unknown[]): string[] {
   // «En una fecha y hora»: la fecha (si es una vez), la hora y los días. Si ya pasó lo mira `publishFlow`, que sabe la
   // zona del negocio.
   if (type === SCHEDULED_TRIGGER_TYPE) problems.push(...scheduleProblems({ ...config, ...data }));
+  // Los de Servicios que emite la base para UNA automatización no se publican a medias: a medias no salen nunca. @plantilla-quitar(servicios)
+  if (type === "service_relative") problems.push(...relativeConfigProblems({ ...data, ...config })); // @plantilla-quitar(servicios)
+  if (type === "service_phase_periodic") problems.push(...periodicConfigProblems({ ...data, ...config })); // @plantilla-quitar(servicios)
+  if (type === "service_metric_reached") problems.push(...metricConfigProblems({ ...data, ...config })); // @plantilla-quitar(servicios)
   const hasFirstStep = (Array.isArray(edges) ? edges : []).some((e) => (e as RawEdge)?.source === node.id);
   if (!hasFirstStep) problems.push(NO_FIRST_STEP_PROBLEM);
   // Sin un comentario detras, el paso no tiene a que responder y no manda nada, sin avisar.

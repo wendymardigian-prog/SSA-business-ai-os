@@ -43,6 +43,9 @@ export const SERVICE_TRIGGER_TYPES = [
   // A4 (F158): los emite el barrido diario, uno por disparador, servicio y día (00372).
   "service_relative",
   "service_phase_periodic",
+  // 00460 (traído de RER): una cifra del estudiante en el programa llega a un número. Lo emite la base, para UNA
+  // automatización (lleva su `flow_id`).
+  "service_metric_reached",
 ] as const;
 export type ServiceTriggerType = (typeof SERVICE_TRIGGER_TYPES)[number];
 
@@ -75,8 +78,9 @@ export const SERVICE_TRIGGER_LABELS: Record<ServiceTriggerType, { label: string;
   certificate_issued: { label: "Se emitió un certificado", description: "Cuando se genera el certificado del servicio" },
   portal_access_expiring: { label: "Un acceso al portal está por vencer", description: "Antes de que venza un acceso" },
   portal_access_expired: { label: "Venció un acceso al portal", description: "Cuando un acceso llega a su fin" },
-  service_relative: { label: "Días antes o después de…", description: "Del inicio, el fin o la creación del servicio, de una fase o de completar un paso" },
+  service_relative: { label: "Días u horas antes o después de…", description: "Del inicio, el fin o la creación del servicio, de una fase o de completar un paso" },
   service_phase_periodic: { label: "Cada N días en una fase", description: "Mientras el servicio esté en esa fase (sin contar las pausas)" },
+  service_metric_reached: { label: "Una cifra del estudiante llega a…", description: "Sus puntos, su facturación cargada o sus proyectos reales en el programa llegan a un número" },
 };
 
 /** Los dos que emite el barrido para UN disparador: el evento lleva su `trigger_id` (A4, F158). */
@@ -89,6 +93,12 @@ export interface ServiceTriggerConfig {
   item_key?: string | null;
   /** Solo service_ending_soon: cuantos dias antes. */
   days_before?: number | null;
+  /** service_relative en horas (00460): `unit: "hours"` y `offset_hours`. */
+  unit?: string | null;
+  offset_hours?: number | null;
+  /** service_metric_reached (00460): qué cifra y a qué número llega. */
+  metric?: string | null;
+  threshold?: number | null;
 }
 
 export interface ServiceEventPayload {
@@ -105,11 +115,14 @@ const str = (v: unknown): string | null => (typeof v === "string" && v ? v : nul
 
 /**
  * Si el evento pasa los filtros de la regla. Un filtro vacio deja pasar todo. Los relativos y periodicos (A4) ya
- * vienen hechos para UN disparador: pasan solo si el evento es de ese disparador (`trigger_id`).
+ * vienen hechos para UN disparador: pasan solo si el evento es de ese disparador (`trigger_id`). Los que llevan
+ * `flow_id` (relativo en horas y «una cifra llega a…», 00460) son de UNA automatizacion: se comparan por la
+ * automatizacion y no por la fila, porque republicar borra y vuelve a crear las filas de `triggers`.
  */
-export function serviceEventMatches(config: unknown, payload: unknown, triggerId?: string | null): boolean {
+export function serviceEventMatches(config: unknown, payload: unknown, triggerId?: string | null, flowId?: string | null): boolean {
   const c = (config ?? {}) as ServiceTriggerConfig;
   const p = (payload ?? {}) as ServiceEventPayload;
+  if (typeof p.flow_id === "string") return !!flowId && p.flow_id === flowId;
   if (typeof p.trigger_id === "string") return !!triggerId && p.trigger_id === triggerId;
   if (str(c.product_id) && c.product_id !== p.product_id) return false;
   if (str(c.variant_id) && c.variant_id !== p.variant_id) return false;

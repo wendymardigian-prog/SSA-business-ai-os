@@ -33,6 +33,7 @@ import { formatDateTimeWithZone, gmtOffsetLabel, timezoneCityLabel } from "@/lib
 import { dateInTz, minutesOfDayInTz, minutesToWallTime, wallClockToUtc } from "@/lib/scheduling/time/tz";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { NextSlotsOffer } from "@/components/scheduling/booker/next-slots-offer";
 
 export interface ManualEventOption {
   id: string;
@@ -87,6 +88,7 @@ export function BookManualDialog({
   areas,
   confirmationConfigs = [],
   presetContact,
+  initialSlot = null,
 }: {
   events: ManualEventOption[];
   timezone: string;
@@ -108,10 +110,12 @@ export function BookManualDialog({
    * Sin la prop, el modal es el de siempre.
    */
   presetContact?: ManualContactOption;
+  /** el horario arrastrado en el calendario (día, hora de pared y duración). */
+  initialSlot?: { date: string; time: string; durationMinutes: number } | null;
 }) {
   const router = useRouter();
   const titleId = useId();
-  const initial = useMemo(() => nextHalfHour(timezone), [timezone]);
+  const initial = useMemo(() => (initialSlot ? { date: initialSlot.date, time: initialSlot.time } : nextHalfHour(timezone)), [initialSlot, timezone]);
 
   const [title, setTitle] = useState("");
   const [eventId, setEventId] = useState<string | null>(null);
@@ -127,7 +131,7 @@ export function BookManualDialog({
 
   const [date, setDate] = useState(initial.date);
   const [time, setTime] = useState(initial.time);
-  const [duration, setDuration] = useState(30);
+  const [duration, setDuration] = useState(initialSlot?.durationMinutes ?? 30);
   const [hostUserId, setHostUserId] = useState(currentUserId);
   const [categoryId, setCategoryId] = useState(areas.find((a) => a.isDefault)?.id ?? areas[0]?.id ?? "");
   const [notes, setNotes] = useState("");
@@ -138,6 +142,8 @@ export function BookManualDialog({
   const [locationText, setLocationText] = useState("");
 
   const [error, setError] = useState<{ field: ManualBookingField | null; message: string } | null>(null);
+  // si el horario chocó con otra reunión, los huecos libres siguientes de quien atiende (UTC).
+  const [alternatives, setAlternatives] = useState<string[]>([]);
   const [pending, start] = useTransition();
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -258,10 +264,12 @@ export function BookManualDialog({
       return;
     }
     setError(null);
+    setAlternatives([]);
     start(async () => {
       const result = await bookManuallyQuick(input);
       if (!result.ok) {
         setError({ field: null, message: result.error });
+        setAlternatives(result.alternatives ?? []);
         return;
       }
       if (onCreated) onCreated(result.data.bookingId);
@@ -690,6 +698,20 @@ export function BookManualDialog({
               {error.message}
             </p>
           )}
+          <NextSlotsOffer
+            alternatives={alternatives}
+            durationMinutes={duration}
+            timezone={timezone}
+            timeFormat="24h"
+            disabled={pending}
+            onPick={(slot) => {
+              // Solo cambia el día y la hora del formulario: se agenda con «Agendar», como siempre.
+              setDate(dateInTz(new Date(slot.startUtc), timezone));
+              setTime(minutesToWallTime(minutesOfDayInTz(new Date(slot.startUtc), timezone)));
+              setAlternatives([]);
+              setError(null);
+            }}
+          />
           {/* Enter en cualquier campo agenda. */}
           <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
         </form>

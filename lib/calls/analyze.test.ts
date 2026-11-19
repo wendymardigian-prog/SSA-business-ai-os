@@ -178,3 +178,30 @@ describe("propuestas del analizador (Servicios A4, F142)", () => {
     expect(call.system).not.toMatch(/Acciones para proponer/);
   });
 });
+
+describe("causa de baja en el formato general", () => {
+  const generalInput = (generate: RunAnalysisInput["generate"], churnReasons: RunAnalysisInput["churnReasons"]) =>
+    input(generate, {
+      shape: "general",
+      call: { title: "Seguimiento", transcript: [{ timestamp: "00:01", speaker: { display_name: "Cliente" }, text: "estoy pensando en cancelar porque no veo resultados" }] },
+      churnReasons,
+    });
+  const general = (over: Record<string, unknown> = {}) => ({ resumen: "r", rubrica: [], feedback: { foco: "", funciono: [], mejorar: [] }, alertas: [], ...over });
+
+  it("sin lista no se pide nada: el pedido y el esquema son los de siempre", async () => {
+    const generate = vi.fn().mockResolvedValue({ object: general() });
+    const r = await runCallAnalysis(generalInput(generate, []));
+    expect(generate.mock.calls[0][0].system).not.toContain("Causa de baja");
+    expect(r.ok && "causa_baja" in r.analysis).toBe(false);
+  });
+  it("con lista, queda la causa con su cita verificada; una inventada se va", async () => {
+    const list = [{ clave: "sin_resultados", nombre: "No ve resultados" }];
+    const ok = vi.fn().mockResolvedValue({ object: general({ causa_baja: { clave: "sin_resultados", motivo: "No ve resultados", cita: "no veo resultados" } }) });
+    const r = await runCallAnalysis(generalInput(ok, list));
+    expect(ok.mock.calls[0][0].system).toContain("- sin_resultados: No ve resultados");
+    expect(r.ok && (r.analysis as Record<string, unknown>).causa_baja).toEqual({ clave: "sin_resultados", motivo: "No ve resultados", cita: "no veo resultados", fuente: "ia" });
+    const bad = vi.fn().mockResolvedValue({ object: general({ causa_baja: { clave: "sin_resultados", motivo: "x", cita: "una frase inventada por la IA" } }) });
+    const r2 = await runCallAnalysis(generalInput(bad, list));
+    expect(r2.ok && "causa_baja" in r2.analysis).toBe(false);
+  });
+});

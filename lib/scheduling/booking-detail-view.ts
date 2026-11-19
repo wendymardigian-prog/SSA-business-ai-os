@@ -52,9 +52,11 @@ export function historyText(entry: { action: string; metadata: unknown; changes:
     case "booking.created":
       return `Se agendó (${ORIGIN_LABELS[meta.origin as keyof typeof ORIGIN_LABELS] ?? meta.origin ?? "origen desconocido"})`;
     case "booking.rescheduled":
-      return `${who} cambió la fecha`;
+      return `${who} cambió la fecha${meta.source === "google" ? " en Google Calendar" : ""}`;
     case "booking.cancelled":
-      return `${meta.by === "invitee" ? "El invitado" : who} canceló${meta.reason ? `: ${meta.reason}` : ""}`;
+      return `${meta.by === "invitee" ? "El invitado" : who} canceló${meta.source === "google" ? " en Google Calendar" : ""}${meta.reason && meta.source !== "google" ? `: ${meta.reason}` : ""}`;
+    case "booking.google_move_rejected":
+      return "Se movió en Google Calendar a una hora ocupada: acá se mantiene la hora anterior";
     case "booking.status_changed":
       return `${who} cambió el estado a ${String(changes.status?.new ?? "")}`;
     case "booking.updated":

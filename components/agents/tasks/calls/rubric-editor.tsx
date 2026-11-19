@@ -38,10 +38,11 @@ function Column({ side, title, list, readOnly, onChange }: { side: "closer" | "l
   const [open, setOpen] = useState<string | null>(null);
 
   const update = (clave: string, patch: Partial<Criterion>) => onChange(list.map((c) => (c.clave === clave ? { ...c, ...patch } : c)));
-  const add = () => {
-    const nombre = side === "closer" ? "Nuevo criterio" : "Nueva creencia";
+  const add = (subtracts = false) => {
+    const nombre = subtracts ? "Promete algo fuera de las normas" : side === "closer" ? "Nuevo criterio" : "Nueva creencia";
     const clave = uniqueKey(nombre, list.map((c) => c.clave));
-    onChange([...list, { clave, nombre, peso: 0, niveles: {} }]);
+    // Un criterio que resta nace restando 20 puntos (se cambia en el número).
+    onChange([...list, { clave, nombre, peso: subtracts ? 20 : 0, niveles: {}, ...(subtracts ? { subtracts: true as const } : {}) }]);
     setOpen(clave);
   };
 
@@ -69,8 +70,13 @@ function Column({ side, title, list, readOnly, onChange }: { side: "closer" | "l
                   onChange={(e) => update(c.clave, { nombre: e.target.value })}
                   className={cn(inputClass, "min-w-0 flex-1 py-1.5")}
                 />
+                {c.subtracts && (
+                  <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800 dark:bg-red-950/60 dark:text-red-300" title="Si pasa, resta estos puntos de la nota">
+                    Resta
+                  </span>
+                )}
                 <input
-                  aria-label={`Peso de ${c.nombre}`}
+                  aria-label={c.subtracts ? `Puntos que resta ${c.nombre}` : `Peso de ${c.nombre}`}
                   type="number"
                   min={0}
                   max={100}
@@ -145,10 +151,15 @@ function Column({ side, title, list, readOnly, onChange }: { side: "closer" | "l
         })}
       </ul>
       {!readOnly && (
-        <div className="border-t border-border px-3 py-2">
-          <button type="button" onClick={add} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-ink hover:underline">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border px-3 py-2">
+          <button type="button" onClick={() => add()} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-ink hover:underline">
             <Plus className="h-3.5 w-3.5" aria-hidden /> {side === "closer" ? "Agregar criterio" : "Agregar creencia"}
           </button>
+          {side === "closer" && (
+            <button type="button" onClick={() => add(true)} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-ink hover:underline">
+              <Plus className="h-3.5 w-3.5" aria-hidden /> Agregar criterio que resta
+            </button>
+          )}
         </div>
       )}
     </section>

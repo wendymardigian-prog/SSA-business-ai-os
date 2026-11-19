@@ -21,6 +21,7 @@ import type { AttributionPanelContext } from "./SendMessagePanel";
 import { SendEmailPanel } from "./SendEmailPanel";
 import { CancelBookingPanel, NotifyTeamPanel, SendSlackPanel, SetBookingStatusPanel } from "./ExtraActionPanels";
 import { VariableChips } from "./variable-chips";
+import { WebhookSignPanel } from "./WebhookSignPanel";
 import { ServiceActionPanel } from "./ServiceActionPanel"; // @plantilla-quitar(servicios)
 import type { ServiceActionType } from "@/lib/flow-engine/nodes/service-action-detail"; // @plantilla-quitar(servicios)
 
@@ -423,6 +424,9 @@ function HttpRequestConfig({ data, onChange, availableVariables }: ActionSubPane
           <VariableChips variables={availableVariables} onInsert={(token) => onChange({ ...data, body: `${data.body ?? ""}${token}` })} hint="Tocá una variable para sumarla al cuerpo." />
         </div>
       )}
+
+      {/* Firma (HMAC) */}
+      <WebhookSignPanel sign={data.sign === true} onToggle={(sign) => onChange({ ...data, sign })} />
 
       {/* Response Variable */}
       <div>

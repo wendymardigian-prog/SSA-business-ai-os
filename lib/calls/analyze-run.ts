@@ -37,7 +37,8 @@ import { summaryEligibility } from "./summary";
 import { resolveCallTaskSettings } from "./task-settings";
 import { transcriptText } from "./transcript-text";
 import { loadProposalsSetup } from "./proposals-setup";
-import { mergeOnRegenerate, normalizeProposals, readProposals, type ProposalAction } from "./proposals";
+import { ANALYZER_TYPES, normalizeProposals, readProposals, type ProposalAction } from "./proposals";
+import { replacePendingProposals } from "./proposals-write";
 
 type Db = SupabaseClient<Database>;
 
@@ -167,6 +168,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
     extraContext: payload.extraContext,
     generate,
     proposals: proposalsSetup.instructions ? { instructions: proposalsSetup.instructions } : null,
+    churnReasons: settings.churn_reasons,
   });
 
   if (!result.ok) {
@@ -206,6 +208,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
         clientMessage: proposalsSetup.config.client_message,
         summary: typeof analysisOnly.resumen === "string" ? analysisOnly.resumen : null,
         nextSteps: Array.isArray(analysisOnly.proximos_pasos) ? (analysisOnly.proximos_pasos as string[]) : null,
+        transcriptText: result.transcriptText,
       }, () => randomUUID())
     : [];
   const stored = buildStoredAnalysis({
@@ -261,11 +264,10 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
 
   // Las propuestas (F142): solo se reemplazan las pendientes. Aparte del análisis: si falla, el análisis queda igual.
   // Solo se escribe si hay algo que cambiar: sin propuestas nuevas ni pendientes viejas, la reunión queda como siempre.
-  if (extraRow && (fresh.length > 0 || readProposals(extraRow.proposals).some((p) => p.status === "pending"))) {
-    const merged = mergeOnRegenerate(extraRow.proposals, fresh);
-    const { error: propError } = await db.from("calls").update({ proposals: merged as unknown as Json }).eq("id", callId);
-    if (propError) console.error("[propuestas] no pude guardarlas:", propError.message);
-    else if (fresh.length > 0) {
+  // Solo las del analizador: las de contenido (las propone el resumen) no se tocan.
+  if (extraRow && (fresh.length > 0 || readProposals(extraRow.proposals).some((p) => p.status === "pending" && (ANALYZER_TYPES as readonly string[]).includes(p.type)))) {
+    const saved = await replacePendingProposals(db as never, { callId, types: ANALYZER_TYPES, fresh });
+    if (saved.ok && fresh.length > 0) {
       // Avisa al responsable del servicio (o a quien grabó, si no hay servicio).
       const { data: rec } = await db.from("calls").select("recorded_by_user_id").eq("id", callId).maybeSingle();
       const to = proposalsSetup.serviceOwnerId ?? (rec as { recorded_by_user_id?: string | null } | null)?.recorded_by_user_id ?? null;

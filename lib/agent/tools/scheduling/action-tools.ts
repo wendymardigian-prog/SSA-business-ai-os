@@ -122,7 +122,7 @@ export const schedulingBookTool: AgentToolDefinition<z.infer<typeof bookInput>, 
     if (!result.ok) {
       const message =
         result.reason === "slot_taken" || result.reason === "slot_unavailable"
-          ? "Ese horario se ocupó recién. Decíselo y ofrecé otros con scheduling_get_slots."
+          ? `Ese horario se ocupó recién. Decíselo y ofrecé otros${nextSlotsHint(result.alternatives) || " con scheduling_get_slots"}.`
           : result.reason === "invalid"
             ? `Faltan datos o están mal: ${result.message ?? "revisá el nombre y el email"}.`
             : "No pude agendar ahora. Decíselo y ofrecé volver a intentarlo.";
@@ -168,7 +168,7 @@ export const schedulingRescheduleTool: AgentToolDefinition<z.infer<typeof resche
         ok: false,
         forModel:
           result.reason === "slot_taken" || result.reason === "slot_unavailable"
-            ? "Ese horario ya no está libre. Pedí horarios de nuevo y ofrecé otros."
+            ? `Ese horario ya no está libre. ${nextSlotsHint(result.alternatives) ? `Ofrecé otros${nextSlotsHint(result.alternatives)}` : "Pedí horarios de nuevo y ofrecé otros"}.`
             : "No pude cambiar la fecha ahora. Derivá a una persona.",
       };
     }
@@ -262,3 +262,8 @@ export const schedulingSendLinkTool: AgentToolDefinition<z.infer<typeof linkInpu
 };
 
 export const schedulingActionTools = [schedulingBookTool, schedulingRescheduleTool, schedulingCancelTool, schedulingSendLinkTool];
+
+/** los huecos libres siguientes que propuso el servidor, para ofrecerlos y que la persona confirme uno. */
+function nextSlotsHint(alternatives: string[] | undefined): string {
+  return alternatives && alternatives.length ? `: los próximos horarios libres (UTC) son ${alternatives.join(", ")}; que la persona confirme uno antes de agendar` : "";
+}

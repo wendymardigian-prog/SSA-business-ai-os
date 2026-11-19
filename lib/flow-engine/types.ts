@@ -114,6 +114,8 @@ export interface HttpRequestNodeData {
   headers?: Record<string, string>;
   body?: string;
   responseVariable?: string;
+  /** Firmar la llamada con la clave del negocio (HMAC, `lib/automations/webhook-signature.ts`). */
+  sign?: boolean;
 }
 
 export interface GoToFlowNodeData {

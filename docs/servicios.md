@@ -141,6 +141,8 @@ vencidos (`service_item_overdue`), semáforo, accesos que se abren y mora, renov
 lo que guarda el editor), los disparadores relativos y periódicos (A4, F158: uno por disparador, servicio y día) y la
 purga de la comunidad.
 Si un paso falla, el job lanza al final. Dos veces el mismo día no duplica nada.
+El mismo cron, cada hora y sin esperar a las 02:00, corre `app_servicio.svc_relative_hours_tick`: los relativos en
+horas (00460), uno por automatización, servicio y ancla (`app_servicio.trigger_anchor_fires`).
 
 ## Certificados
 

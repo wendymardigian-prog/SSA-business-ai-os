@@ -1,14 +1,16 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
-import { renderContractMarkdown, type InlineRun } from "@/lib/forms/contract/markdown";
+import type { InlineRun } from "@/lib/forms/contract/markdown";
+import { blocksWithBlankLines } from "@/lib/forms/contract/blank-lines";
 import { SignatureCanvas } from "./signature-canvas";
 
 /**
  * Lo propio de un contrato en la página pública (F24, F25): el texto en un recuadro
  * con scroll, la casilla de aceptación (siempre obligatoria) y la firma.
  *
- * El texto se dibuja con el MISMO `renderContractMarkdown` que usa el PDF, y sin HTML
+ * El texto se dibuja con los MISMOS bloques que usa el PDF (`blocksWithBlankLines`: el Markdown y sus renglones
+ * vacíos), y sin HTML
  * crudo: son nodos de React (que escapan todo), así que un `<script>` en el contrato
  * es una frase más.
  */
@@ -42,7 +44,7 @@ function Runs({ runs }: { runs: InlineRun[] }) {
 }
 
 export function ContractText({ text }: { text: string }) {
-  const blocks = renderContractMarkdown(text);
+  const blocks = blocksWithBlankLines(text);
   return (
     <div className="space-y-3 text-sm leading-relaxed">
       {blocks.map((block, index) => {
@@ -79,6 +81,8 @@ export function ContractText({ text }: { text: string }) {
             </Tag>
           );
         }
+        // Un renglón vacío (Enter dos veces en el editor): el alto de una línea.
+        if (block.runs.length === 0) return <p key={index} aria-hidden="true"><br /></p>;
         return (
           <p key={index}>
             <Runs runs={block.runs} />
