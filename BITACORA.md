@@ -4,6 +4,29 @@ Registro de qué se construyó, qué se decidió y por qué. Se actualiza al cer
 cada bloque.
 
 ---
+## Cola de WhatsApp inteligente (traída de RER-BAIOS)
+
+**Fecha:** 18 de noviembre de 2026
+**Rama:** `feat/cola-whatsapp-inteligente`
+**Migraciones:** 00420 y 00421, aditivas, **sin aplicar** (esperan el OK de Wendy).
+
+### Qué se construyó
+
+La cola de los broadcasts ahora también saca los WhatsApp de las automatizaciones que pueden salir en ráfaga, con
+prioridad, reserva del 20 % para lo urgente, caducidad, reintentos, programados, límite por hora, calentamiento por tramos,
+tope por contacto (apagado), alerta si un número deja de entregar, pantalla «Cola de mensajes», aviso de cupo gastado al
+escribir y un WhatsApp simulado para probar sin mandar nada.
+
+### Decisiones que conviene recordar
+
+- **Según el disparador**: lo que arranca porque el contacto escribió o por su agenda sale al instante; lo demás, por la
+  cola. Un paso a un grupo sale al instante (había recordatorios de grupo a las 7 AM y el horario del número abre a las 8).
+- **El ritmo es el del número**, no el de RER (120/h y 600/día era el doble del de SSA).
+- **La reserva del 20 % vale también para los broadcasts** y **todo lo que sale por el número cuenta en el cupo**, también
+  lo que se escribe desde el celular.
+- **No se trajo** la respuesta fuera de horario (el agente ya avisa), el número de salida por CSM ni lo de GHL/IA.
+
+---
 ## Formularios — personalizados, encuestas con NPS y contratos firmados (FO1 a FO4)
 
 **Fecha:** 11 de octubre de 2026

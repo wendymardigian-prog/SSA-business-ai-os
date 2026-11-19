@@ -2529,6 +2529,23 @@ Disparador de SISTEMA (`scheduled_time`, sin contacto ni persona): una automatiz
 
 `00339_scheduled_time_trigger` (aditiva: el CHECK de `triggers.type` suma `scheduled_time`) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 8/11/2026 UTC (version `20261108163107`), despues de ensayarla en una transaccion que se deshizo sola. En produccion conservo los 29 tipos de Servicios (67 en total). Si la base ya acepta tipos que su lista no conoce (en produccion, la `00336` de Servicios se aplico antes de que su codigo llegara a `main`), arma el CHECK con TODO lo que la base acepta + `scheduled_time`, sin sacar nada (siempre como `ARRAY['x'::text, ...]`). **Cuando Servicios mergee, su lista tiene que ir en una migracion posterior a la 00339 que sume `scheduled_time`**: la ultima definicion escrita es la que lee `registry/consistency.test.ts`. La `00330` a la `00336`, la `00340` y la `00343` son de Servicios (rama `feat/servicios-a1`; la 00343 ya esta aplicada) y la `00337`/`00338` de la guardia de email y los avisos. **La proxima libre es la `00344`** (confirmar con `list_migrations` y las ramas locales).
 
+# Cola de WhatsApp de las automatizaciones (00420 y 00421, 18/11/2026, traída de RER)
+
+Los WhatsApp de las automatizaciones que pueden salir en ráfaga entran en `send_queue_items` y salen de a uno por el carril del número (el de los broadcasts). Pantalla `/dashboard/flows/cola` (`channels.manage`). Detalle en [docs/cola-whatsapp.md](docs/cola-whatsapp.md).
+
+## Lo que no se puede romper
+
+- **Qué va por la cola lo decide `resolveDeliveryMode`** (`lib/send-queue/automation/settings.ts`): en «Según el disparador», lo que arranca porque el contacto escribió o por su agenda sale al instante, igual que un paso a un grupo; lo demás va por la cola. `instant-triggers.test.ts` ata la lista al registro. Sin la automatización (simulacro, no encontrada, error al leerla), al instante.
+- **El camino «al instante» no se tocó**: cada paso decide primero (`decideWhatsappDelivery`) y solo por la cola llama a `enqueueWhatsapp`. La cola entrega por los caminos de siempre (`sendChannelMessage`, `sendEvolutionDirect`, `sendToGroup`), con el tope único de 200/h.
+- **El ritmo es el del número** (`parseQueuePolicy` sobre `DEFAULT_WHATSAPP_POLICY`), nunca el de RER. La reserva y el calentamiento viven en `channels.send_policy` y guardar el ritmo no los pisa (`mergeQueueKeys`). El techo de un broadcast por WhatsApp sale de `broadcastCeiling` (calentamiento + sin la reserva).
+- **El cupo del número cuenta todo lo que sale por él** (`send_lane_counts`, 00420): si un canal nuevo empieza a mandar sin dejar fila en `messages`, `whatsapp_group_messages`, `broadcast_recipients` o `send_queue_items`, hay que sumarlo ahí.
+- **La guarda del cron `send-queue` mira la cola** (00421): si el despachador empieza a leer otra cosa, se amplía la guarda y `lib/cron/guards.test.ts`.
+- **`EVOLUTION_FAKE_API` nunca en producción**: `fake-mode.test.ts` lo controla.
+
+## Migraciones
+
+`00420_whatsapp_send_queue` (aditiva) va **ANTES** de desplegar (los pasos y la pantalla leen la tabla). `00421_send_queue_cron_guard` (aditiva, reescribe `private.cron_work_send_queue` desde la definición de producción del 18/11/2026) va después de la 00420. **Las dos SIN aplicar** (esperan el OK de Wendy). El rango 00420–00429 es de esta tanda.
+
 # Buenas practicas de desarrollo
 
 Un trabajo no esta terminado hasta cumplir la "Definicion de terminado" de `.claude/rules/00-protocolo-de-trabajo.md` (compila, lint, tests, pantalla mirada, `.env.example` al dia, migracion idempotente, sin secretos). No se dice "listo" si algo fallo.
