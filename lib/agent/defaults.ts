@@ -3,6 +3,7 @@ import type { Database } from "@/lib/types/database";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "@/lib/agent/prompt";
 import { DEFAULT_COPYWRITER_INSTRUCTIONS } from "@/lib/content/copywriter";
+import { ensureAssistantAgent } from "@/lib/assistant/agent"; // @plantilla-quitar(disenador)
 
 /**
  * Deja los agentes listos para usar apenas hay una IA conectada (00252).
@@ -38,8 +39,11 @@ export async function ensureDefaultAgents(
   connected?: ReadonlyArray<{ provider: string; defaultModel: string }>,
 ): Promise<EnsureDefaultAgentsResult | null> {
   try {
-    const [first] = connected ?? (await listConnectedAiProviders(workspaceId, service));
+    const providers = connected ?? (await listConnectedAiProviders(workspaceId, service));
+    const [first] = providers;
     if (!first) return null;
+    // El asistente del equipo (00444): se crea APAGADO si no existe. Nunca lanza ni frena lo demás.
+    await ensureAssistantAgent(service, workspaceId, providers); // @plantilla-quitar(disenador)
 
     const { data, error } = await service.rpc("ensure_default_agents", {
       p_workspace_id: workspaceId,

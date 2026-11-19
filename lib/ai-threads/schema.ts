@@ -14,6 +14,7 @@
  */
 
 import { z } from "zod";
+import { assistantResultSchema } from "@/lib/assistant/steps";
 
 export const AI_THREAD_CHANNELS = ["designer", "portal", "assistant"] as const;
 export type AiThreadChannel = (typeof AI_THREAD_CHANNELS)[number];
@@ -61,7 +62,8 @@ const genericResult = z.record(z.string(), z.unknown());
 const SCHEMAS: Record<AiThreadChannel, { context: z.ZodType; result: z.ZodType }> = {
   designer: { context: designerContext, result: designerResult },
   portal: { context: genericContext, result: genericResult },
-  assistant: { context: genericContext, result: genericResult },
+  // El asistente del equipo (00444): los pasos de cada respuesta (`lib/assistant/steps.ts`).
+  assistant: { context: genericContext, result: assistantResultSchema },
 };
 
 export type DesignerMessageContext = z.infer<typeof designerContext>;

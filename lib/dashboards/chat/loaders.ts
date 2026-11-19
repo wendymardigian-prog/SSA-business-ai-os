@@ -39,7 +39,11 @@ import { patternCategories, repliesPanel, type PatternCategory, type PatternSqlR
 type Db = SupabaseClient<Database>;
 
 /** Una cuenta sobre `message_texts`, con sus filtros todavia por poner. */
-type TextCountQuery = ReturnType<ReturnType<ReturnType<Db["from"]>["select"]>["eq"]>;
+// Se arma desde la consulta real: `Db["from"]` tiene una sobrecarga para tablas y otra para vistas, y
+// `ReturnType` toma la última (con una vista en los tipos, dejaba de ser `message_texts`).
+const textCountBase = (client: Db, workspaceId: string) =>
+  client.from("message_texts").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
+type TextCountQuery = ReturnType<typeof textCountBase>;
 
 /** Los parametros que comparten todas las funciones. */
 export interface ChatQueryArgs {
@@ -385,12 +389,7 @@ export function loadQualityLine(client: Db, a: ChatQueryArgs): Promise<BlockResu
     // traer todas las filas repasaba `messages` y podia cortarse en el tope de filas.
     const count = (label: string, filter: (q: TextCountQuery) => TextCountQuery) =>
       chatQuery(label, () =>
-        filter(
-          client
-            .from("message_texts")
-            .select("id", { count: "exact", head: true })
-            .eq("workspace_id", a.workspaceId),
-        ) as unknown as PromiseLike<ChatQueryResult>,
+        filter(textCountBase(client, a.workspaceId)) as unknown as PromiseLike<ChatQueryResult>,
       );
     const [status, reviewed, okReviewed, modelTexts, corrected] = await Promise.all([
       chatRpc(client, "message_classification_status", { p_workspace_id: a.workspaceId, p_tz: a.timezone }),

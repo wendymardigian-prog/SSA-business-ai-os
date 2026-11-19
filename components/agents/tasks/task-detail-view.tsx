@@ -13,6 +13,7 @@ import { TaskIcon } from "./task-icon";
 import { TaskModeEditor } from "./task-mode-editor";
 import { TaskInstructionsPanel } from "./task-instructions-panel";
 import { TaskModelPanel } from "./task-model-panel";
+import { TaskCapEditor } from "./task-cap-editor";
 import { QualityPanel, ButtonTextsPanel } from "./classification-quality";
 import { AgentCloseTable, HowItWorks } from "./how-it-works";
 import { ClassificationConfig } from "./calls/classification-config"; // @plantilla-quitar(llamadas)
@@ -218,6 +219,10 @@ function ConfigTab({ data }: { data: TaskScreenData }) {
           <Notice>{task.modelSource}</Notice>
         )}
       </section>
+
+      {data.cap && (
+        <TaskCapEditor taskId={task.id} monthlyCapUsd={data.cap.monthlyCapUsd} monthSpendUsd={data.lastRun?.monthSpendUsd ?? null} canEdit={data.cap.canEdit} />
+      )}
 
       {/* @plantilla-desde(llamadas) */}
       {data.callConfig?.task === "call_classification" && <ClassificationConfig data={data.callConfig} />}

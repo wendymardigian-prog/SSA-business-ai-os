@@ -86,14 +86,15 @@ export async function analyzeAdsWithAi(input: {
     return { ok: false, error: "No hubo gasto en anuncios en este periodo: no hay nada que analizar." };
   }
 
-  const budget = await withinWorkspaceBudget(supabase, workspace.id);
-  if (!budget.allowed) {
-    return { ok: false, error: budget.message ?? "Tope de gasto de IA alcanzado" };
-  }
-
   // Con service role: la key del proveedor y las instrucciones se leen igual
   // que en el resto de las tareas (no dependen de quien aprieta el boton).
   const service = await createServiceClient();
+  // El gasto se suma con el cliente del servidor: `sum_ai_spend` y `sum_ai_task_spend` son solo de service_role
+  // (con la sesión de la persona, un tope cargado frenaba siempre por «no pude verificar»).
+  const budget = await withinWorkspaceBudget(service, workspace.id, new Date(), { task: "ads_analysis" });
+  if (!budget.allowed) {
+    return { ok: false, error: budget.message ?? "Tope de gasto de IA alcanzado" };
+  }
   const [model, instructions] = await Promise.all([
     resolveTaskModel(service, workspace.id, "ads_analysis"),
     loadTaskInstructionsForRun(service, workspace.id, "ads_analysis"),

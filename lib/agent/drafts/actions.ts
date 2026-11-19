@@ -1,3 +1,4 @@
+import { parseRejectInput, REJECT_REASON_LABELS } from "@/lib/ai-learning/reject-reasons";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { isSendable, messagingWindowHours, sendableUntil } from "@/lib/messaging-window";
@@ -50,6 +51,8 @@ export type DraftErrorCode =
   | "turn_pending"
   | "send_failed"
   | "needs_edit"
+  /** Un motivo de la lista cerrada mal formado («otro» sin nota). */
+  | "needs_reason"
   | "unknown";
 
 export type DraftActionResult =
@@ -412,16 +415,38 @@ export async function discardDraft(args: {
   user: Db;
   userId: string;
   draftId: string;
+  /**
+   * Motivo de la lista cerrada (00441): tone, wrong_data, not_this_client, too_long, missing_info u other. OPCIONAL
+   * (decisión de Wendy, 18/11/2026): sin motivo se descarta como siempre; con motivo, cuenta para que la IA aprenda.
+   */
+  rejectReason?: unknown;
+  /** Nota del motivo (obligatoria con «otro»). Sin motivo, es el texto libre de siempre. */
+  rejectNote?: unknown;
+  /** Texto libre de antes; si no hay nota, se guarda como nota. */
   reason?: string | null;
   now?: Date;
 }): Promise<DraftActionResult> {
-  const reason = typeof args.reason === "string" ? args.reason.trim().slice(0, 300) : "";
-  if (reason.startsWith("auto:")) return fail("unknown", "Motivo invalido.");
+  const legacy = typeof args.reason === "string" ? args.reason.trim().slice(0, 300) : "";
+  if (legacy.startsWith("auto:")) return fail("unknown", "Motivo invalido.");
+  const noteText = typeof args.rejectNote === "string" ? args.rejectNote.trim() : legacy;
+  if (noteText.startsWith("auto:")) return fail("unknown", "Motivo invalido.");
+
+  let patch: { discard_reason: string | null; reject_reason: string | null; reject_note: string | null };
+  if (args.rejectReason === undefined || args.rejectReason === null || args.rejectReason === "") {
+    // Sin motivo: igual que siempre (el texto libre, si lo hay).
+    patch = { discard_reason: noteText.slice(0, 300) || null, reject_reason: null, reject_note: null };
+  } else {
+    const parsed = parseRejectInput(args.rejectReason, noteText);
+    if (!parsed.ok) return fail("needs_reason", parsed.error);
+    // `discard_reason` (lo que se mostraba) queda con la etiqueta y la nota; el motivo cerrado va en su columna.
+    const shown = `${REJECT_REASON_LABELS[parsed.reason]}${parsed.note ? `: ${parsed.note}` : ""}`.slice(0, 300);
+    patch = { discard_reason: shown, reject_reason: parsed.reason, reject_note: parsed.note };
+  }
   const { data, error } = await args.user
     .from("agent_drafts")
     .update({
       status: "discarded",
-      discard_reason: reason || null,
+      ...patch,
       decided_by: args.userId,
       decided_at: (args.now ?? new Date()).toISOString(),
     })

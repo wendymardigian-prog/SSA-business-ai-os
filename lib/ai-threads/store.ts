@@ -63,6 +63,51 @@ export async function getOrCreateDesignerThread(
   return data as AiThreadRow;
 }
 
+/**
+ * El hilo vigente del asistente de una persona (B-IA-27): el último sin archivar, o uno nuevo. Un hilo del
+ * asistente es SOLO de esa persona (la RLS de la 00320 lo deja leer solo a su dueño).
+ */
+export async function getOrCreateAssistantThread(service: Db, input: { workspaceId: string; userId: string }): Promise<AiThreadRow> {
+  const found = await findAssistantThread(service, input);
+  if (found) return found;
+  const { data, error } = await service
+    .from("ai_threads")
+    .insert({ workspace_id: input.workspaceId, channel: "assistant", user_id: input.userId, created_by: input.userId })
+    .select(THREAD_COLUMNS)
+    .single();
+  if (error) throw new Error(`No se pudo crear la conversación: ${error.message}`);
+  return data as AiThreadRow;
+}
+
+/** El hilo vigente del asistente, sin crearlo. */
+export async function findAssistantThread(db: Db, input: { workspaceId: string; userId: string }): Promise<AiThreadRow | null> {
+  const { data, error } = await db
+    .from("ai_threads")
+    .select(THREAD_COLUMNS)
+    .eq("workspace_id", input.workspaceId)
+    .eq("channel", "assistant")
+    .eq("user_id", input.userId)
+    .is("archived_at", null)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`No se pudo leer la conversación: ${error.message}`);
+  return (data as AiThreadRow | null) ?? null;
+}
+
+/** «Nueva conversación»: archiva los hilos vigentes de la persona (no se borra nada). */
+export async function archiveAssistantThreads(service: Db, input: { workspaceId: string; userId: string; now?: Date }): Promise<void> {
+  const { error } = await service
+    .from("ai_threads")
+    .update({ archived_at: (input.now ?? new Date()).toISOString() })
+    .eq("workspace_id", input.workspaceId)
+    .eq("channel", "assistant")
+    .eq("user_id", input.userId)
+    .is("archived_at", null);
+  if (error) throw new Error(`No se pudo empezar una conversación nueva: ${error.message}`);
+}
+
 export interface NewMessage {
   role: AiMessageRole;
   content: string;
@@ -112,6 +157,30 @@ export async function updateMessageResult(service: Db, thread: Pick<AiThreadRow,
   if (!parsed.ok) throw new Error(`El resultado del mensaje no es válido: ${parsed.error}`);
   const { error } = await service.from("ai_messages").update({ result: parsed.value as Json }).eq("id", messageId).eq("thread_id", thread.id);
   if (error) throw new Error(`No se pudo actualizar el mensaje: ${error.message}`);
+}
+
+/**
+ * Cambia texto y resultado de un mensaje que se va escribiendo paso a paso (el asistente, B-IA-28). Con `onlyIfStatus`,
+ * solo si su `result.status` (y `heartbeat_at`) siguen siendo esos (así dos pestañas no reanudan la misma respuesta). Devuelve la fila, o
+ * null si no se cambió nada.
+ */
+export async function updateMessage(
+  service: Db,
+  thread: Pick<AiThreadRow, "id" | "channel">,
+  messageId: string,
+  patch: { content?: string; result: Record<string, unknown> },
+  match?: { status?: string; heartbeat_at?: string },
+): Promise<AiMessageRow | null> {
+  const parsed = parseMessageResult(thread.channel as AiThreadChannel, patch.result);
+  if (!parsed.ok) throw new Error(`El resultado del mensaje no es válido: ${parsed.error}`);
+  const values: Record<string, unknown> = { result: parsed.value as Json };
+  if (patch.content !== undefined) values.content = patch.content.slice(0, 20_000);
+  let q = service.from("ai_messages").update(values).eq("id", messageId).eq("thread_id", thread.id);
+  if (match?.status) q = q.eq("result->>status", match.status);
+  if (match?.heartbeat_at) q = q.eq("result->>heartbeat_at", match.heartbeat_at);
+  const { data, error } = await q.select(MESSAGE_COLUMNS).maybeSingle();
+  if (error) throw new Error(`No se pudo actualizar el mensaje: ${error.message}`);
+  return (data as AiMessageRow | null) ?? null;
 }
 
 /** Los mensajes de un hilo, del más viejo al más nuevo. Con el cliente de la persona, la RLS decide si los ve. */

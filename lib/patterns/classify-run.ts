@@ -99,7 +99,7 @@ export async function runMessageClassification(
   // 1. El tope de gasto, antes de cualquier otra cosa. Un tope en NULL no se
   //    evalúa (withinWorkspaceBudget ni consulta), así que "sin tope" es
   //    explícito y no una comparación contra NULL.
-  const budget = await checkBudget(supabase, args.workspaceId, started);
+  const budget = await checkBudget(supabase, args.workspaceId, started, { task: "message_classification" });
   if (!budget.allowed) {
     const unreadable = budget.message?.includes("No pude verificar") ?? false;
     const detail = unreadable ? "spend:unreadable" : "spend:workspace";

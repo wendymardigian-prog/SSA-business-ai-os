@@ -20,7 +20,11 @@ export type AgentConfigSection =
   | "knowledge"
   | "channels"
   /** La voz, los limites y los topes del copywriter (E3). */
-  | "copywriter";
+  | "copywriter"
+  /** Aprobación de acciones, ejemplos y reglas aprendidas (00441, 00442). Formulario propio. */
+  | "learning"
+  /** Las herramientas que ofrece el asistente del equipo (00445). Formulario propio. */
+  | "assistant_tools";
 
 export interface AgentTypeDefinition {
   type: string;
@@ -42,7 +46,7 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
     type: "chat",
     label: "Agente de conversacion",
     description: "Responde a los leads en los canales conectados, con su prompt, sus limites y la base de conocimiento.",
-    configSections: ["identity", "prompt", "model", "timing", "output", "guardrails", "closing"],
+    configSections: ["identity", "prompt", "model", "timing", "output", "guardrails", "closing", "learning"],
     tabs: [
       { key: "config", label: "Configuracion", available: true, permission: "agents.edit" },
       { key: "tools", label: "Herramientas", available: true, permission: "agents.edit" },
@@ -122,6 +126,24 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
     conversational: false,
   },
   // @plantilla-hasta(proyectos)
+  // @plantilla-desde(disenador)
+  /**
+   * El asistente del equipo (00444, traído de RER). Uno por negocio, nace apagado. Lo usa quien tiene «Usar el
+   * asistente», con su sesión: solo ve lo que su rol ve y lo que escribe queda propuesto para que lo apruebe.
+   */
+  assistant: {
+    type: "assistant",
+    label: "Asistente del equipo",
+    description: "Responde preguntas del equipo con sus contactos, conversaciones, tareas, agenda, servicios y Conocimiento; lo que escribe espera aprobación.",
+    configSections: ["identity", "prompt", "model", "assistant_tools"],
+    tabs: [
+      { key: "config", label: "Configuracion", available: true, permission: "agents.edit" },
+      { key: "runs", label: "Runs", available: true },
+      { key: "costs", label: "Costos", available: true, permission: "ai_costs.view" },
+    ],
+    conversational: false,
+  },
+  // @plantilla-hasta(disenador)
 };
 
 export function getAgentType(type: string): AgentTypeDefinition | null {

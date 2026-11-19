@@ -64,6 +64,14 @@ const INITIAL_VISIBLE = 15;
 type HistoryEntry = AuditHistoryItem;
 
 const ACTION_LABELS: Record<AuditAction, string> = {
+  // Propuestas de la IA y reglas aprendidas (00441, 00442): se ven en Agentes IA, no en la ficha.
+  "ai_proposal.approved": "aprobó una propuesta de la IA",
+  "ai_proposal.rejected": "rechazó una propuesta de la IA",
+  "ai_rule.proposed": "propuso una regla aprendida",
+  "ai_rule.accepted": "aceptó una regla aprendida",
+  "ai_rule.discarded": "descartó una regla aprendida",
+  "ai_rule.retired": "retiró una regla aprendida",
+  "cap_changed": "cambió el tope de gasto de una tarea de IA",
   // La Papelera (00410): eliminar un registro y restaurarlo.
   "trash.deleted": "lo eliminó (quedó en la Papelera)",
   "trash.restored": "lo restauró desde la Papelera",

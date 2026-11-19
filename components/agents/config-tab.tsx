@@ -9,6 +9,9 @@ import type { AgentScreenData } from "@/lib/agent/screen";
 import { ModelPicker } from "./model-picker";
 import { PromptSection } from "./prompt-section";
 import { CopywriterSection } from "./copywriter-section";
+import { LearningSection } from "./learning-section";
+import { LearnedRulesPanel } from "./learned-rules-panel";
+import { AssistantToolsSection } from "./assistant-tools-section";
 import { Checkbox, Field, Notice, NumberInput, Section, inputClass, linesToList } from "./fields";
 import { BusinessTimeNote, InViewerZone } from "@/components/ui/business-time-note";
 
@@ -420,6 +423,9 @@ const SECTIONS: Record<AgentConfigSection, ((props: SectionProps) => React.React
   channels: null,
   // Tiene su propio formulario y su propio boton: ver copywriter-section.
   copywriter: null,
+  // Tienen su propio formulario y su propio botón: ver learning-section y assistant-tools-section.
+  learning: null,
+  assistant_tools: null,
 };
 
 export function ConfigTab({ data, typeDef }: { data: AgentScreenData; typeDef: AgentTypeDefinition }) {
@@ -449,6 +455,9 @@ export function ConfigTab({ data, typeDef }: { data: AgentScreenData; typeDef: A
   return (
     <>
       {typeDef.configSections.includes("prompt") && <PromptSection data={data} />}
+      {typeDef.configSections.includes("learning") && data.learnedRules && <LearnedRulesPanel data={data} />}
+      {typeDef.configSections.includes("learning") && <LearningSection data={data} />}
+      {typeDef.configSections.includes("assistant_tools") && <AssistantToolsSection data={data} />}
       {typeDef.configSections.map((key) => {
         const render = SECTIONS[key];
         return render ? <div key={key}>{render({ form, set, data, typeDef })}</div> : null;

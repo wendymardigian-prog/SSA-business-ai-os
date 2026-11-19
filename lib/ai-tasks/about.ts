@@ -66,7 +66,7 @@ export function taskAbout(id: AiTaskId): TaskAbout {
           `Lotes de hasta ${n(CLASSIFIER_BATCH)} mensajes, recortados a ${n(MAX_TEXT_CHARS)} caracteres cada uno.`,
           `Hasta ${n(MAX_NEW_CATEGORIES)} categorías nuevas por lote (${n(SEEDING_MAX_NEW_CATEGORIES)} mientras haya menos de ${n(SEEDING_THRESHOLD)} propias, para armar el catálogo inicial).`,
           `Cada corrida dura como máximo ${seconds(TIME_BUDGET_MS)}; si quedan mensajes, sigue en otra corrida (hasta ${n(MAX_CONTINUATIONS)} seguidas).`,
-          "Frena si se llegó a un tope de gasto de IA del negocio.",
+          "Frena si se llegó a un tope de gasto de IA del negocio o al tope mensual de esta tarea (avisa antes, al 80 %).",
         ],
         cost: TOKENS,
       };
@@ -166,7 +166,7 @@ export function taskAbout(id: AiTaskId): TaskAbout {
         writes: ["Nada en la base: el análisis se muestra en el panel del dashboard."],
         limits: [
           `Lee hasta ${n(MAX_CAMPAIGNS)} campañas, ${n(MAX_ADSETS)} conjuntos y ${n(MAX_ADS)} anuncios (los de más gasto).`,
-          "Frena si se llegó a un tope de gasto de IA del negocio.",
+          "Frena si se llegó a un tope de gasto de IA del negocio o al tope mensual de esta tarea (avisa antes, al 80 %).",
         ],
         cost: TOKENS,
       };
@@ -183,7 +183,7 @@ export function taskAbout(id: AiTaskId): TaskAbout {
         limits: [
           `Hasta ${n(AI_MATCH_MAX_GROUPS)} grupos y ${n(AI_MATCH_MAX_ADS)} anuncios por corrida.`,
           "Un id que no esté en el catálogo se descarta.",
-          "Frena si se llegó a un tope de gasto de IA del negocio.",
+          "Frena si se llegó a un tope de gasto de IA del negocio o al tope mensual de esta tarea (avisa antes, al 80 %).",
         ],
         cost: TOKENS,
       };
@@ -206,7 +206,7 @@ export function taskAbout(id: AiTaskId): TaskAbout {
         limits: [
           "Lee hasta 60.000 caracteres: los primeros 40.000 y los últimos 20.000.",
           "Antes de llamar al modelo corren las reglas fijas del negocio; si una decide, no se gasta nada.",
-          "Frena si se llegó a un tope de gasto de IA del negocio.",
+          "Frena si se llegó a un tope de gasto de IA del negocio o al tope mensual de esta tarea (avisa antes, al 80 %).",
         ],
         cost: TOKENS,
       };
@@ -230,7 +230,7 @@ export function taskAbout(id: AiTaskId): TaskAbout {
         limits: [
           "Una cita que no está en la transcripción se descarta.",
           "El modelo puede escribir hasta 32.000 tokens por análisis.",
-          "Frena si se llegó a un tope de gasto de IA del negocio, y avisa al equipo con permiso de configurar.",
+          "Frena si se llegó a un tope de gasto de IA del negocio o al tope mensual de esta tarea, y avisa al equipo con permiso de configurar.",
         ],
         cost: TOKENS,
       };
@@ -252,7 +252,7 @@ export function taskAbout(id: AiTaskId): TaskAbout {
         ],
         limits: [
           "Si la memoria cambió mientras tanto, reintenta una vez; si vuelve a chocar, queda marcada en conflicto sin pisar nada.",
-          "Frena si se llegó a un tope de gasto de IA del negocio.",
+          "Frena si se llegó a un tope de gasto de IA del negocio o al tope mensual de esta tarea (avisa antes, al 80 %).",
         ],
         cost: TOKENS,
       };

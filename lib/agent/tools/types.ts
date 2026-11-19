@@ -52,6 +52,11 @@ export interface AgentToolContext {
    * sugerencia (derivar, pausarse) si se ofrecen: no ejecutan nada.
    */
   readOnly?: boolean;
+  /**
+   * Modo proponer (bloque 16, ): deja una propuesta en `ai_proposals` en vez de ejecutar una herramienta que
+   * escribe. La pasa el runner; sin ella (tests, otros caminos), todo sigue como antes.
+   */
+  propose?: (p: { toolKey: string; label: string; input: unknown; config: unknown }) => Promise<{ id: string } | null>;
 }
 
 export interface AgentToolResult {
@@ -69,6 +74,8 @@ export interface AgentToolResult {
   auditLogId?: string | null;
   /** Ids de fragmentos de la KB usados, para el paso del run. */
   kbChunkIds?: string[];
+  /** : documento y página de cada fragmento usado; el runner los cita en la respuesta. */
+  citations?: Array<{ document: string; page: number | null }>;
   /** La herramienta ya escribio su propio paso (la busqueda en la KB lo hace). */
   stepAlreadyRecorded?: boolean;
   /**

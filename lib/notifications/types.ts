@@ -23,6 +23,10 @@ export const NOTIFICATION_TYPES = [
   "agent_spend_limit",
   /** Se esta por llegar a un tope de gasto de IA: paso el % que eligio el usuario. */
   "ai_spend_threshold",
+  /** Los rechazos repetidos con el mismo motivo sugieren una regla nueva para el prompt de un agente (00442). */
+  "ai_rule_proposed",
+  /** Un agente (o el asistente del equipo) dejó una acción para aprobar (00441). */
+  "ai_proposal_pending",
   "agent_output_blocked",
   "draft_window",
   "refresh_health",
@@ -265,6 +269,16 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     type: "ai_spend_threshold",
     label: "Gasto de IA cerca del tope",
     tone: "warning",
+  },
+  ai_rule_proposed: {
+    type: "ai_rule_proposed",
+    label: "Regla aprendida para revisar",
+    tone: "info",
+  },
+  ai_proposal_pending: {
+    type: "ai_proposal_pending",
+    label: "Propuesta de la IA para aprobar",
+    tone: "info",
   },
   /** El guardarrail de salida freno un mensaje en envio directo (el lead no lo vio). */
   agent_output_blocked: {

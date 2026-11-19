@@ -186,6 +186,18 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Tarea de IA",
     tooltip: "Cuando corre, sus instrucciones (si las tiene) y sus corridas.",
   },
+  "/dashboard/agents/aprobaciones": {
+    title: "Aprobaciones",
+    tooltip: "Lo que proponen los agentes, una por una: aprobala, editala o rechazala con un motivo. Nada se aplica solo.",
+  },
+  "/dashboard/asistente": {
+    title: "Asistente del equipo",
+    tooltip: "Preguntale lo que necesites: consulta con lo que tu rol puede ver y lo que quiera crear te lo deja propuesto para que lo apruebes.",
+  },
+  "/dashboard/agents/calidad": {
+    title: "Calidad de la IA",
+    tooltip: "Por semana: cuánto se aprueba tal cual, cuánto se edita y por qué se rechaza.",
+  },
   "/dashboard/agents/runs": {
     title: "Corridas",
     tooltip: "Todas las corridas de IA del workspace, de cualquier agente, tarea u origen.",

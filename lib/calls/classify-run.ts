@@ -94,7 +94,7 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
     } else if (classification.mode === "off" || !hasTranscript) {
       reasonOverride = hasTranscript ? "ai_off" : "no_transcript";
     } else {
-      const budget = await withinWorkspaceBudget(db, call.workspace_id, now);
+      const budget = await withinWorkspaceBudget(db, call.workspace_id, now, { task: "call_classification" });
       if (!budget.allowed) {
         await db.from("calls").update({ ...classificationPatch(base, ctx, noShow), analysis_status: "needs_review", analysis_status_reason: "budget" }).eq("id", callId).eq("analysis_status", "classifying");
         return { outcome: "budget" };

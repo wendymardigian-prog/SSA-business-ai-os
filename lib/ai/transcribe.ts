@@ -423,6 +423,7 @@ export async function transcribeAudio(args: TranscribeAudioArgs): Promise<Transc
     // (no se reintenta solo) y el agente escala por no poder entender el audio.
     const budget = await checkBudget(args.supabase, args.workspaceId, new Date(), {
       model: { provider: candidate.provider, model: candidate.model, kind: "audio" },
+      task: "audio_transcription",
     });
     if (!budget.allowed) {
       last = { ok: false, code: "BUDGET_EXCEEDED", message: budget.message ?? "Se alcanzó el tope de gasto de IA del negocio.", retryable: false };

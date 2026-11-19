@@ -147,6 +147,9 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "agents.edit", module: "agents", label: "Editar el agente", description: "Prender, apagar y cambiar cómo responde." },
   { key: "ai_costs.view", module: "agents", label: "Ver los costos de IA", description: "Cuánto se gasta en modelos." },
   { key: "ai_tasks.manage", module: "agents", label: "Administrar las tareas de IA", description: "Instrucciones, modelo y criterios de las tareas en segundo plano: clasificar, resumir, transcribir, describir imágenes e indexar." },
+  // Asistente del equipo (traído de RER, decisión de Wendy del 18/11/2026): Owner/Admin sí, Member no; se puede dar a
+  // otros roles. El asistente solo hace lo que el rol de la persona permite y lo que escribe espera su aprobación.
+  { key: "assistant.use", module: "agents", label: "Usar el asistente", description: "Hablar con el asistente del equipo y pedirle que busque o prepare cosas. Solo hace lo que tu rol permite y lo que escribe espera tu aprobación." },
   { key: "ai_limits.manage", module: "agents", label: "Administrar topes y precios de IA", description: "Los topes de gasto, los avisos y los precios de cada modelo." },
 
   // ── Conocimiento ────────────────────────────────────────────────────────

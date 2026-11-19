@@ -33,6 +33,9 @@ import {
   type StoredMessage,
   type TurnConversation,
 } from "./context";
+import { createProposal } from "@/lib/ai-proposals/create";
+import { appendCitations } from "@/lib/knowledge/pages";
+import { loadPromptLearning } from "@/lib/ai-learning/load";
 import { clearAgentError, markAgentError, notifyProviderAuthFailure, type AgentErrorKind } from "./errors";
 import { escalateToHuman } from "./escalate";
 import {
@@ -577,6 +580,7 @@ async function continueTurn(
   const spend = await deps.checkSpend(supabase, {
     workspaceId: conversation.workspace_id,
     agentId: agent.id,
+    agentName: (agent as { name?: string | null }).name ?? null,
     limits: await spendLimitsFor(supabase, agent),
     now: deps.now(),
     timeZone: workspaceTimeZone,
@@ -696,12 +700,30 @@ async function continueTurn(
       // decisión de enviar o no se toma después de generar.
       mode: args.mode === "rules" ? "draft" : args.mode,
       readOnly: args.readOnlyTools,
+      // : en modo proponer, las acciones que escriben quedan propuestas (no se ejecutan) hasta que una persona
+      // las apruebe en Agentes IA → Aprobaciones. Con el interruptor del agente apagado, todo sigue como antes.
+      propose: (p) =>
+        createProposal(supabase, {
+          workspaceId: conversation.workspace_id,
+          executor: "agent_tool",
+          agentId: agent.id,
+          runId: run.runId,
+          channelId: conversation.channel_id,
+          conversationId: conversation.id,
+          contactId: conversation.contact_id,
+          toolKey: p.toolKey,
+          label: p.label,
+          params: p.input,
+          toolConfig: p.config,
+        }),
     }),
   ]);
   // Cuando una persona pidio la respuesta (sugerir o regenerar), siempre hay
   // borrador: "no hace falta responder" no se ofrece.
   if (args.payload.suggest || args.revision) delete toolSet.tools[NO_REPLY_TOOL];
-  const system = buildSystemPrompt(agent, nonce, Object.keys(toolSet.tools));
+  // Lo aprendido (bloque 16): reglas aceptadas y, si el agente los tiene encendidos, ejemplos del mismo canal.
+  const learning = await loadPromptLearning(supabase, agent, { channelId: conversation.channel_id, kind: "message" });
+  const system = buildSystemPrompt(agent, nonce, Object.keys(toolSet.tools), learning);
   const revision: DraftRevision | null = args.revision
     ? {
         previousBody: args.revision.previousBody,
@@ -884,6 +906,10 @@ async function continueTurn(
     });
     return close("escalated", `output:${output.reason}`);
   }
+
+  // Con «Citar la fuente» prendido (00443, apagado de serie): si usó trozos de la base, la respuesta cita el documento y
+  // la página (si el modelo no lo hizo). Apagado, el lead no ve nada nuevo; la página queda igual en Corridas.
+  if (agent.citeSources && toolSet.state.citations.length > 0) output.parts = appendCitations(output.parts, toolSet.state.citations);
 
   // 6b. Reglas: evaluación final (F9). Si una regla previa ya decidió, se usa;
   // si no, se evalúa la lista completa con la respuesta ya generada.

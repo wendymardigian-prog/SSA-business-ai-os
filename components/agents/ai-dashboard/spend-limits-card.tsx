@@ -154,7 +154,7 @@ export function SpendLimitsCard({
                 alertWithoutLimit ? (
                   <span className="text-amber-700 dark:text-amber-300">Cargá al menos un tope para que el aviso tenga contra qué medir.</span>
                 ) : (
-                  "De cualquiera de los dos topes. Llega a la campana de notificaciones, una vez por día o por mes. Vacío: sin aviso previo."
+                  "De cualquiera de los dos topes. Llega a la campana de notificaciones, una vez por día o por mes. Vacío: sin aviso previo en estos dos; los topes de cada agente y de cada tarea avisan igual al 80 %."
                 )
               }
             >

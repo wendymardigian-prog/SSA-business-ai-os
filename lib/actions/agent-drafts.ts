@@ -5,6 +5,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
 import { getMemberAction } from "@/lib/auth/guards";
 import { canReplyChannel } from "@/lib/inbox/channel-access";
+import { maybeProposeLearnedRule } from "@/lib/ai-learning/rules-run";
 import { approveDraft, discardDraft, regenerateDraft, type DraftActionResult } from "@/lib/agent/drafts/actions";
 import { requestSuggestion } from "@/lib/agent/drafts/suggest";
 import { loadLastDiscardedDraft, loadLastExpiredDraft, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
@@ -67,11 +68,27 @@ export async function sendDraftAction(
   return result;
 }
 
-export async function discardDraftAction(draftId: string, reason?: string | null): Promise<DraftActionResult> {
+/**
+ * Descartar. El motivo de la lista cerrada es OPCIONAL (decisión de Wendy): si viene, cuenta para que la IA aprenda y
+ * un rechazo repetido puede proponer una regla. Acepta el texto libre de siempre (string) para no romper a nadie.
+ */
+export async function discardDraftAction(draftId: string, input?: { reason?: string | null; note?: string | null } | string | null): Promise<DraftActionResult> {
   const { supabase, user } = await session();
   if (!user) return SESSION_EXPIRED;
   if (!(await canReplyToDraft(supabase, draftId))) return NO_REPLY;
-  const result = await discardDraft({ user: supabase, userId: user.id, draftId, reason });
+  const reasonKey = typeof input === "object" && input ? input.reason ?? null : null;
+  const note = typeof input === "string" ? input : typeof input === "object" && input ? input.note ?? null : null;
+  const result = await discardDraft({ user: supabase, userId: user.id, draftId, rejectReason: reasonKey, rejectNote: note });
+  if (result.ok && reasonKey) {
+    // Proponer una regla nunca tumba el descarte (que ya está hecho).
+    try {
+      const service = await createServiceClient();
+      const { data } = await service.from("agent_drafts").select("agent_id, workspace_id").eq("id", draftId).maybeSingle();
+      if (data?.agent_id) await maybeProposeLearnedRule(service, { workspaceId: data.workspace_id, agentId: data.agent_id, reason: reasonKey });
+    } catch (err) {
+      console.error("[drafts] no pude revisar las reglas aprendidas:", err instanceof Error ? err.message : String(err));
+    }
+  }
   revalidate();
   return result;
 }

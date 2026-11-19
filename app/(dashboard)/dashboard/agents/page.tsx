@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { BookOpen, Bot } from "lucide-react";
+import { BarChart3, BookOpen, Bot, ListChecks } from "lucide-react";
 import { getWorkspace } from "@/lib/workspace";
 import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -12,6 +12,8 @@ import { getAgentType } from "@/lib/agent/agent-types";
 import { agentAvailability } from "@/lib/agent/availability";
 import { NoAiConnection } from "@/components/agents/no-ai-connection";
 import { ConnectFirstAi } from "@/components/agents/connect-first-ai";
+import { AiKeyStatus } from "@/components/agents/ai-key-status";
+import { loadAiKeyProviderStates } from "@/lib/ai/provider-states-load";
 import { CreateAgentButton } from "@/components/agents/create-agent-button";
 import { AgentCard } from "@/components/agents/agent-card";
 import { TaskCard } from "@/components/agents/tasks/task-card";
@@ -57,10 +59,12 @@ export default async function AgentsPage({
   // Ver los agentes pide `agents.view`; crear, `agents.edit`; las tareas de IA, `ai_tasks.manage`; los topes, `ai_limits.manage`.
   await requirePermission("agents.view");
   const [{ workspace }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
-  const [permissions, timeZone, { mode, providers: aiProviders }] = await Promise.all([
+  const [permissions, timeZone, { mode, providers: aiProviders }, aiKeys] = await Promise.all([
     getPermissionContext(),
     resolveViewerTimezone(workspace.timezone),
     loadAgentsPageMode(service, workspace.id),
+    // El estado de cada clave de IA del negocio (nunca la clave).
+    loadAiKeyProviderStates(service, workspace.id),
   ]);
   const canConnectAi = permissions.can("integrations.manage");
 
@@ -70,6 +74,9 @@ export default async function AgentsPage({
         <PageHeader route="/dashboard/agents" />
         <div className="flex-1 overflow-auto px-4 py-10 md:px-8">
           <ConnectFirstAi canConnect={canConnectAi} />
+          <div className="mx-auto mt-8 max-w-3xl">
+            <AiKeyStatus providers={aiKeys} canConnect={canConnectAi} />
+          </div>
         </div>
       </div>
     );
@@ -95,6 +102,14 @@ export default async function AgentsPage({
     (action) => action.id === "knowledge",
   );
 
+  // Las propuestas pendientes que la persona ve (RLS de ai_proposals con su sesión).
+  const { count: pendingCount } = await (await getWorkspace()).supabase
+    .from("ai_proposals")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspace.id)
+    .eq("status", "pending");
+  const pendingProposals = pendingCount ?? 0;
+
   let filter = null;
   if (canViewCosts) {
     const sp = await searchParams;
@@ -119,15 +134,23 @@ export default async function AgentsPage({
         route="/dashboard/agents"
         filters={canViewCosts ? <AiPeriodControl timezone={timeZone} /> : undefined}
         right={
-          canOpenKnowledge ? (
-            <Link
-              href="/dashboard/knowledge"
-              className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-accent"
-            >
-              <BookOpen className="h-4 w-4" aria-hidden />
-              Conocimiento
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Bloque 16: la bandeja de aprobación y el panel de calidad. */}
+            <Link href="/dashboard/agents/aprobaciones" className={HEADER_LINK}>
+              <ListChecks className="h-4 w-4" aria-hidden />
+              Aprobaciones{pendingProposals > 0 ? ` (${pendingProposals})` : ""}
             </Link>
-          ) : undefined
+            <Link href="/dashboard/agents/calidad" className={HEADER_LINK}>
+              <BarChart3 className="h-4 w-4" aria-hidden />
+              Calidad
+            </Link>
+            {canOpenKnowledge && (
+              <Link href="/dashboard/knowledge" className={HEADER_LINK}>
+                <BookOpen className="h-4 w-4" aria-hidden />
+                Conocimiento
+              </Link>
+            )}
+          </div>
         }
       />
 
@@ -139,6 +162,8 @@ export default async function AgentsPage({
         )}
 
         {mode === "full-with-warning" && <NoAiConnection canConnect={canConnectAi} />}
+
+        <AiKeyStatus providers={aiKeys} canConnect={canConnectAi} />
 
         <section>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Agentes</h2>
@@ -216,6 +241,9 @@ async function TaskList({
     </ul>
   );
 }
+
+const HEADER_LINK =
+  "inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-accent";
 
 function TaskListSkeleton() {
   return (

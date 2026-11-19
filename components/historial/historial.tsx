@@ -5,6 +5,7 @@ import { Bot, Cog, User, Webhook } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   actorName,
+  approverName,
   buildHistoryQuery,
   describeChanges,
   effectiveActorType,
@@ -134,6 +135,7 @@ export function Historial({ entityType, entityId, names, timeZone, pageSize }: H
               <div className="min-w-0 flex-1 text-sm">
                 <p>
                   <span className="font-medium">{actorName(row, names)}</span> {actionText(row.action)}
+                  {approverName(row, names) && <span className="text-muted-foreground"> · aprobado por {approverName(row, names)}</span>}
                   <span className="ml-2 text-xs text-muted-foreground">{formatWhen(row.performed_at, timeZone)}</span>
                 </p>
                 {lines.length > 0 && (

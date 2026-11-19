@@ -8,6 +8,7 @@ import { getAiTask, type AiTaskId } from "@/lib/ai-tasks/catalog";
 import { loadTaskInstructions, taskIsVersioned, type VersionedTask } from "@/lib/ai-tasks/store";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { parseTaskModels } from "@/lib/ai-tasks/model";
+import { parseCapInput, taskLimitsOf } from "@/lib/ai-tasks/limits";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -224,4 +225,46 @@ export async function loadTaskInstructionsForEdit(taskId: string) {
   const task = getAiTask(taskId);
   if (!task || !taskIsVersioned(task.id)) return null;
   return loadTaskInstructions(ctx.supabase, ctx.workspace.id, task.id);
+}
+
+/**
+ * El tope mensual (USD) de una tarea (00440). Vacío = sin tope. Al 80 % (o el porcentaje del negocio) avisa; al
+ * llegar, la tarea deja de llamar al modelo hasta el mes siguiente. Es un tope de gasto: pide `ai_limits.manage`,
+ * el mismo permiso que los topes del negocio y del agente. Escribe con `set_ai_task_cap` (solo service_role), que
+ * cambia solo la clave de esa tarea (dos personas guardando a la vez no se pisan).
+ */
+export async function saveTaskCap(taskId: string, rawCap: string): Promise<AiTaskActionResult> {
+  const ctx = await getPermissionAction("ai_limits.manage");
+  if (!ctx) return { ok: false, error: "No tenés permiso para cambiar los topes de gasto de IA." };
+  const { workspace, supabase, user } = ctx;
+  const task = getAiTask(taskId);
+  if (!task) return { ok: false, error: "Esa tarea no existe." };
+
+  const parsed = parseCapInput(String(rawCap ?? ""));
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+
+  const { data: before, error } = await (await createServiceClient()).rpc("set_ai_task_cap", {
+    p_workspace_id: workspace.id,
+    p_task: task.id,
+    p_monthly_cap_usd: parsed.monthlyCapUsd,
+  });
+  if (error) {
+    console.error(`[ai-tasks] no pude guardar el tope de ${task.id}:`, error.message);
+    return { ok: false, error: "No pude guardar el tope. Probá de nuevo en un momento." };
+  }
+  const old = taskLimitsOf(before ? { [task.id]: before } : {}, task.id);
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "ai_task",
+    entityId: workspace.id,
+    action: "cap_changed",
+    changes: { monthly_cap_usd: { old: old.monthlyCapUsd, new: parsed.monthlyCapUsd } },
+    metadata: { task: task.id },
+    performedBy: user.id,
+  });
+
+  revalidate(task.id);
+  return { ok: true };
 }

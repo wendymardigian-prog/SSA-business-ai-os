@@ -23,6 +23,8 @@ import { activeStatuses } from "@/lib/contacts/statuses";
 import { getSavedViewerTimezone, resolveViewerTimezone } from "@/lib/user-timezone";
 import { AgentDetailView, AgentTabBody } from "@/components/agents/agent-detail-view";
 import { TabBodySkeleton } from "@/components/agents/detail-tabs";
+import { parseRulesSnapshot } from "@/lib/ai-learning/rules";
+import { DEFAULT_ASSISTANT_TOOL_KEYS, PERSON_TOOLS } from "@/lib/ai-tools/registry";
 import type { AgentTypeDefinition } from "@/lib/agent/agent-types";
 
 /**
@@ -166,7 +168,7 @@ export default async function AgentDetailPage({
         need.versions
           ? supabase
               .from("agent_prompt_versions")
-              .select("version, system_prompt, note, created_at, created_by")
+              .select("version, system_prompt, note, created_at, created_by, learned_rules, change_kind")
               .eq("agent_id", agent.id)
               .order("version", { ascending: false })
           : none,
@@ -312,6 +314,11 @@ export default async function AgentDetailPage({
       : undefined;
 
     const setterStatusSettings = await setterStatusSettingsPromise;
+    // Reglas aprendidas: solo quien configura el agente, en la pestaña Configuración.
+    const learnedRulesRes =
+      canEdit && on("config") && typeDef.configSections.includes("learning")
+        ? await service.from("agent_learned_rules").select("id, reason_key, text, status, evidence, rejections, proposed_at, decided_at, decided_by").eq("agent_id", agent.id).neq("status", "discarded").order("proposed_at", { ascending: false }).limit(50)
+        : null;
     const data: AgentScreenData = {
       viewer: { isAdmin: canEdit, permissionKeys: permissions.permissions.keys },
       copywriter,
@@ -332,13 +339,35 @@ export default async function AgentDetailPage({
         // Pipeline (00245): los estados de setter activos (Ajustes → Estados).
         setter_statuses: setterStatusSettings ? activeStatuses(setterStatusSettings.setter).map((st) => ({ value: st.key, label: st.name })) : [],
       },
-      versions: ((versionsRes.data ?? []) as Array<{ version: number; system_prompt: string; note: string | null; created_at: string; created_by: string | null }>).map((v) => ({
+      versions: ((versionsRes.data ?? []) as Array<{ version: number; system_prompt: string; note: string | null; created_at: string; created_by: string | null; learned_rules?: unknown; change_kind?: string }>).map((v) => ({
         version: v.version,
         systemPrompt: v.system_prompt,
         note: v.note,
         createdAt: v.created_at,
         authorLabel: v.created_by ? memberNames.get(v.created_by) ?? null : null,
+        changeKind: v.change_kind === "learned_rules" || v.change_kind === "restore" ? v.change_kind : "prompt",
+        learnedRules: parseRulesSnapshot(v.learned_rules),
       })),
+      learnedRules: learnedRulesRes
+        ? ((learnedRulesRes.data ?? []) as Array<{ id: string; reason_key: string; text: string; status: "proposed" | "active" | "discarded" | "retired"; evidence: unknown; rejections: number; proposed_at: string; decided_at: string | null; decided_by: string | null }>).map((r) => ({
+            id: r.id,
+            reasonKey: r.reason_key,
+            text: r.text,
+            status: r.status,
+            evidence: Array.isArray(r.evidence) ? r.evidence.filter((e): e is string => typeof e === "string") : [],
+            rejections: r.rejections,
+            proposedAt: r.proposed_at,
+            decidedAt: r.decided_at,
+            decidedByLabel: r.decided_by ? memberNames.get(r.decided_by) ?? null : null,
+          }))
+        : undefined,
+      assistantTools:
+        agent.type === "assistant" && on("config")
+          ? {
+              all: PERSON_TOOLS.map((t) => ({ key: t.key, label: t.label, description: t.description, access: t.access, permission: t.permission })),
+              enabled: agent.allowedTools.length > 0 ? agent.allowedTools : [...DEFAULT_ASSISTANT_TOOL_KEYS],
+            }
+          : undefined,
       providers,
       providerLabels: PROVIDER_LABELS,
       pricedModels,

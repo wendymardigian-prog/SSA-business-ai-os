@@ -14,7 +14,8 @@ import {
   storagePathFor,
   MAX_FILE_BYTES,
 } from "@/lib/knowledge/validate";
-import { INDEX_DOCUMENT_JOB, KNOWLEDGE_BUCKET } from "@/lib/knowledge/index-document";
+import { INDEX_DOCUMENT_JOB, KNOWLEDGE_BUCKET, retireChunks } from "@/lib/knowledge/index-document";
+import { resolveFolderId } from "@/lib/knowledge/folders";
 import { isEmbeddingProviderConnected } from "@/lib/knowledge/embeddings";
 import { enqueuePendingDocuments } from "@/lib/knowledge/pending";
 
@@ -88,6 +89,11 @@ export async function uploadDocument(formData: FormData): Promise<KnowledgeResul
 
   const tags = normalizeTags(String(formData.get("tags") ?? ""));
 
+  // : la carpeta, si viene, tiene que ser de este negocio.
+  const service = await createServiceClient();
+  const folderId = await resolveFolderId(service, workspace.id, formData.get("folderId"));
+  if (folderId === undefined) return { ok: false, error: "La carpeta no existe." };
+
   // Subir un documento tiene que seguir siendo posible aunque Voyage (lo que indexa) todavia no este conectado:
   // queda "pendiente de indexar" con su archivo guardado y se retoma solo cuando se conecte (F1).
   const voyageConnected = await isEmbeddingProviderConnected(workspace.id, supabase);
@@ -98,6 +104,8 @@ export async function uploadDocument(formData: FormData): Promise<KnowledgeResul
       workspace_id: workspace.id,
       title: rawTitle,
       tags,
+      folder_id: folderId,
+      source_kind: "file",
       source_mime: detected.mime,
       source_size_bytes: buffer.byteLength,
       source_filename: file.name,
@@ -114,10 +122,8 @@ export async function uploadDocument(formData: FormData): Promise<KnowledgeResul
 
   const path = storagePathFor(workspace.id, created.id, detected.mime);
 
-  // El bucket no tiene policies: entra el service client, ya con el rol
-  // verificado arriba.
-  const service = await createServiceClient();
-
+  // El bucket no tiene policies: entra el service client (creado arriba), ya
+  // con el rol verificado.
   const { error: uploadError } = await service.storage
     .from(KNOWLEDGE_BUCKET)
     .upload(path, buffer, {
@@ -388,6 +394,8 @@ export async function reprocessDocument(documentId: string): Promise<KnowledgeRe
   }
 
   const service = await createServiceClient();
+  // : mientras se reprocesa no queda ningún trozo de la versión anterior.
+  await retireChunks(service, documentId);
   const queued = await enqueueIndexing(service, documentId, workspace.id);
 
   if (!queued) {
