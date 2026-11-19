@@ -122,6 +122,7 @@ export default async function FormulariosPage({ searchParams }: { searchParams: 
     <FormsList
       rows={rows}
       canManage={ctx.can("forms.manage")}
+      canDelete={ctx.can("forms.delete")}
       loadError={!!error}
       initialQuery={initialQuery}
       publicBase={publicBaseUrl(workspace)}

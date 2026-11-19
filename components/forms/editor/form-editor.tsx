@@ -41,6 +41,7 @@ export function FormEditor({
   form,
   versions,
   canManage,
+  canDelete = false,
   publicBase,
   timeZone,
   extras,
@@ -48,6 +49,8 @@ export function FormEditor({
   form: EditorForm;
   versions: EditorVersion[];
   canManage: boolean;
+  /** `forms.delete`: «Eliminar formulario» en la tarjeta de Estado (va a la Papelera 30 días). */
+  canDelete?: boolean;
   /** La base de los links públicos del negocio (`publicBaseUrl`). */
   publicBase: string;
   timeZone: string;
@@ -367,6 +370,7 @@ export function FormEditor({
                 form={{ ...form, slug, status, contactConfig }}
                 versions={versions}
                 canManage={canManage}
+                canDelete={canDelete}
                 publicBase={publicBase}
                 published={status === "published"}
                 onSlugChanged={setSlug}

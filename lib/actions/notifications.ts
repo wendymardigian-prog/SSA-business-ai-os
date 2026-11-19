@@ -6,6 +6,7 @@ import { getMyNotificationPrefs } from "@/lib/account/notification-prefs";
 import { mutedBellTypes } from "@/lib/notifications/preferences";
 import { bellRecipientFilter, mutedTypesList } from "@/lib/notifications/bell-filter";
 import { BELL_COUNT_CAP } from "@/lib/notifications/bell-count";
+import { NOTIFICATIONS_PAGE_SIZE, type NotificationView } from "@/lib/notifications/page-view";
 
 /**
  * Server Actions del centro de notificaciones (F18).
@@ -124,6 +125,71 @@ export async function listNotifications(limit = 20): Promise<NotificationItem[]>
     readAt: row.read_at,
     createdAt: row.created_at,
   }));
+}
+
+export interface NotificationsPageData {
+  items: NotificationItem[];
+  counts: { unread: number; all: number; read: number };
+  /** Hay otra página detrás de esta. */
+  hasMore: boolean;
+}
+
+/**
+ * Una página de la pantalla completa de notificaciones (`/dashboard/notificaciones`): la vista elegida, 50 por
+ * página, y los contadores de las pestañas. Mismo alcance que la campana (`bellScope`). Acá sí se cuenta exacto:
+ * es una pantalla que se abre a propósito, no cada carga de página como el numerito de la campana.
+ */
+export async function listNotificationsPage(view: NotificationView, page: number): Promise<NotificationsPageData> {
+  const { supabase, workspace, recipients, muted } = await bellScope();
+  const size = NOTIFICATIONS_PAGE_SIZE;
+  const from = (Math.max(page, 1) - 1) * size;
+
+  const base = (select: string, head = false) => {
+    let q = supabase
+      .from("notifications")
+      .select(select, head ? { count: "exact", head: true } : undefined)
+      .eq("workspace_id", workspace.id)
+      .or(recipients);
+    if (muted) q = q.not("type", "in", muted);
+    return q;
+  };
+
+  let list = base("id, type, title, body, entity_type, entity_id, metadata, read_at, created_at");
+  if (view === "no-leidas") list = list.is("read_at", null);
+  if (view === "leidas") list = list.not("read_at", "is", null);
+
+  const [rows, all, unread] = await Promise.all([
+    // Una fila de más para saber si hay otra página.
+    list.order("created_at", { ascending: false }).range(from, from + size),
+    base("id", true),
+    base("id", true).is("read_at", null),
+  ]);
+
+  const failed = rows.error ?? all.error ?? unread.error;
+  if (failed) console.error("[notificaciones] pantalla completa fallida:", failed.message);
+
+  const data = (rows.data ?? []) as unknown as Array<{
+    id: string; type: string; title: string; body: string | null; entity_type: string | null;
+    entity_id: string | null; metadata: unknown; read_at: string | null; created_at: string;
+  }>;
+  const allCount = all.count ?? 0;
+  const unreadCount = unread.count ?? 0;
+
+  return {
+    items: data.slice(0, size).map((row) => ({
+      id: row.id,
+      type: row.type,
+      title: row.title,
+      body: row.body,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      metadata: (row.metadata ?? {}) as Record<string, unknown>,
+      readAt: row.read_at,
+      createdAt: row.created_at,
+    })),
+    counts: { unread: unreadCount, all: allCount, read: Math.max(0, allCount - unreadCount) },
+    hasMore: data.length > size,
+  };
 }
 
 /**

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ClipboardList, Copy, ExternalLink, Link2, Loader2, MoreHorizontal, Pause, Play, Plus, RotateCcw, X } from "lucide-react";
+import { Archive, ClipboardList, Copy, ExternalLink, Link2, Loader2, MoreHorizontal, Pause, Play, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { Popover } from "@/components/ui/popover";
@@ -11,6 +11,7 @@ import { FilterMenu, MenuOption } from "@/components/ui/filter-menu";
 import { Notice } from "@/components/agents/fields";
 import { ContentDialog } from "@/components/content/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DeleteDialog } from "@/components/trash/delete-dialog";
 import { FormStatusPill, FormTypeIcon, FORM_TYPE_TONE } from "@/components/forms/type-visual";
 import { createForm, duplicateForm, setFormStatus } from "@/lib/actions/forms/forms";
 import { FORM_TYPE_LABELS, FORM_TYPES, type FormType } from "@/lib/forms/fields";
@@ -42,6 +43,7 @@ export const FORMS_LIST_QUERY_KEY = "formularios-lista-query";
 export function FormsList({
   rows,
   canManage,
+  canDelete = false,
   loadError,
   initialQuery,
   publicBase,
@@ -51,6 +53,8 @@ export function FormsList({
 }: {
   rows: FormListRow[];
   canManage: boolean;
+  /** `forms.delete`: «Eliminar» en el menú de cada tarjeta (va a la Papelera 30 días). */
+  canDelete?: boolean;
   loadError: boolean;
   /** Lo que dice la URL al cargar (`?q=&estado=&tipo=`), ya validado en el servidor. */
   initialQuery: ListQuery;
@@ -68,6 +72,7 @@ export function FormsList({
   const [query, setQueryState] = useState<ListQuery>(initialQuery);
   const [creating, setCreating] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState<FormListRow | null>(null);
+  const [deleting, setDeleting] = useState<FormListRow | null>(null);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
   // Los filtros y la busqueda viven en la URL (se pueden compartir y sobreviven a recargar). Se escribe con
@@ -245,6 +250,8 @@ export function FormsList({
                       <CardMenu
                         row={row}
                         canManage={canManage}
+                        canDelete={canDelete}
+                        onDelete={() => setDeleting(row)}
                         onCopy={() => copyLink(row)}
                         onCopyWithCode={myRefCode ? () => copyLink(row, true) : undefined}
                         onDuplicate={() => run(() => duplicateForm(row.id), "Duplicado como borrador")}
@@ -283,6 +290,9 @@ export function FormsList({
       </div>
 
       {creating && <CreateDialog onClose={() => setCreating(false)} onCreated={(id) => router.push(`/dashboard/formularios/${id}`)} />}
+
+      {/* El diálogo vive acá y no adentro del menú: el menú se cierra al elegir y se lo llevaría. */}
+      {deleting && <DeleteDialog entity="form" id={deleting.id} onClose={() => setDeleting(null)} />}
 
       <ConfirmDialog
         open={!!confirmArchive}
@@ -368,6 +378,8 @@ function FormCard({ view, menu }: { view: FormCardView; menu: React.ReactNode })
 function CardMenu({
   row,
   canManage,
+  canDelete,
+  onDelete,
   onCopy,
   onCopyWithCode,
   onDuplicate,
@@ -378,6 +390,8 @@ function CardMenu({
 }: {
   row: FormListRow;
   canManage: boolean;
+  canDelete: boolean;
+  onDelete: () => void;
   onCopy: () => void;
   onCopyWithCode?: () => void;
   onDuplicate: () => void;
@@ -428,6 +442,11 @@ function CardMenu({
               </MenuItem>
             )}
           </>
+        )}
+        {canDelete && (
+          <MenuItem icon={<Trash2 className="h-4 w-4" />} onClick={onDelete} danger>
+            Eliminar formulario
+          </MenuItem>
         )}
       </div>
     </Popover>

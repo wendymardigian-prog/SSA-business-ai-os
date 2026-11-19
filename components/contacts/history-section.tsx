@@ -64,6 +64,9 @@ const INITIAL_VISIBLE = 15;
 type HistoryEntry = AuditHistoryItem;
 
 const ACTION_LABELS: Record<AuditAction, string> = {
+  // La Papelera (00410): eliminar un registro y restaurarlo.
+  "trash.deleted": "lo eliminó (quedó en la Papelera)",
+  "trash.restored": "lo restauró desde la Papelera",
   // El historial de un anuncio (entity meta_ad) no se muestra en la ficha del contacto; las etiquetas existen por el tipo.
   // Extra I (MP): los métodos de pago del negocio se auditan sobre el workspace; no se ven en la ficha de un contacto.  @plantilla-quitar(ventas)
   "payment_methods.updated": "cambió los métodos de pago", // @plantilla-quitar(ventas)

@@ -91,6 +91,8 @@ export interface PieceData {
   canEdit: boolean;
   /** Si quien mira puede cambiar el responsable: un administrador o quien creo la pieza. */
   canAssign: boolean;
+  /** `content.delete`: «Eliminar» en el drawer (la Papelera, docs/papelera.md). */
+  canDelete?: boolean;
   /** El equipo, para elegir responsable. */
   team: Array<{ id: string; name: string }>;
   publications: PublicationSummary[];
@@ -313,6 +315,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
     },
     canEdit: canEditPiece,
     canAssign: canReassign({ role, userId: user.id, piece: post }),
+    canDelete: can("content.delete"),
     team: members.map((m) => ({ id: m.userId, name: m.name })),
     perms: {
       create: true,

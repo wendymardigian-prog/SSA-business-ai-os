@@ -352,7 +352,7 @@ export default async function ContentPage({
       piece={piece}
       notice={notice}
       userId={user.id}
-      perms={{ approve: canApprove, ai: canUseAi }}
+      perms={{ approve: canApprove, ai: canUseAi, delete: can("content.delete") }}
       platforms={platforms}
       taxonomy={taxonomy}
       aiAvailable={aiProviders.length > 0}

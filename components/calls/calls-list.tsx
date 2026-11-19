@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { CategoryGroup } from "@/lib/calls/catalog";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { ChevronLeft, ChevronRight, Link2, Loader2, Phone, Plus, RefreshCw, Settings, SlidersHorizontal, Sparkles, Star, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Link2, Loader2, Phone, Plus, RefreshCw, Settings, SlidersHorizontal, Sparkles, Star, Trash2, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
@@ -13,6 +13,9 @@ import { ImportCallModal } from "@/components/calls/import-call-modal";
 import { AlertsChip, OutcomeChip, QualificationChip, ScoreCell, StatusChip, TypeChip } from "@/components/calls/call-chips";
 import { syncFathomNow } from "@/lib/actions/fathom";
 import { analyzePendingCalls, analyzeSelectedCalls } from "@/lib/actions/calls-edit";
+import { deleteManyToTrash } from "@/lib/actions/trash";
+import { TRASH_RETENTION_DAYS } from "@/lib/trash/entities";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { Popover } from "@/components/ui/popover";
 import { formatCallDate, formatDuration, humanize } from "@/lib/calls/format";
 import {
@@ -78,6 +81,8 @@ interface Props {
   currentUserId: string;
   workspaceId: string;
   canEdit: boolean;
+  /** `calls.delete`: elegir grabaciones y «Eliminar seleccionadas» (van a la Papelera 30 días). */
+  canDelete?: boolean;
   /** El nombre del contacto cuando la lista viene filtrada por uno (el "Ver todas" de su ficha). */
   contactFilterName: string | null;
   /** Tiene `calls.configure`: ve el atajo a la configuracion de las dos tareas. */
@@ -130,6 +135,9 @@ const selectClass = "h-8 w-full rounded-lg border border-input bg-background px-
 
 export function CallsList(props: Props) {
   const { rows, total, page, pageSize, filters, closers, outcomes, canEdit } = props;
+  const canDelete = props.canDelete === true;
+  // Las casillas sirven para analizar (calls.edit) o para eliminar (calls.delete).
+  const canSelect = canEdit || canDelete;
   const router = useRouter();
   const pathname = usePathname();
   const timeZone = useViewerTimezone();
@@ -166,6 +174,7 @@ export function CallsList(props: Props) {
 
   // Lo elegido cuenta solo si sigue en la pagina: cambiar de filtro o de pagina no arrastra nada a ciegas.
   const [selected, setSelected] = useState<string[]>([]);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const selectedOnPage = selected.filter((id) => rows.some((r) => r.id === id));
 
   // Servicios A4 (F136): la columna Servicio aparece solo con el módulo prendido y se puede ocultar (por persona).
@@ -197,6 +206,20 @@ export function CallsList(props: Props) {
       if (!r.ok) return setSyncMessage({ ok: false, text: r.error });
       const queued = r.queued === 0 ? "No se puede analizar ninguna de las elegidas." : `Se van a analizar ${r.queued} ${r.queued === 1 ? "grabación" : "grabaciones"}, una cada 30 segundos.`;
       setSyncMessage({ ok: true, text: r.queued > 0 && r.skipped > 0 ? `${queued} ${r.skipped} no se pueden analizar: ya están analizadas, no tienen transcripción o a su tipo le falta el analizador.` : queued });
+      setSelected([]);
+      router.refresh();
+    });
+  }
+
+  function deleteSelected() {
+    const ids = selectedOnPage;
+    startQueue(async () => {
+      const r = await deleteManyToTrash("call", ids);
+      setDeleteOpen(false);
+      if (!r.ok) return setSyncMessage({ ok: false, text: r.error });
+      const done = r.deleted === 1 ? "Se eliminó 1 grabación" : `Se eliminaron ${r.deleted} grabaciones`;
+      const failed = r.failures.length > 0 ? ` ${r.failures.length === 1 ? "1 no se pudo eliminar" : `${r.failures.length} no se pudieron eliminar`}: ${r.failures[0].error}` : "";
+      setSyncMessage({ ok: r.failures.length === 0, text: `${done}. Quedan ${TRASH_RETENTION_DAYS} días en la Papelera (Ajustes → Papelera).${failed}` });
       setSelected([]);
       router.refresh();
     });
@@ -394,6 +417,12 @@ export function CallsList(props: Props) {
                 <span className="hidden sm:inline">Analizar seleccionadas ({selectedOnPage.length})</span>
               </button>
             )}
+            {canDelete && selectedOnPage.length > 0 && (
+              <button type="button" onClick={() => { setSyncMessage(null); setDeleteOpen(true); }} disabled={queueing} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-500/40 px-2.5 text-sm text-red-700 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400" aria-label={`Eliminar seleccionadas (${selectedOnPage.length})`}>
+                <Trash2 className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline">Eliminar seleccionadas ({selectedOnPage.length})</span>
+              </button>
+            )}
             {canEdit && props.pendingCount > 0 && (
               <button type="button" onClick={analyzePending} disabled={queueing} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50" aria-label={`Analizar pendientes (${props.pendingCount})`}>
                 {queueing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
@@ -476,7 +505,7 @@ export function CallsList(props: Props) {
                   <table className="w-full min-w-[960px] text-sm">
                     <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
                       <tr>
-                        {canEdit && (
+                        {canSelect && (
                           <th scope="col" className="w-8 px-3 py-2">
                             <input
                               type="checkbox"
@@ -498,7 +527,7 @@ export function CallsList(props: Props) {
                         const gray = isNonSaleRow({ call_type: r.callType, analysis_status: r.status });
                         return (
                           <tr key={r.id} className={`hover:bg-muted/30 ${gray ? "opacity-60" : ""}`}>
-                            {canEdit && (
+                            {canSelect && (
                               <td className="px-3 py-2">
                                 <input type="checkbox" aria-label={`Elegir ${r.title}`} checked={selected.includes(r.id)} onChange={() => toggleSelected(r.id)} className="h-4 w-4" />
                               </td>
@@ -586,6 +615,26 @@ export function CallsList(props: Props) {
           </>
         )}
       </div>
+
+      {deleteOpen && canDelete && (
+        <SaleModal
+          title="Eliminar grabaciones"
+          label="Eliminar grabaciones seleccionadas"
+          onClose={() => !queueing && setDeleteOpen(false)}
+          footer={
+            <div className="ml-auto flex gap-2">
+              <button type="button" disabled={queueing} onClick={() => setDeleteOpen(false)} className="h-9 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-50">Volver</button>
+              <button type="button" disabled={queueing || selectedOnPage.length === 0} onClick={deleteSelected} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white disabled:opacity-50">
+                {queueing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />} Eliminar
+              </button>
+            </div>
+          }
+        >
+          <p className="text-sm">
+            {selectedOnPage.length === 1 ? "Se elimina 1 grabación." : `Se eliminan ${selectedOnPage.length} grabaciones.`} Desaparecen de todas las pantallas y números, quedan {TRASH_RETENTION_DAYS} días en la Papelera (desde donde se pueden restaurar) y no vuelven a entrar al sincronizar Fathom.
+          </p>
+        </SaleModal>
+      )}
 
       {canEdit && importOpen && (
         <ImportCallModal onClose={() => setImportOpen(false)} closers={closers} currentUserId={props.currentUserId} onImported={(id) => { setImportOpen(false); router.push(`/dashboard/llamadas/${id}`); }} />

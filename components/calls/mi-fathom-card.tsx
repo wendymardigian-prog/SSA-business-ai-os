@@ -3,9 +3,12 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2, Plug, RefreshCw, TriangleAlert, Unplug } from "lucide-react";
+import { CheckCircle2, Loader2, Plug, RefreshCw, Trash2, TriangleAlert, Unplug } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { disconnectFathom, syncFathomNow } from "@/lib/actions/fathom";
+import { countImportedCalls, deleteImportedCalls } from "@/lib/actions/trash";
+import { SaleModal } from "@/components/shared/sale-modal";
+import { TRASH_RETENTION_DAYS } from "@/lib/trash/entities";
 import type { FathomCardView } from "@/lib/fathom/connection-state";
 import { relativeTime } from "@/lib/notifications/types";
 
@@ -31,6 +34,7 @@ export function MiFathomCard({
   flash,
   areaId = null,
   embedded = false,
+  canDeleteImported = false,
 }: {
   view: FathomCardView;
   connectionId: string | null;
@@ -41,6 +45,8 @@ export function MiFathomCard({
   embedded?: boolean;
   /** El area del modulo desde el que se conecta. */
   areaId?: string | null;
+  /** `calls.delete`: «Eliminar todo lo importado» de esta conexión (va a la Papelera 30 días). */
+  canDeleteImported?: boolean;
   /** Lo que dejo el retorno de Fathom: `?connected=1` o `?error=...`. */
   flash: { kind: "connected" } | { kind: "error"; message: string } | null;
 }) {
@@ -50,6 +56,7 @@ export function MiFathomCard({
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const connectHref = connectUrl(areaId);
+  const purge = usePurgeImported(connectionId, () => router.refresh());
 
   function syncNow() {
     setError(null);
@@ -135,6 +142,11 @@ export function MiFathomCard({
               {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />} Sincronizar ahora
             </button>
           )}
+          {canDeleteImported && connectionId && (
+            <button type="button" onClick={purge.open} disabled={pending || purge.running} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-500/40 px-3 text-sm text-red-700 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400">
+              <Trash2 className="h-4 w-4" aria-hidden /> Eliminar todo lo importado
+            </button>
+          )}
           {view.actions.disconnect && connectionId && (
             <button type="button" onClick={() => setConfirming(true)} disabled={pending} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-muted-foreground hover:bg-accent disabled:opacity-50">
               <Unplug className="h-4 w-4" aria-hidden /> Desconectar
@@ -151,6 +163,8 @@ export function MiFathomCard({
         {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
       </section>
 
+      {purge.modal}
+
       <ConfirmDialog
         open={confirming}
         title="¿Desconectar tu Fathom?"
@@ -163,4 +177,135 @@ export function MiFathomCard({
       />
     </div>
   );
+}
+
+type PurgeStep =
+  | { kind: "closed" }
+  | { kind: "counting" }
+  | { kind: "confirm"; count: number }
+  | { kind: "running"; deleted: number; total: number }
+  | { kind: "done"; deleted: number; failed: number; firstError: string | null }
+  | { kind: "error"; message: string };
+
+/**
+ * «Eliminar todo lo importado» de una conexión de Fathom: cuenta, pide confirmar con el número, y elimina de a
+ * tandas de 50 (`deleteImportedCalls`) mostrando el avance hasta que no quede ninguna o una tanda falle.
+ */
+function usePurgeImported(connectionId: string | null, onFinished: () => void) {
+  const [step, setStep] = useState<PurgeStep>({ kind: "closed" });
+
+  async function open() {
+    if (!connectionId) return;
+    setStep({ kind: "counting" });
+    try {
+      const r = await countImportedCalls(connectionId);
+      setStep(r.ok ? { kind: "confirm", count: r.count } : { kind: "error", message: r.error });
+    } catch {
+      setStep({ kind: "error", message: "No pude contar las grabaciones. Probá de nuevo." });
+    }
+  }
+
+  async function run(total: number) {
+    if (!connectionId) return;
+    let deleted = 0;
+    let failed = 0;
+    let firstError: string | null = null;
+    setStep({ kind: "running", deleted, total });
+    // Tope de vueltas por las dudas: cada una borra hasta 50.
+    for (let round = 0; round < 1000; round += 1) {
+      let r: Awaited<ReturnType<typeof deleteImportedCalls>>;
+      try {
+        r = await deleteImportedCalls(connectionId);
+      } catch {
+        r = { ok: false, error: "Se cortó la conexión. Lo que ya se eliminó está en la Papelera; podés volver a intentar." };
+      }
+      if (!r.ok) {
+        firstError = firstError ?? r.error;
+        break;
+      }
+      deleted += r.deleted;
+      if (r.failures.length > 0) {
+        failed += r.failures.length;
+        firstError = firstError ?? r.failures[0].error;
+      }
+      setStep({ kind: "running", deleted, total: Math.max(total, deleted) });
+      if (r.failures.length > 0 || !r.remaining || r.deleted === 0) break;
+    }
+    setStep({ kind: "done", deleted, failed, firstError });
+    onFinished();
+  }
+
+  const running = step.kind === "running" || step.kind === "counting";
+  const close = () => {
+    if (!running) setStep({ kind: "closed" });
+  };
+
+  const btn = "h-9 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-50";
+  const modal =
+    step.kind === "closed" ? null : (
+      <SaleModal
+        title="Eliminar todo lo importado"
+        label="Eliminar todas las grabaciones importadas de tu Fathom"
+        onClose={close}
+        footer={
+          <div className="ml-auto flex gap-2">
+            {step.kind === "confirm" && step.count > 0 ? (
+              <>
+                <button type="button" onClick={close} className={btn}>Volver</button>
+                <button type="button" onClick={() => void run(step.count)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white">
+                  <Trash2 className="h-4 w-4" aria-hidden /> Eliminar {step.count}
+                </button>
+              </>
+            ) : (
+              <button type="button" disabled={running} onClick={close} className={btn}>Cerrar</button>
+            )}
+          </div>
+        }
+      >
+        {step.kind === "counting" && (
+          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Contando las grabaciones…
+          </p>
+        )}
+        {step.kind === "confirm" &&
+          (step.count === 0 ? (
+            <p className="text-sm">No hay grabaciones importadas de tu Fathom para eliminar.</p>
+          ) : (
+            <p className="text-sm">
+              {step.count === 1 ? "Se elimina 1 grabación." : `Se eliminan ${step.count} grabaciones.`} Quedan {TRASH_RETENTION_DAYS} días en la Papelera y no vuelven a entrar al sincronizar.
+            </p>
+          ))}
+        {step.kind === "running" && (
+          <div role="status" className="space-y-2 text-sm">
+            <p className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Eliminando… {step.deleted} de {step.total}
+            </p>
+            <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
+              <div className="h-full bg-red-600 transition-all" style={{ width: `${step.total > 0 ? Math.min(100, Math.round((step.deleted / step.total) * 100)) : 0}%` }} />
+            </div>
+            <p className="text-xs text-muted-foreground">No cierres esta ventana hasta que termine.</p>
+          </div>
+        )}
+        {step.kind === "done" && (
+          <div role="status" className="space-y-2 text-sm">
+            <p>
+              {step.deleted === 1 ? "Se eliminó 1 grabación." : `Se eliminaron ${step.deleted} grabaciones.`} Están en la Papelera (Ajustes → Papelera) durante {TRASH_RETENTION_DAYS} días.
+            </p>
+            {step.failed > 0 ? (
+              <p role="alert" className="text-red-700 dark:text-red-400">
+                {step.failed === 1 ? "1 no se pudo eliminar" : `${step.failed} no se pudieron eliminar`}
+                {step.firstError ? `: ${step.firstError}` : "."}
+              </p>
+            ) : (
+              step.firstError && (
+                <p role="alert" className="text-red-700 dark:text-red-400">Se frenó antes de terminar: {step.firstError}</p>
+              )
+            )}
+          </div>
+        )}
+        {step.kind === "error" && <p role="alert" className="text-sm text-red-700 dark:text-red-400">{step.message}</p>}
+      </SaleModal>
+    );
+
+  return { open: () => void open(), running, modal };
 }

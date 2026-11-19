@@ -10,6 +10,7 @@ import { AdjustmentDialog } from "@/components/commissions/adjustment-dialog";
 import { CommissionStatusChip, toneClasses } from "@/components/commissions/commission-chips";
 import { Historial } from "@/components/historial/historial";
 import { SaleModal } from "@/components/shared/sale-modal";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { assignCommissionPerson, voidCommission } from "@/lib/actions/commissions";
 import { editCommission } from "@/lib/actions/commission-edit";
 import { canEditCommission } from "@/lib/commissions/edit";
@@ -43,7 +44,7 @@ export interface CommissionDrawerProps {
   timeZone: string;
   /** Id de persona → nombre, para el historial. */
   names: Record<string, string>;
-  can: { expenses: boolean; sales: boolean; content: boolean; ads: boolean; /** F107: editar a mano (`commissions.edit`). Sin la clave, el cajón es el de siempre. */ edit?: boolean };
+  can: { expenses: boolean; sales: boolean; content: boolean; ads: boolean; /** F107: editar a mano (`commissions.edit`). Sin la clave, el cajón es el de siempre. */ edit?: boolean; /** Papelera: «Eliminar» (`commissions.delete`). */ delete?: boolean };
 }
 
 type DialogKind = "assign" | "void" | "adjust" | "edit" | null;
@@ -74,12 +75,20 @@ export function CommissionDrawer({ detail, extras, members, affiliates = [], rol
   const title = d.kind === "adjustment" ? "Ajuste de comisión" : `Comisión${d.roleName ? ` · ${d.roleName}` : ""}`;
   const person = d.userName ?? (d.userId ? "Una persona" : "Sin persona");
   const editable = !!can.edit && d.kind !== "adjustment" && !d.voidedAt && canEditCommission({ expenseId: d.expense ? "x" : null, voidedAt: d.voidedAt ?? null });
-  const footer = d.canManage || editable ? (
+  const footer = d.canManage || editable || can.delete ? (
     <>
       {editable && <FooterButton onClick={() => setDialog("edit")}>Editar</FooterButton>}
       {d.canManage && actions.assign && <FooterButton onClick={() => setDialog("assign")}>Asignar persona</FooterButton>}
       {d.canManage && <FooterButton onClick={() => setDialog("adjust")}>Crear ajuste</FooterButton>}
       {d.canManage && actions.void && <FooterButton danger onClick={() => setDialog("void")}>Anular</FooterButton>}
+      {can.delete && (
+        <DeleteButton
+          entity="commission"
+          id={d.id}
+          redirectTo={closeDrawerHref(filters)}
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-500/40 px-3 text-sm font-medium text-red-700 hover:bg-red-500/10 dark:text-red-400"
+        />
+      )}
     </>
   ) : undefined;
 
