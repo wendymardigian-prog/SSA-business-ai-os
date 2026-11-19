@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import { Plus, Webhook } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Sheet } from "@/components/ui/sheet";
-import { createWebhookEndpoint } from "@/lib/actions/webhook-endpoints";
+import { createWebhookEndpoint, setWebhookEndpointStatus } from "@/lib/actions/webhook-endpoints";
 import type { EndpointListItem } from "@/lib/webhooks/action-types";
 import { StatusChip } from "./status-chip";
+import { ClickableTr } from "@/components/ui/clickable-row";
+import { InlineSelect } from "@/components/ui/inline-select";
 
 /**
  * Integraciones › Webhooks entrantes: todos los endpoints del negocio.
@@ -68,17 +70,27 @@ export function WebhooksScreen({ endpoints, canEdit, timeZone }: { endpoints: En
                 </thead>
                 <tbody>
                   {endpoints.map((e) => (
-                    <tr key={e.id} className="border-b border-border last:border-0 hover:bg-accent/40">
+                    <ClickableTr key={e.id} href={canEdit ? `/dashboard/settings/integrations/webhooks/${e.id}` : null} className="border-b border-border last:border-0 hover:bg-accent/40">
                       <td className="px-4 py-3">
-                        {canEdit ? (
-                          <Link href={`/dashboard/settings/integrations/webhooks/${e.id}`} className="font-medium hover:underline">{e.name}</Link>
-                        ) : (
-                          <span className="font-medium">{e.name}</span>
-                        )}
+                        <span className="font-medium">{e.name}</span>
                         {e.description && <p className="mt-0.5 max-w-xs truncate text-xs text-muted-foreground">{e.description}</p>}
                       </td>
                       <td className="px-4 py-3">
-                        {e.status === "paused" ? <StatusChip label="Pausado" tone="neutral" /> : e.listening ? <StatusChip label="Escuchando" tone="warning" /> : <StatusChip label="Activo" tone="success" />}
+                        <InlineSelect
+                          label="Pausar o activar el webhook"
+                          value={e.status === "paused" ? "paused" : "active"}
+                          display={e.status === "paused" ? <StatusChip label="Pausado" tone="neutral" /> : e.listening ? <StatusChip label="Escuchando" tone="warning" /> : <StatusChip label="Activo" tone="success" />}
+                          canEdit={canEdit}
+                          width={180}
+                          options={[
+                            { value: "active", label: "Activo" },
+                            { value: "paused", label: "Pausado" },
+                          ]}
+                          onSelect={async (v) => {
+                            const res = await setWebhookEndpointStatus(e.id, v);
+                            return res.ok ? { ok: true } : { ok: false, error: res.error };
+                          }}
+                        />
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">{e.received7d}</td>
                       <td className="px-4 py-3 text-muted-foreground">{e.lastReceivedAt ? new Date(e.lastReceivedAt).toLocaleString("es", { dateStyle: "short", timeStyle: "short", timeZone }) : "Nunca"}</td>
@@ -96,7 +108,7 @@ export function WebhooksScreen({ endpoints, canEdit, timeZone }: { endpoints: En
                           </ul>
                         )}
                       </td>
-                    </tr>
+                    </ClickableTr>
                   ))}
                 </tbody>
               </table>

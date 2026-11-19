@@ -34,6 +34,7 @@ import {
 import { statusLabel } from "@/lib/calls/status";
 import type { CallAnalysisStatus } from "@/lib/types/database";
 import { CallPortalMenu } from "@/components/services/portal/call-portal-menu"; // @plantilla-quitar(servicios)
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * La lista de llamadas (F12). Que se ve lo decide la base (RLS) y los filtros
@@ -526,17 +527,16 @@ export function CallsList(props: Props) {
                       {rows.map((r) => {
                         const gray = isNonSaleRow({ call_type: r.callType, analysis_status: r.status });
                         return (
-                          <tr key={r.id} className={`hover:bg-muted/30 ${gray ? "opacity-60" : ""}`}>
+                          <ClickableTr key={r.id} href={`/dashboard/llamadas/${r.id}`} className={`hover:bg-muted/30 ${gray ? "opacity-60" : ""}`}>
                             {canSelect && (
                               <td className="px-3 py-2">
                                 <input type="checkbox" aria-label={`Elegir ${r.title}`} checked={selected.includes(r.id)} onChange={() => toggleSelected(r.id)} className="h-4 w-4" />
                               </td>
                             )}
                             <td className="max-w-[260px] px-3 py-2">
-                              <Link href={`/dashboard/llamadas/${r.id}`} className="block rounded outline-offset-2 focus-visible:outline">
-                                <span className="block truncate font-medium">{r.contactName ?? "Sin vincular"}</span>
-                                <span className="block truncate text-xs text-muted-foreground">{r.title}</span>
-                              </Link>
+                              {/* La fila entera abre la llamada; el contacto es texto (docs/tablas.md). */}
+                              <span className="block truncate font-medium">{r.contactName ?? "Sin vincular"}</span>
+                              <span className="block truncate text-xs text-muted-foreground">{r.title}</span>
                             </td>
                             <td className="whitespace-nowrap px-3 py-2">{formatCallDate(r.recordedAt, timeZone)}</td>
                             <td className="whitespace-nowrap px-3 py-2">{formatDuration(r.durationSeconds)}</td>
@@ -570,7 +570,7 @@ export function CallsList(props: Props) {
                               </td>
                             )}
                             {/* @plantilla-hasta(servicios) */}
-                          </tr>
+                          </ClickableTr>
                         );
                       })}
                     </tbody>

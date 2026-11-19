@@ -139,6 +139,7 @@ export default async function ContactsPage({
       grouping={grouping}
       kanban={listing.kanban}
       canEdit={permission.can("contacts.edit")}
+      canAssign={permission.can("contacts.assign")}
       canBroadcast={permission.can("broadcasts.manage")}
       tags={tags}
       filterOptions={filterOptions}

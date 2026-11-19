@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { formatDateTime } from "@/components/contacts/ui";
 import { cn } from "@/lib/utils";
 import { DateFilter, EmptyState, FilterBar, FilterSelect, Pagination, useUrlFilters } from "./filters";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * Pestana Acciones (F28): la vista inversa de Runs. Una fila por accion que el
@@ -113,7 +114,7 @@ export function ActionsTab({ data }: { data: AgentScreenData }) {
               </thead>
               <tbody className="divide-y divide-border">
                 {rows.map((row) => (
-                  <tr key={row.id} className={cn("align-top", row.revertedAt && "opacity-60")}>
+                  <ClickableTr key={row.id} href={row.runId ? `/dashboard/agents/runs/${row.runId}` : null} className={cn("align-top hover:bg-muted/30", row.revertedAt && "opacity-60")}>
                     <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">{formatDateTime(row.performedAt, timeZone)}</td>
                     <td className="px-3 py-2">
                       <p className="font-medium">{row.actionLabel}</p>
@@ -121,10 +122,9 @@ export function ActionsTab({ data }: { data: AgentScreenData }) {
                       {row.revertedAt && <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">Revertida el {formatDateTime(row.revertedAt, timeZone)}</p>}
                     </td>
                     <td className="px-3 py-2">
+                      {/* La fila abre la corrida; el contacto es texto (docs/tablas.md). */}
                       {row.contactId ? (
-                        <Link href={`/dashboard/contacts/${row.contactId}`} className="underline underline-offset-2">
-                          {row.contactName ?? "Contacto sin nombre"}
-                        </Link>
+                        <span>{row.contactName ?? "Contacto sin nombre"}</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -171,7 +171,7 @@ export function ActionsTab({ data }: { data: AgentScreenData }) {
                         </button>
                       )}
                     </td>
-                  </tr>
+                  </ClickableTr>
                 ))}
               </tbody>
             </table>

@@ -2,7 +2,6 @@
 
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Users, XCircle, Play, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,6 +9,7 @@ import { cancelEnrollment, resumeEnrollment } from "@/lib/actions/sequences";
 import { ActionError, formatDateTime } from "@/components/contacts/ui";
 import { enrollmentStatusStyle, isEmailPause, isResumable, pauseGroup, pauseReasonLabel, type PauseGroup } from "@/lib/sequences/labels";
 import type { SequenceEnrollmentStatus } from "@/lib/types/database";
+import { ClickableBox } from "@/components/ui/clickable-row";
 
 export interface EnrollmentRow {
   id: string;
@@ -110,15 +110,11 @@ export function EnrollmentList({
               const working = busy === enrollment.id;
 
               return (
-                <div key={enrollment.id} className="flex items-center gap-4 px-4 py-3">
+                <ClickableBox key={enrollment.id} href={`/dashboard/contacts/${enrollment.contactId}`} className="flex items-center gap-4 px-4 py-3 hover:bg-accent/40">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <Link
-                        href={`/dashboard/contacts/${enrollment.contactId}`}
-                        className="truncate text-sm font-medium hover:text-primary-ink"
-                      >
-                        {enrollment.contactName}
-                      </Link>
+                      {/* La fila es la persona: abre su ficha (docs/tablas.md). El nombre es texto. */}
+                      <span className="truncate text-sm font-medium">{enrollment.contactName}</span>
                       {isEmailPause(enrollment.pausedReason) && (
                         <span className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-900/30 dark:text-red-300">
                           Email
@@ -184,7 +180,7 @@ export function EnrollmentList({
                         )}
                       </button>
                     )}
-                </div>
+                </ClickableBox>
               );
             })}
           </div>

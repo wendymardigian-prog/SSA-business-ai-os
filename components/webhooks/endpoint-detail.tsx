@@ -15,6 +15,7 @@ import { StatusChip } from "./status-chip";
 import { ListenSection } from "./listen-section";
 import { ReprocessConfirm } from "./reprocess-confirm";
 import { reprocessDone } from "@/lib/webhooks/reprocess-copy";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 const STATUS_FILTERS = [
   ["all", "Todos"], ["received", "Recibidos"], ["processed", "Procesados"], ["error", "Con error"],
@@ -182,15 +183,15 @@ export function EndpointDetailScreen({ endpoint, history, filters, timeZone }: {
                   </thead>
                   <tbody>
                     {history.items.map((item) => (
-                      <tr key={item.id} className="border-b border-border last:border-0 hover:bg-accent/40">
+                      <ClickableTr key={item.id} onOpen={() => setDrawerId(item.id)} className="border-b border-border last:border-0 hover:bg-accent/40">
                         <td className="px-4 py-2">
                           <input type="checkbox" aria-label={`Elegir el envío del ${fmt(item.receivedAt, timeZone)}`} checked={selected.has(item.id)} disabled={selected.size >= 100 && !selected.has(item.id)}
                             onChange={(e) => setSelected((prev) => { const next = new Set(prev); if (e.target.checked) next.add(item.id); else next.delete(item.id); return next; })} />
                         </td>
-                        <td className="whitespace-nowrap px-2 py-2"><button type="button" onClick={() => setDrawerId(item.id)} className="text-left hover:underline">{fmt(item.receivedAt, timeZone)}</button></td>
+                        <td className="whitespace-nowrap px-2 py-2">{fmt(item.receivedAt, timeZone)}</td>
                         <td className="px-2 py-2"><StatusChip label={item.chip.label} tone={item.chip.tone} /></td>
                         <td className="max-w-md truncate px-2 py-2 text-muted-foreground">{item.resultText}</td>
-                      </tr>
+                      </ClickableTr>
                     ))}
                   </tbody>
                 </table>

@@ -20,6 +20,8 @@ import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { VariantDialog, emptyVariantForm, type VariantFormValues } from "./variant-dialog";
 import { VariantPriceTab } from "./variant-price-tab";
+import { ClickableBox } from "@/components/ui/clickable-row";
+import { InlineSelect } from "@/components/ui/inline-select";
 
 type VariantTab = "precio" | "historial";
 
@@ -221,26 +223,46 @@ export function ProductDetail({
                 const isSelected = variant.id === selectedId;
                 return (
                   <li key={variant.id}>
-                    <div
+                    {/* La tarjeta entera elige la variante (docs/tablas.md); los íconos de abajo hacen lo suyo. */}
+                    <ClickableBox
+                      onOpen={() => setSelectedId(variant.id)}
+                      aria-current={isSelected ? "true" : undefined}
+                      aria-label={`Ver ${variant.name}`}
                       className={cn(
                         "rounded-lg border p-3 transition-colors",
                         isSelected ? "border-primary-edge bg-primary/5" : "border-border hover:bg-accent/40",
                         row.archived && "opacity-60",
                       )}
                     >
-                      <button type="button" onClick={() => setSelectedId(variant.id)} className="block w-full text-left" aria-pressed={isSelected}>
+                      <div className="block w-full text-left">
                         <span className="flex items-center justify-between gap-2">
                           <span className="truncate text-sm font-medium">{variant.name}</span>
                           <span className={cn("shrink-0 text-sm font-semibold", !row.sellable && "text-amber-700 dark:text-amber-300")}>{row.priceLabel}</span>
                         </span>
                         <span className="mt-1 block text-xs text-muted-foreground">
-                          {[row.missingEventDate ? null : row.timing, row.billing, row.archived ? "Archivada" : null].filter(Boolean).join(" · ")}
+                          {[row.missingEventDate ? null : row.timing, row.billing].filter(Boolean).join(" · ")}
                         </span>
                         {row.missingEventDate && (
                           <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">Falta la fecha del evento: editala para cargarla.</span>
                         )}
-                      </button>
-                      <div className="mt-2 flex gap-1">
+                      </div>
+                      <div className="mt-2 flex items-center gap-1">
+                        <InlineSelect
+                          label={`Activar o archivar ${variant.name}`}
+                          value={row.archived ? "archived" : "active"}
+                          display={<span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", row.archived ? "bg-muted text-muted-foreground" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400")}>{row.archived ? "Archivada" : "Activa"}</span>}
+                          canEdit={!pending}
+                          width={180}
+                          className="mr-1"
+                          options={[
+                            { value: "active", label: "Activa" },
+                            { value: "archived", label: "Archivada", onPick: !row.archived && archiveLeavesProductUnsellable(product.variants, variant.id) ? () => setConfirmArchive(variant.id) : undefined },
+                          ]}
+                          onSelect={async (v) => {
+                            const res = v === "archived" ? await archiveVariant(variant.id) : await restoreVariant(variant.id);
+                            return res.ok ? { ok: true } : { ok: false, error: res.error };
+                          }}
+                        />
                         <button
                           type="button"
                           onClick={() => setVariantForm(formFrom(variant, product.type))}
@@ -281,7 +303,7 @@ export function ProductDetail({
                         )}
                         {pending && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />}
                       </div>
-                    </div>
+                    </ClickableBox>
                   </li>
                 );
               })}

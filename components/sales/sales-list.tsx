@@ -308,6 +308,7 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
                   rowKey={(r) => r.id}
                   state={state}
                   caption="Ventas"
+                  rowHref={(r) => `/dashboard/ventas/${r.id}`}
                   totals={totalCells(data.totals)}
                   sort={data.sortFallback ? null : filters.sort}
                   onSortChange={(key) => {
@@ -379,8 +380,9 @@ const DATE_LINK = "underline-offset-2 hover:underline";
 /** Las celdas de cada columna de BAIOS y de cada módulo. El orden, la visibilidad y los anchos no se deciden acá. */
 function buildColumns(moduleColumns: ModuleColumn[]): DataColumn<SalesListRowView>[] {
   const cells: Record<string, Pick<DataColumn<SalesListRowView>, "render" | "align" | "cellClassName" | "sortable">> = {
-    date: { sortable: true, render: (r) => <Link href={`/dashboard/ventas/${r.id}`} className={DATE_LINK}>{formatDate(r.saleDate)}</Link> },
-    contact: { render: (r) => <Link href={`/dashboard/contacts/${r.contactId}`} className={`font-medium ${DATE_LINK}`}>{r.contactName}</Link> },
+    // La fila entera abre la venta (`rowHref`); el contacto es texto: en una tabla nunca es un link (docs/tablas.md).
+    date: { sortable: true, render: (r) => formatDate(r.saleDate) },
+    contact: { render: (r) => <span className="font-medium">{r.contactName}</span> },
     product: { render: (r) => r.productName },
     variant: { render: (r) => r.variantName ?? "—", cellClassName: "text-muted-foreground" },
     amount: { align: "right", sortable: true, render: (r) => formatMoney(r.finalAmount) },

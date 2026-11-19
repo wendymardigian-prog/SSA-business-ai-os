@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { feePreviewText } from "@/lib/sales/fee-preview";
 import type { PaymentMethodConfig } from "@/lib/sales/payment-methods-config";
 import { EMPTY_DRAFT, draftFromMethod, feeSummary, methodsPayload, parseDecimal, parseDraft, togglePayload, type MethodDraft } from "@/lib/sales/payment-methods-form";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * Los métodos de pago del negocio (Ajustes > General > Ventas): nombre, comisión del procesador y
@@ -95,7 +96,14 @@ export function PaymentMethodsCard({
           </thead>
           <tbody>
             {methods.map((m) => (
-              <tr key={m.key} className="border-t border-border">
+              <ClickableTr
+                key={m.key}
+                onOpen={() => {
+                  setFormError(null);
+                  setDraft(draftFromMethod(m));
+                }}
+                className="border-t border-border hover:bg-accent/30"
+              >
                 <td className="px-3 py-2 font-medium">{m.name}</td>
                 <td className="px-3 py-2 tabular-nums text-muted-foreground">{feeSummary(m)}</td>
                 <td className="px-3 py-2">
@@ -114,7 +122,7 @@ export function PaymentMethodsCard({
                     <Pencil className="h-3.5 w-3.5" aria-hidden />
                   </button>
                 </td>
-              </tr>
+              </ClickableTr>
             ))}
           </tbody>
         </table>

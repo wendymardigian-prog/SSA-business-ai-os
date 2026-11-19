@@ -21,6 +21,8 @@ import { DeleteButton } from "@/components/trash/delete-dialog";
 import { VariantDialog, emptyVariantForm, type VariantFormValues } from "@/components/catalog/variant-dialog";
 import { formFrom } from "@/components/catalog/product-detail";
 import { cn } from "@/lib/utils";
+import { ClickableTr } from "@/components/ui/clickable-row";
+import { InlineSelect } from "@/components/ui/inline-select";
 
 /** La variante en la forma que pide el diálogo de siempre. */
 export function asCatalogVariant(v: ServiceVariant): CatalogVariant {
@@ -133,6 +135,7 @@ export function ServiceProductPage({ product, userNames, timeZone, linksCard, ca
                       <th className="px-4 py-2 font-medium">Camino</th>
                       <th className="px-4 py-2 font-medium">Portal</th>
                       <th className="px-4 py-2 font-medium">Activos</th>
+                      <th className="w-32 px-4 py-2 font-medium">Estado</th>
                       <th className="px-4 py-2" aria-label="Acciones" />
                     </tr>
                   </thead>
@@ -140,18 +143,32 @@ export function ServiceProductPage({ product, userNames, timeZone, linksCard, ca
                     {rows.map((r) => {
                       const v = product.variants.find((x) => x.id === r.id)!;
                       return (
-                        <tr key={r.id} className={cn("border-t border-border", r.archived && "opacity-60")}>
+                        <ClickableTr key={r.id} href={r.href} className={cn("border-t border-border hover:bg-accent/30", r.archived && "opacity-60")}>
                           <td className="px-4 py-2.5">
-                            <Link href={r.href} className="font-medium text-foreground hover:underline">
-                              {r.name}
-                            </Link>
-                            {r.archived && <span className="ml-2 text-xs text-muted-foreground">Archivada</span>}
+                            <span className="font-medium text-foreground">{r.name}</span>
                           </td>
                           <td className="px-4 py-2.5">{r.priceLabel}</td>
                           <td className="px-4 py-2.5 text-muted-foreground">{r.modeLabel}</td>
                           <td className={cn("px-4 py-2.5", r.journeyMissing ? "font-medium text-warn" : "text-muted-foreground")}>{r.journeyLabel}</td>
                           <td className="px-4 py-2.5 text-muted-foreground">{r.portalLabel}</td>
                           <td className="px-4 py-2.5 text-muted-foreground">{r.activeServices}</td>
+                          <td className="whitespace-nowrap px-4 py-2.5">
+                            <InlineSelect
+                              label={`Activar o archivar ${r.name}`}
+                              value={r.archived ? "archived" : "active"}
+                              display={<span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", r.archived ? "bg-muted text-muted-foreground" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400")}>{r.archived ? "Archivada" : "Activa"}</span>}
+                              canEdit={!pending}
+                              width={180}
+                              options={[
+                                { value: "active", label: "Activa" },
+                                { value: "archived", label: "Archivada", onPick: !r.archived && liveCount <= 1 ? () => setConfirmArchive(r.id) : undefined },
+                              ]}
+                              onSelect={async (v) => {
+                                const res = v === "archived" ? await archiveVariant(r.id) : await restoreVariant(r.id);
+                                return res.ok ? { ok: true } : { ok: false, error: res.error ?? "No se pudo guardar" };
+                              }}
+                            />
+                          </td>
                           <td className="px-4 py-2.5">
                             <div className="flex justify-end gap-1">
                               <button type="button" onClick={() => setVariantForm(formFrom(asCatalogVariant(v), product.type))} aria-label={`Editar ${r.name}`} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
@@ -177,7 +194,7 @@ export function ServiceProductPage({ product, userNames, timeZone, linksCard, ca
                               )}
                             </div>
                           </td>
-                        </tr>
+                        </ClickableTr>
                       );
                     })}
                   </tbody>

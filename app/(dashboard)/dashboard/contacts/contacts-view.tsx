@@ -15,7 +15,11 @@ import {
   formatRelative,
   ActionError,
 } from "@/components/contacts/ui";
-import { bulkAddTag, createContact } from "@/lib/actions/contacts";
+import { assignContact, bulkAddTag, createContact } from "@/lib/actions/contacts";
+import { setContactStatus } from "@/lib/actions/contact-status";
+import { setContactQualification } from "@/lib/actions/contact-qualification";
+import { ClickableTr } from "@/components/ui/clickable-row";
+import { InlineSelect, type InlineSelectResult } from "@/components/ui/inline-select";
 import { loadContactColumnCells } from "@/lib/actions/contacts-columns";
 import { createBroadcast } from "@/lib/actions/broadcasts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -47,8 +51,8 @@ import {
   type KanbanColumn,
   type KanbanGrouping,
 } from "@/lib/contacts/kanban";
-import type { ContactStatusSettings } from "@/lib/contacts/statuses";
-import type { QualificationSettings } from "@/lib/contacts/qualification";
+import { activeStatuses, type ContactStatusSettings } from "@/lib/contacts/statuses";
+import { UNQUALIFIED_LABEL, type QualificationSettings } from "@/lib/contacts/qualification";
 import { QualificationBadge } from "@/components/contacts/qualification-badge";
 import { interestLabel, type InterestCatalog } from "@/lib/contacts/interest";
 import { displayCustomValue } from "@/lib/custom-fields";
@@ -123,6 +127,7 @@ export function ContactsView({
   grouping,
   kanban,
   canEdit,
+  canAssign = false,
   customFilter,
   customFields,
   statusSettings,
@@ -151,6 +156,8 @@ export function ContactsView({
   kanban: KanbanColumn[] | null;
   /** Puede cambiar estados (`contacts.edit`): sin esto las tarjetas no se arrastran. */
   canEdit: boolean;
+  /** Puede cambiar setter y vendedor desde la tabla (`contacts.assign`). */
+  canAssign?: boolean;
   customFilter: { slug: string; op: CustomFilterOp; value: string } | null;
   customFields: CustomFieldRef[];
   statusSettings: ContactStatusSettings;
@@ -480,8 +487,9 @@ export function ContactsView({
             </thead>
             <tbody>
               {contacts.map((contact) => (
-                <tr
+                <ClickableTr
                   key={contact.id}
+                  href={`/dashboard/contacts/${contact.id}`}
                   className={cn("border-b border-border transition-colors hover:bg-accent/40", picked.has(contact.id) && "bg-primary/5")}
                 >
                   <td className="w-10 py-3 pl-4 pr-0">
@@ -504,9 +512,12 @@ export function ContactsView({
                       interestCatalog={interestCatalog}
                       customField={col.key.startsWith("cf:") ? customById.get(col.key.slice(3)) : undefined}
                       related={related[contact.id]}
+                      members={members}
+                      canEdit={canEdit}
+                      canAssign={canAssign}
                     />
                   ))}
-                </tr>
+                </ClickableTr>
               ))}
             </tbody>
           </table>
@@ -611,6 +622,9 @@ function TableCell({
   interestCatalog,
   customField,
   related,
+  members,
+  canEdit,
+  canAssign,
 }: {
   col: ContactColumnDef;
   contact: ContactRow;
@@ -621,6 +635,9 @@ function TableCell({
   qualificationSettings: QualificationSettings;
   interestCatalog: InterestCatalog;
   customField?: CustomFieldRef;
+  members: { userId: string; label: string }[];
+  canEdit: boolean;
+  canAssign: boolean;
 }) {
   const timeZone = useViewerTimezone();
   const muted = "px-4 py-3 text-sm text-muted-foreground";
@@ -628,15 +645,14 @@ function TableCell({
     case "name":
       return (
         <td className="px-4 py-3">
-          <Link href={`/dashboard/contacts/${contact.id}`} className="block">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">{contact.displayName ?? "Sin nombre"}</span>
-              <TemperatureBadge value={contact.temperature} />
-              {contact.doNotContact && <DoNotContactBadge />}
-              {contact.isCustomer && <MarkBadge mark="customer" />}
-              {contact.isKnown && <MarkBadge mark="known" />}
-            </span>
-          </Link>
+          {/* La fila entera abre la ficha (docs/tablas.md): el nombre es texto. */}
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium">{contact.displayName ?? "Sin nombre"}</span>
+            <TemperatureBadge value={contact.temperature} />
+            {contact.doNotContact && <DoNotContactBadge />}
+            {contact.isCustomer && <MarkBadge mark="customer" />}
+            {contact.isKnown && <MarkBadge mark="known" />}
+          </span>
         </td>
       );
     case "status":
@@ -652,11 +668,17 @@ function TableCell({
     case "qualification":
       return (
         <td className="px-4 py-3">
-          {contact.qualificationLevel ? (
-            <QualificationBadge settings={qualificationSettings} level={contact.qualificationLevel} />
-          ) : (
-            <span className="text-sm text-muted-foreground">—</span>
-          )}
+          <InlineSelect
+            label="Cambiar el nivel de calificación"
+            value={contact.qualificationLevel ? String(contact.qualificationLevel) : "none"}
+            display={contact.qualificationLevel ? <QualificationBadge settings={qualificationSettings} level={contact.qualificationLevel} /> : <span className="text-sm text-muted-foreground">—</span>}
+            canEdit={canEdit}
+            options={[
+              ...qualificationSettings.levels.map((l) => ({ value: String(l.level), label: `${l.level} · ${l.name}`, render: <QualificationBadge settings={qualificationSettings} level={l.level} /> })),
+              { value: "none", label: UNQUALIFIED_LABEL, separatorBefore: true },
+            ]}
+            onSelect={async (v) => toInlineResult(await setContactQualification(contact.id, v === "none" ? null : Number(v)))}
+          />
         </td>
       );
     case "setter_status":
@@ -665,23 +687,44 @@ function TableCell({
       const status = role === "setter" ? contact.setterStatus : contact.closerStatus;
       return (
         <td className="px-4 py-3">
-          {status ? <LastStatusBadge settings={statusSettings} role={role} status={status} compact /> : <span className="text-sm text-muted-foreground">—</span>}
+          <InlineSelect
+            label={role === "setter" ? "Cambiar el estado del setter" : "Cambiar el estado del vendedor"}
+            value={status ?? "none"}
+            display={status ? <LastStatusBadge settings={statusSettings} role={role} status={status} compact /> : <span className="text-sm text-muted-foreground">—</span>}
+            canEdit={canEdit}
+            options={[
+              ...activeStatuses(statusSettings[role]).map((s) => ({ value: s.key, label: s.name, render: <LastStatusBadge settings={statusSettings} role={role} status={s.key} compact /> })),
+              { value: "none", label: "Sin estado", separatorBefore: true },
+            ]}
+            onSelect={async (v) => toInlineResult(await setContactStatus(contact.id, role, v === "none" ? null : v))}
+          />
         </td>
       );
     }
     case "contact":
       return (
-        <td className="px-4 py-3">
-          <Link href={`/dashboard/contacts/${contact.id}`} className="block text-sm">
-            <span className="block text-muted-foreground">{contact.email ?? "—"}</span>
-            {contact.phone && <span className="block text-xs text-muted-foreground/70">{contact.phone}</span>}
-          </Link>
+        <td className="px-4 py-3 text-sm">
+          <span className="block text-muted-foreground">{contact.email ?? "—"}</span>
+          {contact.phone && <span className="block text-xs text-muted-foreground/70">{contact.phone}</span>}
         </td>
       );
     case "setter":
-      return <td className={muted}>{contact.setterId ? (memberLabel.get(contact.setterId) ?? "—") : "—"}</td>;
-    case "vendedor":
-      return <td className={muted}>{contact.vendedorId ? (memberLabel.get(contact.vendedorId) ?? "—") : "—"}</td>;
+    case "vendedor": {
+      const field = col.key === "setter" ? "setter_id" : "vendedor_id";
+      const current = col.key === "setter" ? contact.setterId : contact.vendedorId;
+      return (
+        <td className={muted}>
+          <InlineSelect
+            label={col.key === "setter" ? "Cambiar el setter" : "Cambiar el vendedor"}
+            value={current ?? "none"}
+            display={current ? (memberLabel.get(current) ?? "—") : "—"}
+            canEdit={canAssign}
+            options={[...members.map((m) => ({ value: m.userId, label: m.label })), { value: "none", label: "Sin asignar", separatorBefore: true }]}
+            onSelect={async (v) => toInlineResult(await assignContact(contact.id, { [field]: v === "none" ? null : v }))}
+          />
+        </td>
+      );
+    }
     case "product":
       return <td className={cn(muted, "max-w-48 truncate")}>{interestLabel(interestCatalog, contact.interestProductId, contact.interestVariantId)}</td>;
     case "email_status":
@@ -997,4 +1040,9 @@ function BulkTagBar({
       />
     </div>
   );
+}
+
+/** Lo que devuelven las acciones de contactos, en el formato del desplegable de la tabla. */
+function toInlineResult(result: { ok: true } | { ok: false; error: string }): InlineSelectResult {
+  return result.ok ? { ok: true } : { ok: false, error: result.error };
 }

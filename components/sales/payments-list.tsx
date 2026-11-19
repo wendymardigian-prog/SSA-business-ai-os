@@ -11,7 +11,8 @@ import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
 import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
 import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 import { ViewsMenu } from "@/components/ui/data-table/views-menu";
-import { MarkPaidDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
+import { MarkPaidDialog, ReasonDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
+import { InlineSelect } from "@/components/ui/inline-select";
 import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
 import { BulkDeleteButton } from "@/components/trash/bulk-delete-button";
 import { DeleteButton } from "@/components/trash/delete-dialog";
@@ -75,12 +76,14 @@ function formatDate(date: string | null): string {
   return new Intl.DateTimeFormat("es-AR", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 
+type PaymentRowAction = "paid" | "reschedule" | "uncollectible" | "revert";
+
 /** La pantalla de Pagos (F33). Qué se ve lo decide la base (RLS); los filtros viven en la URL. */
 export function PaymentsList({ data }: { data: PaymentsListData }) {
   const { rows, total, page, pageSize, filters, totals } = data;
   const router = useRouter();
   const pathname = usePathname();
-  const [action, setAction] = useState<{ kind: "paid" | "reschedule"; row: PaymentListRowView } | null>(null);
+  const [action, setAction] = useState<{ kind: PaymentRowAction; row: PaymentListRowView } | null>(null);
   const active = countActivePaymentFilters(filters);
   const pages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -250,6 +253,7 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
               rowKey={(r) => r.id}
               state={state}
               caption="Pagos"
+              rowHref={(r) => `/dashboard/ventas/${r.saleId}`}
               totals={totalCells(totals)}
               selection={canDelete ? { selected, onChange: setPicked, rowLabel: (r) => `Elegir el pago de ${r.contactName}` } : undefined}
             />
@@ -311,6 +315,7 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
 
       {action?.kind === "paid" && payable && <MarkPaidDialog saleId={action.row.saleId} payment={payable} saleDate={action.row.saleDate} today={data.today} enabledMethods={data.enabledMethods} methods={data.methods} onClose={() => setAction(null)} />}
       {action?.kind === "reschedule" && payable && <RescheduleDialog payment={payable} onClose={() => setAction(null)} />}
+      {(action?.kind === "uncollectible" || action?.kind === "revert") && payable && <ReasonDialog payment={payable} kind={action.kind} onClose={() => setAction(null)} />}
     </div>
   );
 }
@@ -333,18 +338,30 @@ function FooterTotal({ label, value, tone }: { label: string; value: string; ton
   );
 }
 
-const LINK = "underline-offset-2 hover:underline";
 
 /** Las celdas de cada columna. El orden, la visibilidad y los anchos no se deciden acá. */
-function buildColumns(setAction: Dispatch<SetStateAction<{ kind: "paid" | "reschedule"; row: PaymentListRowView } | null>>, canDelete: boolean): DataColumn<PaymentListRowView>[] {
+function buildColumns(setAction: Dispatch<SetStateAction<{ kind: PaymentRowAction; row: PaymentListRowView } | null>>, canDelete: boolean): DataColumn<PaymentListRowView>[] {
   const money = (value: number | null) => (value === null ? "—" : formatMoney(value));
   const cells: Record<string, Pick<DataColumn<PaymentListRowView>, "render" | "align" | "cellClassName">> = {
     due: { render: (r) => formatDate(r.dueDate) },
-    contact: { render: (r) => (r.contactId ? <Link href={`/dashboard/contacts/${r.contactId}`} className={`font-medium ${LINK}`}>{r.contactName}</Link> : r.contactName) },
-    product: { render: (r) => <Link href={`/dashboard/ventas/${r.saleId}`} className={LINK} title="Ver la venta">{r.product}</Link> },
+    // La fila entera abre la venta (`rowHref`); el contacto es texto: en una tabla nunca es un link (docs/tablas.md).
+    contact: { render: (r) => <span className="font-medium">{r.contactName}</span> },
+    product: { render: (r) => r.product },
     variant: { render: (r) => r.variant ?? "—", cellClassName: "text-muted-foreground" },
     amount: { align: "right", render: (r) => formatMoney(r.amount) },
-    status: { render: (r) => <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusClasses(r.status)}`}>{r.statusLabel}</span> },
+    // El estado se cambia desde la tabla: cada opción abre el diálogo de siempre (pide fecha, método o motivo).
+    status: {
+      render: (r) => (
+        <InlineSelect
+          label="Cambiar el estado del pago"
+          value={null}
+          display={<span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusClasses(r.status)}`}>{r.statusLabel}</span>}
+          canEdit={r.statusMenu.length > 0}
+          width={220}
+          options={r.statusMenu.map((o) => ({ value: o.action, label: o.label, onPick: () => setAction({ kind: o.action, row: r }) }))}
+        />
+      ),
+    },
     delay: { render: (r) => <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${DELAY_TONE_CLASSES[r.delay.tone]}`}>{r.delay.label}</span> },
     method: { render: (r) => r.method ?? "—" },
     paidOn: { render: (r) => formatDate(r.paidOn) },

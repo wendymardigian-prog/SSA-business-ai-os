@@ -4,6 +4,7 @@
  * persona. Los totales se calculan en céntimos y coinciden con la suma de las filas.
  */
 import { addDays, isDateOnly } from "@/lib/shared/dates";
+import { paymentStatusMenu, type PaymentStatusMenuOption } from "./payment-status-menu";
 import { delayChip, type DelayChip } from "./delay";
 import { fromCents, toCents } from "@/lib/shared/money";
 import { paymentMethodName, type PaymentMethodDef } from "./payment-methods";
@@ -165,6 +166,8 @@ export interface PaymentListRow {
   fee: number | null;
   net: number | null;
   canAct: { markPaid: boolean; reschedule: boolean };
+  /** Lo que ofrece el Estado de la tabla (cada opción abre su diálogo). Vacío = el estado se ve, no se cambia. */
+  statusMenu: PaymentStatusMenuOption[];
 }
 
 export function paymentListRow(p: PaymentListInput, canManage: boolean, catalog?: readonly PaymentMethodDef[] | null): PaymentListRow {
@@ -185,6 +188,7 @@ export function paymentListRow(p: PaymentListInput, canManage: boolean, catalog?
     fee: hasFee ? fromCents(feeCents) : null,
     net: hasFee ? fromCents(toCents(p.amount) - feeCents) : null,
     canAct: { markPaid: canManage && open && p.type !== "refund", reschedule: canManage && open && p.type !== "refund" },
+    statusMenu: paymentStatusMenu({ status: p.status, isRefund: p.type === "refund" }, canManage),
   };
 }
 

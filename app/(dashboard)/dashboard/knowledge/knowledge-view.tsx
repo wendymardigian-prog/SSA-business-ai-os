@@ -42,6 +42,7 @@ import {
 } from "@/lib/knowledge/validate";
 import type { KnowledgeStatus } from "@/lib/types/database";
 import { PageHeader } from "@/components/page-header";
+import { ClickableBox } from "@/components/ui/clickable-row";
 
 export interface KnowledgeDocument {
   id: string;
@@ -537,7 +538,7 @@ function DocumentRow({
   const linkHost = isLink && document.sourceUrl ? safeHost(document.sourceUrl) : null;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <ClickableBox href={`/dashboard/knowledge/${document.id}`} className="rounded-xl border border-border bg-card p-5 hover:bg-accent/30">
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
           {isLink ? (
@@ -549,12 +550,7 @@ function DocumentRow({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/dashboard/knowledge/${document.id}`}
-              className="font-medium transition-colors hover:text-primary-ink"
-            >
-              {document.title}
-            </Link>
+            <span className="font-medium">{document.title}</span>
             <StatusBadge status={document.status} />
           </div>
 
@@ -631,7 +627,7 @@ function DocumentRow({
           </IconButton>
         </div>
       </div>
-    </div>
+    </ClickableBox>
   );
 }
 

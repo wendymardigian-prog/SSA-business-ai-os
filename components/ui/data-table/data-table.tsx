@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { columnWidth, resetColumnWidth, setColumnWidth, visibleColumns, type ColumnMeta } from "@/lib/ui/data-table/prefs";
 import { selectionState, toggleAllVisible, toggleRow } from "@/lib/ui/data-table/selection";
 import { splitPinned, stickyOffsets } from "@/lib/ui/data-table/sticky";
+import { ClickableTr } from "@/components/ui/clickable-row";
 import { ariaSort, type TableSort } from "@/lib/ui/data-table/sort";
 import { ResizeHandle } from "./resize-handle";
 import type { TablePrefsState } from "./use-table-prefs";
@@ -58,6 +59,9 @@ export function DataTable<Row>({
   className = "",
   caption,
   selection,
+  rowHref,
+  onRowClick,
+  beforeRowNavigate,
   sort,
   onSortChange,
 }: {
@@ -73,6 +77,12 @@ export function DataTable<Row>({
   caption?: string;
   /** Casillas para elegir filas. Sin esto, la tabla es exactamente la de siempre. */
   selection?: DataTableSelection<Row>;
+  /** La dirección que abre la fila entera (Cmd/Ctrl + clic: otra pestaña). Sin esto ni `onRowClick`, la fila no se abre. */
+  rowHref?: (row: Row) => string | null;
+  /** Lo que hace un clic en la fila cuando no es una dirección (abrir un diálogo). Gana sobre `rowHref`. */
+  onRowClick?: (row: Row) => void;
+  /** Antes de navegar a `rowHref` (recordar la fila que abrió un modal por URL, para devolverle el foco). */
+  beforeRowNavigate?: (element: HTMLElement) => void;
   /** El orden actual (lo decide la pantalla: en la consulta, en la URL…). */
   sort?: TableSort | null;
   /** Clic en el título de una columna `sortable`. Sin esto, ningún título se ordena y la tabla es la de siempre. */
@@ -158,7 +168,7 @@ export function DataTable<Row>({
         </thead>
         <tbody className="divide-y divide-border">
           {rows.map((row) => (
-            <tr key={rowKey(row)} className="group hover:bg-muted/30">
+            <BodyRow key={rowKey(row)} href={rowHref?.(row) ?? null} onOpen={onRowClick ? () => onRowClick(row) : undefined} beforeNavigate={beforeRowNavigate}>
               {selection && (
                 <td className={`px-3 py-2 ${pinned.length > 0 ? "sticky left-0 z-[1] bg-card group-hover:bg-muted" : ""}`} onClick={(e) => e.stopPropagation()}>
                   <input
@@ -179,7 +189,7 @@ export function DataTable<Row>({
                   {column.render(row)}
                 </td>
               ))}
-            </tr>
+            </BodyRow>
           ))}
         </tbody>
         {hasTotals && (
@@ -200,6 +210,15 @@ export function DataTable<Row>({
         )}
       </table>
     </div>
+  );
+}
+
+/** Una fila del cuerpo: con `href` u `onOpen`, toda la fila abre el registro (ver `useRowOpen`). */
+function BodyRow({ href, onOpen, beforeNavigate, children }: { href: string | null; onOpen?: () => void; beforeNavigate?: (element: HTMLElement) => void; children: ReactNode }) {
+  return (
+    <ClickableTr href={href} onOpen={onOpen} beforeNavigate={beforeNavigate} className="group hover:bg-muted/30">
+      {children}
+    </ClickableTr>
   );
 }
 

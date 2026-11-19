@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Download, Loader2 } from "lucide-react";
 import { Notice } from "@/components/agents/fields";
@@ -10,6 +9,7 @@ import { exportEodReportsCsv } from "@/lib/actions/eod/export";
 import { metricCell, metricColumns, periodTotals, reportStatusLabel, REPORTS_PAGE_SIZE } from "@/lib/eod/reports";
 import type { ReportsPageData } from "@/lib/eod/reports-load";
 import { cn } from "@/lib/utils";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * La pestaña Reportes de un EOD (E9): filtros en la URL, totales del período, quién falta
@@ -209,12 +209,8 @@ export function ReportsView({
             </thead>
             <tbody>
               {visible.map((row) => (
-                <tr key={row.id} className="border-t border-border hover:bg-accent/40">
-                  <td className="px-3 py-2">
-                    <Link href={`/dashboard/formularios/${data.form.id}/reportes/${row.id}`} className="font-medium hover:underline">
-                      {row.userName}
-                    </Link>
-                  </td>
+                <ClickableTr key={row.id} href={`/dashboard/formularios/${data.form.id}/reportes/${row.id}`} className="border-t border-border hover:bg-accent/40">
+                  <td className="px-3 py-2 font-medium">{row.userName}</td>
                   <td className="px-3 py-2 tabular-nums">{row.reportDate}</td>
                   <td className="px-3 py-2">{reportStatusLabel(row)}</td>
                   <td className="px-3 py-2 tabular-nums text-muted-foreground">{time(row.submittedAt)}</td>
@@ -231,7 +227,7 @@ export function ReportsView({
                       <DeleteButton entity="eod_report" id={row.id} variant="icon" label="Eliminar reporte" />
                     </td>
                   )}
-                </tr>
+                </ClickableTr>
               ))}
             </tbody>
           </table>

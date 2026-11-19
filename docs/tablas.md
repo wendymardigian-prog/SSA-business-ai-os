@@ -20,6 +20,15 @@ Estrenado en **Ventas** (`/dashboard/ventas`) y **Pagos** (`/dashboard/ventas/pa
 
 En el servidor, la página llama a `loadTableViews(ctx, tableKey, searchParams)` y, si la URL llegó pelada, parsea sus filtros con `resolved.inheritedFilters` (los de la vista predeterminada). Todo link de la pantalla preserva `?vista=` (`withViewParam`).
 
+## Clic en la fila y editar en la tabla (18/11/2026)
+
+- **La fila entera abre el registro**, no solo la primera columna. En `DataTable`: `rowHref={(row) => "/ruta"}` (o `onRowClick` para abrir un diálogo; `beforeRowNavigate` para recordar la fila que abre un modal por URL). En una tabla a mano: `<ClickableTr href=… | onOpen=…>` en vez de `<tr>`; para una fila o tarjeta que no es de tabla, `<ClickableBox>`. Todo sale de `useRowOpen` (`components/ui/clickable-row.tsx`) y la regla pura `rowClickIntent` (`lib/ui/row-click.ts`).
+- **Qué no abre la fila**: lo que es un control adentro (links a otra cosa, botones, casillas, selects, menús; `ROW_INTERACTIVE_SELECTOR`), seleccionar texto y los clics que vienen de un portal. **Cmd/Ctrl/Shift + clic o el botón del medio** abren `href` en otra pestaña. Con el teclado, Tab llega a la fila y Enter la abre.
+- **El contacto nunca es un link en una tabla**: es texto. Donde la fila ES la persona (Contactos, Clientes, Inscriptos de una secuencia, Afiliados), la ficha es el destino de la fila. `lib/ui/no-contact-link-in-tables.test.ts` lo controla.
+- **Editar en la tabla**: `InlineSelect` (`components/ui/inline-select.tsx`) sobre `PortalMenu`. Recibe `display` (el chip de siempre), `options`, `canEdit` (sin permiso, solo el valor) y `onSelect` (la acción del servidor; refresca al terminar y muestra el motivo si falla). Una opción con `onPick` no guarda: abre lo que pide más datos (el cobro de un pago, el motivo de incobrable, la confirmación de pausar).
+- **Hoy se editan en la tabla**: Contactos (estado del setter y del vendedor, setter, vendedor y calificación), el estado de un pago (cada opción abre su diálogo; regla pura `paymentStatusMenu`), variantes (activa/archivada), webhooks y gastos recurrentes (activo/pausado), respuestas de formularios (spam). Agenda ya tenía su Estado y Tareas edita cada celda.
+- **No se ofrece un desplegable** para un estado que calcula el sistema (venta, cola de envíos, ejecuciones) ni para uno que pide un dato que el desplegable no tiene (fase de un servicio, pagar un gasto).
+
 ## Cómo funcionan las vistas
 
 - **Qué guarda una vista**: `{ v: 1, columns: { order, hidden, shown, pinned, widths }, filters }`. Las columnas se guardan como **diferencia con lo normal**: una columna nueva aparece sola. Los filtros son el texto de la URL, sin la página ni la búsqueda.

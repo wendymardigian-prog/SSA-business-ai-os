@@ -1,5 +1,6 @@
 import type { GroupRow } from "@/lib/dashboards/content";
 import { sumTotals } from "@/lib/dashboards/content";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * La tabla de rendimiento agrupado (F105): por pieza, oferta, pilar, etapa del
@@ -60,9 +61,10 @@ export function GroupTable({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr
+            <ClickableTr
               key={row.key}
-              className={`border-b border-border last:border-0 ${selectedKey === row.key ? "bg-accent/40" : ""}`}
+              onOpen={onSelect ? () => onSelect(row) : undefined}
+              className={`border-b border-border last:border-0 hover:bg-muted/30 ${selectedKey === row.key ? "bg-accent/40" : ""}`}
             >
               <th scope="row" className="p-2 text-left font-normal">
                 {onSelect ? (
@@ -86,7 +88,7 @@ export function GroupTable({
               <td className="p-2 text-right tabular-nums">{percent(row.avgEngagement)}</td>
               <td className="p-2 text-right tabular-nums">{percent(row.avgEngagementD7)}</td>
               <td className="p-2 text-right tabular-nums">{fmt(row.leads)}</td>
-            </tr>
+            </ClickableTr>
           ))}
         </tbody>
         <tfoot>
