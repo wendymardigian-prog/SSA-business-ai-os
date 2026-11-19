@@ -2584,7 +2584,7 @@ El modelo de datos y la arquitectura se disenan pensando en todas las etapas, au
 
 # IA: topes por tarea, aprendizaje, asistente y Conocimiento (18/11/2026, traído de RER)
 
-Rama `feat/ia-aprendizaje-asistente`. Migraciones `00440` a `00444`, **sin aplicar**: van ANTES de desplegar, en orden.
+Rama `feat/ia-aprendizaje-asistente` (PR #268). Migraciones `00440` a `00444`, aditivas: **aplicadas y registradas el 18/11/2026** (versiones `20261119040506`, `…510`, `…514`, `…517` y `…522`, UTC), antes de desplegar el código y después de ensayarlas juntas contra producción en una transacción que se deshizo sola. La 00444 dejó un «Asistente del equipo» APAGADO en cada negocio. **La próxima libre de esta tanda es la `00445`** (confirmar con `list_migrations` y las ramas locales).
 
 ## Lo que no se puede romper
 
