@@ -41,3 +41,12 @@ export async function readBytesCapped(request: Request, maxBytes: number): Promi
   }
   return { ok: true, bytes };
 }
+
+/**
+ * El cuerpo como texto, con tope ANTES de leerlo entero: `null` si pasa de `maxBytes`. Para las rutas públicas que
+ * antes hacían `await request.text()` y medían después (un pedido enorme sin firma ya estaba en memoria).
+ */
+export async function readTextCapped(request: Request, maxBytes: number): Promise<string | null> {
+  const read = await readBytesCapped(request, maxBytes);
+  return read.ok ? new TextDecoder().decode(read.bytes) : null;
+}

@@ -9,9 +9,11 @@ import {
   mediaPath,
   pathBelongsToWorkspace,
   removalPlan,
+  sniffMime,
   validateMedia,
   type MediaEntry,
 } from "@/lib/content/media";
+import { readStoredHead } from "@/lib/content/stored-head";
 import { ensureMediaIds, removeFileFromNetworks } from "@/lib/content/media-library";
 import { parseNewMediaEntry } from "@/lib/content/networks-schema";
 import type { NetworkEntry } from "@/lib/content/redistribution";
@@ -135,6 +137,16 @@ export async function attachMedia(input: {
 
   const parsed = parseNewMediaEntry(input);
   if (!parsed.ok) return parsed;
+
+  // La subida fue directo al bucket: el servidor solo vio la cabecera que mandó el navegador al pedir el permiso. Acá
+  // se mira lo que de verdad quedó guardado; si no es el tipo que se declara, se borra y no entra en la pieza.
+  const storage = await createServiceClient();
+  const head = await readStoredHead(storage, "content-media", input.path);
+  if (!head) return { ok: false, error: "No pude revisar el archivo subido. Probá de nuevo." };
+  if (sniffMime(head) !== input.mime) {
+    await storage.storage.from("content-media").remove([input.path]).catch(() => null);
+    return { ok: false, error: "El archivo subido no es del tipo que dice ser. Volvé a subirlo." };
+  }
 
   const { data: post } = await supabase
     .from("content_posts")

@@ -2185,6 +2185,33 @@ Auditoria completa en cuatro lotes (PRs #171 dependencias, #168 Altas, #172 Medi
 - DNS rebinding en `safeFetch` (fijar la IP validada con undici).
 - No hay CSP de scripts (solo `frame-ancestors`).
 
+# Auditoria de seguridad (19/11/2026)
+
+Segunda pasada (superficie publica, migraciones 00317 a 00461 y el codigo sumado desde el 7/11). Nada critico; un alto (Drive), cuatro medios y bajos. Migraciones `00500` (portal y grabaciones) y `00501` (afiliados y servicios). La `00500` va **ANTES** de desplegar el codigo (invitar al portal llama a `portal_admin_invite_issue`). En `main` la `00462` y la `00490` son de otras sesiones: **la proxima libre es la `00502`** (confirmar con `list_migrations` y las ramas locales).
+
+## Lo que no se puede romper
+
+- **El token de Google Drive que va al navegador trae SOLO `drive.file`**: Drive autoriza sin `include_granted_scopes` (`googleAuthorizeUrl({ includeGrantedScopes: false })`) y `getDrivePickerConfig` no entrega el token si `granted_scopes` trae algo mas (`driveScopesAreNarrow`). Con el mismo cliente OAuth que YouTube y Calendar, ese token arrastraba esos permisos. Una conexion vieja pide reconectar.
+- **El token de invitacion al portal lo pide solo el servidor** (`portal_admin_invite_issue`, solo `service_role`, con quien invita en el historial). La app mira `portal.accounts` y `can_view_as_student` con la sesion antes. `portal_admin_invite` y `program_live_recordings` ya no se llaman con la sesion.
+- **Un intento fallido que tiene que contar se DEVUELVE, no se lanza**: un RAISE deshace tambien el `bump_rate_limit`. `portal_login_password` responde `{ok:false, code:'PO401'}` como `portal_login_verify`.
+- **Lo que hace una funcion SECURITY DEFINER con el cliente de servicio tiene que validar igual los ids que recibe** (el `IF auth.uid() IS NOT NULL` saltea todo): `affiliate_set_sale` exige que el afiliado sea del negocio de la venta, y `previous_service_id` del mismo negocio (trigger).
+- **Toda SECURITY DEFINER nueva revoca el EXECUTE de PUBLIC**: `lib/migrations-definer-revoke.test.ts` lo exige desde la 00317 (tambien entiende los bucles `DO $$ ... EXECUTE format('REVOKE ...')`). El `ALTER DEFAULT PRIVILEGES IN SCHEMA app_servicio` no alcanza.
+- **Las rutas publicas leen el cuerpo con tope ANTES de la firma** (`readTextCapped`, `lib/http/read-capped.ts`): webhooks, `/api/portal/*` y la agenda publica. Un webhook responde igual a "cuenta desconocida" y a "firma mala" (401) y nada se busca antes de verificar la firma.
+- **Lo que responde una ruta del portal ante un error de la base** pasa por `portalDenied`: solo los codigos propios del modulo.
+- **El email de un codigo de acceso sale en `after()`**: la respuesta tarda lo mismo exista o no la cuenta.
+- **Una accion de la bandeja juzga con los permisos del negocio ACTIVO solo chats de ese negocio** (`conversation.workspace_id === access.workspace.id`): borrar para todos, reacciones, la marca de respuesta y los borradores.
+- **Los valores que se pegan en un mensaje de Slack se escapan** (`slackSafeVariables`); la plantilla del equipo conserva sus menciones.
+- **Lo que se sube directo al bucket de Contenido se vuelve a mirar** (`readStoredHead` + `sniffMime`) antes de anotarlo en la pieza; si no es lo que dice ser, se borra.
+- **La Papelera respeta el alcance** de contactos y tareas (lo leia con el cliente de servicio sin filtrar).
+- **`constantTimeEquals` compara HMAC** de los dos valores: no filtra el largo del secreto.
+- **HSTS y Permissions-Policy** en todas las rutas (`lib/security-headers.ts`); el microfono queda para el propio sitio (grabador de notas de voz).
+
+## Pendiente
+- Restringir la API key de Google por referrer (viaja al navegador para el selector de Drive) y reconectar Google Drive despues del deploy.
+- La Papelera de ventas y agendas (`trash_plan`, SQL) todavia no mira `can_see_sale` / `can_see_booking`; solo afecta a un rol con `<x>.delete` y alcance acotado.
+- El HTML de las lecciones del portal (`html_content`) se guarda sin limpiar: el portal lo tiene que pintar en un iframe aislado.
+- Los topes por IP dejan pasar si la base falla (decision a proposito); se reevalua con el CSP.
+
 # Diseñador IA (construido, 8/11/2026)
 
 Diseñar piezas visuales con IA o a mano (carruseles, historias, presentaciones, PDF, certificados, páginas web), publicarlas con un link `/d/<código>` o exportarlas, y generar piezas desde **plantillas** (a mano, para varios o desde una automatización), conectado con Contenido. En el código es `designer` / `design_*` y `/dashboard/disenos`; en lo visible, **Diseñador IA**. Resumen en [docs/designer.md](docs/designer.md); avance, pruebas y auditorías en `docs/PROGRESS-designer.md`; decisiones en `docs/PENDIENTE-designer.md`; contratos en `docs/designer/contratos.md`; el servicio de render en Railway, en `docs/designer/puesta-en-marcha.md`.

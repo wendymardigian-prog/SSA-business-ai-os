@@ -22,6 +22,7 @@ import { constantTimeEquals } from "@/lib/crypto";
 import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import { claimWebhookEvent } from "@/lib/inbound";
 import { fromPostproxyEvent, settlePublication } from "@/lib/publishing/inbound";
+import { readTextCapped } from "@/lib/http/read-capped";
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,7 +34,9 @@ export async function POST(request: NextRequest) {
 }
 
 async function handle(request: NextRequest) {
-  const body = await request.text();
+  // Tope antes de leerlo entero (y antes de la firma): un pedido enorme sin firma no llega a memoria.
+  const body = await readTextCapped(request, 1_000_000);
+  if (body === null) return NextResponse.json({ error: "Pedido demasiado grande" }, { status: 413 });
 
   let payload: unknown;
   try {

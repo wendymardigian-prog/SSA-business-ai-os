@@ -37,7 +37,13 @@ const NO_REPLY: DraftActionResult = { ok: false, code: "unknown", error: "Tu rol
 async function canReplyToDraft(supabase: Awaited<ReturnType<typeof createClient>>, draftId: string): Promise<boolean> {
   const access = await getMemberAction();
   if (!access) return false;
-  const { data } = await supabase.from("agent_drafts").select("channel_id").eq("id", draftId).maybeSingle();
+  const { data } = await supabase
+    .from("agent_drafts")
+    .select("channel_id")
+    .eq("id", draftId)
+    // Los permisos de `access` son del negocio ACTIVO: un chat de otro negocio de la misma persona no se juzga con ellos.
+    .eq("workspace_id", access.workspace.id)
+    .maybeSingle();
   return canReplyChannel(access.permissions, (data as { channel_id?: string | null } | null)?.channel_id ?? null);
 }
 
@@ -162,6 +168,8 @@ export async function requestSuggestionAction(conversationId: string): Promise<D
     channels?: { platform?: string } | null;
   } | null;
   if (!conversation || conversation.deleted_at) return { ok: false, code: "not_found", error: "No encontré esa conversación." };
+  // Los permisos de `access` son del negocio ACTIVO: un chat de otro negocio de la misma persona no se juzga con ellos.
+  if (conversation.workspace_id !== access.workspace.id) return { ok: false, code: "not_found", error: "No encontré esa conversación." };
   if (!canReplyChannel(access.permissions, conversation.channel_id)) return NO_REPLY;
   const service = await createServiceClient();
   const result = await requestSuggestion({ service, conversation });

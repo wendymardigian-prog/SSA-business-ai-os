@@ -8,6 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifyPortalRequest } from "@/lib/portal-admin/portal-signature";
 import { askPortalTutor } from "@/lib/portal-tutor/answer";
+import { readTextCapped } from "@/lib/http/read-capped";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,8 +16,8 @@ export const maxDuration = 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request: NextRequest) {
-  const body = await request.text();
-  if (body.length > 10_000) return NextResponse.json({ ok: false }, { status: 413 });
+  const body = await readTextCapped(request, 10_000);
+  if (body === null) return NextResponse.json({ ok: false }, { status: 413 });
   const okSig = verifyPortalRequest({
     secret: process.env.PORTAL_SHARED_SECRET,
     timestamp: request.headers.get("x-portal-timestamp"),

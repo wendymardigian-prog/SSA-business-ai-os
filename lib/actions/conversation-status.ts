@@ -138,6 +138,8 @@ export async function setConversationNoReply(
     .from("conversations")
     .select("id, channel_id, awaiting_last_inbound_at, no_reply_needed_at")
     .eq("id", conversationId)
+    // Los permisos de `access` son del negocio ACTIVO: un chat de otro negocio de la misma persona no se juzga con ellos.
+    .eq("workspace_id", access.workspace.id)
     .is("deleted_at", null)
     .maybeSingle();
   if (readError || !conversation) return { ok: false, error: "No encontré esa conversación." };

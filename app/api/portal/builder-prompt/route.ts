@@ -10,6 +10,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { svcRpc } from "@/lib/services/db";
 import { verifyPortalRequest } from "@/lib/portal-admin/portal-signature";
 import { buildPrompt, type PromptParts } from "@/lib/projects/prompt";
+import { readTextCapped } from "@/lib/http/read-capped";
+import { portalDenied } from "@/lib/portal-admin/denied";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +19,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z0-9_]{1,40}$/;
 
 export async function POST(request: NextRequest) {
-  const body = await request.text();
-  if (body.length > 2000) return NextResponse.json({ ok: false }, { status: 413 });
+  const body = await readTextCapped(request, 2000);
+  if (body === null) return NextResponse.json({ ok: false }, { status: 413 });
   const okSig = verifyPortalRequest({
     secret: process.env.PORTAL_SHARED_SECRET,
     timestamp: request.headers.get("x-portal-timestamp"),
@@ -40,7 +42,7 @@ export async function POST(request: NextRequest) {
 
   const service = await createServiceClient();
   const parts = await svcRpc<PromptParts>(service, "portal_builder_prompt_parts", { p_session: input.session, p_project_id: input.project_id, p_step: input.step, p_unit: unit });
-  if (!parts.ok) return NextResponse.json({ ok: false, code: parts.error.code, message: parts.error.message }, { status: 403 });
+  if (!parts.ok) return NextResponse.json(portalDenied(parts.error), { status: 403 });
 
   // Los textos: cada ruta es de la carpeta de ESTE proyecto (lo garantiza la base al guardar la versión).
   const paths = [...parts.data.documents.map((d) => d.version?.path), parts.data.requirements?.path].filter((p): p is string => typeof p === "string");

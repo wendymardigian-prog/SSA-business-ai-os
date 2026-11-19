@@ -8,13 +8,15 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { svcRpc } from "@/lib/services/db";
 import { verifyPortalRequest } from "@/lib/portal-admin/portal-signature";
+import { readTextCapped } from "@/lib/http/read-capped";
+import { portalDenied } from "@/lib/portal-admin/denied";
 
 export const dynamic = "force-dynamic";
 const TTL_SECONDS = 300;
 
 export async function POST(request: NextRequest) {
-  const body = await request.text();
-  if (body.length > 2000) return NextResponse.json({ ok: false }, { status: 413 });
+  const body = await readTextCapped(request, 2000);
+  if (body === null) return NextResponse.json({ ok: false }, { status: 413 });
   const okSig = verifyPortalRequest({
     secret: process.env.PORTAL_SHARED_SECRET,
     timestamp: request.headers.get("x-portal-timestamp"),
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
     p_item_id: typeof input.item_id === "string" ? input.item_id : null,
     p_ref: typeof input.ref === "string" ? input.ref : null,
   });
-  if (!grant.ok) return NextResponse.json({ ok: false, code: grant.error.code, message: grant.error.message }, { status: 403 });
+  if (!grant.ok) return NextResponse.json(portalDenied(grant.error), { status: 403 });
   const { bucket, path, upload } = grant.data;
   if (upload) {
     const { data, error } = await service.storage.from(bucket).createSignedUploadUrl(path);

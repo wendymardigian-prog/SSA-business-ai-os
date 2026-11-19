@@ -16,13 +16,17 @@ vi.mock("@/lib/agent/drafts/actions", () => actions);
 vi.mock("@/lib/agent/drafts/queue-query", () => ({ draftOwner: vi.fn(), loadLiveDraft: vi.fn() }));
 vi.mock("@/lib/workspace", () => ({ getWorkspace: vi.fn() }));
 vi.mock("@/lib/auth/guards", () => ({
-  getMemberAction: async () => ({ permissions: { channels: bandeja.channels } }),
+  getMemberAction: async () => ({ workspace: { id: "ws-1" }, permissions: { channels: bandeja.channels } }),
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createServiceClient: async () => ({}),
   createClient: async () => ({
     auth: { getUser: async () => ({ data: { user: { id: "u-1" } } }) },
-    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { channel_id: draftChannel.id } }) }) }) }),
+    from: () => {
+      // El borrador se busca filtrando por el negocio de la sesión (eq id + eq workspace_id).
+      const chain = { eq: () => chain, maybeSingle: async () => ({ data: { channel_id: draftChannel.id } }) };
+      return { select: () => chain };
+    },
   }),
 }));
 
