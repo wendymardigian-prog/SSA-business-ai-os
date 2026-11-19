@@ -11,6 +11,10 @@ export type Json =
 export type { Platform };
 
 export type FlowStatus = "draft" | "published" | "archived";
+/** Cola de WhatsApp de las automatizaciones (00420). */
+export type SendQueueStatus = "scheduled" | "queued" | "sending" | "sent" | "failed" | "overdue" | "expired" | "discarded";
+export type SendQueuePriority = "urgent" | "normal" | "bulk";
+export type SendQueueTargetKind = "conversation" | "group" | "number";
 export type ConversationStatus = "open" | "closed" | "snoozed";
 export type MessageDirection = "inbound" | "outbound";
 export type MessageStatus = "pending" | "sent" | "delivered" | "failed";
@@ -527,6 +531,15 @@ export type AuditAction =
   /** La Papelera (00410): se eliminó un registro con su foto, o se restauró. */
   | "trash.deleted"
   | "trash.restored"
+  /** Cola de WhatsApp (00420): pausar, reanudar, vaciar, lo masivo, el calentamiento y los ajustes de la cola. */
+  | "send_queue.paused"
+  | "send_queue.resumed"
+  | "send_queue.bulk_paused"
+  | "send_queue.bulk_resumed"
+  | "send_queue.emptied"
+  | "send_queue.warmup"
+  | "send_queue.settings"
+  | "send_queue.schedule_applied"
   /** La guardia de entrega (00287): el freno automatico pauso el marketing; una persona lo reanudo; cambio el tope. */
   | "email_marketing.paused"
   | "email_marketing.resumed"
@@ -1261,6 +1274,10 @@ export interface Database {
           id: string;
           name: string;
           slug: string;
+          /** Tope de WhatsApp automáticos por contacto y día (00420). null = apagado. */
+          send_contact_caps?: Json | null;
+          /** Alerta de un número que deja de entregar (00420). null = 30 minutos. */
+          send_lane_alert?: Json | null;
           ai_api_key: string | null;
           ai_provider: string;
           global_keywords: Json | null;
@@ -1391,6 +1408,8 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
+          send_contact_caps?: Json | null;
+          send_lane_alert?: Json | null;
           /** Roles de comision (00231): { roles: [...] }. */ // @plantilla-quitar(comisiones)
           commission_settings?: Json; // @plantilla-quitar(comisiones)
           /** Atribución orgánica (00230): comentarios que crean contactos, días de herencia y valores por defecto de los links. */
@@ -3264,6 +3283,10 @@ export interface Database {
           consecutive_failures: number;
           paused_at: string | null;
           paused_reason: string | null;
+          /** Lo masivo de la cola de WhatsApp pausado (00420). */
+          bulk_paused_at: string | null;
+          /** Desde cuándo podía mandar, tenía pendientes y no entregó ninguno (00420). */
+          undelivered_since: string | null;
           updated_at: string;
         };
         Insert: {
@@ -3273,6 +3296,8 @@ export interface Database {
           consecutive_failures?: number;
           paused_at?: string | null;
           paused_reason?: string | null;
+          bulk_paused_at?: string | null;
+          undelivered_since?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -3280,6 +3305,92 @@ export interface Database {
           consecutive_failures?: number;
           paused_at?: string | null;
           paused_reason?: string | null;
+          bulk_paused_at?: string | null;
+          undelivered_since?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      /** Cola de WhatsApp de las automatizaciones (00420). Lee quien tiene `channels.manage`; escribe solo el servidor. */
+      send_queue_items: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          channel_id: string;
+          flow_id: string | null;
+          flow_session_id: string | null;
+          node_id: string | null;
+          target_kind: SendQueueTargetKind;
+          conversation_id: string | null;
+          whatsapp_group_id: string | null;
+          to_number: string | null;
+          payload: Json;
+          preview: string | null;
+          client_label: string | null;
+          priority: SendQueuePriority;
+          status: SendQueueStatus;
+          reason_code: string | null;
+          reason: string | null;
+          anchor_at: string | null;
+          schedule: Json | null;
+          scheduled_for: string;
+          expires_at: string | null;
+          attempts: number;
+          next_attempt_at: string | null;
+          claimed_at: string | null;
+          error_kind: "transport" | "rejected" | null;
+          sent_at: string | null;
+          platform_message_id: string | null;
+          dedupe_key: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          channel_id: string;
+          flow_id?: string | null;
+          flow_session_id?: string | null;
+          node_id?: string | null;
+          target_kind: SendQueueTargetKind;
+          conversation_id?: string | null;
+          whatsapp_group_id?: string | null;
+          to_number?: string | null;
+          payload?: Json;
+          preview?: string | null;
+          client_label?: string | null;
+          priority?: SendQueuePriority;
+          status?: SendQueueStatus;
+          reason_code?: string | null;
+          reason?: string | null;
+          anchor_at?: string | null;
+          schedule?: Json | null;
+          scheduled_for?: string;
+          expires_at?: string | null;
+          attempts?: number;
+          next_attempt_at?: string | null;
+          claimed_at?: string | null;
+          error_kind?: "transport" | "rejected" | null;
+          sent_at?: string | null;
+          platform_message_id?: string | null;
+          dedupe_key: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: SendQueueStatus;
+          priority?: SendQueuePriority;
+          reason_code?: string | null;
+          reason?: string | null;
+          schedule?: Json | null;
+          scheduled_for?: string;
+          expires_at?: string | null;
+          attempts?: number;
+          next_attempt_at?: string | null;
+          claimed_at?: string | null;
+          error_kind?: "transport" | "rejected" | null;
+          sent_at?: string | null;
+          platform_message_id?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -8115,6 +8226,45 @@ export interface Database {
       change_event_type_host: {
         Args: { p_workspace_id: string; p_event_type_id: string; p_expected_host_id: string; p_new_host_id: string };
         Returns: Json;
+      };
+      /** Cola de WhatsApp (00420): el turno del carril con un reloj dado. Solo service_role. */
+      claim_lane_slot_at: {
+        Args: { p_channel_id: string; p_now: string; p_next: string };
+        Returns: boolean;
+      };
+      /** Cola de WhatsApp (00420): el próximo envío listo de un número, por prioridad. Solo service_role. */
+      claim_send_queue_item: {
+        Args: { p_channel_id: string; p_now: string; p_priorities: string[] };
+        Returns: Database["public"]["Tables"]["send_queue_items"]["Row"][];
+      };
+      release_scheduled_send_queue_items: {
+        Args: { p_now: string };
+        Returns: number;
+      };
+      expire_send_queue_items: {
+        Args: { p_now: string };
+        Returns: number;
+      };
+      /** El cupo usado de un número: TODO lo que sale por él (00420). Solo service_role. */
+      send_lane_counts: {
+        Args: { p_channel_id: string; p_day_start: string; p_now: string };
+        Returns: { last_minute: number; last_hour: number; today: number }[];
+      };
+      empty_send_queue: {
+        Args: { p_workspace_id: string; p_channel_id: string; p_reason: string };
+        Returns: number;
+      };
+      send_contact_day_count: {
+        Args: {
+          p_workspace_id: string;
+          p_contact_id: string | null;
+          p_group_id: string | null;
+          p_phone: string | null;
+          p_day_start: string;
+          p_urgent_counts: boolean;
+          p_exclude: string | null;
+        };
+        Returns: number;
       };
       claim_lane_slot: {
         Args: { p_channel_id: string; p_next: string };
