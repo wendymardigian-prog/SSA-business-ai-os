@@ -29,22 +29,66 @@ import { createNotification } from "@/lib/notifications/create";
 
 type Db = SupabaseClient<Database>;
 
-/** Los topes del workspace. Los del agente no llevan aviso previo: tienen su propia pantalla. */
-type WorkspaceScope = "workspace_daily" | "workspace_monthly";
+/**
+ * Los topes con aviso previo: los del negocio, los del agente y, desde el
+ * bloque 24, el mensual de cada tarea.
+ */
+export type ApproachScope = "workspace_daily" | "workspace_monthly" | "agent_daily" | "agent_monthly" | "task_monthly";
+
+/**
+ * P-79 (respuesta prevista): sin porcentaje guardado, los topes del agente y
+ * de las tareas avisan al 80 %. Los del negocio siguen como estaban (sin valor
+ * guardado, sin aviso): es lo que eligió quien los configuró.
+ */
+export const DEFAULT_CAP_ALERT_PCT = 80;
 
 export interface SpendApproach {
-  scope: WorkspaceScope;
+  scope: ApproachScope;
   limitUsd: number;
   spentUsd: number;
   pct: number;
   /** Cuando empezo el periodo del tope (medianoche local o dia 1): la clave de "una vez por periodo". */
   periodStart: Date;
+  /** El agente del tope (solo agent_*). */
+  agentId?: string | null;
+  /** La tarea del tope (solo task_monthly). */
+  task?: string | null;
+  /** El nombre de la tarea o del agente, para el aviso. */
+  label?: string | null;
 }
 
-const SCOPE_LABEL: Record<WorkspaceScope, string> = {
-  workspace_daily: "diario",
-  workspace_monthly: "mensual",
+const SCOPE_LABEL: Record<ApproachScope, string> = {
+  workspace_daily: "diario del negocio",
+  workspace_monthly: "mensual del negocio",
+  agent_daily: "diario del agente",
+  agent_monthly: "mensual del agente",
+  task_monthly: "mensual de la tarea",
 };
+
+function isApproachScope(scope: string): scope is ApproachScope {
+  return scope in SCOPE_LABEL;
+}
+
+/** El porcentaje con el que avisa un tope: el guardado, o el 80 % en agentes y tareas. */
+export function alertPctFor(scope: ApproachScope, saved: number | null | undefined): number | null {
+  const pct = validAlertPct(saved);
+  if (pct !== null) return pct;
+  return scope.startsWith("workspace_") ? null : DEFAULT_CAP_ALERT_PCT;
+}
+
+/** La clave de "una vez por tope y periodo" en `notifications.metadata`. */
+export function approachKey(item: Pick<SpendApproach, "scope" | "periodStart" | "agentId" | "task">): Record<string, string> {
+  const key: Record<string, string> = { scope: item.scope, period_start: item.periodStart.toISOString() };
+  if (item.agentId) key.agent_id = item.agentId;
+  if (item.task) key.task = item.task;
+  return key;
+}
+
+/** El titulo del aviso, con el nombre de la tarea o del agente cuando lo hay. */
+export function approachTitle(item: Pick<SpendApproach, "scope" | "pct" | "label">): string {
+  const who = item.label ? ` «${item.label}»` : "";
+  return `El gasto de IA va por el ${item.pct} % del tope ${SCOPE_LABEL[item.scope]}${who}`;
+}
 
 /** Un porcentaje valido es un entero de 1 a 99: con 100 ya es el tope, y sin valor no hay aviso. */
 export function validAlertPct(value: number | null | undefined): number | null {
@@ -57,19 +101,27 @@ export function validAlertPct(value: number | null | undefined): number | null {
  * no llegaron al tope (llegar es otra cosa: ahi corta o avisa, segun elija).
  */
 export function approachingThresholds(
-  entries: Array<{ scope: string; limitUsd: number | null; spentUsd: number; since: Date }>,
+  entries: Array<{ scope: string; limitUsd: number | null; spentUsd: number; since: Date; agentId?: string | null; task?: string | null; label?: string | null }>,
   alertPct: number | null | undefined,
 ): SpendApproach[] {
-  const pct = validAlertPct(alertPct);
-  if (pct === null) return [];
-
   const out: SpendApproach[] = [];
   for (const e of entries) {
-    if (e.scope !== "workspace_daily" && e.scope !== "workspace_monthly") continue;
+    if (!isApproachScope(e.scope)) continue;
+    const pct = alertPctFor(e.scope, alertPct);
+    if (pct === null) continue;
     if (e.limitUsd === null || e.limitUsd <= 0) continue;
     const threshold = (e.limitUsd * pct) / 100;
     if (e.spentUsd >= threshold && e.spentUsd < e.limitUsd) {
-      out.push({ scope: e.scope, limitUsd: e.limitUsd, spentUsd: e.spentUsd, pct, periodStart: e.since });
+      out.push({
+        scope: e.scope,
+        limitUsd: e.limitUsd,
+        spentUsd: e.spentUsd,
+        pct,
+        periodStart: e.since,
+        agentId: e.scope.startsWith("agent_") ? (e.agentId ?? null) : null,
+        task: e.scope === "task_monthly" ? (e.task ?? null) : null,
+        label: e.label ?? null,
+      });
     }
   }
   return out;
@@ -82,13 +134,13 @@ export async function notifySpendApproaching(
 ): Promise<void> {
   for (const item of args.approaching) {
     try {
-      const periodStart = item.periodStart.toISOString();
+      const key = approachKey(item);
       const { data, error } = await supabase
         .from("notifications")
         .select("id")
         .eq("workspace_id", args.workspaceId)
         .eq("type", "ai_spend_threshold")
-        .contains("metadata", { scope: item.scope, period_start: periodStart })
+        .contains("metadata", key)
         .limit(1);
 
       // Si no se puede revisar, se avisa igual: un aviso repetido molesta
@@ -99,9 +151,9 @@ export async function notifySpendApproaching(
         supabase,
         workspaceId: args.workspaceId,
         type: "ai_spend_threshold",
-        title: `El gasto de IA va por el ${item.pct} % del tope ${SCOPE_LABEL[item.scope]}`,
+        title: approachTitle(item),
         body: `Gastado: USD ${item.spentUsd.toFixed(2)} de USD ${item.limitUsd.toFixed(2)} (estimado según los precios cargados). Podés ajustar los topes en Agentes.`,
-        metadata: { scope: item.scope, period_start: periodStart, pct: item.pct },
+        metadata: { ...key, pct: item.pct },
       });
     } catch (err) {
       console.error("[ai-spend] no pude registrar el aviso previo:", err instanceof Error ? err.message : String(err));

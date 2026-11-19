@@ -392,6 +392,15 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     audience: ADMINS,
     defaults: BELL,
   },
+  {
+    key: "ai_learning",
+    section: "ia",
+    label: "Propuestas y reglas de la IA",
+    description: "Un agente dejó algo para aprobar, o los rechazos repetidos sugieren una regla nueva para su prompt.",
+    types: ["ai_proposal_pending", "ai_rule_proposed"],
+    audience: { kind: "admins", permissions: ["agents.edit"] },
+    defaults: BELL,
+  },
   // ── Canales e integraciones ───────────────────────────────────────────
   {
     key: "channel_status",

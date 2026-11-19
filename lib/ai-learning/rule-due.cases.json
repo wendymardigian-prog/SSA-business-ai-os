@@ -1,0 +1,10 @@
+[
+  { "name": "tres rechazos del mismo motivo en la ventana: se propone", "rejectionsDaysAgo": [1, 2, 3], "lastDecisionDaysAgo": null, "open": false, "threshold": 3, "due": true },
+  { "name": "dos rechazos con umbral 3: todavía no", "rejectionsDaysAgo": [1, 2], "lastDecisionDaysAgo": null, "open": false, "threshold": 3, "due": false },
+  { "name": "con una propuesta abierta del mismo motivo: no se propone otra", "rejectionsDaysAgo": [1, 2, 3, 4], "lastDecisionDaysAgo": null, "open": true, "threshold": 3, "due": false },
+  { "name": "los rechazos de hace más de 30 días no cuentan", "rejectionsDaysAgo": [1, 40, 45], "lastDecisionDaysAgo": null, "open": false, "threshold": 3, "due": false },
+  { "name": "descartar una propuesta reinicia la cuenta", "rejectionsDaysAgo": [1, 5, 6, 7], "lastDecisionDaysAgo": 4, "open": false, "threshold": 3, "due": false },
+  { "name": "después de la decisión, otros tres rechazos sí", "rejectionsDaysAgo": [1, 2, 3, 9], "lastDecisionDaysAgo": 4, "open": false, "threshold": 3, "due": true },
+  { "name": "el umbral nunca baja de dos", "rejectionsDaysAgo": [1], "lastDecisionDaysAgo": null, "open": false, "threshold": 1, "due": false },
+  { "name": "sin rechazos: nada", "rejectionsDaysAgo": [], "lastDecisionDaysAgo": null, "open": false, "threshold": 2, "due": false }
+]

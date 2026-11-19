@@ -3,6 +3,7 @@ import type { Database } from "@/lib/types/database";
 import { createNotificationOnce } from "@/lib/notifications/create";
 import { notifyIntegrationAttention } from "@/lib/notifications/integration-alerts";
 import { getProvider } from "@/lib/integrations/providers";
+import { recordAiKeyRejected } from "@/lib/ai/key-rejection";
 import type { ProviderAuthFailure } from "./fallback";
 
 /**
@@ -110,6 +111,8 @@ export async function notifyProviderAuthFailure(
     seen.add(failure.provider);
 
     const label = getProvider(failure.provider)?.label ?? failure.provider;
+    // La clave queda «Con error» en Agentes IA y en Integraciones hasta que alguien la vuelva a guardar.
+    await recordAiKeyRejected(supabase, { workspaceId: args.workspaceId, provider: failure.provider, status: failure.status });
     await notifyIntegrationAttention({
       supabase,
       workspaceId: args.workspaceId,

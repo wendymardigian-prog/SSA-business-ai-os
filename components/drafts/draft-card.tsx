@@ -6,6 +6,7 @@ import { AlertTriangle, Ban, Bot, Check, Copy, ExternalLink, Loader2, MessageSqu
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { REJECT_REASONS, REJECT_REASON_LABELS, type RejectReason } from "@/lib/ai-learning/reject-reasons";
 import { discardDraftAction, regenerateDraftAction, sendDraftAction } from "@/lib/actions/agent-drafts";
 import type { DraftActionResult } from "@/lib/agent/drafts/actions";
 import type { DraftQueueRow } from "@/lib/agent/drafts/queue-query";
@@ -45,6 +46,8 @@ function useDraftDecision(draft: DraftQueueRow, onDone: () => void) {
   const [text, setText] = useState(draft.body ?? "");
   const [instruction, setInstruction] = useState("");
   const [reason, setReason] = useState("");
+  // El motivo es de una lista cerrada y opcional; «otro» pide nota (la nota es `reason`). Con motivo, la IA aprende.
+  const [reasonKey, setReasonKey] = useState<RejectReason | "">("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmDnc, setConfirmDnc] = useState(false);
@@ -78,7 +81,9 @@ function useDraftDecision(draft: DraftQueueRow, onDone: () => void) {
   }
   function discard() {
     setError(null);
-    start(async () => finish(await discardDraftAction(draft.id, reason)));
+    // El motivo es opcional (decisión de Wendy); con «Otro», la nota sí hace falta.
+    if (reasonKey === "other" && !reason.trim()) return setError("Con «Otro», escribí una nota con el motivo.");
+    start(async () => finish(await discardDraftAction(draft.id, { reason: reasonKey || null, note: reason.trim() || null })));
   }
   function regenerate() {
     setError(null);
@@ -98,6 +103,8 @@ function useDraftDecision(draft: DraftQueueRow, onDone: () => void) {
     setInstruction,
     reason,
     setReason,
+    reasonKey,
+    setReasonKey,
     error,
     notice,
     pending,
@@ -422,8 +429,25 @@ function Decisions({ draft, decision, inboxHref }: { draft: DraftQueueRow; decis
   if (d.mode === "discarding") {
     return (
       <div className="space-y-1.5">
+        <label htmlFor={`draft-discard-reason-${draft.id}`} className="text-xs font-medium">
+          Por qué lo descartás (opcional: ayuda a que la IA aprenda)
+        </label>
+        <select
+          id={`draft-discard-reason-${draft.id}`}
+          value={d.reasonKey}
+          onChange={(e) => d.setReasonKey(e.target.value as RejectReason | "")}
+          autoFocus
+          className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-ring queue:min-h-0 queue:text-sm"
+        >
+          <option value="">Sin motivo</option>
+          {REJECT_REASONS.map((key) => (
+            <option key={key} value={key}>
+              {REJECT_REASON_LABELS[key]}
+            </option>
+          ))}
+        </select>
         <label htmlFor={`draft-discard-${draft.id}`} className="text-xs font-medium">
-          Por qué lo descartás (opcional)
+          {d.reasonKey === "other" ? "Nota (obligatoria)" : "Nota (opcional)"}
         </label>
         <input
           id={`draft-discard-${draft.id}`}
@@ -436,8 +460,7 @@ function Decisions({ draft, decision, inboxHref }: { draft: DraftQueueRow; decis
             }
             if (e.key === "Escape") d.setMode("idle");
           }}
-          maxLength={300}
-          autoFocus
+          maxLength={500}
           className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-ring queue:min-h-0 queue:text-sm"
         />
         <div className="flex flex-wrap gap-1.5">

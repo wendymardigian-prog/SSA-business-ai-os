@@ -352,6 +352,13 @@ export const MODULES = {
       "components/designer",
       "lib/actions/designer",
       "lib/ai-threads",
+      // El asistente del equipo guarda sus conversaciones en ai_threads / ai_messages, que en esta plantilla salen
+      // con el Diseñador (poda.sql): viaja y se va junto con él.
+      "lib/assistant",
+      "lib/actions/assistant.ts",
+      "components/assistant",
+      "app/api/assistant",
+      `${D}/asistente`,
       "lib/jobs/handlers/designer.ts",
       "lib/flow-engine/nodes/design-generate.ts",
       "lib/flow-engine/nodes/design-generate.test.ts",

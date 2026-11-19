@@ -48,7 +48,17 @@ export interface RunFilters {
    * `masCaras`: el atajo "Más caras" ahora pone `orden=caras` directo.
    */
   orden: RunOrder;
+  /**
+   * : quién la disparó. Vacío = cualquiera; un id de persona; o
+   * `RUN_PERSON_SYSTEM` para las que disparó el sistema (sin persona).
+   */
+  persona?: string;
+  /** : solo las que dejaron al menos una aprobación rechazada (00413). */
+  rechazadas?: boolean;
 }
+
+/** Valor del filtro de persona para las ejecuciones sin persona (las disparó el sistema). */
+export const RUN_PERSON_SYSTEM = "sistema";
 
 export interface RunStepRow {
   id: string;
@@ -89,6 +99,11 @@ export interface RunRow {
   latencyMs: number | null;
   stepCount: number;
   error: string | null;
+  /**  (00413): quién la disparó (null = el sistema) y su nombre para mostrar. */
+  triggeredBy?: string | null;
+  personName?: string | null;
+  /** Dejó al menos una propuesta rechazada o un borrador descartado con motivo. */
+  hasRejectedApproval?: boolean;
   /** Solo Owner/Admin. Un Member recibe null. */
   cost: { usd: number | null; inputTokens: number | null; outputTokens: number | null; cachedTokens: number | null; embeddingTokens: number | null } | null;
   steps: RunStepRow[];
@@ -102,6 +117,8 @@ export interface RunsScreenOptions {
   tools: Array<{ name: string; label: string }>;
   sources: string[];
   rules: Array<{ value: string; label: string }>;
+  /** : las personas del negocio, para el filtro «Persona». */
+  people?: Array<{ id: string; name: string }>;
 }
 
 /**
@@ -299,6 +316,9 @@ export interface AgentScreenData {
     guardrails: Guardrails;
     knowledgeEnabled: boolean;
     knowledgeTags: string[];
+    /** Documentos y carpetas (00443) a los que llega (con las etiquetas: las tres vacías = toda la base). */
+    knowledgeDocumentIds: string[];
+    knowledgeFolderIds: string[];
     knowledgeFallback: "escalate" | "general";
     dailyCostLimitUsd: number | null;
     dailyCostLimitAction: "notify" | "disable";
@@ -313,6 +333,12 @@ export interface AgentScreenData {
     externalReplyCooldownMinutes: number;
     allowedTools: string[];
     toolsConfig: Record<string, unknown>;
+    /** En borrador, las acciones esperan aprobación (00441). */
+    actionsNeedApproval: boolean;
+    /** Ejemplos automáticos y umbral de reglas (00441). */
+    learning: import("@/lib/ai-learning/settings").LearningSettings;
+    /** Cerrar con «Fuente: documento, pág. N» al usar Conocimiento (00443). */
+    citeSources: boolean;
   };
   /** Las herramientas del registro, ya planas para la pestana Herramientas. */
   tools: ScreenTool[];
@@ -320,7 +346,34 @@ export interface AgentScreenData {
   skills: ScreenSkill[];
   /** Opciones que dependen de la base, por nombre de fuente (tags, miembros). */
   toolOptionSources: Record<ToolOptionSource, ToolConfigOption[]>;
-  versions: Array<{ version: number; systemPrompt: string; note: string | null; createdAt: string; authorLabel: string | null }>;
+  versions: Array<{
+    version: number;
+    systemPrompt: string;
+    note: string | null;
+    createdAt: string;
+    authorLabel: string | null;
+    /** Qué cambió (00408): el texto, las reglas aprendidas o una vuelta atrás. */
+    changeKind?: "prompt" | "learned_rules" | "restore";
+    /** Las reglas aprendidas de esa versión. */
+    learnedRules?: Array<{ id: string; text: string }>;
+  }>;
+  /** Reglas aprendidas del agente: propuestas, activas y retiradas. Solo en Configuración y con agents.edit. */
+  learnedRules?: Array<{
+    id: string;
+    reasonKey: string;
+    text: string;
+    status: "proposed" | "active" | "discarded" | "retired";
+    evidence: string[];
+    rejections: number;
+    proposedAt: string;
+    decidedAt: string | null;
+    decidedByLabel: string | null;
+  }>;
+  /** Las herramientas de la capa propia que el asistente puede ofrecer y cuáles están habilitadas. */
+  assistantTools?: {
+    all: Array<{ key: string; label: string; description: string; access: "read" | "write"; permission: string }>;
+    enabled: string[];
+  };
   /** Proveedores de texto con key activa. Lo unico que se puede elegir. */
   providers: Array<{ provider: string; label: string; defaultModel: string; models: string[] }>;
   /** Etiquetas del catalogo para nombrar un proveedor configurado que ya no esta conectado. */
@@ -328,7 +381,9 @@ export interface AgentScreenData {
   /** "proveedor/modelo" con precio cargado en model_pricing. */
   pricedModels: string[];
   channels: Array<{ id: string; label: string; platform: string; handle: string | null; isActive: boolean; takenBy: string | null }>;
-  knowledgeDocs: Array<{ id: string; title: string; tags: string[]; internalOnly: boolean; status: string }>;
+  knowledgeDocs: Array<{ id: string; title: string; tags: string[]; internalOnly: boolean; status: string; folderId?: string | null }>;
+  /** Carpetas vivas de la base (00412, ). */
+  knowledgeFolders?: Array<{ id: string; name: string }>;
   /** Flows publicados con trigger por defecto sin la puerta "solo si el agente esta apagado". */
   flowsCapturingAll: Array<{ id: string; name: string }>;
 }
@@ -360,6 +415,8 @@ export function toScreenAgent(agent: AgentConfig): AgentScreenData["agent"] {
     guardrails: agent.guardrails,
     knowledgeEnabled: agent.knowledgeEnabled,
     knowledgeTags: agent.knowledgeTags,
+    knowledgeDocumentIds: agent.knowledgeDocumentIds,
+    knowledgeFolderIds: agent.knowledgeFolderIds,
     knowledgeFallback: agent.knowledgeFallback,
     dailyCostLimitUsd: agent.dailyCostLimitUsd,
     dailyCostLimitAction: agent.dailyCostLimitAction,
@@ -372,23 +429,39 @@ export function toScreenAgent(agent: AgentConfig): AgentScreenData["agent"] {
     externalReplyCooldownMinutes: agent.externalReplyCooldownMinutes,
     allowedTools: agent.allowedTools,
     toolsConfig: agent.toolsConfig,
+    actionsNeedApproval: agent.actionsNeedApproval,
+    learning: agent.learning,
+    citeSources: agent.citeSources,
   };
 }
 
-/** Cuantos documentos lee el agente con la configuracion actual. Pura. */
+/**
+ * Cuantos documentos lee el agente con la configuracion actual. Pura. Mismo
+ * criterio que `match_knowledge_chunks_scoped` (00443): con etiquetas,
+ * documentos y carpetas vacíos, toda la base; si no, lo que coincida con alguno.
+ * `outsideTags` cuenta lo que queda fuera del alcance (por etiqueta, documento o carpeta).
+ */
 export function countIncludedDocuments(
   docs: AgentScreenData["knowledgeDocs"],
   tags: string[],
+  documentIds: string[] = [],
+  folderIds: string[] = [],
 ): { included: number; internalExcluded: number; outsideTags: number } {
   let included = 0;
   let internalExcluded = 0;
   let outsideTags = 0;
+  const all = tags.length === 0 && documentIds.length === 0 && folderIds.length === 0;
   for (const doc of docs) {
     if (doc.internalOnly) {
       internalExcluded++;
       continue;
     }
-    if (tags.length > 0 && !doc.tags.some((t) => tags.includes(t))) {
+    const inScope =
+      all ||
+      doc.tags.some((t) => tags.includes(t)) ||
+      documentIds.includes(doc.id) ||
+      (doc.folderId != null && folderIds.includes(doc.folderId));
+    if (!inScope) {
       outsideTags++;
       continue;
     }

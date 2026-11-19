@@ -23,6 +23,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { detectMimeType, extractMarkdown, type SupportedMime } from "./extract";
 import { chunkMarkdown } from "./chunk";
+import { pagesForChunks } from "./pages";
 import { generateEmbeddings } from "./embeddings";
 import { toPgVector } from "./voyage";
 import { openAiRun, type AiRunHandle } from "@/lib/ai/run";
@@ -290,6 +291,8 @@ export async function writeChunks(
     throw new Error(`No se pudieron limpiar los fragmentos anteriores: ${deleteError.message}`);
   }
 
+  // : la pagina donde empieza cada trozo (solo los PDF tienen; el resto queda en null).
+  const pages = pagesForChunks(args.chunks.map((chunk) => chunk.content));
   const rows = args.chunks.map((chunk, i) => ({
     workspace_id: args.workspaceId,
     document_id: args.documentId,
@@ -297,6 +300,7 @@ export async function writeChunks(
     content: chunk.content,
     token_estimate: chunk.tokenEstimate,
     embedding: toPgVector(args.embeddings[i]),
+    page: pages[i],
   }));
 
   // De a tandas: un documento grande son cientos de filas con un vector de 1024
@@ -310,8 +314,23 @@ export async function writeChunks(
   }
 }
 
+/**
+ * Retira los fragmentos de un documento: al reemplazarlo, al fallar el
+ * indexado o al quedar pendiente. Un documento sin `ready` no debe conservar
+ * fragmentos de una versión que ya no existe. Nunca lanza: lo deja en el log.
+ */
+export async function retireChunks(supabase: Db, documentId: string): Promise<boolean> {
+  const { error } = await supabase.from("knowledge_chunks").delete().eq("document_id", documentId);
+  if (error) {
+    console.error(`[kb] no pude retirar los fragmentos del documento ${documentId}:`, error.message);
+    return false;
+  }
+  return true;
+}
+
 /** Pendiente de indexar: sin motivo de error (no hay nada roto) y sin fragmentos. */
 async function markPending(supabase: Db, documentId: string): Promise<void> {
+  await retireChunks(supabase, documentId);
   const { error } = await supabase
     .from("knowledge_base")
     .update({ status: "pending", error_detail: null, chunk_count: 0 })
@@ -320,6 +339,7 @@ async function markPending(supabase: Db, documentId: string): Promise<void> {
 }
 
 async function markFailed(supabase: Db, documentId: string, detail: string): Promise<void> {
+  await retireChunks(supabase, documentId);
   const { error } = await supabase
     .from("knowledge_base")
     .update({ status: "error", error_detail: detail, chunk_count: 0 })

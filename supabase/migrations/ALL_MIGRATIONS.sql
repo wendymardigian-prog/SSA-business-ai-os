@@ -86828,3 +86828,830 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION app_servicio.community_post_for_email(uuid) FROM PUBLIC, anon, authenticated, portal_app;
 GRANT EXECUTE ON FUNCTION app_servicio.community_post_for_email(uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 440: AI TASK SPEND CAP
+-- ============================================================
+-- ============================================================================
+-- 00440 — Tope mensual de gasto por tarea de IA (traído de RER: 00411 y 00441)
+-- ============================================================================
+-- Cada tarea de IA (clasificar mensajes, resumir, transcribir, describir
+-- imágenes, analizar anuncios, vincular anuncios y las tres de llamadas) puede
+-- tener su propio tope mensual en USD. Al pasar el porcentaje de aviso (el del
+-- negocio o, sin valor, el 80 %) avisa una vez por la campana; al llegar, la
+-- tarea no llama al modelo hasta el mes siguiente (lib/ai/workspace-budget.ts,
+-- `withinWorkspaceBudget` con `task`). Sin tope guardado, nada cambia.
+--
+-- 1. `workspaces.ai_task_limits` (jsonb, '{}' de serie): por tarea,
+--    `{"monthly_cap_usd": numeric}`. Se escribe solo con `set_ai_task_cap`.
+-- 2. `set_ai_task_cap(workspace, tarea, tope)`: cambia SOLO la clave de esa
+--    tarea, con la fila bloqueada (dos personas guardando a la vez no se
+--    pisan). Devuelve lo que había antes, para la auditoría. Solo service_role:
+--    la Server Action comprueba `ai_limits.manage` antes.
+-- 3. `sum_ai_task_spend(workspace, desde, source, detail_like)`: el gasto de
+--    una tarea desde un instante. En SQL por lo mismo que la 00064: PostgREST
+--    corta en 1.000 filas y un tope que subestima el gasto no protege. Filtra
+--    por `source` y, solo para la clasificación al cierre, por `status_detail`.
+--    Usa el índice (workspace_id, created_at) de la 00059. Solo service_role.
+--
+-- Aditiva e idempotente. Va ANTES de desplegar el código: el chequeo de gasto
+-- de cada tarea lee la columna nueva y, si no existe, no llama al modelo.
+--
+-- Para volver atrás:
+--   DROP FUNCTION IF EXISTS public.sum_ai_task_spend(uuid, timestamptz, text, text);
+--   DROP FUNCTION IF EXISTS public.set_ai_task_cap(uuid, text, numeric);
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS ai_task_limits;
+-- ============================================================================
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS ai_task_limits jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_ai_task_limits_object') THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_ai_task_limits_object
+      CHECK (jsonb_typeof(ai_task_limits) = 'object');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspaces.ai_task_limits IS
+  'Por tarea de IA, {"monthly_cap_usd": numeric}: avisa al 80 % (o el porcentaje del negocio) y frena al llegar. Se escribe con set_ai_task_cap.';
+
+CREATE OR REPLACE FUNCTION public.set_ai_task_cap(
+  p_workspace_id    uuid,
+  p_task            text,
+  p_monthly_cap_usd numeric
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_old jsonb;
+BEGIN
+  IF p_task IS NULL OR p_task !~ '^[a-z_]{3,40}$' THEN
+    RAISE EXCEPTION 'tarea no válida' USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF p_monthly_cap_usd IS NOT NULL AND (p_monthly_cap_usd < 0 OR p_monthly_cap_usd > 100000) THEN
+    RAISE EXCEPTION 'el tope va de 0 a 100000' USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  SELECT ai_task_limits -> p_task INTO v_old
+    FROM public.workspaces WHERE id = p_workspace_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'workspace inexistente' USING ERRCODE = 'no_data_found';
+  END IF;
+
+  UPDATE public.workspaces
+     SET ai_task_limits = CASE
+           WHEN p_monthly_cap_usd IS NULL THEN COALESCE(ai_task_limits, '{}'::jsonb) - p_task
+           ELSE jsonb_set(COALESCE(ai_task_limits, '{}'::jsonb), ARRAY[p_task], jsonb_build_object('monthly_cap_usd', p_monthly_cap_usd), true)
+         END
+   WHERE id = p_workspace_id;
+
+  RETURN v_old;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_ai_task_cap(uuid, text, numeric) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_ai_task_cap(uuid, text, numeric) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.sum_ai_task_spend(
+  p_workspace_id uuid,
+  p_since        timestamptz,
+  p_source       text,
+  p_detail_like  text DEFAULT NULL
+)
+RETURNS numeric
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = ''
+AS $$
+  SELECT COALESCE(SUM(r.cost_usd), 0)
+  FROM public.agent_runs r
+  WHERE r.workspace_id = p_workspace_id
+    AND r.created_at >= p_since
+    AND r.source = p_source
+    AND (p_detail_like IS NULL OR r.status_detail LIKE p_detail_like);
+$$;
+
+COMMENT ON FUNCTION public.sum_ai_task_spend(uuid, timestamptz, text, text) IS
+  'Gasto de IA en USD de una tarea (agent_runs.source, y status_detail para la clasificación al cierre) desde un instante. Lo usa el freno por tarea. Solo service_role.';
+
+REVOKE ALL ON FUNCTION public.sum_ai_task_spend(uuid, timestamptz, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sum_ai_task_spend(uuid, timestamptz, text, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 441: AI PROPOSALS LEARNING
+-- ============================================================
+-- 00441_ai_proposals_learning.sql · La IA aprende de lo que se rechaza: propuestas de los agentes, motivo al
+-- descartar, desenlaces y panel de calidad (traído de RER: 00406 en parte, 00407).
+--
+-- Aditiva e idempotente. No borra nada ni cambia columnas existentes. Va ANTES de desplegar el código (la pantalla de
+-- Agentes IA, la bandeja de borradores y Aprobaciones leen estas columnas y tablas).
+--
+-- 0. `agents.actions_need_approval` (APAGADO de serie: decisión de Wendy del 18/11/2026) y `agents.learning`
+--    (ejemplos automáticos, apagados, y el umbral de las reglas aprendidas). Con todo apagado, el agente hace
+--    exactamente lo mismo que antes.
+-- 1. `ai_proposals`: cada acción que un agente PROPONE en vez de ejecutar (interruptor del agente prendido y turno en
+--    borrador, o una escritura pedida al asistente del equipo). Guarda los parámetros propuestos y los finales, el
+--    estado y, si se rechazó, el motivo. RLS activa; escribe SOLO el servidor. La ve quien tiene `agents.view` (y, si
+--    es de una conversación, puede ver esa conversación) o quien la pidió con `assistant.use`. Sin `contact_id` a
+--    propósito: `merge_contacts` no la tiene que tocar.
+-- 2. `agent_drafts.reject_reason` / `reject_note`: el motivo (lista cerrada) al descartar un borrador. OPCIONAL
+--    (decisión de Wendy): sin trigger que lo exija; si la persona elige un motivo, cuenta para aprender.
+-- 3. `ai_outcomes` (vista, security_invoker): los desenlaces decididos por personas (aprobada, aprobada con edición,
+--    rechazada con su motivo). Un descarte sin motivo cuenta como rechazo «sin motivo».
+-- 4. `ai_quality_weekly(p_workspace_id, p_weeks, p_agent_id)` (SECURITY INVOKER): por semana, cuántas se decidieron,
+--    aprobaron, editaron y rechazaron, y los motivos. Semanas en la zona del negocio.
+--
+-- Motivos (lista cerrada, gemela de `lib/ai-learning/reject-reasons.ts`):
+--   tone, wrong_data, not_this_client, too_long, missing_info, other (con nota).
+--
+-- Para volver atrás:
+--   DROP FUNCTION IF EXISTS public.ai_quality_weekly(uuid, integer, uuid);
+--   DROP VIEW IF EXISTS public.ai_outcomes;
+--   ALTER TABLE public.agent_drafts DROP COLUMN IF EXISTS reject_reason, DROP COLUMN IF EXISTS reject_note;
+--   DROP TABLE IF EXISTS public.ai_proposals;
+--   ALTER TABLE public.agents DROP COLUMN IF EXISTS actions_need_approval, DROP COLUMN IF EXISTS learning;
+
+-- ─── 0. Ajustes del agente ───────────────────────────────────────────────────
+ALTER TABLE public.agents ADD COLUMN IF NOT EXISTS actions_need_approval boolean NOT NULL DEFAULT false;
+ALTER TABLE public.agents ADD COLUMN IF NOT EXISTS learning jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.agents'::regclass AND conname = 'agents_learning_shape') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_learning_shape CHECK (jsonb_typeof(learning) = 'object');
+  END IF;
+END;
+$$;
+
+COMMENT ON COLUMN public.agents.actions_need_approval IS
+  'En un turno en borrador, las acciones que escriben en el CRM (etiquetar, temperatura, tarea…) quedan propuestas en ai_proposals. Apagado de serie.';
+COMMENT ON COLUMN public.agents.learning IS
+  '{examples, approved_examples, edit_examples, rule_threshold}: ejemplos automáticos en el prompt (apagados de serie) y cuántos rechazos con el mismo motivo proponen una regla.';
+
+-- La pantalla del agente las lee con el cliente de la persona (00060: permisos por columna).
+GRANT SELECT (actions_need_approval, learning) ON public.agents TO authenticated;
+
+-- ─── 1. ai_proposals ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.ai_proposals (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id     uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  agent_id         uuid REFERENCES public.agents(id) ON DELETE SET NULL,
+  run_id           uuid REFERENCES public.agent_runs(id) ON DELETE SET NULL,
+  requested_by     uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  channel_id       uuid REFERENCES public.channels(id) ON DELETE SET NULL,
+  conversation_id  uuid REFERENCES public.conversations(id) ON DELETE SET NULL,
+  subject_type     text,
+  subject_id       text,
+  kind             text NOT NULL DEFAULT 'action',
+  tool_key         text NOT NULL,
+  label            text NOT NULL,
+  summary          text,
+  params_proposed  jsonb NOT NULL DEFAULT '{}'::jsonb,
+  params_final     jsonb,
+  tool_config      jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status           text NOT NULL DEFAULT 'pending',
+  reject_reason    text,
+  reject_note      text,
+  result           jsonb,
+  error            text,
+  audit_log_id     uuid REFERENCES public.audit_log(id) ON DELETE SET NULL,
+  decided_by       uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  decided_at       timestamptz,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.ai_proposals'::regclass AND conname = 'ai_proposals_status_check') THEN
+    ALTER TABLE public.ai_proposals ADD CONSTRAINT ai_proposals_status_check
+      CHECK (status IN ('pending', 'approving', 'approved', 'approved_edited', 'rejected', 'failed', 'expired'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.ai_proposals'::regclass AND conname = 'ai_proposals_kind_check') THEN
+    ALTER TABLE public.ai_proposals ADD CONSTRAINT ai_proposals_kind_check CHECK (kind IN ('action', 'message'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.ai_proposals'::regclass AND conname = 'ai_proposals_tool_key_check') THEN
+    ALTER TABLE public.ai_proposals ADD CONSTRAINT ai_proposals_tool_key_check CHECK (tool_key ~ '^[a-z][a-z0-9_]{2,63}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.ai_proposals'::regclass AND conname = 'ai_proposals_reject_reason_check') THEN
+    ALTER TABLE public.ai_proposals ADD CONSTRAINT ai_proposals_reject_reason_check
+      CHECK (reject_reason IS NULL OR reject_reason IN ('tone', 'wrong_data', 'not_this_client', 'too_long', 'missing_info', 'other'));
+  END IF;
+  -- Rechazada = con motivo; «otro» = con nota .
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.ai_proposals'::regclass AND conname = 'ai_proposals_reject_shape') THEN
+    ALTER TABLE public.ai_proposals ADD CONSTRAINT ai_proposals_reject_shape
+      CHECK (
+        (status <> 'rejected' OR reject_reason IS NOT NULL)
+        AND (reject_reason IS DISTINCT FROM 'other' OR length(btrim(coalesce(reject_note, ''))) > 0)
+        AND (reject_note IS NULL OR length(reject_note) <= 500)
+      );
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.ai_proposals'::regclass AND conname = 'ai_proposals_label_length') THEN
+    ALTER TABLE public.ai_proposals ADD CONSTRAINT ai_proposals_label_length
+      CHECK (length(label) BETWEEN 1 AND 200 AND (summary IS NULL OR length(summary) <= 1000));
+  END IF;
+END;
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_ai_proposals_pending ON public.ai_proposals (workspace_id, created_at DESC) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_ai_proposals_decided ON public.ai_proposals (workspace_id, decided_at DESC) WHERE decided_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ai_proposals_agent ON public.ai_proposals (agent_id, decided_at DESC);
+
+COMMENT ON TABLE public.ai_proposals IS
+  'Acciones que un agente propone y una persona aprueba, edita o rechaza una por una. Escribe solo el servidor.';
+COMMENT ON COLUMN public.ai_proposals.tool_config IS
+  'La configuración de la herramienta en el momento de proponer (la que fijó el operador). No viaja al navegador.';
+
+ALTER TABLE public.ai_proposals ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS ai_proposals_select ON public.ai_proposals;
+CREATE POLICY ai_proposals_select ON public.ai_proposals FOR SELECT
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND (
+      (
+        (select public.has_permission(workspace_id, 'agents.view'))
+        AND (
+          conversation_id IS NULL
+          OR EXISTS (SELECT 1 FROM public.conversations conv WHERE conv.id = ai_proposals.conversation_id)
+        )
+      )
+      OR (requested_by = (select auth.uid()) AND (select public.has_permission(workspace_id, 'assistant.use')))
+    )
+  );
+-- Sin INSERT, UPDATE ni DELETE para la sesión: escribe el servidor después de comprobar el permiso.
+
+REVOKE ALL ON TABLE public.ai_proposals FROM PUBLIC, anon, authenticated;
+GRANT SELECT (
+  id, workspace_id, agent_id, run_id, requested_by, channel_id, conversation_id, subject_type, subject_id, kind,
+  tool_key, label, summary, params_proposed, params_final, status, reject_reason, reject_note, result, error,
+  audit_log_id, decided_by, decided_at, created_at, updated_at
+) ON public.ai_proposals TO authenticated;
+GRANT ALL ON TABLE public.ai_proposals TO service_role;
+
+-- ─── 2. Motivo cerrado al descartar un borrador ───────────────────────────────
+ALTER TABLE public.agent_drafts ADD COLUMN IF NOT EXISTS reject_reason text NULL;
+ALTER TABLE public.agent_drafts ADD COLUMN IF NOT EXISTS reject_note text NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.agent_drafts'::regclass AND conname = 'agent_drafts_reject_reason_check') THEN
+    ALTER TABLE public.agent_drafts ADD CONSTRAINT agent_drafts_reject_reason_check
+      CHECK (
+        (reject_reason IS NULL OR reject_reason IN ('tone', 'wrong_data', 'not_this_client', 'too_long', 'missing_info', 'other'))
+        AND (reject_reason IS DISTINCT FROM 'other' OR length(btrim(coalesce(reject_note, ''))) > 0)
+        AND (reject_note IS NULL OR length(reject_note) <= 500)
+      );
+  END IF;
+END;
+$$;
+
+COMMENT ON COLUMN public.agent_drafts.reject_reason IS
+  'Motivo de la lista cerrada al descartar un borrador una persona (opcional). Los descartes automáticos (auto:*) no lo llevan.';
+
+GRANT UPDATE (reject_reason, reject_note) ON public.agent_drafts TO authenticated;
+
+-- Sin guardia: el motivo es OPCIONAL (decisión de Wendy, 18/11/2026). En RER un trigger (AI001) lo exigía.
+
+CREATE INDEX IF NOT EXISTS idx_agent_drafts_decided_outcomes ON public.agent_drafts (workspace_id, decided_at DESC)
+  WHERE decided_by IS NOT NULL;
+
+-- ─── 3. ai_outcomes ──────────────────────────────────────────────────────────
+CREATE OR REPLACE VIEW public.ai_outcomes
+WITH (security_invoker = true) AS
+SELECT
+  'draft'::text AS source,
+  d.id,
+  d.workspace_id,
+  d.agent_id,
+  d.channel_id,
+  'message'::text AS kind,
+  'message'::text AS tool_key,
+  CASE
+    WHEN d.status = 'sent' AND btrim(coalesce(d.sent_body, '')) = btrim(coalesce(d.body, '')) THEN 'approved'
+    WHEN d.status = 'sent' THEN 'approved_edited'
+    ELSE 'rejected'
+  END AS outcome,
+  d.body AS proposed_text,
+  CASE WHEN d.status = 'sent' THEN d.sent_body ELSE NULL END AS final_text,
+  d.reject_reason,
+  d.reject_note,
+  d.decided_by,
+  d.decided_at
+FROM public.agent_drafts d
+WHERE d.decided_by IS NOT NULL
+  AND d.decided_at IS NOT NULL
+  AND (d.status = 'sent' OR (d.status = 'discarded' AND coalesce(d.discard_reason, '') NOT LIKE 'auto:%'))
+UNION ALL
+SELECT
+  'proposal'::text AS source,
+  p.id,
+  p.workspace_id,
+  p.agent_id,
+  p.channel_id,
+  p.kind,
+  p.tool_key,
+  CASE p.status WHEN 'approved' THEN 'approved' WHEN 'approved_edited' THEN 'approved_edited' ELSE 'rejected' END AS outcome,
+  p.params_proposed::text AS proposed_text,
+  CASE WHEN p.status = 'rejected' THEN NULL ELSE coalesce(p.params_final, p.params_proposed)::text END AS final_text,
+  p.reject_reason,
+  p.reject_note,
+  p.decided_by,
+  p.decided_at
+FROM public.ai_proposals p
+WHERE p.status IN ('approved', 'approved_edited', 'rejected')
+  AND p.decided_at IS NOT NULL;
+
+COMMENT ON VIEW public.ai_outcomes IS
+  'Desenlaces decididos por personas : aprobada, aprobada con edición (texto propuesto y final) o rechazada con motivo. Lee con la RLS de quien mira.';
+
+REVOKE ALL ON public.ai_outcomes FROM PUBLIC, anon;
+GRANT SELECT ON public.ai_outcomes TO authenticated, service_role;
+
+-- ─── 4. ai_quality_weekly ────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.ai_quality_weekly(p_workspace_id uuid, p_weeks integer DEFAULT 8, p_agent_id uuid DEFAULT NULL)
+RETURNS TABLE (
+  week_start date,
+  decided integer,
+  approved integer,
+  approved_edited integer,
+  rejected integer,
+  reasons jsonb
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH tz AS (
+    SELECT coalesce(nullif(w.timezone, ''), 'UTC') AS name FROM public.workspaces w WHERE w.id = p_workspace_id
+  ),
+  bounds AS (
+    SELECT (date_trunc('week', (now() AT TIME ZONE tz.name)) - make_interval(weeks => greatest(least(coalesce(p_weeks, 8), 52), 1) - 1))::date AS from_week,
+           tz.name
+      FROM tz
+  ),
+  picked AS (
+    SELECT date_trunc('week', o.decided_at AT TIME ZONE b.name)::date AS wk, o.outcome, o.reject_reason
+      FROM public.ai_outcomes o, bounds b
+     WHERE o.workspace_id = p_workspace_id
+       AND (p_agent_id IS NULL OR o.agent_id = p_agent_id)
+       AND date_trunc('week', o.decided_at AT TIME ZONE b.name)::date >= b.from_week
+  )
+  SELECT
+    r.wk AS week_start,
+    count(*)::integer AS decided,
+    count(*) FILTER (WHERE r.outcome = 'approved')::integer AS approved,
+    count(*) FILTER (WHERE r.outcome = 'approved_edited')::integer AS approved_edited,
+    count(*) FILTER (WHERE r.outcome = 'rejected')::integer AS rejected,
+    coalesce(
+      (SELECT jsonb_object_agg(x.reason, x.n) FROM (
+         SELECT coalesce(r2.reject_reason, 'unknown') AS reason, count(*) AS n
+           FROM picked r2 WHERE r2.wk = r.wk AND r2.outcome = 'rejected' GROUP BY 1
+       ) x),
+      '{}'::jsonb
+    ) AS reasons
+  FROM picked r
+  GROUP BY r.wk
+  ORDER BY r.wk;
+$$;
+
+REVOKE ALL ON FUNCTION public.ai_quality_weekly(uuid, integer, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ai_quality_weekly(uuid, integer, uuid) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 442: AI LEARNED RULES
+-- ============================================================
+-- 00442_ai_learned_rules.sql · Reglas aprendidas y su sección versionada del prompt (traído de RER: 00408).
+--
+-- Aditiva e idempotente. No borra nada ni cambia columnas existentes. Va después de la 00441 (lee `ai_outcomes`) y
+-- ANTES de desplegar el código.
+--
+-- 1. `agent_learned_rules`: cuando se acumulan rechazos con el MISMO motivo en un agente, el sistema propone una regla;
+--    una persona la acepta (puede editar el texto) o la descarta. Solo las aceptadas entran al prompt: el prompt no
+--    se reescribe solo. RLS activa: la lee quien tiene `agents.view`; escribe SOLO el servidor.
+-- 2. `agent_prompt_versions.learned_rules` (la foto de las reglas activas de esa versión) y `change_kind`
+--    (prompt | learned_rules | restore): aceptar o retirar una regla es una versión nueva; volver a una versión
+--    restaura también sus reglas.
+-- 3. `propose_learned_rule_if_due(...)`: con candado por agente y motivo, cuenta los rechazos con ese motivo desde la
+--    última decisión sobre una regla de ese motivo (dentro de la ventana) y, si llegan al umbral y no hay otra
+--    propuesta abierta, la crea. Solo `service_role`. Gemela de `ruleIsDue` (`lib/ai-learning/rules.ts`).
+--
+-- Para volver atrás:
+--   DROP FUNCTION IF EXISTS public.propose_learned_rule_if_due(uuid, uuid, text, integer, integer, text);
+--   ALTER TABLE public.agent_prompt_versions DROP COLUMN IF EXISTS learned_rules, DROP COLUMN IF EXISTS change_kind;
+--   DROP TABLE IF EXISTS public.agent_learned_rules;
+
+-- ─── 1. agent_learned_rules ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.agent_learned_rules (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id  uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  agent_id      uuid NOT NULL REFERENCES public.agents(id) ON DELETE CASCADE,
+  reason_key    text NOT NULL,
+  text          text NOT NULL,
+  evidence      jsonb NOT NULL DEFAULT '[]'::jsonb,
+  source_ids    uuid[] NOT NULL DEFAULT '{}',
+  rejections    integer NOT NULL DEFAULT 0,
+  status        text NOT NULL DEFAULT 'proposed',
+  proposed_at   timestamptz NOT NULL DEFAULT now(),
+  decided_by    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  decided_at    timestamptz,
+  version       integer,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.agent_learned_rules'::regclass AND conname = 'agent_learned_rules_status_check') THEN
+    ALTER TABLE public.agent_learned_rules ADD CONSTRAINT agent_learned_rules_status_check
+      CHECK (status IN ('proposed', 'active', 'discarded', 'retired'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.agent_learned_rules'::regclass AND conname = 'agent_learned_rules_reason_check') THEN
+    ALTER TABLE public.agent_learned_rules ADD CONSTRAINT agent_learned_rules_reason_check
+      CHECK (reason_key IN ('tone', 'wrong_data', 'not_this_client', 'too_long', 'missing_info', 'other'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.agent_learned_rules'::regclass AND conname = 'agent_learned_rules_text_length') THEN
+    ALTER TABLE public.agent_learned_rules ADD CONSTRAINT agent_learned_rules_text_length
+      CHECK (length(btrim(text)) BETWEEN 5 AND 500);
+  END IF;
+END;
+$$;
+
+-- Una sola propuesta abierta por agente y motivo (diez rechazos a la vez = una regla).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_learned_rules_open
+  ON public.agent_learned_rules (agent_id, reason_key) WHERE status = 'proposed';
+CREATE INDEX IF NOT EXISTS idx_agent_learned_rules_agent ON public.agent_learned_rules (agent_id, status);
+
+COMMENT ON TABLE public.agent_learned_rules IS
+  'Reglas aprendidas de los rechazos: propuestas por el sistema, aceptadas o descartadas por una persona. Solo las activas entran al prompt.';
+
+ALTER TABLE public.agent_learned_rules ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS agent_learned_rules_select ON public.agent_learned_rules;
+CREATE POLICY agent_learned_rules_select ON public.agent_learned_rules FOR SELECT
+  USING (public.is_workspace_member(workspace_id) AND (select public.has_permission(workspace_id, 'agents.view')));
+-- Sin INSERT, UPDATE ni DELETE para la sesión.
+
+REVOKE ALL ON TABLE public.agent_learned_rules FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.agent_learned_rules TO authenticated;
+GRANT ALL ON TABLE public.agent_learned_rules TO service_role;
+
+-- ─── 2. La sección de reglas en cada versión del prompt ──────────────────────
+ALTER TABLE public.agent_prompt_versions ADD COLUMN IF NOT EXISTS learned_rules jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.agent_prompt_versions ADD COLUMN IF NOT EXISTS change_kind text NOT NULL DEFAULT 'prompt';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.agent_prompt_versions'::regclass AND conname = 'agent_prompt_versions_change_kind_check') THEN
+    ALTER TABLE public.agent_prompt_versions ADD CONSTRAINT agent_prompt_versions_change_kind_check
+      CHECK (change_kind IN ('prompt', 'learned_rules', 'restore'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.agent_prompt_versions'::regclass AND conname = 'agent_prompt_versions_learned_rules_shape') THEN
+    ALTER TABLE public.agent_prompt_versions ADD CONSTRAINT agent_prompt_versions_learned_rules_shape
+      CHECK (jsonb_typeof(learned_rules) = 'array');
+  END IF;
+END;
+$$;
+
+COMMENT ON COLUMN public.agent_prompt_versions.learned_rules IS
+  'Las reglas aprendidas activas en esta versión: [{id, text}]. Volver a la versión las restaura.';
+COMMENT ON COLUMN public.agent_prompt_versions.change_kind IS
+  'Qué cambió: prompt (el texto), learned_rules (se aceptó o retiró una regla) o restore (vuelta atrás).';
+
+-- ─── 3. propose_learned_rule_if_due ──────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.propose_learned_rule_if_due(
+  p_workspace_id uuid,
+  p_agent_id uuid,
+  p_reason text,
+  p_threshold integer,
+  p_window_days integer,
+  p_text text
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_since timestamptz;
+  v_last timestamptz;
+  v_count integer;
+  v_ids uuid[];
+  v_notes jsonb;
+  v_id uuid;
+BEGIN
+  IF p_reason IS NULL OR p_reason NOT IN ('tone', 'wrong_data', 'not_this_client', 'too_long', 'missing_info', 'other') THEN
+    RETURN NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.agents a WHERE a.id = p_agent_id AND a.workspace_id = p_workspace_id) THEN
+    RETURN NULL;
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended('learned_rule:' || p_agent_id::text || ':' || p_reason, 0));
+
+  IF EXISTS (SELECT 1 FROM public.agent_learned_rules r WHERE r.agent_id = p_agent_id AND r.reason_key = p_reason AND r.status = 'proposed') THEN
+    RETURN NULL;
+  END IF;
+
+  -- Solo cuentan los rechazos posteriores a la última decisión sobre una regla de este motivo (aceptada, descartada o
+  -- retirada): descartar una propuesta reinicia la cuenta.
+  SELECT max(r.decided_at) INTO v_last FROM public.agent_learned_rules r
+   WHERE r.agent_id = p_agent_id AND r.reason_key = p_reason AND r.decided_at IS NOT NULL;
+  v_since := greatest(now() - make_interval(days => greatest(coalesce(p_window_days, 30), 1)), coalesce(v_last, '-infinity'::timestamptz));
+
+  SELECT count(*)::integer, array_agg(o.id ORDER BY o.decided_at DESC),
+         coalesce(jsonb_agg(o.reject_note ORDER BY o.decided_at DESC) FILTER (WHERE o.reject_note IS NOT NULL), '[]'::jsonb)
+    INTO v_count, v_ids, v_notes
+    FROM public.ai_outcomes o
+   WHERE o.workspace_id = p_workspace_id
+     AND o.agent_id = p_agent_id
+     AND o.outcome = 'rejected'
+     AND o.reject_reason = p_reason
+     AND o.decided_at > v_since;
+
+  IF coalesce(v_count, 0) < greatest(coalesce(p_threshold, 3), 2) THEN
+    RETURN NULL;
+  END IF;
+
+  INSERT INTO public.agent_learned_rules (workspace_id, agent_id, reason_key, text, evidence, source_ids, rejections)
+  VALUES (
+    p_workspace_id, p_agent_id, p_reason, left(btrim(p_text), 500),
+    (SELECT coalesce(jsonb_agg(x), '[]'::jsonb) FROM (SELECT jsonb_array_elements(v_notes) AS x LIMIT 3) n),
+    v_ids[1:20], v_count
+  )
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.propose_learned_rule_if_due(uuid, uuid, text, integer, integer, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.propose_learned_rule_if_due(uuid, uuid, text, integer, integer, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 443: KNOWLEDGE FOLDERS LINKS PAGES
+-- ============================================================
+-- 00443 · Conocimiento: carpetas, enlaces, acceso del agente por documento o carpeta, la página de cada trozo del PDF
+-- y «Citar la fuente» (traído de RER: 00412 y 00414).
+--
+-- Aditiva e idempotente. Nada se borra ni cambia de tipo. Va ANTES de desplegar el código: la búsqueda del agente
+-- pasa a `match_knowledge_chunks_scoped` y la pantalla de Conocimiento lee las columnas nuevas.
+--
+-- 1. `knowledge_folders`: carpetas de la base (una sola altura). RLS activa:
+--    leer, quien puede leer la base; escribir, solo el servidor.
+--    Borrado blando (`deleted_at`).
+-- 2. `knowledge_base.folder_id`, `source_kind` ('file' | 'link' | 'text') y
+--    `source_url`: un enlace es un documento más, con su dirección.
+-- 3. `agents.knowledge_document_ids` y `knowledge_folder_ids`: a qué documentos
+--    y carpetas llega cada agente. Con las etiquetas que ya existían: si las tres
+--    listas están vacías, el agente llega a todo; si alguna tiene algo, solo a lo
+--    que coincida con alguna.
+-- 4. `match_knowledge_chunks_scoped`: la búsqueda del agente con ese alcance y
+--    solo sobre documentos `ready` (un documento que se está
+--    reindexando o que falló nunca se cita: reemplazar un documento no deja trozos viejos a la vista). La función
+--    anterior (`match_knowledge_chunks_filtered`) queda igual para quien la use.
+-- 5. `knowledge_chunks.page`: la página del PDF donde empieza cada trozo (sale de las marcas `<!-- pagina N -->` de
+--    la extracción). Un texto, un Word o un enlace no tienen páginas: NULL («sin dato», nunca 0). Los trozos que ya
+--    existían quedan en NULL hasta que se reindexe el documento.
+-- 6. `agents.cite_sources` (APAGADO de serie, decisión de Wendy del 18/11/2026): si está prendido y el agente usó
+--    Conocimiento, la respuesta cierra con «Fuente: «Documento», pág. N». Apagado, el lead no ve nada nuevo.
+--
+-- Para volver atrás:
+--   ALTER TABLE public.agents DROP COLUMN IF EXISTS cite_sources, DROP COLUMN IF EXISTS knowledge_document_ids,
+--     DROP COLUMN IF EXISTS knowledge_folder_ids;
+--   ALTER TABLE public.knowledge_chunks DROP COLUMN IF EXISTS page;
+--   DROP FUNCTION IF EXISTS public.match_knowledge_chunks_scoped(uuid, extensions.vector, integer, double precision, text[], uuid[], uuid[], boolean);
+--   ALTER TABLE public.knowledge_base DROP COLUMN IF EXISTS folder_id, DROP COLUMN IF EXISTS source_kind,
+--     DROP COLUMN IF EXISTS source_url;
+--   DROP TABLE IF EXISTS public.knowledge_folders;
+
+-- 1. Carpetas ------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.knowledge_folders (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name         text NOT NULL,
+  created_by   uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  deleted_at   timestamptz
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.knowledge_folders'::regclass AND conname = 'knowledge_folders_name_check') THEN
+    ALTER TABLE public.knowledge_folders ADD CONSTRAINT knowledge_folders_name_check
+      CHECK (char_length(btrim(name)) BETWEEN 1 AND 80);
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_folders_name
+  ON public.knowledge_folders (workspace_id, lower(btrim(name)))
+  WHERE deleted_at IS NULL;
+
+ALTER TABLE public.knowledge_folders ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS knowledge_folders_select ON public.knowledge_folders;
+CREATE POLICY knowledge_folders_select ON public.knowledge_folders
+  FOR SELECT TO authenticated
+  USING (public.can_read_knowledge(workspace_id, false));
+-- Sin políticas de INSERT, UPDATE ni DELETE: solo escribe el servidor.
+
+REVOKE ALL ON public.knowledge_folders FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.knowledge_folders TO authenticated;
+GRANT ALL ON public.knowledge_folders TO service_role;
+
+DROP TRIGGER IF EXISTS knowledge_folders_updated_at ON public.knowledge_folders;
+CREATE TRIGGER knowledge_folders_updated_at
+  BEFORE UPDATE ON public.knowledge_folders
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- 2. Documentos: carpeta, tipo de fuente y enlace -----------------------------
+
+ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS folder_id uuid REFERENCES public.knowledge_folders(id) ON DELETE SET NULL;
+ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS source_kind text NOT NULL DEFAULT 'file';
+ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS source_url text;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.knowledge_base'::regclass AND conname = 'knowledge_base_source_kind_check') THEN
+    ALTER TABLE public.knowledge_base ADD CONSTRAINT knowledge_base_source_kind_check
+      CHECK (source_kind IN ('file', 'link', 'text'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.knowledge_base'::regclass AND conname = 'knowledge_base_link_url_check') THEN
+    ALTER TABLE public.knowledge_base ADD CONSTRAINT knowledge_base_link_url_check
+      CHECK (source_kind <> 'link' OR (source_url IS NOT NULL AND source_url ~* '^https?://' AND char_length(source_url) <= 2000));
+  END IF;
+END $$;
+
+-- Lo que ya existía sin archivo (transcripciones de llamadas y de programas) es texto.
+UPDATE public.knowledge_base
+   SET source_kind = 'text'
+ WHERE source_kind = 'file' AND source_file_path IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_base_folder
+  ON public.knowledge_base (folder_id) WHERE folder_id IS NOT NULL AND deleted_at IS NULL;
+
+-- 3. Alcance de cada agente ----------------------------------------------------
+
+ALTER TABLE public.agents ADD COLUMN IF NOT EXISTS knowledge_document_ids uuid[] NOT NULL DEFAULT '{}';
+ALTER TABLE public.agents ADD COLUMN IF NOT EXISTS knowledge_folder_ids uuid[] NOT NULL DEFAULT '{}';
+
+-- La pantalla del agente las lee con el cliente de la persona (00060).
+GRANT SELECT (knowledge_document_ids, knowledge_folder_ids) ON public.agents TO authenticated;
+
+COMMENT ON COLUMN public.agents.knowledge_document_ids IS
+  'Documentos a los que llega el agente. Vacío con carpetas y etiquetas vacías = toda la base.';
+COMMENT ON COLUMN public.agents.knowledge_folder_ids IS
+  'Carpetas a las que llega el agente (todos sus documentos, también los que se sumen después).';
+
+-- 4. Búsqueda con alcance y solo sobre lo listo --------------------------------
+
+CREATE OR REPLACE FUNCTION public.match_knowledge_chunks_scoped(
+  p_workspace_id uuid,
+  p_query_embedding extensions.vector,
+  p_match_count integer,
+  p_min_similarity double precision,
+  p_tags text[],
+  p_document_ids uuid[],
+  p_folder_ids uuid[],
+  p_include_internal boolean
+)
+RETURNS TABLE(chunk_id uuid, document_id uuid, document_title text, chunk_index integer, content text, similarity double precision)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_service boolean := COALESCE(auth.role(), '') = 'service_role';
+  v_all boolean := COALESCE(cardinality(p_tags), 0) = 0
+                   AND COALESCE(cardinality(p_document_ids), 0) = 0
+                   AND COALESCE(cardinality(p_folder_ids), 0) = 0;
+BEGIN
+  IF p_workspace_id IS NULL THEN
+    RAISE EXCEPTION 'workspace_id is required';
+  END IF;
+
+  IF NOT v_service AND NOT public.is_workspace_member(p_workspace_id) THEN
+    RAISE EXCEPTION 'forbidden: not a member of this workspace';
+  END IF;
+
+  IF COALESCE(p_include_internal, false) AND NOT v_service THEN
+    RAISE EXCEPTION 'forbidden: p_include_internal is only for the server';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    kc.id,
+    kc.document_id,
+    kb.title,
+    kc.chunk_index,
+    kc.content,
+    (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding))::double precision
+  FROM public.knowledge_chunks kc
+  JOIN public.knowledge_base kb ON kb.id = kc.document_id
+  LEFT JOIN public.knowledge_folders kf ON kf.id = kb.folder_id AND kf.deleted_at IS NULL
+  WHERE kc.workspace_id = p_workspace_id
+    AND kb.deleted_at IS NULL
+    -- Lo que se está reindexando, lo pendiente o lo que falló no se cita.
+    AND kb.status = 'ready'
+    AND (COALESCE(p_include_internal, false) OR kb.internal_only = false)
+    AND (v_service OR public.can_read_knowledge(p_workspace_id, kb.internal_only))
+    AND (
+      v_all
+      OR (COALESCE(cardinality(p_tags), 0) > 0 AND kb.tags && p_tags)
+      OR (COALESCE(cardinality(p_document_ids), 0) > 0 AND kb.id = ANY (p_document_ids))
+      OR (COALESCE(cardinality(p_folder_ids), 0) > 0 AND kf.id = ANY (p_folder_ids))
+    )
+    AND (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding)) >= COALESCE(p_min_similarity, 0)
+  ORDER BY kc.embedding OPERATOR(extensions.<=>) p_query_embedding
+  LIMIT GREATEST(COALESCE(p_match_count, 8), 1);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.match_knowledge_chunks_scoped(uuid, extensions.vector, integer, double precision, text[], uuid[], uuid[], boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.match_knowledge_chunks_scoped(uuid, extensions.vector, integer, double precision, text[], uuid[], uuid[], boolean) TO authenticated, service_role;
+
+-- 5. La página de cada trozo -----------------------------------------------------
+
+ALTER TABLE public.knowledge_chunks ADD COLUMN IF NOT EXISTS page integer;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_chunks_page_check') THEN
+    ALTER TABLE public.knowledge_chunks ADD CONSTRAINT knowledge_chunks_page_check CHECK (page IS NULL OR page > 0);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.knowledge_chunks.page IS
+  'Página del PDF donde empieza el trozo. NULL si el documento no tiene páginas o se indexó antes de la 00443.';
+
+-- 6. Citar la fuente -----------------------------------------------------------
+
+ALTER TABLE public.agents ADD COLUMN IF NOT EXISTS cite_sources boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.agents.cite_sources IS
+  'Si el agente usó Conocimiento, la respuesta cierra con «Fuente: «Documento», pág. N». Apagado de serie.';
+
+GRANT SELECT (cite_sources) ON public.agents TO authenticated;
+
+-- ============================================================
+-- MIGRATION 444: ASSISTANT RUNS
+-- ============================================================
+-- ============================================================================
+-- 00444 · El asistente del equipo: botón flotante, panel acoplado y pantalla completa (traído de RER: 00442)
+-- ============================================================================
+-- Aditiva e idempotente. Va ANTES de desplegar el código.
+--
+-- Las corridas del asistente quedan en agent_runs con su propio origen ('assistant') y con su agente (type
+-- 'assistant', uno por negocio, nace apagado). La conversación vive en ai_threads / ai_messages (canal 'assistant',
+-- ya permitido por la 00320, con su RLS: solo la persona dueña del hilo la lee). Las escrituras que pide la IA quedan
+-- como propuestas en ai_proposals (00441): no hace falta tabla nueva.
+--
+-- Suma:
+--   1. 'assistant' a agent_runs_source_check y a agent_runs_agent_only_for_agent_sources (copia de la 00395 + uno).
+--   2. Un asistente por negocio: índice único parcial sobre agents (type = 'assistant', sin borrar).
+--   3. Índice para abrir rápido el hilo vigente de cada persona (user_id, canal, último mensaje).
+--   4. El asistente APAGADO en cada negocio que todavía no tiene uno, sin modelo (usa el del negocio), sin
+--      instrucciones propias (usa las de serie, que viven en el código: lib/assistant/agent.ts) y sin herramientas
+--      elegidas (ofrece todas). Nunca prende nada. Los negocios nuevos lo reciben con `ensureDefaultAgents`.
+--
+-- OJO al unir con otras ramas: si otra migración también redefine estos dos CHECK, el que se aplique último manda.
+-- Hay que partir del CHECK vigente en la base y SUMAR, nunca copiar uno viejo.
+--
+-- Volver atrás: recrear los dos CHECK sin 'assistant' (copia de la 00395), DROP INDEX uq_agents_one_assistant y
+-- DROP INDEX idx_ai_threads_user_channel y borrar los agentes type 'assistant'. Antes, borrar o cambiar de origen las corridas 'assistant'.
+-- Riesgo: alto por los CHECK de agent_runs (tabla en uso): solo se SUMA un valor; todo lo que ya existe sigue valiendo.
+-- ============================================================================
+
+ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_check;
+ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check CHECK ((source = ANY (ARRAY['agent'::text, 'flow_ai_node'::text,
+  'sequence_ai_step'::text, 'kb_indexing'::text, 'conversation_summary'::text, 'message_classification'::text,
+  'message_classification_eval'::text, 'content_copy'::text, 'ads_analysis'::text, 'audio_transcription'::text,
+  'media_description'::text, 'call_classification'::text, 'call_analysis'::text, 'call_correction'::text, 'call_summary'::text,
+  'call_prompt_test'::text, 'ads_matching'::text, 'designer'::text, 'portal_tutor'::text, 'portal_project_review'::text,
+  'assistant'::text])));
+ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_agent_only_for_agent_sources;
+ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_agent_only_for_agent_sources CHECK (((agent_id IS NULL) OR (source = ANY (ARRAY['agent'::text,
+  'conversation_summary'::text, 'content_copy'::text, 'portal_tutor'::text, 'portal_project_review'::text, 'assistant'::text]))));
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_agents_one_assistant
+  ON public.agents (workspace_id) WHERE type = 'assistant' AND deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_ai_threads_user_channel ON public.ai_threads (user_id, channel, last_message_at DESC)
+  WHERE user_id IS NOT NULL AND archived_at IS NULL;
+
+INSERT INTO public.agents (workspace_id, name, type, is_enabled, system_prompt)
+SELECT w.id, 'Asistente del equipo', 'assistant', false, ''
+  FROM public.workspaces w
+ WHERE NOT EXISTS (
+   SELECT 1 FROM public.agents a WHERE a.workspace_id = w.id AND a.type = 'assistant' AND a.deleted_at IS NULL
+ )
+ON CONFLICT DO NOTHING;

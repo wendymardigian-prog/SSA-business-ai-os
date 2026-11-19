@@ -163,7 +163,7 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // @plantilla-hasta(disenador)
   // Agentes IA: Conocimiento ya no es un item (D3): se abre con el boton "Conocimiento" de la
   // barra de esta pantalla (lib/nav/page-actions.ts), y mientras esta abierto queda marcado Agentes IA.
-  { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", permissions: ["agents.view"], group: "herramientas", alsoActiveOn: ["/dashboard/knowledge"] },
+  { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", permissions: ["agents.view"], group: "herramientas", alsoActiveOn: ["/dashboard/knowledge", "/dashboard/asistente"] },
   // Ajustes (D4): Recursos e Integraciones son pestañas de Ajustes y ya no son items. Se ve para quien
   // tenga al menos una pestaña (`requires: "settings"`, lo calcula el layout con `visibleSettingsTabs`):
   // un Member entra directo a Recursos. En cualquier pestaña, y en /dashboard/channels (que cuelga de

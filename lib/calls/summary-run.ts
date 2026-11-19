@@ -65,7 +65,7 @@ export async function runCallSummaryJob(deps: SummaryDeps, payload: SummaryJobPa
     return { outcome: "not_eligible" };
   }
 
-  const budget = await withinWorkspaceBudget(db, call.workspace_id, now);
+  const budget = await withinWorkspaceBudget(db, call.workspace_id, now, { task: "call_summary" });
   if (!budget.allowed) {
     await db.from("calls").update({ summary_status: "error" }).eq("id", call.id);
     return { outcome: "budget" };

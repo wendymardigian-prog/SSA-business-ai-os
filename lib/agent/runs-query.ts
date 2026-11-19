@@ -229,6 +229,7 @@ export const AGENT_RUN_SOURCES = [
   "call_prompt_test", // @plantilla-quitar(llamadas)
   "portal_tutor", // @plantilla-quitar(servicios)
   "portal_project_review", // @plantilla-quitar(proyectos)
+  "assistant",
 ] as const satisfies readonly AgentRunSource[];
 const _EVERY_SOURCE_LISTED: [Exclude<AgentRunSource, (typeof AGENT_RUN_SOURCES)[number]>] extends [never] ? true : never = true;
 void _EVERY_SOURCE_LISTED;
@@ -468,11 +469,12 @@ async function loadSteps(client: Db, runIds: string[]): Promise<Map<string, RunS
   if (chunkIds.length > 0) {
     const { data: chunks } = await client
       .from("knowledge_chunks")
-      .select("id, chunk_index, knowledge_base(title)")
+      .select("id, chunk_index, page, knowledge_base(title)")
       .in("id", chunkIds);
-    for (const c of (chunks ?? []) as Array<{ id: string; chunk_index: number; knowledge_base: { title: string } | { title: string }[] | null }>) {
+    for (const c of (chunks ?? []) as Array<{ id: string; chunk_index: number; page: number | null; knowledge_base: { title: string } | { title: string }[] | null }>) {
       const doc = Array.isArray(c.knowledge_base) ? c.knowledge_base[0] : c.knowledge_base;
-      chunkLabels.set(c.id, `${doc?.title ?? "Documento"} · fragmento ${c.chunk_index + 1}`);
+      // : con la página cuando el documento la tiene.
+      chunkLabels.set(c.id, `${doc?.title ?? "Documento"} · ${typeof c.page === "number" ? `pág. ${c.page} · ` : ""}fragmento ${c.chunk_index + 1}`);
     }
   }
 

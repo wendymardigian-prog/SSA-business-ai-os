@@ -134,6 +134,10 @@ export function PromptSection({ data }: { data: AgentScreenData }) {
                     {v.authorLabel ? ` · ${v.authorLabel}` : ""}
                     {v.note ? ` · ${v.note}` : ""}
                   </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {v.changeKind === "learned_rules" ? "Cambio en las reglas aprendidas" : "Cambio en el texto"}
+                    {` · ${(v.learnedRules ?? []).length} ${(v.learnedRules ?? []).length === 1 ? "regla aprendida" : "reglas aprendidas"}`}
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -164,6 +168,13 @@ export function PromptSection({ data }: { data: AgentScreenData }) {
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground">Versión {compared.version}</p>
               <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-[11px]">{compared.systemPrompt}</pre>
+              {(compared.learnedRules ?? []).length > 0 && (
+                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[11px] text-muted-foreground">
+                  {(compared.learnedRules ?? []).map((r) => (
+                    <li key={r.id}>{r.text}</li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground">Activa (versión {agent.promptVersion ?? "—"})</p>

@@ -40,6 +40,7 @@ export const RUN_SOURCE_LABELS: Record<string, string> = {
   // @plantilla-hasta(llamadas)
   portal_tutor: "Tutor del programa", // @plantilla-quitar(servicios)
   portal_project_review: "Revisor de proyectos", // @plantilla-quitar(proyectos)
+  assistant: "Asistente del equipo",
 };
 
 const DETAIL_LABELS: Record<string, string> = {

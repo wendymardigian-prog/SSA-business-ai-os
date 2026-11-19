@@ -141,6 +141,7 @@ export async function describeMessageMedia(
   // modelo sin precio y un tope que corta) no se llama: el mensaje queda no interpretable y el agente escala.
   const budget = await withinWorkspaceBudget(supabase, claimed.workspace_id, new Date(), {
     model: resolved.provider && resolved.modelId ? { provider: resolved.provider, model: resolved.modelId } : null,
+    task: "media_description",
   });
   if (!budget.allowed) {
     return await giveUp(supabase, messageId, budget.message ?? "Se alcanzó el tope de gasto de IA del negocio");

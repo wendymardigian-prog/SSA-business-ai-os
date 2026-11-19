@@ -201,6 +201,21 @@ describe("descartar", () => {
     expect(draft(w.db).window_missed_at ?? null).toBeNull();
   });
 
+  it("con un motivo de la lista: queda el motivo cerrado y la etiqueta para mostrar (opcional: aprende la IA)", async () => {
+    const w = world();
+    expect(await discardDraft({ user: w.db.client, userId: "u-1", draftId: "d-1", rejectReason: "too_long", now: NOW })).toEqual({ ok: true });
+    expect(draft(w.db)).toMatchObject({ status: "discarded", reject_reason: "too_long", reject_note: null, discard_reason: "Demasiado largo" });
+  });
+
+  it("«otro» pide nota; un motivo inventado no descarta", async () => {
+    const w = world();
+    expect(await discardDraft({ user: w.db.client, userId: "u-1", draftId: "d-1", rejectReason: "other", now: NOW })).toMatchObject({ ok: false, code: "needs_reason" });
+    expect(await discardDraft({ user: w.db.client, userId: "u-1", draftId: "d-1", rejectReason: "inventado", now: NOW })).toMatchObject({ ok: false, code: "needs_reason" });
+    expect(draft(w.db).status).toBe("pending");
+    expect(await discardDraft({ user: w.db.client, userId: "u-1", draftId: "d-1", rejectReason: "other", rejectNote: "no aplica", now: NOW })).toEqual({ ok: true });
+    expect(draft(w.db)).toMatchObject({ reject_reason: "other", reject_note: "no aplica", discard_reason: "Otro (con nota): no aplica" });
+  });
+
   it("dos veces: la segunda avisa que ya se decidio", async () => {
     const w = world();
     await discardDraft({ user: w.db.client, userId: "u-1", draftId: "d-1", now: NOW });

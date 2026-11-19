@@ -1,5 +1,6 @@
 "use server";
 
+import { keepKnownIds, listFolders } from "@/lib/knowledge/folders";
 import { revalidatePath } from "next/cache";
 import { getPermissionAction, isOwnerRole } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -13,6 +14,8 @@ import { validateAgentConfig, validateSystemPrompt } from "@/lib/agent/validate"
 import { normalizeToolsConfig } from "@/lib/agent/tools/config";
 import { agentUsableTagIds } from "@/lib/tags/effects";
 import type { Json } from "@/lib/types/database";
+import { loadActiveLearnedRules, restoreRulesFromVersion } from "@/lib/ai-learning/rules-run";
+import { rulesSnapshot } from "@/lib/ai-learning/rules";
 
 /**
  * Gestion de los agentes de IA (F24 parcial, F26, F27, F30).
@@ -243,6 +246,8 @@ export async function saveSystemPrompt(agentId: string, rawPrompt: string, rawNo
     .maybeSingle();
   const version = (last?.version ?? 0) + 1;
 
+  // La sección de reglas aprendidas viaja con cada versión: cambiar el texto no las pierde.
+  const activeRules = await loadActiveLearnedRules(await createServiceClient(), agent.id);
   const { error: versionError } = await supabase.from("agent_prompt_versions").insert({
     workspace_id: workspace.id,
     agent_id: agent.id,
@@ -250,6 +255,8 @@ export async function saveSystemPrompt(agentId: string, rawPrompt: string, rawNo
     system_prompt: prompt.value,
     note,
     created_by: user.id,
+    learned_rules: rulesSnapshot(activeRules) as unknown as Json,
+    change_kind: "prompt",
   });
   if (versionError) {
     console.error("[agents] no pude guardar la version del prompt:", versionError.message);
@@ -295,7 +302,7 @@ export async function restorePromptVersion(agentId: string, version: number): Pr
 
   const { data: target } = await supabase
     .from("agent_prompt_versions")
-    .select("version, system_prompt")
+    .select("version, system_prompt, learned_rules")
     .eq("agent_id", agent.id)
     .eq("version", version)
     .maybeSingle();
@@ -309,6 +316,8 @@ export async function restorePromptVersion(agentId: string, version: number): Pr
     console.error("[agents] no pude restaurar la version:", error.message);
     return { ok: false, error: "No pude volver a esa version." };
   }
+  // : la vuelta atrás también restaura las reglas aprendidas de esa versión.
+  const rulesChanged = await restoreRulesFromVersion(await createServiceClient(), { agentId: agent.id, snapshot: target.learned_rules, userId: user.id });
 
   await logAudit({
     supabase,
@@ -317,7 +326,7 @@ export async function restorePromptVersion(agentId: string, version: number): Pr
     entityId: agent.id,
     action: "prompt_version",
     changes: { active_prompt_version: { old: agent.promptVersion, new: target.version } },
-    metadata: { restored: true },
+    metadata: { restored: true, rules_changed: rulesChanged },
     performedBy: user.id,
   });
 
@@ -373,7 +382,7 @@ export async function setAgentEnabled(agentId: string, enabled: boolean): Promis
 /** Acceso a la base de conocimiento (F27). */
 export async function updateAgentKnowledge(
   agentId: string,
-  input: { enabled: boolean; tags: string[]; fallback: "escalate" | "general" },
+  input: { enabled: boolean; tags: string[]; fallback: "escalate" | "general"; documentIds?: string[]; folderIds?: string[]; citeSources?: boolean },
 ): Promise<AgentActionResult> {
   const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
@@ -390,20 +399,41 @@ export async function updateAgentKnowledge(
     return { ok: false, error: "Pedido invalido." };
   }
 
-  // Solo tags que existen en la base de conocimiento del workspace.
-  const { data: docs } = await supabase
-    .from("knowledge_base")
-    .select("tags")
-    .eq("workspace_id", workspace.id)
-    .is("deleted_at", null);
+  if (
+    (input.documentIds !== undefined && !Array.isArray(input.documentIds)) ||
+    (input.folderIds !== undefined && !Array.isArray(input.folderIds)) ||
+    (input.citeSources !== undefined && typeof input.citeSources !== "boolean")
+  ) {
+    return { ok: false, error: "Pedido invalido." };
+  }
+
+  // Solo tags, documentos y carpetas que existen en la base del workspace.
+  const [{ data: docs }, folders] = await Promise.all([
+    supabase.from("knowledge_base").select("id, tags").eq("workspace_id", workspace.id).is("deleted_at", null),
+    listFolders(supabase, workspace.id),
+  ]);
   const existing = new Set((docs ?? []).flatMap((d) => d.tags ?? []));
   const tags = [...new Set(input.tags.filter((t): t is string => typeof t === "string"))];
   const unknown = tags.filter((t) => !existing.has(t));
   if (unknown.length > 0) return { ok: false, error: `No hay documentos con la etiqueta "${unknown[0]}".` };
+  const requestedDocs = (input.documentIds ?? agent.knowledgeDocumentIds).filter((x): x is string => typeof x === "string");
+  const requestedFolders = (input.folderIds ?? agent.knowledgeFolderIds).filter((x): x is string => typeof x === "string");
+  const documentIds = keepKnownIds(requestedDocs, new Set((docs ?? []).map((d) => d.id)));
+  const folderIds = keepKnownIds(requestedFolders, new Set(folders.map((f) => f.id)));
+  if (documentIds.length !== new Set(requestedDocs).size) return { ok: false, error: "Alguno de los documentos elegidos ya no existe. Recargá la página." };
+  if (folderIds.length !== new Set(requestedFolders).size) return { ok: false, error: "Alguna de las carpetas elegidas ya no existe. Recargá la página." };
 
   const { error } = await supabase
     .from("agents")
-    .update({ knowledge_enabled: input.enabled, knowledge_tags: tags, knowledge_fallback: input.fallback })
+    .update({
+      knowledge_enabled: input.enabled,
+      knowledge_tags: tags,
+      knowledge_document_ids: documentIds,
+      knowledge_folder_ids: folderIds,
+      knowledge_fallback: input.fallback,
+      // «Citar la fuente» (00443): sin valor, queda como estaba.
+      cite_sources: input.citeSources ?? agent.citeSources,
+    })
     .eq("id", agent.id);
   if (error) {
     console.error("[agents] no pude guardar el acceso a la KB:", error.message);
@@ -417,8 +447,22 @@ export async function updateAgentKnowledge(
     entityId: agent.id,
     action: "update",
     changes: diffFields(
-      { knowledge_enabled: agent.knowledgeEnabled, knowledge_tags: agent.knowledgeTags.join(", "), knowledge_fallback: agent.knowledgeFallback },
-      { knowledge_enabled: input.enabled, knowledge_tags: tags.join(", "), knowledge_fallback: input.fallback },
+      {
+        knowledge_enabled: agent.knowledgeEnabled,
+        knowledge_tags: agent.knowledgeTags.join(", "),
+        knowledge_documents: agent.knowledgeDocumentIds.length,
+        knowledge_folders: agent.knowledgeFolderIds.length,
+        knowledge_fallback: agent.knowledgeFallback,
+        cite_sources: agent.citeSources,
+      },
+      {
+        knowledge_enabled: input.enabled,
+        knowledge_tags: tags.join(", "),
+        knowledge_documents: documentIds.length,
+        knowledge_folders: folderIds.length,
+        knowledge_fallback: input.fallback,
+        cite_sources: input.citeSources ?? agent.citeSources,
+      },
     ),
     metadata: { section: "knowledge" },
     performedBy: user.id,

@@ -309,6 +309,8 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     // @plantilla-sin(servicios): const ADDED_AGENT_TYPES: string[] = [];
     // Corrida C (F119): el revisor de proyectos de un programa, otro tipo nuevo con sus pestañas.
     ADDED_AGENT_TYPES.push("project_reviewer"); // @plantilla-quitar(proyectos)
+    // IA (18/11/2026, traído de RER): el asistente del equipo, otro tipo nuevo con sus pestañas.
+    ADDED_AGENT_TYPES.push("assistant"); // @plantilla-quitar(disenador)
     const withoutAdded = (r: Record<string, unknown>): Record<string, unknown> => {
       const tabs = { ...((r.agentTabs ?? {}) as Record<string, unknown>) };
       for (const t of ADDED_AGENT_TYPES) delete tabs[t];

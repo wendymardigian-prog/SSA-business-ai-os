@@ -100,7 +100,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
     return { outcome: "no_profile" };
   }
 
-  const budget = await withinWorkspaceBudget(db, workspaceId, now);
+  const budget = await withinWorkspaceBudget(db, workspaceId, now, { task: "call_analysis" });
   if (!budget.allowed) {
     await db.from("calls").update({ analysis_status: "pending", analysis_status_reason: "budget" }).eq("id", callId).in("analysis_status", [...claimable]);
     await notifyBudgetBlocked(db, workspaceId, callId);

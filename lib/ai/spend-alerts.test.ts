@@ -25,7 +25,7 @@ describe("approachingThresholds", () => {
   it("avisa desde el porcentaje y hasta justo antes del tope", () => {
     const entries = [{ scope: "workspace_daily", limitUsd: 10, spentUsd: 8, since: day }];
     expect(approachingThresholds(entries, 80)).toEqual([
-      { scope: "workspace_daily", limitUsd: 10, spentUsd: 8, pct: 80, periodStart: day },
+      { scope: "workspace_daily", limitUsd: 10, spentUsd: 8, pct: 80, periodStart: day, agentId: null, task: null, label: null },
     ]);
     expect(approachingThresholds([{ ...entries[0], spentUsd: 7.99 }], 80)).toEqual([]);
     // Llegar al tope ya no es "se acerca": ahi corta o avisa, segun la accion elegida.
@@ -43,13 +43,13 @@ describe("approachingThresholds", () => {
     expect(out.map((o) => o.scope)).toEqual(["workspace_daily"]);
   });
 
-  it("sin porcentaje no hay nada, y los topes del agente no llevan aviso previo", () => {
+  it("sin porcentaje: nada en el negocio y 80 % en el agente", () => {
     const entries = [
       { scope: "workspace_daily", limitUsd: 10, spentUsd: 9, since: day },
       { scope: "agent_daily", limitUsd: 5, spentUsd: 4.9, since: day },
     ];
-    expect(approachingThresholds(entries, null)).toEqual([]);
-    expect(approachingThresholds(entries, 80).map((o) => o.scope)).toEqual(["workspace_daily"]);
+    expect(approachingThresholds(entries, null).map((o) => o.scope)).toEqual(["agent_daily"]);
+    expect(approachingThresholds(entries, 80).map((o) => o.scope)).toEqual(["workspace_daily", "agent_daily"]);
   });
 
   it("un tope sin monto o en cero no se evalua", () => {
