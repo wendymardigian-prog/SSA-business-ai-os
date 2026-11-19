@@ -24,7 +24,6 @@ const LEGACY = [
   "components/agents/runs-screen.tsx",
   "components/agents/tasks/calls/prompt-test-panel.tsx", // @plantilla-quitar(llamadas)
   "components/assignment/assignment-tester.tsx",
-  "components/calls/calls-list.tsx", // @plantilla-quitar(llamadas)
   "components/channels/whatsapp-daily-chart.tsx",
   "components/commissions/adjustment-dialog.tsx", // @plantilla-quitar(comisiones)
   "components/commissions/payout-dialog.tsx", // @plantilla-quitar(comisiones)

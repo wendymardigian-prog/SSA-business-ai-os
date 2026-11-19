@@ -30,11 +30,14 @@ import {
   type CallFilters,
   type SavedView,
   callListColumns,
+  CALLS_TABLE_KEY,
 } from "@/lib/calls/list";
 import { statusLabel } from "@/lib/calls/status";
 import type { CallAnalysisStatus } from "@/lib/types/database";
 import { CallPortalMenu } from "@/components/services/portal/call-portal-menu"; // @plantilla-quitar(servicios)
-import { ClickableTr } from "@/components/ui/clickable-row";
+import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
+import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
+import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 
 /**
  * La lista de llamadas (F12). Que se ve lo decide la base (RLS) y los filtros
@@ -178,14 +181,65 @@ export function CallsList(props: Props) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const selectedOnPage = selected.filter((id) => rows.some((r) => r.id === id));
 
-  // Servicios A4 (F136): la columna Servicio aparece solo con el módulo prendido y se puede ocultar (por persona).
+  // Servicios A4 (F136): la columna Servicio aparece solo con el módulo prendido; se oculta desde «Columnas».
   const servicesOn = Boolean(props.services?.on);
-  // Lo lee del navegador con el mismo almacén que las vistas guardadas: el servidor dibuja la columna y, si la persona la
-  // ocultó, se oculta al hidratar.
-  const hideService = useSyncExternalStore(subscribeViews, () => readViews("calls:hide-service") === "1", () => false);
-  const showService = servicesOn && !hideService;
-  const columns = callListColumns({ servicesOn }).filter((c) => c.key !== "servicio" || showService);
-  const toggleServiceColumn = (hidden: boolean) => writeViews("calls:hide-service", hidden ? "1" : "0");
+  const portal = props.portal; // @plantilla-quitar(servicios)
+  const columns = useMemo<DataColumn<CallListRow>[]>(() => {
+    const render: Record<string, Pick<DataColumn<CallListRow>, "render" | "cellClassName">> = {
+      // La fila entera abre la llamada; el contacto es texto (docs/tablas.md).
+      lead: {
+        render: (r) => (
+          <>
+            <span className="block truncate font-medium">{r.contactName ?? "Sin vincular"}</span>
+            <span className="block truncate text-xs text-muted-foreground">{r.title}</span>
+          </>
+        ),
+      },
+      fecha: { render: (r) => formatCallDate(r.recordedAt, timeZone) },
+      duracion: { render: (r) => formatDuration(r.durationSeconds) },
+      grabo: { render: (r) => r.closerName ?? "—" },
+      tipo: {
+        render: (r) => (
+          <span title={typeDeciderText({ classification_source: r.classificationSource, classification_rule: r.classificationRule, classification_confidence: r.classificationConfidence }) ?? undefined}>
+            <TypeChip type={r.callType} label={r.categoryLabel} needsReview={r.status === "needs_review"} />
+            {r.manual && <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Cargada a mano</span>}
+          </span>
+        ),
+      },
+      servicio: { render: (r) => <ServiceCell link={r.serviceLink ?? null} label={r.serviceLabel ?? null} /> },
+      resultado: { render: (r) => <OutcomeChip outcome={r.outcome} /> },
+      closer: { render: (r) => <ScoreCell score={r.closerScore} label="Puntaje del closer" /> },
+      lead_score: {
+        render: (r) => (
+          <div className="flex items-center gap-1">
+            <ScoreCell score={r.leadScore} label="Puntaje del lead" />
+            <QualificationChip value={r.leadQualification} />
+          </div>
+        ),
+      },
+      estado: { render: (r) => <StatusChip status={r.status} /> },
+      alertas: { render: (r) => <AlertsChip open={r.hasOpenAlerts} /> },
+    };
+    const metas = callListColumns({ servicesOn });
+    const out: DataColumn<CallListRow>[] = metas.map((m) => ({ ...m, ...render[m.key] }));
+    // @plantilla-desde(servicios)
+    if (portal) {
+      out.push({
+        key: "portal",
+        label: "En el portal",
+        defaultWidth: 140,
+        render: (r) => (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">{portal.inPortal.includes(r.id) ? "Sí" : "—"}</span>
+            <CallPortalMenu callId={r.id} inPortal={portal.inPortal.includes(r.id)} canAdd={portal.canAdd} />
+          </div>
+        ),
+      });
+    }
+    // @plantilla-hasta(servicios)
+    return out;
+  }, [servicesOn, timeZone, portal]);
+  const tablePrefs = useTablePrefs(CALLS_TABLE_KEY, "base", columns, null);
 
   function saveView() {
     const name = viewName.trim();
@@ -335,14 +389,6 @@ export function CallsList(props: Props) {
                 </select>
               </Field>
             )}
-            {servicesOn && (
-              <Field label="Columnas">
-                <label className="flex h-9 items-center gap-2 text-sm">
-                  <input type="checkbox" checked={!hideService} onChange={(e) => toggleServiceColumn(!e.target.checked)} className="h-4 w-4" />
-                  Mostrar la columna Servicio
-                </label>
-              </Field>
-            )}
             <Field label="Cargadas a mano">
               <label className="flex h-9 items-center gap-2 text-sm">
                 <input type="checkbox" checked={filters.manual} onChange={(e) => go({ manual: e.target.checked })} className="h-4 w-4" />
@@ -406,6 +452,7 @@ export function CallsList(props: Props) {
         filters={barFilters}
         right={
           <div className="flex shrink-0 items-center gap-2">
+            <ColumnsMenu state={tablePrefs} />
             {props.hasLiveConnection && (
               <button type="button" onClick={syncNow} disabled={syncing} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50" aria-label="Sincronizar ahora">
                 {syncing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
@@ -502,80 +549,17 @@ export function CallsList(props: Props) {
               </div>
             ) : (
               <>
-                <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
-                  <table className="w-full min-w-[960px] text-sm">
-                    <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
-                      <tr>
-                        {canSelect && (
-                          <th scope="col" className="w-8 px-3 py-2">
-                            <input
-                              type="checkbox"
-                              aria-label="Elegir todas las de esta página"
-                              checked={rows.length > 0 && selectedOnPage.length === rows.length}
-                              onChange={(e) => setSelected(e.target.checked ? rows.map((r) => r.id) : [])}
-                              className="h-4 w-4"
-                            />
-                          </th>
-                        )}
-                        {columns.map((c) => (
-                          <th key={c.key} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{c.label}</th>
-                        ))}
-                        {props.portal && <th scope="col" className="whitespace-nowrap px-3 py-2 font-medium">En el portal</th>} {/* @plantilla-quitar(servicios) */}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {rows.map((r) => {
-                        const gray = isNonSaleRow({ call_type: r.callType, analysis_status: r.status });
-                        return (
-                          <ClickableTr key={r.id} href={`/dashboard/llamadas/${r.id}`} className={`hover:bg-muted/30 ${gray ? "opacity-60" : ""}`}>
-                            {canSelect && (
-                              <td className="px-3 py-2">
-                                <input type="checkbox" aria-label={`Elegir ${r.title}`} checked={selected.includes(r.id)} onChange={() => toggleSelected(r.id)} className="h-4 w-4" />
-                              </td>
-                            )}
-                            <td className="max-w-[260px] px-3 py-2">
-                              {/* La fila entera abre la llamada; el contacto es texto (docs/tablas.md). */}
-                              <span className="block truncate font-medium">{r.contactName ?? "Sin vincular"}</span>
-                              <span className="block truncate text-xs text-muted-foreground">{r.title}</span>
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2">{formatCallDate(r.recordedAt, timeZone)}</td>
-                            <td className="whitespace-nowrap px-3 py-2">{formatDuration(r.durationSeconds)}</td>
-                            <td className="whitespace-nowrap px-3 py-2">{r.closerName ?? "—"}</td>
-                            <td className="px-3 py-2" title={typeDeciderText({ classification_source: r.classificationSource, classification_rule: r.classificationRule, classification_confidence: r.classificationConfidence }) ?? undefined}>
-                              <TypeChip type={r.callType} label={r.categoryLabel} needsReview={r.status === "needs_review"} />
-                              {r.manual && <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Cargada a mano</span>}
-                            </td>
-                            {showService && (
-                              <td className="max-w-[200px] px-3 py-2">
-                                <ServiceCell link={r.serviceLink ?? null} label={r.serviceLabel ?? null} />
-                              </td>
-                            )}
-                            <td className="px-3 py-2"><OutcomeChip outcome={r.outcome} /></td>
-                            <td className="px-3 py-2"><ScoreCell score={r.closerScore} label="Puntaje del closer" /></td>
-                            <td className="px-3 py-2">
-                              <div className="flex flex-wrap items-center gap-1">
-                                <ScoreCell score={r.leadScore} label="Puntaje del lead" />
-                                <QualificationChip value={r.leadQualification} />
-                              </div>
-                            </td>
-                            <td className="px-3 py-2"><StatusChip status={r.status} /></td>
-                            <td className="px-3 py-2"><AlertsChip open={r.hasOpenAlerts} /></td>
-                            {/* @plantilla-desde(servicios) */}
-                            {props.portal && (
-                              <td className="px-3 py-2">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-xs text-muted-foreground">{props.portal.inPortal.includes(r.id) ? "Sí" : "—"}</span>
-                                  <CallPortalMenu callId={r.id} inPortal={props.portal.inPortal.includes(r.id)} canAdd={props.portal.canAdd} />
-                                </div>
-                              </td>
-                            )}
-                            {/* @plantilla-hasta(servicios) */}
-                          </ClickableTr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  className="hidden md:block"
+                  columns={columns}
+                  rows={rows}
+                  rowKey={(r) => r.id}
+                  state={tablePrefs}
+                  caption="Llamadas"
+                  rowHref={(r) => `/dashboard/llamadas/${r.id}`}
+                  rowClassName={(r) => (isNonSaleRow({ call_type: r.callType, analysis_status: r.status }) ? "opacity-60" : undefined)}
+                  selection={canSelect ? { selected: new Set(selectedOnPage), onChange: (next) => setSelected([...next]), rowLabel: (r) => `Elegir ${r.title}` } : undefined}
+                />
 
                 <ul className="space-y-2 md:hidden">
                   {rows.map((r) => (
@@ -591,7 +575,7 @@ export function CallsList(props: Props) {
                         <p className="mt-1 text-xs text-muted-foreground">{formatCallDate(r.recordedAt, timeZone)} · {formatDuration(r.durationSeconds)}{r.closerName ? ` · ${r.closerName}` : ""}</p>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <TypeChip type={r.callType} label={r.categoryLabel} needsReview={r.status === "needs_review"} />
-                          {showService && (r.serviceLink === "review" || r.serviceLabel) && <ServiceCell link={r.serviceLink ?? null} label={r.serviceLabel ?? null} />}
+                          {servicesOn && (r.serviceLink === "review" || r.serviceLabel) && <ServiceCell link={r.serviceLink ?? null} label={r.serviceLabel ?? null} />}
                           <StatusChip status={r.status} />
                           <OutcomeChip outcome={r.outcome} />
                           {r.closerScore !== null && <span className="inline-flex items-center gap-1 text-xs">Closer <ScoreCell score={r.closerScore} /></span>}
