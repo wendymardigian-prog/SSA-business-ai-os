@@ -248,10 +248,13 @@ export async function listTrash(): Promise<TrashListResult> {
   const since = new Date(Date.now() - TRASH_RETENTION_DAYS * 86_400_000).toISOString();
   const service = await createServiceClient();
   if (ctx.can(SOFT_DELETE_ENTITIES.contact.key)) {
-    const { data: contacts, error: cErr } = await service
+    let contactsQuery = service
       .from("contacts")
       .select("id, display_name, deleted_at")
-      .eq("workspace_id", ctx.workspace.id)
+      .eq("workspace_id", ctx.workspace.id);
+    const leadsFilter = ownContactsFilter(ctx);
+    if (leadsFilter) contactsQuery = contactsQuery.or(leadsFilter);
+    const { data: contacts, error: cErr } = await contactsQuery
       .not("deleted_at", "is", null)
       // Un duplicado que se unió a otro (Fusionar) no es algo eliminado: restaurarlo reviviría el duplicado.
       .is("metadata->merged_into", null)
@@ -264,10 +267,13 @@ export async function listTrash(): Promise<TrashListResult> {
     }
   }
   if (ctx.can(SOFT_DELETE_ENTITIES.task.key)) {
-    const { data: tasks, error: tErr } = await service
+    let tasksQuery = service
       .from("tasks")
       .select("id, title, deleted_at")
-      .eq("workspace_id", ctx.workspace.id)
+      .eq("workspace_id", ctx.workspace.id);
+    const tasksFilter = ownTasksFilter(ctx);
+    if (tasksFilter) tasksQuery = tasksQuery.or(tasksFilter);
+    const { data: tasks, error: tErr } = await tasksQuery
       .not("deleted_at", "is", null)
       .gt("deleted_at", since)
       .order("deleted_at", { ascending: false })
@@ -280,6 +286,29 @@ export async function listTrash(): Promise<TrashListResult> {
 
   items.sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : a.deletedAt > b.deletedAt ? -1 : 0));
   return { ok: true, items, notice };
+}
+
+/**
+ * Con el cliente de servicio (la RLS esconde lo borrado) la Papelera respeta el alcance a mano: quien ve «solo lo
+ * suyo» ve solo lo suyo borrado, con la misma regla que `can_see_task` y, para contactos, la de setter y vendedor de
+ * `can_see_contact` (más estricta: no suma los chats asignados). `null` = ve todo (Owner, Admin o alcance «all»).
+ * El id sale de la sesión: es un uuid, no hay texto del navegador en el filtro.
+ */
+function seesEverything(ctx: PermissionContext, scope: "leads" | "tasks"): boolean {
+  return ctx.role === "owner" || ctx.role === "admin" || ctx.scope(scope) === "all";
+}
+
+function ownTasksFilter(ctx: PermissionContext): string | null {
+  if (seesEverything(ctx, "tasks")) return null;
+  const me = ctx.user.id;
+  return `created_by.eq.${me},owner_id.eq.${me},follower_ids.cs.{${me}}`;
+}
+
+function ownContactsFilter(ctx: PermissionContext): string | null {
+  if (seesEverything(ctx, "leads")) return null;
+  const me = ctx.user.id;
+  const own = `setter_id.eq.${me},vendedor_id.eq.${me}`;
+  return ctx.scope("leads") === "own_unassigned" ? `${own},and(setter_id.is.null,vendedor_id.is.null)` : own;
 }
 
 function softItem(entity: "contact" | "task", id: string, label: string, deletedAt: string): TrashListItem {
@@ -330,13 +359,16 @@ async function restoreSoft(entity: "contact" | "task", id: string): Promise<Tras
   // `deleted_at` no lo escribe una sesión (privilegio por columna): lo vuelve a null el cliente de servicio,
   // filtrando por el workspace de la sesión.
   const service = await createServiceClient();
-  const { data, error } = await service
+  let restore = service
     .from("tasks")
     .update({ deleted_at: null })
     .eq("id", id)
     .eq("workspace_id", ctx.workspace.id)
-    .not("deleted_at", "is", null)
-    .select("id");
+    .not("deleted_at", "is", null);
+  // Solo lo que la persona vería: con alcance «solo lo mío», sus tareas.
+  const tasksFilter = ownTasksFilter(ctx);
+  if (tasksFilter) restore = restore.or(tasksFilter);
+  const { data, error } = await restore.select("id");
   if (error) {
     console.error("[papelera] restaurar tarea:", error.message);
     return { ok: false, error: "No pude restaurar la tarea." };
