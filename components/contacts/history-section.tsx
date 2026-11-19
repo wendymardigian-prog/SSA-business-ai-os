@@ -67,6 +67,15 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   // La Papelera (00410): eliminar un registro y restaurarlo.
   "trash.deleted": "lo eliminó (quedó en la Papelera)",
   "trash.restored": "lo restauró desde la Papelera",
+  // La cola de WhatsApp (00420): se auditan sobre el número o el negocio; no se ven en la ficha de un contacto.
+  "send_queue.paused": "pausó la cola del número",
+  "send_queue.resumed": "reanudó la cola del número",
+  "send_queue.bulk_paused": "pausó lo masivo del número",
+  "send_queue.bulk_resumed": "reanudó lo masivo del número",
+  "send_queue.emptied": "vació la cola del número",
+  "send_queue.warmup": "cambió el calentamiento del número",
+  "send_queue.settings": "cambió los ajustes de la cola de WhatsApp",
+  "send_queue.schedule_applied": "aplicó la programación a los envíos programados",
   // El historial de un anuncio (entity meta_ad) no se muestra en la ficha del contacto; las etiquetas existen por el tipo.
   // Extra I (MP): los métodos de pago del negocio se auditan sobre el workspace; no se ven en la ficha de un contacto.  @plantilla-quitar(ventas)
   "payment_methods.updated": "cambió los métodos de pago", // @plantilla-quitar(ventas)
