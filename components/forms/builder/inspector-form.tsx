@@ -20,6 +20,8 @@ export function InspectorForm({
   contactConfig,
   disabled,
   onOpenContact,
+  logoUrl,
+  isContract,
 }: {
   name: string;
   onName: (name: string) => void;
@@ -29,6 +31,9 @@ export function InspectorForm({
   contactConfig: ContactConfig;
   disabled: boolean;
   onOpenContact?: () => void;
+  /** El logo de la marca del negocio, o null si no cargó uno. */
+  logoUrl?: string | null;
+  isContract?: boolean;
 }) {
   const summary = builderSummary(fields, contactConfig);
   return (
@@ -42,6 +47,13 @@ export function InspectorForm({
       <Field label="Introducción" hint="Aparece debajo del título. Los saltos de línea se respetan.">
         {(id) => <textarea id={id} rows={3} className={inputClass} disabled={disabled} maxLength={2000} value={design.intro} onChange={(e) => onDesign({ ...design, intro: e.target.value })} />}
       </Field>
+      <LogoOption
+        checked={design.showLogo !== false}
+        onChange={(showLogo) => onDesign({ ...design, showLogo })}
+        logoUrl={logoUrl ?? null}
+        isContract={!!isContract}
+        disabled={disabled}
+      />
       <Field label="Texto del botón" hint="Vacío: “Enviar” (“Firmar y enviar” en un contrato).">
         {(id) => <input id={id} className={inputClass} disabled={disabled} maxLength={60} value={design.submitLabel} onChange={(e) => onDesign({ ...design, submitLabel: e.target.value })} />}
       </Field>
@@ -95,6 +107,52 @@ export function InspectorForm({
       </div>
 
       <p className="text-[11px] text-muted-foreground">Tocá una pregunta del formulario para configurarla.</p>
+    </div>
+  );
+}
+
+/** «Mostrar el logo del negocio»: arriba del formulario (en el link, no incrustado) y, en un contrato, del PDF. */
+function LogoOption({
+  checked,
+  onChange,
+  logoUrl,
+  isContract,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  logoUrl: string | null;
+  isContract: boolean;
+  disabled: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <label className="flex items-start gap-2.5 text-sm">
+        <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-primary" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+        <span>
+          <span className="font-medium">Mostrar el logo del negocio</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            Arriba de todo, cuando la persona abre el link. Si el formulario está incrustado en otra web, no se muestra.
+            {isContract && " En el PDF del contrato firmado también va arriba de la primera hoja."}
+          </span>
+        </span>
+      </label>
+      {logoUrl ? (
+        checked && (
+          <div className="mt-2 flex justify-center rounded-md bg-muted/40 p-2">
+            {/* eslint-disable-next-line @next/next/no-img-element -- logo del bucket público de marca */}
+            <img src={logoUrl} alt="Logo del negocio" className="h-8 w-auto max-w-full object-contain" />
+          </div>
+        )
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Tu negocio todavía no tiene logo, así que no se va a ver nada.{" "}
+          <a href="/dashboard/settings" className="text-primary-ink underline hover:no-underline">
+            Cargalo en Ajustes → General → Marca
+          </a>
+          .
+        </p>
+      )}
     </div>
   );
 }

@@ -345,6 +345,7 @@ export function FormEditor({
                 issues={disabled ? NO_ISSUES : issues}
                 focusRequest={focusRequest}
                 onOpenContact={() => setSection("contacto")}
+                businessLogoUrl={extras.businessLogoUrl ?? null}
                 contract={
                   form.type === "contract" && contractConfig
                     ? { formId: form.id, config: contractConfig, onConfigSaved: setContractConfig, canManage, emailReadiness: extras.emailReadiness, signatureUrl: extras.businessSignatureUrl }

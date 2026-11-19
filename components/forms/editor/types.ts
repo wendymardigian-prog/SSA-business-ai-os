@@ -49,6 +49,8 @@ export interface EditorExtras {
   emailReadiness?: EmailReadiness;
   /** Solo un contrato con la firma del negocio cargada: un link temporal para verla en el editor. */
   businessSignatureUrl?: string | null;
+  /** El logo de la marca del negocio (Ajustes → General → Marca), o null si no tiene: para «Mostrar el logo». */
+  businessLogoUrl?: string | null;
 }
 
 export interface EditorVersion {
