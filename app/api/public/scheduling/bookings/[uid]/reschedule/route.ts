@@ -31,6 +31,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     by: "invitee",
     reason: typeof body.reason === "string" ? body.reason.slice(0, 500) : null,
   });
-  if (!result.ok) return NextResponse.json({ reason: result.reason, message: result.message }, { status: result.status });
+  if (!result.ok) return NextResponse.json({ reason: result.reason, message: result.message, alternatives: result.alternatives }, { status: result.status });
   return NextResponse.json({ uid: result.uid, startUtc: result.startUtc, endUtc: result.endUtc });
 }
