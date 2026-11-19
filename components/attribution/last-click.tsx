@@ -80,17 +80,26 @@ function HoverCard({ touches }: { touches: readonly BookingTouchView[] }) {
 }
 
 /** La celda de la columna «Último click» de la lista de Agenda. */
+/** Lo de adentro de la celda «Último click» (para la tabla común, que pone su propio `<td>`). */
+export function LastClickContent({ touches }: { touches: readonly BookingTouchView[] | undefined }) {
+  const last = touches?.[0];
+  if (!touches || !last) return <span className="text-muted-foreground">—</span>;
+  return (
+    <Tip content={<HoverCard touches={touches} />} align="start" className="max-w-full">
+      <span tabIndex={0} className="flex min-w-0 max-w-full items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChannelChip channel={last.channel} />
+        <span className="min-w-0 truncate">{last.title}</span>
+      </span>
+    </Tip>
+  );
+}
+
 export function LastClickCell({ touches, className }: { touches: readonly BookingTouchView[] | undefined; className?: string }) {
   const last = touches?.[0];
   if (!touches || !last) return <td className={cn("px-3 py-2 text-muted-foreground", className)}>—</td>;
   return (
     <td className={cn("max-w-[18rem] px-3 py-2", className)}>
-      <Tip content={<HoverCard touches={touches} />} align="start" className="max-w-full">
-        <span tabIndex={0} className="flex min-w-0 max-w-full items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <ChannelChip channel={last.channel} />
-          <span className="min-w-0 truncate">{last.title}</span>
-        </span>
-      </Tip>
+      <LastClickContent touches={touches} />
     </td>
   );
 }

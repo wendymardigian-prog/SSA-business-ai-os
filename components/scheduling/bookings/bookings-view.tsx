@@ -22,10 +22,11 @@ import { ReconnectBanner } from "../reconnect-banner";
 import { NoGoogleNotice } from "../no-google-notice";
 import type { MetaLink } from "@/lib/attribution/meta-link";
 import { BookingsList } from "./list";
-import { ColumnsMenu } from "@/components/attribution/columns-menu";
-import { AGENDA_COLUMN_GROUPS } from "@/lib/attribution/columns";
+import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
+import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
+import { AGENDA_TABLE_KEY, agendaColumnMetas } from "@/lib/scheduling/agenda-columns";
+import { basePrefsFor } from "@/lib/ui/data-table/prefs";
 import type { BookingTouchView } from "@/lib/attribution/last-touches";
-import { useAgendaColumns } from "./use-agenda-columns";
 import { BookingsKanban } from "./kanban-board";
 import { BookingsCalendar } from "./calendar-grid";
 import { useRescheduleDrag } from "./reschedule-dialog";
@@ -200,7 +201,10 @@ export function BookingsScreen({
   const [pending, start] = useTransition();
   const reschedule = useRescheduleDrag({ items, timezone, timeFormat });
   // Las columnas de la lista viven acá porque su botón está en la barra de arriba, al lado de los filtros.
-  const columns = useAgendaColumns();
+  // Las columnas de la lista: el catálogo, lo normal (el contacto fijo) y lo que eligió cada persona en su navegador.
+  const columnMetas = useMemo(() => agendaColumnMetas(), []);
+  const columnBase = useMemo(() => basePrefsFor(columnMetas), [columnMetas]);
+  const columns = useTablePrefs(AGENDA_TABLE_KEY, "base", columnMetas, columnBase);
 
   const now = useMemo(() => new Date(), []);
   const hostOptions = useMemo(() => Object.entries(hostNames).map(([userId, label]) => ({ userId, label })).sort((a, b) => a.label.localeCompare(b.label)), [hostNames]);
@@ -356,15 +360,7 @@ export function BookingsScreen({
             {view === "list" && (
               // En el celular la lista son tarjetas: no hay columnas que elegir.
               <div className="hidden md:block">
-                <ColumnsMenu
-                  defs={columns.defs}
-                  groups={AGENDA_COLUMN_GROUPS}
-                  visible={columns.visible}
-                  onToggle={columns.toggle}
-                  onShowAll={columns.showAll}
-                  onReset={columns.reset}
-                  onResetWidths={columns.hasCustomWidths ? columns.resetAllWidths : undefined}
-                />
+                <ColumnsMenu state={columns} />
               </div>
             )}
 
@@ -419,7 +415,7 @@ export function BookingsScreen({
               now={now}
               metaLinks={metaLinks}
               lastTouches={lastTouches}
-              columns={columns}
+              prefs={columns}
               canManage={canManage}
               busy={pending}
               onOpen={openDetail}

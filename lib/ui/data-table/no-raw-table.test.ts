@@ -52,7 +52,6 @@ const LEGACY = [
   "components/inbox/assignment/known-assignment-view.tsx",
   "components/sales/payment-plan.tsx", // @plantilla-quitar(ventas)
   "components/sales/wizard/step3-financing.tsx", // @plantilla-quitar(ventas)
-  "components/scheduling/bookings/list.tsx",
   "components/services/clients/import-services-view.tsx", // @plantilla-quitar(servicios)
   "components/services/clients/service-accesses-panel.tsx", // @plantilla-quitar(servicios)
   "components/services/portal/program-calendar.tsx", // @plantilla-quitar(servicios)
