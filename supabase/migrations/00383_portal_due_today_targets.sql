@@ -2,7 +2,7 @@
 -- 00383 · Corrida A3 · F128: a quién le toca el email «Lo que vence hoy» (solo lectura).
 --
 -- Igual que `portal_digest_targets` (00377), pero con el interruptor del programa `notifications.due_today_email`
--- (nace APAGADO) y la preferencia de la persona `due_today_email` (nace apagada, decisión de Wendy 14/11). Lo que vence
+-- (nace APAGADO) y la preferencia de la persona `due_today_email` (nace apagada, decisión de producto 14/11). Lo que vence
 -- hoy de cada persona lo lee el envío con `portal_notifications_view` (00377). Solo para el servidor.
 --
 -- Volver atrás: DROP FUNCTION IF EXISTS app_servicio.portal_due_today_targets(uuid);

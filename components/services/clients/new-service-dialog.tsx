@@ -4,12 +4,14 @@
 import { serviceHref } from "@/lib/services/screens/record-url";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
-import { checkSaleRule, contactSalesWithoutService, createService, searchContactsForService } from "@/lib/actions/services";
+import { Loader2, Plus, Search } from "lucide-react";
+import { checkSaleRule, contactSalesWithoutService, createContactForService, createService, searchContactsForService } from "@/lib/actions/services";
 import { RULE_REASON_LABELS, defaultServiceStartsOn, newServiceFormIssues, serviceStartsOnHint, type NewServiceForm } from "@/lib/services/screens/service";
 import { todayIn } from "@/lib/services/screens/today";
 import { ActionError } from "@/components/contacts/ui";
 import { ContentDialog, DialogField, fieldInput } from "@/components/content/dialog";
+import { QuickCreateContact } from "@/components/contacts/quick-create-contact";
+import { useContactSearchWith } from "@/components/shared/use-contact-search";
 
 export interface NewServiceOptions {
   /** Productos con sus variantes que crean servicios. */
@@ -23,7 +25,8 @@ export interface NewServiceOptions {
 /**
  * «+ Servicio» (F30): origen (Venta · Cortesía · Prueba · Manual), venta (las del contacto sin servicio), contacto,
  * producto y variante, inicio, responsable y motivo (obligatorio sin venta). Si la venta no cumple la regla de su
- * variante, el modal se pone en rojo con el motivo y lo pide (F95). Crea con `createService`.
+ * variante, el modal se pone en rojo con el motivo y lo pide (F95). Crea con `createService`. Sin contacto
+ * elegido, «Crear contacto» lo da de alta ahí mismo (el mismo alta rápida que el asistente de venta).
  */
 export function NewServiceDialog({
   options,
@@ -49,8 +52,9 @@ export function NewServiceDialog({
     reason: "",
   });
   const [contactName, setContactName] = useState(preset?.contactName ?? "");
-  const [search, setSearch] = useState("");
-  const [found, setFound] = useState<Array<{ id: string; name: string; email: string | null }>>([]);
+  const [creatingContact, setCreatingContact] = useState(false);
+  const [contactNotice, setContactNotice] = useState<string | null>(null);
+  const search = useContactSearchWith(async (q) => (await searchContactsForService(q)).map((c) => ({ id: c.id, name: c.name, email: c.email ?? c.phone })));
   const [sales, setSales] = useState<Array<{ id: string; label: string; variantId: string }>>([]);
   const [rule, setRule] = useState<{ met: boolean; reason: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,19 +65,6 @@ export function NewServiceDialog({
       if (patch.variantId !== undefined && patch.variantId !== f.variantId && !startsTouched) next.startsOn = defaultServiceStartsOn(today, eventDateOf(next.variantId));
       return next;
     });
-
-  useEffect(() => {
-    if (form.contactId) return;
-    if (search.trim().length < 2) return;
-    let alive = true;
-    const id = window.setTimeout(() => {
-      searchContactsForService(search).then((r) => alive && setFound(r));
-    }, 250);
-    return () => {
-      alive = false;
-      window.clearTimeout(id);
-    };
-  }, [search, form.contactId]);
 
   useEffect(() => {
     if (!form.contactId) return;
@@ -95,6 +86,14 @@ export function NewServiceDialog({
 
   const offRule = form.origin === "sale" && rule !== null && !rule.met;
   const issues = [...newServiceFormIssues(form), ...(offRule && !form.reason.trim() ? ["La venta no cumple la regla: escribí el motivo."] : [])];
+
+  function pickContact(c: { id: string; name: string }, notice: string | null = null) {
+    set({ contactId: c.id, saleId: "" });
+    setContactName(c.name);
+    setContactNotice(notice);
+    setCreatingContact(false);
+    search.reset();
+  }
 
   function submit() {
     setError(null);
@@ -145,40 +144,65 @@ export function NewServiceDialog({
             <option value="manual">Manual</option>
           </select>
         </DialogField>
-        <DialogField label="Contacto">
+        {/* Un div y no DialogField (un <label>): adentro van el alta rápida, con sus propios campos, y botones. */}
+        <div className="space-y-1">
+          <span className="block text-xs font-medium">Contacto</span>
           {form.contactId ? (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-              <span className="truncate">{contactName}</span>
-              {!preset?.contactId && (
-                <button type="button" onClick={() => set({ contactId: "", saleId: "" })} className="text-xs text-primary-ink hover:underline">
-                  Cambiar
-                </button>
-              )}
-            </div>
-          ) : (
             <>
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscá por nombre o email" className={fieldInput} />
-              {found.length > 0 && (
-                <ul className="mt-1 max-h-40 overflow-auto rounded-lg border border-border">
-                  {found.map((c) => (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                <span className="truncate">{contactName}</span>
+                {!preset?.contactId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      set({ contactId: "", saleId: "" });
+                      setContactNotice(null);
+                    }}
+                    className="text-xs text-primary-ink hover:underline"
+                  >
+                    Cambiar
+                  </button>
+                )}
+              </div>
+              {contactNotice && (
+                <p role="status" className="mt-1 text-xs text-muted-foreground">
+                  {contactNotice}
+                </p>
+              )}
+            </>
+          ) : creatingContact ? (
+            <QuickCreateContact create={createContactForService} onCancel={() => setCreatingContact(false)} onCreated={(c) => pickContact(c, c.notice)} />
+          ) : (
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                <input
+                  value={search.query}
+                  onChange={(e) => search.setQuery(e.target.value)}
+                  placeholder="Buscar por nombre, email, teléfono o usuario"
+                  aria-label="Buscar contacto"
+                  className={`${fieldInput} pl-8`}
+                />
+                {search.searching && <Loader2 className="absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" aria-hidden />}
+              </div>
+              {search.options.length > 0 && (
+                <ul className="max-h-40 overflow-auto rounded-lg border border-border" aria-label="Contactos encontrados">
+                  {search.options.map((c) => (
                     <li key={c.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          set({ contactId: c.id });
-                          setContactName(c.name);
-                        }}
-                        className="block w-full px-3 py-1.5 text-left text-sm hover:bg-accent"
-                      >
+                      <button type="button" onClick={() => pickContact(c)} className="block w-full px-3 py-1.5 text-left text-sm hover:bg-accent">
                         {c.name} {c.email && <span className="text-xs text-muted-foreground">· {c.email}</span>}
                       </button>
                     </li>
                   ))}
                 </ul>
               )}
-            </>
+              {search.query.trim().length >= 2 && !search.searching && search.options.length === 0 && <p className="text-xs text-muted-foreground">No encontré a nadie con eso.</p>}
+              <button type="button" onClick={() => setCreatingContact(true)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-medium hover:bg-accent">
+                <Plus className="h-3.5 w-3.5" aria-hidden /> Crear contacto
+              </button>
+            </div>
           )}
-        </DialogField>
+        </div>
         {form.origin === "sale" && (
           <DialogField label="Venta" hint={form.contactId && sales.length === 0 ? "Este contacto no tiene ventas sin servicio." : undefined}>
             <select

@@ -2313,6 +2313,15 @@ Casi todo se elimina desde su ficha o su fila (agendas, ventas, pagos, productos
 
 `00410` y `00411` son aditivas y suman el cron diario `trash-purge` (SQL directo). **Aplicadas y registradas el 18/11/2026** (versiones `20261119032117` y `20261119032118`, UTC), después de ensayarlas contra producción en una transacción que se deshizo sola (eliminar y restaurar idénticos en 12 tipos). `verify-trash.mjs` necesita el Supabase local (Docker). **La próxima libre del rango de esta tanda es la `00412`** (confirmar con `list_migrations` y las ramas locales).
 
+# Contratos y correos: tres mejoras traídas de ALMA-BAIOS (18/11/2026, sin migración)
+
+El correo de la copia firmada se personaliza por contrato, un enlace de un correo puede apuntar a una variable, el link firmado completa «Nombre» y «Apellidos» por separado, y el contrato conserva la sangría y los espacios dobles. Detalle en [docs/formularios.md](docs/formularios.md) y [docs/flow-registry.md](docs/flow-registry.md). La regla de Servicios «Al crear la venta» de ALMA **no** se trajo: si algún día se trae, su `validate_service_settings` parte de la 00332 y acá la 00402 la redefinió.
+
+- **Sin `copyEmail`, el correo de la copia sale byte por byte igual** (snapshot en `lib/forms/contract/email-run.test.ts`). Las copias al equipo no cambian.
+- **Un enlace a una variable se revisa DESPUÉS de completarla** (la lista blanca de `lib/email/html.ts`), nunca en el editor; lo que no queda http(s), mailto o tel pierde el enlace.
+- **No se guarda un `{{form_link.<slug>}}` a un formulario sin publicar** (`saveContractConfig`), y un link que no se pudo firmar se saca del correo.
+- **La sangría y los espacios dobles no cambian la huella** (es sobre el texto guardado) ni la regla de los renglones vacíos.
+
 # Seguridad
 
 ## Autenticacion y sesiones

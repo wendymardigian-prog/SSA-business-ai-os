@@ -18,6 +18,11 @@ export function hasFormLinkVariables(text: string): boolean {
   return found;
 }
 
+/** La variable de un formulario para un editor: `como-vas` → `form_link.como_vas` (sin las llaves). */
+export function formLinkVariable(slug: string): string {
+  return `form_link.${slug.toLowerCase().replace(/-/g, "_")}`;
+}
+
 /** El slug real de un token: `como_vas` → `como-vas`. */
 export function slugFromToken(token: string): string {
   return token.toLowerCase().replace(/_/g, "-");

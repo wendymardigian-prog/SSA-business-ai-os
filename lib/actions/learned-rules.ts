@@ -58,7 +58,7 @@ export async function retireLearnedRule(ruleId: string): Promise<RuleDecision> {
 
 /**
  * Aprobación de acciones, ejemplos automáticos y umbral de reglas. Las acciones con aprobación y los ejemplos nacen
- * apagados (decisión de Wendy, 18/11/2026).
+ * apagados (decisión de producto, 18/11/2026).
  */
 export async function updateAgentLearning(
   agentId: string,
@@ -106,7 +106,7 @@ export async function updateAgentLearning(
 }
 
 /**
- * Las herramientas que ofrece el asistente del equipo. De serie, todas (decisión de Wendy, 18/11/2026). Se guardan en `agents.allowed_tools` del asistente. Pide `agents.edit`.
+ * Las herramientas que ofrece el asistente del equipo. De serie, todas (decisión de producto, 18/11/2026). Se guardan en `agents.allowed_tools` del asistente. Pide `agents.edit`.
  */
 export async function updateAssistantTools(agentId: string, keys: string[]): Promise<{ ok: true } | { ok: false; error: string }> {
   const g = await guard();

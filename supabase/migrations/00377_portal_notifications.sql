@@ -3,7 +3,7 @@
 -- ============================================================
 -- Servicios A3, F128 (decisiones 471 y 475): avisos del estudiante, resumen semanal y días activos.
 --
---   * `app_servicio_portal.portal_accounts` suma tres columnas (aprobadas por Wendy el 14/11; ninguna tabla):
+--   * `app_servicio_portal.portal_accounts` suma tres columnas (aprobadas el 14/11; ninguna tabla):
 --       notification_prefs    jsonb NOT NULL DEFAULT '{}'  lo que eligió en Perfil (lo que falta toma el de por defecto)
 --       notifications_seen_at timestamptz NULL             hasta cuándo vio los avisos (el contador de la campana)
 --       active_days           date[] NOT NULL DEFAULT '{}' los días que entró al portal, los últimos 180 (decisión 475)
@@ -11,7 +11,7 @@
 --   * Solo servidor (las usa el portal en B2): `portal_touch_active_day` (una escritura por día), `portal_save_notification_prefs`,
 --     `portal_mark_notifications_seen` y `portal_notifications_view` («Para hoy» y «Novedades», calculadas, sin guardar).
 --   * `products.portal_settings.notifications = {weekly_digest, due_today_email}`: SIN la clave, el resumen semanal y el
---     «vence hoy» por email están APAGADOS en todos los programas (condición de Wendy: se prenden con el portal en línea).
+--     «vence hoy» por email están APAGADOS en todos los programas (condición de producto: se prenden con el portal en línea).
 --   * `portal_digest_targets(workspace)` y `portal_digest_data(...)`: a quién le toca el resumen y qué lleva. El envío
 --     es código (lib/jobs/handlers/portal-digest.ts) con el Resend del negocio.
 --
@@ -266,7 +266,7 @@ BEGIN
       END IF;
     END IF;
   END IF;
-  -- A3 (F128): los avisos del programa. Sin la clave, el resumen semanal está APAGADO (condición de Wendy, 14/11).
+  -- A3 (F128): los avisos del programa. Sin la clave, el resumen semanal está APAGADO (condición de producto, 14/11).
   IF p ? 'notifications' THEN
     a := p -> 'notifications';
     IF jsonb_typeof(a) <> 'object' THEN v := v || 'los avisos no son válidos'::text;

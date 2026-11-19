@@ -16,7 +16,7 @@
 --   4. Una repetición con required = false no cuenta para `late_light` ni para el semáforo del paso (`svc_compute_light`).
 --   5. Control semanal `challenge.weekly = {min, video, number_field_key?, link_field_key?, stuck_field_key?}`:
 --      `svc_challenge_weeks_plan` (gemela challengeWeeks) y la lectura `svc_challenge_view` para la ficha. El campo
---      «trabado» (decisión de Wendy, 14/11) marca los días con algo escrito.
+--      «trabado» (decisión de producto, 14/11) marca los días con algo escrito.
 --   6. `challenge.start_by = {from: service_start|service_created, days}`: `svc_challenge_start_by`; el cron diario
 --      (`svc_open_due_challenges`, que ya llama svc_daily_run) avisa UNA vez al responsable al pasarse. No bloquea.
 --   7. Certificado según si llegó a tiempo: `ref.templates` en el paso de certificado (validación acá; elegir la

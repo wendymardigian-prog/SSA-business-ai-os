@@ -10,6 +10,8 @@ import { SaleEditDialog, type EditableSale } from "@/components/sales/sale-edit-
 import { SaleOrigin } from "@/components/sales/sale-origin";
 import { StatusChip } from "@/components/sales/sales-list";
 import { DeleteButton } from "@/components/trash/delete-dialog";
+import { AffiliateName, affiliateSummary } from "@/components/affiliates/affiliate-field";
+import type { AffiliateOfRecord } from "@/lib/affiliates/load";
 import type { WizardConfig, WizardMember } from "@/components/sales/wizard/types";
 import { describeAttribution, type SaleAttribution } from "@/lib/attribution/attribution";
 import type { SaleAttributionViewModel } from "@/lib/sales/attribution-view";
@@ -81,7 +83,7 @@ function formatDate(date: string | null): string {
  * La ficha de una venta (F26): cabecera con los números, datos, plan de pagos (solo lectura en
  * este bloque), contratos e historial. Las acciones solo aparecen con `sales.manage`.
  */
-export function SaleDetail({ data, wizard, contracts, commissions, services, affiliate }: { data: SaleDetailData; wizard: WizardConfig; contracts?: React.ReactNode; commissions?: React.ReactNode; services?: React.ReactNode; affiliate?: React.ReactNode }) {
+export function SaleDetail({ data, wizard, contracts, commissions, services, affiliate }: { data: SaleDetailData; wizard: WizardConfig; contracts?: React.ReactNode; commissions?: React.ReactNode; services?: React.ReactNode; affiliate?: { record: AffiliateOfRecord; canAssign: boolean } }) {
   const { sale, payments, numbers, contact } = data;
   const [dialog, setDialog] = useState<"edit" | "cancel" | "subscription" | "rebuild" | null>(null);
   // «Cambiar» en «De dónde vino» abre la edicion con la atribucion ya desplegada.
@@ -92,6 +94,11 @@ export function SaleDetail({ data, wizard, contracts, commissions, services, aff
   const attributionLine = attribution ? describeAttribution(attribution, new Date(), data.timeZone) : "Sin atribución";
   const hasCollected = payments.some((p) => p.status === "paid" && Number(p.amount) > 0);
   const cancelReason = sale.cancellation_reason ?? sale.subscription_cancel_reason;
+  const canAssignAffiliate = !!affiliate?.canAssign;
+  // «Editar» lo ve quien edita la venta o quien solo puede cambiar su afiliado (en ese caso la ventana muestra solo eso).
+  const canEdit = data.canManage || canAssignAffiliate;
+  const openEdit = () => { setEditAttribution(false); setDialog("edit"); };
+  const affiliateSummaryText = affiliate ? affiliateSummary(affiliate.record, "sale") : "";
 
   const editable: EditableSale = {
     id: sale.id,
@@ -120,13 +127,15 @@ export function SaleDetail({ data, wizard, contracts, commissions, services, aff
           </Link>
         }
         right={
-          data.canManage || data.canDelete ? (
+          canEdit || data.canDelete ? (
             <div className="flex shrink-0 items-center gap-2">
+              {canEdit && (
+                <button type="button" onClick={openEdit} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent" aria-label="Editar la venta">
+                  <Pencil className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Editar</span>
+                </button>
+              )}
               {data.canManage && (
                 <>
-                  <button type="button" onClick={() => { setEditAttribution(false); setDialog("edit"); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent" aria-label="Editar la venta">
-                    <Pencil className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Editar</span>
-                  </button>
                   {!closed && !isSubscription && (
                     <button type="button" onClick={() => setDialog("cancel")} className="inline-flex h-9 items-center rounded-lg border border-red-500/40 px-2.5 text-sm text-red-700 hover:bg-red-500/10 dark:text-red-400">Cancelar venta</button>
                   )}
@@ -173,7 +182,16 @@ export function SaleDetail({ data, wizard, contracts, commissions, services, aff
             )}
           </header>
 
-          <Section title="Datos de la venta">
+          <Section
+            title="Datos de la venta"
+            action={
+              canEdit ? (
+                <button type="button" onClick={openEdit} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium hover:bg-accent" aria-label="Editar los datos de la venta">
+                  <Pencil className="h-3.5 w-3.5" aria-hidden /> Editar
+                </button>
+              ) : undefined
+            }
+          >
             <dl className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
               <Row label="Fecha de la venta" value={formatDate(sale.sale_date)} />
               <Row label="Inicio del servicio" value={formatDate(sale.service_starts_at)} />
@@ -181,6 +199,21 @@ export function SaleDetail({ data, wizard, contracts, commissions, services, aff
               <Row label="Descuento" value={Number(sale.discount_amount) > 0 ? `${formatMoney(sale.discount_amount)}${sale.discount_reason ? ` · ${sale.discount_reason}` : ""}` : "Sin descuento"} />
               <Row label="Setter" value={sale.setter_id ? data.names[sale.setter_id] ?? "—" : "Sin asignar"} />
               <Row label="Vendedor" value={sale.vendedor_id ? data.names[sale.vendedor_id] ?? "—" : "Sin asignar"} />
+              {affiliate && (
+                <div className="flex items-start gap-2">
+                  <dt className="w-28 shrink-0 text-muted-foreground sm:w-40">Afiliado</dt>
+                  <dd className="min-w-0 break-words">
+                    {affiliate.record.affiliate ? (
+                      <>
+                        <AffiliateName affiliate={affiliate.record.affiliate} />
+                        {affiliateSummaryText && <span className="ml-2 text-xs text-muted-foreground">{affiliateSummaryText}</span>}
+                      </>
+                    ) : (
+                      "Sin afiliado"
+                    )}
+                  </dd>
+                </div>
+              )}
               <Row label={`Atribución · ${ATTRIBUTION_TYPE_LABELS[sale.attribution_type as AttributionType] ?? sale.attribution_type}`} value={attributionLine} wide />
               <div className="flex items-start gap-2 sm:col-span-2">
                 <dt className="w-28 shrink-0 text-muted-foreground sm:w-40">Agenda de origen</dt>
@@ -223,8 +256,6 @@ export function SaleDetail({ data, wizard, contracts, commissions, services, aff
 
           {services /* Servicios A1 (F33): la seccion del modulo, si esta prendido */}
 
-          {affiliate /* Servicios A1 (F74, F104): el afiliado de la venta */}
-
           {contracts}
 
           {commissions}
@@ -235,7 +266,17 @@ export function SaleDetail({ data, wizard, contracts, commissions, services, aff
         </div>
       </div>
 
-      {dialog === "edit" && <SaleEditDialog sale={editable} contactName={contact?.name ?? "Contacto"} config={wizard} openAttribution={editAttribution} onClose={() => setDialog(null)} />}
+      {dialog === "edit" && (
+        <SaleEditDialog
+          sale={editable}
+          contactName={contact?.name ?? "Contacto"}
+          config={wizard}
+          openAttribution={editAttribution}
+          canEditSale={data.canManage}
+          affiliate={canAssignAffiliate ? affiliate?.record : undefined}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {dialog === "cancel" && <CancelDialog saleId={sale.id} kind="sale" hasCollected={hasCollected} onClose={() => setDialog(null)} />}
       {dialog === "subscription" && <CancelDialog saleId={sale.id} kind="subscription" hasCollected={false} onClose={() => setDialog(null)} />}
       {dialog === "rebuild" && <RebuildPlanDialog saleId={sale.id} finalAmount={numbers.total} paidAmount={numbers.paid} today={data.today} onClose={() => setDialog(null)} />}
@@ -261,10 +302,13 @@ function Row({ label, value, wide }: { label: string; value: string; wide?: bool
   );
 }
 
-export function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
+export function Section({ title, icon, action, children }: { title: string; icon?: React.ReactNode; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h2 className="flex items-center gap-2 text-base font-semibold">{icon}{title}</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-base font-semibold">{icon}{title}</h2>
+        {action}
+      </div>
       {children}
     </section>
   );

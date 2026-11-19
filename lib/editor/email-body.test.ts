@@ -54,4 +54,13 @@ describe("variableToken y normalizeLink", () => {
     expect(normalizeLink("hola")).toBeNull();
     expect(normalizeLink("")).toBeNull();
   });
+
+  it("una variable sola vale como destino (se completa al enviar); una variable con texto alrededor, no", () => {
+    expect(normalizeLink("{{form_link.onboarding_islandia}}")).toBe("{{form_link.onboarding_islandia}}");
+    expect(normalizeLink("  {{ design.link }} ")).toBe("{{design.link}}");
+    expect(normalizeLink("https://x.com/{{a}}")).toBe("https://x.com/{{a}}");
+    expect(normalizeLink("hola {{a}}")).toBeNull();
+    expect(normalizeLink("{{a}}{{b}}")).toBeNull();
+    expect(normalizeLink("{{javascript:alert(1)}}")).toBeNull();
+  });
 });

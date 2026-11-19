@@ -3,11 +3,13 @@ import { countActivePaymentFilters, monthRange, parsePaymentsFilters, paymentLis
 
 describe("filtros ↔ URL", () => {
   it("ida y vuelta, descartando lo desconocido", () => {
-    const f = parsePaymentsFilters({ pastilla: "morosos", estado: "paid,inventado", metodo: "wise", vence_desde: "2026-10-01", vence_hasta: "no", cobro_desde: "2026-10-02", vendedor: "u1", atraso: "7", q: "ana", pagina: "2" });
-    expect(f).toMatchObject({ pill: "morosos", status: ["paid"], method: "wise", dueFrom: "2026-10-01", dueTo: null, paidFrom: "2026-10-02", vendedorId: "u1", delayOver: 7, q: "ana", page: 2 });
+    const f = parsePaymentsFilters({ pastilla: "morosos", estado: "paid,inventado", metodo: "wise", vence_desde: "2026-10-01", vence_hasta: "no", cobro_desde: "2026-10-02", vendedor: "u1", producto: "p1", variante: "v1", atraso: "7", q: "ana", pagina: "2" });
+    expect(f).toMatchObject({ pill: "morosos", status: ["paid"], method: "wise", dueFrom: "2026-10-01", dueTo: null, paidFrom: "2026-10-02", vendedorId: "u1", productId: "p1", variantId: "v1", delayOver: 7, q: "ana", page: 2 });
     expect(parsePaymentsFilters(Object.fromEntries(paymentsFiltersToParams(f).entries()))).toEqual(f);
     expect(paymentsFiltersToParams(parsePaymentsFilters({})).toString()).toBe("");
-    expect(countActivePaymentFilters(f)).toBe(6);
+    expect(countActivePaymentFilters(f)).toBe(8);
+    // Producto y variante no son columnas de `payments`: la página los resuelve a las ventas.
+    expect(paymentsQueryFilters(f, "2026-10-15").some((q) => q.column.includes("product"))).toBe(false);
   });
   it("«atraso 0» es un filtro válido; sin el parámetro no hay filtro", () => {
     expect(parsePaymentsFilters({ atraso: "0" }).delayOver).toBe(0);

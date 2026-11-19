@@ -50,6 +50,9 @@ export interface PaymentsListData {
   /** Con `payments.delete`: casillas, «Eliminar seleccionados» y «Eliminar» en cada fila (Papelera). */
   canDelete?: boolean;
   members: Array<{ id: string; name: string }>;
+  /** Las opciones de los filtros Producto y Variante. */
+  products: Array<{ id: string; name: string }>;
+  variants: Array<{ id: string; product_id: string; name: string }>;
   enabledMethods: string[];
   methods: PaymentMethodDef[];
   today: string;
@@ -98,6 +101,8 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
   const toggleStatus = (s: string) => go({ status: filters.status.includes(s) ? filters.status.filter((x) => x !== s) : [...filters.status, s], pill: null });
+  // Con un producto elegido, la lista de variantes muestra solo las suyas.
+  const variantsOfProduct = filters.productId ? data.variants.filter((v) => v.product_id === filters.productId) : data.variants;
   const payable = action ? { id: action.row.id, amount: action.row.amount, due: action.row.dueDate } : null;
   // El estado del pago (las pastillas) tambien vive adentro de «Filtros»: cuenta para el globito.
   const menuActive = active + (filters.pill ? 1 : 0);
@@ -148,6 +153,18 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
             ))}
           </fieldset>
           <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Producto">
+              <select className={selectClass} value={filters.productId ?? ""} onChange={(e) => go({ productId: e.target.value || null, variantId: null })}>
+                <option value="">Todos</option>
+                {data.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Variante">
+              <select className={selectClass} value={filters.variantId ?? ""} onChange={(e) => go({ variantId: e.target.value || null })}>
+                <option value="">Todas</option>
+                {variantsOfProduct.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </Field>
             <Field label="Método">
               <select className={selectClass} value={filters.method ?? ""} onChange={(e) => go({ method: e.target.value || null })}>
                 <option value="">Todos</option>

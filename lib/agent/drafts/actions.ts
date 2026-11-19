@@ -417,7 +417,7 @@ export async function discardDraft(args: {
   draftId: string;
   /**
    * Motivo de la lista cerrada (00441): tone, wrong_data, not_this_client, too_long, missing_info u other. OPCIONAL
-   * (decisión de Wendy, 18/11/2026): sin motivo se descarta como siempre; con motivo, cuenta para que la IA aprenda.
+   * (decisión de producto, 18/11/2026): sin motivo se descarta como siempre; con motivo, cuenta para que la IA aprenda.
    */
   rejectReason?: unknown;
   /** Nota del motivo (obligatoria con «otro»). Sin motivo, es el texto libre de siempre. */

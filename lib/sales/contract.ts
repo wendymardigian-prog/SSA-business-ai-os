@@ -11,8 +11,10 @@
 import { effectivePrefill } from "@/lib/forms/prefill";
 import type { FormField } from "@/lib/forms/fields";
 import { fromCents, toCents } from "@/lib/shared/money";
+import { formatMoney } from "@/lib/shared/format";
 import { snapshotText } from "./sale-text";
-import type { ContractLinkContext } from "@/lib/forms/contract/variables";
+import { contractDate, type ContractLinkContext } from "@/lib/forms/contract/variables";
+import { paymentStatusLabel, paymentTypeLabel } from "./labels";
 
 export type ContractConceptKey = "name" | "email" | "phone" | "product" | "variant" | "amount" | "service_start";
 
@@ -30,6 +32,19 @@ export interface ContractSale {
   product_snapshot: unknown;
   final_amount: unknown;
   service_starts_at: string | null;
+  /** Los pagos de la venta, para `{{venta.plan_pagos}}`. Sin ellos (o null si no se pudieron leer), la variable queda en «—». */
+  payments?: readonly ContractPayment[] | null;
+}
+
+/** Un pago de la venta tal como lo lee el link firmado (`lib/forms/contract/link-context.ts`). */
+export interface ContractPayment {
+  type: string;
+  status: string;
+  amount: unknown;
+  due_date: string | null;
+  paid_on: string | null;
+  paid_at: string | null;
+  created_at: string;
 }
 
 export interface ContractContact {
@@ -62,7 +77,7 @@ function valueOf(key: ContractConceptKey, sale: ContractSale, contact: ContractC
  * Los datos de la venta y del contacto para las variables del contrato en modo Contrato (`{{contacto.*}}`,
  * `{{venta.*}}`, `lib/forms/contract/variables.ts`). Los mismos valores que el prellenado de siempre.
  */
-export function contractLinkValues(sale: ContractSale | null, contact: ContractContact | null): ContractLinkContext {
+export function contractLinkValues(sale: ContractSale | null, contact: ContractContact | null, timeZone = "UTC"): ContractLinkContext {
   const empty: ContractContact = { display_name: null, email: null, phone: null };
   const c = contact ?? empty;
   return {
@@ -73,9 +88,67 @@ export function contractLinkValues(sale: ContractSale | null, contact: ContractC
           variante: valueOf("variant", sale, c),
           monto: valueOf("amount", sale, c),
           inicio_servicio: valueOf("service_start", sale, c),
+          ...(sale.payments !== undefined ? { plan_pagos: sale.payments ? paymentPlanLines(sale.payments, timeZone) : null } : {}),
         }
       : {},
   };
+}
+
+/** `2026-12-03` → «3 de diciembre de 2026». Una fecha civil: se escribe tal cual, sin pasar por ninguna zona. */
+function civilDate(date: string | null): string | null {
+  if (!date || !/^\d{4}-\d{2}-\d{2}/.test(date)) return null;
+  const parsed = new Date(`${date.slice(0, 10)}T12:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ? null : contractDate(parsed, "UTC");
+}
+
+/** El día en que se cobró: `paid_on` (fecha civil) o, si no está, `paid_at` en la zona del negocio. */
+function paidDate(payment: ContractPayment, timeZone: string): string | null {
+  const civil = civilDate(payment.paid_on);
+  if (civil) return civil;
+  if (!payment.paid_at) return null;
+  const parsed = new Date(payment.paid_at);
+  return Number.isNaN(parsed.getTime()) ? null : contractDate(parsed, timeZone);
+}
+
+function statusText(payment: ContractPayment, timeZone: string): string {
+  const due = civilDate(payment.due_date);
+  switch (payment.status) {
+    case "paid": {
+      const on = paidDate(payment, timeZone);
+      return on ? `Cobrado el ${on}` : paymentStatusLabel("paid");
+    }
+    case "scheduled":
+      return due ? `Programado para el ${due}` : paymentStatusLabel("scheduled");
+    case "overdue":
+      return due ? `Moroso, vencía el ${due}` : paymentStatusLabel("overdue");
+    default:
+      return paymentStatusLabel(payment.status);
+  }
+}
+
+/**
+ * Los renglones del plan de pagos de una venta (`{{venta.plan_pagos}}`), en texto plano: uno por pago, en orden de
+ * vencimiento (los que no tienen fecha, al final; empatados, por alta). Afuera quedan los anulados y las filas de
+ * devolución. Las cuotas se numeran «Cuota N de M». Una foto del momento: el contrato firmado no cambia después.
+ */
+export function paymentPlanLines(payments: readonly ContractPayment[], timeZone = "UTC"): string[] {
+  const visible = payments
+    .filter((p) => p.status !== "cancelled" && p.type !== "refund")
+    .sort((a, b) => {
+      if (a.due_date !== b.due_date) {
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        return a.due_date < b.due_date ? -1 : 1;
+      }
+      return Date.parse(a.created_at) - Date.parse(b.created_at);
+    });
+  const installments = visible.filter((p) => p.type === "installment").length;
+  let installment = 0;
+  return visible.map((payment) => {
+    const label = payment.type === "installment" ? `Cuota ${++installment} de ${installments}` : paymentTypeLabel(payment.type);
+    const amount = `USD ${formatMoney(payment.amount).replace("$", "")}`;
+    return `${label} — ${amount} — ${statusText(payment, timeZone)}`;
+  });
 }
 
 function saleOrEmpty(sale: ContractSale | null): ContractSale {

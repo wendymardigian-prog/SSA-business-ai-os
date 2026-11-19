@@ -47,7 +47,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
 
   const service = await createServiceClient();
   const isEod = form.type === "eod";
-  const [{ data: customRows }, { data: tagRows }, flows, { data: roleRows }, responseCount, emailReadiness] = await Promise.all([
+  const [{ data: customRows }, { data: tagRows }, flows, { data: roleRows }, responseCount, emailReadiness, { data: linkableRows }] = await Promise.all([
     supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).is("deleted_at", null).order("name", { ascending: true }),
     supabase.from("tags").select("id, name").eq("workspace_id", workspace.id).order("name", { ascending: true }),
     flowsForForm(supabase, id, { [id]: form.name }),
@@ -57,6 +57,10 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     countResponses(supabase, workspace.id, id, form.type as FormType),
     // Después de comprobar que la persona ve el formulario; filtrado por el workspace de la sesión.
     form.type === "contract" ? loadEmailReadiness(service, workspace.id) : Promise.resolve(undefined),
+    // Solo un contrato: los formularios publicados que se pueden enlazar desde el correo de la copia firmada.
+    form.type === "contract"
+      ? supabase.from("forms").select("name, slug").eq("workspace_id", workspace.id).eq("status", "published").in("type", ["custom", "survey", "contract"]).neq("id", id).order("name", { ascending: true })
+      : Promise.resolve({ data: [] as Array<{ name: string; slug: string }> }),
   ]);
 
   const names = new Map(members.map((m) => [m.userId, m.name]));
@@ -110,6 +114,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     emailReadiness,
     businessSignatureUrl,
     businessLogoUrl: resolveBrand(workspace).logoUrl,
+    linkableForms: (linkableRows ?? []).map((f) => ({ name: f.name, slug: f.slug })),
   };
 
   return (

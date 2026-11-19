@@ -84,6 +84,8 @@ El link firmado del contrato lleva el `sale_id` **adentro del token**. Uno suelt
 
 `/dashboard/ventas` (lista, con pastillas y filtros en la URL), `/dashboard/ventas/[id]` (ficha), `/dashboard/ventas/pagos`, sección «Ventas» en la ficha del contacto y en el panel de la Agenda, Ajustes > Productos / Asignación / General > Ventas / Actividad.
 
+**Lista de ventas: próximo pago, orden y detalle del pendiente (18/11/2026, sin migración).** «Próximo pago» es el primer pago moroso o programado (el más viejo, aunque esté vencido: en rojo), con su monto (`nextPayment`, `lib/sales/next-payment.ts`). Fecha, Monto, Cobrado, Pendiente y Próximo pago se ordenan con un clic en el título (`?orden=&dir=`, `lib/sales/sort.ts`; se guarda con las vistas). Fecha y Monto los ordena la consulta; los otros tres, la pasada completa de los totales del pie (`computeSalesTotals(..., { withSummaries: true })`), así ordenan todo el filtro. Lo vacío queda siempre al final. Si esa pasada falla, la tabla vuelve a fecha y lo avisa. Pasar el mouse (o el foco) por el Pendiente muestra los morosos y programados por fecha y monto (`PendingBreakdown`).
+
 ## Verificación
 
 ```

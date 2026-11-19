@@ -20,7 +20,7 @@
 -- 5. `knowledge_chunks.page`: la página del PDF donde empieza cada trozo (sale de las marcas `<!-- pagina N -->` de
 --    la extracción). Un texto, un Word o un enlace no tienen páginas: NULL («sin dato», nunca 0). Los trozos que ya
 --    existían quedan en NULL hasta que se reindexe el documento.
--- 6. `agents.cite_sources` (APAGADO de serie, decisión de Wendy del 18/11/2026): si está prendido y el agente usó
+-- 6. `agents.cite_sources` (APAGADO de serie, decisión de producto del 18/11/2026): si está prendido y el agente usó
 --    Conocimiento, la respuesta cierra con «Fuente: «Documento», pág. N». Apagado, el lead no ve nada nuevo.
 --
 -- Para volver atrás:
