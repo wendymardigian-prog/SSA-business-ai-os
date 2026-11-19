@@ -94,7 +94,7 @@ export function InlineSelect<V extends string>({
         disabled={pending}
         width={width}
         align={align}
-        triggerClassName="group/inline max-w-full gap-1 rounded-md px-0.5 -mx-0.5 hover:bg-accent/60 disabled:opacity-60"
+        triggerClassName="group/inline max-w-full gap-1 rounded-md hover:bg-accent/60 disabled:opacity-60"
         trigger={
           <>
             <span className="min-w-0 truncate">{display}</span>

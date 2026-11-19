@@ -135,7 +135,7 @@ export function ServiceProductPage({ product, userNames, timeZone, linksCard, ca
                       <th className="px-4 py-2 font-medium">Camino</th>
                       <th className="px-4 py-2 font-medium">Portal</th>
                       <th className="px-4 py-2 font-medium">Activos</th>
-                      <th className="px-4 py-2 font-medium">Estado</th>
+                      <th className="w-32 px-4 py-2 font-medium">Estado</th>
                       <th className="px-4 py-2" aria-label="Acciones" />
                     </tr>
                   </thead>
@@ -152,7 +152,7 @@ export function ServiceProductPage({ product, userNames, timeZone, linksCard, ca
                           <td className={cn("px-4 py-2.5", r.journeyMissing ? "font-medium text-warn" : "text-muted-foreground")}>{r.journeyLabel}</td>
                           <td className="px-4 py-2.5 text-muted-foreground">{r.portalLabel}</td>
                           <td className="px-4 py-2.5 text-muted-foreground">{r.activeServices}</td>
-                          <td className="px-4 py-2.5">
+                          <td className="whitespace-nowrap px-4 py-2.5">
                             <InlineSelect
                               label={`Activar o archivar ${r.name}`}
                               value={r.archived ? "archived" : "active"}

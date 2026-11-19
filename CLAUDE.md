@@ -1248,6 +1248,7 @@ Toda tabla con columnas se arma con `DataTable` (`components/ui/data-table/`): c
 - **Las vistas las escribe SOLO la base por funciones** (`save_table_view`, `delete_table_view`, `set_table_view_default`, migración 00360, SECURITY DEFINER): compartir y asignar predeterminadas a otras personas es de Owner y Admin **por su rol** (sin clave en el catálogo de permisos). La app lee con la RLS: un Admin no ve las privadas de otra persona. `scripts/verify-table-views.mjs` lo prueba.
 - **La vista activa vive en la URL** (`?vista=<id>`, `?vista=base` = la del sistema); sus filtros se aplican al elegirla o cuando la URL llega pelada. Todo link de la pantalla preserva `?vista=` (`withViewParam`).
 - **Lo que se ajusta sin guardar** vive en `localStorage` (`ssa:table:<tabla>:<vista>`, siempre en `try/catch`) hasta que la persona lo guarda en una vista.
+- **La fila entera abre el registro** (18/11/2026): `rowHref`/`onRowClick` en `DataTable`, `ClickableTr`/`ClickableBox` en una tabla a mano (`components/ui/clickable-row.tsx`, regla pura `lib/ui/row-click.ts`); los controles de adentro no abren la fila y Cmd/Ctrl + clic abre otra pestaña. **El contacto nunca es un link en una tabla** (`lib/ui/no-contact-link-in-tables.test.ts`). Un valor que se cambia en la tabla va con `InlineSelect` (`components/ui/inline-select.tsx`); lo que pide más datos abre su diálogo (`onPick`). Detalle en docs/tablas.md.
 
 ## Migración
 

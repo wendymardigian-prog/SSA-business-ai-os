@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { columnWidth, resetColumnWidth, setColumnWidth, visibleColumns, type ColumnMeta } from "@/lib/ui/data-table/prefs";
 import { selectionState, toggleAllVisible, toggleRow } from "@/lib/ui/data-table/selection";
 import { splitPinned, stickyOffsets } from "@/lib/ui/data-table/sticky";
-import { CLICKABLE_ROW_CLASS, useRowOpen } from "@/components/ui/clickable-row";
+import { ClickableTr } from "@/components/ui/clickable-row";
 import { ResizeHandle } from "./resize-handle";
 import type { TablePrefsState } from "./use-table-prefs";
 
@@ -200,12 +200,10 @@ export function DataTable<Row>({
 
 /** Una fila del cuerpo: con `href` u `onOpen`, toda la fila abre el registro (ver `useRowOpen`). */
 function BodyRow({ href, onOpen, beforeNavigate, children }: { href: string | null; onOpen?: () => void; beforeNavigate?: (element: HTMLElement) => void; children: ReactNode }) {
-  const rowProps = useRowOpen({ href, onOpen, beforeNavigate });
-  const clickable = !!href || !!onOpen;
   return (
-    <tr {...rowProps} className={`group hover:bg-muted/30 ${clickable ? CLICKABLE_ROW_CLASS : ""}`}>
+    <ClickableTr href={href} onOpen={onOpen} beforeNavigate={beforeNavigate} className="group hover:bg-muted/30">
       {children}
-    </tr>
+    </ClickableTr>
   );
 }
 
