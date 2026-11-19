@@ -24,6 +24,7 @@ import type { ExpenseListData } from "@/lib/finance/list-load";
 import { vendorLabel } from "@/lib/finance/vendors";
 import { amountClasses, categoryOptionGroups, driftNotice, exportHref, exportWarning, expenseStatusClasses, formatCivilDate } from "@/lib/finance/view";
 import { toCents } from "@/lib/shared/money";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * Finanzas > Gastos. Todo el estado vive en la URL (`serializeExpenseFilters`): copiar el link muestra lo mismo en
@@ -269,7 +270,7 @@ export function ExpensesList({ data }: { data: ExpenseListData }) {
                         </tr>
                       )}
                       {g.rows.map((r) => (
-                        <ExpenseRow key={r.id} r={r} data={data} onPay={() => setPaying(r)} onOpen={() => router.push(`/dashboard/finanzas/gastos/${r.id}`)} />
+                        <ExpenseRow key={r.id} r={r} data={data} onPay={() => setPaying(r)} />
                       ))}
                     </tbody>
                   ))}
@@ -370,16 +371,10 @@ function ConceptCell({ r }: { r: ExpenseListRow }) {
   );
 }
 
-function ExpenseRow({ r, data, onPay, onOpen }: { r: ExpenseListRow; data: ExpenseListData; onPay: () => void; onOpen: () => void }) {
+function ExpenseRow({ r, data, onPay }: { r: ExpenseListRow; data: ExpenseListData; onPay: () => void }) {
   const hint = dueHint(r.scheduled_date, data.today, r.status);
   return (
-    <tr
-      className="cursor-pointer hover:bg-muted/30"
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest("a,button")) return;
-        onOpen();
-      }}
-    >
+    <ClickableTr href={`/dashboard/finanzas/gastos/${r.id}`} className="hover:bg-muted/30">
       <td className="whitespace-nowrap px-3 py-2">{formatCivilDate(r.scheduled_date)}</td>
       <td className="max-w-[280px] px-3 py-2"><ConceptCell r={r} /></td>
       <td className="max-w-[180px] truncate px-3 py-2 text-muted-foreground">{r.vendor_id ? vendorLabel(data.vendors, r.vendor_id) : "—"}</td>
@@ -395,7 +390,7 @@ function ExpenseRow({ r, data, onPay, onOpen }: { r: ExpenseListRow; data: Expen
           <button type="button" onClick={onPay} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent" aria-label={`Pagar ${r.concept}`}>Pagar</button>
         )}
       </td>
-    </tr>
+    </ClickableTr>
   );
 }
 

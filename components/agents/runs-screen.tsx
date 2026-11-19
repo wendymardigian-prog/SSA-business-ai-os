@@ -15,6 +15,7 @@ import { formatDateTime } from "@/components/contacts/ui";
 import { EmptyState, FilterSelect, Pagination, formatUsd, useUrlFilters } from "./filters";
 import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
 import { RunDetail, RunStatusBadge } from "./run-detail";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * La pantalla global de Corridas (R1-R4): los once filtros de siempre mas
@@ -214,7 +215,7 @@ export function RunsScreen({
                   const totalTokens = run.cost ? (run.cost.inputTokens ?? 0) + (run.cost.outputTokens ?? 0) + (run.cost.cachedTokens ?? 0) + (run.cost.embeddingTokens ?? 0) : null;
                   return (
                     <Fragment key={run.id}>
-                      <tr className="cursor-pointer hover:bg-accent/30" onClick={() => setExpanded(open ? null : run.id)}>
+                      <ClickableTr className="hover:bg-accent/30" aria-expanded={open} onOpen={() => setExpanded(open ? null : run.id)}>
                         <td className="whitespace-nowrap px-3 py-2">
                           <span className="inline-flex items-center gap-1.5">
                             <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden />
@@ -228,9 +229,7 @@ export function RunsScreen({
                         <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{TRIGGER_LABELS[run.trigger] ?? run.trigger}</td>
                         <td className="whitespace-nowrap px-3 py-2">
                           {run.contactId ? (
-                            <Link href={`/dashboard/contacts/${run.contactId}`} className="underline underline-offset-2" onClick={(e) => e.stopPropagation()}>
-                              {run.contactName ?? "Contacto sin nombre"}
-                            </Link>
+                            <span>{run.contactName ?? "Contacto sin nombre"}</span>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
@@ -251,7 +250,7 @@ export function RunsScreen({
                             {run.cost?.usd === null ? <span className="text-warn">sin precio</span> : formatUsd(run.cost?.usd)}
                           </td>
                         )}
-                      </tr>
+                      </ClickableTr>
                       {open && (
                         <tr>
                           <td colSpan={showCost ? 12 : 10} className="bg-muted/20 px-4 py-4">

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Activity, Loader2, RefreshCw, Search } from "lucide-react";
 import { DateFilter, EmptyState, FilterBar, FilterSelect, Pagination, useUrlFilters } from "@/components/agents/filters";
@@ -20,6 +19,7 @@ import {
 import type { FlowRunRow, FlowRunStep } from "@/lib/flows/runs-query";
 import { cn } from "@/lib/utils";
 import { FlowRunSheet } from "./flow-run-sheet";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 export function RunStateBadge({ run }: { run: FlowRunRow }) {
   const state = deriveRunState(run);
@@ -161,11 +161,10 @@ export function FlowRunsScreen({
               </thead>
               <tbody className="divide-y divide-border">
                 {rows.map((run) => (
-                  <tr key={run.id} className={cn("relative transition-colors hover:bg-accent/50", detail?.run.id === run.id && "bg-accent/50")}>
+                  <ClickableTr key={run.id} href={hrefFor(run.id)} className={cn("transition-colors hover:bg-accent/50", detail?.run.id === run.id && "bg-accent/50")}>
                     <td className="px-4 py-3">
-                      <Link href={hrefFor(run.id)} scroll={false} className="block truncate font-medium after:absolute after:inset-0 focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">
-                        {runContactName(run)}
-                      </Link>
+                      {/* La fila entera abre la ejecución; el contacto es texto (docs/tablas.md). */}
+                      <span className="block truncate font-medium">{runContactName(run)}</span>
                       <span className="mt-0.5 block text-xs text-muted-foreground sm:hidden">{formatRunDate(run.created_at, timeZone)}</span>
                     </td>
                     <td className="px-4 py-3">
@@ -175,7 +174,7 @@ export function FlowRunsScreen({
                     <td className="hidden whitespace-nowrap px-4 py-3 text-muted-foreground sm:table-cell">{formatRunDate(run.created_at, timeZone)}</td>
                     <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{formatRunDuration(run.created_at, run.finished_at)}</td>
                     <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">{run.flow_version ? `v${run.flow_version}` : "—"}</td>
-                  </tr>
+                  </ClickableTr>
                 ))}
               </tbody>
             </table>

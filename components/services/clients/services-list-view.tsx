@@ -28,6 +28,7 @@ import { ClientesTabs } from "./clientes-tabs";
 import { cn } from "@/lib/utils";
 import { NewServiceDialog, type NewServiceOptions } from "./new-service-dialog";
 import { useSavedView } from "./use-saved-view";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 const LIGHT_DOT: Record<string, string> = { red: "bg-bad", yellow: "bg-warn", green: "bg-good", gray: "bg-muted-foreground/40" };
 const GROUP_LABELS: Record<GroupBy, string> = { none: "Sin agrupar", phase: "Fase", light: "Semáforo", owner: "Responsable" };
@@ -79,7 +80,6 @@ export function ServicesListView({
     start(() => router.push(`/dashboard/clientes${next ? `?${next}` : ""}`));
   };
   const open = (id: string) => withRecord(pathname, params?.toString() ?? "", { kind: "service", id });
-  const openClient = (id: string) => withRecord(pathname, params?.toString() ?? "", { kind: "client", id });
   const rows = items.map((s) => serviceRowView(s, today));
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const quickKeys = QUICK_FILTERS.filter((k) => anyPortal || (k !== "expiring" && k !== "reviews"));
@@ -192,15 +192,11 @@ export function ServicesListView({
                       {g.items.map((s) => {
                         const r = serviceRowView(s, today);
                         return (
-                          <tr key={s.id} className="border-t border-border hover:bg-accent/30">
+                          <ClickableTr key={s.id} href={open(s.id)} beforeNavigate={rememberRecordOpener} className="border-t border-border hover:bg-accent/30">
                             <td className="px-3 py-2">
-                              <Link href={open(s.id)} scroll={false} onClick={(e) => rememberRecordOpener(e.currentTarget)} className="font-medium text-foreground hover:underline">
-                                {r.client}
-                              </Link>
+                              {/* La fila entera abre el servicio; el cliente es texto (docs/tablas.md). */}
+                              <span className="font-medium text-foreground">{r.client}</span>
                               {r.reviewChip && <span className="ml-2 rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-medium text-warn">{r.reviewChip.label}</span>}
-                              <Link href={openClient(s.contactId)} scroll={false} onClick={(e) => rememberRecordOpener(e.currentTarget)} className="ml-2 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
-                                Ficha del cliente
-                              </Link>
                             </td>
                             <td className="px-3 py-2 text-muted-foreground">{r.product}</td>
                             <td className="px-3 py-2 text-muted-foreground">{r.owner}</td>
@@ -214,7 +210,7 @@ export function ServicesListView({
                             <td className="px-3 py-2 text-muted-foreground">{r.day}</td>
                             <td className="px-3 py-2 text-muted-foreground">{r.progress}</td>
                             {anyPortal && <td className="px-3 py-2 text-muted-foreground">{r.portal}</td>}
-                          </tr>
+                          </ClickableTr>
                         );
                       })}
                     </tbody>

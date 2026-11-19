@@ -18,6 +18,9 @@ import { RESPONSE_COLUMN_GROUPS, originSummary, responseColumnDefs, responseColu
 import { cellFor, statusLabel, type ResponseColumn, type StoredAnswer, type SubmissionStatus } from "@/lib/forms/responses";
 import { formatInZone } from "@/lib/forms/responses-query";
 import { cn } from "@/lib/utils";
+import { ClickableTr } from "@/components/ui/clickable-row";
+import { InlineSelect } from "@/components/ui/inline-select";
+import { setSubmissionSpam } from "@/lib/actions/forms/forms";
 
 export interface ResponseTableRow {
   id: string;
@@ -200,29 +203,38 @@ export function ResponsesTable({
                 </thead>
                 <tbody className="divide-y divide-border">
                   {rows.map((row) => (
-                    <tr key={row.id} className="group hover:bg-muted/30">
-                      <td className="whitespace-nowrap px-3 py-2">
-                        <Link href={`/dashboard/formularios/${formId}/respuestas/${row.id}`} className="underline-offset-2 hover:underline">
-                          {formatInZone(row.createdAt, timeZone)}
-                        </Link>
-                      </td>
+                    <ClickableTr key={row.id} href={`/dashboard/formularios/${formId}/respuestas/${row.id}`} className="group hover:bg-muted/30">
+                      <td className="whitespace-nowrap px-3 py-2">{formatInZone(row.createdAt, timeZone)}</td>
                       <td className="sticky left-0 z-10 max-w-[14rem] truncate border-r border-border bg-background px-3 py-2 group-hover:bg-[color-mix(in_oklab,var(--muted)_30%,var(--background))]">
+                        {/* La fila entera abre la respuesta; el contacto es texto (docs/tablas.md). */}
                         {row.contactId ? (
-                          <Link href={`/dashboard/contacts/${row.contactId}`} className="underline-offset-2 hover:underline">
-                            {row.contactName}
-                          </Link>
+                          <span>{row.contactName}</span>
                         ) : (
                           <span className="text-muted-foreground">Sin contacto</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <span className={cn("whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px]", STATUS_STYLE[row.status])}>{statusLabel(row.status)}</span>
+                        <InlineSelect
+                          label="Marcar o desmarcar como spam"
+                          value={row.status === "spam" ? "spam" : "ok"}
+                          display={<span className={cn("whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px]", STATUS_STYLE[row.status])}>{statusLabel(row.status)}</span>}
+                          canEdit={canManage}
+                          width={200}
+                          options={[
+                            { value: "ok", label: row.contactId ? statusLabel("received") : statusLabel("no_contact") },
+                            { value: "spam", label: statusLabel("spam") },
+                          ]}
+                          onSelect={async (v) => {
+                            const res = await setSubmissionSpam({ submissionId: row.id, spam: v === "spam" });
+                            return res.ok ? { ok: true } : { ok: false, error: res.error };
+                          }}
+                        />
                       </td>
                       {showScore && <td className="px-3 py-2">{row.score ?? "—"}</td>}
                       {visibleDefs.map((def) => (
                         <ColumnCell key={def.key} def={def} row={row} />
                       ))}
-                    </tr>
+                    </ClickableTr>
                   ))}
                 </tbody>
               </table>

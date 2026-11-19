@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { KeyboardEvent, MouseEvent } from "react";
+import type { HTMLAttributes, KeyboardEvent, MouseEvent, ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import { ROW_INTERACTIVE_SELECTOR, rowClickIntent } from "@/lib/ui/row-click";
 
 /**
@@ -86,3 +87,30 @@ export function useRowOpen({
 
 /** Las clases de una fila que abre algo (sumar a las que ya tenga). */
 export const CLICKABLE_ROW_CLASS = "cursor-pointer focus:outline-none focus-visible:bg-muted/60";
+
+type RowOpenProps = { href?: string | null; onOpen?: () => void; beforeNavigate?: (row: HTMLElement) => void; disabled?: boolean };
+
+/**
+ * Un `<tr>` que abre su registro con un clic en cualquier parte (para las tablas que arman sus filas en un `map`, donde
+ * no se puede llamar a un hook por fila). Mismas reglas que `useRowOpen`.
+ */
+export function ClickableTr({ href, onOpen, beforeNavigate, disabled, className, children, ...rest }: RowOpenProps & HTMLAttributes<HTMLTableRowElement> & { children: ReactNode }) {
+  const props = useRowOpen({ href, onOpen, beforeNavigate, disabled });
+  const clickable = !disabled && (!!href || !!onOpen);
+  return (
+    <tr {...rest} {...props} className={cn(className, clickable && CLICKABLE_ROW_CLASS)}>
+      {children}
+    </tr>
+  );
+}
+
+/** Lo mismo para una fila o tarjeta que no es de tabla (`<div>`). */
+export function ClickableBox({ href, onOpen, beforeNavigate, disabled, className, children, ...rest }: RowOpenProps & HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
+  const props = useRowOpen({ href, onOpen, beforeNavigate, disabled });
+  const clickable = !disabled && (!!href || !!onOpen);
+  return (
+    <div {...rest} {...props} className={cn(className, clickable && CLICKABLE_ROW_CLASS)}>
+      {children}
+    </div>
+  );
+}

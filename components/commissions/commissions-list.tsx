@@ -29,6 +29,7 @@ import { summarizeSelection } from "@/lib/commissions/selection";
 import { COMMISSION_STATUSES, COMMISSION_STATUS_KEYS } from "@/lib/commissions/status";
 import { formatUsd } from "@/lib/finance/format";
 import { formatCivilDate } from "@/lib/finance/view";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * Finanzas > Comisiones (F59, F60, F63, F64). Todo el estado de la lista vive en la URL (`serializeCommissionFilters`):
@@ -502,12 +503,13 @@ function AmountText({ r }: { r: CommissionListRow }) {
   return <span className={`tabular-nums ${r.amountCents < 0 ? "text-red-600 dark:text-red-400" : ""} ${voided ? "text-muted-foreground line-through" : "font-semibold"}`}>{formatUsd(r.amountCents)}</span>;
 }
 
-function SaleCell({ r, canViewSales }: { r: CommissionListRow; canViewSales: boolean }) {
+/** La venta de la comisión: el contacto como texto (en una tabla nunca es un link; el detalle tiene el link a la venta). */
+function SaleCell({ r }: { r: CommissionListRow }) {
   if (!r.saleId) return <span className="text-muted-foreground">Sin venta</span>;
   const label = r.contactName ?? "Venta";
   return (
     <span className="block min-w-0">
-      {canViewSales ? <Link href={`/dashboard/ventas/${r.saleId}`} className="block truncate underline-offset-2 hover:underline">{label}</Link> : <span className="block truncate">{label}</span>}
+      <span className="block truncate">{label}</span>
       {(r.productName || r.variantName) && <span className="block truncate text-xs text-muted-foreground">{[r.productName, r.variantName].filter(Boolean).join(" · ")}</span>}
     </span>
   );
@@ -548,24 +550,18 @@ interface RowShared {
   canViewSales: boolean;
 }
 
-function CommissionRow({ r, extras, own, selection, selectionEnabled, canViewExpenses, canViewSales, onOpen, onToggle, href }: RowShared & { r: CommissionListRow; onOpen: () => void; onToggle: () => void; href: string }) {
+function CommissionRow({ r, extras, own, selection, selectionEnabled, canViewExpenses, onToggle, href }: RowShared & { r: CommissionListRow; onOpen: () => void; onToggle: () => void; href: string }) {
   const voided = r.status.key === "anulada";
   const extra = extras[r.id];
   return (
-    <tr
-      className={`cursor-pointer hover:bg-muted/30 ${voided ? "bg-zinc-500/5 text-muted-foreground" : ""}`}
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest("a,button,input,label")) return;
-        onOpen();
-      }}
-    >
+    <ClickableTr href={href} className={`hover:bg-muted/30 ${voided ? "bg-zinc-500/5 text-muted-foreground" : ""}`} aria-label={`Abrir la ficha de la comisión del ${formatCivilDate(r.paidOn)}`}>
       {selectionEnabled && <td className="px-3 py-2"><PickBox r={r} selection={selection} onToggle={onToggle} /></td>}
       <td className="whitespace-nowrap px-3 py-2">
-        <Link href={href} scroll={false} className="underline-offset-2 hover:underline" aria-label={`Abrir la ficha de la comisión del ${formatCivilDate(r.paidOn)}`}>{formatCivilDate(r.paidOn)}</Link>
+        {formatCivilDate(r.paidOn)}
       </td>
       {!own && <td className="max-w-[160px] truncate px-3 py-2">{personOf(r, own) ?? <span className="text-red-600 dark:text-red-400">Sin persona</span>}</td>}
       <td className="px-3 py-2"><RoleChip name={roleOf(r)} /></td>
-      <td className="max-w-[220px] px-3 py-2"><SaleCell r={r} canViewSales={canViewSales} /></td>
+      <td className="max-w-[220px] px-3 py-2"><SaleCell r={r} /></td>
       <td className="whitespace-nowrap px-3 py-2">{extra?.payment ?? "—"}</td>
       <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{r.baseCents === null ? "—" : formatUsd(r.baseCents)}</td>
       <td className="whitespace-nowrap px-3 py-2">{extra?.calc ?? "—"}</td>
@@ -576,11 +572,11 @@ function CommissionRow({ r, extras, own, selection, selectionEnabled, canViewExp
         {r.status.key === "retenida" && r.status.detail && <span className="mt-0.5 block text-[11px] text-muted-foreground">{r.status.detail}</span>}
       </td>
       <td className="px-3 py-2"><ExpenseCell r={r} canViewExpenses={canViewExpenses} /></td>
-    </tr>
+    </ClickableTr>
   );
 }
 
-function CommissionCard({ r, extras, own, selection, selectionEnabled, canViewExpenses, canViewSales, onToggle, href }: RowShared & { r: CommissionListRow; onToggle: () => void; href: string }) {
+function CommissionCard({ r, extras, own, selection, selectionEnabled, canViewExpenses, onToggle, href }: RowShared & { r: CommissionListRow; onToggle: () => void; href: string }) {
   const voided = r.status.key === "anulada";
   const extra = extras[r.id];
   const person = personOf(r, own);
@@ -593,7 +589,7 @@ function CommissionCard({ r, extras, own, selection, selectionEnabled, canViewEx
             {!own && <span className="truncate text-sm font-medium">{person ?? <span className="text-red-600 dark:text-red-400">Sin persona</span>}</span>}
             <RoleChip name={roleOf(r)} />
           </div>
-          <div className="mt-1 text-sm"><SaleCell r={r} canViewSales={canViewSales} /></div>
+          <div className="mt-1 text-sm"><SaleCell r={r} /></div>
         </div>
         <span className="whitespace-nowrap text-sm"><AmountText r={r} /></span>
       </div>

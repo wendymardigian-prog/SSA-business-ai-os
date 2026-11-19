@@ -10,6 +10,7 @@ import { gradeLabel, isLatestSubmission, matchesReviewFilter, reviewRowView, sub
 import { SCALE_LABELS, WORD_LABELS, WORD_SCALE } from "@/lib/program/grading";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 const TONE: Record<string, string> = { todo: "text-foreground", warn: "text-warn", done: "text-muted-foreground", info: "text-muted-foreground" };
 
@@ -45,7 +46,7 @@ export function ReviewList({ items, canReview, timeZone, filter }: { items: Revi
               {shown.map((i) => {
                 const v = reviewRowView(i);
                 return (
-                  <tr key={i.id} className="cursor-pointer hover:bg-accent/40" onClick={() => setOpen(i)}>
+                  <ClickableTr key={i.id} className="hover:bg-accent/40" onOpen={() => setOpen(i)}>
                     <td className="px-3 py-2">{i.contactName}</td>
                     <td className="px-3 py-2 text-muted-foreground">{v.kindLabel}</td>
                     <td className="px-3 py-2">
@@ -58,7 +59,7 @@ export function ReviewList({ items, canReview, timeZone, filter }: { items: Revi
                       {v.stateLabel}
                       {v.gradeLabel ? ` · ${v.gradeLabel}` : ""}
                     </td>
-                  </tr>
+                  </ClickableTr>
                 );
               })}
             </tbody>
