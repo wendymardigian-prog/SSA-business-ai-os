@@ -9,6 +9,7 @@ import { completeServiceItem, confirmService, resumeService, setServiceDates, se
 import { serviceActions, type ServiceActionKey } from "@/lib/services/screens/service";
 import { LIGHT_LABELS, STATUS_LABELS, type Light, type ServiceStatus } from "@/lib/services/screens/list";
 import { withRecord, type ServiceRecordTab } from "@/lib/services/screens/record-url";
+import { DeleteDialog } from "@/components/trash/delete-dialog";
 import type { AssistantCreditsView, AttendanceRateView, ClassroomProgressView, LessonState, NextPaymentView } from "@/lib/services/screens/record-figures";
 import type { LightSignal, RecordAlert, RecordTone } from "@/lib/services/screens/service-record";
 import { DATES_PLAN_MESSAGES, datesEditPlan, durationFromDates, endFromDuration, type DatesPlanError } from "@/lib/services/set-dates";
@@ -128,6 +129,8 @@ export function ServiceRecordHeader({ data, today, members, permissions }: { dat
   const can = (k: string) => permissions.includes(k);
   const [dialog, setDialog] = useState<ServiceActionKey | null>(null);
   const [editing, setEditing] = useState(false);
+  // «Eliminar servicio» (la Papelera, docs/papelera.md): con `services.delete`, al final de «Más…».
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const actions = serviceActions(data.status, can);
@@ -137,6 +140,7 @@ export function ServiceRecordHeader({ data, today, members, permissions }: { dat
     ...(canDates ? [{ key: "dates", label: "Editar fechas y plazo", onSelect: () => setEditing(true) }] : []),
     ...(actions.includes("complete") ? [{ key: "complete", label: "Completar el servicio", onSelect: () => setDialog("complete") }] : []),
     ...(actions.includes("cancel") ? [{ key: "cancel", label: "Cancelar el servicio", onSelect: () => setDialog("cancel"), danger: true }] : []),
+    ...(can("services.delete") ? [{ key: "delete", label: "Eliminar servicio", onSelect: () => setDeleting(true), danger: true }] : []),
   ];
 
   function run(task: () => Promise<{ ok: boolean; error?: { message: string } }>) {
@@ -283,6 +287,8 @@ export function ServiceRecordHeader({ data, today, members, permissions }: { dat
       </dl>
       {error && <ActionError message={error} />}
       {dialog && <ServiceActionDialog action={dialog} serviceId={data.id} phases={data.phases} onClose={() => setDialog(null)} />}
+      {/* La ficha deja de existir: se vuelve a la del cliente. */}
+      {deleting && <DeleteDialog entity="service" id={data.id} redirectTo={nav.href({ kind: "client", id: data.contactId })} onClose={() => setDeleting(false)} />}
       <span className="sr-only">{today}</span>
     </div>
   );

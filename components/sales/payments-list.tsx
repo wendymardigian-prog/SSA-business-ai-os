@@ -13,6 +13,8 @@ import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 import { ViewsMenu } from "@/components/ui/data-table/views-menu";
 import { MarkPaidDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
 import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
+import { BulkDeleteButton } from "@/components/trash/bulk-delete-button";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { DELAY_TONE_CLASSES } from "@/lib/sales/delay";
 import { formatMoney } from "@/lib/shared/format";
 import { PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, type PaymentStatus } from "@/lib/sales/labels";
@@ -24,6 +26,8 @@ import {
 import { paymentStatusClasses } from "@/lib/sales/status-colors";
 import { PAYMENTS_COLUMN_METAS, PAYMENTS_TABLE_KEY } from "@/lib/sales/payments-columns";
 import type { TablePrefs } from "@/lib/ui/data-table/prefs";
+import { keepVisible } from "@/lib/ui/data-table/selection";
+import { BULK_NOUNS } from "@/lib/trash/bulk-summary";
 import { viewFilterString, withViewParam, type TableViewItem } from "@/lib/ui/data-table/views";
 
 export type PaymentListRowView = PaymentListRow & { contactName: string; contactId: string | null; product: string; variant: string | null; saleDate: string };
@@ -42,6 +46,8 @@ export interface PaymentsListData {
   /** No se pudieron calcular los totales. */
   totalsFailed: boolean;
   scopeAll: boolean;
+  /** Con `payments.delete`: casillas, «Eliminar seleccionados» y «Eliminar» en cada fila (Papelera). */
+  canDelete?: boolean;
   members: Array<{ id: string; name: string }>;
   enabledMethods: string[];
   methods: PaymentMethodDef[];
@@ -75,7 +81,11 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
   const active = countActivePaymentFilters(filters);
   const pages = Math.max(1, Math.ceil(total / pageSize));
 
-  const columns = useMemo<DataColumn<PaymentListRowView>[]>(() => buildColumns(setAction), []);
+  const canDelete = !!data.canDelete;
+  const columns = useMemo<DataColumn<PaymentListRowView>[]>(() => buildColumns(setAction, canDelete), [canDelete]);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  // Lo elegido que sigue a la vista: al cambiar de página o de filtro, lo que ya no se ve se suelta.
+  const selected = useMemo(() => keepVisible(picked, rows.map((r) => r.id)), [picked, rows]);
   const state = useTablePrefs(PAYMENTS_TABLE_KEY, data.views.activeId ?? "base", columns, data.views.activeBase);
   const basePath = data.views.viewParam ? `${pathname}?vista=${data.views.viewParam}` : pathname;
 
@@ -196,7 +206,12 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader route="/dashboard/ventas/pagos" left={<SalesViewToggle active="pagos" />} filters={barFilters} />
+      <PageHeader
+        route="/dashboard/ventas/pagos"
+        left={<SalesViewToggle active="pagos" />}
+        filters={barFilters}
+        right={canDelete && selected.size > 0 ? <BulkDeleteButton entity="payment" ids={[...selected]} noun={BULK_NOUNS.payment} onDone={() => setPicked(new Set())} /> : undefined}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         {data.loadError ? (
@@ -219,6 +234,7 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
               state={state}
               caption="Pagos"
               totals={totalCells(totals)}
+              selection={canDelete ? { selected, onChange: setPicked, rowLabel: (r) => `Elegir el pago de ${r.contactName}` } : undefined}
             />
 
             <ul className="mt-4 space-y-2 md:hidden">
@@ -240,6 +256,7 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
                     <Link href={`/dashboard/ventas/${r.saleId}`} className="text-xs text-primary-ink underline-offset-2 hover:underline">Ver venta</Link>
                     {r.canAct.markPaid && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "paid", row: r })}>Cobrar</button>}
                     {r.canAct.reschedule && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "reschedule", row: r })}>Reprogramar</button>}
+                    {canDelete && <DeleteButton entity="payment" id={r.id} variant="icon" label="Eliminar" className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-700 dark:hover:text-red-400" />}
                   </div>
                 </li>
               ))}
@@ -302,7 +319,7 @@ function FooterTotal({ label, value, tone }: { label: string; value: string; ton
 const LINK = "underline-offset-2 hover:underline";
 
 /** Las celdas de cada columna. El orden, la visibilidad y los anchos no se deciden acá. */
-function buildColumns(setAction: Dispatch<SetStateAction<{ kind: "paid" | "reschedule"; row: PaymentListRowView } | null>>): DataColumn<PaymentListRowView>[] {
+function buildColumns(setAction: Dispatch<SetStateAction<{ kind: "paid" | "reschedule"; row: PaymentListRowView } | null>>, canDelete: boolean): DataColumn<PaymentListRowView>[] {
   const money = (value: number | null) => (value === null ? "—" : formatMoney(value));
   const cells: Record<string, Pick<DataColumn<PaymentListRowView>, "render" | "align" | "cellClassName">> = {
     due: { render: (r) => formatDate(r.dueDate) },
@@ -321,6 +338,7 @@ function buildColumns(setAction: Dispatch<SetStateAction<{ kind: "paid" | "resch
         <div className="flex justify-end gap-1 whitespace-nowrap">
           {r.canAct.markPaid && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "paid", row: r })}>Cobrar</button>}
           {r.canAct.reschedule && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "reschedule", row: r })}>Reprogramar</button>}
+          {canDelete && <DeleteButton entity="payment" id={r.id} variant="icon" label="Eliminar" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-700 dark:hover:text-red-400" />}
         </div>
       ),
     },

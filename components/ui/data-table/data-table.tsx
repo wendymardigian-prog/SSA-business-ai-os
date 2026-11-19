@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { columnWidth, resetColumnWidth, setColumnWidth, visibleColumns, type ColumnMeta } from "@/lib/ui/data-table/prefs";
+import { selectionState, toggleAllVisible, toggleRow } from "@/lib/ui/data-table/selection";
 import { splitPinned, stickyOffsets } from "@/lib/ui/data-table/sticky";
 import { ResizeHandle } from "./resize-handle";
 import type { TablePrefsState } from "./use-table-prefs";
@@ -27,6 +28,19 @@ export interface DataColumn<Row> extends ColumnMeta {
   hint?: string;
 }
 
+/**
+ * Elegir filas (opcional, apagado por defecto): una columna de casillas a la izquierda, fuera de las preferencias de
+ * columnas. La pantalla guarda lo elegido y decide qué hacer con eso (por ejemplo «Eliminar seleccionadas»).
+ */
+export interface DataTableSelection<Row> {
+  selected: ReadonlySet<string>;
+  onChange: (next: Set<string>) => void;
+  /** Cómo se nombra la fila para un lector de pantalla («Elegir la venta de Ana»). */
+  rowLabel?: (row: Row) => string;
+}
+
+const SELECT_WIDTH = 40;
+
 const HEADER_BG = "bg-[color-mix(in_srgb,var(--color-muted)_40%,var(--color-card))]";
 const PIN_EDGE = "shadow-[6px_0_6px_-6px_rgba(0,0,0,0.35)]";
 
@@ -39,6 +53,7 @@ export function DataTable<Row>({
   totalsLabel = "Total",
   className = "",
   caption,
+  selection,
 }: {
   columns: readonly DataColumn<Row>[];
   rows: readonly Row[];
@@ -50,6 +65,8 @@ export function DataTable<Row>({
   /** Para ocultarla en el celular (`hidden md:block`) cuando la pantalla arma tarjetas aparte. */
   className?: string;
   caption?: string;
+  /** Casillas para elegir filas. Sin esto, la tabla es exactamente la de siempre. */
+  selection?: DataTableSelection<Row>;
 }) {
   const { prefs } = state;
   const [live, setLive] = useState<{ key: string; width: number } | null>(null);
@@ -60,8 +77,13 @@ export function DataTable<Row>({
 
   const widthOf = (column: DataColumn<Row>) => (live && live.key === column.key ? live.width : columnWidth(column, prefs));
   const widths = shown.map(widthOf);
-  const total = widths.reduce((sum, width) => sum + width, 0);
-  const offsets = stickyOffsets(widths.slice(0, pinned.length));
+  const selectWidth = selection ? SELECT_WIDTH : 0;
+  const total = widths.reduce((sum, width) => sum + width, selectWidth);
+  const offsets = stickyOffsets(widths.slice(0, pinned.length), selectWidth);
+  const visibleIds = useMemo(() => rows.map(rowKey), [rows, rowKey]);
+  const allState = selection ? selectionState(selection.selected, visibleIds) : "none";
+  // La casilla de la columna de casillas queda pegada a la izquierda solo si hay columnas fijas.
+  const selectSticky = pinned.length > 0 ? "sticky left-0 z-[2]" : "";
 
   const stickyStyle = (index: number): CSSProperties | undefined => (index < pinned.length ? { left: offsets[index] } : undefined);
   const pinClass = (index: number, bg: string) => (index < pinned.length ? `sticky z-[1] ${bg} ${index === pinned.length - 1 ? PIN_EDGE : ""}` : "");
@@ -75,12 +97,22 @@ export function DataTable<Row>({
       <table className="text-sm" style={{ tableLayout: "fixed", width: "100%", minWidth: total }}>
         {caption && <caption className="sr-only">{caption}</caption>}
         <colgroup>
+          {selection && <col style={{ width: SELECT_WIDTH }} />}
           {shown.map((column, index) => (
             <col key={column.key} style={{ width: widths[index] }} />
           ))}
         </colgroup>
         <thead className="text-left text-xs text-muted-foreground">
           <tr>
+            {selection && (
+              <th scope="col" className={`px-3 py-2 ${HEADER_BG} ${selectSticky}`}>
+                <HeaderCheckbox
+                  state={allState}
+                  disabled={visibleIds.length === 0}
+                  onToggle={() => selection.onChange(toggleAllVisible(selection.selected, visibleIds))}
+                />
+              </th>
+            )}
             {shown.map((column, index) => (
               <th
                 key={column.key}
@@ -112,6 +144,17 @@ export function DataTable<Row>({
         <tbody className="divide-y divide-border">
           {rows.map((row) => (
             <tr key={rowKey(row)} className="group hover:bg-muted/30">
+              {selection && (
+                <td className={`px-3 py-2 ${pinned.length > 0 ? "sticky left-0 z-[1] bg-card group-hover:bg-muted" : ""}`} onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer align-middle"
+                    checked={selection.selected.has(rowKey(row))}
+                    onChange={() => selection.onChange(toggleRow(selection.selected, rowKey(row)))}
+                    aria-label={selection.rowLabel?.(row) ?? "Elegir la fila"}
+                  />
+                </td>
+              )}
               {shown.map((column, index) => (
                 <td
                   key={column.key}
@@ -127,6 +170,7 @@ export function DataTable<Row>({
         {hasTotals && (
           <tfoot>
             <tr className="border-t-2 border-border font-semibold">
+              {selection && <td className={`${HEADER_BG} ${pinned.length > 0 ? "sticky left-0 z-[1]" : ""}`} />}
               {shown.map((column, index) => (
                 <td
                   key={column.key}
@@ -141,5 +185,24 @@ export function DataTable<Row>({
         )}
       </table>
     </div>
+  );
+}
+
+/** La casilla del encabezado: elige o suelta todas las filas a la vista; a medias se ve «indeterminada». */
+function HeaderCheckbox({ state, disabled, onToggle }: { state: "none" | "some" | "all"; disabled: boolean; onToggle: () => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = state === "some";
+  }, [state]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      className="h-4 w-4 cursor-pointer align-middle"
+      checked={state === "all"}
+      disabled={disabled}
+      onChange={onToggle}
+      aria-label={state === "all" ? "Soltar todas las filas de esta página" : "Elegir todas las filas de esta página"}
+    />
   );
 }

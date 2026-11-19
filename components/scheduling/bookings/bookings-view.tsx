@@ -119,6 +119,7 @@ export function BookingsScreen({
   timeFormat,
   scopeAll,
   canManage,
+  canDelete = false,
   showConfig,
   brokenAccounts,
   needsProfile,
@@ -171,6 +172,8 @@ export function BookingsScreen({
   timeFormat: "12h" | "24h";
   scopeAll: boolean;
   canManage: boolean;
+  /** `bookings.delete`: «Eliminar» en el detalle (va a la Papelera). */
+  canDelete?: boolean;
   showConfig: boolean;
   brokenAccounts: string[];
   needsProfile: boolean;
@@ -513,6 +516,7 @@ export function BookingsScreen({
           timezone={timezone}
           timeFormat={timeFormat}
           canManage={canManage}
+          canDelete={canDelete}
           canReassign={canReassign}
           hostOptions={reassignHostOptions.filter((h) => h.userId !== detail.hostUserId)}
           onClose={closeDetail}

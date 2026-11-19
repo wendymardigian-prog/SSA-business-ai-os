@@ -38,17 +38,20 @@ export function SaleModal({
   useEffect(() => {
     previous.current = document.activeElement as HTMLElement | null;
     panel.current?.querySelector<HTMLElement>("input, textarea, select, button:not([data-close])")?.focus();
+    // En fase de captura sobre `window` y sin seguir propagando: Esc cierra SOLO esta ventana, no el panel o el
+    // drawer que la abrió (esos escuchan Esc en el documento o la ventana y se registraron antes).
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         close.current();
       }
     };
-    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keydown", onKeyDown, true);
       document.body.style.overflow = overflow;
       previous.current?.focus();
     };

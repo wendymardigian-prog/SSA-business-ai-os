@@ -12,3 +12,13 @@ export function appUrl(): string {
 export function inviteUrl(inviteId: string): string {
   return `${appUrl()}/invite/${inviteId}`;
 }
+
+/**
+ * La direccion absoluta de una ruta interna de la app, para redirigir desde el servidor. Siempre con `appUrl()`, nunca
+ * con el host del pedido: detras de Railway `request.url` es `http://localhost:8080/...` y el navegador terminaria en
+ * una pagina que no existe. Solo acepta rutas que empiezan con «/» (y no «//» ni «/\»); cualquier otra cosa va a la entrada.
+ */
+export function appRedirectUrl(pathWithQuery: string): string {
+  const path = /^\/(?![/\\])/.test(pathWithQuery) ? pathWithQuery : "/login";
+  return new URL(path, `${appUrl()}/`).toString();
+}

@@ -9,6 +9,7 @@ import { BackLink } from "@/components/forms/back-link";
 import { Historial } from "@/components/historial/historial";
 import { Notice } from "@/components/agents/fields";
 import { LinkContact } from "./link-contact";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { ContractPanel, type ContractView } from "./contract-panel";
 import { getSubmissionFileUrl } from "@/lib/actions/forms/responses";
 import { setSubmissionSpam } from "@/lib/actions/forms/forms";
@@ -54,6 +55,7 @@ export function SubmissionDetail({
   fieldOrder,
   contact,
   canManage,
+  canDelete = false,
   metaLink,
   canLinkMeta,
   showHistory,
@@ -69,6 +71,8 @@ export function SubmissionDetail({
   fieldOrder: string[];
   contact: { id: string; name: string } | null;
   canManage: boolean;
+  /** `forms.delete_responses`: «Eliminar respuesta» (va a la Papelera 30 días; después vuelve a la lista). */
+  canDelete?: boolean;
   metaLink: MetaLink;
   /** `settings.general`: vincular, ignorar o quitar el vínculo con Meta. */
   canLinkMeta: boolean;
@@ -113,11 +117,16 @@ export function SubmissionDetail({
         tooltip="Una respuesta con su contacto, su atribución y su versión del formulario."
         backHref={<BackLink href={`/dashboard/formularios/${formId}/respuestas`} label="Volver a las respuestas" />}
         right={
-          canManage ? (
-            <button type="button" onClick={toggleSpam} disabled={pending} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
-              {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ShieldAlert className="h-4 w-4" aria-hidden />}
-              <span className="hidden sm:inline">{submission.status === "spam" ? "Sacar de spam" : "Marcar como spam"}</span>
-            </button>
+          canManage || canDelete ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {canManage && (
+                <button type="button" onClick={toggleSpam} disabled={pending} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
+                  {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ShieldAlert className="h-4 w-4" aria-hidden />}
+                  <span className="hidden sm:inline">{submission.status === "spam" ? "Sacar de spam" : "Marcar como spam"}</span>
+                </button>
+              )}
+              {canDelete && <DeleteButton entity="form_submission" id={submission.id} label="Eliminar respuesta" redirectTo={`/dashboard/formularios/${formId}/respuestas`} />}
+            </div>
           ) : null
         }
       />

@@ -6,6 +6,8 @@
  * acciones digan siempre lo mismo.
  */
 
+import type { EmailReadiness } from "@/lib/email/readiness";
+
 export type InviteState = "pending" | "expired" | "accepted" | "revoked";
 
 export interface InviteLike {
@@ -94,4 +96,49 @@ export function invalidInviteMessage(state: InviteState): { title: string; hint:
     return { title: "Esta invitación ya no es válida", hint: "Venció. Pedile a quien te invitó que la renueve." };
   }
   return { title: "Esta invitación ya no es válida", hint: null };
+}
+
+// ── El aviso del email al invitar ────────────────────────────────────────
+
+/** Lo que devuelve `loadEmailReadiness` (`lib/email/readiness.ts`), visto desde la pantalla. */
+export type InviteEmailReadiness = EmailReadiness;
+
+/**
+ * Si se puede elegir «Enviar por email». Sin conexión o sin remitente no sale nada, así que se arma el link. Un
+ * rechazo (`rejected`) sale de una lectura que puede estar vieja: avisa pero deja elegir.
+ */
+export function inviteEmailSendable(readiness: InviteEmailReadiness | null): boolean {
+  return !readiness || readiness.ok || readiness.reason === "rejected";
+}
+
+/** El texto de abajo del selector, con el link a Integraciones donde ayuda. Sin nada que avisar, null. */
+export function inviteEmailHint(
+  readiness: InviteEmailReadiness | null,
+): { lead: string; link: string | null; tail: string } | null {
+  if (!readiness || readiness.ok) return null;
+  switch (readiness.reason) {
+    case "not_connected":
+      return { lead: "El email todavía no está conectado.", link: "Conectá el email en Integraciones", tail: "para que las invitaciones salgan solas." };
+    case "no_sender":
+      return { lead: "Falta el remitente de Resend (la dirección «De:»).", link: "Completalo en Integraciones → Resend", tail: "para que las invitaciones salgan solas." };
+    case "rejected":
+      return { lead: readiness.message, link: null, tail: "" };
+  }
+}
+
+/**
+ * Cómo salió el email de una invitación, en palabras. `error` es el motivo que devolvió el envío: se usa para
+ * elegir el texto y nunca se muestra crudo (puede traer texto del proveedor en inglés).
+ */
+export function inviteResultMessage(input: { status: string | null; error: string | null; email?: string | null }): string {
+  const to = input.email?.trim();
+  if (input.status === "sent") return to ? `Invitación enviada a ${to}.` : "Email enviado.";
+  if (input.status === null) return to ? `Invitación creada para ${to}. Pasale este link.` : "Pasale este link.";
+  if (input.status === "not_configured") {
+    const error = (input.error ?? "").toLowerCase();
+    if (error.includes("remitente")) return "Falta el remitente de Resend: pasale vos este link y completá el remitente en Integraciones → Resend.";
+    if (error.includes("api key")) return "No se pudo usar la clave de Resend: pasale vos este link y revisá la conexión en Integraciones → Resend.";
+    return "El email todavía no está conectado: pasale vos este link.";
+  }
+  return "Resend no pudo mandar el email. Pasale este link.";
 }

@@ -23,24 +23,26 @@ export default async function TareasPage() {
   const ctx = await requirePermission("tasks.view");
   const { supabase, workspace } = ctx;
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .select(TASK_COLUMNS)
-    .eq("workspace_id", workspace.id)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(LOAD_LIMIT);
+  // Primera tanda, todo en paralelo: nada de esto depende de lo otro (antes eran cinco viajes a la base en fila).
+  // «Hoy» es el de quien mira; la fecha y la hora guardadas siguen siendo del workspace.
+  const [{ data, error }, members, viewerTimezone, timeFormat, service] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select(TASK_COLUMNS)
+      .eq("workspace_id", workspace.id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(LOAD_LIMIT),
+    getWorkspaceMembers(workspace.id),
+    resolveViewerTimezone(workspace.timezone),
+    loadTimeFormat(supabase, workspace.id, ctx.user.id),
+    createServiceClient(),
+  ]);
   const tasks = (data ?? []) as unknown as TaskRow[];
 
-  const members = await getWorkspaceMembers(workspace.id);
-  // «Hoy» es el de quien mira; la fecha y la hora guardadas siguen siendo del workspace.
-  const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
-  const timeFormat = await loadTimeFormat(supabase, workspace.id, ctx.user.id);
-
-  // Los nombres que la tabla y el drawer muestran: contactos vinculados y flujos de origen.
+  // Segunda tanda: los nombres que la tabla y el drawer muestran (contactos vinculados y flujos de origen).
   const contactIds = [...new Set(tasks.map((t) => t.contact_id).filter((id): id is string => !!id))];
   const flowIds = [...new Set(tasks.filter((t) => t.source === "flow").map((t) => flowIdOf(t.source_ref)).filter((id): id is string => !!id))];
-  const service = await createServiceClient();
   const [contacts, flows] = await Promise.all([
     contactIds.length ? supabase.from("contacts").select("id, display_name, email").in("id", contactIds) : Promise.resolve({ data: [] as Array<{ id: string; display_name: string | null; email: string | null }> }),
     flowIds.length ? service.from("flows").select("id, name").eq("workspace_id", workspace.id).in("id", flowIds) : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),

@@ -524,6 +524,9 @@ export type AuditEntityType =
 export type AuditAction =
   | "create"
   | "update"
+  /** La Papelera (00410): se eliminó un registro con su foto, o se restauró. */
+  | "trash.deleted"
+  | "trash.restored"
   /** La guardia de entrega (00287): el freno automatico pauso el marketing; una persona lo reanudo; cambio el tope. */
   | "email_marketing.paused"
   | "email_marketing.resumed"

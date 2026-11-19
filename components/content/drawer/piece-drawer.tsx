@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ChevronDown, ChevronRight, History, Loader2, Plus, Sparkles, X } from "lucide-react";
 import { savePostDraft, movePostToColumn } from "@/lib/actions/content";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { requestCopy } from "@/lib/actions/copywriter";
 import {
   markNetworkPublished,
@@ -540,6 +541,12 @@ export function PieceDrawer({
     onClose();
   }
 
+  // La pieza se fue a la Papelera: nada que guardar al cerrar (lo escrito ya se guardó al salir del campo).
+  function afterDelete() {
+    markDirty(false);
+    onClose();
+  }
+
   function changeStatus(to: ContentPostStatus) {
     const kind = statusChangeAction(post.status, to);
     if (!kind) return;
@@ -759,6 +766,7 @@ export function PieceDrawer({
         <>
           <span className="text-xs text-muted-foreground">{networkSummaryText(networkStates)}</span>
           <span className="flex-1" />
+          {data.canDelete && <DeleteButton entity="content_post" id={post.id} variant="icon" onDeleted={afterDelete} />}
           {buttons.map((button) => (
             <button
               key={button.action}

@@ -309,6 +309,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Mi cuenta",
     tooltip: "Tu nombre, tu foto, tus datos de contacto, tu contraseña y qué avisos te llegan y por dónde. Es tuyo: no cambia nada para el resto del equipo.",
   },
+  "/dashboard/notificaciones": {
+    title: "Notificaciones",
+    tooltip: "Todos tus avisos: lo tuyo y lo general del negocio, sin lo que silenciaste en Mi cuenta → Notificaciones.",
+  },
   // ── Agenda (Etapa 4) ──────────────────────────────────────────────────
   "/dashboard/agenda": {
     title: "Agenda",
@@ -387,13 +391,18 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip:
       "Los estados que puede tener un contacto: uno del setter y uno del vendedor. El contacto muestra siempre el último que se cambió. No se borran: se archivan.",
   },
+  "/dashboard/settings/papelera": {
+    title: "Papelera",
+    tooltip:
+      "Lo que se eliminó en los últimos 30 días: ventas, pagos, agendas, servicios, grabaciones y más. Desde acá se restaura tal como estaba; pasado ese plazo se borra solo. Cada persona ve solo lo que puede eliminar.",
+  },
   "/dashboard/settings/recursos": {
     title: "Banca de recursos",
     tooltip: "Textos, audios, videos, imágenes, archivos y enlaces guardados para mandar desde la bandeja con un clic, o para que el asistente los use solo.",
   },
   "/dashboard/settings/productos": {
     title: "Productos",
-    tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para cargar ventas y para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.", // @plantilla-quitar(ventas)
+    tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para cargar ventas y para clasificar tus ideas y piezas. Uno vendido no se borra: se pone inactivo o discontinuado. Uno sin ventas se puede eliminar.", // @plantilla-quitar(ventas)
     // @plantilla-sin(ventas): tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
   },
   "/dashboard/settings/productos/[id]": {

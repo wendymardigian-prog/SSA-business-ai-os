@@ -4,6 +4,7 @@ import { isAdminRole, requirePermission } from "@/lib/auth/guards";
 import { PageHeader } from "@/components/page-header";
 import { BackLink } from "@/components/forms/back-link";
 import { Historial } from "@/components/historial/historial";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { REPORT_COLUMNS } from "@/lib/eod/reports-load";
@@ -65,7 +66,12 @@ export default async function EodReportDetailPage({ params }: { params: Promise<
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader title={`${who} · ${report.report_date}`} route="/dashboard/formularios/[id]/reportes/[reportId]" backHref={<BackLink href={`/dashboard/formularios/${id}/reportes`} label="Volver a Reportes" />} />
+      <PageHeader
+        title={`${who} · ${report.report_date}`}
+        route="/dashboard/formularios/[id]/reportes/[reportId]"
+        backHref={<BackLink href={`/dashboard/formularios/${id}/reportes`} label="Volver a Reportes" />}
+        right={ctx.can("eod.delete") ? <DeleteButton entity="eod_report" id={report.id} label="Eliminar reporte" redirectTo={`/dashboard/formularios/${id}/reportes`} /> : undefined}
+      />
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         <div className="mx-auto max-w-3xl space-y-4">
           <section className="flex flex-wrap items-center gap-2 text-sm">

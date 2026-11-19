@@ -17,6 +17,7 @@ import { ContentDialog, DialogField, fieldInput } from "@/components/content/dia
 import { Historial } from "@/components/historial/historial";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { DeleteButton } from "@/components/trash/delete-dialog";
 import { VariantDialog, emptyVariantForm, type VariantFormValues } from "@/components/catalog/variant-dialog";
 import { formFrom } from "@/components/catalog/product-detail";
 import { cn } from "@/lib/utils";
@@ -43,7 +44,7 @@ export function asCatalogVariant(v: ServiceVariant): CatalogVariant {
  * «Editar producto»; la tarjeta Variantes (precio, «Al cobrarse», camino, portal y servicios activos; cada fila abre
  * la variante) y el historial del producto.
  */
-export function ServiceProductPage({ product, userNames, timeZone, linksCard }: { product: ServiceProduct; userNames: Record<string, string>; timeZone: string; /** La tarjeta Links (afiliados, F70), si la persona puede editarla. */ linksCard?: React.ReactNode }) {
+export function ServiceProductPage({ product, userNames, timeZone, linksCard, canDelete = false }: { product: ServiceProduct; userNames: Record<string, string>; timeZone: string; /** La tarjeta Links (afiliados, F70), si la persona puede editarla. */ linksCard?: React.ReactNode; /** Con `products.delete`: «Eliminar producto» (Papelera). */ canDelete?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +75,7 @@ export function ServiceProductPage({ product, userNames, timeZone, linksCard }: 
             <ArrowLeft className="h-4 w-4" />
           </Link>
         }
+        right={canDelete ? <DeleteButton entity="product" id={product.id} redirectTo="/dashboard/settings/productos" variant="icon" label="Eliminar" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-500/40 text-red-700 hover:bg-red-500/10 dark:text-red-400" /> : undefined}
       />
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 md:px-8">
