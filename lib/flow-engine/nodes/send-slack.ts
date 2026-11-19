@@ -21,6 +21,26 @@ export interface SendSlackNodeData {
   text?: string;
 }
 
+/**
+ * Slack lee `<...>` como menciones y links (`<!channel>`, `<https://x|texto>`) y `&` como entidad. La plantilla la
+ * escribe el equipo y puede usarlos a propósito; los VALORES de las variables (el nombre de un lead, una respuesta
+ * de formulario) no: se escapan antes de pegarlos, o un lead llamado `<!channel>` arrobaría a todo el canal o
+ * disfrazaría un link. https://api.slack.com/reference/surfaces/formatting#escaping
+ */
+export function escapeSlackText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Las variables con cada texto escapado para Slack (objetos y listas adentro). Puro. */
+export function slackSafeVariables(value: unknown): unknown {
+  if (typeof value === "string") return escapeSlackText(value);
+  if (Array.isArray(value)) return value.map(slackSafeVariables);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, slackSafeVariables(v)]));
+  }
+  return value;
+}
+
 /** A dónde va, ya validado. Puro. */
 export function slackDestination(data: SendSlackNodeData, slackUserId: string | null): { ok: true; to: string } | { ok: false; reason: string } {
   if ((data.target ?? "channel") === "channel") {
@@ -38,7 +58,8 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
     console.warn(`[flow-engine] el nodo ${node.id} (send_slack) ${status === "failed" ? "falló" : "se saltea"}: ${reason}`);
     context.noteStep?.({ status, reason });
   };
-  const text = interpolateVariables(data.text ?? "", context.variables ?? {}).trim().slice(0, SLACK_TEXT_MAX);
+  const variables = slackSafeVariables(context.variables ?? {}) as Record<string, unknown>;
+  const text = interpolateVariables(data.text ?? "", variables).trim().slice(0, SLACK_TEXT_MAX);
   if (!text) return note("skipped", "El mensaje está vacío.");
 
   let slackUserId: string | null = null;
