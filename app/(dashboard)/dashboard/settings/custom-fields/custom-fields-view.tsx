@@ -20,6 +20,7 @@ import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 export interface FieldRow {
   id: string;
@@ -104,7 +105,7 @@ export function CustomFieldsView({ fields }: { fields: FieldRow[] }) {
             </thead>
             <tbody>
               {fields.map((field) => (
-                <tr key={field.id} className="border-b border-border">
+                <ClickableTr key={field.id} onOpen={() => { setError(null); setEditing(field); }} className="border-b border-border hover:bg-accent/30">
                   <td className="px-8 py-3 text-sm font-medium">{field.name}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">
                     {CUSTOM_FIELD_TYPE_LABELS[field.type]}
@@ -140,7 +141,7 @@ export function CustomFieldsView({ fields }: { fields: FieldRow[] }) {
                       </button>
                     </div>
                   </td>
-                </tr>
+                </ClickableTr>
               ))}
             </tbody>
           </table>

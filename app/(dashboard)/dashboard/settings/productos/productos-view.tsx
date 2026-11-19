@@ -21,6 +21,7 @@ import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { cn } from "@/lib/utils";
+import { ClickableBox } from "@/components/ui/clickable-row";
 
 export type { ProductRow };
 
@@ -164,18 +165,14 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
         ) : (
           <ul className="mt-4 divide-y divide-border rounded-lg border border-border">
             {shown.map((product) => (
-              <li
-                key={product.id}
-                className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5", product.status !== "active" && "bg-muted/40")}
+              <li key={product.id}>
+              <ClickableBox
+                href={`/dashboard/settings/productos/${product.id}`}
+                className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 hover:bg-accent/40", product.status !== "active" && "bg-muted/40")}
               >
                 <Package className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                 <div className="min-w-0 flex-1">
-                  <Link
-                    href={`/dashboard/settings/productos/${product.id}`}
-                    className={cn("block truncate text-sm font-medium hover:underline", product.status !== "active" && "text-muted-foreground")}
-                  >
-                    {product.name}
-                  </Link>
+                  <span className={cn("block truncate text-sm font-medium", product.status !== "active" && "text-muted-foreground")}>{product.name}</span>
                   <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
                     <span className={cn(product.defaultPrice === null && "text-amber-700 dark:text-amber-300")}>{product.priceLabel}</span>
                     <span aria-hidden>·</span>
@@ -217,6 +214,7 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
                     </option>
                   ))}
                 </select>
+              </ClickableBox>
               </li>
             ))}
           </ul>

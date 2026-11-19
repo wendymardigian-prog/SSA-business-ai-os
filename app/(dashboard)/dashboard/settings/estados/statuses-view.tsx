@@ -27,6 +27,7 @@ import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import type { QualificationSettings } from "@/lib/contacts/qualification";
 import { QualificationSettingsSection } from "./qualification-settings";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 const ROLE_HINTS: Record<StatusRole, string> = {
   setter: "Lo mueve quien hace el primer contacto (y el agente de IA, si le habilitás la herramienta).",
@@ -164,7 +165,14 @@ function StatusList({ role, list, usage }: { role: StatusRole; list: ContactStat
             </thead>
             <tbody>
               {list.map((s, index) => (
-                <tr key={s.key} className={`border-t border-border ${s.archived_at ? "text-muted-foreground" : ""}`}>
+                <ClickableTr
+                  key={s.key}
+                  onOpen={() => {
+                    setFormError(null);
+                    setDraft({ key: s.key, name: s.name, color: (STATUS_COLORS as readonly string[]).includes(s.color) ? (s.color as StatusDraft["color"]) : STATUS_COLORS[0] });
+                  }}
+                  className={`border-t border-border hover:bg-accent/30 ${s.archived_at ? "text-muted-foreground" : ""}`}
+                >
                   <td className="px-3 py-2">
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: s.color }} aria-hidden />
@@ -236,7 +244,7 @@ function StatusList({ role, list, usage }: { role: StatusRole; list: ContactStat
                       )}
                     </div>
                   </td>
-                </tr>
+                </ClickableTr>
               ))}
             </tbody>
           </table>

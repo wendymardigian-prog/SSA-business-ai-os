@@ -12,6 +12,8 @@ import { setRecurringActive } from "@/lib/actions/finance-recurring";
 import { ESTADO_FILTERS, ESTADO_LABELS, estadoHref, type RecurringListItem, type RecurringScreenData } from "@/lib/finance/recurring-list";
 import { emptyRecurringDraft, type RecurringDraft } from "@/lib/finance/recurring-form";
 import { formatCivilDate } from "@/lib/finance/view";
+import { ClickableTr } from "@/components/ui/clickable-row";
+import { InlineSelect } from "@/components/ui/inline-select";
 
 /**
  * Finanzas > Recurrentes. Las plantillas de los gastos que se repiten: cada una crea sola sus gastos en la fecha que
@@ -152,9 +154,21 @@ export function RecurringList({ data }: { data: RecurringScreenData }) {
                       </thead>
                       <tbody className="divide-y divide-border">
                         {items.map((item) => (
-                          <tr key={item.id} className="align-top hover:bg-muted/30">
+                          <ClickableTr key={item.id} onOpen={canManage ? () => setDraft(item.draft) : undefined} className="align-top hover:bg-muted/30">
                             <td className="max-w-[260px] px-3 py-2"><ConceptCell item={item} /></td>
-                            <td className="px-3 py-2"><StatusChip item={item} /></td>
+                            <td className="px-3 py-2">
+                              <InlineSelect
+                                label={`Pausar o reactivar ${item.concept}`}
+                                value={item.status}
+                                display={<StatusChip item={item} />}
+                                canEdit={canManage && !pending && item.status !== "finished"}
+                                width={180}
+                                options={[
+                                  { value: "active", label: "Activa", onPick: item.status === "paused" ? () => toggle(item, true) : undefined },
+                                  { value: "paused", label: "Pausada", onPick: item.status === "active" ? () => setConfirmPause(item) : undefined },
+                                ]}
+                              />
+                            </td>
                             <td className="px-3 py-2 text-muted-foreground">{item.frequencyText}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{item.amountLabel}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{item.monthlyLabel}</td>
@@ -164,7 +178,7 @@ export function RecurringList({ data }: { data: RecurringScreenData }) {
                             <td className="px-3 py-2">
                               <RowActions item={item} canManage={canManage} disabled={pending} onEdit={() => setDraft(item.draft)} onPause={() => setConfirmPause(item)} onResume={() => toggle(item, true)} />
                             </td>
-                          </tr>
+                          </ClickableTr>
                         ))}
                       </tbody>
                     </table>

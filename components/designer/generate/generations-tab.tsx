@@ -40,6 +40,7 @@ import { DetailDialog, RetryDataDialog, VoidDialog } from "./generation-dialogs"
 import { GENERATIONS_CHANGED } from "./events";
 import { GenerateManyModal } from "./generate-many-modal";
 import { GenerateOneModal } from "./generate-one-modal";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 type Row = GenerationListView["rows"][number];
 type Notice = { tone: "ok" | "error"; text: string } | null;
@@ -310,7 +311,7 @@ export function GenerationsTab({ templateId, can }: GenerationsTabProps) {
               </thead>
               <tbody className="divide-y divide-border">
                 {view.rows.map((row) => (
-                  <tr key={row.id} className="align-top">
+                  <ClickableTr key={row.id} onOpen={() => setDialog({ kind: "detail", row })} className="align-top hover:bg-muted/30">
                     <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground tabular-nums">{row.when}</td>
                     <td className="max-w-[16rem] px-3 py-3">
                       <p className="truncate font-medium">{row.para.name}</p>
@@ -331,7 +332,7 @@ export function GenerationsTab({ templateId, can }: GenerationsTabProps) {
                         {row.processing && <span className="self-center text-xs text-muted-foreground">En cola…</span>}
                       </div>
                     </td>
-                  </tr>
+                  </ClickableTr>
                 ))}
               </tbody>
             </table>

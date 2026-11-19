@@ -12,6 +12,7 @@ import {
   type CategoryDraft, type CategoryUsage,
 } from "@/lib/finance/category-totals";
 import { formatUsd } from "@/lib/finance/format";
+import { ClickableTr } from "@/components/ui/clickable-row";
 
 /**
  * Las categorías de gasto (Ajustes > General > Finanzas): agrupadas por grupo, con cuántos gastos tiene cada una y
@@ -103,7 +104,14 @@ export function FinanceCategoriesCard({
                   {section.items.map((c) => {
                     const u = usage[c.key] ?? NO_USAGE;
                     return (
-                      <tr key={c.key} className={`border-t border-border ${c.archived_at ? "text-muted-foreground" : ""}`}>
+                      <ClickableTr
+                        key={c.key}
+                        onOpen={() => {
+                          setFormError(null);
+                          setDraft(draftFromCategory(c));
+                        }}
+                        className={`border-t border-border hover:bg-accent/30 ${c.archived_at ? "text-muted-foreground" : ""}`}
+                      >
                         <td className="px-3 py-2">
                           <span className="flex min-w-0 items-center gap-2">
                             <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: c.color }} aria-hidden />
@@ -142,7 +150,7 @@ export function FinanceCategoriesCard({
                             ) : null}
                           </div>
                         </td>
-                      </tr>
+                      </ClickableTr>
                     );
                   })}
                 </tbody>
