@@ -114,8 +114,8 @@ Un tipo de tabla hija nuevo queda cubierto solo. **Un tipo de registro nuevo** s
 `00410_trash_engine` (el motor, `private.trash_items`, `calls_deleted_external`, la lista, la purga) y
 `00411_trash_entities` (las reglas de cada tipo, vista previa, eliminar y restaurar). Las dos son aditivas y pueden
 ir antes o después del código: sin ellas, eliminar responde un error claro y la Papelera muestra igual los contactos
-y las tareas borrados. Traídas de RER-BAIOS (allá 00474/00475) el 18/11/2026: en SSA **todavía sin aplicar**; antes de
-aplicarlas, ensayarlas en una transacción que se deshace sola. **Ensayadas contra producción el 18/11/2026** (todo
+y las tareas borrados. Traídas de RER-BAIOS (allá 00474/00475) el 18/11/2026: en SSA **aplicadas y registradas el 18/11/2026** (versiones `20261119032117` y `20261119032118`), después del ensayo de
+abajo. **Ensayadas contra producción el 18/11/2026** (todo
 dentro de `BEGIN … ROLLBACK`, cada caso en su propio bloque que se deshace): se aplican dos veces sin error, los
 permisos dan lo esperado, la vista previa de cada tipo responde, y eliminar y restaurar dejan idénticas una venta con 3
 pagos, un pago, una agenda, una grabación (con su marca de Fathom), una respuesta, un formulario con 2 versiones y 8
