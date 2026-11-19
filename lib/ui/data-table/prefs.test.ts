@@ -101,3 +101,17 @@ describe("preferencias de columnas", () => {
     expect(menuSections(METAS, emptyPrefs(), "zzz")).toEqual([]);
   });
 });
+
+describe("basePrefsFor", () => {
+  it("fija de entrada solo las columnas que lo piden y se pueden fijar", async () => {
+    const { basePrefsFor } = await import("./prefs");
+    const base = basePrefsFor([
+      { key: "date", label: "Fecha" },
+      { key: "contact", label: "Contacto", defaultPinned: true },
+      { key: "actions", label: "", defaultPinned: true, pinnable: false },
+    ]);
+    expect(base.pinned).toEqual(["contact"]);
+    expect(base.hidden).toEqual([]);
+    expect(base.widths).toEqual({});
+  });
+});

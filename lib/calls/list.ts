@@ -9,6 +9,7 @@
  * de un estado del navegador).
  */
 
+import type { ColumnMeta } from "@/lib/ui/data-table/prefs";
 import { endOfDay, startOfDay } from "@/lib/dates";
 import { firstParam, pickEnum, pickPage, sanitizeSearch, type SearchParams } from "@/lib/url-params";
 import type { CallAnalysisStatus } from "@/lib/types/database";
@@ -347,23 +348,30 @@ export const CALL_LIST_SERVICE_COLUMNS = ", service_id, service_link";
  * Las columnas de la tabla de Grabaciones, en orden. Servicio aparece solo con el módulo prendido y se puede ocultar.
  * `hideable` = la persona la puede ocultar desde «Columnas».
  */
-export type CallListColumn = { key: string; label: string; hideable: boolean };
+export type CallListColumn = ColumnMeta;
 
+/** El nombre de la tabla de llamadas para la tabla común (lo que cada persona elige se guarda con esta clave). */
+export const CALLS_TABLE_KEY = "calls";
+
+/**
+ * Las columnas de la lista de llamadas para la tabla común (`DataTable`, docs/tablas.md). Nunca renombrar una `key`.
+ * «Servicio» solo con el módulo de Servicios; «En el portal» la suma la pantalla cuando hay portal.
+ */
 export function callListColumns(opts: { servicesOn: boolean }): CallListColumn[] {
   const base: CallListColumn[] = [
-    { key: "lead", label: "Lead / llamada", hideable: false },
-    { key: "fecha", label: "Fecha", hideable: false },
-    { key: "duracion", label: "Duración", hideable: false },
-    { key: "grabo", label: "Quien grabó", hideable: false },
-    { key: "tipo", label: "Tipo", hideable: false },
+    { key: "lead", label: "Lead / llamada", defaultWidth: 260, hideable: false },
+    { key: "fecha", label: "Fecha", defaultWidth: 150 },
+    { key: "duracion", label: "Duración", defaultWidth: 100 },
+    { key: "grabo", label: "Quien grabó", defaultWidth: 150 },
+    { key: "tipo", label: "Tipo", defaultWidth: 200 },
   ];
-  if (opts.servicesOn) base.push({ key: "servicio", label: "Servicio", hideable: true });
+  if (opts.servicesOn) base.push({ key: "servicio", label: "Servicio", defaultWidth: 200 });
   base.push(
-    { key: "resultado", label: "Resultado", hideable: false },
-    { key: "closer", label: "Puntaje closer", hideable: false },
-    { key: "lead_score", label: "Puntaje lead", hideable: false },
-    { key: "estado", label: "Estado", hideable: false },
-    { key: "alertas", label: "", hideable: false },
+    { key: "resultado", label: "Resultado", defaultWidth: 140 },
+    { key: "closer", label: "Puntaje closer", defaultWidth: 130 },
+    { key: "lead_score", label: "Puntaje lead", defaultWidth: 170 },
+    { key: "estado", label: "Estado", defaultWidth: 150 },
+    { key: "alertas", label: "Alertas", defaultWidth: 110 },
   );
   return base;
 }

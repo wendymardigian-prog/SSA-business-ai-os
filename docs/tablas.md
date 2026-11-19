@@ -6,7 +6,7 @@ Toda tabla con columnas se arma con `DataTable` (`components/ui/data-table/`). D
 - **Totales** al pie de las columnas con plata o cantidades, calculados sobre **todo el filtro** (no solo la página).
 - **Vistas guardadas**: cada persona guarda cómo mira una tabla (columnas y filtros), con varias vistas y una predeterminada. Owner y Admin pueden compartirlas con todo el equipo o con personas elegidas, y dejarlas como predeterminada de otras personas.
 
-Estrenado en **Ventas** (`/dashboard/ventas`) y **Pagos** (`/dashboard/ventas/pagos`). Las demás tablas se migran por tandas: la lista de las que faltan está en `lib/ui/data-table/no-raw-table.test.ts` (`LEGACY`). Ese test falla si alguien arma una tabla nueva con `<table>` a mano.
+Estrenado en **Ventas** (`/dashboard/ventas`) y **Pagos** (`/dashboard/ventas/pagos`); desde el 19/11/2026 también la usan **Contactos, Agenda (lista), Llamadas, Respuestas de formularios, Comisiones, Gastos y Servicios** (con el menú «Columnas» y lo elegido en el navegador de cada persona, sin vistas guardadas todavía). Las demás tablas se migran por tandas: la lista de las que faltan está en `lib/ui/data-table/no-raw-table.test.ts` (`LEGACY`). Ese test falla si alguien arma una tabla nueva con `<table>` a mano.
 
 ## Cómo armar una tabla nueva (5 pasos)
 
@@ -19,6 +19,16 @@ Estrenado en **Ventas** (`/dashboard/ventas`) y **Pagos** (`/dashboard/ventas/pa
 **Ordenar (opcional).** Una columna con `sortable: true` se ordena con un clic en el título solo si la tabla recibe `sort` y `onSortChange`; sin eso, el título es el de siempre. La tabla no ordena: la pantalla decide (en la consulta, con la página entera) y guarda el orden en la URL. `nextSort` y `ariaSort` en `lib/ui/data-table/sort.ts`. Ejemplo: Ventas.
 
 En el servidor, la página llama a `loadTableViews(ctx, tableKey, searchParams)` y, si la URL llegó pelada, parsea sus filtros con `resolved.inheritedFilters` (los de la vista predeterminada). Todo link de la pantalla preserva `?vista=` (`withViewParam`).
+
+## Lo que se le sumó para las pantallas grandes (19/11/2026)
+
+- **`rowClassName(row)`**: clases de una fila (atenuar una anulada, marcar la elegida).
+- **`wrap` en una columna**: el contenido puede ocupar varias líneas (nombre con insignias, etiquetas). Sin `wrap`, una línea con «…».
+- **`groups`**: filas agrupadas con su título (y un dato a la derecha, por ejemplo el subtotal) adentro de la misma tabla, en vez de una tabla por grupo. Los grupos vacíos no se dibujan.
+- **`defaultPinned` en `ColumnMeta`** + **`basePrefsFor(metas)`** como base de `useTablePrefs`: la columna arranca fija (el contacto en Agenda y Respuestas) y la persona la puede soltar.
+- **`selection.isSelectable` / `disabledReason`**: filas que no se pueden elegir (Comisiones); la casilla del encabezado no las cuenta.
+- **Columnas de atribución** (UTM, Meta, último click): `attributionColumnMetas` (`lib/attribution/table-columns.ts`) y la celda `ColumnCellContent`.
+- **Una clave por tipo de tabla**, aunque cambien las columnas (por ejemplo `form_responses` para todos los formularios): la regla de `table_key` no admite un id, y las columnas que no existen en esa pantalla se ignoran al leer.
 
 ## Clic en la fila y editar en la tabla (18/11/2026)
 

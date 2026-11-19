@@ -23,6 +23,8 @@ export interface ColumnMeta {
   pinnable?: boolean;
   /** Se puede cambiar el ancho. Por defecto sí. */
   resizable?: boolean;
+  /** Arranca fija a la izquierda (la persona la puede soltar). Se aplica con `basePrefsFor`. */
+  defaultPinned?: boolean;
 }
 
 export interface TablePrefs {
@@ -93,6 +95,14 @@ export function normalizePrefs(metas: readonly ColumnMeta[], prefs: TablePrefs):
     pinned: prefs.pinned.filter((k) => known(k) && byKey.get(k)!.pinnable !== false),
     widths,
   };
+}
+
+/**
+ * Lo normal de una tabla sin vista guardada: nada elegido, salvo las columnas que arrancan fijas (`defaultPinned`). Se pasa
+ * como base a `useTablePrefs`; soltarla queda como cambio de la persona.
+ */
+export function basePrefsFor(metas: readonly ColumnMeta[]): TablePrefs {
+  return { ...emptyPrefs(), pinned: metas.filter((m) => m.defaultPinned && m.pinnable !== false).map((m) => m.key) };
 }
 
 export const defaultWidth = (meta: ColumnMeta): number => meta.defaultWidth ?? DEFAULT_COLUMN_WIDTH;

@@ -30,7 +30,11 @@ import { ViewToggle } from "@/components/ui/view-toggle";
 import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { LastStatusBadge } from "@/components/contacts/status-fields";
-import { ContactColumnsMenu, useColumnPrefs } from "@/components/contacts/columns-menu";
+import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
+import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
+import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
+import { visibleColumns } from "@/lib/ui/data-table/prefs";
+import { CONTACTS_TABLE_KEY, WRAPPING_CONTACT_COLUMNS, contactColumnMetas } from "@/lib/contacts/table-columns";
 import { ContactFiltersPanel } from "@/components/contacts/filters-panel";
 import { ActiveFilterChips } from "@/components/contacts/active-filter-chips";
 import { ContactCell } from "@/components/contacts/contact-cell";
@@ -171,18 +175,38 @@ export function ContactsView({
   const [creatingBroadcast, startBroadcast] = useTransition();
   const [creating, setCreating] = useState(false);
 
-  const memberLabel = new Map(members.map((m) => [m.userId, m.label]));
+  const memberLabel = useMemo(() => new Map(members.map((m) => [m.userId, m.label])), [members]);
   // Las columnas: el catálogo (`lib/contacts/columns.ts`) y lo que eligió cada persona.
-  const columnDefs = useMemo(() => allColumns(customFields), [customFields]);
-  const columnPrefs = useColumnPrefs(columnDefs);
-  const shownColumns = useMemo(() => {
-    const visible = new Set(columnPrefs.visible);
-    return columnDefs.filter((c) => visible.has(c.key));
-  }, [columnDefs, columnPrefs.visible]);
-  const customById = new Map(customFields.map((f) => [f.id, f]));
+  const columnMetas = useMemo(() => contactColumnMetas(allColumns(customFields)), [customFields]);
+  const tablePrefs = useTablePrefs(CONTACTS_TABLE_KEY, "base", columnMetas, null);
+  const shownColumns = useMemo(() => visibleColumns(columnMetas, tablePrefs.prefs).map((m) => m.def), [columnMetas, tablePrefs.prefs]);
+  const customById = useMemo(() => new Map(customFields.map((f) => [f.id, f])), [customFields]);
   const related = useRelatedCells(
     view === "tabla" ? contacts.map((c) => c.id) : [],
     shownColumns.filter((c) => c.source === "related").map((c) => c.key),
+  );
+  const tableColumns = useMemo<DataColumn<ContactRow>[]>(
+    () =>
+      columnMetas.map(({ def, ...meta }) => ({
+        ...meta,
+        wrap: WRAPPING_CONTACT_COLUMNS.has(meta.key),
+        render: (contact: ContactRow) => (
+          <TableCell
+            col={def}
+            contact={contact}
+            memberLabel={memberLabel}
+            statusSettings={statusSettings}
+            qualificationSettings={qualificationSettings}
+            interestCatalog={interestCatalog}
+            customField={def.key.startsWith("cf:") ? customById.get(def.key.slice(3)) : undefined}
+            related={related[contact.id]}
+            members={members}
+            canEdit={canEdit}
+            canAssign={canAssign}
+          />
+        ),
+      })),
+    [columnMetas, memberLabel, statusSettings, qualificationSettings, interestCatalog, customById, related, members, canEdit, canAssign],
   );
 
   // Seleccion para la accion masiva (Bloque 2d-A). Vale para la pagina que se
@@ -192,18 +216,6 @@ export function ContactsView({
   const [bulkNotice, setBulkNotice] = useState<string | null>(null);
   const pageIds = contacts.map((c) => c.id);
   const selected = pageIds.filter((id) => picked.has(id));
-  const allOnPage = selected.length > 0 && selected.length === pageIds.length;
-  function togglePick(id: string) {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-  function togglePage() {
-    setPicked(allOnPage ? new Set() : new Set(pageIds));
-  }
   // Los filtros puestos. La busqueda cuenta aparte (tiene su propio indicador en
   // la lupa): el globito del boton de filtros es solo de lo que esta adentro del menu.
   const activeCount = countActiveFilters(filters);
@@ -355,13 +367,7 @@ export function ContactsView({
                 ))}
               </FilterMenu>
             ) : (
-              <ContactColumnsMenu
-                defs={columnDefs}
-                visible={columnPrefs.visible}
-                onToggle={columnPrefs.toggle}
-                onShowAll={columnPrefs.showAll}
-                onReset={columnPrefs.reset}
-              />
+              <ColumnsMenu state={tablePrefs} />
             )}
 
             {/* Los ajustes de la tabla: hoy, el orden. */}
@@ -463,64 +469,18 @@ export function ContactsView({
         {contacts.length === 0 ? (
           <EmptyState filtered={activeCount > 0} onClear={clearAll} onCreate={() => setCreating(true)} />
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border bg-muted/50 text-left">
-                <th className="w-10 py-3 pl-4 pr-0">
-                  <input
-                    type="checkbox"
-                    checked={allOnPage}
-                    ref={(el) => {
-                      if (el) el.indeterminate = selected.length > 0 && !allOnPage;
-                    }}
-                    onChange={togglePage}
-                    aria-label="Seleccionar todos los contactos de esta página"
-                    className="h-4 w-4 cursor-pointer accent-primary"
-                  />
-                </th>
-                {shownColumns.map((col) => (
-                  <th key={col.key} className="whitespace-nowrap px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                    {col.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {contacts.map((contact) => (
-                <ClickableTr
-                  key={contact.id}
-                  href={`/dashboard/contacts/${contact.id}`}
-                  className={cn("border-b border-border transition-colors hover:bg-accent/40", picked.has(contact.id) && "bg-primary/5")}
-                >
-                  <td className="w-10 py-3 pl-4 pr-0">
-                    <input
-                      type="checkbox"
-                      checked={picked.has(contact.id)}
-                      onChange={() => togglePick(contact.id)}
-                      aria-label={`Seleccionar a ${contact.displayName ?? "este contacto"}`}
-                      className="h-4 w-4 cursor-pointer accent-primary"
-                    />
-                  </td>
-                  {shownColumns.map((col) => (
-                    <TableCell
-                      key={col.key}
-                      col={col}
-                      contact={contact}
-                      memberLabel={memberLabel}
-                      statusSettings={statusSettings}
-                      qualificationSettings={qualificationSettings}
-                      interestCatalog={interestCatalog}
-                      customField={col.key.startsWith("cf:") ? customById.get(col.key.slice(3)) : undefined}
-                      related={related[contact.id]}
-                      members={members}
-                      canEdit={canEdit}
-                      canAssign={canAssign}
-                    />
-                  ))}
-                </ClickableTr>
-              ))}
-            </tbody>
-          </table>
+          <div className="p-4 md:px-6">
+            <DataTable
+              columns={tableColumns}
+              rows={contacts}
+              rowKey={(contact) => contact.id}
+              state={tablePrefs}
+              caption="Contactos"
+              rowHref={(contact) => `/dashboard/contacts/${contact.id}`}
+              rowClassName={(contact) => (picked.has(contact.id) ? "bg-primary/5" : undefined)}
+              selection={{ selected: picked, onChange: setPicked, rowLabel: (contact) => `Seleccionar a ${contact.displayName ?? "este contacto"}` }}
+            />
+          </div>
         )}
       </div>
 
@@ -612,7 +572,7 @@ function useRelatedCells(contactIds: readonly string[], keys: readonly string[])
   return cells;
 }
 
-/** Una celda de la tabla. Las "special" se dibujan acá; el resto sale de `contact.cells` (`ContactCell`). */
+/** Lo de adentro de una celda de la tabla (la tabla común pone el `<td>`). Las "special" se dibujan acá; el resto sale de `contact.cells` (`ContactCell`). */
 function TableCell({
   col,
   contact,
@@ -640,11 +600,11 @@ function TableCell({
   canAssign: boolean;
 }) {
   const timeZone = useViewerTimezone();
-  const muted = "px-4 py-3 text-sm text-muted-foreground";
+  const muted = "text-sm text-muted-foreground";
   switch (col.key) {
     case "name":
       return (
-        <td className="px-4 py-3">
+        <>
           {/* La fila entera abre la ficha (docs/tablas.md): el nombre es texto. */}
           <span className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium">{contact.displayName ?? "Sin nombre"}</span>
@@ -653,21 +613,21 @@ function TableCell({
             {contact.isCustomer && <MarkBadge mark="customer" />}
             {contact.isKnown && <MarkBadge mark="known" />}
           </span>
-        </td>
+        </>
       );
     case "status":
       return (
-        <td className="px-4 py-3">
+        <>
           {contact.lastStatus ? (
             <LastStatusBadge settings={statusSettings} role={contact.lastStatusRole} status={contact.lastStatus} compact />
           ) : (
             <span className="text-sm text-muted-foreground">—</span>
           )}
-        </td>
+        </>
       );
     case "qualification":
       return (
-        <td className="px-4 py-3">
+        <>
           <InlineSelect
             label="Cambiar el nivel de calificación"
             value={contact.qualificationLevel ? String(contact.qualificationLevel) : "none"}
@@ -679,14 +639,14 @@ function TableCell({
             ]}
             onSelect={async (v) => toInlineResult(await setContactQualification(contact.id, v === "none" ? null : Number(v)))}
           />
-        </td>
+        </>
       );
     case "setter_status":
     case "closer_status": {
       const role = col.key === "setter_status" ? "setter" : "closer";
       const status = role === "setter" ? contact.setterStatus : contact.closerStatus;
       return (
-        <td className="px-4 py-3">
+        <>
           <InlineSelect
             label={role === "setter" ? "Cambiar el estado del setter" : "Cambiar el estado del vendedor"}
             value={status ?? "none"}
@@ -698,22 +658,22 @@ function TableCell({
             ]}
             onSelect={async (v) => toInlineResult(await setContactStatus(contact.id, role, v === "none" ? null : v))}
           />
-        </td>
+        </>
       );
     }
     case "contact":
       return (
-        <td className="px-4 py-3 text-sm">
-          <span className="block text-muted-foreground">{contact.email ?? "—"}</span>
-          {contact.phone && <span className="block text-xs text-muted-foreground/70">{contact.phone}</span>}
-        </td>
+        <span className="text-sm">
+          <span className="block truncate text-muted-foreground" title={contact.email ?? undefined}>{contact.email ?? "—"}</span>
+          {contact.phone && <span className="block truncate text-xs text-muted-foreground/70">{contact.phone}</span>}
+        </span>
       );
     case "setter":
     case "vendedor": {
       const field = col.key === "setter" ? "setter_id" : "vendedor_id";
       const current = col.key === "setter" ? contact.setterId : contact.vendedorId;
       return (
-        <td className={muted}>
+        <span className={muted}>
           <InlineSelect
             label={col.key === "setter" ? "Cambiar el setter" : "Cambiar el vendedor"}
             value={current ?? "none"}
@@ -722,41 +682,41 @@ function TableCell({
             options={[...members.map((m) => ({ value: m.userId, label: m.label })), { value: "none", label: "Sin asignar", separatorBefore: true }]}
             onSelect={async (v) => toInlineResult(await assignContact(contact.id, { [field]: v === "none" ? null : v }))}
           />
-        </td>
+        </span>
       );
     }
     case "product":
-      return <td className={cn(muted, "max-w-48 truncate")}>{interestLabel(interestCatalog, contact.interestProductId, contact.interestVariantId)}</td>;
+      return <span className={muted}>{interestLabel(interestCatalog, contact.interestProductId, contact.interestVariantId)}</span>;
     case "email_status":
       return (
-        <td className="px-4 py-3">
+        <>
           <EmailStatusBadge status={contact.emailStatus} prefix="" />
-        </td>
+        </>
       );
     case "tags":
       return (
-        <td className="px-4 py-3">
+        <>
           <span className="flex flex-wrap gap-1">
             {contact.tags.map((tag) => (
               <TagChip key={tag.id} name={tag.name} color={tag.color} />
             ))}
           </span>
-        </td>
+        </>
       );
     case "last_interaction":
-      return <td className={muted}>{formatRelative(contact.lastInteractionAt, timeZone)}</td>;
+      return <span className={muted}>{formatRelative(contact.lastInteractionAt, timeZone)}</span>;
   }
   if (customField) {
-    return <td className={cn(muted, "max-w-48 truncate")}>{displayCustomValue(customField.type, contact.custom[customField.id]) || "—"}</td>;
+    return <span className={muted}>{displayCustomValue(customField.type, contact.custom[customField.id]) || "—"}</span>;
   }
   return (
-    <td className="px-4 py-3 text-sm">
+    <span className="text-sm">
       {col.source === "related" ? (
         <ContactCell value={related?.[col.key]} loading={!related || !(col.key in related)} memberLabel={memberLabel} />
       ) : (
         <ContactCell value={contact.cells[col.key]} memberLabel={memberLabel} />
       )}
-    </td>
+    </span>
   );
 }
 

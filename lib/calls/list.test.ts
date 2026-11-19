@@ -214,7 +214,10 @@ describe("Servicio en Grabaciones (Servicios A4, F136 y F141)", () => {
   it("callListColumns: sin el módulo no hay columna Servicio; con el módulo, se puede ocultar", () => {
     expect(callListColumns({ servicesOn: false }).map((c) => c.key)).not.toContain("servicio");
     const on = callListColumns({ servicesOn: true });
-    expect(on.find((c) => c.key === "servicio")).toEqual({ key: "servicio", label: "Servicio", hideable: true });
+    const service = on.find((c) => c.key === "servicio");
+    expect(service).toMatchObject({ key: "servicio", label: "Servicio" });
+    expect(service?.hideable).not.toBe(false);
+    expect(on.find((c) => c.key === "lead")?.hideable).toBe(false);
   });
   it("la celda dice «Por revisar» o el servicio", () => {
     expect(serviceCellLabel("review", null)).toEqual({ text: "Por revisar", review: true });

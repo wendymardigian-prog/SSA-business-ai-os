@@ -91,8 +91,6 @@ export function responseColumnDefs(answers: readonly ResponseColumn[]): Response
   return [...answerDefs, ...attributionColumnDefs(DEFAULT_ATTRIBUTION_COLUMNS)];
 }
 
-export const responseColumnsStorageKey = (formId: string) => `form-responses-columns:${formId}`;
-
 /** Las columnas del menú, por grupo, filtradas por lo que se escribió en el buscador. */
 export function columnMenuGroups(defs: readonly ResponseColumnDef[], query: string) {
   return menuGroups(defs, query, RESPONSE_COLUMN_GROUPS);

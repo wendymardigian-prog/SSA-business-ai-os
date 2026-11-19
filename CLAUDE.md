@@ -1238,7 +1238,7 @@ Mismas reglas que los demas: crean y limpian sus datos (prefijo `zz-test-`) y no
 
 # Tablas del sistema: DataTable y vistas guardadas (10/11/2026)
 
-Toda tabla con columnas se arma con `DataTable` (`components/ui/data-table/`): columnas que se prenden, apagan, reordenan, fijan y ensanchan, totales al pie sobre todo el filtro y **vistas guardadas** por persona (privadas, para el equipo o para personas elegidas; una predeterminada, que Owner y Admin pueden dejar a otras personas). Estrenado en Ventas y Pagos; el resto se migra por tandas. Cómo armar una: [docs/tablas.md](docs/tablas.md).
+Toda tabla con columnas se arma con `DataTable` (`components/ui/data-table/`): columnas que se prenden, apagan, reordenan, fijan y ensanchan, totales al pie sobre todo el filtro y **vistas guardadas** por persona (privadas, para el equipo o para personas elegidas; una predeterminada, que Owner y Admin pueden dejar a otras personas). Estrenado en Ventas y Pagos; desde el 19/11/2026 también Contactos, Agenda (lista), Llamadas, Respuestas, Comisiones, Gastos y Servicios (menú «Columnas», sin vistas guardadas); el resto se migra por tandas. Cómo armar una: [docs/tablas.md](docs/tablas.md).
 
 ## Lo que no se puede romper
 

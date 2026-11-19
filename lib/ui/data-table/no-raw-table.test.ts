@@ -15,7 +15,6 @@ import { describe, expect, it } from "vitest";
 const LEGACY = [
   "app/(dashboard)/dashboard/(comunicacion)/comentarios/page.tsx",
   "app/(dashboard)/dashboard/afiliados/page.tsx", // @plantilla-quitar(ventas)
-  "app/(dashboard)/dashboard/contacts/contacts-view.tsx",
   "app/(dashboard)/dashboard/contacts/import/import-view.tsx",
   "app/(dashboard)/dashboard/settings/custom-fields/custom-fields-view.tsx",
   "app/(dashboard)/dashboard/settings/estados/statuses-view.tsx",
@@ -24,10 +23,8 @@ const LEGACY = [
   "components/agents/runs-screen.tsx",
   "components/agents/tasks/calls/prompt-test-panel.tsx", // @plantilla-quitar(llamadas)
   "components/assignment/assignment-tester.tsx",
-  "components/calls/calls-list.tsx", // @plantilla-quitar(llamadas)
   "components/channels/whatsapp-daily-chart.tsx",
   "components/commissions/adjustment-dialog.tsx", // @plantilla-quitar(comisiones)
-  "components/commissions/commissions-list.tsx", // @plantilla-quitar(comisiones)
   "components/commissions/payout-dialog.tsx", // @plantilla-quitar(comisiones)
   "components/content/drawer/piece-performance.tsx",
   "components/content/list-view.tsx",
@@ -42,7 +39,6 @@ const LEGACY = [
   "components/designer/generate/generations-tab.tsx", // @plantilla-quitar(disenador)
   "components/drafts/metrics-strip.tsx",
   "components/eod/reports/reports-view.tsx", // @plantilla-quitar(formularios)
-  "components/finance/expenses-list.tsx", // @plantilla-quitar(finanzas)
   "components/finance/recurring-list.tsx", // @plantilla-quitar(finanzas)
   "components/finance/summary-dashboard.tsx", // @plantilla-quitar(finanzas)
   "components/finance/vendors-list.tsx", // @plantilla-quitar(finanzas)
@@ -51,14 +47,11 @@ const LEGACY = [
   "components/forms/editor/prefill-card.tsx", // @plantilla-quitar(formularios)
   "components/forms/responses/metrics-view.tsx", // @plantilla-quitar(formularios)
   "components/forms/responses/response-groups.tsx", // @plantilla-quitar(formularios)
-  "components/forms/responses/responses-table.tsx", // @plantilla-quitar(formularios)
   "components/inbox/assignment/known-assignment-view.tsx",
   "components/sales/payment-plan.tsx", // @plantilla-quitar(ventas)
   "components/sales/wizard/step3-financing.tsx", // @plantilla-quitar(ventas)
-  "components/scheduling/bookings/list.tsx",
   "components/services/clients/import-services-view.tsx", // @plantilla-quitar(servicios)
   "components/services/clients/service-accesses-panel.tsx", // @plantilla-quitar(servicios)
-  "components/services/clients/services-list-view.tsx", // @plantilla-quitar(servicios)
   "components/services/portal/program-calendar.tsx", // @plantilla-quitar(servicios)
   "components/services/portal/review-list.tsx", // @plantilla-quitar(servicios)
   "components/services/products/service-product-page.tsx", // @plantilla-quitar(servicios)
