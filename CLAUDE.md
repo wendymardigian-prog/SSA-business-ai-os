@@ -2544,7 +2544,7 @@ Los WhatsApp de las automatizaciones que pueden salir en ráfaga entran en `send
 
 ## Migraciones
 
-`00420_whatsapp_send_queue` (aditiva) va **ANTES** de desplegar (los pasos y la pantalla leen la tabla). `00421_send_queue_cron_guard` (aditiva, reescribe `private.cron_work_send_queue` desde la definición de producción del 18/11/2026) va después de la 00420. **Las dos SIN aplicar** (esperan el OK de Wendy). El rango 00420–00429 es de esta tanda.
+`00420_whatsapp_send_queue` (aditiva) va **ANTES** de desplegar (los pasos y la pantalla leen la tabla). `00421_send_queue_cron_guard` (aditiva, reescribe `private.cron_work_send_queue` desde la definición de producción del 18/11/2026) va después de la 00420. **Aplicadas y registradas** el 19/11/2026 UTC (versiones `20261119041841` y `20261119041842`), con el OK de Wendy, después de ensayarlas dos veces seguidas en una transacción que se deshizo sola: idempotentes, el cupo real del número dio 22 en el día, la guarda «sin trabajo» y el cron de 15 s siguió sin fallas. El rango 00420–00429 es de esta tanda (la 00430 en adelante, de otras sesiones; confirmar con `list_migrations` y las ramas locales).
 
 # Buenas practicas de desarrollo
 

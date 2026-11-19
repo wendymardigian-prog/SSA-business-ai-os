@@ -8,7 +8,7 @@ cada bloque.
 
 **Fecha:** 18 de noviembre de 2026
 **Rama:** `feat/cola-whatsapp-inteligente`
-**Migraciones:** 00420 y 00421, aditivas, **sin aplicar** (esperan el OK de Wendy).
+**Migraciones:** 00420 y 00421, aditivas, **aplicadas y registradas** el 19/11/2026 UTC (versiones `20261119041841` y `20261119041842`), después de ensayarlas en una transacción que se deshizo sola.
 
 ### Qué se construyó
 
