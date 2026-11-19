@@ -25,7 +25,7 @@ import { TeamRolesSwitch } from "@/components/settings/team-roles-switch";
 import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { memberRowControls, teamSections } from "@/lib/team/view-model";
-import { deliveryChip, inviteState } from "@/lib/team/invite-state";
+import { deliveryChip, inviteEmailHint, inviteEmailSendable, inviteResultMessage, inviteState, type InviteEmailReadiness } from "@/lib/team/invite-state";
 import { buildHistory, openInvites, type HistoryFilter } from "@/lib/team/invite-history";
 
 interface MemberDetail {
@@ -89,7 +89,7 @@ export function TeamView({
   invites: initialInvites,
   workspaceRoles,
   grantableRoleIds,
-  emailConfigured,
+  emailReadiness,
   personNames,
 }: {
   workspaceId: string;
@@ -101,7 +101,8 @@ export function TeamView({
   workspaceRoles: WorkspaceRoleOption[];
   /** Los roles que quien mira puede dar (invitar y asignar): `assertCanGrant`, calculado en el servidor. */
   grantableRoleIds: string[];
-  emailConfigured: boolean;
+  /** Si los emails van a salir (`loadEmailReadiness`): null cuando quien mira no invita. */
+  emailReadiness: InviteEmailReadiness | null;
   /** user_id -> nombre, para "Invitó X" y "Aceptada por X". */
   personNames: Record<string, string>;
 }) {
@@ -121,10 +122,12 @@ export function TeamView({
   // Formulario de invitar
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRoleId, setInviteRoleId] = useState(grantable.has(memberRoleId) ? memberRoleId : (inviteRoles[0]?.id ?? ""));
-  const [delivery, setDelivery] = useState<InviteDelivery>(emailConfigured ? "email" : "link");
+  const emailSendable = inviteEmailSendable(emailReadiness);
+  const emailHint = inviteEmailHint(emailReadiness);
+  const [delivery, setDelivery] = useState<InviteDelivery>(emailSendable ? "email" : "link");
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<{ message: string; existingUrl?: string } | null>(null);
-  const [lastInvite, setLastInvite] = useState<{ url: string; emailStatus: string | null; email: string } | null>(null);
+  const [lastInvite, setLastInvite] = useState<{ url: string; emailStatus: string | null; emailError: string | null; email: string } | null>(null);
 
   const [copied, setCopied] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -153,7 +156,7 @@ export function TeamView({
     if (!result.ok) {
       setInviteError({ message: result.error, existingUrl: result.existingInviteUrl });
     } else {
-      setLastInvite({ url: result.inviteUrl, emailStatus: result.emailStatus, email: result.invite.email });
+      setLastInvite({ url: result.inviteUrl, emailStatus: result.emailStatus, emailError: result.emailError, email: result.invite.email });
       setInviteEmail("");
       router.refresh();
     }
@@ -187,7 +190,7 @@ export function TeamView({
     const result = await resendInvite(inviteId);
     if (!result.ok) setActionError(result.error);
     else {
-      setNotice(result.emailStatus === "sent" ? "Email enviado." : "No se pudo mandar el email. Pasale el link a mano.");
+      setNotice(inviteResultMessage({ status: result.emailStatus, error: result.emailError }));
       router.refresh();
     }
     setBusy(null);
@@ -398,7 +401,7 @@ export function TeamView({
                           type="button"
                           role="radio"
                           aria-checked={delivery === "email"}
-                          disabled={!emailConfigured}
+                          disabled={!emailSendable}
                           onClick={() => setDelivery("email")}
                           className={cn("rounded-md px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-50", delivery === "email" ? "bg-card shadow-sm" : "text-muted-foreground")}
                         >
@@ -423,13 +426,18 @@ export function TeamView({
                         {inviting ? "Invitando..." : delivery === "email" ? "Enviar invitación" : "Generar link"}
                       </button>
                     </div>
-                    {!emailConfigured && (
+                    {emailHint && (
                       <p className="text-xs text-muted-foreground">
-                        El email todavía no está conectado.{" "}
-                        <Link href="/dashboard/settings/integrations" className="text-primary-ink underline underline-offset-2 hover:opacity-80">
-                          Conectá el email en Integraciones
-                        </Link>{" "}
-                        para que las invitaciones salgan solas.
+                        {emailHint.lead}
+                        {emailHint.link && (
+                          <>
+                            {" "}
+                            <Link href="/dashboard/settings/integrations" className="text-primary-ink underline underline-offset-2 hover:opacity-80">
+                              {emailHint.link}
+                            </Link>{" "}
+                            {emailHint.tail}
+                          </>
+                        )}
                       </p>
                     )}
                   </form>
@@ -450,13 +458,7 @@ export function TeamView({
                 {lastInvite && (
                   <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
                     <p className="text-xs font-medium">
-                      {lastInvite.emailStatus === "sent"
-                        ? `Invitación enviada a ${lastInvite.email}.`
-                        : lastInvite.emailStatus === null
-                          ? `Invitación creada para ${lastInvite.email}. Pasale este link.`
-                          : lastInvite.emailStatus === "not_configured"
-                            ? "El email todavía no está conectado: pasale vos este link."
-                            : "No se pudo mandar el email. Pasale este link."}
+                      {inviteResultMessage({ status: lastInvite.emailStatus, error: lastInvite.emailError, email: lastInvite.email })}
                     </p>
                     <div className="mt-2 flex items-center gap-2">
                       <code className="flex-1 truncate rounded-md border border-border bg-background px-2 py-1.5 text-xs">{lastInvite.url}</code>
