@@ -5,7 +5,7 @@ import { EditorContent, Node, mergeAttributes, useEditor, type Editor, type JSON
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Heading1, Heading2, Heading3, Italic, Link2, List, ListOrdered, Underline as UnderlineIcon, Unlink } from "lucide-react";
 import { EmojiButton } from "@/components/ui/emoji-picker";
-import { VariableMenu, type VariableOption } from "./variable-menu";
+import { VariableMenu, variableName, type VariableOption } from "./variable-menu";
 import { bodyToEditorHtml, editorHtmlToBody, normalizeLink } from "@/lib/editor/email-body";
 
 /**
@@ -334,7 +334,7 @@ function Toolbar({
             value={linkValue}
             aria-label="Dirección del enlace"
             aria-invalid={linkError}
-            placeholder="https://… o ana@correo.com"
+            placeholder={variables && variables.length > 0 ? "https://…, ana@correo.com o una variable" : "https://… o ana@correo.com"}
             onChange={(event) => {
               setLinkValue(event.target.value);
               setLinkError(false);
@@ -352,13 +352,32 @@ function Toolbar({
             }}
             className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs"
           />
+          {variables && variables.length > 0 && (
+            <select
+              aria-label="Usar una variable como destino del enlace"
+              value=""
+              onChange={(event) => {
+                if (!event.target.value) return;
+                setLinkValue(`{{${event.target.value}}}`);
+                setLinkError(false);
+              }}
+              className="h-8 max-w-[12rem] rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="">Una variable…</option>
+              {variables.map((v) => (
+                <option key={variableName(v)} value={variableName(v)}>
+                  {typeof v === "string" ? v : v.label}
+                </option>
+              ))}
+            </select>
+          )}
           <button type="button" onClick={applyLink} className="h-8 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground">
             Aplicar
           </button>
           <button type="button" onClick={() => setLinkOpen(false)} className="h-8 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent">
             Cancelar
           </button>
-          {linkError && <p role="alert" className="w-full text-xs text-destructive">Ese enlace no es válido. Probá con https://… o un email.</p>}
+          {linkError && <p role="alert" className="w-full text-xs text-destructive">Ese enlace no es válido. Probá con https://…, un email o una variable.</p>}
         </div>
       )}
     </div>
