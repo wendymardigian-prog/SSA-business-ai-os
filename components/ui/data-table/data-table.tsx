@@ -53,6 +53,10 @@ export interface DataTableSelection<Row> {
   onChange: (next: Set<string>) => void;
   /** Cómo se nombra la fila para un lector de pantalla («Elegir la venta de Ana»). */
   rowLabel?: (row: Row) => string;
+  /** Una fila que no se puede elegir (su casilla queda apagada y la del encabezado no la cuenta). Por defecto, todas se pueden. */
+  isSelectable?: (row: Row) => boolean;
+  /** Por qué no se puede elegir (al pasar el mouse). */
+  disabledReason?: (row: Row) => string | null;
 }
 
 const SELECT_WIDTH = 40;
@@ -118,7 +122,8 @@ export function DataTable<Row>({
   const total = widths.reduce((sum, width) => sum + width, selectWidth);
   const offsets = stickyOffsets(widths.slice(0, pinned.length), selectWidth);
   const sections = useMemo(() => (groups ? groups.filter((g) => g.rows.length > 0) : [{ key: "", label: null, aside: undefined, rows }]), [groups, rows]);
-  const visibleIds = useMemo(() => sections.flatMap((s) => s.rows.map(rowKey)), [sections, rowKey]);
+  const isSelectable = selection?.isSelectable;
+  const visibleIds = useMemo(() => sections.flatMap((s) => s.rows.filter((r) => !isSelectable || isSelectable(r)).map(rowKey)), [sections, rowKey, isSelectable]);
   const allState = selection ? selectionState(selection.selected, visibleIds) : "none";
   // La casilla de la columna de casillas queda pegada a la izquierda solo si hay columnas fijas.
   const selectSticky = pinned.length > 0 ? "sticky left-0 z-[2]" : "";
@@ -200,13 +205,7 @@ export function DataTable<Row>({
               <BodyRow key={rowKey(row)} href={rowHref?.(row) ?? null} onOpen={onRowClick ? () => onRowClick(row) : undefined} beforeNavigate={beforeRowNavigate} className={rowClassName?.(row)}>
                 {selection && (
                   <td className={`px-3 py-2 ${pinned.length > 0 ? "sticky left-0 z-[1] bg-card group-hover:bg-muted" : ""}`} onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 cursor-pointer align-middle"
-                      checked={selection.selected.has(rowKey(row))}
-                      onChange={() => selection.onChange(toggleRow(selection.selected, rowKey(row)))}
-                      aria-label={selection.rowLabel?.(row) ?? "Elegir la fila"}
-                    />
+                    <SelectBox row={row} id={rowKey(row)} selection={selection} />
                   </td>
                 )}
                 {shown.map((column, index) => (
@@ -255,6 +254,24 @@ function BodyRow({ href, onOpen, beforeNavigate, className, children }: { href: 
     <ClickableTr href={href} onOpen={onOpen} beforeNavigate={beforeNavigate} className={cn("group hover:bg-muted/30", className)}>
       {children}
     </ClickableTr>
+  );
+}
+
+/** La casilla de una fila: apagada (con el motivo) si la fila no se puede elegir. */
+function SelectBox<Row>({ row, id, selection }: { row: Row; id: string; selection: DataTableSelection<Row> }) {
+  const selectable = !selection.isSelectable || selection.isSelectable(row);
+  const reason = selectable ? null : (selection.disabledReason?.(row) ?? null);
+  return (
+    <span title={reason ?? undefined}>
+      <input
+        type="checkbox"
+        className="h-4 w-4 cursor-pointer align-middle disabled:cursor-not-allowed"
+        checked={selection.selected.has(id)}
+        disabled={!selectable}
+        onChange={() => selection.onChange(toggleRow(selection.selected, id))}
+        aria-label={reason ? `No se puede elegir: ${reason}` : (selection.rowLabel?.(row) ?? "Elegir la fila")}
+      />
+    </span>
   );
 }
 

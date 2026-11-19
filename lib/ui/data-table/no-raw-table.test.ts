@@ -27,7 +27,6 @@ const LEGACY = [
   "components/calls/calls-list.tsx", // @plantilla-quitar(llamadas)
   "components/channels/whatsapp-daily-chart.tsx",
   "components/commissions/adjustment-dialog.tsx", // @plantilla-quitar(comisiones)
-  "components/commissions/commissions-list.tsx", // @plantilla-quitar(comisiones)
   "components/commissions/payout-dialog.tsx", // @plantilla-quitar(comisiones)
   "components/content/drawer/piece-performance.tsx",
   "components/content/list-view.tsx",
