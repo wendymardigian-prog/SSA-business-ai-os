@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { columnWidth, resetColumnWidth, setColumnWidth, visibleColumns, type ColumnMeta } from "@/lib/ui/data-table/prefs";
 import { selectionState, toggleAllVisible, toggleRow } from "@/lib/ui/data-table/selection";
 import { splitPinned, stickyOffsets } from "@/lib/ui/data-table/sticky";
+import { ariaSort, type TableSort } from "@/lib/ui/data-table/sort";
 import { ResizeHandle } from "./resize-handle";
 import type { TablePrefsState } from "./use-table-prefs";
 
@@ -26,6 +28,8 @@ export interface DataColumn<Row> extends ColumnMeta {
   cellClassName?: string;
   /** Aclaración del encabezado (al pasar el mouse). */
   hint?: string;
+  /** Se ordena con un clic en el título. Solo tiene efecto si la tabla recibe `onSortChange`. */
+  sortable?: boolean;
 }
 
 /**
@@ -54,6 +58,8 @@ export function DataTable<Row>({
   className = "",
   caption,
   selection,
+  sort,
+  onSortChange,
 }: {
   columns: readonly DataColumn<Row>[];
   rows: readonly Row[];
@@ -67,6 +73,10 @@ export function DataTable<Row>({
   caption?: string;
   /** Casillas para elegir filas. Sin esto, la tabla es exactamente la de siempre. */
   selection?: DataTableSelection<Row>;
+  /** El orden actual (lo decide la pantalla: en la consulta, en la URL…). */
+  sort?: TableSort | null;
+  /** Clic en el título de una columna `sortable`. Sin esto, ningún título se ordena y la tabla es la de siempre. */
+  onSortChange?: (key: string) => void;
 }) {
   const { prefs } = state;
   const [live, setLive] = useState<{ key: string; width: number } | null>(null);
@@ -118,10 +128,15 @@ export function DataTable<Row>({
                 key={column.key}
                 scope="col"
                 title={column.hint}
+                aria-sort={onSortChange && column.sortable ? ariaSort(sort, column.key) : undefined}
                 style={stickyStyle(index)}
                 className={`whitespace-nowrap px-3 py-2 font-medium ${HEADER_BG} ${column.align === "right" ? "text-right" : ""} ${index < pinned.length ? `sticky z-[2] ${index === pinned.length - 1 ? PIN_EDGE : ""}` : "relative"}`}
               >
-                <span className="block truncate">{column.label}</span>
+                {onSortChange && column.sortable ? (
+                  <SortButton column={column} sort={sort} onClick={() => onSortChange(column.key)} />
+                ) : (
+                  <span className="block truncate">{column.label}</span>
+                )}
                 {column.resizable !== false && (
                   <ResizeHandle
                     label={column.label || "la columna"}
@@ -204,5 +219,22 @@ function HeaderCheckbox({ state, disabled, onToggle }: { state: "none" | "some" 
       onChange={onToggle}
       aria-label={state === "all" ? "Soltar todas las filas de esta página" : "Elegir todas las filas de esta página"}
     />
+  );
+}
+
+/** El título de una columna ordenable: la etiqueta y una flechita con el sentido (tenue si no es la columna del orden). */
+function SortButton({ column, sort, onClick }: { column: ColumnMeta & { align?: "left" | "right" }; sort: TableSort | null | undefined; onClick: () => void }) {
+  const active = sort?.key === column.key;
+  const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Ordenar por ${column.label}`}
+      className={`inline-flex max-w-full items-center gap-1 rounded hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${column.align === "right" ? "flex-row-reverse" : ""} ${active ? "text-foreground" : ""}`}
+    >
+      <span className="truncate">{column.label}</span>
+      <Icon className={`h-3 w-3 shrink-0 ${active ? "" : "opacity-40"}`} aria-hidden />
+    </button>
   );
 }

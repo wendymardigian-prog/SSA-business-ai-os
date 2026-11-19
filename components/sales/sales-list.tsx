@@ -14,6 +14,7 @@ import { ViewsMenu } from "@/components/ui/data-table/views-menu";
 import { ChannelChip } from "@/components/shared/channel-chip";
 import { BulkDeleteButton } from "@/components/trash/bulk-delete-button";
 import { SearchPicker } from "@/components/sales/search-picker";
+import { PendingBreakdown } from "@/components/sales/pending-breakdown";
 import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
 import { searchPiecesForSale, type PieceOption } from "@/lib/actions/sales-attribution";
 import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
@@ -30,6 +31,9 @@ import { isColumnVisible, type TablePrefs } from "@/lib/ui/data-table/prefs";
 import { keepVisible } from "@/lib/ui/data-table/selection";
 import { BULK_NOUNS } from "@/lib/trash/bulk-summary";
 import { viewFilterString, withViewParam, type TableViewItem } from "@/lib/ui/data-table/views";
+import { nextSort } from "@/lib/ui/data-table/sort";
+import { SALES_SORT_DEFAULT_DIR, type SalesSortKey } from "@/lib/sales/sort";
+import type { OpenPayment } from "@/lib/sales/next-payment";
 
 export type SalesListRowView = SaleListRow & { contactName: string; vendedorName: string | null };
 
@@ -54,6 +58,8 @@ export interface SalesListData {
   pieceTitle: string | null;
   /** Monto, Cobrado y Pendiente de TODAS las ventas del filtro (null si no se pudieron calcular). */
   totals: SalesTotals | null;
+  /** Se pidió ordenar por algo que sale de los pagos y no se pudo: la tabla quedó por fecha. */
+  sortFallback?: boolean;
   /** Las vistas guardadas de esta persona para la tabla. */
   views: {
     items: TableViewItem[];
@@ -232,7 +238,7 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
               <span className="text-xs text-muted-foreground">{menuActive === 1 ? "1 filtro activo" : `${menuActive} filtros activos`}</span>
               <button
                 type="button"
-                onClick={() => go({ ...parseSalesFilters({}), q: filters.q })}
+                onClick={() => go({ ...parseSalesFilters({}), q: filters.q, sort: filters.sort })}
                 className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <X className="h-3 w-3" aria-hidden />
@@ -303,10 +309,17 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
                   state={state}
                   caption="Ventas"
                   totals={totalCells(data.totals)}
+                  sort={data.sortFallback ? null : filters.sort}
+                  onSortChange={(key) => {
+                    const k = key as SalesSortKey;
+                    const next = nextSort(filters.sort, k, SALES_SORT_DEFAULT_DIR[k]);
+                    go({ sort: { key: k, dir: next.dir } });
+                  }}
                   selection={data.canDelete ? { selected, onChange: setPicked, rowLabel: (r) => `Elegir la venta de ${r.contactName}` } : undefined}
                 />
                 {data.totals?.truncated && <p className="mt-1 hidden text-[11px] text-muted-foreground md:block">Hay más de 20.000 ventas con este filtro: los totales cuentan las primeras 20.000. Acotá el filtro para ver el total exacto.</p>}
                 {!data.totals && <p className="mt-1 hidden text-[11px] text-muted-foreground md:block">No pude calcular los totales. Recargá la página para intentarlo de nuevo.</p>}
+                {data.sortFallback && <p className="mt-1 text-[11px] text-muted-foreground">No pude ordenar por esa columna: se muestran por fecha. Recargá la página para intentarlo de nuevo.</p>}
 
                 <ul className="space-y-2 md:hidden">
                   {rows.map((r) => (
@@ -324,6 +337,12 @@ export function SalesList({ data, wizard, moduleColumns = [] }: { data: SalesLis
                           <div><dt className="text-muted-foreground">Cobrado</dt><dd className="font-medium tabular-nums text-emerald-700 dark:text-emerald-400">{formatMoney(r.paid)}</dd></div>
                           <div><dt className="text-muted-foreground">Pendiente</dt><dd className="font-medium tabular-nums">{formatMoney(r.pending)}</dd></div>
                         </dl>
+                        {r.nextPayment && (
+                          <p className="mt-1.5 text-xs">
+                            <span className="text-muted-foreground">Próximo pago: </span>
+                            <NextPaymentText payment={r.nextPayment} />
+                          </p>
+                        )}
                         <p className="mt-1.5 truncate text-[11px] text-muted-foreground">{r.attribution}</p>
                         {showOrigin && (
                           <div className="mt-1 flex items-center gap-1.5">
@@ -359,14 +378,19 @@ const DATE_LINK = "underline-offset-2 hover:underline";
 
 /** Las celdas de cada columna de BAIOS y de cada módulo. El orden, la visibilidad y los anchos no se deciden acá. */
 function buildColumns(moduleColumns: ModuleColumn[]): DataColumn<SalesListRowView>[] {
-  const cells: Record<string, Pick<DataColumn<SalesListRowView>, "render" | "align" | "cellClassName">> = {
-    date: { render: (r) => <Link href={`/dashboard/ventas/${r.id}`} className={DATE_LINK}>{formatDate(r.saleDate)}</Link> },
+  const cells: Record<string, Pick<DataColumn<SalesListRowView>, "render" | "align" | "cellClassName" | "sortable">> = {
+    date: { sortable: true, render: (r) => <Link href={`/dashboard/ventas/${r.id}`} className={DATE_LINK}>{formatDate(r.saleDate)}</Link> },
     contact: { render: (r) => <Link href={`/dashboard/contacts/${r.contactId}`} className={`font-medium ${DATE_LINK}`}>{r.contactName}</Link> },
     product: { render: (r) => r.productName },
     variant: { render: (r) => r.variantName ?? "—", cellClassName: "text-muted-foreground" },
-    amount: { align: "right", render: (r) => formatMoney(r.finalAmount) },
-    paid: { align: "right", cellClassName: "text-emerald-700 dark:text-emerald-400", render: (r) => formatMoney(r.paid) },
-    pending: { align: "right", render: (r) => formatMoney(r.pending) },
+    amount: { align: "right", sortable: true, render: (r) => formatMoney(r.finalAmount) },
+    paid: { align: "right", sortable: true, cellClassName: "text-emerald-700 dark:text-emerald-400", render: (r) => formatMoney(r.paid) },
+    pending: {
+      align: "right",
+      sortable: true,
+      render: (r) => (r.pending !== 0 || r.openPayments.length > 0 ? <PendingBreakdown amount={r.pending} payments={r.openPayments} formatDate={formatDate} /> : formatMoney(r.pending)),
+    },
+    next_payment: { sortable: true, render: (r) => (r.nextPayment ? <NextPaymentText payment={r.nextPayment} /> : <span className="text-muted-foreground">—</span>) },
     status: { render: (r) => <StatusChip status={r.status} /> },
     seller: { render: (r) => r.vendedorName ?? "—" },
     attribution: { cellClassName: "text-xs text-muted-foreground", render: (r) => <span title={r.attribution}>{r.attribution}</span> },
@@ -455,6 +479,18 @@ function CampaignInput({ value, onCommit }: { value: string; onCommit: (v: strin
         }
       }}
     />
+  );
+}
+
+/** «12 dic 2026 · $500,00»: la fecha en rojo si el pago ya está vencido. */
+function NextPaymentText({ payment }: { payment: OpenPayment }) {
+  return (
+    <>
+      <span className={payment.overdue ? "font-medium text-red-700 dark:text-red-400" : ""} title={payment.overdue ? "Vencido" : undefined}>
+        {payment.dueDate ? formatDate(payment.dueDate) : "Sin fecha"}
+      </span>
+      <span className="text-muted-foreground"> · <span className="tabular-nums">{formatMoney(payment.amount)}</span></span>
+    </>
   );
 }
 

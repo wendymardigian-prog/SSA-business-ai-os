@@ -8,6 +8,8 @@
 import { fetchAllPages, type PageResult } from "@/lib/shared/paginate";
 import { sumMoney } from "@/lib/ui/data-table/totals";
 import { saleBalance, salePaid } from "./sale-math";
+import { nextPayment } from "./next-payment";
+import type { SaleSummary } from "./sort";
 
 export interface SalesTotals {
   count: number;
@@ -16,16 +18,23 @@ export interface SalesTotals {
   pending: number | null;
   /** Había más ventas que el tope: el total cuenta solo las primeras. */
   truncated: boolean;
+  /** Cada venta con su plata y su próximo pago: solo con `withSummaries` (para ordenar por lo que sale de los pagos). */
+  summaries?: SaleSummary[];
 }
 
 interface SaleMoney {
   id: string;
   final_amount: unknown;
+  /** Solo hace falta con `withSummaries`. */
+  sale_date?: string;
 }
 interface PaymentMoney {
   sale_id: string;
   amount: unknown;
   status: string;
+  /** Solo hacen falta con `withSummaries`. */
+  id?: string;
+  due_date?: string | null;
 }
 
 /** Cuántas ventas se piden juntas al buscar sus pagos (más largo, la dirección del pedido se pasa del límite). */
@@ -34,6 +43,7 @@ export const PAYMENT_CHUNK = 60;
 export async function computeSalesTotals(
   fetchSales: (from: number, to: number) => PromiseLike<PageResult<SaleMoney>>,
   fetchPayments: (saleIds: string[], from: number, to: number) => PromiseLike<PageResult<PaymentMoney>>,
+  options: { withSummaries?: boolean } = {},
 ): Promise<SalesTotals | null> {
   const sales = await fetchAllPages(fetchSales);
   if (sales.error) return null;
@@ -48,10 +58,23 @@ export async function computeSalesTotals(
 
   const paid: number[] = [];
   const pending: number[] = [];
+  const summaries: SaleSummary[] = [];
   for (const sale of sales.rows) {
     const payments = bySale.get(sale.id) ?? [];
-    paid.push(salePaid(payments));
-    pending.push(saleBalance(sale.final_amount, payments));
+    const salePaidAmount = salePaid(payments);
+    const salePending = saleBalance(sale.final_amount, payments);
+    paid.push(salePaidAmount);
+    pending.push(salePending);
+    if (options.withSummaries) {
+      summaries.push({
+        id: sale.id,
+        saleDate: sale.sale_date ?? "",
+        amount: Number(sale.final_amount) || 0,
+        paid: salePaidAmount,
+        pending: salePending,
+        nextDue: nextPayment(payments)?.dueDate ?? null,
+      });
+    }
   }
   return {
     count: sales.rows.length,
@@ -59,5 +82,6 @@ export async function computeSalesTotals(
     paid: sumMoney(paid),
     pending: sumMoney(pending),
     truncated: sales.truncated,
+    ...(options.withSummaries ? { summaries } : {}),
   };
 }

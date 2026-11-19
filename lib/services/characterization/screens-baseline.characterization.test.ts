@@ -22,8 +22,9 @@ describe("Ventas: columnas de la lista", () => {
   const src = read("components/sales/sales-list.tsx");
   it("las columnas de BAIOS son las de siempre y en el mismo orden", () => {
     // Tabla única (10/11/2026): el catálogo vive en lib/sales/columns.ts. Cambio a propósito: «Variante» tiene su
-    // columna propia (antes iba dentro de «Producto»). Las demás, en el mismo orden.
-    expect(SALES_COLUMN_METAS.map((c) => c.label)).toEqual(["Fecha", "Contacto", "Producto", "Variante", "Monto", "Cobrado", "Pendiente", "Estado", "Vendedor", "Atribución", "Origen"]);
+    // columna propia (antes iba dentro de «Producto»). Cambio a propósito (18/11/2026): «Próximo pago» después de
+    // «Pendiente». Las demás, en el mismo orden.
+    expect(SALES_COLUMN_METAS.map((c) => c.label)).toEqual(["Fecha", "Contacto", "Producto", "Variante", "Monto", "Cobrado", "Pendiente", "Próximo pago", "Estado", "Vendedor", "Atribución", "Origen"]);
   });
   it("Servicio entra por el punto de extensión: las columnas de módulos van después de las de BAIOS", () => {
     expect(src).toContain("return [...base, ...modules];");
