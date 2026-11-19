@@ -2,8 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, Download, Loader2, GitBranch, FileJson, X, Trash2 } from "lucide-react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Upload, Loader2, GitBranch, FileJson, X } from "lucide-react";
 import type { Json } from "@/lib/types/database";
 
 export interface FlowExportData {
@@ -40,119 +39,43 @@ export function downloadFlowFile(data: FlowExportData) {
 
 /**
  * Exportar desde la lista: la lista no trae los pasos (no hace falta para mostrarla), asi que se piden al tocar.
- * Exporta lo que corre (no los cambios sin publicar).
+ * Exporta lo que corre (no los cambios sin publicar). Devuelve si salio bien.
  */
-export function ExportFlowButton({ flow }: { flow: { id: string; name: string } }) {
-  const [busy, setBusy] = useState(false);
-  async function handleExport(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/v1/flows/${flow.id}`);
-      if (!res.ok) throw new Error(String(res.status));
-      const full = (await res.json()) as { name: string; description?: string | null; categories?: string[]; nodes: Json; edges: Json; version?: number };
-      downloadFlowFile({
-        name: full.name,
-        description: full.description || null,
-        categories: full.categories ?? [],
-        nodes: full.nodes,
-        edges: full.edges,
-        version: full.version || 1,
-        exportedAt: new Date().toISOString(),
-        source: "business-os",
-      });
-    } catch (err) {
-      console.error("[flows] no se pudo exportar:", err);
-    } finally {
-      setBusy(false);
-    }
+export async function exportFlowById(flowId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/v1/flows/${flowId}`);
+    if (!res.ok) throw new Error(String(res.status));
+    const full = (await res.json()) as { name: string; description?: string | null; categories?: string[]; nodes: Json; edges: Json; version?: number };
+    downloadFlowFile({
+      name: full.name,
+      description: full.description || null,
+      categories: full.categories ?? [],
+      nodes: full.nodes,
+      edges: full.edges,
+      version: full.version || 1,
+      exportedAt: new Date().toISOString(),
+      source: "business-os",
+    });
+    return true;
+  } catch (err) {
+    console.error("[flows] no se pudo exportar:", err);
+    return false;
   }
-
-  return (
-    <button
-      onClick={handleExport}
-      disabled={busy}
-      className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground transition-colors disabled:opacity-50"
-      aria-label={`Exportar ${flow.name}`}
-      title="Exportar"
-    >
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-    </button>
-  );
 }
 
-export function DeleteFlowButton({
-  flow,
-}: {
-  flow: { id: string; name: string };
-}) {
-  const router = useRouter();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleDelete() {
-    setDeleting(true);
-    setError(null);
-
-    try {
-      const res = await fetch(`/api/v1/flows/${flow.id}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        console.error("[flows] no se pudo borrar la automatizacion");
-        setError("No se pudo borrar. Probá de nuevo.");
-        return;
-      }
-
-      router.refresh();
-    } catch (err) {
-      console.error("[flows] no se pudo borrar la automatizacion:", err);
-      setError("No se pudo borrar. Probá de nuevo.");
-    } finally {
-      setDeleting(false);
+/** Borrar una automatizacion (con sus disparadores, versiones e historial). Devuelve si salio bien. */
+export async function deleteFlowById(flowId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/v1/flows/${flowId}`, { method: "DELETE" });
+    if (!res.ok) {
+      console.error("[flows] no se pudo borrar la automatizacion");
+      return false;
     }
+    return true;
+  } catch (err) {
+    console.error("[flows] no se pudo borrar la automatizacion:", err);
+    return false;
   }
-
-  return (
-    // The button lives inside the flow card's <Link>; stop clicks (including
-    // clicks inside the dialog, which renders in the same DOM subtree) from
-    // bubbling into card navigation.
-    <span
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-    >
-      <button
-        onClick={() => setConfirmOpen(true)}
-        disabled={deleting}
-        className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground/60 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors disabled:opacity-50"
-        aria-label={`Borrar ${flow.name}`}
-        title={error ?? "Borrar"}
-      >
-        {deleting ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <Trash2 className="h-3.5 w-3.5" />
-        )}
-      </button>
-      <ConfirmDialog
-        open={confirmOpen}
-        title="Borrar automatización"
-        message={`«${flow.name}» se borra con sus disparadores, versiones e historial de ejecuciones. No se puede deshacer.`}
-        confirmLabel="Borrar"
-        destructive
-        onConfirm={() => {
-          setConfirmOpen(false);
-          handleDelete();
-        }}
-        onCancel={() => setConfirmOpen(false)}
-      />
-    </span>
-  );
 }
 
 export function ImportFlowButton({ compact = false }: { compact?: boolean } = {}) {

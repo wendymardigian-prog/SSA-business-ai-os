@@ -1,14 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { GitBranch, Sparkles, Tags, X } from "lucide-react";
+import { Copy, Download, GitBranch, Loader2, MoreHorizontal, Pencil, Sparkles, Tags, Trash2, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { FilterMenu, MenuOption } from "@/components/ui/filter-menu";
 import { CreateFlowButton } from "@/components/create-flow-button";
-import { DeleteFlowButton, ExportFlowButton, ImportFlowButton } from "@/components/flow-actions";
+import { deleteFlowById, exportFlowById, ImportFlowButton } from "@/components/flow-actions";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Notice } from "@/components/agents/fields";
+import { PortalMenu, PortalMenuItem, PortalMenuSeparator } from "@/components/ui/portal-menu";
+import { ManageCategoriesDialog, type CategoryChange } from "@/components/ui/manage-categories-dialog";
+import { deleteFlowCategory, duplicateFlow, renameFlowCategory } from "@/lib/actions/flows";
 import { FlowDetailsDialog } from "./flow-details-dialog";
 import { categoryKey } from "@/lib/flows/categories";
 import {
@@ -57,6 +62,10 @@ export function FlowsList({
   const router = useRouter();
   const [query, setQueryState] = useState<FlowListQuery>(initialQuery);
   const [editing, setEditing] = useState<FlowListRow | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<FlowListRow | null>(null);
+  const [managingCategories, setManagingCategories] = useState(false);
+  const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [pending, startTransition] = useTransition();
 
   function setQuery(patch: Partial<FlowListQuery>) {
     const next = { ...query, ...patch };
@@ -75,6 +84,32 @@ export function FlowsList({
     setQuery({ categories: selectedKeys.has(key) ? query.categories.filter((c) => categoryKey(c) !== key) : [...query.categories, name] });
   }
 
+  /** Las acciones del menu ⋯: un aviso arriba de la lista y la lista al dia. */
+  function run(action: () => Promise<boolean | { ok: boolean; error?: string }>, success: string, failure: string) {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await action();
+      const ok = typeof result === "boolean" ? result : result.ok;
+      if (ok) {
+        setMessage({ tone: "success", text: success });
+        router.refresh();
+      } else {
+        setMessage({ tone: "error", text: (typeof result === "object" && result.error) || failure });
+      }
+    });
+  }
+
+  /** Despues de renombrar o quitar una categoria: el filtro puesto la sigue (o la suelta). */
+  function onCategoryChanged(change: CategoryChange) {
+    const key = categoryKey(change.kind === "rename" ? change.from : change.name);
+    if (selectedKeys.has(key)) {
+      const rest = query.categories.filter((c) => categoryKey(c) !== key);
+      setQuery({ categories: change.kind === "rename" && !rest.some((c) => categoryKey(c) === categoryKey(change.to)) ? [...rest, change.to] : rest });
+    }
+    setMessage({ tone: "success", text: change.kind === "rename" ? `Categoría renombrada a «${change.to}»` : `Categoría «${change.name}» quitada` });
+    router.refresh();
+  }
+
   const filters = (
     <>
       <ExpandableSearch value={query.q} onCommit={(q) => setQuery({ q })} label="Buscar automatizaciones" />
@@ -88,9 +123,15 @@ export function FlowsList({
       >
         <MenuOption checked={query.categories.length === 0} onSelect={() => setQuery({ categories: [] })} title="Todas las categorías" trailing={rows.length} />
         {counts.categories.length === 0 ? (
-          <p className="px-2.5 py-2 text-xs text-muted-foreground">Todavía ninguna automatización tiene categorías. Se ponen en «Detalles».</p>
+          <p className="px-2.5 py-2 text-xs text-muted-foreground">Todavía ninguna automatización tiene categorías. Se ponen desde el menú ⋯ de cada automatización.</p>
         ) : (
           counts.categories.map((c) => <MenuOption key={c.name} checked={selectedKeys.has(categoryKey(c.name))} onSelect={() => toggleCategory(c.name)} title={c.name} trailing={c.count} />)
+        )}
+        {canEdit && counts.categories.length > 0 && (
+          <>
+            <div role="separator" className="my-1 h-px bg-border" />
+            <MenuOption checked={false} onSelect={() => setManagingCategories(true)} leading={<Pencil className="h-3.5 w-3.5 text-muted-foreground" />} title="Editar categorías…" />
+          </>
         )}
       </FilterMenu>
       <FilterMenu label="Estado" value={query.status === "all" ? "Todos" : FLOW_STATUS_LABELS[query.status]} active={query.status !== "all"} align="right" menuClassName="topbar:w-[220px]">
@@ -161,6 +202,11 @@ export function FlowsList({
           </div>
         ) : (
           <>
+            {message && (
+              <div role="status" className="mb-3">
+                <Notice tone={message.tone}>{message.text}</Notice>
+              </div>
+            )}
             <div className="mb-3 flex min-h-[26px] flex-wrap items-center gap-2 text-[12.5px] text-muted-foreground" aria-live="polite">
               <span>{filtered ? `${visible.length} de ${rows.length} automatizaciones` : rows.length === 1 ? "1 automatización" : `${rows.length} automatizaciones`}</span>
               {query.categories.map((c) => (
@@ -197,17 +243,34 @@ export function FlowsList({
                         {flow.origin !== "manual" && <span className="inline-flex rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{FLOW_ORIGIN_LABELS[flow.origin]}</span>}
                       </div>
                       {canEdit && (
-                        <div className="relative z-10 flex shrink-0 items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setEditing(flow)}
-                            className="flex h-7 items-center rounded-md border border-border bg-card px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted"
-                            title="Nombre, descripción y categorías"
+                        <div className="relative z-10 shrink-0">
+                          <PortalMenu
+                            label={`Acciones de ${flow.name}`}
+                            title="Más acciones"
+                            align="end"
+                            width={224}
+                            disabled={pending}
+                            trigger={<MoreHorizontal className="h-4 w-4" aria-hidden />}
+                            triggerClassName="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
                           >
-                            Detalles
-                          </button>
-                          <ExportFlowButton flow={flow} />
-                          <DeleteFlowButton flow={flow} />
+                            <PortalMenuItem onSelect={() => setEditing(flow)}>
+                              <Tags className="h-4 w-4 text-muted-foreground" aria-hidden />
+                              Detalles y categorías…
+                            </PortalMenuItem>
+                            <PortalMenuItem onSelect={() => run(() => duplicateFlow(flow.id), "Duplicada como borrador", "No se pudo duplicar. Probá de nuevo.")}>
+                              <Copy className="h-4 w-4 text-muted-foreground" aria-hidden />
+                              Duplicar
+                            </PortalMenuItem>
+                            <PortalMenuItem onSelect={() => run(() => exportFlowById(flow.id), "Exportada: se bajó el archivo .flow.json", "No se pudo exportar. Probá de nuevo.")}>
+                              <Download className="h-4 w-4 text-muted-foreground" aria-hidden />
+                              Exportar
+                            </PortalMenuItem>
+                            <PortalMenuSeparator />
+                            <PortalMenuItem onSelect={() => setConfirmDelete(flow)} className="text-bad">
+                              <Trash2 className="h-4 w-4" aria-hidden />
+                              Eliminar
+                            </PortalMenuItem>
+                          </PortalMenu>
                         </div>
                       )}
                     </div>
@@ -254,6 +317,37 @@ export function FlowsList({
           </>
         )}
       </div>
+
+      {pending && (
+        <p className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground shadow" role="status">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Un momento…
+        </p>
+      )}
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Eliminar automatización"
+        message={`«${confirmDelete?.name ?? ""}» se borra con sus disparadores, versiones e historial de ejecuciones. No se puede deshacer.`}
+        confirmLabel="Eliminar"
+        destructive
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          const flow = confirmDelete;
+          setConfirmDelete(null);
+          if (flow) run(() => deleteFlowById(flow.id), `«${flow.name}» eliminada`, "No se pudo borrar. Probá de nuevo.");
+        }}
+      />
+
+      {managingCategories && (
+        <ManageCategoriesDialog
+          items={counts.categories}
+          noun={["automatización", "automatizaciones"]}
+          onRename={renameFlowCategory}
+          onDelete={deleteFlowCategory}
+          onChanged={onCategoryChanged}
+          onClose={() => setManagingCategories(false)}
+        />
+      )}
 
       {editing && (
         <FlowDetailsDialog

@@ -86,7 +86,7 @@ describe("filtro por tipo (EOD)", () => {
 
 // ── Buscar, filtrar y resumir (plano formularios-ui, F5) ──────────────────────
 
-import { countsFor, filterForms, hasActiveFilters, listQueryString, listSummary, normalizeSearch, parseListQuery, publicTitleOf, questionCountOf, type FormListRow } from "./list";
+import { countsFor, EMPTY_LIST_QUERY, filterForms, hasActiveFilters, listQueryString, listSummary, normalizeSearch, parseListQuery, publicTitleOf, questionCountOf, type FormListRow } from "./list";
 
 const ROW = (over: Partial<FormListRow>): FormListRow => ({
   id: "1",
@@ -103,6 +103,7 @@ const ROW = (over: Partial<FormListRow>): FormListRow => ({
   nps: null,
   average: null,
   people: null,
+  categories: [],
   ...over,
 });
 
@@ -117,15 +118,21 @@ const LIST: FormListRow[] = [
 
 describe("parseListQuery (F5): lo que dice la URL", () => {
   it("sin nada: sin filtros", () => {
-    expect(parseListQuery({})).toEqual({ q: "", status: "all", type: "all" });
+    expect(parseListQuery({})).toEqual({ q: "", status: "all", type: "all", categories: [] });
   });
 
   it("lee q, estado y tipo", () => {
-    expect(parseListQuery({ q: " programa ", estado: "paused", tipo: "contract" })).toEqual({ q: "programa", status: "paused", type: "contract" });
+    expect(parseListQuery({ q: " programa ", estado: "paused", tipo: "contract" })).toEqual({ q: "programa", status: "paused", type: "contract", categories: [] });
   });
 
   it("un valor invalido se ignora", () => {
-    expect(parseListQuery({ estado: "borrado", tipo: "x", q: ["uno", "dos"] })).toEqual({ q: "uno", status: "all", type: "all" });
+    expect(parseListQuery({ estado: "borrado", tipo: "x", q: ["uno", "dos"] })).toEqual({ q: "uno", status: "all", type: "all", categories: [] });
+  });
+
+  it("lee las categorias (coma), sin repetidas", () => {
+    expect(parseListQuery({ categoria: "Ventas, ventas,Onboarding,," }).categories).toEqual(["Ventas", "Onboarding"]);
+    expect(listQueryString({ ...EMPTY_LIST_QUERY, categories: ["Ventas", "Onboarding"] })).toBe("categoria=Ventas%2COnboarding");
+    expect(hasActiveFilters({ ...EMPTY_LIST_QUERY, categories: ["Ventas"] })).toBe(true);
   });
 
   it("la busqueda se recorta a 120 caracteres", () => {
@@ -133,15 +140,15 @@ describe("parseListQuery (F5): lo que dice la URL", () => {
   });
 
   it("listQueryString solo escribe lo que se aparta del valor por defecto", () => {
-    expect(listQueryString({ q: "", status: "all", type: "all" })).toBe("");
-    expect(listQueryString({ q: "prog x", status: "paused", type: "custom" })).toBe("q=prog+x&estado=paused&tipo=custom");
-    expect(hasActiveFilters({ q: "  ", status: "all", type: "all" })).toBe(false);
-    expect(hasActiveFilters({ q: "", status: "draft", type: "all" })).toBe(true);
+    expect(listQueryString({ q: "", status: "all", type: "all", categories: [] })).toBe("");
+    expect(listQueryString({ q: "prog x", status: "paused", type: "custom", categories: [] })).toBe("q=prog+x&estado=paused&tipo=custom");
+    expect(hasActiveFilters({ q: "  ", status: "all", type: "all", categories: [] })).toBe(false);
+    expect(hasActiveFilters({ q: "", status: "draft", type: "all", categories: [] })).toBe(true);
   });
 });
 
 describe("filterForms (F5)", () => {
-  const all = { q: "", status: "all" as const, type: "all" as const };
+  const all = { q: "", status: "all" as const, type: "all" as const, categories: [] };
 
   it("sin filtros devuelve todos (tambien los archivados), con los archivados al final", () => {
     const out = filterForms(LIST, all);
@@ -157,16 +164,23 @@ describe("filterForms (F5)", () => {
   });
 
   it("combina estado, tipo y busqueda", () => {
-    expect(filterForms(LIST, { q: "", status: "published", type: "all" }).map((r) => r.id)).toEqual(["a", "b", "e"]);
-    expect(filterForms(LIST, { q: "", status: "published", type: "survey" }).map((r) => r.id)).toEqual(["b"]);
-    expect(filterForms(LIST, { q: "x", status: "published", type: "custom" }).map((r) => r.id)).toEqual(["a"]);
-    expect(filterForms(LIST, { q: "", status: "archived", type: "all" }).map((r) => r.id)).toEqual(["c"]);
+    expect(filterForms(LIST, { q: "", status: "published", type: "all", categories: [] }).map((r) => r.id)).toEqual(["a", "b", "e"]);
+    expect(filterForms(LIST, { q: "", status: "published", type: "survey", categories: [] }).map((r) => r.id)).toEqual(["b"]);
+    expect(filterForms(LIST, { q: "x", status: "published", type: "custom", categories: [] }).map((r) => r.id)).toEqual(["a"]);
+    expect(filterForms(LIST, { q: "", status: "archived", type: "all", categories: [] }).map((r) => r.id)).toEqual(["c"]);
   });
 
   it("no cambia el orden de entrada dentro de cada grupo ni modifica la lista original", () => {
     const copy = [...LIST];
     filterForms(LIST, all);
     expect(LIST).toEqual(copy);
+  });
+
+  it("filtra por categoria (alguna de las elegidas, sin tildes ni mayusculas) y la busqueda las mira", () => {
+    const rows = [ROW({ id: "x", categories: ["Ventas"] }), ROW({ id: "y", categories: ["Atención", "Soporte"] }), ROW({ id: "z" })];
+    expect(filterForms(rows, { ...all, categories: ["ventas"] }).map((r) => r.id)).toEqual(["x"]);
+    expect(filterForms(rows, { ...all, categories: ["ATENCION", "Ventas"] }).map((r) => r.id)).toEqual(["x", "y"]);
+    expect(filterForms(rows, { ...all, q: "soporte" }).map((r) => r.id)).toEqual(["y"]);
   });
 
   it("normalizeSearch junta espacios y saca tildes", () => {
@@ -182,18 +196,18 @@ describe("countsFor y listSummary (F5)", () => {
   });
 
   it("sin filtros: formularios, publicados y respuestas en total (sin contar los archivados)", () => {
-    const s = listSummary(LIST, 6, { q: "", status: "all", type: "all" });
+    const s = listSummary(LIST, 6, { q: "", status: "all", type: "all", categories: [] });
     expect(s.text).toBe("6 formularios · 3 publicados · 270 respuestas en total");
     expect(s.chips).toEqual([]);
     expect(s.filtered).toBe(false);
   });
 
   it("singular cuando hay uno", () => {
-    expect(listSummary([ROW({ submissions: 1 })], 1, { q: "", status: "all", type: "all" }).text).toBe("1 formulario · 1 publicado · 1 respuesta en total");
+    expect(listSummary([ROW({ submissions: 1 })], 1, { q: "", status: "all", type: "all", categories: [] }).text).toBe("1 formulario · 1 publicado · 1 respuesta en total");
   });
 
   it("con filtros: '3 de 8 formularios' y un chip por cada filtro activo", () => {
-    const s = listSummary(LIST, 2, { q: "pro", status: "published", type: "custom" });
+    const s = listSummary(LIST, 2, { q: "pro", status: "published", type: "custom", categories: [] });
     expect(s.text).toBe("2 de 6 formularios");
     expect(s.chips).toEqual([
       { id: "estado", label: "Estado: Publicados" },

@@ -9,6 +9,7 @@ import {
   normalizeCategories,
   normalizeDescription,
 } from "@/lib/flows/categories";
+import { categoryKey, normalizeCategory, removeCategoryFrom, renameCategoryIn, sameCategories } from "@/lib/categories";
 
 /**
  * Guardar una automatizacion desde el lienzo y editar sus detalles (auditoria de automatizaciones, oct 2026).
@@ -151,6 +152,103 @@ export async function listFlowCategories(): Promise<Array<{ name: string; count:
     return [];
   }
   return categorySuggestions((data ?? []) as Array<{ categories?: string[] | null }>);
+}
+
+/** El nombre de la copia: "<nombre> (copia)", sin pasarse del tope. */
+function copyName(name: string): string {
+  const suffix = " (copia)";
+  return `${name.slice(0, MAX_FLOW_NAME_LENGTH - suffix.length).trim()}${suffix}`;
+}
+
+/**
+ * Duplicar una automatizacion (menu ⋯ de la lista). La copia nace en BORRADOR (no dispara nada hasta publicarla) con
+ * lo que se ve en el lienzo: los cambios sin publicar si hay, si no lo publicado. Copia nombre, descripcion,
+ * categorias y a que formulario o evento pertenece; no copia versiones, ejecuciones ni la marca de plantilla del
+ * sistema (`template_key`): la copia es propia.
+ */
+export async function duplicateFlow(flowId: string): Promise<FlowActionResult<{ id: string; name: string }>> {
+  const ctx = await getPermissionAction("flows.edit");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  if (!UUID.test(flowId)) return { ok: false, error: NOT_FOUND };
+
+  const { data: flow, error: readError } = await ctx.supabase
+    .from("flows")
+    .select("*")
+    .eq("id", flowId)
+    .eq("workspace_id", ctx.workspace.id)
+    .maybeSingle();
+  if (readError) {
+    console.error("[flows] no pude leer la automatizacion para duplicarla:", readError.message);
+    return { ok: false, error: "No se pudo duplicar. Probá de nuevo." };
+  }
+  if (!flow) return { ok: false, error: NOT_FOUND };
+
+  const hasDraft = flow.draft_nodes != null;
+  const name = copyName(flow.name);
+  const { data, error } = await ctx.supabase
+    .from("flows")
+    .insert({
+      workspace_id: ctx.workspace.id,
+      name,
+      description: flow.description,
+      categories: normalizeCategories(flow.categories),
+      status: "draft",
+      nodes: (hasDraft ? flow.draft_nodes : flow.nodes) as Json,
+      edges: ((hasDraft ? flow.draft_edges : flow.edges) ?? []) as Json,
+      viewport: flow.viewport,
+      form_id: flow.form_id ?? null, // @plantilla-quitar(formularios)
+      event_type_id: flow.event_type_id ?? null,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    console.error("[flows] no pude duplicar la automatizacion:", error?.message);
+    return { ok: false, error: "No se pudo duplicar. Probá de nuevo." };
+  }
+  revalidatePath("/dashboard/flows");
+  return { ok: true, id: data.id, name };
+}
+
+/**
+ * Reescribe una categoria en todas las automatizaciones del negocio que la tienen (renombrar o quitar). Toca solo
+ * las filas que cambian; no pasa por el borrador (es informacion de la automatizacion, como `updateFlowDetails`).
+ */
+async function rewriteFlowCategories(match: string, change: (list: string[]) => string[]): Promise<FlowActionResult<{ changed: number }>> {
+  const ctx = await getPermissionAction("flows.edit");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const key = categoryKey(match);
+  const { data, error } = await ctx.supabase.from("flows").select("id, categories").eq("workspace_id", ctx.workspace.id).limit(5000);
+  if (error) {
+    console.error("[flows] no pude leer las categorias:", error.message);
+    return { ok: false, error: "No se pudieron leer las categorías. Probá de nuevo." };
+  }
+  let changed = 0;
+  for (const row of (data ?? []) as Array<{ id: string; categories: string[] | null }>) {
+    const current = row.categories ?? [];
+    if (!current.some((c) => categoryKey(c) === key)) continue;
+    const next = change(current);
+    if (sameCategories(current, next)) continue;
+    const { error: updateError } = await ctx.supabase.from("flows").update({ categories: next }).eq("id", row.id).eq("workspace_id", ctx.workspace.id);
+    if (updateError) {
+      console.error("[flows] no pude reescribir las categorias:", updateError.message);
+      return { ok: false, error: "No se pudieron cambiar todas las categorías. Probá de nuevo." };
+    }
+    changed += 1;
+  }
+  revalidatePath("/dashboard/flows");
+  return { ok: true, changed };
+}
+
+/** Renombrar una categoria en todas las automatizaciones. Si el nombre nuevo ya existe, quedan unidas. */
+export async function renameFlowCategory(from: string, to: string): Promise<FlowActionResult<{ changed: number }>> {
+  const name = normalizeCategory(to);
+  if (!name) return { ok: false, error: "Escribí el nombre nuevo de la categoría." };
+  return rewriteFlowCategories(from, (list) => renameCategoryIn(list, from, name));
+}
+
+/** Quitar una categoria de todas las automatizaciones (no se borra nada mas). */
+export async function deleteFlowCategory(name: string): Promise<FlowActionResult<{ changed: number }>> {
+  return rewriteFlowCategories(name, (list) => removeCategoryFrom(list, name));
 }
 
 /**

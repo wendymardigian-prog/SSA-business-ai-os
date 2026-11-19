@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { listFlowCategories, updateFlowDetails } from "@/lib/actions/flows";
 import { MAX_DESCRIPTION_LENGTH, MAX_FLOW_NAME_LENGTH } from "@/lib/flows/categories";
-import { CategoryInput } from "./category-input";
+import { CategoryInput } from "@/components/ui/category-input";
 
 export interface FlowDetails {
   name: string;
