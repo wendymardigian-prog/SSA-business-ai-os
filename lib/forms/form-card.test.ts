@@ -20,6 +20,7 @@ const ROW = (over: Partial<FormListRow>): FormListRow => ({
   nps: null,
   average: null,
   people: null,
+  categories: [],
   ...over,
 });
 

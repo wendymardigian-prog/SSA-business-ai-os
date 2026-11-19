@@ -9,6 +9,7 @@ import { validateDraftShape } from "@/lib/forms/definition-schema";
 import { normalizeContractText } from "@/lib/forms/contract-text";
 import { FORM_TYPES, type FormField, type FormStatus, type FormType } from "@/lib/forms/fields";
 import { canTransition, duplicateName, nextSlug, slugFromName, SLUG_PATTERN } from "@/lib/forms/list";
+import { categoryKey, normalizeCategories, normalizeCategory, removeCategoryFrom, renameCategoryIn, sameCategories } from "@/lib/categories";
 import { DEFAULT_CONTACT_CONFIG, parseStoredContactConfig, pruneContactConfig, suggestContactMap, type CustomFieldDef } from "@/lib/forms/contact-config";
 import { checkPublishable } from "@/lib/forms/publish";
 import { validateSuccess } from "@/lib/forms/success";
@@ -177,6 +178,7 @@ export async function duplicateForm(formId: string): Promise<FormActionResult<{ 
         contract_config: form.contract_config,
         eod_config: form.eod_config,
         tags_on_submit: form.tags_on_submit,
+        categories: form.categories ?? [],
         notify_enabled: form.notify_enabled,
         notify_user_ids: [ctx.user.id],
         created_by: ctx.user.id,
@@ -203,6 +205,84 @@ export async function duplicateForm(formId: string): Promise<FormActionResult<{ 
     }
   }
   return { ok: false, error: "No pudimos elegir un link libre para la copia." };
+}
+
+// ── Categorías (00406) ───────────────────────────────────────────────────────
+
+/** Las categorías de un formulario (como etiquetas). Se guardan al instante: no pasan por el borrador ni por Publicar. */
+export async function setFormCategories(formId: string, categories: string[]): Promise<FormActionResult<{ categories: string[] }>> {
+  const ctx = await context();
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  if (!UUID.test(formId)) return { ok: false, error: "No encontré ese formulario" };
+  const clean = normalizeCategories(categories);
+  const service = await createServiceClient();
+  const { data, error } = await service
+    .from("forms")
+    .update({ categories: clean, updated_by: ctx.user.id })
+    .eq("id", formId)
+    .eq("workspace_id", ctx.workspace.id)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("[forms] setFormCategories fallo, code=", error.code);
+    return { ok: false, error: "No pudimos guardar las categorías. Probá de nuevo." };
+  }
+  if (!data) return { ok: false, error: "No encontré ese formulario" };
+  refresh(formId);
+  return { ok: true, categories: clean };
+}
+
+/**
+ * Reescribe una categoría en todos los formularios del negocio que la tienen (renombrar o quitar). Toca solo las
+ * filas que cambian. Devuelve cuántos formularios cambiaron.
+ */
+async function rewriteFormCategories(
+  change: (list: string[]) => string[],
+  matches: (list: string[]) => boolean,
+): Promise<FormActionResult<{ changed: number }>> {
+  const ctx = await context();
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const service = await createServiceClient();
+  const { data, error } = await service.from("forms").select("id, categories").eq("workspace_id", ctx.workspace.id).limit(5000);
+  if (error) {
+    console.error("[forms] no pude leer las categorías, code=", error.code);
+    return { ok: false, error: "No pudimos leer las categorías. Probá de nuevo." };
+  }
+  let changed = 0;
+  for (const row of data ?? []) {
+    const current = (row.categories ?? []) as string[];
+    if (!matches(current)) continue;
+    const next = change(current);
+    if (sameCategories(current, next)) continue;
+    const { error: updateError } = await service.from("forms").update({ categories: next, updated_by: ctx.user.id }).eq("id", row.id).eq("workspace_id", ctx.workspace.id);
+    if (updateError) {
+      console.error("[forms] no pude reescribir las categorías, code=", updateError.code);
+      return { ok: false, error: "No se pudieron cambiar todas las categorías. Probá de nuevo." };
+    }
+    changed += 1;
+  }
+  refresh();
+  return { ok: true, changed };
+}
+
+/** Renombrar una categoría en todos los formularios. Si el nombre nuevo ya existe, quedan unidas. */
+export async function renameFormCategory(from: string, to: string): Promise<FormActionResult<{ changed: number }>> {
+  const name = normalizeCategory(to);
+  if (!name) return { ok: false, error: "Escribí el nombre nuevo de la categoría." };
+  const key = categoryKey(from);
+  return rewriteFormCategories(
+    (list) => renameCategoryIn(list, from, name),
+    (list) => list.some((c) => categoryKey(c) === key),
+  );
+}
+
+/** Quitar una categoría de todos los formularios (no se borra nada más). */
+export async function deleteFormCategory(name: string): Promise<FormActionResult<{ changed: number }>> {
+  const key = categoryKey(name);
+  return rewriteFormCategories(
+    (list) => removeCategoryFrom(list, name),
+    (list) => list.some((c) => categoryKey(c) === key),
+  );
 }
 
 const ACTION_BY_TRANSITION: Record<string, "form.paused" | "form.resumed" | "form.archived" | "form.restored"> = {

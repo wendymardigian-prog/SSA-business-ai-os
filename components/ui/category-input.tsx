@@ -3,12 +3,13 @@
 import { useId, useMemo, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { categoryKey, MAX_CATEGORIES_PER_FLOW, MAX_CATEGORY_LENGTH, normalizeCategories, normalizeCategory } from "@/lib/flows/categories";
+import { categoryKey, MAX_CATEGORIES, MAX_CATEGORY_LENGTH, normalizeCategories, normalizeCategory } from "@/lib/categories";
 import { matchesQuery } from "@/lib/flows/search";
 
 /**
- * Las categorias de una automatizacion, como etiquetas: se escriben a mano (Enter o coma) o se eligen de la lista,
- * que muestra las que ya usan las demas automatizaciones (de la mas usada a la menos) y se filtra mientras se escribe.
+ * Las categorias de una automatizacion o un formulario, como etiquetas: se escriben a mano (Enter o coma) o se eligen
+ * de la lista, que muestra las que ya usan las demas piezas de esa pantalla (de la mas usada a la menos) y se filtra
+ * mientras se escribe.
  * Si lo escrito no existe, la lista ofrece crearla. Teclado: flechas para moverse, Enter para elegir, Escape cierra,
  * Backspace con el campo vacio saca la ultima.
  */
@@ -17,12 +18,15 @@ export function CategoryInput({
   onChange,
   suggestions,
   label = "Categorías",
+  noun = ["automatización", "automatizaciones"],
 }: {
   values: string[];
   onChange: (values: string[]) => void;
-  /** Las categorias que ya existen en el negocio (`listFlowCategories`). */
+  /** Las categorias que ya existen en el negocio (`listFlowCategories`, `listFormCategories`). */
   suggestions: Array<{ name: string; count: number }>;
   label?: string;
+  /** Como se cuenta cada sugerencia: singular y plural ("1 formulario", "3 formularios"). */
+  noun?: [string, string];
 }) {
   const id = useId();
   const listId = `${id}-list`;
@@ -30,7 +34,7 @@ export function CategoryInput({
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const full = values.length >= MAX_CATEGORIES_PER_FLOW;
+  const full = values.length >= MAX_CATEGORIES;
 
   const taken = useMemo(() => new Set(values.map(categoryKey)), [values]);
   const typed = normalizeCategory(text);
@@ -103,7 +107,7 @@ export function CategoryInput({
               onChange(values.slice(0, -1));
             }
           }}
-          placeholder={full ? `Máximo ${MAX_CATEGORIES_PER_FLOW}` : values.length === 0 ? "Escribí o elegí una categoría…" : "Agregar otra…"}
+          placeholder={full ? `Máximo ${MAX_CATEGORIES}` : values.length === 0 ? "Escribí o elegí una categoría…" : "Agregar otra…"}
           className="min-w-[9rem] flex-1 bg-transparent px-1 py-1 text-sm outline-none disabled:cursor-not-allowed"
         />
       </div>
@@ -129,7 +133,7 @@ export function CategoryInput({
               ) : (
                 <>
                   <span className="truncate">{option.name}</span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">{option.count === 1 ? "1 automatización" : `${option.count} automatizaciones`}</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">{option.count === 1 ? `1 ${noun[0]}` : `${option.count} ${noun[1]}`}</span>
                 </>
               )}
             </li>

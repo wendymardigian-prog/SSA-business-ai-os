@@ -118,6 +118,8 @@ export type FormRow = {
   /** Solo un reporte de fin de día (00178): `lib/eod/config.ts`. */
   eod_config: Json | null;
   tags_on_submit: string[];
+  /** Categorias libres, como etiquetas (00406): `lib/categories.ts`. */
+  categories: string[];
   notify_enabled: boolean;
   notify_user_ids: string[];
   published_at: string | null;

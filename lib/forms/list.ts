@@ -2,6 +2,7 @@
  * Lógica pura de la lista de formularios (F3): filas, slugs y transiciones.
  */
 import { slugify } from "@/lib/scheduling/slug";
+import { categoryKey, normalizeCategories } from "@/lib/categories";
 import { FORM_STATUSES, FORM_TYPES, FORM_TYPE_LABELS, type FormStatus, type FormType } from "./fields";
 import { conversionRate } from "./metrics";
 import { calculateAverage, calculateNPS } from "./survey-metrics";
@@ -37,6 +38,8 @@ export interface FormListSource {
   draft_definition?: unknown;
   /** `forms.survey_config`: dice cual pregunta lleva el puntaje (la escala). */
   survey_config?: unknown;
+  /** `forms.categories` (00406): categorias libres, como etiquetas. */
+  categories?: unknown;
 }
 
 export interface FormListRow {
@@ -60,6 +63,8 @@ export interface FormListRow {
   average: number | null;
   /** Solo un reporte de fin de dia: personas distintas que enviaron un reporte. */
   people: number | null;
+  /** Sus categorias (00406), ya normalizadas. */
+  categories: string[];
 }
 
 /** Las preguntas del borrador que ve quien responde (los campos ocultos no cuentan). */
@@ -98,6 +103,7 @@ export function formListRow(form: FormListSource, stats?: Partial<FormStats> | n
     nps: form.type === "survey" && !stars && scores.length > 0 ? calculateNPS(scores) : null,
     average: form.type === "survey" && stars && scores.length > 0 ? calculateAverage(scores) : null,
     people: form.type === "eod" ? (stats?.people ?? null) : null,
+    categories: normalizeCategories(form.categories),
   };
 }
 
@@ -180,19 +186,24 @@ export interface ListQuery {
   q: string;
   status: ListFilter;
   type: TypeFilter;
+  /** Muestra los que tienen ALGUNA de estas categorias. Vacio = todos. */
+  categories: string[];
 }
 
 type ParamValue = string | string[] | null | undefined;
 const one = (value: ParamValue): string | undefined => (Array.isArray(value) ? value[0] : (value ?? undefined));
 
-/** Lo que dice la URL (`?q=&estado=&tipo=`). Un valor invalido se ignora (queda el de por defecto). */
-export function parseListQuery(params: { q?: ParamValue; estado?: ParamValue; tipo?: ParamValue }): ListQuery {
+/** Lo que dice la URL (`?q=&estado=&tipo=&categoria=`). Un valor invalido se ignora (queda el de por defecto). */
+export function parseListQuery(params: { q?: ParamValue; estado?: ParamValue; tipo?: ParamValue; categoria?: ParamValue }): ListQuery {
   return {
     q: (one(params.q) ?? "").trim().slice(0, 120),
     status: parseListFilter(one(params.estado)),
     type: parseTypeFilter(one(params.tipo)),
+    categories: normalizeCategories((one(params.categoria) ?? "").split(",")),
   };
 }
+
+export const EMPTY_LIST_QUERY: ListQuery = { q: "", status: "all", type: "all", categories: [] };
 
 /** La URL de un filtro: solo lo que se aparta del valor por defecto (la lista sin filtros es `/formularios` a secas). */
 export function listQueryString(query: ListQuery): string {
@@ -200,10 +211,12 @@ export function listQueryString(query: ListQuery): string {
   if (query.q.trim() !== "") params.set("q", query.q.trim());
   if (query.status !== "all") params.set("estado", query.status);
   if (query.type !== "all") params.set("tipo", query.type);
+  if (query.categories.length > 0) params.set("categoria", query.categories.join(","));
   return params.toString();
 }
 
-export const hasActiveFilters = (query: ListQuery): boolean => query.q.trim() !== "" || query.status !== "all" || query.type !== "all";
+export const hasActiveFilters = (query: ListQuery): boolean =>
+  query.q.trim() !== "" || query.status !== "all" || query.type !== "all" || query.categories.length > 0;
 
 /** Sin mayusculas, sin tildes y con los espacios juntos: "Aplicación  al Programa" ~ "aplicacion al programa". */
 export function normalizeSearch(text: string): string {
@@ -215,19 +228,22 @@ export function normalizeSearch(text: string): string {
     .trim();
 }
 
-type Filterable = { name: string; publicTitle?: string | null; type: FormType; status: FormStatus };
+type Filterable = { name: string; publicTitle?: string | null; type: FormType; status: FormStatus; categories?: string[] };
 
 /**
- * Los formularios que pasan los tres filtros. La busqueda mira el nombre interno y el titulo publico. Los
+ * Los formularios que pasan los filtros (estado, tipo, categoria: alguna de las elegidas). La busqueda mira el nombre
+ * interno, el titulo publico y las categorias. Los
  * archivados van al final; dentro de cada grupo se conserva el orden que traian.
  */
 export function filterForms<T extends Filterable>(rows: T[], query: ListQuery): T[] {
   const needle = normalizeSearch(query.q);
+  const wanted = new Set(query.categories.map(categoryKey));
   const passing = rows.filter((row) => {
     if (query.status !== "all" && row.status !== query.status) return false;
     if (!matchesType(row, query.type)) return false;
+    if (wanted.size > 0 && !(row.categories ?? []).some((c) => wanted.has(categoryKey(c)))) return false;
     if (needle === "") return true;
-    return normalizeSearch(`${row.name} ${row.publicTitle ?? ""}`).includes(needle);
+    return normalizeSearch(`${row.name} ${row.publicTitle ?? ""} ${(row.categories ?? []).join(" ")}`).includes(needle);
   });
   return [...passing.filter((r) => r.status !== "archived"), ...passing.filter((r) => r.status === "archived")];
 }

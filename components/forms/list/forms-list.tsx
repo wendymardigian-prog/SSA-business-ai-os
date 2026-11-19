@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ClipboardList, Copy, ExternalLink, Link2, Loader2, MoreHorizontal, Pause, Play, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { Archive, ClipboardList, Copy, ExternalLink, Link2, Loader2, MoreHorizontal, Pause, Pencil, Play, Plus, RotateCcw, Tags, Trash2, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { Popover } from "@/components/ui/popover";
@@ -11,12 +11,16 @@ import { FilterMenu, MenuOption } from "@/components/ui/filter-menu";
 import { Notice } from "@/components/agents/fields";
 import { ContentDialog } from "@/components/content/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { CategoryInput } from "@/components/ui/category-input";
+import { ManageCategoriesDialog, type CategoryChange } from "@/components/ui/manage-categories-dialog";
 import { DeleteDialog } from "@/components/trash/delete-dialog";
 import { FormStatusPill, FormTypeIcon, FORM_TYPE_TONE } from "@/components/forms/type-visual";
-import { createForm, duplicateForm, setFormStatus } from "@/lib/actions/forms/forms";
+import { createForm, deleteFormCategory, duplicateForm, renameFormCategory, setFormCategories, setFormStatus } from "@/lib/actions/forms/forms";
+import { categoryKey, categorySuggestions } from "@/lib/categories";
 import { FORM_TYPE_LABELS, FORM_TYPES, type FormType } from "@/lib/forms/fields";
 import { formCardView, type FormCardView } from "@/lib/forms/form-card";
 import {
+  EMPTY_LIST_QUERY,
   LIST_FILTERS,
   countsFor,
   filterForms,
@@ -56,7 +60,7 @@ export function FormsList({
   /** `forms.delete`: «Eliminar» en el menú de cada tarjeta (va a la Papelera 30 días). */
   canDelete?: boolean;
   loadError: boolean;
-  /** Lo que dice la URL al cargar (`?q=&estado=&tipo=`), ya validado en el servidor. */
+  /** Lo que dice la URL al cargar (`?q=&estado=&tipo=&categoria=`), ya validado en el servidor. */
   initialQuery: ListQuery;
   /** La base de los links públicos del negocio (`publicBaseUrl`): su dominio o el principal. */
   publicBase: string;
@@ -72,6 +76,8 @@ export function FormsList({
   const [query, setQueryState] = useState<ListQuery>(initialQuery);
   const [creating, setCreating] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState<FormListRow | null>(null);
+  const [categorizing, setCategorizing] = useState<FormListRow | null>(null);
+  const [managingCategories, setManagingCategories] = useState(false);
   const [deleting, setDeleting] = useState<FormListRow | null>(null);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
@@ -88,9 +94,28 @@ export function FormsList({
       // Sin almacenamiento: el "Volver" del editor deja la lista sin filtros.
     }
   }
-  const clearAll = () => setQuery({ q: "", status: "all", type: "all" });
+  const clearAll = () => setQuery(EMPTY_LIST_QUERY);
 
   const counts = useMemo(() => countsFor(rows), [rows]);
+  // Las categorias en uso (00406), de la mas usada a la menos: el filtro, las sugerencias y «Editar categorías».
+  const categoryCounts = useMemo(() => categorySuggestions(rows), [rows]);
+  const selectedKeys = new Set(query.categories.map(categoryKey));
+
+  function toggleCategory(name: string) {
+    const key = categoryKey(name);
+    setQuery({ categories: selectedKeys.has(key) ? query.categories.filter((c) => categoryKey(c) !== key) : [...query.categories, name] });
+  }
+
+  /** Despues de renombrar o quitar una categoria: el filtro puesto la sigue (o la suelta). */
+  function onCategoryChanged(change: CategoryChange) {
+    const key = categoryKey(change.kind === "rename" ? change.from : change.name);
+    if (selectedKeys.has(key)) {
+      const rest = query.categories.filter((c) => categoryKey(c) !== key);
+      setQuery({ categories: change.kind === "rename" && !rest.some((c) => categoryKey(c) === categoryKey(change.to)) ? [...rest, change.to] : rest });
+    }
+    setMessage({ tone: "success", text: change.kind === "rename" ? `Categoría renombrada a «${change.to}»` : `Categoría «${change.name}» quitada` });
+    router.refresh();
+  }
   const visible = useMemo(() => filterForms(rows, query), [rows, query]);
   const summary = useMemo(() => listSummary(rows, visible.length, query), [rows, visible.length, query]);
   const maxSubmissions = useMemo(() => Math.max(0, ...rows.map((r) => r.submissions)), [rows]);
@@ -131,6 +156,27 @@ export function FormsList({
   const filters = (
     <>
       <ExpandableSearch value={query.q} onCommit={(q) => setQuery({ q })} label="Buscar formularios" />
+      <FilterMenu
+        label="Categoría"
+        value={query.categories.length === 0 ? "Todas" : query.categories.length === 1 ? query.categories[0] : `${query.categories.length} elegidas`}
+        active={query.categories.length > 0}
+        icon={<Tags className="h-3.5 w-3.5" />}
+        align="right"
+        menuClassName="topbar:w-[260px]"
+      >
+        <MenuOption checked={query.categories.length === 0} onSelect={() => setQuery({ categories: [] })} title="Todas las categorías" trailing={rows.length} />
+        {categoryCounts.length === 0 ? (
+          <p className="px-2.5 py-2 text-xs text-muted-foreground">Todavía ningún formulario tiene categorías. Se ponen desde el menú ⋯ de cada formulario.</p>
+        ) : (
+          categoryCounts.map((c) => <MenuOption key={c.name} checked={selectedKeys.has(categoryKey(c.name))} onSelect={() => toggleCategory(c.name)} title={c.name} trailing={c.count} />)
+        )}
+        {canManage && categoryCounts.length > 0 && (
+          <>
+            <div role="separator" className="my-1 h-px bg-border" />
+            <MenuOption checked={false} onSelect={() => setManagingCategories(true)} leading={<Pencil className="h-3.5 w-3.5 text-muted-foreground" />} title="Editar categorías…" />
+          </>
+        )}
+      </FilterMenu>
       <FilterMenu label="Estado" value={statusLabel} active={query.status !== "all"} align="right" menuClassName="topbar:w-[250px]">
         {LIST_FILTERS.map((f) => (
           <MenuOption
@@ -211,6 +257,14 @@ export function FormsList({
                   </button>
                 </span>
               ))}
+              {query.categories.map((c) => (
+                <span key={`cat:${c}`} className="inline-flex items-center gap-1 rounded-full border border-border bg-card py-0.5 pl-2.5 pr-1 text-[12px] text-foreground">
+                  Categoría: {c}
+                  <button type="button" onClick={() => toggleCategory(c)} aria-label={`Quitar el filtro ${c}`} className="grid h-4 w-4 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground">
+                    <X className="h-3 w-3" aria-hidden />
+                  </button>
+                </span>
+              ))}
               {summary.filtered && (
                 <button type="button" onClick={clearAll} className="font-medium text-primary-ink hover:underline">
                   Limpiar todo
@@ -246,6 +300,7 @@ export function FormsList({
                 <li key={row.id} className="min-w-0">
                   <FormCard
                     view={view}
+                    categories={row.categories}
                     menu={
                       <CardMenu
                         row={row}
@@ -255,6 +310,7 @@ export function FormsList({
                         onCopy={() => copyLink(row)}
                         onCopyWithCode={myRefCode ? () => copyLink(row, true) : undefined}
                         onDuplicate={() => run(() => duplicateForm(row.id), "Duplicado como borrador")}
+                        onCategories={() => setCategorizing(row)}
                         onPause={() => run(() => setFormStatus(row.id, "paused"), "Pausado")}
                         onResume={() => run(() => setFormStatus(row.id, "published"), "Reanudado")}
                         onArchive={() => setConfirmArchive(row)}
@@ -291,6 +347,29 @@ export function FormsList({
 
       {creating && <CreateDialog onClose={() => setCreating(false)} onCreated={(id) => router.push(`/dashboard/formularios/${id}`)} />}
 
+      {categorizing && (
+        <FormCategoriesDialog
+          row={categorizing}
+          suggestions={categoryCounts}
+          onClose={() => setCategorizing(null)}
+          onSaved={() => {
+            setCategorizing(null);
+            setMessage({ tone: "success", text: "Categorías guardadas" });
+            router.refresh();
+          }}
+        />
+      )}
+
+      {managingCategories && (
+        <ManageCategoriesDialog
+          items={categoryCounts}
+          noun={["formulario", "formularios"]}
+          onRename={renameFormCategory}
+          onDelete={deleteFormCategory}
+          onChanged={onCategoryChanged}
+          onClose={() => setManagingCategories(false)}
+        />
+      )}
       {/* El diálogo vive acá y no adentro del menú: el menú se cierra al elegir y se lo llevaría. */}
       {deleting && <DeleteDialog entity="form" id={deleting.id} onClose={() => setDeleting(null)} />}
 
@@ -321,7 +400,7 @@ function StatusDot({ status }: { status: string }) {
  * Una tarjeta. TODA la tarjeta es un link real al editor (clic con la rueda, "abrir en pestaña nueva", Enter con
  * el foco). El menu "⋯" es un hermano del link y no un hijo: tocarlo no navega, sin trucos de eventos.
  */
-function FormCard({ view, menu }: { view: FormCardView; menu: React.ReactNode }) {
+function FormCard({ view, categories, menu }: { view: FormCardView; categories: string[]; menu: React.ReactNode }) {
   return (
     <div className="group relative h-full">
       <Link
@@ -349,6 +428,15 @@ function FormCard({ view, menu }: { view: FormCardView; menu: React.ReactNode })
             view.publicLine.text
           )}
         </div>
+        {categories.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {categories.map((c) => (
+              <span key={c} className="max-w-full truncate rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">
+                {c}
+              </span>
+            ))}
+          </div>
+        )}
         {view.stats.kind === "live" ? (
           <>
             <div className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
@@ -383,6 +471,7 @@ function CardMenu({
   onCopy,
   onCopyWithCode,
   onDuplicate,
+  onCategories,
   onPause,
   onResume,
   onArchive,
@@ -395,6 +484,7 @@ function CardMenu({
   onCopy: () => void;
   onCopyWithCode?: () => void;
   onDuplicate: () => void;
+  onCategories: () => void;
   onPause: () => void;
   onResume: () => void;
   onArchive: () => void;
@@ -421,6 +511,9 @@ function CardMenu({
           <>
             <MenuItem icon={<Copy className="h-4 w-4" />} onClick={onDuplicate}>
               Duplicar
+            </MenuItem>
+            <MenuItem icon={<Tags className="h-4 w-4" />} onClick={onCategories}>
+              Categorías…
             </MenuItem>
             {row.status === "published" && (
               <MenuItem icon={<Pause className="h-4 w-4" />} onClick={onPause}>
@@ -461,6 +554,57 @@ function MenuItem({ icon, onClick, children, danger = false }: { icon: React.Rea
       </span>
       {children}
     </button>
+  );
+}
+
+/** Las categorías de un formulario: se escriben libres o se eligen de las que ya usan los demás. */
+function FormCategoriesDialog({
+  row,
+  suggestions,
+  onClose,
+  onSaved,
+}: {
+  row: FormListRow;
+  suggestions: Array<{ name: string; count: number }>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [categories, setCategories] = useState<string[]>(row.categories);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+
+  function save() {
+    setError(null);
+    startSaving(async () => {
+      const result = await setFormCategories(row.id, categories);
+      if (result.ok) onSaved();
+      else setError(result.error);
+    });
+  }
+
+  return (
+    <ContentDialog
+      title={`Categorías de «${row.name}»`}
+      label="Categorías del formulario"
+      onClose={onClose}
+      footer={
+        <div className="flex w-full justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent">
+            Cancelar
+          </button>
+          <button type="button" onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+            {saving && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Guardar
+          </button>
+        </div>
+      }
+    >
+      {/* Con lugar abajo: la lista de sugerencias se abre debajo del campo y no tiene que quedar cortada. */}
+      <div className="min-h-[18rem] space-y-2">
+        <CategoryInput values={categories} onChange={setCategories} suggestions={suggestions} noun={["formulario", "formularios"]} />
+        <p className="text-[11px] text-muted-foreground">Escribí una nueva (Enter o coma) o elegí de la lista. Sirven para encontrarlo y filtrar. Podés poner varias.</p>
+        {error && <Notice tone="error">{error}</Notice>}
+      </div>
+    </ContentDialog>
   );
 }
 

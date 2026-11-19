@@ -29,12 +29,12 @@ export default async function FormulariosPage({ searchParams }: { searchParams: 
   const ctx = await requirePermission("forms.view");
   const { supabase, workspace } = ctx;
   const sp = await searchParams;
-  const initialQuery = parseListQuery({ q: sp.q, estado: sp.estado, tipo: sp.tipo });
+  const initialQuery = parseListQuery({ q: sp.q, estado: sp.estado, tipo: sp.tipo, categoria: sp.categoria });
   const timeZone = await resolveViewerTimezone(workspace.timezone);
 
   const { data: allForms, error } = await supabase
     .from("forms")
-    .select("id, name, type, status, slug, updated_at, created_at, design, draft_definition, survey_config")
+    .select("id, name, type, status, slug, updated_at, created_at, design, draft_definition, survey_config, categories")
     .eq("workspace_id", workspace.id)
     .order("updated_at", { ascending: false });
   const forms = (allForms ?? []).filter((f) => !isPortalFormType(f.type)); // Servicios A1 (F52): los del portal no se listan acá. @plantilla-quitar(servicios)
@@ -111,6 +111,7 @@ export default async function FormulariosPage({ searchParams }: { searchParams: 
         design: f.design,
         draft_definition: f.draft_definition,
         survey_config: f.survey_config,
+        categories: f.categories,
       },
       stats.get(f.id),
     ),
