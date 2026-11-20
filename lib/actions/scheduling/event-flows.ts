@@ -1,6 +1,7 @@
 "use server";
 
 import { canvasDraftBlock, recordStepEditorVersion } from "@/lib/flows/step-editor-versions";
+import { parseTriggerOnlyIfInput } from "@/lib/flow-engine/trigger-only-if-types";
 import { revalidatePath } from "next/cache";
 import { getAnyPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -178,12 +179,25 @@ export async function saveLinearFlow(input: { flowId: string; linear: LinearFlow
  * guardado: el editor de pasos no lo toca. Rehace los triggers si el flujo esta
  * encendido, igual que `saveLinearFlow`.
  */
-export async function saveEventFlowTree(input: { flowId: string; tree: Pick<StepTree, "steps"> }): Promise<FlowActionResult> {
+export async function saveEventFlowTree(input: { flowId: string; tree: Pick<StepTree, "steps">; onlyIf?: unknown }): Promise<FlowActionResult> {
   const owned = await ownedFlow(input.flowId);
   if (owned.error !== undefined) return { ok: false, error: owned.error };
   const { ctx, found, db, path } = owned;
 
-  const prepared = prepareTreeSave({ screen: "agenda", stored: { nodes: found.nodes, edges: found.edges }, tree: input.tree });
+  // El disparador sale SIEMPRE de la base; lo único que se puede cambiar desde acá es su «Solo si…» (`onlyIf`, el
+  // mismo del lienzo). `undefined` = no tocarlo, `null` = sacarlo.
+  let triggerData: Record<string, unknown> | undefined;
+  if (input.onlyIf !== undefined) {
+    const parsed = parseTriggerOnlyIfInput(input.onlyIf);
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+    const storedTrigger = found.nodes.find((n) => n.type === "trigger");
+    if (!storedTrigger) return { ok: false, error: "Este flujo no tiene disparador: abrilo en el canvas." };
+    const rest = { ...((storedTrigger.data ?? {}) as Record<string, unknown>) };
+    delete rest.onlyIf;
+    triggerData = parsed.group ? { ...rest, onlyIf: parsed.group } : rest;
+  }
+
+  const prepared = prepareTreeSave({ screen: "agenda", stored: { nodes: found.nodes, edges: found.edges }, tree: input.tree, ...(triggerData ? { triggerData } : {}) });
   if (!prepared.ok) return { ok: false, error: prepared.error };
   const graph = prepared.graph;
   // Con cambios sin publicar en el lienzo no se guarda desde acá: «Publicar cambios» los pisaría (00508).

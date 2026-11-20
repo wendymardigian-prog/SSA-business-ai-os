@@ -946,7 +946,7 @@ El selector «Cuánto antes / después de la reunión» suma **10 minutos**.
 - **Qué queda anotado.** `analytics_events.flow_only_if_skipped`, con el campo y si se cumplió, nunca el valor.
 - **Variables.** `variablesFor` se calcula antes del reclamo SOLO si hay condiciones (sin «Solo si…», el orden de siempre).
 - **Publicar.** Una condición a medias no se publica (`ONLY_IF_INCOMPLETE_PROBLEM`).
-- **Lo que no tiene todavía.** Los editores de pasos de Formularios y Agenda no ofrecen este «Solo si…»: se arma en el lienzo.
+- **En el editor de pasos de la Agenda** está la misma sección (`OnlyIfEditor`, prop `triggerOnlyIf` de `StepTreeEditor`). Se guarda con `saveEventFlowTree`, que valida con `parseTriggerOnlyIfInput` y nunca cambia el resto del disparador. Formularios conserva su «Solo si…» sobre las respuestas (`answer_conditions`) y el fin de día no lleva ninguno: para eso está el paso Condiciones.
 
 **Datos que «Condiciones» no sabía leer.** `service.*`, `cifra.*`, `task.*`, `group.*`, `reaction.*`, `poll.*`, `message.*` y `affiliate.*` no tenían resolutor: la condición caía al campo personalizado del contacto y nunca se cumplía. Ahora están en `FLOW_VARIABLE_PREFIXES`, y `consistency.test.ts` falla si un `variableSchema` ofrece un campo que nadie lee.
 
