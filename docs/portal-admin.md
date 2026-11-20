@@ -68,6 +68,17 @@ sin contestar).
   `lib/program/unlock-targets.ts`. **Texto propio del candado** (00502): con candado, `locked_text` reemplaza al texto
   automático en cualquier tipo de regla; con «Próximamente» manda `coming_soon_text`. Gemelas `reasonOf` /
   `program_unlock_plan`, casos en `lib/program/unlock.cases.json`.
+- **Abrir, cerrar o programar un módulo para UN cliente** (00504): en la ficha del servicio, «Avance en el classroom»,
+  cada módulo tiene un menú «⋯» (con `services.access` y el servicio activo, en pausa o completado): **Abrir ya**,
+  **Cerrar**, **Programar…** (una regla propia: fecha, N días desde que empezó, al completar algo o al empezar el
+  Reto, que reemplaza a la del programa) y **Volver a la regla del programa**. Se guarda por contacto y módulo en
+  `program_progress.override_mode` / `override_rule` y lo escribe solo `svc_module_override` (queda en el historial
+  como `svc.module_override`). Abrir y la regla propia incluyen el módulo aunque su variante no lo incluya («Darle
+  acceso ya»); cerrar le gana también a lo que abrió un paso del camino o una automatización, y el estudiante ve
+  «Todavía no está disponible». Como todo pasa por `program_item_unlocked` (`ctx.overrides`), el portal no cambia.
+  Gemelas `unlockPlan` / `program_unlock_plan` con los casos de `unlock.cases.json`; lectura de la ficha en
+  `classroomProgressView` («Abierto a mano», «Cerrado a mano», «Regla propia · se abre …»). Al unir dos contactos,
+  queda el del principal o, si no tiene, el del duplicado (`merge_contacts_hook`).
 - **Una clase de video también puede llevar una página HTML** (00490): el cajón de la clase muestra «Página debajo del
   video (opcional)» y el portal la dibuja debajo del video (o del botón de Fathom), en el mismo marco aislado que una
   clase de tipo Página. Solo la clase de tipo Página se marca vista sola al abrirla.

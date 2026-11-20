@@ -9,7 +9,7 @@ import { normalizeVideoUrl } from "@/lib/program/video-url";
 import { videoMeta } from "@/lib/program/video-meta";
 import { isFileOfSubmission, SIGNED_URL_SECONDS } from "@/lib/forms/files";
 import { UPLOADS_BUCKET } from "@/lib/forms/server-ports";
-import { unlockRuleProblems, type UnlockRule } from "@/lib/program/unlock";
+import { OVERRIDE_RULE_TYPES, unlockRuleProblems, type ModuleOverrideMode, type UnlockResult, type UnlockRule } from "@/lib/program/unlock";
 import { checkDocument, checkHtml, checkImage, checkResource, programPath } from "@/lib/program/lesson";
 import { copiedPath, copyPlan, filePaths } from "@/lib/program/copy";
 import { saveLessonTranscriptCore } from "@/lib/program/transcript-store";
@@ -144,12 +144,33 @@ export async function saveLessonTranscript(productId: string, itemId: string, te
   return { ok: true, data: { status: out.status, chunks: out.chunks } };
 }
 
-/** «Abrir ahora» un módulo o clase para el estudiante de un servicio (services.access). */
-export async function openModuleNow(serviceId: string, itemId: string): Promise<SvcResult<null>> {
+/**
+ * Abrir, cerrar o programar un módulo para el estudiante de un servicio, o volver a la regla del programa
+ * (`mode: null`). Pide `services.access`; la base lo vuelve a pedir con la sesión (00504). Devuelve cómo queda.
+ */
+export async function setModuleOverride(
+  serviceId: string,
+  itemId: string,
+  mode: ModuleOverrideMode | null,
+  rule?: UnlockRule | null,
+): Promise<SvcResult<UnlockResult | null>> {
   const ctx = await getPermissionAction("services.access");
   if (!ctx || !UUID.test(serviceId) || !UUID.test(itemId)) return NOT_ALLOWED;
-  const res = await svcRpc<null>(ctx.supabase, "svc_open_module_now", { p_service_id: serviceId, p_program_item_id: itemId });
-  if (res.ok) revalidatePath(`/dashboard/clientes/s/${serviceId}`);
+  if (mode !== null && !["open", "closed", "rule"].includes(mode)) return fail("La opción no es válida");
+  let clean: UnlockRule | null = null;
+  if (mode === "rule") {
+    if (!rule || !(OVERRIDE_RULE_TYPES as readonly string[]).includes(rule.type ?? "")) return fail("Elegí cuándo se abre");
+    const problems = unlockRuleProblems(rule);
+    if (problems.length) return fail(problems[0].charAt(0).toUpperCase() + problems[0].slice(1));
+    clean = rule;
+  }
+  const res = await svcRpc<UnlockResult | null>(ctx.supabase, "svc_module_override", {
+    p_service_id: serviceId,
+    p_program_item_id: itemId,
+    p_mode: mode,
+    p_rule: clean,
+  });
+  if (res.ok) revalidatePath("/dashboard/clientes", "layout");
   return res;
 }
 

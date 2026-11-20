@@ -3,6 +3,7 @@
  * Las cifras de la cabecera y los bloques de la ficha del servicio (Servicios A2, F130.3). Puro: la pantalla las
  * compone. Regla de todo el modulo: si un dato no existe, la cifra no sale (`null`); nunca un cero inventado.
  */
+import type { ModuleOverrideMode, UnlockRule } from "@/lib/program/unlock";
 
 // ── Pago ────────────────────────────────────────────────────────────────────
 export interface FigurePayment {
@@ -82,7 +83,9 @@ export interface ClassroomItem {
   viewed_at: string | null;
   completed_at: string | null;
   submission: { created_at: string; review_status: string | null } | null;
-  unlock: { unlocked?: boolean; visible?: boolean; reason?: string | null; opensOn?: string | null } | null;
+  unlock: { unlocked?: boolean; visible?: boolean; included?: boolean; reason?: string | null; opensOn?: string | null } | null;
+  /** Lo que el equipo cambió a mano en ese módulo para esta persona (00504). */
+  override?: { mode: ModuleOverrideMode; rule: UnlockRule | null; at?: string | null } | null;
 }
 
 export type LessonState =
@@ -111,6 +114,11 @@ export interface ClassroomModuleView {
   locked: boolean;
   /** «Se abre el 9 dic» (lo que dice el portal) para un modulo que todavia no se abrio. */
   opensText: string | null;
+  /** Su variante no lo incluye y nadie se lo dio a mano. */
+  notIncluded: boolean;
+  /** Lo cambiado a mano (00504) y cómo se lee: «Abierto a mano», «Cerrado a mano», «Regla propia · …». */
+  override: { mode: ModuleOverrideMode; rule: UnlockRule | null } | null;
+  overrideText: string | null;
   lessons: ClassroomLessonView[];
 }
 
@@ -122,6 +130,31 @@ export interface ClassroomProgressView {
   lessonsViewed: number;
   tasksDone: number;
   tasksTotal: number;
+}
+
+const civil = (d: string) => d.split("-").reverse().join("/");
+
+/** Cómo se lee una regla propia en la ficha (sin ids ni claves). */
+export function overrideRuleText(rule: UnlockRule | null | undefined): string {
+  switch (rule?.type) {
+    case "fixed_date":
+      return rule.date ? `el ${civil(rule.date)}` : "en una fecha";
+    case "days_after_start":
+      return typeof rule.days === "number" ? `${rule.days} ${rule.days === 1 ? "día" : "días"} después de empezar` : "días después de empezar";
+    case "after_complete":
+      return "al completar algo";
+    case "challenge_started":
+      return "al empezar el Reto";
+    default:
+      return "con su propia regla";
+  }
+}
+
+export function overrideText(o: { mode: ModuleOverrideMode; rule: UnlockRule | null } | null | undefined): string | null {
+  if (!o) return null;
+  if (o.mode === "open") return "Abierto a mano";
+  if (o.mode === "closed") return "Cerrado a mano";
+  return `Regla propia · se abre ${overrideRuleText(o.rule)}`;
 }
 
 const isTaskType = (t: string | null) => t === "activity" || t === "quiz";
@@ -161,6 +194,8 @@ export function classroomProgressView(items: readonly ClassroomItem[] | null | u
   if (modules.length === 0) return null;
   const views: ClassroomModuleView[] = modules.map((m) => {
     const locked = m.unlock ? m.unlock.unlocked === false : false;
+    const notIncluded = m.unlock?.included === false;
+    const override = m.override ? { mode: m.override.mode, rule: m.override.rule ?? null } : null;
     const lessons = lessonsUnder(m.id).map((l) => {
       const state = lessonState(l, locked);
       return { id: l.id, title: l.title, isTask: isTaskType(l.lesson_type), state, done: lessonDone(state) };
@@ -173,7 +208,10 @@ export function classroomProgressView(items: readonly ClassroomItem[] | null | u
       total: lessons.length,
       pct: lessons.length ? Math.round((done / lessons.length) * 100) : 0,
       locked,
-      opensText: locked ? m.unlock?.reason ?? null : null,
+      opensText: notIncluded ? "No está incluido en su plan" : locked ? m.unlock?.reason ?? null : null,
+      notIncluded,
+      override,
+      overrideText: overrideText(override),
       lessons,
     };
   });
