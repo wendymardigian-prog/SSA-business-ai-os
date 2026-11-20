@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @plantilla-quitar(servicios)
 /**
- * Verificacion del modulo de Servicios (Corridas A1 y A2): bloques sv1, sv2, prd, ac y a2.
+ * Verificacion del modulo de Servicios (Corridas A1 y A2): bloques sv1, sv2, prd, ac, a2, a4 y pc (00503).
  *
  * Corre contra la base real con usuarios de verdad. Prueba lo que vitest no puede: que la BASE haga
  * cumplir las reglas (gemelas SQL = TS con los mismos casos, RLS por rol, la guardia SV003, el modulo
@@ -1027,6 +1027,69 @@ try {
     sql(`DELETE FROM public.automation_events WHERE workspace_id = ${lit(ws.id)} AND event_type = 'service_relative' AND payload ->> 'service_id' = ${lit(sRel)}`);
     sql(`SELECT app_servicio.svc_daily_run(${lit(ws.id)})`);
     check(events() === 0, "un servicio pausado no emite");
+  }
+
+  if (run("pc") && sql(`SELECT to_regprocedure('app_servicio.portal_item_form_link(text,uuid)') IS NOT NULL AS ok`)[0]?.ok) {
+    console.log("\npc · Pasos del camino: tildado en una fase cerrada y el link del botón del portal (00503)");
+    sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+    const mkForm = (type, status = "published") => sql(`INSERT INTO public.forms (workspace_id, name, type, slug, status) VALUES (${lit(ws.id)}, ${lit(`zz-test ${type}`)}, ${lit(type)}, ${lit(`zz-test-pc-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)}, ${lit(status)}) RETURNING id`)[0]?.id;
+    const fForm = mkForm("custom");
+    const fContract = mkForm("contract");
+    const fDraft = mkForm("custom", "draft");
+    const vC = await mkVariant("zz-test Camino con formularios");
+    sql(`UPDATE public.product_variants SET journey_template = ${jlit({ v: 1, phases: [
+      { key: "ph_pc0001", name: "Onboarding", advance: "manual", items: [
+        { key: "it_pc0001", kind: "contract", name: "Firmar el contrato", portal_button: true, ref: { form_id: fContract, complete_on: "submitted" } },
+        { key: "it_pc0002", kind: "form", name: "Formulario de onboarding", portal_button: true, ref: { form_id: fForm, complete_on: "submitted" } },
+        { key: "it_pc0003", kind: "form", name: "Borrador", portal_button: true, ref: { form_id: fDraft, complete_on: "submitted" } },
+      ] },
+      { key: "ph_pc0002", name: "Formación", advance: "manual", items: [{ key: "it_pc0004", kind: "checkbox", name: "Seguir" }] },
+    ] })}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vC.id)}`);
+    const setP = sqlErr(`UPDATE public.product_variants SET portal_settings = ${jlit({ v: 1, enabled: true, sections: [{ section: "program", included: true, opens: { type: "service_start" }, until: { type: "service" } }] })}, portal_settings_rev = portal_settings_rev + 1 WHERE id = ${lit(vC.id)}`);
+    check(setP === null, "la variante queda con su camino y su portal", setP?.slice(0, 300));
+    const cC = await newContact("camino", { email: `zz-test-pc-${Date.now()}@example.test` });
+    const sC = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cC.id)}, 'variant_id', ${lit(vC.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
+    const item = (k) => sql(`SELECT i.id, i.status, i.completed_source, p.status AS phase FROM app_servicio.service_items i JOIN app_servicio.service_phases p ON p.id = i.phase_id WHERE i.service_id = ${lit(sC)} AND i.template_key = ${lit(k)}`)[0];
+    const phase2 = sql(`SELECT id FROM app_servicio.service_phases WHERE service_id = ${lit(sC)} AND template_key = 'ph_pc0002'`)[0]?.id;
+    const moved = await rpcAs(owner, "svc_move_to_phase", { p_service_id: sC, p_phase_id: phase2, p_reason: "zz-test" });
+    check(!moved.error && item("it_pc0001")?.phase === "completed", "la fase Onboarding queda cerrada a mano con los pasos pendientes", moved.error ?? JSON.stringify(item("it_pc0001")));
+
+    // 1. Mandar el formulario con la fase cerrada lo tilda igual (sin link firmado).
+    const done = sql(`SELECT app_servicio.svc_complete_by_form(${lit(ws.id)}, ${lit(cC.id)}, ${lit(fForm)}, NULL, 'form', 'form_submission') id`)[0]?.id;
+    const f2 = item("it_pc0002");
+    check(done === f2?.id && f2?.status === "completed" && f2?.phase === "completed", "un formulario enviado con la fase cerrada tilda su paso y la fase sigue cerrada", JSON.stringify(f2));
+
+    // 2. El link del botón.
+    const acct = sql(`SELECT id FROM app_servicio_portal.portal_accounts WHERE contact_id = ${lit(cC.id)}`)[0]?.id;
+    const tok = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+    const tokP = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+    sql(`INSERT INTO app_servicio_portal.portal_sessions (workspace_id, account_id, kind, token_hash, expires_at) VALUES (${lit(ws.id)}, ${lit(acct)}, 'student', app_servicio.portal_token_hash(${lit(tok)}), now() + interval '1 hour')`);
+    sql(`INSERT INTO app_servicio_portal.portal_sessions (workspace_id, kind, token_hash, expires_at, preview_contact_id) VALUES (${lit(ws.id)}, 'preview', app_servicio.portal_token_hash(${lit(tokP)}), now() + interval '1 hour', ${lit(cC.id)})`);
+    const link = (session, id) => svc.schema("app_servicio").rpc("portal_item_form_link", { p_session: session, p_item_id: id });
+    const ok1 = await link(tok, item("it_pc0001").id);
+    check(!ok1.error && ok1.data?.form_id === fContract && ok1.data?.service_id === sC && ok1.data?.item_id === item("it_pc0001").id && ok1.data?.contact_id === cC.id,
+      "el contrato pendiente de una fase cerrada devuelve su formulario, servicio y paso", ok1.error?.message ?? JSON.stringify(ok1.data));
+    const prev = await link(tokP, item("it_pc0001").id);
+    check(prev.error?.code === "PO403", "una vista previa del equipo no abre el formulario (PO403)", prev.error?.message);
+    const doneLink = await link(tok, f2.id);
+    check(doneLink.error?.code === "PO409", "un paso completo no abre el formulario (PO409)", doneLink.error?.message);
+    const draft = await link(tok, item("it_pc0003").id);
+    check(draft.error?.code === "PO404", "un formulario sin publicar no se abre (PO404)", draft.error?.message);
+    const other = await link(tok, item("it_pc0004").id);
+    check(other.error?.code === "PO404", "un paso sin formulario no se abre (PO404)", other.error?.message);
+    const privs = sql(`SELECT has_function_privilege('anon', 'app_servicio.portal_item_form_link(text,uuid)', 'EXECUTE') a, has_function_privilege('authenticated', 'app_servicio.portal_item_form_link(text,uuid)', 'EXECUTE') u`)[0];
+    check(privs?.a === false && privs?.u === false, "portal_item_form_link: ni anon ni authenticated la ejecutan", JSON.stringify(privs));
+
+    // 3. El paso firmado (el que viaja en el link) se completa aunque la fase esté cerrada.
+    const signed = sql(`SELECT app_servicio.svc_complete_by_form(${lit(ws.id)}, ${lit(cC.id)}, ${lit(fContract)}, ${lit(item("it_pc0001").id)}, 'contract', 'contract_signature') id`)[0]?.id;
+    check(signed === item("it_pc0001").id && item("it_pc0001").status === "completed", "el contrato firmado con el paso en el link se tilda en la fase cerrada");
+
+    // 4. A mano: en una fase cerrada se tilda, pero no se destilda (SV020).
+    const manual = asUser(owner.id, `SELECT app_servicio.svc_complete_item(${lit(item("it_pc0003").id)}) r`);
+    check(manual.ok && item("it_pc0003").status === "completed", "tildar a mano un paso de una fase cerrada funciona", manual.error);
+    const undo = asUser(owner.id, `SELECT app_servicio.svc_uncomplete_item(${lit(item("it_pc0003").id)}) r`);
+    check(!undo.ok && undo.code === "SV020", "destildar en una fase cerrada sigue rechazado (SV020)", undo.error);
+    sql(`DELETE FROM app_servicio_portal.portal_sessions WHERE token_hash IN (app_servicio.portal_token_hash(${lit(tok)}), app_servicio.portal_token_hash(${lit(tokP)}))`);
   }
 
   console.log("\nHuellas de las funciones protegidas");

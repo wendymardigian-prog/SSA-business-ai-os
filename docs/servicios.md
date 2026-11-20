@@ -45,6 +45,17 @@ por una automatización. El avance (`progress_pct`) y el paso de fase (`auto`, `
 base. Lo automático **nunca tumba lo que lo origina**: cada trigger va en `EXCEPTION WHEN OTHERS` y deja
 `svc.hook_failed` en el historial.
 
+### Fases cerradas (00503)
+
+- **Tildar a mano**: en la ficha del servicio, un paso pendiente se tilda aunque su fase esté cerrada (por ejemplo,
+  un Onboarding cerrado con «Cambiar de fase a mano»). **Destildar** un paso de una fase cerrada sigue sin poderse
+  (`svc_uncomplete_item`, SV020). La regla de pantalla es `itemToggleState` (`lib/services/screens/item-toggle.ts`).
+- **Solo**: un formulario o un contrato que llega sin paso en el link también completa un paso pendiente de una fase
+  cerrada (`svc_complete_by_form`): primero busca en las fases abiertas y, si no hay, en las cerradas. Completar un
+  paso de una fase cerrada no reabre ni mueve la fase.
+- **El link del botón del portal lleva el paso** (`i` del token firmado, `meta.service_item_id` al enviar): se
+  completa ESE paso, esté donde esté.
+
 ## El botón de cada paso (Servicios A2, F125)
 
 Cada paso del camino puede mostrar en el portal un botón (drawer del paso › «Mostrar el botón en el portal»). Vive
@@ -72,6 +83,12 @@ el panel solo lo configura, lo valida (gemelas `refProblems` / `app_servicio.jou
 - **Para mostrar el botón, el cliente tiene que ver el paso**: apagar «Lo ve el cliente» apaga el botón.
 - **«El cliente puede ver su respuesta»** (formulario, encuesta, actividad, evaluación y contrato; en el contrato, el
   firmado y su PDF). Lo usa el portal.
+- **Formulario, encuesta y contrato (00503)**: el botón del portal es un link de verdad a `/ir/paso/<id>` (en otra
+  pestaña). El portal le pide a SSA `/api/portal/form-link` (firmado con `PORTAL_SHARED_SECRET`); la base
+  (`app_servicio.portal_item_form_link`, solo `service_role`) comprueba que el paso sea de la persona de la sesión
+  (nunca una vista previa: PO403), que tenga el botón prendido, que siga pendiente y sin candado (PO409) y que el
+  formulario esté publicado y sea del tipo del paso (PO404); SSA firma el link con el paso adentro
+  (`lib/portal-admin/form-link.ts`). Actividades y evaluaciones se siguen entregando dentro del portal.
 - **`svc_item`**: la agenda pública (y el embed) lee `?svc_item=` y lo guarda en `bookings.utm.svc_item` solo si es un
   uuid (`pickUtm`); `booking_hook` completa ESE paso (si es del mismo contacto), no el primero del mismo tipo de
   reunión. `create_booking` no cambió.
