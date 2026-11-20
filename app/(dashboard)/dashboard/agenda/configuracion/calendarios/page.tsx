@@ -38,7 +38,7 @@ export default async function AgendaCalendariosPage({ searchParams }: { searchPa
         lastError: c.last_error,
         calendars: calendars
           .filter((k) => k.connection_id === c.id)
-          .map((k) => ({ id: k.id, name: k.name, color: k.color, accessRole: k.access_role, isPrimary: k.is_primary, checkConflicts: k.check_conflicts, isActive: k.is_active })),
+          .map((k) => ({ id: k.id, name: k.name, color: k.color, accessRole: k.access_role, isPrimary: k.is_primary, checkConflicts: k.check_conflicts, showInAgenda: k.show_in_agenda, isActive: k.is_active })),
       }))}
       flash={flash}
     />

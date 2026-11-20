@@ -95,7 +95,9 @@ export async function syncCalendars(
     await supabase.from("calendars").update(u.patch).eq("id", u.id);
   }
   if (plan.deactivate.length > 0) {
-    await supabase.from("calendars").update({ is_active: false, check_conflicts: false }).in("id", plan.deactivate);
+    await supabase.from("calendars").update({ is_active: false, check_conflicts: false, show_in_agenda: false }).in("id", plan.deactivate);
+    // 00510: un calendario que ya no está en la cuenta no se muestra más en la Agenda.
+    await supabase.from("google_calendar_events").delete().in("calendar_id", plan.deactivate);
   }
 
   // Default del perfil: si no tiene destino, el primario escribible de su
@@ -136,7 +138,9 @@ export async function disconnectCalendarConnection(
   const { data: cals } = await supabase.from("calendars").select("id").eq("connection_id", connection.id);
   const ids = (cals ?? []).map((c) => c.id);
   if (ids.length > 0) {
-    await supabase.from("calendars").update({ is_active: false, check_conflicts: false }).in("id", ids);
+    await supabase.from("calendars").update({ is_active: false, check_conflicts: false, show_in_agenda: false }).in("id", ids);
+    // 00510: la copia de sus eventos se borra (también la borraría el CASCADE al borrar la conexión, más abajo).
+    await supabase.from("google_calendar_events").delete().in("calendar_id", ids);
   }
 
   // Los eventos que habían elegido calendarios de esta cuenta vuelven a los

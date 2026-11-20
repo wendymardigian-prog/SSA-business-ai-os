@@ -15,6 +15,7 @@ import {
   disconnectGoogleCalendar,
   resyncCalendars,
   setCalendarCheckConflicts,
+  setCalendarShowInAgenda,
   setDefaultDestinationCalendar,
 } from "@/lib/actions/scheduling/calendars";
 
@@ -23,7 +24,7 @@ export interface AccountView {
   label: string;
   status: CalendarConnectionStatus;
   lastError: string | null;
-  calendars: Array<{ id: string; name: string; color: string | null; accessRole: CalendarAccessRole; isPrimary: boolean; checkConflicts: boolean; isActive: boolean }>;
+  calendars: Array<{ id: string; name: string; color: string | null; accessRole: CalendarAccessRole; isPrimary: boolean; checkConflicts: boolean; showInAgenda: boolean; isActive: boolean }>;
 }
 
 const STATUS_CLASS: Record<CalendarConnectionStatus, string> = {
@@ -186,8 +187,19 @@ export function CalendarsView({
                     {cal.name}
                     {cal.isPrimary && <span className="ml-1 text-xs text-muted-foreground">· principal</span>}
                   </span>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {ROLE_TEXT[cal.accessRole]} · {cal.checkConflicts ? "Se revisa para no superponer agendas" : "No se revisa"}
+                  <span className="ml-auto flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                    <span>
+                      {ROLE_TEXT[cal.accessRole]} · {cal.checkConflicts ? "Se revisa para no superponer agendas" : "No se revisa"}
+                    </span>
+                    {account.status !== "revoked" && account.status !== "error" && cal.accessRole !== "freeBusyReader" && (
+                      <Switch
+                        checked={cal.showInAgenda}
+                        disabled={pending}
+                        label={`Mostrar ${cal.name} en la Agenda`}
+                        onChange={(v) => run(() => setCalendarShowInAgenda(cal.id, v))}
+                      />
+                    )}
+                    {cal.accessRole !== "freeBusyReader" && <span>{cal.showInAgenda ? "Se ve en la Agenda" : "No se ve en la Agenda"}</span>}
                   </span>
                 </li>
               ))}
