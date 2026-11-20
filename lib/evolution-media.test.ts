@@ -18,7 +18,7 @@ vi.mock("@/lib/evolution-client", async (importOriginal) => {
   return { ...actual, getBase64FromMediaMessage };
 });
 
-import { describeWhatsappMessage, evolutionMediaFetcher, storeEvolutionMedia } from "./evolution-media";
+import { describeWhatsappMessage, evolutionMediaFetcher, storeEvolutionMedia, whatsappWebMessage } from "./evolution-media";
 
 const WS = "ws-1";
 const CV = "cv-1";
@@ -44,7 +44,7 @@ function db() {
 
 const RAW_MESSAGE = { key: { id: "WA-1" }, message: { audioMessage: {} } };
 
-const store = (items: ChatAttachment[], rawMessage: Record<string, unknown> | null = RAW_MESSAGE) =>
+const store = (items: ChatAttachment[], webMessage: Record<string, unknown> | null = RAW_MESSAGE) =>
   storeEvolutionMedia({
     supabase: db().memory.client,
     config,
@@ -52,7 +52,7 @@ const store = (items: ChatAttachment[], rawMessage: Record<string, unknown> | nu
     workspaceId: WS,
     conversationId: CV,
     messageId: MSG,
-    rawMessage,
+    webMessage,
     items,
   });
 
@@ -119,7 +119,7 @@ describe("storeEvolutionMedia: el camino feliz (F4)", () => {
       workspaceId: WS,
       conversationId: CV,
       messageId: MSG,
-      rawMessage: RAW_MESSAGE,
+      webMessage: RAW_MESSAGE,
       items: [emptyAttachment("voice", { status: "pending", durationSeconds: 12 })],
     });
 
@@ -152,7 +152,7 @@ describe("storeEvolutionMedia: el camino feliz (F4)", () => {
       workspaceId: WS,
       conversationId: CV,
       messageId: MSG,
-      rawMessage: RAW_MESSAGE,
+      webMessage: RAW_MESSAGE,
       items: [emptyAttachment("image", { status: "pending" }), emptyAttachment("image", { status: "pending" })],
     });
 
@@ -215,10 +215,58 @@ describe("el fetcher, aislado", () => {
       size: 4,
     });
 
-    const fetcher = evolutionMediaFetcher({ config, instance: "ssa-1", rawMessage: RAW_MESSAGE });
+    const fetcher = evolutionMediaFetcher({ config, instance: "ssa-1", webMessage: RAW_MESSAGE });
     const source = await fetcher(emptyAttachment("voice", { status: "pending" }), 0);
 
     expect(source).toMatchObject({ kind: "bytes", mime: "audio/mp4" });
     expect(source.kind === "bytes" && Buffer.from(source.bytes).toString()).toBe("hola");
+  });
+});
+
+describe("whatsappWebMessage: lo que se le pide a Evolution", () => {
+  it("arma { key, message } con el payload del webhook, no el contenido suelto", () => {
+    const data = {
+      key: { id: "WA-9", remoteJid: "5491100000000@s.whatsapp.net", fromMe: false },
+      message: { audioMessage: { mimetype: "audio/ogg" } },
+      pushName: "Alguien",
+    };
+
+    expect(whatsappWebMessage(data)).toEqual({ key: data.key, message: data.message });
+  });
+
+  it("sin id o sin contenido devuelve null", () => {
+    expect(whatsappWebMessage({ message: { audioMessage: {} } })).toBeNull();
+    expect(whatsappWebMessage({ key: { id: "" }, message: { audioMessage: {} } })).toBeNull();
+    expect(whatsappWebMessage({ key: { id: "WA-1" } })).toBeNull();
+    expect(whatsappWebMessage(null)).toBeNull();
+  });
+});
+
+describe("el fetcher pidiendo por id (reintento)", () => {
+  it("le manda a Evolution solo la clave del mensaje", async () => {
+    getBase64FromMediaMessage.mockResolvedValue({ base64: Buffer.from("x").toString("base64"), mimetype: "image/jpeg", fileName: null, size: 1 });
+
+    const fetcher = evolutionMediaFetcher({ config, instance: "ssa-1", messageKeyId: "WA-7" });
+    await fetcher(emptyAttachment("image", { status: "pending" }), 0);
+
+    expect(getBase64FromMediaMessage).toHaveBeenCalledWith(config, "ssa-1", { key: { id: "WA-7" } });
+  });
+
+  it("un 400 pidiendo por id es definitivo: el motivo no ofrece Reintentar", async () => {
+    getBase64FromMediaMessage.mockRejectedValue(new EvolutionError("Evolution API respondio 400: Message not found", 400));
+
+    const fetcher = evolutionMediaFetcher({ config, instance: "ssa-1", messageKeyId: "WA-7" });
+    const source = await fetcher(emptyAttachment("voice", { status: "pending" }), 0);
+
+    expect(source).toEqual({ kind: "error", message: "WhatsApp ya no tiene este archivo disponible" });
+  });
+
+  it("un 5xx pidiendo por id sigue siendo reintentable", async () => {
+    getBase64FromMediaMessage.mockRejectedValue(new EvolutionError("Evolution API respondio 502", 502));
+
+    const fetcher = evolutionMediaFetcher({ config, instance: "ssa-1", messageKeyId: "WA-7" });
+    const source = await fetcher(emptyAttachment("voice", { status: "pending" }), 0);
+
+    expect(source.kind === "error" && source.message).toContain("502");
   });
 });

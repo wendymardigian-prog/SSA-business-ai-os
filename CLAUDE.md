@@ -633,7 +633,13 @@ hacer clic con el cliente del USUARIO, nunca al pintar el hilo.
   vence y WhatsApp borra la media de su servidor.
 - WhatsApp manda la media cifrada: hay que pedirsela a Evolution por el id del
   mensaje (`getBase64FromMediaMessage`, con `convertToMp4: false`, o un audio
-  convertido pierde el `ptt`).
+  convertido pierde el `ptt`). **El pedido lleva `{ key, message }`
+  (`whatsappWebMessage(data)`), nunca `data.message` suelto**: sin la clave
+  Evolution contesta 400 (asi fallaron casi todas las notas de voz y fotos del
+  1/10 al 20/11/2026). «Reintentar» en WhatsApp pide por la clave sola
+  (`retryWhatsappMedia`, `lib/chat-media/whatsapp-retry.ts`): Evolution lo busca
+  en su base, y si ya no esta queda «WhatsApp ya no tiene este archivo». Lo que
+  fallo en esas fechas se recupera con `scripts/recover-whatsapp-media.mjs`.
 - Lo que no tiene archivo (ubicacion, contacto, encuesta, link) **no se intenta
   bajar**: si no, el spinner queda girando para siempre.
 - Retencion de 180 dias colgada del cron `content-media-cleanup`, que ya existe.

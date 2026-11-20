@@ -440,10 +440,13 @@ describe("webhook de Evolution: el camino del mensaje del lead", () => {
       expect.objectContaining({ kind: "voice", durationSeconds: 12, mime: "audio/ogg", status: "pending" }),
     ]);
     expect(storeEvolutionMedia).toHaveBeenCalledWith(
-      // El objeto completo, no solo el id (F4, §14c).
+      // El WebMessageInfo `{ key, message }`: con `data.message` solo Evolution contesta 400.
       expect.objectContaining({
         messageId: "msg-1",
-        rawMessage: expect.objectContaining({ audioMessage: expect.anything() }),
+        webMessage: {
+          key: expect.objectContaining({ id: "msg-1" }),
+          message: expect.objectContaining({ audioMessage: expect.anything() }),
+        },
         instance: INSTANCE,
       }),
     );

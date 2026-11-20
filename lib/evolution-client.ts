@@ -680,12 +680,13 @@ export interface MediaPayload {
  * su backoff). Devuelve null cuando Evolution contesta bien pero sin base64,
  * que pasa cuando la media ya se borro del servidor de WhatsApp.
  *
- * **`message` va completo, no `{key:{id}}` solo (F4, verificado en el codigo
- * fuente de la 2.3.7, §14c).** Con el objeto entero Evolution lo usa directo;
- * con la clave sola hace una busqueda en su propia base, que depende de que
- * Evolution haya persistido ese mensaje. Nuestro webhook ya recibe el objeto
- * completo en `data.message`, asi que pasarlo entero es gratis y evita esa
- * dependencia.
+ * **`message` es el `WebMessageInfo` de Baileys: `{ key, message }`** (el DTO
+ * de la 2.3.7 lo tipa asi). Evolution hace `m?.message ? m : getMessage(m.key)`:
+ * con el objeto entero lo descifra directo; con `{ key: { id } }` solo lo busca
+ * en su propia base (por `key.id` y la instancia), lo que depende de que lo haya
+ * guardado. **Nunca `data.message` solo** (`{ audioMessage }`): no tiene ni
+ * `message` ni `key` y Evolution contesta 400. Armarlo es `whatsappWebMessage`
+ * (`lib/evolution-media.ts`).
  */
 export async function getBase64FromMediaMessage(
   config: EvolutionConfig,

@@ -9,6 +9,13 @@ nueva al final. Formato de cada entrada:
 
 ---
 
+
+## Media de WhatsApp: «Evolution respondió 400» (20/11/2026)
+
+- **Qué pasó:** del 1/10 al 20/11/2026 el pedido del archivo a Evolution iba con `data.message` suelto (sin `key`), y Evolution 2.3.7 contesta 400. Arreglado: `whatsappWebMessage(data)` arma `{ key, message }` (chats y grupos), y «Reintentar» funciona en WhatsApp pidiendo por el id.
+- **Recuperación:** `node scripts/recover-whatsapp-media.mjs` (simulación) y `--aplicar` encola un `whatsapp_media_retry` por mensaje. Correrlo una vez, después del deploy.
+- **Queda pendiente:** «Reintentar» en los mensajes de **grupos** (`whatsapp_group_messages`): la descarga nueva ya anda, pero los grupos no tienen botón ni recuperación. Los ecos salientes (`origin = 'external'`) siguen sin botón (regla 00311); la recuperación sí los incluye.
+
 ## Etapa 4
 
 ### Redirect URI nueva en Google Cloud (F4)

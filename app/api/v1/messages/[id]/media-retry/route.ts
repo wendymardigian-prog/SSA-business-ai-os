@@ -1,10 +1,10 @@
 /**
  * Reintentar la descarga de un adjunto que fallo (F12).
  *
- * Solo sirve para los de Instagram, que son los que guardan la URL del
- * proveedor: la media de WhatsApp hay que pedirsela a Evolution por el id del
- * mensaje, y si fallo la primera vez es porque WhatsApp ya la borro. Esto se ve
- * en la burbuja: sin `sourceUrl`, el boton no aparece.
+ * Dos caminos, con rama explicita por canal:
+ * - Instagram guarda la URL del proveedor (`sourceUrl`) y se vuelve a bajar de ahi.
+ * - WhatsApp no tiene URL: se le pide a Evolution por el id del mensaje
+ *   (`retryWhatsappMedia`). Si ya no lo tiene, queda «ya no tiene este archivo».
  *
  * Misma autorizacion que el reintento de transcripcion: se lee con el cliente
  * del USUARIO (la RLS decide) y se baja con service role.
@@ -16,6 +16,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { parseAttachments } from "@/lib/messages/attachments";
 import { storeInboundMedia } from "@/lib/inbound-media";
 import { afterMediaStored } from "@/lib/chat-media/after-stored";
+import { loadWhatsappMessage, retryWhatsappMedia, whatsappRetryableItems } from "@/lib/chat-media/whatsapp-retry";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
@@ -37,6 +38,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return NextResponse.json({ error: "Este adjunto no se puede volver a bajar" }, { status: 409 });
   }
 
+  const service = await createServiceClient();
+
+  // WhatsApp: se le pide a Evolution por el id del mensaje. La persona ya probo
+  // que lo ve (la lectura de arriba va con su sesion).
+  const whatsapp = await loadWhatsappMessage(service, id);
+  if (whatsapp?.isWhatsapp) {
+    const retryable = whatsappRetryableItems(parseAttachments(message.attachments));
+    if (!retryable.some((item) => item.status === "pending")) {
+      return NextResponse.json({ error: "Este adjunto no se puede volver a bajar" }, { status: 409 });
+    }
+    after(async () => {
+      await retryWhatsappMedia({ service, messageId: id });
+    });
+    return NextResponse.json({ ok: true, status: "queued" });
+  }
+
   // Los que fallaron y todavia tienen de donde bajarse. Vuelven a `pending`, que
   // es lo que muestra "Descargando adjunto…" en la burbuja.
   const items = parseAttachments(message.attachments).map((item) =>
@@ -49,8 +66,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       { status: 409 },
     );
   }
-
-  const service = await createServiceClient();
 
   // Se responde antes de bajar: el que apreto el boton no tiene que esperar el
   // archivo, la burbuja ya muestra el spinner y realtime la actualiza.

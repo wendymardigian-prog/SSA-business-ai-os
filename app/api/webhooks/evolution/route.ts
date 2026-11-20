@@ -31,7 +31,7 @@ import { touchAccountOf } from "@/lib/inbox/accounts";
 import { refreshWhatsappIdentity } from "@/lib/whatsapp-identity";
 import { previewForMessage } from "@/lib/message-preview";
 import { hasDownloadableMedia, toAttachmentsColumn } from "@/lib/messages/attachments";
-import { describeWhatsappMessage, storeEvolutionMedia } from "@/lib/evolution-media";
+import { describeWhatsappMessage, storeEvolutionMedia, whatsappWebMessage } from "@/lib/evolution-media";
 import { afterMediaStored } from "@/lib/chat-media/after-stored";
 import { fromBaileysMessage, recordInboundTouch } from "@/lib/contacts/touch-inbound";
 import { adOriginOfBaileys, buildOriginContext } from "@/lib/messages/origin-context";
@@ -570,9 +570,9 @@ async function processMessage(
         workspaceId: channel.workspace_id,
         conversationId: conversation.id,
         messageId: inserted.id,
-        // El objeto completo, no solo el id (F4, §14c): con el objeto entero
-        // Evolution lo usa directo; con la clave sola busca en su propia base.
-        rawMessage: data?.message ?? null,
+        // `{ key, message }`, no `data.message` solo: con el contenido suelto
+        // Evolution contesta 400 (whatsappWebMessage explica por que).
+        webMessage: whatsappWebMessage(data),
         items: attachments,
       });
 
