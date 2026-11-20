@@ -5,7 +5,7 @@
  * al portal y el total cobrado. Tabla o tablero, agrupar por semaforo, responsable o portal, ordenar y filtrar: todo
  * en el navegador, sin recargar. Puro.
  */
-import type { Light, ServiceStatus } from "./list";
+import { toLight, type Light, type ServiceStatus } from "./list";
 
 export interface ClientServiceInput {
   contactId: string;
@@ -54,7 +54,7 @@ const WEEK = 7 * 86_400_000;
 /** El peor semaforo de sus servicios activos; "Por confirmar" aparte (si solo tiene servicios por confirmar). */
 export function worstLight(services: readonly Pick<ClientServiceInput, "status" | "light">[]): ClientLight {
   const running = services.filter((s) => RUNNING.includes(s.status));
-  if (running.length) return running.map((s) => (s.light ?? "gray") as ClientLight).sort((a, b) => LIGHT_RANK[a] - LIGHT_RANK[b])[0];
+  if (running.length) return running.map((s): ClientLight => toLight(s.light) ?? "gray").sort((a, b) => LIGHT_RANK[a] - LIGHT_RANK[b])[0];
   if (services.some((s) => s.status === "pending_confirmation")) return "pending";
   return "none";
 }

@@ -3,6 +3,7 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { loadContactServices } from "@/lib/services/screens/load-services";
 import { loadNewServiceOptions } from "@/lib/services/screens/load-new-service";
 import { todayIn } from "@/lib/services/screens/today";
+import { toLight } from "@/lib/services/screens/list";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { loadPortalAccount, loadPortalHost } from "@/lib/portal-admin/load";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -99,7 +100,7 @@ export async function ClientRecord({ ctx, contactId }: { ctx: Ctx; contactId: st
       productName: s.product_snapshot?.product_name ?? "",
       variantName: s.product_snapshot?.variant_name ?? "",
       status: s.status,
-      light: s.light,
+      light: toLight(s.light),
       lightReason: s.light_reason,
       phaseName: s.phase_name,
       startsOn: s.starts_on,

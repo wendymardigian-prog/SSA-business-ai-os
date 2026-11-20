@@ -25,6 +25,16 @@ describe("worstLight", () => {
     expect(worstLight([svc("a", { status: "completed" })])).toBe("none");
     expect(worstLight([svc("a", { light: null })])).toBe("gray");
   });
+
+  it("la base guarda el gris como «grey»: se lee como «gray» y no rompe la fila", () => {
+    // services_light_check (00330) admite green/yellow/red/grey; la pantalla usa «gray».
+    const grey = svc("a", { light: "grey" as never });
+    expect(worstLight([grey])).toBe("gray");
+    expect(worstLight([grey, svc("a", { light: "yellow" })])).toBe("yellow");
+    expect(worstLight([svc("a", { light: "violeta" as never })])).toBe("gray");
+    const [row] = buildClientRows({ services: [grey], names: new Map([["a", "Ana"]]), portal: new Map(), paidCents: new Map(), nowIso: NOW });
+    expect(row.light).toBe("gray");
+  });
 });
 
 describe("portalGroupOf", () => {

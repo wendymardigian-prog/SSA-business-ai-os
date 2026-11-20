@@ -1,6 +1,6 @@
 // @plantilla-quitar(servicios)
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FILTERS, dayLabel, groupServices, parseServiceFilters, pendingReviewChip, serializeServiceFilters, type ServiceFilters } from "./list";
+import { DEFAULT_FILTERS, LIGHT_LABELS, dayLabel, toLight, groupServices, parseServiceFilters, pendingReviewChip, serializeServiceFilters, type ServiceFilters } from "./list";
 
 describe("la fila de un servicio", () => {
   it("Día 12 de 84, Día 12 sin fin, Pausado y Empieza el 1/1", () => {
@@ -48,5 +48,19 @@ describe("agrupar y el tablero", () => {
   });
   it("por responsable, con Sin responsable", () => {
     expect(groupServices(items, "owner").map((g) => g.label)).toContain("Sin responsable");
+  });
+});
+
+describe("el semáforo que viene de la base", () => {
+  it("traduce «grey» (00330) a «gray» y descarta lo desconocido", () => {
+    expect(toLight("grey")).toBe("gray");
+    expect(toLight("gray")).toBe("gray");
+    expect(toLight("red")).toBe("red");
+    expect(toLight("yellow")).toBe("yellow");
+    expect(toLight("green")).toBe("green");
+    expect(toLight(null)).toBeNull();
+    expect(toLight(undefined)).toBeNull();
+    expect(toLight("violeta")).toBe("gray");
+    expect(LIGHT_LABELS[toLight("grey")!]).toBe("Gris");
   });
 });

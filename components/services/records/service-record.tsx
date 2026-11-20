@@ -4,6 +4,7 @@ import { offeredSections } from "@/lib/services/availability";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { contactNames, loadService } from "@/lib/services/screens/load-services";
 import { todayIn } from "@/lib/services/screens/today";
+import { toLight } from "@/lib/services/screens/list";
 import { recordStepRules } from "@/lib/services/screens/record-step-rules";
 import { overCapacityNote, readCapacity } from "@/lib/services/screens/capacity";
 import { lockErrorMessage, lockLabel } from "@/lib/services/lock";
@@ -263,7 +264,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     productName: s.product_snapshot?.product_name ?? "",
     variantName: s.product_snapshot?.variant_name ?? "",
     status: s.status,
-    light: s.light,
+    light: toLight(s.light),
     lightReason: s.light_reason,
     lightAt: (s.light_at as string | null) ?? null,
     startsOn: s.starts_on,

@@ -2,7 +2,7 @@
 /**
  * La ficha del servicio (F29), «+ Servicio» (F30), la celda de Ventas (F95) y la actividad del cliente (F28). Puro.
  */
-import type { ServiceStatus } from "./list";
+import { toLight, type ServiceStatus } from "./list";
 import { serviceHref } from "./record-url";
 
 // ── Alertas con acción (F29), en orden de gravedad ─────────────────────────
@@ -115,7 +115,7 @@ export function salesServiceCell(info: SaleServiceInfo | null, canCreate: boolea
   if (info?.extendsProductName) return { kind: "extends", label: `Extiende el servicio de ${info.extendsProductName}`, href: info.serviceId ? serviceHref(info.serviceId) : null };
   if (info?.serviceId && info.status) {
     const st = { pending_confirmation: "Por confirmar", active: "Activo", paused: "Pausado", completed: "Completado", cancelled: "Cancelado" }[info.status];
-    return { kind: "service", label: info.phaseName ? `${st} · ${info.phaseName}` : st, light: info.light ?? "gray", href: serviceHref(info.serviceId) };
+    return { kind: "service", label: info.phaseName ? `${st} · ${info.phaseName}` : st, light: toLight(info.light) ?? "gray", href: serviceHref(info.serviceId) };
   }
   return canCreate ? { kind: "create" } : { kind: "none" };
 }
