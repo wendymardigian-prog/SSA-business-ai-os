@@ -2,6 +2,7 @@
 // @plantilla-quitar(servicios)
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { svcRpc, svcSchema, type SvcResult } from "@/lib/services/db";
@@ -13,6 +14,7 @@ import { OVERRIDE_RULE_TYPES, unlockRuleProblems, type ModuleOverrideMode, type 
 import { checkDocument, checkHtml, checkImage, checkResource, programPath } from "@/lib/program/lesson";
 import { copiedPath, copyPlan, filePaths } from "@/lib/program/copy";
 import { saveLessonTranscriptCore } from "@/lib/program/transcript-store";
+import { indexLessonPageQuietly } from "@/lib/program/page-store";
 import { quizDefinitionIssues, type QuizSettings } from "@/lib/program/quiz";
 import { gradingIssues, type GradingDef } from "@/lib/program/grading";
 import { DEFAULT_SUBMISSION_LIMITS, limitValue, submissionLimitsIssues, type SubmissionLimits } from "@/lib/program/submission-limits";
@@ -70,6 +72,8 @@ export async function updateProgramItem(productId: string, itemId: string, patch
   const res = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: itemId, p });
   if (!res.ok) return res;
   refresh(productId);
+  // La página (o el tipo de clase, que decide si se muestra) cambió: el tutor la vuelve a leer, sin frenar el guardado.
+  if ("html_content" in p || "lesson_type" in p) after(() => indexLessonPageQuietly(ctx.workspace.id, ctx.user.id, productId, itemId));
   return { ok: true, data: { warning } };
 }
 
@@ -108,7 +112,10 @@ export async function uploadProgramFile(productId: string, itemId: string, kind:
   if (!item) return NOT_ALLOWED;
   if (kind === "html") {
     const res = await svcRpc<null>(ctx.supabase, "program_update_item", { p_item_id: itemId, p: { html_content: new TextDecoder().decode(bytes) } });
-    if (res.ok) refresh(productId);
+    if (res.ok) {
+      refresh(productId);
+      after(() => indexLessonPageQuietly(ctx.workspace.id, ctx.user.id, productId, itemId));
+    }
     return res.ok ? { ok: true, data: { path: null } } : res;
   }
   const path = programPath(ctx.workspace.id, productId, itemId, `${kind}-${Date.now()}-${file.name}`);
