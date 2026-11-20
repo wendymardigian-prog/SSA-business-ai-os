@@ -8,7 +8,7 @@ import { indexText } from "@/lib/knowledge/index-text";
 /**
  * Guarda la transcripción de una clase en Conocimiento (F49, F65), visible para el tutor (no interna), con el segundo
  * en que empieza cada parte (`knowledge_chunks.start_second`). Reemplaza la anterior de la misma clase. Quien llama ya
- * comprobó su permiso; la clase se busca con la sesión (la RLS de `program_items`) y del negocio de la sesión.
+ * comprobó su permiso. La página HTML de la misma clase es otro documento (`page-store.ts`, `pagina.html`); la clase se busca con la sesión (la RLS de `program_items`) y del negocio de la sesión.
  */
 export async function saveLessonTranscriptCore(
   ctx: Pick<PermissionContext, "supabase" | "workspace" | "user">,
@@ -23,7 +23,7 @@ export async function saveLessonTranscriptCore(
   const { data: item } = await svcSchema(ctx.supabase).from("program_items").select("id, title").eq("id", itemId).eq("product_id", productId).eq("workspace_id", ctx.workspace.id).maybeSingle();
   if (!item) return { ok: false, reason: "not_found" };
   const service = await createServiceClient();
-  const { data: prev } = await service.from("knowledge_base").select("id").eq("workspace_id", ctx.workspace.id).eq("program_item_id" as never, itemId as never).maybeSingle();
+  const { data: prev } = await service.from("knowledge_base").select("id").eq("workspace_id", ctx.workspace.id).eq("program_item_id" as never, itemId as never).like("source_filename", "transcripcion.%").maybeSingle();
   const out = await indexText(service, {
     workspaceId: ctx.workspace.id,
     title: `Clase: ${(item as { title: string }).title}`,

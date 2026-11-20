@@ -22,6 +22,8 @@ import { ProgramAssistant, type AssistantUsage, type TutorKnowledge } from "@/co
 import { svcSchema } from "@/lib/services/db";
 import { loadServicePicker } from "@/lib/services/service-picker-load";
 import { createServiceClient } from "@/lib/supabase/server";
+import { after } from "next/server";
+import { PAGE_LESSON_TYPES, PAGE_SOURCE_FILENAME, indexLessonPageQuietly } from "@/lib/program/page-store";
 import type { PortalFormInitial } from "@/components/services/portal/portal-form-editor";
 import { LinkQuickFilterMenu, LinkViewToggle, PrimaryButton, TopbarMoreMenu, type MoreAction } from "@/components/ui/topbar-controls";
 import { MonthNav } from "@/components/ui/month-nav";
@@ -88,10 +90,23 @@ export default async function PortalProgramPage({ params, searchParams }: { para
       .eq("workspace_id", workspace.id);
     const ids = ((items ?? []) as Array<{ id: string }>).map((i) => i.id);
     const { data: kb } = ids.length
-      ? await supabase.from("knowledge_base").select("program_item_id, status, chunk_count, indexed_at, updated_at").in("program_item_id" as never, ids as never).is("deleted_at", null)
+      ? await supabase.from("knowledge_base").select("program_item_id, source_filename, status, chunk_count, indexed_at, updated_at").in("program_item_id" as never, ids as never).is("deleted_at", null)
       : { data: [] };
+    type KbRow = { program_item_id: string | null; source_filename: string | null; status: string; chunk_count: number | null; indexed_at: string | null; updated_at: string | null };
+    const kbRows = (kb ?? []) as unknown as KbRow[];
+    // La página HTML de una clase también vive en Conocimiento (page-store.ts): no es la transcripción.
+    const isPage = (k: KbRow) => k.source_filename === PAGE_SOURCE_FILENAME;
+    // Las páginas que el tutor todavía no tiene (cargadas antes de que se indexaran, o copiadas de otro programa) se
+    // cargan al abrir el programa, después de responder. Si una ya está pero falló, se reintenta desde Conocimiento.
+    const withPage = new Set(kbRows.filter(isPage).map((k) => k.program_item_id));
+    const missingPages = ((items ?? []) as Array<{ id: string; kind: string; lesson_type: string | null; status: string; html_content: string | null }>).filter(
+      (r) => r.kind === "lesson" && r.status !== "archived" && (PAGE_LESSON_TYPES as readonly string[]).includes(r.lesson_type ?? "") && !!r.html_content?.trim() && !withPage.has(r.id),
+    );
+    if (missingPages.length) after(async () => {
+      for (const r of missingPages) await indexLessonPageQuietly(workspace.id, ctx.user.id, productId, r.id);
+    });
     const transcriptOf = new Map(
-      ((kb ?? []) as unknown as Array<{ program_item_id: string | null; status: string; chunk_count: number | null; indexed_at: string | null; updated_at: string | null }>).map((k) => [
+      kbRows.filter((k) => !isPage(k)).map((k) => [
         k.program_item_id,
         { status: k.status, chunks: k.chunk_count, at: k.indexed_at ?? k.updated_at },
       ]),
