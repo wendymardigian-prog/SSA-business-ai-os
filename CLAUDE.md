@@ -2657,7 +2657,7 @@ Los disparadores de Servicios y Ventas eligen productos y variantes, uno, varios
 ## Lo que no se puede romper
 
 - **Productos y variantes se deciden en UN lugar**: `productScopeMatches` / `readProductScope` (`lib/automations/product-scope.ts`). `product_ids` = productos enteros, `variant_ids` = variantes sueltas, y las dos vacías = todos, también los productos nuevos. Los filtros viejos de un solo valor se siguen leyendo. Lo elegido que ya no existe se avisa, nunca se vacía solo.
-- **El «Solo si…» (`onlyIf`) se evalúa antes de reclamar `trigger_fires`** (`automation-events.ts`): si no se cumple, no se gasta la marca. Usa el mismo resolutor que «Condiciones» (`resolveBranchFields`) y nunca lanza. La lista del panel (`trigger-only-if-types.ts`) y el registro (`supportsTriggerOnlyIf`) tienen que coincidir: lo controla un test.
+- **El «Solo si…» (`onlyIf`) se evalúa antes de reclamar `trigger_fires`** (`automation-events.ts`): si no se cumple, no se gasta la marca. Usa el mismo resolutor que «Condiciones» (`resolveBranchFields`) y nunca lanza. La lista del panel (`trigger-only-if-types.ts`) y el registro (`supportsTriggerOnlyIf`) tienen que coincidir: lo controla un test. El editor de pasos de la Agenda lo edita con el mismo componente (`OnlyIfEditor`), y el servidor lo valida con `parseTriggerOnlyIfInput` antes de guardar.
 - **Todo prefijo que ofrece un `variableSchema` tiene su resolutor** en `FLOW_VARIABLE_PREFIXES`. `consistency.test.ts` falla si falta uno.
 - **`registry/trigger-matrix.test.ts`**: todo disparador del catálogo tiene un evento de ejemplo o dice dónde se prueba.
 

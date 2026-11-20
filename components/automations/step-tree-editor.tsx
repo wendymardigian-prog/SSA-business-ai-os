@@ -29,6 +29,7 @@ import { PageHeader } from "@/components/page-header";
 import { StepList } from "@/components/automations/step-list";
 import { StepEditorProvider, type ConfirmRequest } from "@/components/automations/step-tree-context";
 import { useConditionCatalog } from "@/components/automations/use-condition-catalog";
+import { OnlyIfEditor, type OnlyIfValue } from "@/components/flow-builder/panels/trigger-only-if-section";
 import { TestConditionsButton, type TestResponsesSource } from "@/components/automations/test-conditions-sheet";
 import { VisibilityRuleBuilder } from "@/components/forms/builder/visibility-rule-builder"; // @plantilla-quitar(formularios)
 import type { ConditionSource } from "@/lib/forms/visibility-builder-adapter"; // @plantilla-quitar(formularios)
@@ -68,7 +69,12 @@ export interface StepTreeEditorProps {
   describeTrigger: (type: string, config: Record<string, unknown>) => string;
   /** El "Solo si…" del disparador (`answer_conditions`), en las pantallas que lo usan. */
   onlyIf?: { sources: ConditionSource[]; value: VisibilityConfig | undefined };
-  onSave: (input: { flowId: string; tree: Pick<StepTree, "steps">; answerConditions?: VisibilityConfig | null }) => Promise<EditorActionResult>;
+  /**
+   * El «Solo si…» genérico (`onlyIf`, el mismo del lienzo): condiciones sobre los datos del disparador y del contacto.
+   * Lo usa la Agenda; Formularios tiene el suyo (`onlyIf`, sobre las respuestas).
+   */
+  triggerOnlyIf?: { triggerData: Record<string, unknown>; value: OnlyIfValue | null };
+  onSave: (input: { flowId: string; tree: Pick<StepTree, "steps">; answerConditions?: VisibilityConfig | null; onlyIf?: OnlyIfValue | null }) => Promise<EditorActionResult>;
   onSendTest: (input: { flowId: string; subject: string; body: string }) => Promise<EditorActionResult>;
   /** Para "Probar condiciones" con una respuesta real. Sin esto se prueba cargando los datos a mano. */
   testResponses?: TestResponsesSource;
@@ -119,6 +125,7 @@ export function StepTreeEditor({
   variableExample,
   describeTrigger,
   onlyIf,
+  triggerOnlyIf,
   onSave,
   onSendTest,
   testResponses,
@@ -143,6 +150,9 @@ export function StepTreeEditor({
   const [onlyIfValue, setOnlyIfValue] = useState<VisibilityConfig | undefined>(onlyIf?.value);
   const [saved, setSaved] = useState(() => snapshot(initialTree, onlyIf?.value));
   const [savedOnlyIf, setSavedOnlyIf] = useState<VisibilityConfig | undefined>(onlyIf?.value);
+  const [genericOnlyIf, setGenericOnlyIf] = useState<OnlyIfValue | null>(triggerOnlyIf?.value ?? null);
+  const [savedGenericOnlyIf, setSavedGenericOnlyIf] = useState<OnlyIfValue | null>(triggerOnlyIf?.value ?? null);
+  const genericOnlyIfChanged = JSON.stringify(genericOnlyIf) !== JSON.stringify(savedGenericOnlyIf);
   const [notice, setNotice] = useState<{ kind: "ok" | "error" | "info"; text: string } | null>(null);
   const [confirm, setConfirm] = useState<{ request: ConfirmRequest; onConfirm: () => void } | null>(null);
   // En el servidor se da por vista (no hay navegador que leer): evita mostrarla un instante de mas.
@@ -154,7 +164,7 @@ export function StepTreeEditor({
   const { inputs: catalog, error: catalogError } = useConditionCatalog(flowId);
 
   const readOnly = tree === null;
-  const dirty = snapshot(tree, onlyIfValue) !== saved;
+  const dirty = snapshot(tree, onlyIfValue) !== saved || genericOnlyIfChanged;
   const hasBranch = useMemo(() => (tree ? allSteps(tree).some((s) => s.kind === "branch") : false), [tree]);
   const emailStep = tree ? firstEmailStep(tree) : undefined;
   const emailCount = tree ? allSteps(tree).filter((s) => s.kind === "action" && actionTypeOf(s) === "send_email").length : 0;
@@ -187,12 +197,25 @@ export function StepTreeEditor({
       }
     }
 
+    // El «Solo si…» genérico: una condición a medias no se cumple nunca (el servidor también la rechaza).
+    if (triggerOnlyIf && genericOnlyIf?.conditions.some((c) => !c.field || !c.operator)) {
+      setNotice({ kind: "error", text: "El «Solo si…» tiene una condición a medias: elegí el dato y cómo se compara, o sacala." });
+      return;
+    }
+
     const onlyIfChanged = JSON.stringify(onlyIfValue ?? null) !== JSON.stringify(savedOnlyIf ?? null);
+    const genericValue = genericOnlyIf;
     start(async () => {
-      const result = await onSave({ flowId, tree: { steps: tree.steps }, ...(onlyIf && onlyIfChanged ? { answerConditions: onlyIfValue ?? null } : {}) });
+      const result = await onSave({
+        flowId,
+        tree: { steps: tree.steps },
+        ...(onlyIf && onlyIfChanged ? { answerConditions: onlyIfValue ?? null } : {}),
+        ...(triggerOnlyIf && genericOnlyIfChanged ? { onlyIf: genericValue } : {}),
+      });
       if (result.ok) {
         setSaved(snapshot(tree, onlyIfValue));
         setSavedOnlyIf(onlyIfValue);
+        setSavedGenericOnlyIf(genericValue);
         setNotice({ kind: "ok", text: "Guardado" });
         router.refresh();
       } else {
@@ -277,6 +300,15 @@ export function StepTreeEditor({
           {/* @plantilla-hasta(formularios) */}
           {reach !== null && describeReach && <p className="mt-1 text-xs text-muted-foreground">{describeReach(reach)}</p>}
         </section>
+
+        {triggerOnlyIf && !readOnly && (
+          <section className="rounded-xl border border-border p-4">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Solo si…</h2>
+            <div className="mt-2">
+              <OnlyIfEditor flowId={flowId} triggerData={triggerOnlyIf.triggerData} value={genericOnlyIf} onChange={setGenericOnlyIf} />
+            </div>
+          </section>
+        )}
 
         {/* @plantilla-desde(formularios) */}
         {onlyIf && !readOnly && (

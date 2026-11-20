@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { StepTreeEditor } from "@/components/automations/step-tree-editor";
+import type { OnlyIfValue } from "@/components/flow-builder/panels/trigger-only-if-section";
 import type { StepTree } from "@/lib/automations/step-tree";
 import { describeTrigger, type BookingTriggerConfig } from "@/lib/scheduling/automation/triggers";
 import { BOOKING_VARIABLE_KEYS } from "@/lib/scheduling/automation/variables";
@@ -63,8 +64,26 @@ export function LinearFlowEditor({
       variableKeys={VARIABLE_KEYS}
       variableExample="booking.start_invitee"
       describeTrigger={(type, config) => describeTrigger(type, config as BookingTriggerConfig)}
+      triggerOnlyIf={{
+        triggerData: triggerDataFor(trigger),
+        value: readOnlyIf(trigger.config),
+      }}
       onSave={saveEventFlowTree}
       onSendTest={sendFlowTestEmail}
     />
   );
+}
+
+/** Lo que decide qué campos se pueden comparar en el «Solo si…»: el disparador, sin sus condiciones. */
+function triggerDataFor(trigger: { type: string; config: Record<string, unknown> }): Record<string, unknown> {
+  const rest = { ...trigger.config };
+  delete rest.onlyIf;
+  return { ...rest, triggerType: trigger.type };
+}
+
+/** El «Solo si…» guardado, o null. */
+function readOnlyIf(config: Record<string, unknown>): OnlyIfValue | null {
+  const raw = config.onlyIf as { logic?: unknown; conditions?: unknown } | undefined;
+  if (!raw || !Array.isArray(raw.conditions) || raw.conditions.length === 0) return null;
+  return { logic: raw.logic === "or" ? "or" : "and", conditions: raw.conditions as OnlyIfValue["conditions"] };
 }
