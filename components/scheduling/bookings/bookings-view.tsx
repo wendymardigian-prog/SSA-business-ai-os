@@ -60,7 +60,7 @@ import { DEFAULT_CONFIG_SECTION } from "@/lib/scheduling/config-sections";
 import { durationMinutesOf, googleLayerParam, type AgendaGoogleEvent } from "@/lib/google-calendar/agenda";
 import type { AgendaGoogleData } from "@/lib/google-calendar/agenda-load";
 import { refreshMyGoogleEvents } from "@/lib/actions/scheduling/google-events";
-import { CreateChoiceDialog, GoogleCreateDialog, GoogleEventPanel, GoogleMoveDialog } from "./google-event-panel";
+import { CreateChoiceDialog, GoogleCreateDialog, GoogleEventPanel, GoogleImportDialog, GoogleMoveDialog } from "./google-event-panel";
 import { groupOf } from "@/lib/scheduling/booking-status";
 
 /** La pastilla rápida de la lista: los cuatro de siempre, más "Todas" (ahora el default). */
@@ -296,6 +296,7 @@ export function BookingsScreen({
   const [googleMove, setGoogleMove] = useState<{ event: AgendaGoogleEvent; startUtc: string; durationMinutes: number } | null>(null);
   const [createChoice, setCreateChoice] = useState<{ date: string; startMinutes: number; durationMinutes: number } | null>(null);
   const [googleCreate, setGoogleCreate] = useState<{ date: string; startMinutes: number; durationMinutes: number } | null>(null);
+  const [googleImport, setGoogleImport] = useState<AgendaGoogleEvent | null>(null);
   const canCreateGoogle = googleOn && (google?.calendars ?? []).some((c) => c.writable);
   const overlapsBooking = (startUtc: string, minutes: number) => {
     const s0 = Date.parse(startUtc);
@@ -634,6 +635,29 @@ export function BookingsScreen({
           onClose={closeGoogle}
           onChanged={() => router.refresh()}
           onRefresh={() => refreshGoogle(true)}
+          importSlot={
+            canManage && !gcalEvent.allDay ? (
+              <button type="button" onClick={() => setGoogleImport(gcalEvent)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
+                Pasar al sistema
+              </button>
+            ) : undefined
+          }
+        />
+      )}
+
+      {googleImport && (
+        <GoogleImportDialog
+          event={googleImport}
+          areas={manualAreas}
+          ownEvents={events.filter((e) => e.hostUserId === viewerId && e.status !== "inactive").map((e) => ({ id: e.id, title: e.title }))}
+          searchContacts={async (term) => (await searchContactsForBooking(term)).map((c) => ({ id: c.id, name: c.name, detail: c.detail }))}
+          onClose={() => setGoogleImport(null)}
+          onImported={(bookingId) => {
+            setGoogleImport(null);
+            closeGoogle();
+            router.refresh();
+            openDetail(bookingId);
+          }}
         />
       )}
 

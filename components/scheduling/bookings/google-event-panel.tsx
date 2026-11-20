@@ -13,10 +13,11 @@ import {
   canEditGoogleEvent,
   durationMinutesOf,
   hasOtherGuests,
+  suggestedContact,
   type AgendaGoogleCalendar,
   type AgendaGoogleEvent,
 } from "@/lib/google-calendar/agenda";
-import { createGoogleEvent, deleteGoogleEvent, moveGoogleEvent, updateGoogleEvent } from "@/lib/actions/scheduling/google-events";
+import { createGoogleEvent, deleteGoogleEvent, importGoogleEvent, moveGoogleEvent, updateGoogleEvent } from "@/lib/actions/scheduling/google-events";
 import { formatSlotLabel } from "@/lib/scheduling/booker/format";
 import { dateInTz, minutesOfDayInTz, wallClockToUtc } from "@/lib/scheduling/time/tz";
 import { minutesToTime } from "@/lib/calendar/time";
@@ -615,6 +616,170 @@ export function GoogleCreateDialog({
           </button>
           <button type="submit" disabled={pending || !calendarId} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
             {pending ? "Creando…" : "Crear en Google"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ── Pasar al sistema ─────────────────────────────────────────────────────────────────────────────────────────────
+
+type ContactHit = { id: string; name: string; detail: string };
+
+export function GoogleImportDialog({
+  event,
+  areas,
+  ownEvents,
+  searchContacts,
+  onClose,
+  onImported,
+}: {
+  event: AgendaGoogleEvent;
+  areas: Array<{ id: string; name: string; isDefault: boolean }>;
+  /** Los eventos de quien importa (para elegir uno, opcional). */
+  ownEvents: Array<{ id: string; title: string }>;
+  searchContacts: (term: string) => Promise<ContactHit[]>;
+  onClose: () => void;
+  onImported: (bookingId: string) => void;
+}) {
+  const suggested = suggestedContact(event);
+  const [mode, setMode] = useState<"new" | "existing">(suggested ? "new" : "existing");
+  const [name, setName] = useState(suggested?.name ?? "");
+  const [email, setEmail] = useState(suggested?.email ?? "");
+  const [term, setTerm] = useState(suggested?.email ?? "");
+  const [hits, setHits] = useState<ContactHit[]>([]);
+  const [picked, setPicked] = useState<ContactHit | null>(null);
+  const [areaId, setAreaId] = useState((areas.find((a) => a.isDefault) ?? areas[0])?.id ?? "");
+  const [eventTypeId, setEventTypeId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const [searching, startSearch] = useTransition();
+
+  useEffect(() => {
+    if (mode !== "existing" || term.trim().length < 2) return;
+    const t = setTimeout(() => {
+      startSearch(async () => {
+        const r = await searchContacts(term.trim()).catch(() => []);
+        setHits(r.slice(0, 8));
+      });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [mode, term, searchContacts]);
+
+  return (
+    <Modal label="Pasar el evento al sistema" onClose={onClose}>
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          start(async () => {
+            const r = await importGoogleEvent({
+              id: event.id,
+              ...(mode === "existing" ? { contactId: picked?.id ?? null } : { name, email }),
+              categoryId: eventTypeId ? null : areaId || null,
+              eventTypeId: eventTypeId || null,
+            });
+            if (!r.ok) return setError(r.error);
+            onImported(r.bookingId);
+          });
+        }}
+      >
+        <p className="font-medium">Pasar «{event.summary?.trim() || "(Sin título)"}» al sistema</p>
+        <p className="text-xs text-muted-foreground">
+          Queda como una reunión, con su contacto. No se crea otro evento en Google y no se manda la confirmación; los recordatorios y lo de después sí.
+        </p>
+        {!event.organizerSelf && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">Lo organiza otra persona: si después la movés desde acá, en Google no se mueve.</p>
+        )}
+
+        <fieldset className="space-y-2">
+          <legend className="text-xs text-muted-foreground">Contacto</legend>
+          <div className="flex gap-3 text-sm">
+            <label className="flex items-center gap-1.5">
+              <input type="radio" checked={mode === "new"} onChange={() => setMode("new")} /> Por email
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input type="radio" checked={mode === "existing"} onChange={() => setMode("existing")} /> Buscar uno que ya existe
+            </label>
+          </div>
+          {mode === "new" ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input aria-label="Nombre" placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+              <input aria-label="Email" type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+              <p className="text-[11px] text-muted-foreground sm:col-span-2">Si ya hay un contacto con ese email, se usa ese.</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <input
+                aria-label="Buscar contacto"
+                placeholder="Nombre, email o teléfono"
+                value={term}
+                onChange={(e) => {
+                  setTerm(e.target.value);
+                  setPicked(null);
+                }}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              />
+              {picked ? (
+                <p className="text-sm">
+                  Elegido: <span className="font-medium">{picked.name}</span> <span className="text-xs text-muted-foreground">{picked.detail}</span>
+                </p>
+              ) : (
+                <ul className="max-h-40 overflow-y-auto rounded-lg border border-border">
+                  {searching && <li className="p-2 text-xs text-muted-foreground">Buscando…</li>}
+                  {!searching && hits.length === 0 && term.trim().length >= 2 && <li className="p-2 text-xs text-muted-foreground">Sin resultados</li>}
+                  {hits.map((h) => (
+                    <li key={h.id}>
+                      <button type="button" onClick={() => setPicked(h)} className="w-full p-2 text-left text-sm hover:bg-muted">
+                        {h.name} <span className="text-xs text-muted-foreground">{h.detail}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </fieldset>
+
+        {ownEvents.length > 0 && (
+          <label className="block text-sm">
+            <span className="text-xs text-muted-foreground">Evento (opcional)</span>
+            <select value={eventTypeId} onChange={(e) => setEventTypeId(e.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+              <option value="">Sin evento</option>
+              {ownEvents.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {!eventTypeId && areas.length > 0 && (
+          <label className="block text-sm">
+            <span className="text-xs text-muted-foreground">Área</span>
+            <select value={areaId} onChange={(e) => setAreaId(e.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+              {areas.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {error && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            {error}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+            Volver
+          </button>
+          <button type="submit" disabled={pending || (mode === "existing" && !picked)} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+            {pending ? "Pasando…" : "Pasar al sistema"}
           </button>
         </div>
       </form>

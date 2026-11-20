@@ -20,6 +20,7 @@ import { GoogleCalendarError } from "@/lib/google-calendar/errors";
 import { toMirrorRow } from "@/lib/google-calendar/mirror";
 import { canEditGoogleEvent, shiftSeries } from "@/lib/google-calendar/agenda";
 import { syncCalendarInbound } from "@/lib/jobs/handlers/google-calendar-inbound";
+import { createManualBooking } from "@/lib/scheduling/booking/manual";
 
 const AGENDA_PATH = "/dashboard/agenda";
 
@@ -355,4 +356,134 @@ export async function createGoogleEvent(input: {
   } catch (err) {
     return errorMessage(err);
   }
+}
+
+// ── Pasar al sistema ─────────────────────────────────────────────────────────────────────────────────────────────
+
+const IMPORT_CLAIM_MS = 60_000;
+
+/**
+ * Convierte un evento de Google de quien mira en una reunión del sistema. No crea otro evento en Google: la reunión
+ * queda vinculada al que ya existe (`metadata.google_import`, lo respeta `booking_google_sync`). No dispara «Se agendó
+ * una reunión» (la confirmación); los recordatorios y lo de después sí. Un doble clic no crea dos reuniones (reclamo).
+ */
+export async function importGoogleEvent(input: {
+  id: string;
+  /** Un contacto que ya existe, o un nombre y un email (se busca o se crea por el email). */
+  contactId?: string | null;
+  name?: string | null;
+  email?: string | null;
+  /** Área de la agenda (sin evento). */
+  categoryId?: string | null;
+  /** Un tipo de evento propio (opcional). */
+  eventTypeId?: string | null;
+}): Promise<{ ok: true; bookingId: string } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("bookings.manage");
+  if (!ctx || !ctx.can("scheduling.use")) return { ok: false, error: "No tenés permiso para agendar." };
+  const contactId = input.contactId?.trim() || null;
+  const email = input.email?.trim().toLowerCase() || null;
+  const name = input.name?.trim() || null;
+  if (!contactId && (!email || !EMAIL_RE.test(email))) return { ok: false, error: "Elegí un contacto o escribí un email válido." };
+
+  const service = await createServiceClient();
+  const { data: ev } = await service
+    .from("google_calendar_events")
+    .select("id, workspace_id, user_id, calendar_id, connection_id, external_event_id, ical_uid, summary, location, meet_url, organizer_self, start_at, end_at, all_day, time_zone, status, booking_id")
+    .eq("id", input.id)
+    .eq("workspace_id", ctx.workspace.id)
+    .maybeSingle();
+  if (!ev || ev.user_id !== ctx.user.id) return { ok: false, error: MSG.notYours };
+  if (ev.booking_id) return { ok: false, error: "Ese evento ya está en el sistema." };
+  if (ev.status === "cancelled") return { ok: false, error: "Ese evento está cancelado en Google." };
+  if (ev.all_day) return { ok: false, error: "Un evento de todo el día no se puede pasar como reunión." };
+  const minutes = Math.round((Date.parse(ev.end_at) - Date.parse(ev.start_at)) / 60_000);
+  if (!(minutes >= 5 && minutes <= 24 * 60)) return { ok: false, error: "Ese evento dura demasiado para ser una reunión." };
+
+  const { data: taken } = await service
+    .from("bookings")
+    .select("id")
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("google_calendar_id", ev.calendar_id)
+    .eq("google_event_id", ev.external_event_id)
+    .neq("status_group", "cancelled")
+    .limit(1);
+  if ((taken ?? []).length > 0) return { ok: false, error: "Ese evento ya es de una reunión del sistema." };
+
+  // Un tipo de evento elegido tiene que ser de quien importa: el evento de Google es de su calendario.
+  if (input.eventTypeId) {
+    const { data: et } = await service
+      .from("event_types")
+      .select("owner_user_id")
+      .eq("id", input.eventTypeId)
+      .eq("workspace_id", ctx.workspace.id)
+      .maybeSingle();
+    if (!et || et.owner_user_id !== ctx.user.id) return { ok: false, error: "Elegí uno de tus eventos." };
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data: claimed } = await service
+    .from("google_calendar_events")
+    .update({ importing_until: new Date(Date.now() + IMPORT_CLAIM_MS).toISOString() })
+    .eq("id", ev.id)
+    .is("booking_id", null)
+    .or(`importing_until.is.null,importing_until.lt.${nowIso}`)
+    .select("id")
+    .maybeSingle();
+  if (!claimed) return { ok: false, error: "Ese evento ya se está pasando al sistema." };
+  const release = () => service.from("google_calendar_events").update({ importing_until: null }).eq("id", ev.id);
+
+  const workspaceTz = (ctx.workspace as { timezone?: string }).timezone || "UTC";
+  const tz = ev.time_zone || workspaceTz;
+  const googleImport = {
+    calendar_id: ev.calendar_id,
+    connection_id: ev.connection_id,
+    event_id: ev.external_event_id,
+    ical_uid: ev.ical_uid,
+    organizer_self: ev.organizer_self,
+  };
+  const result = await createManualBooking(service, {
+    workspaceId: ctx.workspace.id,
+    workspaceTimezone: workspaceTz,
+    actorUserId: ctx.user.id,
+    plan: {
+      eventTypeId: input.eventTypeId ?? null,
+      title: (ev.summary ?? "").trim().slice(0, 200),
+      hostUserId: ctx.user.id,
+      categoryId: input.categoryId ?? null,
+      startUtc: new Date(ev.start_at).toISOString(),
+      endUtc: new Date(ev.end_at).toISOString(),
+      durationMinutes: minutes,
+      timezone: tz,
+      inviteeTimezone: tz,
+      inviteeTimezoneChosen: false,
+      contactId,
+      name: contactId ? null : (name ?? email),
+      email: contactId ? null : email,
+      phone: null,
+      notes: null,
+      location: { kind: "text", text: ev.meet_url ?? ev.location ?? null },
+    },
+    extraMetadata: { google_import: googleImport },
+  });
+  if (!result.ok) {
+    await release();
+    return { ok: false, error: result.error };
+  }
+
+  // El vínculo con el evento de Google, ya (el job de sincronización también lo haría).
+  await service
+    .from("bookings")
+    .update({
+      google_connection_id: ev.connection_id,
+      google_calendar_id: ev.calendar_id,
+      google_event_id: ev.external_event_id,
+      ical_uid: ev.ical_uid,
+      google_sync_status: "synced",
+      google_sync_error: null,
+    })
+    .eq("id", result.bookingId);
+  await service.from("google_calendar_events").update({ booking_id: result.bookingId, importing_until: null }).eq("id", ev.id);
+
+  revalidatePath(AGENDA_PATH);
+  return { ok: true, bookingId: result.bookingId };
 }

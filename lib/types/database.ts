@@ -6986,6 +6986,7 @@ export interface Database {
           transparency: "opaque" | "transparent";
           google_event_type: string;
           booking_id: string | null;
+          importing_until: string | null;
           google_updated_at: string | null;
           synced_at: string;
           created_at: string;
@@ -7020,6 +7021,7 @@ export interface Database {
           transparency?: "opaque" | "transparent";
           google_event_type?: string;
           booking_id?: string | null;
+          importing_until?: string | null;
           google_updated_at?: string | null;
           synced_at?: string;
           created_at?: string;

@@ -132,6 +132,8 @@ export async function createManualBooking(
     hostName?: string | null;
     /** El nombre de quien atiende, para los avisos (con un evento, recien se sabe quien es aca). */
     hostNameOf?: (userId: string) => string | null;
+    /** 00510: lo que se suma a `bookings.metadata` (una reunión pasada desde Google lleva `google_import`). */
+    extraMetadata?: Record<string, unknown>;
   },
   now: Date = new Date(),
 ): Promise<ManualBookingResult> {
@@ -241,7 +243,7 @@ export async function createManualBooking(
     p_created_by: input.actorUserId,
     p_contact_id: plan.contactId,
     // `without_event`: lo que mira el filtro de los flujos de "Reuniones sin evento".
-    p_metadata: (event.is_internal ? { quick: true, without_event: true } : { quick: true }) as unknown as Json,
+    p_metadata: { ...(event.is_internal ? { quick: true, without_event: true } : { quick: true }), ...(input.extraMetadata ?? {}) } as unknown as Json,
   });
 
   if (error) {
@@ -294,7 +296,7 @@ export async function createManualBooking(
         end_at: plan.endUtc,
         created_at: now.toISOString(),
         reschedule_count: 0,
-        metadata: event.is_internal ? { without_event: true } : {},
+        metadata: { ...(event.is_internal ? { without_event: true } : {}), ...(input.extraMetadata ?? {}) },
       },
       now,
     );
