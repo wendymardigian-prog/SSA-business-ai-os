@@ -8,6 +8,7 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { loadPortalAccount, loadPortalHost } from "@/lib/portal-admin/load";
 import { createServiceClient } from "@/lib/supabase/server";
 import { svcRpc } from "@/lib/services/db";
+import { contactChatsSummary } from "@/lib/scheduling/booking-detail-view";
 import { PortalActivityChart } from "./service-points-block";
 import type { PointsDaily } from "@/lib/actions/points";
 import type { PermissionContext } from "@/lib/auth/guards";
@@ -30,13 +31,27 @@ export async function ClientRecord({ ctx, contactId }: { ctx: Ctx; contactId: st
   const wsTz = (workspace as { timezone?: string | null }).timezone;
   const service = await createServiceClient();
   const productIds = [...new Set(services.map((s) => s.product_id))];
-  const [contact, notes, team, timeZone, { data: products }, summary] = await Promise.all([
+  const [contact, notes, team, timeZone, { data: products }, summary, chats] = await Promise.all([
     supabase.from("contacts").select("id, display_name, email, phone, whatsapp_phone, avatar_url, last_interaction_at, created_at").eq("id", contactId).eq("workspace_id", workspace.id).maybeSingle(),
     supabase.from("contact_notes").select("id, content, created_at, created_by, service_id").eq("contact_id", contactId).is("deleted_at", null).order("created_at", { ascending: false }).limit(100),
     getWorkspaceMembers(workspace.id),
     resolveViewerTimezone(wsTz ?? undefined),
     service.from("products").select("id, portal_enabled" as never).in("id", productIds).eq("workspace_id", workspace.id),
     svcRpc<Array<{ contact_id: string; account_status: string | null; last_login_at: string | null; invite_sent_at: string | null; pending_reviews: number; access_expiring_on: string | null }>>(supabase, "contacts_portal_summary", { p_contact_ids: [contactId] }),
+    // El chat de WhatsApp del contacto (el más reciente) y lo que tiene sin leer, para el botón del encabezado. Con la
+    // sesión: la RLS decide qué chats ve quien mira. Si falla, no hay chat y el botón abre WhatsApp con el número.
+    supabase
+      .from("conversations")
+      .select("id, platform, unread_count, last_message_at")
+      .eq("workspace_id", workspace.id)
+      .eq("contact_id", contactId)
+      .eq("platform", "whatsapp")
+      .is("deleted_at", null)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .then(
+        (r) => contactChatsSummary(r.error ? [] : (r.data ?? [])).whatsapp,
+        () => contactChatsSummary([]).whatsapp,
+      ),
   ]);
   const c = contact.data as { display_name: string | null; email: string | null; phone: string | null; whatsapp_phone: string | null; avatar_url: string | null; last_interaction_at: string | null; created_at: string } | null;
   const names = new Map(team.map((m) => [m.userId, m.name]));
@@ -86,6 +101,8 @@ export async function ClientRecord({ ctx, contactId }: { ctx: Ctx; contactId: st
     email: c?.email ?? "",
     phone: c?.phone ?? "",
     whatsapp: c?.whatsapp_phone || c?.phone || null,
+    whatsappConversationId: chats.conversationId,
+    whatsappUnread: chats.unread,
     avatarUrl: c?.avatar_url ?? null,
     leadSince: c?.created_at ?? null,
     clientSince: services.map((s) => s.starts_on ?? s.created_at.slice(0, 10)).sort()[0] ?? null,

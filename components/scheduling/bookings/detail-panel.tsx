@@ -21,6 +21,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Loader2, Mail, MessageCircle, Video, X } from "lucide-react";
 import { Tip } from "@/components/ui/tooltip";
+import { UnreadBadge, unreadText } from "@/components/ui/unread-badge";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { useAutosave, type AutosaveStatus } from "./use-autosave";
 import { PortalMenu, PortalMenuItem, PortalMenuLabel } from "@/components/ui/portal-menu";
@@ -138,18 +139,6 @@ export function BookingDetailSkeleton({ missing, onClose }: { missing: boolean; 
 const ICON_BUTTON = "inline-grid h-6 w-6 shrink-0 place-items-center rounded-md border border-border text-primary-ink hover:bg-accent";
 /** Un valor que se toca para elegir otro (categoria, anfitrion): se lee como texto, con una flechita. */
 const VALUE_TRIGGER = "-mx-1.5 max-w-full gap-1 px-1.5 py-0.5 text-left hover:bg-muted";
-
-/** El número de no leídos encima de un botón de icono (WhatsApp, email). */
-function UnreadBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
-  return (
-    <span className="pointer-events-none absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-white" aria-hidden>
-      {count > 9 ? "9+" : count}
-    </span>
-  );
-}
-
-const unreadText = (count: number) => (count === 1 ? "1 mensaje sin leer" : `${count} mensajes sin leer`);
 
 /**
  * El teléfono del invitado sin chat de WhatsApp en el sistema: lo abre (Evolution comprueba que el número tiene

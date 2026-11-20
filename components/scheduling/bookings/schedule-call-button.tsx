@@ -16,11 +16,13 @@ import { useRouter } from "next/navigation";
 import { CalendarPlus, Check, Loader2 } from "lucide-react";
 import { loadManualBookingForContact } from "@/lib/actions/scheduling/manual-booking-options";
 import { searchContactsForBooking } from "@/lib/actions/scheduling/bookings";
+import { Tip } from "@/components/ui/tooltip";
 import { BookManualDialog } from "./book-manual-dialog";
 
 type Loaded = Extract<Awaited<ReturnType<typeof loadManualBookingForContact>>, { ok: true }>["data"];
 
-export function ScheduleCallButton({ contactId, className }: { contactId: string; className?: string }) {
+/** `iconOnly`: un botón cuadrado solo con el icono (encabezados de las fichas, donde el ancho importa). */
+export function ScheduleCallButton({ contactId, className, iconOnly = false }: { contactId: string; className?: string; iconOnly?: boolean }) {
   const router = useRouter();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [open, setOpen] = useState(false);
@@ -49,20 +51,36 @@ export function ScheduleCallButton({ contactId, className }: { contactId: string
     });
   }
 
+  const icon = pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CalendarPlus className="h-4 w-4" aria-hidden />;
+
   return (
     <>
-      <button
-        type="button"
-        onClick={openDialog}
-        disabled={pending}
-        className={
-          className ??
-          "inline-flex h-10 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-60 md:h-8"
-        }
-      >
-        {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CalendarPlus className="h-4 w-4" aria-hidden />}
-        Agendar llamada
-      </button>
+      {iconOnly ? (
+        <Tip content="Agendar una llamada con este cliente">
+          <button
+            type="button"
+            onClick={openDialog}
+            disabled={pending}
+            aria-label="Agendar llamada"
+            className={className ?? "inline-grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-border hover:bg-accent disabled:opacity-60 md:h-8 md:w-8"}
+          >
+            {icon}
+          </button>
+        </Tip>
+      ) : (
+        <button
+          type="button"
+          onClick={openDialog}
+          disabled={pending}
+          className={
+            className ??
+            "inline-flex h-10 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-60 md:h-8"
+          }
+        >
+          {icon}
+          Agendar llamada
+        </button>
+      )}
       {error && (
         <span role="alert" className="basis-full text-xs text-red-600 dark:text-red-400">
           {error}

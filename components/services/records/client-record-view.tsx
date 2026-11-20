@@ -15,6 +15,8 @@ import { InlineField } from "@/components/contacts/inline-field";
 import { LightDot } from "@/components/services/clients/services-list-view";
 import { NewServiceDialog, type NewServiceOptions } from "@/components/services/clients/new-service-dialog";
 import { ScheduleCallButton } from "@/components/scheduling/bookings/schedule-call-button";
+import { Tip } from "@/components/ui/tooltip";
+import { UnreadBadge, unreadText } from "@/components/ui/unread-badge";
 import { cn } from "@/lib/utils";
 import { rememberRecordOpener } from "./record-modal";
 
@@ -40,6 +42,10 @@ export interface ClientRecordData {
   email: string;
   phone: string;
   whatsapp: string | null;
+  /** El chat de WhatsApp del contacto en la bandeja (el más reciente), si quien mira lo puede ver. */
+  whatsappConversationId: string | null;
+  /** Mensajes sin leer en sus chats de WhatsApp que quien mira puede ver. */
+  whatsappUnread: number;
   avatarUrl: string | null;
   leadSince: string | null;
   clientSince: string | null;
@@ -81,15 +87,11 @@ export function ClientRecordHeader({ data, canEdit, canCreate, canBook = false, 
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          {wa && (
-            <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center rounded-lg border border-border px-3 text-sm hover:bg-accent md:h-8">
-              WhatsApp
-            </a>
-          )}
+          <WhatsappButton conversationId={data.whatsappConversationId} unread={data.whatsappUnread} number={wa} />
+          {canBook && <ScheduleCallButton contactId={data.contactId} iconOnly />}
           <Link href={`/dashboard/contacts/${data.contactId}`} className="inline-flex h-10 items-center rounded-lg border border-border px-3 text-sm hover:bg-accent md:h-8">
             Ficha del contacto
           </Link>
-          {canBook && <ScheduleCallButton contactId={data.contactId} />}
           {canCreate && (
             <button type="button" onClick={() => setCreating(true)} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 md:h-8">
               <Plus className="h-4 w-4" aria-hidden /> Servicio
@@ -107,6 +109,33 @@ export function ClientRecordHeader({ data, canEdit, canCreate, canBook = false, 
       </dl>
       {creating && <NewServiceDialog options={newServiceOptions} preset={{ contactId: data.contactId, contactName: data.name }} onClose={() => setCreating(false)} />}
     </div>
+  );
+}
+
+const ICON_BUTTON = "relative inline-grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-border hover:bg-accent md:h-8 md:w-8";
+
+/**
+ * WhatsApp en el encabezado: con un chat en la bandeja, lleva a ese chat y muestra lo que hay sin leer; sin chat, abre
+ * WhatsApp con el número en otra pestaña. Sin chat ni número, no aparece.
+ */
+function WhatsappButton({ conversationId, unread, number }: { conversationId: string | null; unread: number; number: string }) {
+  if (conversationId) {
+    return (
+      <Tip content={unread > 0 ? `Abre en la bandeja el chat de WhatsApp (${unreadText(unread)}).` : "Abre en la bandeja el chat de WhatsApp."}>
+        <Link href={`/dashboard/inbox?c=${conversationId}`} aria-label={unread > 0 ? `Abrir el chat de WhatsApp, ${unreadText(unread)}` : "Abrir el chat de WhatsApp"} className={ICON_BUTTON}>
+          <MessageCircle className="h-4 w-4" aria-hidden />
+          <UnreadBadge count={unread} />
+        </Link>
+      </Tip>
+    );
+  }
+  if (!number) return null;
+  return (
+    <Tip content="Abre WhatsApp con este número en otra pestaña.">
+      <a href={`https://wa.me/${number}`} target="_blank" rel="noopener noreferrer" aria-label="Abrir WhatsApp con este número" className={ICON_BUTTON}>
+        <MessageCircle className="h-4 w-4" aria-hidden />
+      </a>
+    </Tip>
   );
 }
 
