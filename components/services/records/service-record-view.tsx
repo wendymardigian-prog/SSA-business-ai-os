@@ -9,6 +9,7 @@ import { completeServiceItem, confirmService, resumeService, setServiceDates, se
 import { serviceActions, type ServiceActionKey } from "@/lib/services/screens/service";
 import { LIGHT_LABELS, STATUS_LABELS, type Light, type ServiceStatus } from "@/lib/services/screens/list";
 import { withRecord, type ServiceRecordTab } from "@/lib/services/screens/record-url";
+import { itemToggleState } from "@/lib/services/screens/item-toggle";
 import { DeleteDialog } from "@/components/trash/delete-dialog";
 import type { AssistantCreditsView, AttendanceRateView, ClassroomProgressView, LessonState, NextPaymentView } from "@/lib/services/screens/record-figures";
 import type { LightSignal, RecordAlert, RecordTone } from "@/lib/services/screens/service-record";
@@ -815,7 +816,8 @@ function JourneyColumn({
                     {ph.items.map((it) => {
                       const isDone = it.status === "completed";
                       const late = !isDone && it.dueOn !== null && it.dueOn < today;
-                      const canToggle = can("services.items") && ph.status !== "completed";
+                      // 00503: en una fase cerrada se puede tildar lo pendiente, pero no destildar.
+                      const toggle = itemToggleState({ canItems: can("services.items"), phaseStatus: ph.status, isDone, lock: it.lock });
                       return (
                         <li key={it.id} className="flex items-center gap-2 text-sm">
                           <span className="min-w-0 flex-1">
@@ -847,8 +849,8 @@ function JourneyColumn({
                           </span>
                           <button
                             type="button"
-                            disabled={!canToggle || pending || (!isDone && it.lock !== null)}
-                            title={!isDone && it.lock ? it.lock.message : undefined}
+                            disabled={toggle.disabled || pending}
+                            title={toggle.reason ?? undefined}
                             onClick={() => {
                               // A4: sin la evidencia que pide, el tilde abre el paso para adjuntarla.
                               if (!isDone && it.evidenceMissing) return setPanel(it.id);

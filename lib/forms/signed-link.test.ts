@@ -72,6 +72,21 @@ describe("createToken / readToken", () => {
     expect(readToken(badSale, SECRET, { formId: FORM, now: NOW })).toEqual({ ok: false, reason: "ids" });
   });
 
+  it("el paso del camino (i) viaja firmado y es opcional; uno que no es UUID se rechaza (00503)", () => {
+    const ITEM = "55555555-5555-4555-8555-555555555555";
+    const read = readToken(make({ serviceId: SERVICE, itemId: ITEM }), SECRET, { formId: FORM, now: NOW });
+    expect(read.ok && read.payload).toMatchObject({ s: SERVICE, i: ITEM });
+    expect(make({ itemId: ITEM })).not.toContain(ITEM);
+    const old = readToken(make({ serviceId: SERVICE }), SECRET, { formId: FORM, now: NOW });
+    expect(old.ok && old.payload.i).toBeUndefined();
+    const bad = createToken({ formId: FORM, contactId: CONTACT, itemId: "x", now: NOW }, SECRET);
+    expect(readToken(bad, SECRET, { formId: FORM, now: NOW })).toEqual({ ok: false, reason: "ids" });
+  });
+
+  it("sin paso, el token es idéntico al de antes", () => {
+    expect(make({ serviceId: SERVICE, itemId: null })).toBe(make({ serviceId: SERVICE }));
+  });
+
   it("una versión desconocida del token se rechaza", () => {
     const body = Buffer.from(JSON.stringify({ v: 2, f: FORM, c: CONTACT, e: 9_999_999_999 })).toString("base64url");
     const sig = Buffer.from("x").toString("base64url");

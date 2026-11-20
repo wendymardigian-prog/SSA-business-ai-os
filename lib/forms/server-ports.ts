@@ -206,7 +206,7 @@ export function createSubmitPorts(service: Db): SubmitPorts {
 
     async verifyLink(form, token) {
       const result = await verifyFormLink(service, token, { workspaceId: form.workspaceId, formId: form.id });
-      return result.ok ? { contactId: result.contactId, serviceId: result.serviceId, saleId: result.saleId } : null;
+      return result.ok ? { contactId: result.contactId, serviceId: result.serviceId, saleId: result.saleId, itemId: result.itemId } : null;
     },
 
     async recordTouch({ form, submissionId, contactId, attribution }) {

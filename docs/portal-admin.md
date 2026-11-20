@@ -13,6 +13,11 @@ estudiante) es la Parte 2 (Corrida B): acá están las reglas, las tablas y las 
   (`portal_access_effective`), qué clase tiene abierta (`program_item_unlocked`), si puede publicar
   (`community_can_post`), cuántos créditos le quedan (`assistant_credits`), qué materiales puede usar su tutor
   (`tutor_knowledge_ids`), si le faltan los términos (`portal_terms_pending`).
+- **El link del formulario de un paso** (00503): el portal pide `POST /api/portal/form-link` con `{ session, item_id }`
+  (firmado con `PORTAL_SHARED_SECRET`, como `/api/portal/file`). SSA responde `{ ok, url }` con el link firmado del
+  formulario (lleva el paso: al enviarlo se tilda ese paso) o `{ ok: false, code, message }` (PO403 vista previa,
+  PO404 sin formulario o no publicado, PO409 completo o bloqueado). El link nunca se loguea. Del lado del portal, la
+  ruta `/ir/paso/<id>` lo pide y redirige.
 
 ## Secciones y accesos
 
