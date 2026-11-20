@@ -1,7 +1,7 @@
 "use client";
 
 import { inboundToLabel } from "@/lib/email/inbound-address";
-import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, X, FileText, Copy, Ban, Trash2 } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
@@ -87,6 +87,7 @@ import { messageLinkCardUrl } from "@/lib/inbox/message-link-card";
 import { ComposerLinkPreview } from "./composer-link-preview";
 import { MessageLinkCard } from "./link-preview-card";
 import { useStickToBottom } from "./use-stick-to-bottom";
+import { fitTextareaToRows } from "@/components/ui/auto-textarea";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"] & {
   /** El chip "Vino de…" que arma el servidor para este mensaje (Extra I, F44). Casi todos no lo traen. */
@@ -95,6 +96,9 @@ type Message = Database["public"]["Tables"]["messages"]["Row"] & {
 type Conversation = ConversationRow;
 
 /** El estado de la conversacion como se lee en la bandeja (las pestanas dicen Abiertas / Cerradas / Pospuestas). */
+/** Hasta cuantos renglones crece la caja de escribir; despues hace scroll adentro. */
+const COMPOSER_MAX_ROWS = 3;
+
 const STATUS_LABELS: Record<ConversationStatus, string> = {
   open: "Abierta",
   snoozed: "Pospuesta",
@@ -678,8 +682,7 @@ export function MessageThread({
       if (!el) return;
       el.focus();
       // El texto recuperado suele tener varias lineas: se vuelve a medir el campo.
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
+      fitTextareaToRows(el, COMPOSER_MAX_ROWS);
     });
   }, []);
 
@@ -836,12 +839,17 @@ export function MessageThread({
     insertedAssetIdRef.current = null;
   }, [conversation?.id]);
 
+  // La caja crece de a un renglon hasta COMPOSER_MAX_ROWS; pasado eso hace scroll adentro.
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
+    fitTextareaToRows(el, COMPOSER_MAX_ROWS);
   }, []);
+
+  // Cualquier cambio del texto (tambien vaciarlo al mandar) vuelve a medir: asi vuelve a un renglon.
+  useLayoutEffect(() => {
+    autoResize();
+  }, [input, autoResize]);
 
   useEffect(() => {
     setMessages(initialMessages);
@@ -1775,7 +1783,6 @@ export function MessageThread({
                     placeholder="Escribí un mensaje o / para un recurso guardado"
                     rows={1}
                     className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    style={{ maxHeight: 150 }}
                   />
                 </div>
               )}

@@ -10,6 +10,7 @@ import { headBase64Of } from "@/lib/content/media";
 import { requestGroupUpload, sendGroupMessage, sendGroupPoll } from "@/lib/actions/whatsapp-group-inbox";
 import { POLL_MAX_OPTIONS } from "@/lib/whatsapp-groups/poll";
 import { ManualQuotaNotice } from "@/components/inbox/manual-quota-notice";
+import { AutoTextarea } from "@/components/ui/auto-textarea";
 
 /**
  * Escribir en un grupo: texto, emoji, una foto / video / archivo (con el texto como pie) o una encuesta. Enter manda;
@@ -100,10 +101,12 @@ export function GroupComposer({
           <BarChart3 className="h-4 w-4" aria-hidden />
         </button>
         <EmojiButton onPick={insertEmoji} focusRef={textareaRef} className="p-2" />
-        <textarea
+        {/* Crece de a un renglón hasta 3; pasado eso hace scroll adentro. */}
+        <AutoTextarea
           ref={textareaRef}
           value={text}
-          rows={1}
+          minRows={1}
+          maxRows={3}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -113,7 +116,7 @@ export function GroupComposer({
           }}
           placeholder="Escribí al grupo…"
           aria-label="Mensaje al grupo"
-          className="max-h-40 min-h-[38px] flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm"
+          className="min-h-[38px] flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm"
         />
         <button
           type="button"
