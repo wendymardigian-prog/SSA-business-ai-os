@@ -3,7 +3,9 @@
 import { useState, useEffect, useTransition, type ReactNode } from "react";
 import { EmailStatusBadge } from "@/components/contacts/email-status-badge";
 import Link from "next/link";
-import { X, Brain, Loader2, ShieldOff, ExternalLink } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { X, Brain, Loader2, ShieldOff, ExternalLink, Merge } from "lucide-react";
+import { MergeContactDialog } from "@/components/contacts/merge-contact-dialog";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { ContactTasks } from "@/components/tasks/contact-tasks"; // @plantilla-quitar(tareas)
 import { ContactTasksLoader } from "@/components/tasks/contact-tasks-loader"; // @plantilla-quitar(tareas)
@@ -100,6 +102,7 @@ export function ContactPanel({
   isAdmin = false,
   canEdit = false,
   canAssign = false,
+  canMerge = false,
   accounts,
 }: {
   contactId: string | null;
@@ -113,6 +116,8 @@ export function ContactPanel({
   canEdit?: boolean;
   /** `contacts.assign`: el selector de setter y vendedor de «Estado del lead» abre su menú (sin la clave, solo la foto). */
   canAssign?: boolean;
+  /** `contacts.merge`: «Unir con otro contacto» en «Canales». */
+  canMerge?: boolean;
   /** Las cuentas por canal: "Canales" dice por cual cuenta nuestra se habla cuando una red tiene varias. */
   accounts?: InboxAccountsInfo;
 }) {
@@ -302,7 +307,7 @@ export function ContactPanel({
 
           <AgentMemory contact={details.contact} />
 
-          <Channels details={details} accounts={accounts} />
+          <Channels details={details} accounts={accounts} canMerge={canMerge} onMerged={reload} />
 
           <Activity contact={details.contact} />
 
@@ -539,7 +544,19 @@ function AgentMemory({ contact }: { contact: Contact }) {
   );
 }
 
-function Channels({ details, accounts }: { details: ContactDetails; accounts?: InboxAccountsInfo }) {
+function Channels({
+  details,
+  accounts,
+  canMerge,
+  onMerged,
+}: {
+  details: ContactDetails;
+  accounts?: InboxAccountsInfo;
+  canMerge: boolean;
+  onMerged: () => void;
+}) {
+  const router = useRouter();
+  const [merging, setMerging] = useState(false);
   // Telefono, WhatsApp y email ya estan (editables) en "Datos": aca solo los
   // canales por los que el contacto nos escribio.
   return (
@@ -579,6 +596,28 @@ function Channels({ details, accounts }: { details: ContactDetails; accounts?: I
             );
           })}
         </ul>
+      )}
+      {canMerge && (
+        <button
+          type="button"
+          onClick={() => setMerging(true)}
+          className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
+        >
+          <Merge className="h-3.5 w-3.5" aria-hidden />
+          ¿Te escribe por otro canal? Unir con otro contacto
+        </button>
+      )}
+      {merging && (
+        <MergeContactDialog
+          contactId={details.contact.id}
+          onClose={() => setMerging(false)}
+          onMerged={() => {
+            setMerging(false);
+            // La conversación ya apunta al contacto que quedó: la bandeja y el panel se vuelven a pedir.
+            router.refresh();
+            onMerged();
+          }}
+        />
       )}
     </PanelSection>
   );
