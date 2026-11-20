@@ -183,7 +183,7 @@ export function ServiceRecordHeader({ data, today, members, permissions }: { dat
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          {can("bookings.manage") && <ScheduleCallButton contactId={data.contactId} />}
+          {can("bookings.manage") && <ScheduleCallButton contactId={data.contactId} iconOnly />}
           {main.map((a) => (
             <button
               key={a}
