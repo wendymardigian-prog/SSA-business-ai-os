@@ -1050,6 +1050,213 @@
         "reason": null,
         "opensOn": null
       }
+    },
+    {
+      "name": "al completar un paso del camino, con texto propio en el candado",
+      "input": {
+        "chain": [
+          {
+            "id": "m2",
+            "status": "active",
+            "rule": {
+              "type": "after_complete",
+              "target": "journey_item",
+              "id": "it_plan90",
+              "display": "locked",
+              "locked_text": "Entregá tu Plan de 90 días para abrir este módulo"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-20",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": []
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "locked",
+        "reason": "Entregá tu Plan de 90 días para abrir este módulo",
+        "opensOn": null
+      }
+    },
+    {
+      "name": "al completar un paso del camino ya completo: abre aunque tenga texto propio",
+      "input": {
+        "chain": [
+          {
+            "id": "m2",
+            "status": "active",
+            "rule": {
+              "type": "after_complete",
+              "target": "journey_item",
+              "id": "it_plan90",
+              "display": "locked",
+              "locked_text": "Entregá tu Plan"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-20",
+          "accessStartsOn": "2026-11-01",
+          "completed": [
+            "it_plan90"
+          ],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": []
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": true,
+        "included": true,
+        "display": "open",
+        "reason": null,
+        "opensOn": null
+      }
+    },
+    {
+      "name": "en una fecha con candado y texto propio: el texto reemplaza a la fecha",
+      "input": {
+        "chain": [
+          {
+            "id": "m4",
+            "status": "active",
+            "rule": {
+              "type": "fixed_date",
+              "date": "2026-11-27",
+              "display": "locked",
+              "locked_text": "Se abre después del taller"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-20",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": []
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "locked",
+        "reason": "Se abre después del taller",
+        "opensOn": "2026-11-27"
+      }
+    },
+    {
+      "name": "Próximamente con los dos textos: gana el de Próximamente",
+      "input": {
+        "chain": [
+          {
+            "id": "m4",
+            "status": "active",
+            "rule": {
+              "type": "fixed_date",
+              "date": "2026-11-27",
+              "display": "coming_soon",
+              "coming_soon_text": "Muy pronto",
+              "locked_text": "No se usa"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-20",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": []
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "coming_soon",
+        "reason": "Muy pronto",
+        "opensOn": "2026-11-27"
+      }
+    },
+    {
+      "name": "texto propio vacío: el texto automático de siempre",
+      "input": {
+        "chain": [
+          {
+            "id": "m2",
+            "status": "active",
+            "rule": {
+              "type": "after_complete",
+              "id": "it_plan90",
+              "display": "locked",
+              "locked_text": ""
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-20",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": []
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "locked",
+        "reason": "Se abre cuando completes lo anterior",
+        "opensOn": null
+      }
+    },
+    {
+      "name": "el texto propio de un padre bloqueado es el que se ve en la clase",
+      "input": {
+        "chain": [
+          {
+            "id": "m2",
+            "status": "active",
+            "rule": {
+              "type": "after_complete",
+              "id": "it_plan90",
+              "locked_text": "Entregá tu Plan"
+            }
+          },
+          {
+            "id": "l1",
+            "status": "active",
+            "rule": null
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-20",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": []
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "locked",
+        "reason": "Entregá tu Plan",
+        "opensOn": null
+      }
     }
   ]
 }

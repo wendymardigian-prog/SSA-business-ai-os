@@ -16,6 +16,8 @@ import { PortalFormEditor, type PortalFormInitial } from "./portal-form-editor";
 import { useUrlIntent } from "@/components/ui/use-url-intent";
 import { listFathomForLesson, pickFathomForLesson } from "@/lib/actions/live-sessions";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
+import { parseTargetValue, staleTargetLabel, targetValueOf, unlockTargetOptions } from "@/lib/program/unlock-targets";
+import type { PickerVariant } from "@/lib/services/service-picker";
 
 export interface ContentRow extends ProgramRow {
   /** El formulario de una evaluación o actividad (bloque EV), si ya tiene uno. */
@@ -32,6 +34,15 @@ export interface ContentRow extends ProgramRow {
   hasTranscript: boolean;
   /** El estado de la transcripción en Conocimiento (null si no tiene). */
   transcript?: TranscriptInfo | null;
+}
+
+/** El texto que ve el estudiante si no se escribe uno propio (lo arma la base, `program_unlock_plan`). */
+function autoLockText(ruleType: string, display: string): string {
+  if (display === "coming_soon" || (ruleType === "fixed_date" && !display)) return "Próximamente · con la fecha";
+  if (ruleType === "fixed_date" || ruleType === "days_after_start") return "Se abre el DD/MM/AAAA";
+  if (ruleType === "after_complete") return "Se abre cuando completes lo anterior";
+  if (ruleType === "challenge_started") return "Se abre cuando empiece el Reto";
+  return "Todavía no está disponible";
 }
 
 const STATUS_LABEL = { active: "Activo", inactive: "Inactivo", archived: "Archivado" } as const;
@@ -57,6 +68,7 @@ export function ProgramContentEditor({
   canActivate,
   commentCounts = {},
   otherPrograms = [],
+  journeyVariants = [],
 }: {
   productId: string;
   rows: ContentRow[];
@@ -66,6 +78,8 @@ export function ProgramContentEditor({
   commentCounts?: Record<string, number>;
   /** F50: los otros programas del negocio, para «Copiar a otro programa». */
   otherPrograms?: Array<{ id: string; name: string }>;
+  /** Los caminos de las variantes del producto, para «Se abre al completar algo» (un paso del camino). */
+  journeyVariants?: PickerVariant[];
 }) {
   const router = useRouter();
   const tree = useMemo(() => buildTree(rows), [rows]);
@@ -223,13 +237,31 @@ export function ProgramContentEditor({
       )}
 
       {editing && byId.get(editing) && (
-        <ItemDrawer key={editing} productId={productId} item={byId.get(editing)!} canManage={canManage} canActivate={canActivate} otherPrograms={otherPrograms} onClose={() => setEditing(null)} />
+        <ItemDrawer key={editing} productId={productId} item={byId.get(editing)!} rows={rows} journeyVariants={journeyVariants} canManage={canManage} canActivate={canActivate} otherPrograms={otherPrograms} onClose={() => setEditing(null)} />
       )}
     </div>
   );
 }
 
-function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, onClose }: { productId: string; item: ContentRow; canManage: boolean; canActivate: boolean; otherPrograms: Array<{ id: string; name: string }>; onClose: () => void }) {
+function ItemDrawer({
+  productId,
+  item,
+  rows,
+  journeyVariants,
+  canManage,
+  canActivate,
+  otherPrograms,
+  onClose,
+}: {
+  productId: string;
+  item: ContentRow;
+  rows: ContentRow[];
+  journeyVariants: PickerVariant[];
+  canManage: boolean;
+  canActivate: boolean;
+  otherPrograms: Array<{ id: string; name: string }>;
+  onClose: () => void;
+}) {
   const router = useRouter();
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description ?? "");
@@ -243,7 +275,11 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
   const [ruleDate, setRuleDate] = useState(String(rule.date ?? ""));
   const [ruleDays, setRuleDays] = useState(rule.days != null ? String(rule.days) : "");
   const [display, setDisplay] = useState(String(rule.display ?? ""));
-  const [lockedText, setLockedText] = useState(String(rule.locked_text ?? rule.coming_soon_text ?? ""));
+  const [lockedText, setLockedText] = useState(String((rule.display === "coming_soon" ? rule.coming_soon_text : rule.locked_text) ?? rule.locked_text ?? rule.coming_soon_text ?? ""));
+  // «Se abre al completar algo»: un paso del camino o una clase / módulo (`<target>:<id>`).
+  const [ruleTarget, setRuleTarget] = useState(targetValueOf(rule, rows));
+  const targets = useMemo(() => unlockTargetOptions({ rows, variants: journeyVariants, selfId: item.id }), [rows, journeyVariants, item.id]);
+  const staleTarget = staleTargetLabel(ruleTarget, targets);
   const [transcript, setTranscript] = useState("");
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [pending, start] = useTransition();
@@ -254,9 +290,18 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
     const unlock: Record<string, unknown> = { type: ruleType };
     if (ruleType === "fixed_date") unlock.date = ruleDate || null;
     if (ruleType === "days_after_start") unlock.days = ruleDays === "" ? null : Number(ruleDays);
+    if (ruleType === "after_complete") {
+      const t = parseTargetValue(ruleTarget);
+      if (t) Object.assign(unlock, { target: t.target, id: t.id });
+    }
     if (ruleType !== "open" && display) unlock.display = display;
-    if (display === "coming_soon" && lockedText) unlock.coming_soon_text = lockedText;
-    else if ((ruleType === "journey_item" || ruleType === "automation") && lockedText) unlock.locked_text = lockedText;
+    const text = lockedText.trim();
+    // Con «Próximamente» el texto es el de Próximamente; si no, el del candado (00502: reemplaza al automático).
+    const comingSoon = display === "coming_soon" || (ruleType === "fixed_date" && !display);
+    if (ruleType !== "open" && text) {
+      if (comingSoon) unlock.coming_soon_text = text;
+      else unlock.locked_text = text;
+    }
     const patch: Record<string, unknown> = { title, description, required, comments_enabled: comments, unlock_rule: unlock };
     if (item.kind === "lesson" && item.lesson_type === "video") patch.video_url = videoUrl;
     if (hasPage) patch.html_content = html;
@@ -394,12 +439,41 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
             <option value="open">Abierto</option>
             <option value="fixed_date">En una fecha</option>
             <option value="days_after_start">N días después de empezar</option>
+            <option value="after_complete">Al completar algo</option>
             <option value="challenge_started">Al empezar el Reto</option>
             <option value="journey_item">Lo abre un paso del camino</option>
             <option value="automation">Lo abre una automatización</option>
           </select>
           {ruleType === "fixed_date" && <input type="date" className={fieldInput} value={ruleDate} disabled={disabled} onChange={(e) => setRuleDate(e.target.value)} aria-label="Fecha" />}
           {ruleType === "days_after_start" && <input type="number" min={0} className={fieldInput} value={ruleDays} disabled={disabled} onChange={(e) => setRuleDays(e.target.value)} aria-label="Días" />}
+          {ruleType === "after_complete" && (
+            <label className="block text-xs text-muted-foreground">
+              Qué hay que completar
+              <select className={fieldInput} value={ruleTarget} disabled={disabled} onChange={(e) => setRuleTarget(e.target.value)}>
+                <option value="">Elegí…</option>
+                {staleTarget && <option value={ruleTarget}>{staleTarget}</option>}
+                {targets.journey.length > 0 && (
+                  <optgroup label="Un paso del camino">
+                    {targets.journey.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {targets.program.length > 0 && (
+                  <optgroup label="Una clase o un módulo">
+                    {targets.program.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              {staleTarget && <span className="mt-1 block text-warn">{staleTarget}</span>}
+            </label>
+          )}
           {ruleType !== "open" && (
             <>
               <label className="block text-xs text-muted-foreground">
@@ -411,10 +485,10 @@ function ItemDrawer({ productId, item, canManage, canActivate, otherPrograms, on
                   <option value="hidden">Oculto</option>
                 </select>
               </label>
-              {(display === "coming_soon" || ruleType === "journey_item" || ruleType === "automation") && (
+              {display !== "hidden" && (
                 <label className="block text-xs text-muted-foreground">
-                  Texto que ve el estudiante (hasta 80)
-                  <input className={fieldInput} maxLength={80} value={lockedText} disabled={disabled} onChange={(e) => setLockedText(e.target.value)} />
+                  Texto que ve el estudiante (hasta 80, opcional)
+                  <input className={fieldInput} maxLength={80} value={lockedText} disabled={disabled} placeholder={autoLockText(ruleType, display)} onChange={(e) => setLockedText(e.target.value)} />
                 </label>
               )}
             </>
