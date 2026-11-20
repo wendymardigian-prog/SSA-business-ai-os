@@ -1,6 +1,6 @@
 -- @plantilla-quitar(servicios)
 -- ============================================================================
--- 00503_program_module_override  (Programa: abrir, cerrar o programar un módulo para UNA persona)
+-- 00504_program_module_override  (Programa: abrir, cerrar o programar un módulo para UNA persona)
 -- ============================================================================
 -- Desde la ficha del servicio, el equipo (services.access) puede, para el estudiante de ese servicio y en un módulo:
 --   * abrirlo ya (aunque la regla del programa diga que todavía no, o aunque su variante no lo incluya);
@@ -293,7 +293,7 @@ BEGIN
 END $$;
 
 COMMENT ON COLUMN app_servicio_portal.program_progress.override_mode IS
-  '00503: lo que el equipo decidió para ESTA persona en un módulo: open (abierto), closed (cerrado) o rule (su propia regla, override_rule). NULL = la regla del programa.';
+  '00504: lo que el equipo decidió para ESTA persona en un módulo: open (abierto), closed (cerrado) o rule (su propia regla, override_rule). NULL = la regla del programa.';
 
 -- ─── 2. La regla pura, con lo cambiado a mano ───────────────────────────────
 -- ctx.overrides = { "<id>": { "mode": "open"|"closed"|"rule", "rule": {...} } }. Sin overrides, igual que la 00502.
@@ -325,7 +325,7 @@ DECLARE
 BEGIN
   IF n = 0 THEN RETURN v_hidden; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(chain) x WHERE x ->> 'status' <> 'active') THEN RETURN v_hidden; END IF;
-  -- 00503: abierto a mano o con regla propia incluye el módulo aunque la variante no lo incluya.
+  -- 00504: abierto a mano o con regla propia incluye el módulo aunque la variante no lo incluya.
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(chain) x WHERE x ? 'included' AND (x ->> 'included')::boolean = false
                AND COALESCE(v_ov -> (x ->> 'id') ->> 'mode', '') NOT IN ('open', 'rule')) THEN
     RETURN v_hidden || jsonb_build_object('included', false);
@@ -333,7 +333,7 @@ BEGIN
   FOR i IN 0 .. n - 1 LOOP
     node := chain -> i;
     om := v_ov -> (node ->> 'id') ->> 'mode';
-    -- 00503: abierto a mano pasa; cerrado a mano no lo abre nada; con regla propia se mira esa regla.
+    -- 00504: abierto a mano pasa; cerrado a mano no lo abre nada; con regla propia se mira esa regla.
     CONTINUE WHEN om = 'open';
     r := CASE
       WHEN om = 'closed' THEN '{"type":"closed"}'::jsonb
@@ -429,7 +429,7 @@ BEGIN
     'inactiveIds', COALESCE((SELECT jsonb_agg(pi.id::text) FROM app_servicio.program_items pi WHERE pi.product_id = it.product_id AND pi.status <> 'active'), '[]'::jsonb),
     'challengeStarted', EXISTS (SELECT 1 FROM app_servicio.service_phases ph WHERE ph.service_id = ANY (COALESCE(v_services, ARRAY[]::uuid[])) AND ph.challenge IS NOT NULL AND ph.status IN ('in_progress', 'completed')),
     'unlockedIds', COALESCE((SELECT jsonb_agg(pp.program_item_id::text) FROM app_servicio_portal.program_progress pp WHERE pp.contact_id = p_contact_id AND pp.unlocked_at IS NOT NULL), '[]'::jsonb),
-    -- 00503: lo que el equipo abrió, cerró o programó a mano para esta persona.
+    -- 00504: lo que el equipo abrió, cerró o programó a mano para esta persona.
     'overrides', COALESCE((SELECT jsonb_object_agg(pp.program_item_id::text, jsonb_strip_nulls(jsonb_build_object('mode', pp.override_mode, 'rule', pp.override_rule)))
                              FROM app_servicio_portal.program_progress pp
                             WHERE pp.contact_id = p_contact_id AND pp.override_mode IS NOT NULL), '{}'::jsonb));
@@ -466,7 +466,7 @@ BEGIN
            ORDER BY fs.created_at DESC LIMIT 1) END,
         -- Solo los modulos llevan su apertura: una clase hereda la de su modulo y el portal decide el resto.
         'unlock', CASE WHEN i.kind = 'module' THEN app_servicio.program_item_unlocked(s.contact_id, i.id) END,
-        -- 00503: lo que el equipo cambió a mano en ese módulo para esta persona.
+        -- 00504: lo que el equipo cambió a mano en ese módulo para esta persona.
         'override', CASE WHEN i.kind = 'module' AND pp.override_mode IS NOT NULL
                          THEN jsonb_build_object('mode', pp.override_mode, 'rule', pp.override_rule, 'at', pp.override_at) END)
         ORDER BY i.position, i.created_at)
@@ -596,7 +596,7 @@ BEGIN
   UPDATE app_servicio_portal.program_progress m
      SET viewed_at = LEAST(m.viewed_at, d.viewed_at), completed_at = LEAST(m.completed_at, d.completed_at),
          unlocked_at = LEAST(m.unlocked_at, d.unlocked_at), last_position_seconds = GREATEST(m.last_position_seconds, d.last_position_seconds),
-         -- 00503: lo cambiado a mano en un módulo: queda el del principal; si no tiene, el del duplicado.
+         -- 00504: lo cambiado a mano en un módulo: queda el del principal; si no tiene, el del duplicado.
          override_mode = COALESCE(m.override_mode, d.override_mode),
          override_rule = CASE WHEN m.override_mode IS NULL THEN d.override_rule ELSE m.override_rule END,
          override_by = CASE WHEN m.override_mode IS NULL THEN d.override_by ELSE m.override_by END,

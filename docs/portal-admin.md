@@ -68,7 +68,7 @@ sin contestar).
   `lib/program/unlock-targets.ts`. **Texto propio del candado** (00502): con candado, `locked_text` reemplaza al texto
   automático en cualquier tipo de regla; con «Próximamente» manda `coming_soon_text`. Gemelas `reasonOf` /
   `program_unlock_plan`, casos en `lib/program/unlock.cases.json`.
-- **Abrir, cerrar o programar un módulo para UN cliente** (00503): en la ficha del servicio, «Avance en el classroom»,
+- **Abrir, cerrar o programar un módulo para UN cliente** (00504): en la ficha del servicio, «Avance en el classroom»,
   cada módulo tiene un menú «⋯» (con `services.access` y el servicio activo, en pausa o completado): **Abrir ya**,
   **Cerrar**, **Programar…** (una regla propia: fecha, N días desde que empezó, al completar algo o al empezar el
   Reto, que reemplaza a la del programa) y **Volver a la regla del programa**. Se guarda por contacto y módulo en

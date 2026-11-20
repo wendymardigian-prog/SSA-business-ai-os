@@ -116,7 +116,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
       svcRpc<AttendanceOccurrence[]>(supabase, "service_attendance", { p_service_id: s.id }),
       // Las entregas de esa persona en este programa, con el cliente de servicio: la sesión ya vio el servicio.
       loadReviewItems(service, workspace.id, { contactId: s.contact_id, productId: s.product_id }),
-      // 00503: los pasos del camino para «Programar…» un módulo (solo quien puede); si fallan, sin pasos.
+      // 00504: los pasos del camino para «Programar…» un módulo (solo quien puede); si fallan, sin pasos.
       canOverride
         ? loadServicePicker(supabase, workspace.id).then((o) => o.products.find((x) => x.id === s.product_id)?.variants ?? []).catch(() => [])
         : Promise.resolve([]),

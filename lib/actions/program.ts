@@ -146,7 +146,7 @@ export async function saveLessonTranscript(productId: string, itemId: string, te
 
 /**
  * Abrir, cerrar o programar un módulo para el estudiante de un servicio, o volver a la regla del programa
- * (`mode: null`). Pide `services.access`; la base lo vuelve a pedir con la sesión (00503). Devuelve cómo queda.
+ * (`mode: null`). Pide `services.access`; la base lo vuelve a pedir con la sesión (00504). Devuelve cómo queda.
  */
 export async function setModuleOverride(
   serviceId: string,

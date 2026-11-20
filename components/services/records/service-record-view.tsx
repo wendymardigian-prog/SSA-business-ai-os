@@ -76,7 +76,7 @@ export interface ServiceRecordData {
   payment: NextPaymentView | null;
   attendance: AttendanceRateView | null;
   classroom: ClassroomProgressView | null;
-  /** 00503: las opciones de «al completar algo» para programar un módulo (solo con services.access). */
+  /** 00504: las opciones de «al completar algo» para programar un módulo (solo con services.access). */
   moduleTargets?: ModuleTargetOptions | null;
   assistant: AssistantCreditsView | null;
   assistantInfo: { conversations: number; lastAt: string | null } | null;
@@ -685,7 +685,7 @@ function ClassroomBlock({
 }: {
   classroom: ClassroomProgressView | null;
   serviceId: string;
-  /** 00503: abrir, cerrar o programar cada módulo para este cliente (services.access, servicio vigente). */
+  /** 00504: abrir, cerrar o programar cada módulo para este cliente (services.access, servicio vigente). */
   canOverride: boolean;
   targets: ModuleTargetOptions | null;
   pending: boolean;

@@ -1,6 +1,6 @@
 // @plantilla-quitar(servicios)
 /**
- * Abrir, cerrar o programar un módulo para UNA persona desde la ficha del servicio (00503), puro.
+ * Abrir, cerrar o programar un módulo para UNA persona desde la ficha del servicio (00504), puro.
  *
  * - `moduleTargetOptions`: qué se puede elegir en «Se abre al completar algo» para la regla propia de un módulo. Son
  *   las mismas opciones que el editor del programa (`unlockTargetOptions`), con el módulo raíz de cada clase para no

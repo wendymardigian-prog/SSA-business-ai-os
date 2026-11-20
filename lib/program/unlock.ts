@@ -14,7 +14,7 @@
  * o la clave de un paso del camino (`target: journey_item`). Con candado, el texto propio (`locked_text`) reemplaza
  * al automático en cualquier tipo.
  *
- * Lo que el equipo cambió a mano para ESTA persona (00503, `ctx.overrides`, solo en módulos desde la ficha):
+ * Lo que el equipo cambió a mano para ESTA persona (00504, `ctx.overrides`, solo en módulos desde la ficha):
  * `open` lo abre, `closed` lo cierra (le gana también a `unlockedIds`) y `rule` usa su propia regla en vez de la del
  * programa. `open` y `rule` lo incluyen aunque la variante no lo incluya.
  */
@@ -56,7 +56,7 @@ export interface UnlockInput {
     challengeStarted: boolean;
     /** Lo que se abrió para esta persona (paso, automatización o a mano). */
     unlockedIds: string[];
-    /** Lo cambiado a mano por el equipo, por id (00503). */
+    /** Lo cambiado a mano por el equipo, por id (00504). */
     overrides?: Record<string, ModuleOverride>;
   };
 }

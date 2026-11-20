@@ -84,7 +84,7 @@ export interface ClassroomItem {
   completed_at: string | null;
   submission: { created_at: string; review_status: string | null } | null;
   unlock: { unlocked?: boolean; visible?: boolean; included?: boolean; reason?: string | null; opensOn?: string | null } | null;
-  /** Lo que el equipo cambió a mano en ese módulo para esta persona (00503). */
+  /** Lo que el equipo cambió a mano en ese módulo para esta persona (00504). */
   override?: { mode: ModuleOverrideMode; rule: UnlockRule | null; at?: string | null } | null;
 }
 
@@ -116,7 +116,7 @@ export interface ClassroomModuleView {
   opensText: string | null;
   /** Su variante no lo incluye y nadie se lo dio a mano. */
   notIncluded: boolean;
-  /** Lo cambiado a mano (00503) y cómo se lee: «Abierto a mano», «Cerrado a mano», «Regla propia · …». */
+  /** Lo cambiado a mano (00504) y cómo se lee: «Abierto a mano», «Cerrado a mano», «Regla propia · …». */
   override: { mode: ModuleOverrideMode; rule: UnlockRule | null } | null;
   overrideText: string | null;
   lessons: ClassroomLessonView[];

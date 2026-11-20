@@ -10,7 +10,7 @@ import { ActionError } from "@/components/contacts/ui";
 import { ContentDialog, DialogField, fieldInput } from "@/components/content/dialog";
 
 /**
- * «Programar…» un módulo para UNA persona (00503): una regla propia que reemplaza a la del programa solo para ella.
+ * «Programar…» un módulo para UNA persona (00504): una regla propia que reemplaza a la del programa solo para ella.
  * Mismas opciones que el editor del programa, sin «abierto», «lo abre un paso» ni «lo abre una automatización».
  */
 export function ModuleOverrideDialog({
