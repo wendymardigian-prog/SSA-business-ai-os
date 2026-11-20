@@ -32,6 +32,8 @@ function isPrivateReplyNode(node: RawNode | null): boolean {
   return node.type === "privateReply" || (node.type === "action" && (node.data as { actionType?: unknown } | undefined)?.actionType === "privateReply");
 }
 
+export const ONLY_IF_INCOMPLETE_PROBLEM = "El «Solo si…» del disparador tiene una condición a medias: elegí el dato y cómo se compara, o sacala.";
+
 export function triggerNodesOf(nodes: unknown[]): RawNode[] {
   return (Array.isArray(nodes) ? nodes : []).filter((n): n is RawNode => !!n && typeof n === "object" && (n as RawNode).type === "trigger");
 }
@@ -78,6 +80,15 @@ export function triggerProblems(nodes: unknown[], edges: unknown[]): string[] {
   if (type === "service_relative") problems.push(...relativeConfigProblems({ ...data, ...config })); // @plantilla-quitar(servicios)
   if (type === "service_phase_periodic") problems.push(...periodicConfigProblems({ ...data, ...config })); // @plantilla-quitar(servicios)
   if (type === "service_metric_reached") problems.push(...metricConfigProblems({ ...data, ...config })); // @plantilla-quitar(servicios)
+  // «Solo si…»: una condición a medias (sin campo u operador) no se cumple nunca y la automatización no arrancaría.
+  const onlyIf = data.onlyIf as { conditions?: unknown } | undefined;
+  if (onlyIf && Array.isArray(onlyIf.conditions)) {
+    const incomplete = onlyIf.conditions.some((c) => {
+      const cond = (c ?? {}) as { field?: unknown; operator?: unknown };
+      return typeof cond.field !== "string" || !cond.field || typeof cond.operator !== "string" || !cond.operator;
+    });
+    if (incomplete) problems.push(ONLY_IF_INCOMPLETE_PROBLEM);
+  }
   const hasFirstStep = (Array.isArray(edges) ? edges : []).some((e) => (e as RawEdge)?.source === node.id);
   if (!hasFirstStep) problems.push(NO_FIRST_STEP_PROBLEM);
   // Sin un comentario detras, el paso no tiene a que responder y no manda nada, sin avisar.

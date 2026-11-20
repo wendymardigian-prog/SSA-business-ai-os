@@ -21,6 +21,8 @@ import { ServiceTriggerPanel, isServiceTrigger } from "./ServiceTriggerPanel"; /
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
 import { ONCE_PER_CONTACT_DETAIL, ONCE_PER_CONTACT_TITLE, supportsOncePerContact } from "@/lib/flow-engine/once-per-contact";
 import { WhatsappQueueSettings } from "./whatsapp-queue-settings";
+import { TriggerOnlyIfSection } from "./trigger-only-if-section";
+import { triggerOffersOnlyIf } from "@/lib/flow-engine/trigger-only-if-types";
 
 interface Keyword {
   value: string;
@@ -785,6 +787,9 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
           </p>
         </div>
       )}
+
+      {/* «Solo si…» genérico: los disparadores que pasan por la cola de eventos (el webhook tiene el suyo). */}
+      {triggerOffersOnlyIf(triggerType) && <TriggerOnlyIfSection flowId={flowId} data={data} onChange={onChange} />}
     </div>
   );
 }
