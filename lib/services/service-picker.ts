@@ -5,6 +5,7 @@
  * producto") y despues la fase o el paso con su nombre. Se guarda la clave como siempre (el formato del flujo no
  * cambia). Una clave que ya no existe se avisa en el panel y frena la publicacion. Puro.
  */
+import { isEmptyScope, productScopeMatches, readProductScope, type ProductScope } from "@/lib/automations/product-scope";
 
 export interface PickerVariantInput {
   id: string;
@@ -81,14 +82,25 @@ export function servicePickerOptions(products: readonly PickerProductInput[]): S
 export interface PickerScope {
   productId?: string | null;
   variantId?: string | null;
+  /** Elección múltiple de los disparadores (`product_ids`, `variant_ids`): ver `lib/automations/product-scope.ts`. */
+  productIds?: readonly string[] | null;
+  variantIds?: readonly string[] | null;
 }
 
-/** Las variantes que entran con lo elegido (todas las de un producto, o una, o todas si no se eligio producto). */
+/** Lo elegido como listas: la elección múltiple si la hay; si no, el producto y la variante de un solo valor. */
+function scopeLists(s: PickerScope): ProductScope {
+  const productIds = (s.productIds ?? []).filter(Boolean);
+  const variantIds = (s.variantIds ?? []).filter(Boolean);
+  if (productIds.length > 0 || variantIds.length > 0) return { productIds: [...productIds], variantIds: [...variantIds] };
+  return readProductScope({ product_id: s.productId, variant_id: s.variantId });
+}
+
+/** Las variantes que entran con lo elegido (todas las de los productos elegidos, las sueltas, o todas si no se eligio nada). */
 export function variantsInScope(o: ServicePickerOptions, s: PickerScope): Array<{ product: PickerProduct; variant: PickerVariant }> {
+  const scope = scopeLists(s);
   const out: Array<{ product: PickerProduct; variant: PickerVariant }> = [];
   for (const p of o.products) {
-    if (s.productId && p.id !== s.productId) continue;
-    for (const v of p.variants) if (!s.variantId || v.id === s.variantId) out.push({ product: p, variant: v });
+    for (const v of p.variants) if (productScopeMatches(scope, p.id, v.id)) out.push({ product: p, variant: v });
   }
   return out;
 }
@@ -125,7 +137,16 @@ export function stepGroups(o: ServicePickerOptions, s: PickerScope & { phaseKey?
  */
 export function staleKeyMessage(o: ServicePickerOptions, s: PickerScope & { phaseKey?: string | null; itemKey?: string | null }): string | null {
   const scope = variantsInScope(o, s);
-  const where = scope.length === 1 ? scope[0].variant.name : s.productId ? o.products.find((p) => p.id === s.productId)?.name ?? "este producto" : "ningún producto";
+  const lists = scopeLists(s);
+  const onlyProduct = lists.productIds.length === 1 && lists.variantIds.length === 0 ? lists.productIds[0] : null;
+  const where =
+    scope.length === 1
+      ? scope[0].variant.name
+      : onlyProduct
+        ? o.products.find((p) => p.id === onlyProduct)?.name ?? "este producto"
+        : isEmptyScope(lists)
+          ? "ningún producto"
+          : "los productos elegidos";
   if (s.itemKey && !scope.some(({ variant }) => variant.phases.some((ph) => ph.steps.some((st) => st.key === s.itemKey)))) {
     return `Este paso ya no existe en el camino de ${where} · Elegí otro`;
   }
@@ -168,7 +189,8 @@ function nodeKeys(n: NodeLike): (PickerScope & { phaseKey?: string | null; itemK
   if (trigger && (trigger.startsWith("service_") || trigger.startsWith("program_") || trigger.startsWith("challenge_"))) {
     const c = { ...(d.config && typeof d.config === "object" ? (d.config as Record<string, unknown>) : {}), ...d };
     if (!str(c.phase_key) && !str(c.item_key)) return null;
-    return { productId: str(c.product_id), variantId: str(c.variant_id), phaseKey: str(c.phase_key), itemKey: str(c.item_key), label: "El disparador" };
+    const scope = readProductScope(c);
+    return { productIds: scope.productIds, variantIds: scope.variantIds, phaseKey: str(c.phase_key), itemKey: str(c.item_key), label: "El disparador" };
   }
   return null;
 }
@@ -198,10 +220,14 @@ export function graphUsesServiceKeys(nodes: readonly unknown[]): boolean {
 }
 
 /** Que filtros ofrece cada disparador de Servicios, segun lo que trae su evento (`app_servicio.emit`). */
-export function serviceTriggerFilters(triggerType: string): { phase: boolean; step: boolean; days: boolean } {
+export function serviceTriggerFilters(triggerType: string): { phase: boolean; step: boolean; days: boolean; status: boolean; light: boolean } {
   return {
     phase: triggerType === "service_phase_started" || triggerType === "service_phase_completed",
     step: triggerType === "service_item_completed" || triggerType === "service_item_overdue",
     days: triggerType === "service_ending_soon",
+    // El evento lleva `service_status` y `previous_status` (00333).
+    status: triggerType === "service_status_changed",
+    // El evento lleva `light` y `previous_light` (00333).
+    light: triggerType === "service_light_changed",
   };
 }

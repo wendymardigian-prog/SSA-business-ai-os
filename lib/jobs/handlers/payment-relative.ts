@@ -16,7 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { SWEEP_SKIPPED_SALE_STATUSES } from "@/lib/sales/overdue";
-import { snapshotProductId } from "@/lib/sales/sale-text";
+import { snapshotProductId, snapshotVariantId } from "@/lib/sales/sale-text";
 import { PAYMENT_RELATIVE_JOB_TYPE } from "@/lib/sales/automation/relative";
 import { isOpenPayment, isRelativeSalesTrigger } from "@/lib/sales/automation/triggers";
 
@@ -58,6 +58,8 @@ export async function handlePaymentRelativeTrigger(ctx: JobContext): Promise<voi
       sale_id: sale.id,
       contact_id: sale.contact_id,
       product_id: snapshotProductId(sale.product_snapshot),
+      ...(snapshotVariantId(sale.product_snapshot) ? { variant_id: snapshotVariantId(sale.product_snapshot) } : {}),
+      sale_status: sale.status,
       trigger_id: payload.trigger_id,
       reschedule_count: payment.reschedule_count,
     } as unknown as Json,

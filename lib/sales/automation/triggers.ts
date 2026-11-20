@@ -21,6 +21,7 @@ import { z } from "zod";
 import { wallClockToUtc } from "@/lib/scheduling/time/tz";
 import { addDays, isDateOnly } from "@/lib/shared/dates";
 import { ATTRIBUTION_TYPES, FINANCING_TYPES, PAYMENT_STATUSES, PAYMENT_TYPES, SALE_STATUSES } from "../labels";
+import { productScopeMatches, readProductScope } from "@/lib/automations/product-scope";
 
 export const SALES_TRIGGER_TYPES = [
   "sale_created",
@@ -80,6 +81,8 @@ const saleFilters = {
   financing_types: oneOf(FINANCING_TYPES).optional(),
   min_amount: amount.optional(),
   max_amount: amount.optional(),
+  /** El estado de pago de la venta al crearse (Reservada, Pagada…): lo trae el evento (`sale_status`, 00506). */
+  sale_statuses: oneOf(SALE_STATUSES).optional(),
 };
 
 export const SALES_CONFIG_SCHEMAS = {
@@ -89,6 +92,7 @@ export const SALES_CONFIG_SCHEMAS = {
       from_status: oneOf(SALE_STATUSES).optional(),
       to_status: oneOf(SALE_STATUSES).optional(),
       product_ids: ids.optional(),
+      variant_ids: ids.optional(),
       vendedor_ids: ids.optional(),
       utm_sources: ids.optional(),
       utm_mediums: ids.optional(),
@@ -103,6 +107,8 @@ export const SALES_CONFIG_SCHEMAS = {
       payment_methods: z.array(z.string().regex(/^[a-z0-9_]{2,40}$/)).max(20).optional(),
       refund_scope: z.array(z.enum(["total", "partial"])).max(2).optional(),
       product_ids: ids.optional(),
+      variant_ids: ids.optional(),
+      sale_statuses: oneOf(SALE_STATUSES).optional(),
     })
     .strip(),
   payment_status_changed: z
@@ -116,6 +122,8 @@ export const SALES_CONFIG_SCHEMAS = {
       max_amount: amount.optional(),
       min_delay_days: z.coerce.number().int().min(-3650).max(3650).optional(),
       product_ids: ids.optional(),
+      variant_ids: ids.optional(),
+      sale_statuses: oneOf(SALE_STATUSES).optional(),
     })
     .strip(),
   payment_before_due: z
@@ -125,6 +133,7 @@ export const SALES_CONFIG_SCHEMAS = {
       at_time: time.optional(),
       payment_types: oneOf(PAYMENT_TYPES).optional(),
       product_ids: ids.optional(),
+      variant_ids: ids.optional(),
     })
     .strip(),
   payment_after_due: z
@@ -133,6 +142,7 @@ export const SALES_CONFIG_SCHEMAS = {
       at_time: time.optional(),
       payment_types: oneOf(PAYMENT_TYPES).optional(),
       product_ids: ids.optional(),
+      variant_ids: ids.optional(),
     })
     .strip(),
 } as const;
@@ -170,6 +180,11 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/** Productos y variantes: uno, varios o todos (`lib/automations/product-scope.ts`). */
+function scopeMatches(config: SalesTriggerConfig, productId: unknown, variantId: unknown): boolean {
+  return productScopeMatches(readProductScope(config), productId, variantId);
+}
+
 function listMatches(allowed: unknown, actual: unknown): boolean {
   if (!Array.isArray(allowed) || allowed.length === 0) return true;
   const value = text(actual);
@@ -206,8 +221,8 @@ export function salesEventMatches(type: string, rawConfig: unknown, payload: Sal
   switch (type as SalesTriggerType) {
     case "sale_created":
       return (
-        listMatches(c.product_ids, payload.product_id) &&
-        listMatches(c.variant_ids, payload.variant_id) &&
+        scopeMatches(c, payload.product_id, payload.variant_id) &&
+        listMatches(c.sale_statuses, payload.sale_status) &&
         listMatches(c.utm_sources, payload.utm_source) &&
         listMatches(c.utm_mediums, payload.utm_medium) &&
         containsMatches(c.utm_campaign_contains, payload.utm_campaign) &&
@@ -221,7 +236,7 @@ export function salesEventMatches(type: string, rawConfig: unknown, payload: Sal
       return (
         listMatches(c.from_status, payload.from_status) &&
         listMatches(c.to_status, payload.to_status) &&
-        listMatches(c.product_ids, payload.product_id) &&
+        scopeMatches(c, payload.product_id, payload.variant_id) &&
         listMatches(c.vendedor_ids, payload.vendedor_id) &&
         listMatches(c.utm_sources, payload.utm_source) &&
         listMatches(c.utm_mediums, payload.utm_medium) &&
@@ -233,12 +248,14 @@ export function salesEventMatches(type: string, rawConfig: unknown, payload: Sal
         listMatches(c.payment_types, payload.payment_type) &&
         listMatches(c.payment_methods, payload.payment_method) &&
         listMatches(c.refund_scope, payload.refund_scope) &&
-        listMatches(c.product_ids, payload.product_id)
+        scopeMatches(c, payload.product_id, payload.variant_id) &&
+        listMatches(c.sale_statuses, payload.sale_status)
       );
     case "payment_status_changed": {
       if (!listMatches(c.from_status, payload.from_status) || !listMatches(c.to_status, payload.to_status)) return false;
       if (!listMatches(c.payment_types, payload.payment_type) || !listMatches(c.payment_methods, payload.payment_method)) return false;
-      if (!listMatches(c.product_ids, payload.product_id)) return false;
+      if (!scopeMatches(c, payload.product_id, payload.variant_id)) return false;
+      if (!listMatches(c.sale_statuses, payload.sale_status)) return false;
       if (!rangeMatches(c, payload.amount)) return false;
       const minDelay = num(c.min_delay_days);
       if (minDelay !== null) {
@@ -249,8 +266,9 @@ export function salesEventMatches(type: string, rawConfig: unknown, payload: Sal
     }
     case "payment_before_due":
     case "payment_after_due":
-      // El evento relativo lleva el id del trigger que lo agendó: otro trigger no lo atiende.
-      return !!triggerId && payload.trigger_id === triggerId;
+      // El evento relativo lleva el id del trigger que lo agendó: otro trigger no lo atiende. El producto y la variante
+      // se vuelven a mirar (un recordatorio agendado antes de cambiar el filtro no sale para lo que ya no entra).
+      return !!triggerId && payload.trigger_id === triggerId && scopeMatches(c, payload.product_id, payload.variant_id);
     default:
       return false;
   }
@@ -300,6 +318,7 @@ export interface RelativePayment {
   due_date: string | null;
   reschedule_count: number;
   product_id: string | null;
+  variant_id?: string | null;
 }
 
 export interface TriggerForPlanning {
@@ -332,7 +351,7 @@ export function planPaymentRelativeJobs(payment: RelativePayment, triggers: read
     const checked = validateSalesTriggerConfig(trigger.type, trigger.config);
     if (!checked.ok) continue;
     const c = checked.config;
-    if (!listMatches(c.payment_types, payment.type) || !listMatches(c.product_ids, payment.product_id)) continue;
+    if (!listMatches(c.payment_types, payment.type) || !scopeMatches(c, payment.product_id, payment.variant_id)) continue;
 
     const offset = Number(c.offset_days);
     const day = trigger.type === "payment_before_due" ? addDays(payment.due_date, -offset) : addDays(payment.due_date, offset);

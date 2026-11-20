@@ -75,9 +75,28 @@ describe("una clave que ya no existe", () => {
 describe("serviceTriggerFilters", () => {
   it("fase en los de fase, paso en los de paso, días en «está por terminar»", async () => {
     const { serviceTriggerFilters } = await import("./service-picker");
-    expect(serviceTriggerFilters("service_phase_started")).toEqual({ phase: true, step: false, days: false });
-    expect(serviceTriggerFilters("service_item_overdue")).toEqual({ phase: false, step: true, days: false });
-    expect(serviceTriggerFilters("service_ending_soon")).toEqual({ phase: false, step: false, days: true });
-    expect(serviceTriggerFilters("service_created")).toEqual({ phase: false, step: false, days: false });
+    const none = { phase: false, step: false, days: false, status: false, light: false };
+    expect(serviceTriggerFilters("service_phase_started")).toEqual({ ...none, phase: true });
+    expect(serviceTriggerFilters("service_item_overdue")).toEqual({ ...none, step: true });
+    expect(serviceTriggerFilters("service_ending_soon")).toEqual({ ...none, days: true });
+    expect(serviceTriggerFilters("service_status_changed")).toEqual({ ...none, status: true });
+    expect(serviceTriggerFilters("service_light_changed")).toEqual({ ...none, light: true });
+    expect(serviceTriggerFilters("service_created")).toEqual(none);
+  });
+});
+
+describe("variantsInScope con elección múltiple", () => {
+  it("variantes de productos distintos y un producto entero", async () => {
+    const { variantsInScope } = await import("./service-picker");
+    const o = {
+      products: [
+        { id: "p1", name: "A", variants: [{ id: "v1", name: "A1", phases: [] }, { id: "v2", name: "A2", phases: [] }] },
+        { id: "p2", name: "B", variants: [{ id: "v3", name: "B1", phases: [] }] },
+      ],
+    };
+    expect(variantsInScope(o, { variantIds: ["v2", "v3"] }).map((x) => x.variant.id)).toEqual(["v2", "v3"]);
+    expect(variantsInScope(o, { productIds: ["p1"] }).map((x) => x.variant.id)).toEqual(["v1", "v2"]);
+    expect(variantsInScope(o, {}).length).toBe(3);
+    expect(variantsInScope(o, { productId: "p1", variantId: "v1" }).map((x) => x.variant.id)).toEqual(["v1"]);
   });
 });

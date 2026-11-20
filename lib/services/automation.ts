@@ -9,6 +9,8 @@
  * (los filtros de los workflows del camino, F117).
  */
 
+import { productScopeMatches, readProductScope } from "@/lib/automations/product-scope";
+
 export const SERVICE_TRIGGER_TYPES = [
   "service_created",
   "service_started",
@@ -86,9 +88,36 @@ export const SERVICE_TRIGGER_LABELS: Record<ServiceTriggerType, { label: string;
 /** Los dos que emite el barrido para UN disparador: el evento lleva su `trigger_id` (A4, F158). */
 export const PER_TRIGGER_SERVICE_TYPES = ["service_relative", "service_phase_periodic"] as const;
 
+/** Los estados de un servicio, para «Cambió el estado de un servicio» (lo que trae `service_status` del evento). */
+export const SERVICE_STATUS_OPTIONS = [
+  { value: "pending_confirmation", label: "Por confirmar" },
+  { value: "active", label: "Activo" },
+  { value: "paused", label: "Pausado" },
+  { value: "completed", label: "Completado" },
+  { value: "cancelled", label: "Cancelado" },
+  { value: "renewed", label: "Renovado" },
+] as const;
+
+/** Los colores del semáforo (la base guarda `grey`; algunos lugares dicen `gray`). */
+export const SERVICE_LIGHT_OPTIONS = [
+  { value: "green", label: "Verde" },
+  { value: "yellow", label: "Amarillo" },
+  { value: "red", label: "Rojo" },
+  { value: "grey", label: "Gris" },
+] as const;
+
 export interface ServiceTriggerConfig {
+  /** Elección múltiple (`lib/automations/product-scope.ts`). Vacías = todos los productos. */
+  product_ids?: string[] | null;
+  variant_ids?: string[] | null;
+  /** Filtros viejos de un solo valor: se siguen entendiendo. */
   product_id?: string | null;
   variant_id?: string | null;
+  /** service_status_changed: a qué estado pasó y desde cuál. */
+  to_statuses?: string[] | null;
+  from_statuses?: string[] | null;
+  /** service_light_changed: a qué color pasó. */
+  lights?: string[] | null;
   phase_key?: string | null;
   item_key?: string | null;
   /** Solo service_ending_soon: cuantos dias antes. */
@@ -113,6 +142,15 @@ export interface ServiceEventPayload {
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 
+/** Una lista vacia deja pasar todo; con algo elegido, el valor del evento tiene que estar. */
+function listMatches(allowed: unknown, actual: unknown): boolean {
+  if (!Array.isArray(allowed) || allowed.length === 0) return true;
+  const value = str(actual);
+  return value !== null && allowed.includes(value);
+}
+
+const normalizeLight = (v: unknown): string | null => (v === "gray" ? "grey" : str(v));
+
 /**
  * Si el evento pasa los filtros de la regla. Un filtro vacio deja pasar todo. Los relativos y periodicos (A4) ya
  * vienen hechos para UN disparador: pasan solo si el evento es de ese disparador (`trigger_id`). Los que llevan
@@ -122,10 +160,16 @@ const str = (v: unknown): string | null => (typeof v === "string" && v ? v : nul
 export function serviceEventMatches(config: unknown, payload: unknown, triggerId?: string | null, flowId?: string | null): boolean {
   const c = (config ?? {}) as ServiceTriggerConfig;
   const p = (payload ?? {}) as ServiceEventPayload;
-  if (typeof p.flow_id === "string") return !!flowId && p.flow_id === flowId;
-  if (typeof p.trigger_id === "string") return !!triggerId && p.trigger_id === triggerId;
-  if (str(c.product_id) && c.product_id !== p.product_id) return false;
-  if (str(c.variant_id) && c.variant_id !== p.variant_id) return false;
+  const scope = readProductScope(c);
+  // Los relativos, periodicos y «una cifra llega a…» ya vienen hechos para UNA automatizacion o UN disparador. El
+  // barrido SQL filtra por el producto y la variante de un solo valor; la eleccion multiple se mira aca (el evento
+  // trae el producto y la variante del servicio).
+  if (typeof p.flow_id === "string") return !!flowId && p.flow_id === flowId && productScopeMatches(scope, p.product_id, p.variant_id);
+  if (typeof p.trigger_id === "string") return !!triggerId && p.trigger_id === triggerId && productScopeMatches(scope, p.product_id, p.variant_id);
+  if (!productScopeMatches(scope, p.product_id, p.variant_id)) return false;
+  if (!listMatches(c.to_statuses, p.service_status)) return false;
+  if (!listMatches(c.from_statuses, p.previous_status)) return false;
+  if (!listMatches(c.lights, normalizeLight(p.light))) return false;
   if (str(c.phase_key) && c.phase_key !== p.phase_key) return false;
   if (str(c.item_key) && c.item_key !== p.item_key) return false;
   // «Termina en N días»: el editor guarda `days_before` y el barrido viejo emitía `days` (A4 lo arregla: manda los dos).

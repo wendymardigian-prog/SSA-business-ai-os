@@ -90,7 +90,7 @@ describe("handlePaymentRelativeTrigger", () => {
     const events = db.rows("automation_events");
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ workspace_id: WS, event_type: "payment_before_due", contact_id: "c1" });
-    expect(events[0].payload).toEqual({ payment_id: "p1", sale_id: "s1", contact_id: "c1", product_id: "A", trigger_id: "t1", reschedule_count: 0 });
+    expect(events[0].payload).toEqual({ payment_id: "p1", sale_id: "s1", contact_id: "c1", product_id: "A", trigger_id: "t1", reschedule_count: 0, sale_status: "reserved" });
     expect(events[0].payload).not.toHaveProperty("booking_id");
   });
 
