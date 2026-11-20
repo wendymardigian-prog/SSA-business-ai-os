@@ -32,9 +32,10 @@ function formatDay(iso: string, timeZone: string): string {
   return d.toLocaleDateString("es-AR", { timeZone: civil ? "UTC" : timeZone, day: "2-digit", month: "short", year: "numeric" });
 }
 
+/** La aclaración va en el MISMO renglón («valor · aclaración»): cada fila de la tabla mide un renglón. */
 function Sub({ children }: { children?: string }) {
   if (!children) return null;
-  return <span className="block truncate text-xs text-muted-foreground/80">{children}</span>;
+  return <span className="text-xs text-muted-foreground/80"> · {children}</span>;
 }
 
 export function ContactCell({ value, loading, memberLabel }: { value: CellValue | undefined; loading?: boolean; memberLabel: Map<string, string> }) {
@@ -44,12 +45,10 @@ export function ContactCell({ value, loading, memberLabel }: { value: CellValue 
   switch (value.t) {
     case "text": {
       const body = (
-        <>
-          <span className="block max-w-56 truncate text-muted-foreground" title={value.title ?? value.text}>
-            {value.text}
-          </span>
+        <span className="block truncate text-muted-foreground" title={[value.title ?? value.text, value.sub].filter(Boolean).join(" · ")}>
+          {value.text}
           <Sub>{value.sub}</Sub>
-        </>
+        </span>
       );
       return value.href ? (
         <Link href={value.href} className="block hover:underline">
@@ -61,7 +60,7 @@ export function ContactCell({ value, loading, memberLabel }: { value: CellValue 
     }
     case "date":
       return (
-        <span className="block whitespace-nowrap text-muted-foreground">
+        <span className="block truncate text-muted-foreground">
           {value.mode === "relative" ? formatRelative(value.at, timeZone) : value.mode === "datetime" ? formatDateTime(value.at, timeZone) : formatDay(value.at, timeZone)}
           <Sub>{value.sub}</Sub>
         </span>
@@ -70,26 +69,26 @@ export function ContactCell({ value, loading, memberLabel }: { value: CellValue 
       return <span className="text-muted-foreground">{memberLabel.get(value.userId) ?? "—"}</span>;
     case "badge":
       return (
-        <span className="block">
+        <span className="block truncate">
           <span className={cn("inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", TONES[value.tone])}>{value.text}</span>
           <Sub>{value.sub}</Sub>
         </span>
       );
     case "number":
       return (
-        <span className="block tabular-nums text-muted-foreground">
+        <span className="block truncate tabular-nums text-muted-foreground">
           {value.n}
           <Sub>{value.sub}</Sub>
         </span>
       );
     case "money":
       return (
-        <span className="block whitespace-nowrap tabular-nums text-muted-foreground">
+        <span className="block truncate tabular-nums text-muted-foreground">
           {usd.format(value.cents / 100)}
           <Sub>{value.sub}</Sub>
         </span>
       );
     case "list":
-      return <span className="block max-w-56 truncate text-muted-foreground" title={value.items.join(", ")}>{value.items.join(", ")}</span>;
+      return <span className="block truncate text-muted-foreground" title={value.items.join(", ")}>{value.items.join(", ")}</span>;
   }
 }

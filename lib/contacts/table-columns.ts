@@ -12,6 +12,8 @@ const WIDTHS: Record<string, number> = {
   name: 240,
   status: 170,
   contact: 230,
+  email: 220,
+  phone: 150,
   setter: 150,
   vendedor: 150,
   product: 180,
@@ -23,8 +25,11 @@ const WIDTHS: Record<string, number> = {
   closer_status: 170,
 };
 
-/** Columnas que muestran varias cosas y pueden ocupar más de una línea (el nombre con sus marcas, las etiquetas). */
-export const WRAPPING_CONTACT_COLUMNS: ReadonlySet<string> = new Set(["name", "tags"]);
+/**
+ * Columnas que pueden ocupar más de una línea. Ninguna: cada fila mide un renglón (lo largo se corta con «…» y las
+ * etiquetas que no entran se resumen en «+N», `TagChipsFit`).
+ */
+export const WRAPPING_CONTACT_COLUMNS: ReadonlySet<string> = new Set();
 
 export type ContactColumnMeta = ColumnMeta & { def: ContactColumnDef };
 
