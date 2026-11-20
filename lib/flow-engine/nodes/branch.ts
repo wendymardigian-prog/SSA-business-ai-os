@@ -47,6 +47,10 @@ const CONTACT_FREE_PREFIXES = [
   "webhook.",
   // Diseñador IA (F58): las salidas de «Generar desde plantilla» viajan en las variables.
   "design.",
+  // «En una fecha y hora», Tareas, grupos de WhatsApp, Servicios y Afiliados: todo viaja en las variables.
+  "schedule.", "task.", "group.", "reaction.", "poll.", "message.",
+  "service.", "cifra.", // @plantilla-quitar(servicios)
+  "affiliate.", // @plantilla-quitar(ventas)
 ];
 const CONTACT_FREE_FIELDS = ["platform", "agent_active"];
 
