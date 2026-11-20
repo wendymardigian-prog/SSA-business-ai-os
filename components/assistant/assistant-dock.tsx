@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowRight, Loader2, Maximize2, SquarePen, Sparkles, X } from "lucide-react";
+import { ArrowRight, ChevronRight, Loader2, Maximize2, SquarePen, Sparkles, Undo2, X } from "lucide-react";
 import { continueAssistantMessage, loadAssistantPanel, newAssistantConversation, sendAssistantMessage, type AssistantPanelData } from "@/lib/actions/assistant";
 import { MessageBubble } from "./assistant-parts";
 
@@ -34,6 +34,28 @@ function readOpen(): boolean {
     return window.localStorage.getItem(OPEN_KEY) === "1";
   } catch {
     return false;
+  }
+}
+
+// Cómo se ve el botón cuando el asistente está cerrado: el círculo de siempre o una pestañita pegada al borde.
+type Launcher = "bubble" | "tab";
+const LAUNCHER_KEY = "rer-assistant-launcher";
+const LAUNCHER_EVENT = "rer-assistant-launcher-change";
+
+function subscribeLauncher(onChange: () => void): () => void {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(LAUNCHER_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(LAUNCHER_EVENT, onChange);
+  };
+}
+
+function readLauncher(): Launcher {
+  try {
+    return window.localStorage.getItem(LAUNCHER_KEY) === "tab" ? "tab" : "bubble";
+  } catch {
+    return "bubble";
   }
 }
 
@@ -90,6 +112,20 @@ export function AssistantDock() {
     window.dispatchEvent(new Event(OPEN_EVENT));
   }, []);
 
+  // Círculo o pestañita: también se recuerda en el navegador; si no deja guardar, vale la sesión.
+  const storedLauncher = useSyncExternalStore(subscribeLauncher, readLauncher, () => "bubble" as Launcher);
+  const [sessionLauncher, setSessionLauncher] = useState<Launcher | null>(null);
+  const launcher = sessionLauncher ?? storedLauncher;
+  const setLauncher = useCallback((next: Launcher) => {
+    setSessionLauncher(next);
+    try {
+      window.localStorage.setItem(LAUNCHER_KEY, next);
+    } catch {
+      /* sin localStorage: no se recuerda */
+    }
+    window.dispatchEvent(new Event(LAUNCHER_EVENT));
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     inputRef.current?.focus();
@@ -138,16 +174,45 @@ export function AssistantDock() {
   if (pathname?.startsWith(ASSISTANT_FULL_PATH)) return null;
 
   if (!open) {
+    // El botoncito de achicar o volver se ve al pasar el mouse o con el teclado; en un teléfono (sin mouse), siempre.
+    const miniButton =
+      "absolute flex size-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100";
+
+    if (launcher === "tab") {
+      // La pestañita: finita, pegada al borde derecho y más arriba, para no tapar el botón de mandar del chat.
+      return (
+        <div className="group fixed bottom-28 right-0 z-40 flex items-center">
+          <button type="button" onClick={() => setLauncher("bubble")} aria-label="Volver el botón a su lugar" title="Volver el botón a su lugar" className={`${miniButton} -top-6 right-1`}>
+            <Undo2 className="size-3" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label="Abrir el asistente"
+            title="Asistente"
+            className="flex h-11 w-2.5 items-center justify-center overflow-hidden rounded-l-md bg-primary text-primary-foreground shadow-lg transition-[width] duration-150 group-hover:w-9 focus-visible:w-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge [@media(hover:none)]:w-7"
+          >
+            <Sparkles className="size-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100" aria-hidden />
+          </button>
+        </div>
+      );
+    }
+
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Abrir el asistente"
-        title="Asistente"
-        className="fixed bottom-4 right-4 z-40 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-offset-2 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge"
-      >
-        <Sparkles className="size-5" aria-hidden />
-      </button>
+      <div className="group fixed bottom-4 right-4 z-40">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Abrir el asistente"
+          title="Asistente"
+          className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-offset-2 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge"
+        >
+          <Sparkles className="size-5" aria-hidden />
+        </button>
+        <button type="button" onClick={() => setLauncher("tab")} aria-label="Achicar el botón del asistente" title="Achicar a una pestañita" className={`${miniButton} -right-1 -top-1`}>
+          <ChevronRight className="size-3" aria-hidden />
+        </button>
+      </div>
     );
   }
 
