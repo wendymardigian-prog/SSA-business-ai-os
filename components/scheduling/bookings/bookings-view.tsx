@@ -57,6 +57,11 @@ import { agendaSearchHint } from "@/lib/scheduling/agenda-search-hint";
 import { gmtOffsetLabel, timezoneCityLabel } from "@/lib/scheduling/booker/format";
 import { changeBookingStatus, cancelBookingAsHost, searchContactsForBooking } from "@/lib/actions/scheduling/bookings";
 import { DEFAULT_CONFIG_SECTION } from "@/lib/scheduling/config-sections";
+import { durationMinutesOf, googleLayerParam, type AgendaGoogleEvent } from "@/lib/google-calendar/agenda";
+import type { AgendaGoogleData } from "@/lib/google-calendar/agenda-load";
+import { refreshMyGoogleEvents } from "@/lib/actions/scheduling/google-events";
+import { CreateChoiceDialog, GoogleCreateDialog, GoogleEventPanel, GoogleMoveDialog } from "./google-event-panel";
+import { groupOf } from "@/lib/scheduling/booking-status";
 
 /** La pastilla rápida de la lista: los cuatro de siempre, más "Todas" (ahora el default). */
 export type QuickPick = QuickFilter | "all";
@@ -128,6 +133,7 @@ export function BookingsScreen({
   noGoogle = false,
   needsProfile,
   tasks,
+  google,
 }: {
   items: BookingListItem[];
   total: number;
@@ -188,6 +194,8 @@ export function BookingsScreen({
    * `mode: "off"` el interruptor existe pero no se consulto nada de tareas.  @plantilla-quitar(tareas)
    * @plantilla-quitar(tareas) */
   tasks?: AgendaTasksProps;
+  /** 00510: los eventos de Google Calendar de quien mira (solo en el calendario y con `scheduling.use`). */
+  google?: AgendaGoogleData;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -241,6 +249,68 @@ export function BookingsScreen({
     const qs = next.toString();
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
   }, []);
+
+  // ── 00510: Google Calendar ────────────────────────────────────────────────────────────────────────────────────────
+  // El evento abierto vive en `?gcal=` (igual que una reunión en `?agenda=`, sin recargar la página).
+  const gcalId = searchParams.get("gcal");
+  const gcalEvent = useMemo(() => (gcalId && google ? (google.events.find((e) => e.id === gcalId) ?? null) : null), [gcalId, google]);
+  const openGoogle = useCallback((id: string) => {
+    const next = new URLSearchParams(window.location.search);
+    next.set("gcal", id);
+    window.history.pushState(null, "", `?${next.toString()}`);
+  }, []);
+  const closeGoogle = useCallback(() => {
+    const next = new URLSearchParams(window.location.search);
+    next.delete("gcal");
+    const qs = next.toString();
+    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+  }, []);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshGoogle = useCallback(
+    (force: boolean) => {
+      setRefreshing(true);
+      refreshMyGoogleEvents({ force })
+        .then((r) => {
+          if (r.refreshed > 0 || force) router.refresh();
+        })
+        .catch(() => undefined)
+        .finally(() => setRefreshing(false));
+    },
+    [router],
+  );
+  const googleOn = !!google?.on;
+  // Al abrir el calendario con Google prendido, se relee si pasó más de un minuto (lo decide el servidor).
+  // En segundo plano: sin la ruedita (solo «Actualizar» la muestra).
+  useEffect(() => {
+    if (!googleOn) return;
+    let alive = true;
+    refreshMyGoogleEvents({ force: false })
+      .then((r) => {
+        if (alive && r.refreshed > 0) router.refresh();
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [googleOn, router]);
+  const [googleMove, setGoogleMove] = useState<{ event: AgendaGoogleEvent; startUtc: string; durationMinutes: number } | null>(null);
+  const [createChoice, setCreateChoice] = useState<{ date: string; startMinutes: number; durationMinutes: number } | null>(null);
+  const [googleCreate, setGoogleCreate] = useState<{ date: string; startMinutes: number; durationMinutes: number } | null>(null);
+  const canCreateGoogle = googleOn && (google?.calendars ?? []).some((c) => c.writable);
+  const overlapsBooking = (startUtc: string, minutes: number) => {
+    const s0 = Date.parse(startUtc);
+    const e0 = s0 + minutes * 60_000;
+    return items.some((b) => groupOf(b.status) === "active" && Date.parse(b.startAt) < e0 && Date.parse(b.endAt) > s0);
+  };
+  const googleNote = !google?.on
+    ? null
+    : google.error
+      ? "No pude leer tu Google Calendar"
+      : google.nothingToShow
+        ? "Prendé «Mostrar en Agenda» en Ajustes de calendarios"
+        : !google.syncedAt
+          ? "Leyendo tu Google Calendar…"
+          : null;
 
   // Se vuelve a pedir al abrir otra reunión y cada vez que la página trae datos
   // nuevos (`items` cambia después de un `router.refresh()` de una acción).
@@ -479,14 +549,33 @@ export function BookingsScreen({
                 onDropBooking={reschedule.onDrop}
                 onResizeBooking={canManage ? reschedule.onResize : undefined}
                 onCreateRange={
-                  canManage
+                  canManage || canCreateGoogle
                     ? (date, startMinutes, durationMinutes) => {
+                        // Con Google, se elige qué crear; sin permiso de reuniones, directo el evento de Google.
+                        if (canCreateGoogle && canManage) return setCreateChoice({ date, startMinutes, durationMinutes });
+                        if (canCreateGoogle) return setGoogleCreate({ date, startMinutes, durationMinutes });
                         setManualSlot({ date, time: wallTimeOfMinutes(startMinutes), durationMinutes });
                         setManualOpen(true);
                       }
                     : undefined
                 }
                 ghost={reschedule.ghost}
+                google={
+                  google
+                    ? {
+                        on: google.on,
+                        onToggle: (on) => setParam("google", googleLayerParam(on)),
+                        events: google.events,
+                        busy: google.busy,
+                        refreshing,
+                        onRefresh: () => refreshGoogle(true),
+                        note: googleNote,
+                        onOpen: openGoogle,
+                        onDrop: (event, startUtc) => setGoogleMove({ event, startUtc, durationMinutes: durationMinutesOf(event) }),
+                        onResize: (event, durationMinutes) => setGoogleMove({ event, startUtc: event.startAt, durationMinutes }),
+                      }
+                    : undefined
+                }
               />
             }
             timeFormat={timeFormat}
@@ -533,6 +622,68 @@ export function BookingsScreen({
           canReassign={canReassign}
           hostOptions={reassignHostOptions.filter((h) => h.userId !== detail.hostUserId)}
           onClose={closeDetail}
+        />
+      )}
+
+      {gcalId && gcalEvent && (
+        <GoogleEventPanel
+          key={gcalEvent.id}
+          event={gcalEvent}
+          timezone={timezone}
+          timeFormat={timeFormat}
+          onClose={closeGoogle}
+          onChanged={() => router.refresh()}
+          onRefresh={() => refreshGoogle(true)}
+        />
+      )}
+
+      {googleMove && (
+        <GoogleMoveDialog
+          event={googleMove.event}
+          startUtc={googleMove.startUtc}
+          durationMinutes={googleMove.durationMinutes}
+          timezone={timezone}
+          timeFormat={timeFormat}
+          overlapsBooking={overlapsBooking(googleMove.startUtc, googleMove.durationMinutes)}
+          onClose={() => setGoogleMove(null)}
+          onDone={() => {
+            setGoogleMove(null);
+            router.refresh();
+          }}
+          onRefresh={() => {
+            setGoogleMove(null);
+            refreshGoogle(true);
+          }}
+        />
+      )}
+
+      {createChoice && (
+        <CreateChoiceDialog
+          label={`${createChoice.date} · ${wallTimeOfMinutes(createChoice.startMinutes)}`}
+          onClose={() => setCreateChoice(null)}
+          onMeeting={() => {
+            setManualSlot({ date: createChoice.date, time: wallTimeOfMinutes(createChoice.startMinutes), durationMinutes: createChoice.durationMinutes });
+            setCreateChoice(null);
+            setManualOpen(true);
+          }}
+          onGoogle={() => {
+            setGoogleCreate(createChoice);
+            setCreateChoice(null);
+          }}
+        />
+      )}
+
+      {googleCreate && google && (
+        <GoogleCreateDialog
+          calendars={google.calendars}
+          initial={googleCreate}
+          timezone={timezone}
+          onClose={() => setGoogleCreate(null)}
+          onCreated={(id) => {
+            setGoogleCreate(null);
+            router.refresh();
+            if (id) openGoogle(id);
+          }}
         />
       )}
 

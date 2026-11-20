@@ -53,6 +53,16 @@ export interface AgendaGoogleEvent {
   bookingId: string | null;
 }
 
+/** Un calendario propio, para el color y para elegir dónde crear un evento. */
+export interface AgendaGoogleCalendar {
+  id: string;
+  name: string;
+  color: string | null;
+  /** Se pueden crear eventos ahí (dueño o escritura, con el permiso de eventos). */
+  writable: boolean;
+  isDefault: boolean;
+}
+
 /** El horario ocupado de otra persona: sin título, sin invitados. */
 export interface AgendaGoogleBusy {
   key: string;

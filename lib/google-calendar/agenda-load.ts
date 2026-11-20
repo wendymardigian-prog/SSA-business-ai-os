@@ -9,18 +9,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { canCreateEvents } from "@/lib/social/google-calendar";
-import { descriptionToText, googleQueryWindow, type AgendaGoogleAttendee, type AgendaGoogleBusy, type AgendaGoogleEvent } from "./agenda";
+import { descriptionToText, googleQueryWindow, type AgendaGoogleAttendee, type AgendaGoogleBusy, type AgendaGoogleCalendar, type AgendaGoogleEvent } from "./agenda";
+
+export type { AgendaGoogleCalendar };
 
 type Db = SupabaseClient<Database>;
-
-export interface AgendaGoogleCalendar {
-  id: string;
-  name: string;
-  color: string | null;
-  /** Se pueden crear eventos ahí (dueño o escritura, con el permiso de eventos). */
-  writable: boolean;
-  isDefault: boolean;
-}
 
 export interface AgendaGoogleData {
   on: boolean;

@@ -35,6 +35,8 @@ import { parseTasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(t
 import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
+import { parseGoogleLayer } from "@/lib/google-calendar/agenda";
+import { EMPTY_AGENDA_GOOGLE, loadAgendaGoogle, type AgendaGoogleData } from "@/lib/google-calendar/agenda-load";
 
 export const dynamic = "force-dynamic";
 
@@ -234,11 +236,28 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const listPromise: Promise<{ items: BookingListItem[]; total: number }> = impossible
     ? Promise.resolve({ items: [], total: 0 })
     : listBookings(ctx.supabase, ctx.workspace.id, listQuery);
-  const [{ items, total, bookingMatches, metaNames, lastTouches }, forCounts, meetContext] = await Promise.all([
+  // 00510: los eventos de Google Calendar de quien mira (y el «Ocupado» de los anfitriones del filtro). Solo en el
+  // calendario y con agenda propia; con el interruptor apagado no se consulta nada.
+  const googleOn = view === "calendar" && !!calendarRange && ctx.can("scheduling.use") && parseGoogleLayer(query.google);
+  const googlePromise: Promise<AgendaGoogleData | undefined> =
+    view === "calendar" && calendarRange && ctx.can("scheduling.use")
+      ? googleOn
+        ? loadAgendaGoogle({
+            supabase: ctx.supabase,
+            workspaceId: ctx.workspace.id,
+            userId: ctx.user.id,
+            range: calendarRange,
+            otherUserIds: filters.hostUserIds,
+            defaultDestinationId: profile?.default_destination_calendar_id ?? null,
+          })
+        : Promise.resolve(EMPTY_AGENDA_GOOGLE)
+      : Promise.resolve(undefined);
+  const [{ items, total, bookingMatches, metaNames, lastTouches }, forCounts, meetContext, google] = await Promise.all([
     listPromise.then(async (list) => ({ ...list, ...(await loadListLinks(list.items)) })),
     listBookingStatuses(ctx.supabase, ctx.workspace.id, { from: resolvedPeriod.from, to: resolvedPeriod.to, ...base, statuses: fineStatuses }),
     // Quien puede crear un Google Meet al agendar a mano (lo vuelve a comprobar el servidor al agendar).
     loadMeetContext(service, ctx.workspace.id, [...names.keys(), ...events.map((e) => e.owner_user_id)]),
+    googlePromise,
   ]);
   const quickCounts = quickFilterCounts(forCounts, now);
   const counts: Record<QuickPick, number> = { all: forCounts.length, ...quickCounts };
@@ -358,6 +377,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       noGoogle={ctx.can("scheduling.use") && broken.length === 0 && !hasGoogleByUser.has(ctx.user.id)}
       needsProfile={ctx.can("scheduling.use") && !profile}
       tasks={agendaTasks} // @plantilla-quitar(tareas)
+      google={google}
     />
   );
 }
