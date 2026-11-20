@@ -39,6 +39,31 @@ export async function loadWhatsAppChannelOptions(): Promise<{ ok: true; channels
 }
 
 /**
+ * Las cuentas conectadas de la bandeja (Instagram y WhatsApp), para acotar un disparador a una cuenta (Inactividad).
+ * Mismo permiso que los canales de WhatsApp; lee con la sesión (la RLS decide qué canales ve).
+ */
+export async function loadInboxChannelOptions(): Promise<{ ok: true; channels: Array<{ id: string; name: string }> } | { ok: false; error: string }> {
+  const ctx = await getAnyPermissionAction(["flows.edit", "integrations.manage"]);
+  if (!ctx) return { ok: false, error: "No tenés permiso para ver los canales." };
+  const { data, error } = await ctx.supabase
+    .from("channels")
+    .select("id, platform, display_name, username")
+    .eq("workspace_id", ctx.workspace.id)
+    .in("platform", ["instagram", "whatsapp"])
+    .eq("is_active", true)
+    .order("created_at");
+  if (error) {
+    console.error("[flows] no pude listar los canales:", error.message);
+    return { ok: false, error: "No pude cargar las cuentas." };
+  }
+  const platformLabel = (p: string) => (p === "instagram" ? "Instagram" : "WhatsApp");
+  return {
+    ok: true,
+    channels: (data ?? []).map((c) => ({ id: c.id, name: `${platformLabel(c.platform)} · ${c.display_name?.trim() || c.username?.trim() || "sin nombre"}` })),
+  };
+}
+
+/**
  * Las personas del equipo que ofrecen los pasos del lienzo que eligen gente (como «Avisar en la campana»).
  * Lo abre quien arma el flujo; es el mismo dato que ya ven los demas selectores de personas (id y nombre de gente del
  * mismo workspace).

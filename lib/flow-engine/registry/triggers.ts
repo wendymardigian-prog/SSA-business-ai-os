@@ -226,14 +226,23 @@ export function crmEventMatches(
   // estado) o rol y estado ("setter:calificado": cuando pasa a ese estado).
   if (event.event_type === "status_changed") {
     const [role, status] = String(expected).toLowerCase().trim().split(":");
-    if (role !== String(event.payload.role ?? "").toLowerCase()) return false;
+    if (sameRole(role) !== sameRole(event.payload.role)) return false;
     return !status || status === String(event.payload.status ?? "").toLowerCase();
   }
 
   const actual = valueForEvent(event.event_type, event.payload);
   if (actual === undefined) return false;
 
+  // La asignación dice «vendedor» y el pipeline «closer»: son el mismo rol (antes escribir «closer» no coincidía nunca).
+  if (event.event_type === "assignment_changed") return sameRole(actual) === sameRole(expected);
+
   return String(actual).toLowerCase().trim() === String(expected).toLowerCase().trim();
+}
+
+/** El rol del que vende se llama «vendedor» en la asignación y «closer» en el pipeline. */
+function sameRole(value: unknown): string {
+  const role = String(value ?? "").toLowerCase().trim();
+  return role === "closer" ? "vendedor" : role;
 }
 
 /** Que valor del payload se compara, segun el tipo de evento. */
@@ -253,6 +262,7 @@ function valueForEvent(
     case "assignment_changed":
       return payload.role;
     case "contact_created":
+      // No se usa hoy: `contact_created` lo atiende «Contacto nuevo», que le gana al comodín de este disparador.
       return payload.source;
     case "do_not_contact":
       return payload.reason;

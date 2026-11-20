@@ -258,3 +258,16 @@ describe("los tres tipos nuevos estan registrados", () => {
     expect(listTriggers("message").map((t) => t.type)).not.toContain("email_received");
   });
 });
+
+describe("roles: vendedor y closer son lo mismo", () => {
+  it("asignación con «closer» escrito a mano coincide con «vendedor»", async () => {
+    const { crmEventMatches } = await import("./triggers");
+    expect(crmEventMatches({ event: "assignment_changed", value: "closer" }, { event_type: "assignment_changed", payload: { role: "vendedor" } })).toBe(true);
+    expect(crmEventMatches({ event: "assignment_changed", value: "vendedor" }, { event_type: "assignment_changed", payload: { role: "vendedor" } })).toBe(true);
+    expect(crmEventMatches({ event: "assignment_changed", value: "setter" }, { event_type: "assignment_changed", payload: { role: "vendedor" } })).toBe(false);
+  });
+  it("estado del pipeline con «vendedor» coincide con «closer»", async () => {
+    const { crmEventMatches } = await import("./triggers");
+    expect(crmEventMatches({ event: "status_changed", value: "vendedor:ganado" }, { event_type: "status_changed", payload: { role: "closer", status: "ganado" } })).toBe(true);
+  });
+});

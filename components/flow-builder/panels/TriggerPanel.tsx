@@ -11,6 +11,7 @@ import type { TriggerType } from "@/lib/types/database";
 import { CallCategoryFilter } from "@/components/calls/call-category-filter"; // @plantilla-quitar(llamadas)
 import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric"; // @plantilla-quitar(llamadas)
 import { FormTriggerPanel } from "./FormTriggerPanel"; // @plantilla-quitar(formularios)
+import { EodTriggerPanel } from "./EodTriggerPanel"; // @plantilla-quitar(formularios)
 import { WebhookTriggerPanel } from "./WebhookTriggerPanel"; // @plantilla-quitar(webhooks)
 import { TaskTriggerPanel } from "./TaskTriggerPanel"; // @plantilla-quitar(tareas)
 import { WhatsappGroupTriggerPanel } from "./WhatsappGroupTriggerPanel";
@@ -18,10 +19,14 @@ import { ScheduledTriggerPanel } from "./ScheduledTriggerPanel";
 import { CommentScopePicker } from "./CommentScopePicker";
 import { SalesTriggerPanel } from "./SalesTriggerPanel"; // @plantilla-quitar(ventas)
 import { ServiceTriggerPanel, isServiceTrigger } from "./ServiceTriggerPanel"; // @plantilla-quitar(servicios)
+import { AffiliateTriggerPanel } from "./AffiliateTriggerPanel"; // @plantilla-quitar(ventas)
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
 import { ONCE_PER_CONTACT_DETAIL, ONCE_PER_CONTACT_TITLE, supportsOncePerContact } from "@/lib/flow-engine/once-per-contact";
 import { WhatsappQueueSettings } from "./whatsapp-queue-settings";
 import { TriggerOnlyIfSection } from "./trigger-only-if-section";
+import { MultiPick } from "./multi-pick";
+import { BookingTriggerFilters } from "./BookingTriggerFilters";
+import { useInboxChannelOptions, useTeamOptions } from "./use-trigger-options";
 import { triggerOffersOnlyIf } from "@/lib/flow-engine/trigger-only-if-types";
 
 interface Keyword {
@@ -205,6 +210,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
 
       {/* @plantilla-desde(ventas) */}
       {SALES_TRIGGERS.includes(triggerType) && <SalesTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
+      {triggerType.startsWith("affiliate_") && <AffiliateTriggerPanel data={data} onChange={onChange} />}
       {/* @plantilla-hasta(ventas) */}
       {/* @plantilla-desde(servicios) */}
       {isServiceTrigger(triggerType) && <ServiceTriggerPanel triggerType={triggerType} data={data as Record<string, unknown>} onChange={onChange as (d: Record<string, unknown>) => void} />}
@@ -408,6 +414,20 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
             <StatusChangedPicker flowId={flowId} value={typeof data.value === "string" ? data.value : ""} onChange={(value) => onChange({ ...data, value })} />
           ) : data.event === "qualification_changed" ? (
             <QualificationChangedPicker value={typeof data.value === "string" ? data.value : ""} onChange={(value) => onChange({ ...data, value })} />
+          ) : data.event === "assignment_changed" ? (
+            <div>
+              <label htmlFor="trg-assignment-role" className="mb-2 block text-xs font-semibold text-foreground">Solo este rol</label>
+              <select
+                id="trg-assignment-role"
+                value={typeof data.value === "string" ? (data.value === "closer" ? "vendedor" : data.value) : ""}
+                onChange={(e) => onChange({ ...data, value: e.target.value })}
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              >
+                <option value="">Setter o vendedor</option>
+                <option value="setter">Setter</option>
+                <option value="vendedor">Vendedor (closer)</option>
+              </select>
+            </div>
           ) : (
           <div>
             <label className="mb-2 block text-xs font-semibold text-foreground">
@@ -510,27 +530,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
             </div>
           )}
 
-          {triggerType === "booking_status_changed" && (
-            <div>
-              <label className="mb-2 block text-xs font-semibold text-foreground">Solo si pasa a</label>
-              <input
-                type="text"
-                value={((data.to_status as string[] | undefined) ?? []).join(", ")}
-                onChange={(e) =>
-                  onChange({ ...data, to_status: e.target.value.split(",").map((v) => v.trim()).filter(Boolean) })
-                }
-                placeholder="sale, no_show"
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-              <p className="mt-1 text-[11px] text-muted-foreground/60">
-                Separados por coma. Vacio = cualquier estado.
-              </p>
-            </div>
-          )}
-
-          <p className="text-[11px] text-muted-foreground/60">
-            Para acotar por evento, area o anfitrion, conviene crear el flujo desde el evento: ahi el filtro queda puesto solo.
-          </p>
+          <BookingTriggerFilters triggerType={triggerType} data={data} onChange={onChange} />
         </div>
       )}
 
@@ -597,6 +597,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
               ))}
             </div>
           )}
+          <CloserPick value={Array.isArray(data.closer_ids) ? (data.closer_ids as string[]) : []} onChange={(closer_ids) => onChange({ ...data, closer_ids: closer_ids.length ? closer_ids : undefined })} />
           <p className="text-[11px] text-muted-foreground/60">
             Sin elegir nada, vale para cualquier llamada. Solo dispara si la llamada tiene contacto. Las variables {"{{call.title}}"}, {"{{call.date}}"}, {"{{call.outcome}}"}, {"{{call.next_step}}"}, {"{{call.closer_name}}"}, {"{{call.closer_score}}"} y {"{{call.lead_score}}"} quedan disponibles para los mensajes.
           </p>
@@ -607,6 +608,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
       {/* @plantilla-desde(formularios) */}
       {/* Formularios (F19): formularios, puntaje y condiciones sobre las respuestas */}
       {FORM_TRIGGERS.includes(triggerType) && <FormTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
+      {triggerType === "eod_submitted" && <EodTriggerPanel data={data} onChange={onChange} />}
       {/* @plantilla-hasta(formularios) */}
 
       {/* @plantilla-desde(tareas) */}
@@ -678,6 +680,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
               <option value="days">días</option>
             </select>
           </div>
+          <InactivityChannelPick value={typeof data.channelId === "string" ? data.channelId : ""} onChange={(channelId) => onChange({ ...data, channelId: channelId || undefined })} />
           <p className="mt-1.5 text-[11px] text-muted-foreground/60">
             Se cuenta desde la ultima vez que el lead interactuo. Dispara una
             sola vez por conversacion y por ventana, aunque el chequeo corra
@@ -790,6 +793,35 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
 
       {/* «Solo si…» genérico: los disparadores que pasan por la cola de eventos (el webhook tiene el suyo). */}
       {triggerOffersOnlyIf(triggerType) && <TriggerOnlyIfSection flowId={flowId} data={data} onChange={onChange} />}
+    </div>
+  );
+}
+
+/** Llamadas: quién grabó la reunión (el closer). Vacío = cualquiera. */
+function CloserPick({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
+  const team = useTeamOptions();
+  if (team === null) return <p className="text-[11px] text-destructive">No pude cargar el equipo.</p>;
+  return <MultiPick label="Quién grabó la reunión" value={value} options={team ?? []} loaded={team !== undefined} onChange={onChange} />;
+}
+
+/** Inactividad: en qué cuenta. Vacío = todas. */
+function InactivityChannelPick({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const channels = useInboxChannelOptions();
+  return (
+    <div className="mt-3">
+      <label htmlFor="trg-inactivity-channel" className="mb-1.5 block text-xs font-semibold text-foreground">En qué cuenta</label>
+      <select
+        id="trg-inactivity-channel"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+      >
+        <option value="">{channels === undefined ? "Cargando…" : "Todas las cuentas"}</option>
+        {(channels ?? []).map((c) => (
+          <option key={c.value} value={c.value}>{c.label}</option>
+        ))}
+        {value && channels && !channels.some((c) => c.value === value) && <option value={value}>(cuenta que ya no está conectada)</option>}
+      </select>
     </div>
   );
 }

@@ -144,8 +144,9 @@ export function buildDesiredTriggers(
       }
 
       // La cuenta del disparador de comentario (o de palabra clave): sin elegir, todas las cuentas del negocio.
+      // Inactividad también se puede acotar a una cuenta: el cron ya respeta `channel_id`, el panel no lo dejaba elegir.
       const channelId =
-        (type === "comment_keyword" || type === "keyword") && typeof data.channelId === "string" && UUID.test(data.channelId)
+        (type === "comment_keyword" || type === "keyword" || type === "inactivity") && typeof data.channelId === "string" && UUID.test(data.channelId)
           ? data.channelId
           : null;
       if (channelId) config.origin = CANVAS_TRIGGER_ORIGIN;
