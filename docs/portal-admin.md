@@ -91,6 +91,9 @@ sin contestar).
   «Agregar al portal» desde Grabaciones guarda una grabación como clase o como grabación de una fecha.
 - **Comunidad**: posts y comentarios (un nivel), reacciones y reportes. Un comentario en una clase es un post del
   espacio reservado «clases». Lo borrado se oculta y se purga a los 30 días.
+  **Autor del equipo (00505)**: un post o comentario del equipo se ve en el portal con el nombre de quien lo escribió
+  (`full_name` del perfil de SSA, vía `team_author_name`) y la marca «Equipo»; solo «Como <negocio>» (`as_business`,
+  apagado de entrada en el panel) sale como «Equipo». Sin nombre cargado, «Equipo».
   **Título y aviso por correo (00405)**: un post nuevo del equipo lleva título (hasta 200, con emojis; lo exige la
   base) y el interruptor «Avisar por correo», prendido de entrada. Prendido, la acción encola `community_post_email`
   (el reparto), que pide `community_email_targets` (cuenta del portal ACTIVA, con acceso a la comunidad y miembro de

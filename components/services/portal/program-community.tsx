@@ -110,7 +110,7 @@ export function ProgramCommunity({
   const live = spaces.filter(
     (s) => !s.archived && targets.every((k) => k === community || activeCommunities.find((c) => c.key === k)?.spaces.some((x) => x.key === s.key && !x.archived)),
   );
-  const [draft, setDraft] = useState({ title: "", notifyEmail: true, body: "", space: space && space !== LESSON_SPACE ? space : live.find((s) => s.key === "general")?.key ?? live[0]?.key ?? "", asBusiness: true });
+  const [draft, setDraft] = useState({ title: "", notifyEmail: true, body: "", space: space && space !== LESSON_SPACE ? space : live.find((s) => s.key === "general")?.key ?? live[0]?.key ?? "", asBusiness: false });
   const [photos, setPhotos] = useState<ComposerPhoto[]>([]);
   // El editor se vuelve a armar vacío después de publicar.
   const [composerKey, setComposerKey] = useState(0);
