@@ -76,6 +76,10 @@ La ficha tiene «De dónde vino» (canal, pieza con su responsable, anuncio o re
 
 El link firmado del contrato lleva el `sale_id` **adentro del token**. Uno suelto en la URL o en el cuerpo se ignora; uno que no existe o es de otro workspace se descarta (`meta.sale_id_discarded`).
 
+## Disparadores: variante y estado de pago (20/11/2026, 00507)
+
+Los seis disparadores de Ventas filtran por productos y variantes, uno, varios o todos. «Venta creada», «Pago creado» y «Cambió el estado del pago» filtran también por **estado de pago de la venta**: Reservada, Con pago pendiente, Pagada, Con mora, Suscripción activa… Los eventos llevan `variant_id` y `sale_status` desde la 00507. Detalle en [flow-registry.md](flow-registry.md) («Filtros de los disparadores y «Solo si…»»).
+
 ## Permisos
 
 `sales.view`, `sales.manage`, `payments.manage`, y el alcance `sales` (`own` / `all`). El Member de sistema carga y cobra lo suyo (alcance `own`); Owner y Admin ven todo. Ajustes > Actividad es de Owner/Admin.

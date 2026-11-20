@@ -929,3 +929,33 @@ Dos cosas que hicieron falta para las series de Admisión (confirmación, record
 **`{{booking.days_since_end}}`.** Días enteros desde que terminó la reunión, contados al momento en que se arma el contexto del evento (un número como texto; «0» si todavía no terminó). Es el único dato de la reunión que se compara como NÚMERO (`bookingVariableSchema`): sirve en un camino de «Condiciones» («mayor que 2») para la vigencia de una serie de recuperación: si el no show se marcó o la cancelación se registró más de 2 días después de la llamada, la serie no arranca. Como las demás variables de agenda, se guarda en la sesión y no cambia al esperar.
 
 El selector «Cuánto antes / después de la reunión» suma **10 minutos**.
+
+## Filtros de los disparadores y «Solo si…» (20/11/2026, 00507)
+
+**Productos y variantes, uno, varios o todos.** Los disparadores de Servicios y de Ventas eligen con `ProductScopePick` (`components/flow-builder/panels/multi-pick.tsx`). Se guarda como dos listas: `product_ids` (productos ENTEROS, también sus variantes futuras) y `variant_ids` (variantes sueltas). Las dos vacías = todos, también los productos que se creen después. Un evento pasa si su producto está en `product_ids` O su variante en `variant_ids`. Lo decide una sola función pura, `productScopeMatches` (`lib/automations/product-scope.ts`). Los filtros viejos de un solo valor (`product_id`, `variant_id`) se siguen entendiendo, y al guardar se reemplazan por las listas. Lo elegido que ya no existe queda a la vista con «ya no existe»: no se vacía solo, porque vacío quiere decir «todos».
+
+- **Servicios.** Los relativos, los periódicos y «una cifra llega a…» se filtran en SQL por el valor viejo de un solo valor. La elección múltiple se mira en `serviceEventMatches`, con el producto y la variante que el evento ya trae (`app_servicio.emit`), así que no hizo falta tocar el barrido. Filtros nuevos: `to_statuses` y `from_statuses` en «Cambió el estado», y `lights` en «Cambió el semáforo». El selector muestra todos los productos, tengan camino o no. Fase y paso siguen saliendo del camino.
+- **Ventas.** Los seis tienen `variant_ids`. «Venta creada», «Pago creado» y «Cambió el estado del pago» tienen `sale_statuses` («Estado de pago de la venta»), que se compara con el `sale_status` del evento (00507).
+  - En `sale_created` es el estado con el que nace la venta. Si se carga sin pagos y se paga después, el que corresponde es «Cambió el estado de la venta → Pagada».
+  - En los de pagos es el estado de la venta CON ese pago: se deriva con `derive_sale_status` (dentro de `create_sale`, el estado con el que nació).
+  - Un evento viejo sin `sale_status` no pasa un filtro de estado.
+
+**«Solo si…»** (`lib/flow-engine/trigger-only-if.ts`, panel `trigger-only-if-section.tsx`): condiciones extra sobre los datos del disparador y del contacto, con el mismo editor y el mismo evaluador que «Condiciones». Se guarda en `onlyIf: { logic, conditions }`.
+- **Dónde está.** En todos los disparadores que pasan por la cola de eventos. La lista del panel es `trigger-only-if-types.ts` y un test la compara con el registro. El webhook conserva su `conditions`. Los de mensajes, comentarios, email, inactividad y «En una fecha y hora» no lo tienen.
+- **Cuándo se evalúa.** En `processContactEvent` y `processNoContactEvent`, DESPUÉS de `eventMatches` y ANTES de reclamar `trigger_fires`. Si no se cumple, no se gasta la marca: la persona puede entrar más adelante.
+- **Qué queda anotado.** `analytics_events.flow_only_if_skipped`, con el campo y si se cumplió, nunca el valor.
+- **Variables.** `variablesFor` se calcula antes del reclamo SOLO si hay condiciones (sin «Solo si…», el orden de siempre).
+- **Publicar.** Una condición a medias no se publica (`ONLY_IF_INCOMPLETE_PROBLEM`).
+- **Lo que no tiene todavía.** Los editores de pasos de Formularios y Agenda no ofrecen este «Solo si…»: se arma en el lienzo.
+
+**Datos que «Condiciones» no sabía leer.** `service.*`, `cifra.*`, `task.*`, `group.*`, `reaction.*`, `poll.*`, `message.*` y `affiliate.*` no tenían resolutor: la condición caía al campo personalizado del contacto y nunca se cumplía. Ahora están en `FLOW_VARIABLE_PREFIXES`, y `consistency.test.ts` falla si un `variableSchema` ofrece un campo que nadie lee.
+
+**Filtros que el motor leía y el lienzo no dejaba elegir.**
+- Agenda: evento, «sin evento», área o tipo, anfitrión, y en «Cambió el estado» los estados de verdad, el grupo y «venía de».
+- Afiliados: qué afiliado y qué tipo de asignación.
+- Llamadas: quién grabó.
+- Inactividad: en qué cuenta (`channel_id`, con la marca del lienzo).
+- «Se envió un fin de día»: un panel en el lienzo.
+- «Evento del CRM → cambió la asignación»: se elige el rol de una lista, y `closer` y `vendedor` son lo mismo.
+
+**La prueba de todos los disparadores.** `registry/trigger-matrix.test.ts` tiene un evento de ejemplo por tipo. Sin filtros, el disparador arranca; con un filtro que no coincide, no. Un tipo nuevo sin ejemplo (o sin decir dónde se prueba) hace fallar el test.

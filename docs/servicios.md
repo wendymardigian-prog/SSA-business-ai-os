@@ -181,6 +181,10 @@ lo encola la base al abrirse la fase (`svc_certificate_issue`).
 pausar, emitir certificado). «Crear tarea» y «Avisar en la campana» pueden ir a «el responsable del servicio», con un
 plan B obligatorio. Ver [flow-registry.md](flow-registry.md).
 
+### Filtros de los disparadores (20/11/2026)
+
+Todos los disparadores de Servicios eligen productos y variantes, uno, varios o todos (`product_ids`, `variant_ids`). Sin elegir nada valen para todos, también para los productos nuevos. «Cambió el estado» filtra a qué estado pasó y desde cuál; «Cambió el semáforo», a qué color. Todos tienen «Solo si…». Detalle en [flow-registry.md](flow-registry.md).
+
 ## Fusión de contactos
 
 `public.merge_contacts` llama al final, en la misma transacción, a `app_servicio.merge_contacts_hook` si existe

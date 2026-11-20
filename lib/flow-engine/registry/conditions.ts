@@ -211,6 +211,16 @@ const FLOW_VARIABLE_PREFIXES = [
   "design.",
   // «En una fecha y hora»: la fecha, el día y la hora de esa vez (`schedule.weekday`...).
   "schedule.",
+  // Lo que dejan los disparadores de Servicios, Tareas, grupos de WhatsApp y Afiliados. Sin registrarlos, una
+  // condicion sobre estos campos caia al campo personalizado del contacto y nunca se cumplia.
+  "service.", // @plantilla-quitar(servicios)
+  "cifra.", // @plantilla-quitar(servicios)
+  "task.",
+  "group.",
+  "reaction.",
+  "poll.",
+  "message.",
+  "affiliate.", // @plantilla-quitar(ventas)
 ];
 for (const prefix of FLOW_VARIABLE_PREFIXES) {
   registerTypedField({

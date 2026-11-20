@@ -13,6 +13,11 @@ export function snapshotProductId(snapshot: unknown): string | null {
   return typeof id === "string" ? id : null;
 }
 
+export function snapshotVariantId(snapshot: unknown): string | null {
+  const id = (snapshot as { variant_id?: unknown } | null)?.variant_id;
+  return typeof id === "string" ? id : null;
+}
+
 /** Solo el nombre del producto (la columna «Producto» de las tablas; la variante tiene la suya). */
 export function snapshotProductName(snapshot: unknown): string {
   const product = (snapshot as { product_name?: unknown } | null)?.product_name;

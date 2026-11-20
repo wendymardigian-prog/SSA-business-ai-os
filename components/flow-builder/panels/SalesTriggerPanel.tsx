@@ -8,6 +8,9 @@ import { ATTRIBUTION_TYPE_LABELS, ATTRIBUTION_TYPES, FINANCING_TYPE_LABELS, FINA
 import { describeSalesTrigger } from "@/lib/sales/automation/presets";
 import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers";
 import { BusinessTimeNote } from "@/components/ui/business-time-note";
+import { readProductScope, writeProductScope } from "@/lib/automations/product-scope";
+import { MultiPick, ProductScopePick } from "./multi-pick";
+import { useProductScopeCatalog } from "./use-product-scope-catalog";
 
 /**
  * Los filtros de los seis triggers de Ventas dentro del panel del constructor de flujos (F37).
@@ -19,47 +22,38 @@ import { BusinessTimeNote } from "@/components/ui/business-time-note";
 export const SALES_FILTER_KEYS = [
   "product_ids", "variant_ids", "utm_sources", "utm_mediums", "utm_campaign_contains", "attribution_types", "vendedor_ids", "setter_ids",
   "financing_types", "min_amount", "max_amount", "from_status", "to_status", "reasons_contains", "payment_types", "payment_methods", "refund_scope",
-  "min_delay_days", "offset_days", "at_time",
+  "min_delay_days", "offset_days", "at_time", "sale_statuses",
 ] as const;
 
-const chip = (on: boolean) =>
-  on
-    ? "rounded-lg bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-600 dark:text-emerald-300"
-    : "rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted";
-
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
-
-function toggle(list: string[], value: string): string[] {
-  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-}
 
 type Option = { value: string; label: string };
 
 interface FieldCtx {
   data: Record<string, unknown>;
   set: (key: string, value: unknown) => void;
+  setMany: (patch: Record<string, unknown>) => void;
   /** Ya llegaron las opciones (productos y equipo). */
   loaded: boolean;
 }
 
 function ChipsField({ ctx, label, field, items, hint }: { ctx: FieldCtx; label: string; field: string; items: Option[]; hint?: string }) {
   const selected = ((ctx.data[field] as string[] | undefined) ?? []).filter(Boolean);
+  return <MultiPick label={label} value={selected} options={items} onChange={(next) => ctx.set(field, next)} loaded={ctx.loaded} hint={hint} />;
+}
+
+/** Productos y variantes: uno, varios o todos (`product_ids` + `variant_ids`). */
+function ScopeField({ ctx, catalog }: { ctx: FieldCtx; catalog: ReturnType<typeof useProductScopeCatalog> }) {
+  const scope = readProductScope(ctx.data);
   return (
-    <div>
-      <label className="mb-1.5 block text-xs font-semibold text-foreground">{label}</label>
-      {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{ctx.loaded ? "No hay opciones todavía: vale para cualquiera." : "Cargando…"}</p>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {items.map((o) => (
-            <button key={o.value} type="button" onClick={() => ctx.set(field, toggle(selected, o.value))} className={chip(selected.includes(o.value))}>
-              {o.label}
-            </button>
-          ))}
-        </div>
-      )}
-      <p className="mt-1 text-[11px] text-muted-foreground">{hint ?? "Sin elegir nada, vale para cualquiera."}</p>
-    </div>
+    <ProductScopePick
+      scope={scope}
+      catalog={catalog}
+      onChange={(next) => {
+        const w = writeProductScope(next);
+        ctx.setMany({ product_ids: w.product_ids, variant_ids: w.variant_ids, product_id: undefined, variant_id: undefined });
+      }}
+    />
   );
 }
 
@@ -102,15 +96,18 @@ export function SalesTriggerPanel({ triggerType, data, onChange }: { triggerType
   }, []);
 
   const list = (key: string): string[] => ((data[key] as string[] | undefined) ?? []).filter(Boolean);
-  const set = (key: string, value: unknown) => {
+  const catalog = useProductScopeCatalog();
+  const setMany = (patch: Record<string, unknown>) => {
     const next = { ...data };
-    if (value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) delete next[key];
-    else next[key] = value;
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0)) delete next[key];
+      else next[key] = value;
+    }
     onChange(next);
   };
-  const ctx: FieldCtx = { data, set, loaded: options !== null };
+  const set = (key: string, value: unknown) => setMany({ [key]: value });
+  const ctx: FieldCtx = { data, set, setMany, loaded: options !== null };
 
-  const productOptions: Option[] = useMemo(() => (options?.products ?? []).map((p) => ({ value: p.id, label: p.name })), [options]);
   const memberOptions: Option[] = useMemo(() => (options?.members ?? []).map((m) => ({ value: m.id, label: m.name })), [options]);
 
   const saleStatuses: Option[] = SALE_STATUSES.map((s) => ({ value: s, label: SALE_STATUS_LABELS[s] }));
@@ -131,7 +128,7 @@ export function SalesTriggerPanel({ triggerType, data, onChange }: { triggerType
 
       {relative && (
         <div className="grid grid-cols-2 gap-3">
-          <NumField ctx={ctx} label={triggerType === "payment_before_due" ? "Días antes" : "Días después"} field="offset_days" min={triggerType === "payment_before_due" ? 1 : 1} max={triggerType === "payment_before_due" ? 30 : 90} placeholder="3" />
+          <NumField ctx={ctx} label={triggerType === "payment_before_due" ? "Días antes" : "Días después"} field="offset_days" min={triggerType === "payment_before_due" ? 0 : 1} max={triggerType === "payment_before_due" ? 30 : 90} placeholder="3" />
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-foreground">A las</label>
             <input type="time" className={inputClass} value={(data.at_time as string | undefined) ?? "09:00"} onChange={(e) => set("at_time", e.target.value)} />
@@ -152,7 +149,14 @@ export function SalesTriggerPanel({ triggerType, data, onChange }: { triggerType
 
       {triggerType === "sale_created" && (
         <>
-          <ChipsField ctx={ctx} label="Solo estos productos" field="product_ids" items={productOptions} />
+          <ScopeField ctx={ctx} catalog={catalog} />
+          <ChipsField
+            ctx={ctx}
+            label="Estado de pago de la venta al crearse"
+            field="sale_statuses"
+            items={saleStatuses}
+            hint="Sin elegir nada, vale para cualquiera. Es el estado con el que nace la venta: si se carga sin pagos y se paga después, usá «Cambió el estado de la venta → Pagada»."
+          />
           <ChipsField ctx={ctx} label="Financiamiento" field="financing_types" items={FINANCING_TYPES.map((f) => ({ value: f, label: FINANCING_TYPE_LABELS[f] }))} />
           <ChipsField ctx={ctx} label="Origen (source)" field="utm_sources" items={sources} />
           <ChipsField ctx={ctx} label="Medio (medium)" field="utm_mediums" items={mediums} />
@@ -169,7 +173,7 @@ export function SalesTriggerPanel({ triggerType, data, onChange }: { triggerType
 
       {triggerType === "sale_status_changed" && (
         <>
-          <ChipsField ctx={ctx} label="Solo estos productos" field="product_ids" items={productOptions} />
+          <ScopeField ctx={ctx} catalog={catalog} />
           <ChipsField ctx={ctx} label="Vendedor" field="vendedor_ids" items={memberOptions} />
           <ChipsField ctx={ctx} label="Origen (source)" field="utm_sources" items={sources} />
           <ChipsField ctx={ctx} label="Medio (medium)" field="utm_mediums" items={mediums} />
@@ -198,9 +202,11 @@ export function SalesTriggerPanel({ triggerType, data, onChange }: { triggerType
         </div>
       )}
 
-      {(triggerType === "payment_created" || triggerType === "payment_status_changed" || relative) && (
-        <ChipsField ctx={ctx} label="Solo estos productos" field="product_ids" items={productOptions} />
+      {(triggerType === "payment_created" || triggerType === "payment_status_changed") && (
+        <ChipsField ctx={ctx} label="Estado de pago de la venta" field="sale_statuses" items={saleStatuses} hint="Cómo queda la venta con este pago. Sin elegir nada, vale para cualquiera." />
       )}
+
+      {(triggerType === "payment_created" || triggerType === "payment_status_changed" || relative) && <ScopeField ctx={ctx} catalog={catalog} />}
 
       <p className="text-[11px] text-muted-foreground">
         Variables disponibles: {"{{sale.product_name}}"}, {"{{sale.final_amount}}"}, {"{{sale.balance}}"}, {"{{payment.amount}}"}, {"{{payment.due_date}}"}, {"{{payment.days_overdue}}"}, {"{{sale.utm_source}}"}…

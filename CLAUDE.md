@@ -2649,6 +2649,21 @@ El modelo de datos y la arquitectura se disenan pensando en todas las etapas, au
 - **Fuera del horario el paso se deja para después, no falla** (`deferFlowNode`, `reason: "send_window"`), antes de la reserva `flow_send_claims` y del tope por hora. Reglas puras en `lib/flow-engine/send-window.ts`. Un horario al revés (21:00 a 08:00) no se publica; un paso sin horario prendido sale igual que siempre.
 - **`booking.days_since_end` es el único dato de la reunión que se compara como número**, y se cuenta al armar el contexto del evento (no cambia mientras el flujo espera).
 
+# Disparadores: productos y variantes, estado de pago y «Solo si…» (20/11/2026)
+
+Los disparadores de Servicios y Ventas eligen productos y variantes, uno, varios o todos. Ventas filtra además por estado de pago de la venta. Todo disparador que pasa por la cola de eventos tiene «Solo si…». Detalle en [docs/flow-registry.md](docs/flow-registry.md) («Filtros de los disparadores y «Solo si…»»).
+
+## Lo que no se puede romper
+
+- **Productos y variantes se deciden en UN lugar**: `productScopeMatches` / `readProductScope` (`lib/automations/product-scope.ts`). `product_ids` = productos enteros, `variant_ids` = variantes sueltas, y las dos vacías = todos, también los productos nuevos. Los filtros viejos de un solo valor se siguen leyendo. Lo elegido que ya no existe se avisa, nunca se vacía solo.
+- **El «Solo si…» (`onlyIf`) se evalúa antes de reclamar `trigger_fires`** (`automation-events.ts`): si no se cumple, no se gasta la marca. Usa el mismo resolutor que «Condiciones» (`resolveBranchFields`) y nunca lanza. La lista del panel (`trigger-only-if-types.ts`) y el registro (`supportsTriggerOnlyIf`) tienen que coincidir: lo controla un test.
+- **Todo prefijo que ofrece un `variableSchema` tiene su resolutor** en `FLOW_VARIABLE_PREFIXES`. `consistency.test.ts` falla si falta uno.
+- **`registry/trigger-matrix.test.ts`**: todo disparador del catálogo tiene un evento de ejemplo o dice dónde se prueba.
+
+## Migración
+
+`00507_sales_events_variant_sale_status` (aditiva: `sales_event_payload` suma `sale_status`, `payments_event_payload` suma `variant_id` y `sale_status`; las definiciones viejas van en su cabecera) va **ANTES** de desplegar el código. Sin ella, un filtro por estado de pago no deja pasar nada. **Aplicada y registrada** el 20/11/2026 UTC (versión `20261120203638`), después de ensayarla en una transacción que se deshizo sola: 22 de 22 pagos y 12 de 12 ventas dieron su estado. La `00506` es de otra sesión. **La próxima libre es la `00508`** (confirmar con `list_migrations` y las ramas locales).
+
 # IA: topes por tarea, aprendizaje, asistente y Conocimiento (18/11/2026, traído de RER)
 
 Rama `feat/ia-aprendizaje-asistente` (PR #268). Migraciones `00440` a `00444`, aditivas: **aplicadas y registradas el 18/11/2026** (versiones `20261119040506`, `…510`, `…514`, `…517` y `…522`, UTC), antes de desplegar el código y después de ensayarlas juntas contra producción en una transacción que se deshizo sola. La 00444 dejó un «Asistente del equipo» APAGADO en cada negocio. **La próxima libre de esta tanda es la `00445`** (confirmar con `list_migrations` y las ramas locales).

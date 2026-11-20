@@ -8,7 +8,8 @@ import { eventAllowsNoContact, eventSubject, getTrigger, triggerTypesForEvent } 
 import { bookingContextVariables } from "@/lib/scheduling/automation/context";
 import { logAudit } from "@/lib/audit";
 import type { createServiceClient } from "@/lib/supabase/server";
-import type { TriggerType } from "@/lib/types/database";
+import type { Json, TriggerType } from "@/lib/types/database";
+import { evaluateTriggerOnlyIf, readTriggerOnlyIf, supportsTriggerOnlyIf } from "@/lib/flow-engine/trigger-only-if";
 
 export interface AutomationEvent {
   id: string;
@@ -141,6 +142,26 @@ async function processContactEvent(
 
     if (definition.eventMatches && !(await definition.eventMatches(args))) continue;
 
+    // «Solo si…» del disparador: se mira ANTES de reclamar el disparo, asi una persona que hoy no cumple puede entrar
+    // mas adelante. Las variables del disparador se calculan aca solo si hay condiciones (sin «Solo si…», todo sigue
+    // en el orden de siempre).
+    const onlyIf = supportsTriggerOnlyIf(definition) ? readTriggerOnlyIf(config) : null;
+    let earlyVars: Record<string, unknown> | null = null;
+    if (onlyIf) {
+      earlyVars = definition.variablesFor ? await definition.variablesFor(args) : {};
+      const check = await evaluateTriggerOnlyIf(supabase, onlyIf, {
+        workspaceId: event.workspace_id,
+        contactId: event.contact_id,
+        flowId: trigger.flow_id,
+        triggerId: trigger.id,
+        variables: { ...eventVariables(event), ...bookingVars, ...earlyVars },
+      });
+      if (!check.passed) {
+        await noteOnlyIfSkipped(supabase, event, trigger, check.checks);
+        continue;
+      }
+    }
+
     // «Una sola vez por contacto»: quien ya tuvo una sesion de este flujo no vuelve a entrar. Lo que origino el evento
     // (un envio de formulario, por ejemplo) ya se guardo: esto solo decide si el flujo corre. Una sesion cancelada no
     // cuenta. Se mira la sesion y no solo `trigger_fires`, porque publicar borra los triggers y sus marcas.
@@ -215,7 +236,7 @@ async function processContactEvent(
       );
     }
 
-    const extraVars = definition.variablesFor ? await definition.variablesFor(args) : {};
+    const extraVars = earlyVars ?? (definition.variablesFor ? await definition.variablesFor(args) : {});
 
     // Un flujo que falla no se lleva puesto al resto de los disparadores de este evento (antes la excepcion cortaba el
     // ciclo y los demas no corrian nunca: el evento quedaba procesado). Se anota y se sigue; al final, si hubo fallos,
@@ -234,10 +255,7 @@ async function processContactEvent(
         variables: {
           // El flow puede leer el evento que lo disparo. Util para armar el
           // mensaje: "vi que te interesa {{event_value}}".
-          event_type: event.event_type,
-          ...Object.fromEntries(
-            Object.entries(event.payload ?? {}).map(([k, v]) => [`event_${k}`, String(v ?? "")])
-          ),
+          ...eventVariables(event),
           ...bookingVars,
           ...extraVars,
         },
@@ -343,6 +361,25 @@ async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: 
 
     if (definition.eventMatches && !(await definition.eventMatches(args))) continue;
 
+    // «Solo si…»: igual que con contacto, antes de reclamar. Sin contacto solo cuentan los datos del disparador.
+    const onlyIf = supportsTriggerOnlyIf(definition) ? readTriggerOnlyIf(config) : null;
+    let earlyVars: Record<string, unknown> | null = null;
+    if (onlyIf) {
+      earlyVars = definition.variablesFor ? await definition.variablesFor(args) : {};
+      const check = await evaluateTriggerOnlyIf(supabase, onlyIf, {
+        workspaceId: event.workspace_id,
+        contactId: null,
+        memberUserId: who.kind === "member" ? who.userId : null,
+        flowId: trigger.flow_id,
+        triggerId: trigger.id,
+        variables: { ...eventVariables(event), ...earlyVars },
+      });
+      if (!check.passed) {
+        await noteOnlyIfSkipped(supabase, event, trigger, check.checks);
+        continue;
+      }
+    }
+
     const dedupeKey = definition.dedupeKeyFor ? definition.dedupeKeyFor(args) : `event:${event.id}`;
     const { error: claimError } = await supabase.from("trigger_fires").insert({
       trigger_id: trigger.id,
@@ -355,7 +392,7 @@ async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: 
       continue;
     }
 
-    const extraVars = definition.variablesFor ? await definition.variablesFor(args) : {};
+    const extraVars = earlyVars ?? (definition.variablesFor ? await definition.variablesFor(args) : {});
     try {
       await executeFlow(supabase, {
         triggerId: trigger.id,
@@ -369,8 +406,7 @@ async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: 
         source: { type: definition.sourceType ?? (who.kind === "member" ? "member" : "system"), id: event.id },
         incomingMessage: {},
         variables: {
-          event_type: event.event_type,
-          ...Object.fromEntries(Object.entries(event.payload ?? {}).map(([k, v]) => [`event_${k}`, String(v ?? "")])),
+          ...eventVariables(event),
           ...extraVars,
         },
       });
@@ -406,4 +442,36 @@ async function loadBooking(
 ): Promise<Record<string, unknown> | null> {
   const { data } = await supabase.from("bookings").select("*").eq("id", bookingId).maybeSingle();
   return (data as Record<string, unknown> | null) ?? null;
+}
+
+/** Lo que el flujo puede leer del evento que lo disparo (`{{event_type}}`, `{{event_<clave>}}`). */
+function eventVariables(event: AutomationEvent): Record<string, unknown> {
+  return {
+    event_type: event.event_type,
+    ...Object.fromEntries(Object.entries(event.payload ?? {}).map(([k, v]) => [`event_${k}`, String(v ?? "")])),
+  };
+}
+
+/**
+ * El «Solo si…» no se cumplio: queda anotado (el historial de la automatizacion lo cuenta) SIN los valores, solo que
+ * campo y si se cumplio. Anotar nunca frena nada.
+ */
+async function noteOnlyIfSkipped(
+  supabase: Db,
+  event: AutomationEvent,
+  trigger: { id: string; flow_id: string },
+  checks: Array<{ field: string; operator: string; ok: boolean }>,
+): Promise<void> {
+  try {
+    const { error } = await supabase.from("analytics_events").insert({
+      workspace_id: event.workspace_id,
+      flow_id: trigger.flow_id,
+      contact_id: event.contact_id ?? null,
+      event_type: "flow_only_if_skipped",
+      metadata: { trigger_id: trigger.id, event_type: event.event_type, checks } as unknown as Json,
+    });
+    if (error) console.error("[cron/automation-events] no pude anotar el «Solo si…»:", error.message);
+  } catch (error) {
+    console.error("[cron/automation-events] no pude anotar el «Solo si…»:", error instanceof Error ? error.message : "error");
+  }
 }

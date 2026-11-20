@@ -1,10 +1,13 @@
 // @plantilla-quitar(servicios)
 "use client";
 
-import { SERVICE_TRIGGER_TYPES, type ServiceTriggerConfig } from "@/lib/services/automation";
+import { SERVICE_LIGHT_OPTIONS, SERVICE_STATUS_OPTIONS, SERVICE_TRIGGER_TYPES, type ServiceTriggerConfig } from "@/lib/services/automation";
 import { serviceTriggerFilters } from "@/lib/services/service-picker";
-import { ServiceKeySelect, ServiceVariantSelect } from "./service-key-select";
+import { readProductScope, writeProductScope, type ProductScope } from "@/lib/automations/product-scope";
+import { ServiceKeySelect } from "./service-key-select";
 import { useServicePicker } from "./use-service-picker";
+import { useProductScopeCatalog } from "./use-product-scope-catalog";
+import { MultiPick, ProductScopePick } from "./multi-pick";
 import { ANCHORS_KNOWN_AHEAD, MAX_OFFSET_HOURS, PERIODIC_PRESETS, RELATIVE_ANCHORS, periodicConfigProblems, relativeConfigProblems, relativeUnit, type RelativeAnchor } from "@/lib/services/relative-triggers";
 import { MAX_THRESHOLD, METRIC_HINTS, METRIC_LABELS, METRICS, isMetric, metricConfigProblems } from "@/lib/services/metric-trigger";
 
@@ -30,6 +33,7 @@ export const isServiceTrigger = (t: string) => (SERVICE_TRIGGER_TYPES as readonl
  */
 export function ServiceTriggerPanel({ triggerType, data, onChange }: { triggerType: string; data: Record<string, unknown>; onChange: (data: Record<string, unknown>) => void }) {
   const picker = useServicePicker();
+  const catalog = useProductScopeCatalog();
   const nodeConfig = (data.config && typeof data.config === "object" ? data.config : null) as Record<string, unknown> | null;
   const c = { ...data, ...(nodeConfig ?? {}) } as ServiceTriggerConfig & Record<string, unknown>;
   const fields = serviceTriggerFilters(triggerType);
@@ -38,7 +42,10 @@ export function ServiceTriggerPanel({ triggerType, data, onChange }: { triggerTy
     if (nodeConfig) next.config = { ...nodeConfig, ...patch };
     onChange(next);
   };
-  const products = picker?.products ?? [];
+  const scope = readProductScope(c);
+  const keyScope = { productIds: scope.productIds, variantIds: scope.variantIds };
+  const setScope = (next: ProductScope) => set(writeProductScope(next) as Partial<ServiceTriggerConfig>);
+  const listOf = (key: string): string[] => (Array.isArray(c[key]) ? (c[key] as unknown[]).filter((v): v is string => typeof v === "string") : []);
   const relative = triggerType === "service_relative";
   const periodic = triggerType === "service_phase_periodic";
   const metric = triggerType === "service_metric_reached";
@@ -58,22 +65,7 @@ export function ServiceTriggerPanel({ triggerType, data, onChange }: { triggerTy
 
   return (
     <div className="space-y-4">
-      <div>
-        <label htmlFor="svt-product" className={labelClass}>De qué producto</label>
-        <select id="svt-product" value={c.product_id ?? ""} onChange={(e) => set({ product_id: e.target.value || null, variant_id: null, phase_key: null, item_key: null })} className={inputClass}>
-          <option value="">{picker === undefined ? "Cargando…" : "Cualquier producto"}</option>
-          {products.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-          {c.product_id && !products.some((p) => p.id === c.product_id) && picker && <option value={c.product_id}>(producto sin camino o archivado)</option>}
-        </select>
-      </div>
-      <div>
-        <label htmlFor="svt-variant" className={labelClass}>Variante</label>
-        <ServiceVariantSelect id="svt-variant" options={picker} productId={c.product_id ?? null} value={c.variant_id ?? null} onChange={(variant_id) => set({ variant_id, phase_key: null, item_key: null })} />
-      </div>
+      <ProductScopePick scope={scope} catalog={catalog} onChange={setScope} />
       {relative && (
         <div className="space-y-3">
           <div>
@@ -100,13 +92,13 @@ export function ServiceTriggerPanel({ triggerType, data, onChange }: { triggerTy
           {anchor === "phase_start" && (
             <div>
               <label htmlFor="svt-rel-phase" className={labelClass}>Qué fase</label>
-              <ServiceKeySelect id="svt-rel-phase" kind="phase" options={picker} scope={{ productId: c.product_id ?? null, variantId: c.variant_id ?? null }} value={c.phase_key ?? null} onChange={(phase_key) => set({ phase_key })} emptyLabel="Elegí una fase" />
+              <ServiceKeySelect id="svt-rel-phase" kind="phase" options={picker} scope={keyScope} value={c.phase_key ?? null} onChange={(phase_key) => set({ phase_key })} emptyLabel="Elegí una fase" />
             </div>
           )}
           {anchor === "item_completed" && (
             <div>
               <label htmlFor="svt-rel-step" className={labelClass}>Qué paso</label>
-              <ServiceKeySelect id="svt-rel-step" kind="step" options={picker} scope={{ productId: c.product_id ?? null, variantId: c.variant_id ?? null }} value={c.item_key ?? null} onChange={(item_key) => set({ item_key })} emptyLabel="Elegí un paso" />
+              <ServiceKeySelect id="svt-rel-step" kind="step" options={picker} scope={keyScope} value={c.item_key ?? null} onChange={(item_key) => set({ item_key })} emptyLabel="Elegí un paso" />
             </div>
           )}
           <div>
@@ -182,7 +174,7 @@ export function ServiceTriggerPanel({ triggerType, data, onChange }: { triggerTy
         <div className="space-y-3">
           <div>
             <label htmlFor="svt-per-phase" className={labelClass}>Qué fase</label>
-            <ServiceKeySelect id="svt-per-phase" kind="phase" options={picker} scope={{ productId: c.product_id ?? null, variantId: c.variant_id ?? null }} value={c.phase_key ?? null} onChange={(phase_key) => set({ phase_key })} emptyLabel="Elegí una fase" />
+            <ServiceKeySelect id="svt-per-phase" kind="phase" options={picker} scope={keyScope} value={c.phase_key ?? null} onChange={(phase_key) => set({ phase_key })} emptyLabel="Elegí una fase" />
           </div>
           <div>
             <label htmlFor="svt-every" className={labelClass}>Cada cuántos días</label>
@@ -208,15 +200,22 @@ export function ServiceTriggerPanel({ triggerType, data, onChange }: { triggerTy
       {!relative && !periodic && fields.phase && (
         <div>
           <label htmlFor="svt-phase" className={labelClass}>Qué fase</label>
-          <ServiceKeySelect id="svt-phase" kind="phase" options={picker} scope={{ productId: c.product_id ?? null, variantId: c.variant_id ?? null }} value={c.phase_key ?? null} onChange={(phase_key) => set({ phase_key })} emptyLabel="Cualquier fase" />
+          <ServiceKeySelect id="svt-phase" kind="phase" options={picker} scope={keyScope} value={c.phase_key ?? null} onChange={(phase_key) => set({ phase_key })} emptyLabel="Cualquier fase" />
         </div>
       )}
       {!relative && !periodic && fields.step && (
         <div>
           <label htmlFor="svt-step" className={labelClass}>Qué paso</label>
-          <ServiceKeySelect id="svt-step" kind="step" options={picker} scope={{ productId: c.product_id ?? null, variantId: c.variant_id ?? null }} value={c.item_key ?? null} onChange={(item_key) => set({ item_key })} emptyLabel="Cualquier paso" />
+          <ServiceKeySelect id="svt-step" kind="step" options={picker} scope={keyScope} value={c.item_key ?? null} onChange={(item_key) => set({ item_key })} emptyLabel="Cualquier paso" />
         </div>
       )}
+      {fields.status && (
+        <>
+          <MultiPick label="Pasó al estado" value={listOf("to_statuses")} options={SERVICE_STATUS_OPTIONS} onChange={(v) => setRaw({ to_statuses: v.length ? v : null })} />
+          <MultiPick label="Venía del estado" value={listOf("from_statuses")} options={SERVICE_STATUS_OPTIONS} onChange={(v) => setRaw({ from_statuses: v.length ? v : null })} />
+        </>
+      )}
+      {fields.light && <MultiPick label="Pasó al color" value={listOf("lights")} options={SERVICE_LIGHT_OPTIONS} onChange={(v) => setRaw({ lights: v.length ? v : null })} />}
       {fields.days && (
         <div>
           <label htmlFor="svt-days" className={labelClass}>Cuántos días antes del fin</label>

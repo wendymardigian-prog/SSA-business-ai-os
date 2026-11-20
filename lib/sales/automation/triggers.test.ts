@@ -123,3 +123,41 @@ describe("planPaymentRelativeJobs", () => {
     expect(planPaymentRelativeJobs(payment, [{ id: "t", type: "payment_before_due", config: { offset_days: 99 } }], tz, now)).toEqual([]);
   });
 });
+
+describe("variante y estado de pago de la venta", () => {
+  const sale = { sale_id: "s", product_id: "A", variant_id: "A1", sale_status: "reserved", final_amount: 100 };
+  it("venta creada: una o varias variantes, de productos distintos", () => {
+    expect(salesEventMatches("sale_created", { variant_ids: ["A1", "B2"] }, sale)).toBe(true);
+    expect(salesEventMatches("sale_created", { variant_ids: ["A2"] }, sale)).toBe(false);
+    expect(salesEventMatches("sale_created", { product_ids: ["B"], variant_ids: ["A1"] }, sale)).toBe(true);
+  });
+  it("venta creada con estado de pago: Reservada sí, Pagada no", () => {
+    expect(salesEventMatches("sale_created", { sale_statuses: ["reserved"] }, sale)).toBe(true);
+    expect(salesEventMatches("sale_created", { sale_statuses: ["paid"] }, sale)).toBe(false);
+    expect(salesEventMatches("sale_created", { sale_statuses: ["paid"] }, { ...sale, sale_status: "paid" })).toBe(true);
+  });
+  it("un evento viejo sin estado no pasa un filtro de estado", () => {
+    expect(salesEventMatches("sale_created", { sale_statuses: ["paid"] }, { ...sale, sale_status: undefined })).toBe(false);
+  });
+  it("cambió el estado de la venta: filtra por variante", () => {
+    expect(salesEventMatches("sale_status_changed", { variant_ids: ["A1"] }, { ...sale, to_status: "paid" })).toBe(true);
+    expect(salesEventMatches("sale_status_changed", { variant_ids: ["A2"] }, { ...sale, to_status: "paid" })).toBe(false);
+  });
+  it("pagos: variante y estado de la venta", () => {
+    const pay = { payment_id: "p", product_id: "A", variant_id: "A1", sale_status: "paid", payment_type: "full", to_status: "paid", amount: 10 };
+    expect(salesEventMatches("payment_created", { variant_ids: ["A1"], sale_statuses: ["paid"] }, pay)).toBe(true);
+    expect(salesEventMatches("payment_status_changed", { sale_statuses: ["reserved"] }, pay)).toBe(false);
+    expect(salesEventMatches("payment_status_changed", { variant_ids: ["A2"] }, pay)).toBe(false);
+  });
+  it("relativos: el trigger y además el producto y la variante", () => {
+    const rel = { trigger_id: "t1", product_id: "A", variant_id: "A1" };
+    expect(salesEventMatches("payment_before_due", { offset_days: 1, variant_ids: ["A1"] }, rel, "t1")).toBe(true);
+    expect(salesEventMatches("payment_before_due", { offset_days: 1, variant_ids: ["A2"] }, rel, "t1")).toBe(false);
+  });
+  it("el planificador de recordatorios respeta la variante", () => {
+    const payment = { id: "p", type: "installment", status: "scheduled", due_date: "2030-01-10", reschedule_count: 0, product_id: "A", variant_id: "A1" };
+    const now = new Date("2029-12-01T00:00:00Z");
+    expect(planPaymentRelativeJobs(payment, [{ id: "t", type: "payment_before_due", config: { offset_days: 2, variant_ids: ["A1"] } }], "UTC", now)).toHaveLength(1);
+    expect(planPaymentRelativeJobs(payment, [{ id: "t", type: "payment_before_due", config: { offset_days: 2, variant_ids: ["A2"] } }], "UTC", now)).toHaveLength(0);
+  });
+});

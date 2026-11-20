@@ -201,3 +201,28 @@ describe("cada disparador declara el origen de sus sesiones (Tirón 2, D1)", () 
     }
   });
 });
+
+describe("todo dato que ofrece un disparador se puede leer en «Condiciones» y en «Solo si…»", () => {
+  // Antes `service.*`, `task.*`, `group.*` y `affiliate.*` no tenian quien los leyera: la condicion caia al campo
+  // personalizado del contacto y nunca se cumplia. Los esquemas asincronos (formularios, fin de dia, webhook) leen
+  // la base y se prueban en sus modulos.
+  it("cada campo de cada `variableSchema` sincronico tiene un resolutor registrado", async () => {
+    const { matchConditionField } = await import("./registry");
+    for (const trigger of listTriggers()) {
+      if (!trigger.variableSchema) continue;
+      let fields: unknown;
+      try {
+        fields = trigger.variableSchema({}, { supabase: null as never, workspaceId: "ws" });
+      } catch {
+        continue;
+      }
+      if (fields instanceof Promise) {
+        fields.catch(() => undefined);
+        continue;
+      }
+      for (const field of fields as Array<{ path: string }>) {
+        expect(matchConditionField(field.path), `${trigger.type}: nadie lee «${field.path}»`).toBeTruthy();
+      }
+    }
+  });
+});

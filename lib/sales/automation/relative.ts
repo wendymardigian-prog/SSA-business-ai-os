@@ -18,7 +18,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { SWEEP_SKIPPED_SALE_STATUSES } from "../overdue";
-import { snapshotProductId } from "../sale-text";
+import { snapshotProductId, snapshotVariantId } from "../sale-text";
 import { isOpenPayment, planPaymentRelativeJobs, RELATIVE_SALES_TRIGGERS, type TriggerForPlanning } from "./triggers";
 
 type Db = SupabaseClient<Database>;
@@ -84,7 +84,7 @@ export async function syncPaymentRelativeJobs(db: Db, target: { saleId?: string;
       if (!sale || skipped.has(sale.status) || !isOpenPayment(payment) || triggers.length === 0) continue;
 
       const planned = planPaymentRelativeJobs(
-        { ...payment, product_id: snapshotProductId(sale.product_snapshot) },
+        { ...payment, product_id: snapshotProductId(sale.product_snapshot), variant_id: snapshotVariantId(sale.product_snapshot) },
         triggers,
         tz,
         now,
