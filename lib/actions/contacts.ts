@@ -17,6 +17,10 @@ import { mergeErrorMessage, mergeNotes, summarizeMerge } from "@/lib/contacts/me
 import { CUSTOM_VALUE_ERROR_MESSAGES, normalizeCustomValue } from "@/lib/custom-fields";
 import { canUnmarkKnown } from "@/lib/inbox/known";
 import { notifyConversationAssigned } from "@/lib/conversations/assignment";
+import { sanitizeSearch } from "@/lib/url-params";
+import { contactSearchFilter } from "@/lib/contacts/search";
+import { contactIdsByWhatsappLid } from "@/lib/contacts/search-lid";
+import type { MergeCandidate } from "@/lib/contacts/merge-pick";
 
 /**
  * Server Actions de contactos.
@@ -1020,6 +1024,99 @@ export async function linkContacts(
     console.error("[contacts] linkContacts:", error instanceof Error ? error.message : String(error));
     return { ok: false, error: mergeErrorMessage(undefined) };
   }
+}
+
+// ------------------------------------------------------------------
+// Unir con otro contacto, a mano (20/11/2026)
+// ------------------------------------------------------------------
+
+const MERGE_CANDIDATE_COLUMNS =
+  "id, display_name, phone, whatsapp_phone, email, instagram_username, is_known, is_customer, contact_channels(channels(platform))";
+
+type MergeCandidateRow = {
+  id: string;
+  display_name: string | null;
+  phone: string | null;
+  whatsapp_phone: string | null;
+  email: string | null;
+  instagram_username: string | null;
+  is_known: boolean | null;
+  is_customer: boolean | null;
+  contact_channels: { channels: { platform: string | null } | null }[] | null;
+};
+
+function toMergeCandidate(row: MergeCandidateRow): MergeCandidate {
+  const platforms = (row.contact_channels ?? [])
+    .map((cc) => cc.channels?.platform)
+    .filter((p): p is string => !!p);
+  return {
+    id: row.id,
+    name: row.display_name || row.email || row.instagram_username || "Sin nombre",
+    phone: row.phone || row.whatsapp_phone || null,
+    email: row.email ?? null,
+    instagram: row.instagram_username ?? null,
+    isKnown: !!row.is_known,
+    isCustomer: !!row.is_customer,
+    platforms: Array.from(new Set(platforms)),
+  };
+}
+
+/**
+ * Los datos de un contacto para la vista lado a lado del dialogo de unir.
+ * Pide `contacts.merge` y lee con la sesion (la RLS decide que ve).
+ */
+export async function getMergeCandidate(
+  contactId: string,
+): Promise<{ ok: true; contact: MergeCandidate } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("contacts.merge");
+  if (!ctx) return { ok: false, error: "No tenés permiso para unir contactos" };
+  const { data, error } = await ctx.supabase
+    .from("contacts")
+    .select(MERGE_CANDIDATE_COLUMNS)
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("id", contactId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) {
+    console.error("[contacts] getMergeCandidate:", error.message);
+    return { ok: false, error: "No pude leer el contacto. Probá de nuevo." };
+  }
+  if (!data) return { ok: false, error: "No encontré el contacto" };
+  return { ok: true, contact: toMergeCandidate(data as unknown as MergeCandidateRow) };
+}
+
+/**
+ * El buscador del dialogo «Unir con otro contacto»: la misma busqueda que la
+ * bandeja y Contactos (nombre, emails, telefonos, los @ y el id de WhatsApp),
+ * sin el contacto que se mira. Pide `contacts.merge`; lee con la sesion.
+ */
+export async function searchContactsForMerge(
+  excludeId: string,
+  query: string,
+): Promise<{ ok: true; contacts: MergeCandidate[] } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("contacts.merge");
+  if (!ctx) return { ok: false, error: "No tenés permiso para unir contactos" };
+  const q = sanitizeSearch(query, 60);
+  if (q.length < 2) return { ok: true, contacts: [] };
+
+  const lidIds = await contactIdsByWhatsappLid(ctx.supabase, ctx.workspace.id, q);
+  const filter = contactSearchFilter(q, lidIds);
+  if (!filter) return { ok: true, contacts: [] };
+
+  const { data, error } = await ctx.supabase
+    .from("contacts")
+    .select(MERGE_CANDIDATE_COLUMNS)
+    .eq("workspace_id", ctx.workspace.id)
+    .is("deleted_at", null)
+    .neq("id", excludeId)
+    .or(filter)
+    .order("last_interaction_at", { ascending: false, nullsFirst: false })
+    .limit(8);
+  if (error) {
+    console.error("[contacts] searchContactsForMerge:", error.message);
+    return { ok: false, error: "No pude buscar. Probá de nuevo." };
+  }
+  return { ok: true, contacts: ((data ?? []) as unknown as MergeCandidateRow[]).map(toMergeCandidate) };
 }
 
 /** Descarta una sugerencia de vinculacion sin unir nada. */

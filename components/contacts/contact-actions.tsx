@@ -2,11 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Trash2, Ban, RotateCcw } from "lucide-react";
+import { Loader2, Trash2, Ban, RotateCcw, Merge } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { setDoNotContact, softDeleteContact } from "@/lib/actions/contacts";
+import { encodeMergeParam } from "@/lib/contacts/merge";
 import { ActionError } from "./ui";
+import { MergeContactDialog } from "./merge-contact-dialog";
 
 /**
  * Las acciones de la ficha: marcar o sacar "no contactar" y eliminar.
@@ -21,15 +23,19 @@ export function ContactActions({
   doNotContact,
   doNotContactReason,
   isAdmin,
+  canMerge = false,
 }: {
   contactId: string;
   doNotContact: boolean;
   doNotContactReason: string | null;
   isAdmin: boolean;
+  /** `contacts.merge`: «Unir con otro contacto». */
+  canMerge?: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [merging, setMerging] = useState(false);
   const [pending, start] = useTransition();
 
   function toggleDoNotContact() {
@@ -79,6 +85,17 @@ export function ContactActions({
         {doNotContact ? "Sacar marca de no contactar" : "Marcar como no contactar"}
       </button>
 
+      {canMerge && (
+        <button
+          onClick={() => setMerging(true)}
+          disabled={pending}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Merge className="h-3.5 w-3.5" />
+          Unir con otro contacto
+        </button>
+      )}
+
       {isAdmin && (
         <button
           onClick={() => setConfirmDelete(true)}
@@ -95,6 +112,19 @@ export function ContactActions({
       )}
 
       <ActionError message={error} />
+
+      {merging && (
+        <MergeContactDialog
+          contactId={contactId}
+          onClose={() => setMerging(false)}
+          onMerged={(mainId, moved) => {
+            setMerging(false);
+            // Mismo destino que la sugerencia de vinculacion: la ficha del que quedo, con lo que se unifico.
+            router.push(`/dashboard/contacts/${mainId}?fusion=${encodeMergeParam(moved) || "ok"}`);
+            router.refresh();
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={confirmDelete}

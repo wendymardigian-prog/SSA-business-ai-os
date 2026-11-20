@@ -571,6 +571,7 @@ export default async function ContactDetailPage({
           <ContactActions
             contactId={contact.id}
             isAdmin={perms.can("contacts.delete")}
+            canMerge={perms.can("contacts.merge")}
             doNotContact={contact.do_not_contact}
             doNotContactReason={contact.do_not_contact_reason}
           />

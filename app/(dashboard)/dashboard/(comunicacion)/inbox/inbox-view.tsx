@@ -37,6 +37,7 @@ export function InboxView({
   canAssignConversations = false,
   canEditContacts = false,
   canDeleteContacts = false,
+  canMergeContacts = false,
   canDeleteConversations = false,
   replyChannelIds,
   workspaceName,
@@ -80,6 +81,8 @@ export function InboxView({
   /** `contacts.edit` / `contacts.delete`: marcar y quitar "Conocido". */
   canEditContacts?: boolean;
   canDeleteContacts?: boolean;
+  /** `contacts.merge`: «Unir con otro contacto» en el panel. */
+  canMergeContacts?: boolean;
   /** `conversations.delete`: «Eliminar conversación» en el "⋯" de cada fila (la Papelera). */
   canDeleteConversations?: boolean;
   /** Las cuentas donde puede responder (00249): `null` = en todas las que ve. */
@@ -455,6 +458,7 @@ export function InboxView({
             isAdmin={isAdmin}
             canEdit={canEditContacts}
             canAssign={canAssignConversations}
+            canMerge={canMergeContacts}
             accounts={accounts}
           />
         </div>
