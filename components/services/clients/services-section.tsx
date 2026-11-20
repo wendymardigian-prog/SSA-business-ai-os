@@ -5,7 +5,7 @@ import { serviceHref } from "@/lib/services/screens/record-url";
 import { useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { LIGHT_LABELS, STATUS_LABELS, type Light, type ServiceStatus } from "@/lib/services/screens/list";
+import { LIGHT_LABELS, STATUS_LABELS, toLight, type Light, type ServiceStatus } from "@/lib/services/screens/list";
 import { LightDot } from "./services-list-view";
 import { NewServiceDialog, type NewServiceOptions } from "./new-service-dialog";
 
@@ -55,7 +55,7 @@ export function ServicesSection({
           {services.map((s) => (
             <li key={s.id}>
               <Link href={serviceHref(s.id)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-accent/40">
-                <LightDot light={s.light ?? "gray"} label={LIGHT_LABELS[s.light ?? "gray"]} />
+                <LightDot light={toLight(s.light) ?? "gray"} label={LIGHT_LABELS[toLight(s.light) ?? "gray"]} />
                 <span className="flex-1 truncate font-medium">{s.label}</span>
                 <span className="text-xs text-muted-foreground">
                   {STATUS_LABELS[s.status]}

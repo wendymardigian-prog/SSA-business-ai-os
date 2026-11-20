@@ -115,11 +115,12 @@ export function ClientsListView({
   const boardGroup: ClientGroup = state.group === "none" ? "light" : state.group;
 
   function LightPill({ r }: { r: ClientRow }) {
-    const p = PILL[r.light];
+    // Defensa: un valor que la pantalla no conoce se dibuja gris, nunca rompe la lista.
+    const p = PILL[r.light] ?? PILL.gray;
     return (
       <span className="inline-flex items-center gap-1.5">
         <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", p.cls)}>
-          <span className={cn("h-1.5 w-1.5 rounded-full", DOT[r.light])} aria-hidden />
+          <span className={cn("h-1.5 w-1.5 rounded-full", DOT[r.light] ?? DOT.gray)} aria-hidden />
           {p.label}
         </span>
         {r.pendingReviews > 0 && (

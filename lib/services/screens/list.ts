@@ -8,6 +8,17 @@ import { clientHref, serviceHref } from "./record-url";
 export type ServiceStatus = "pending_confirmation" | "active" | "paused" | "completed" | "cancelled";
 export type Light = "green" | "yellow" | "red" | "gray";
 
+/**
+ * El semáforo tal como viene de la base, en el formato de la pantalla. La base guarda el gris como «grey»
+ * (`services_light_check`, 00330) y las pantallas usan «gray»: se traduce acá, en un solo lugar. Un valor
+ * desconocido cuenta como gris (nunca deja una fila sin color); sin dato, null.
+ */
+export function toLight(raw: unknown): Light | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  if (raw === "green" || raw === "yellow" || raw === "red") return raw;
+  return "gray";
+}
+
 export interface ServiceListItem {
   id: string;
   contactId: string;
@@ -62,8 +73,8 @@ export function serviceRowView(s: ServiceListItem, today: string) {
     client: s.contactName,
     product: s.variantName ? `${s.productName} · ${s.variantName}` : s.productName,
     owner: s.ownerName ?? "Sin responsable",
-    light: s.light ?? "gray",
-    lightLabel: LIGHT_LABELS[s.light ?? "gray"],
+    light: toLight(s.light) ?? "gray",
+    lightLabel: LIGHT_LABELS[toLight(s.light) ?? "gray"],
     lightReason: s.lightReason ?? "",
     phase: s.phaseName ?? "—",
     day: dayLabel(s, today),
@@ -143,7 +154,7 @@ export const PAGE_SIZE = 50;
 export function groupServices<T extends Pick<ServiceListItem, "phaseName" | "light" | "ownerName" | "status">>(items: T[], by: GroupBy): Array<{ key: string; label: string; items: T[] }> {
   if (by === "none") return [{ key: "all", label: "Todos", items }];
   const keyOf = (s: T) =>
-    by === "phase" ? s.phaseName ?? (s.status === "pending_confirmation" ? "Por confirmar" : "Sin fase") : by === "light" ? LIGHT_LABELS[s.light ?? "gray"] : s.ownerName ?? "Sin responsable";
+    by === "phase" ? s.phaseName ?? (s.status === "pending_confirmation" ? "Por confirmar" : "Sin fase") : by === "light" ? LIGHT_LABELS[toLight(s.light) ?? "gray"] : s.ownerName ?? "Sin responsable";
   const groups = new Map<string, T[]>();
   for (const s of items) groups.set(keyOf(s), [...(groups.get(keyOf(s)) ?? []), s]);
   const order = by === "light" ? ["Rojo", "Amarillo", "En verde", "Gris"] : [...groups.keys()];

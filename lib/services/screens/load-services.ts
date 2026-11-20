@@ -6,7 +6,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { svcRpc, svcSchema } from "../db";
-import { PAGE_SIZE, type Light, type QuickFilter, type ServiceFilters, type ServiceListItem, type ServiceStatus } from "./list";
+import { PAGE_SIZE, toLight, type Light, type QuickFilter, type ServiceFilters, type ServiceListItem, type ServiceStatus } from "./list";
 
 type Db = SupabaseClient<any, any, any>;
 
@@ -162,7 +162,7 @@ export async function loadServicesPage(supabase: Db, workspaceId: string, f: Ser
         variantName: r.product_snapshot?.variant_name ?? "",
         ownerName: r.owner_user_id ? memberNames.get(r.owner_user_id) ?? "Ya no está en el equipo" : null,
         status: r.status,
-        light: r.light,
+        light: toLight(r.light),
         lightReason: r.light_reason,
         phaseName: phases.get(r.id) ?? null,
         startsOn: r.starts_on,
@@ -205,8 +205,8 @@ export async function loadSaleServices(supabase: Db, workspaceId: string, saleId
   const rows = (data ?? []) as Array<{ id: string; sale_id: string | null; status: ServiceStatus; light: Light | null; product_snapshot: { product_name?: string } | null; extension_sale_ids: string[] | null }>;
   const phases = await currentPhases(supabase, rows.map((r) => r.id));
   for (const r of rows) {
-    if (r.sale_id && saleIds.includes(r.sale_id)) out.set(r.sale_id, { serviceId: r.id, status: r.status, light: r.light, phaseName: phases.get(r.id) ?? null, extendsProductName: null });
-    for (const s of r.extension_sale_ids ?? []) if (saleIds.includes(s)) out.set(s, { serviceId: r.id, status: r.status, light: r.light, phaseName: null, extendsProductName: r.product_snapshot?.product_name ?? "el programa" });
+    if (r.sale_id && saleIds.includes(r.sale_id)) out.set(r.sale_id, { serviceId: r.id, status: r.status, light: toLight(r.light), phaseName: phases.get(r.id) ?? null, extendsProductName: null });
+    for (const s of r.extension_sale_ids ?? []) if (saleIds.includes(s)) out.set(s, { serviceId: r.id, status: r.status, light: toLight(r.light), phaseName: null, extendsProductName: r.product_snapshot?.product_name ?? "el programa" });
   }
   return out;
 }

@@ -8,7 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { svcSchema } from "../db";
 import { buildClientRows, type ClientRow, type ClientServiceInput } from "./clients-list";
 import { contactNames, loadPortalSummary, portalProducts } from "./load-services";
-import type { Light, ServiceStatus } from "./list";
+import { toLight, type Light, type ServiceStatus } from "./list";
 
 type Db = SupabaseClient<any, any, any>;
 
@@ -70,7 +70,7 @@ export async function loadClientsList(supabase: Db, service: Db, workspaceId: st
   const services: ClientServiceInput[] = svc.map((s) => ({
     contactId: s.contact_id,
     status: s.status,
-    light: s.light,
+    light: toLight(s.light),
     progressPct: Number(s.progress_pct) || 0,
     ownerName: s.owner_user_id ? memberNames.get(s.owner_user_id) ?? "Ya no está en el equipo" : null,
     hasPortal: withPortal.has(s.product_id),
