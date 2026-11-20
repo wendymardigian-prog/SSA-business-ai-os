@@ -20,6 +20,7 @@ import { ProgramPointsPanel, type RankingRow } from "@/components/services/porta
 import type { PointsSettings } from "@/lib/portal-points/rules";
 import { ProgramAssistant, type AssistantUsage, type TutorKnowledge } from "@/components/services/portal/program-assistant";
 import { svcSchema } from "@/lib/services/db";
+import { loadServicePicker } from "@/lib/services/service-picker-load";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { PortalFormInitial } from "@/components/services/portal/portal-form-editor";
 import { LinkQuickFilterMenu, LinkViewToggle, PrimaryButton, TopbarMoreMenu, type MoreAction } from "@/components/ui/topbar-controls";
@@ -109,7 +110,22 @@ export default async function PortalProgramPage({ params, searchParams }: { para
     // F50: los otros programas del negocio (productos con portal), para «Copiar a otro programa».
     const { data: progs } = await supabase.from("products").select("id, name").eq("workspace_id", workspace.id).eq("portal_enabled" as never, true as never).neq("id", productId).order("name");
     const otherPrograms = ((progs ?? []) as Array<{ id: string; name: string }>).map((p) => ({ id: p.id, name: p.name }));
-    return <ProgramContentEditor productId={productId} rows={rows} canManage={ctx.can("program.manage")} canActivate={ctx.can("program.activate")} commentCounts={counts.ok ? counts.data?.by_item ?? {} : {}} otherPrograms={otherPrograms} />;
+    // «Se abre al completar algo»: los pasos del camino de las variantes de este producto. Si no se pueden leer, la
+    // lista queda sin pasos (se puede elegir igual una clase o un módulo); nunca rompe la pantalla.
+    const journeyVariants = await loadServicePicker(supabase, workspace.id)
+      .then((o) => o.products.find((x) => x.id === productId)?.variants ?? [])
+      .catch(() => []);
+    return (
+      <ProgramContentEditor
+        productId={productId}
+        rows={rows}
+        canManage={ctx.can("program.manage")}
+        canActivate={ctx.can("program.activate")}
+        commentCounts={counts.ok ? counts.data?.by_item ?? {} : {}}
+        otherPrograms={otherPrograms}
+        journeyVariants={journeyVariants}
+      />
+    );
   }
 
   // Calendario (F58-F63): sesiones, fechas, asistencia y grabaciones, todo en paralelo.

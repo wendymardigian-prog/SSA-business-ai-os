@@ -10,7 +10,9 @@
  *     «Próximamente» se ve si es el propio y oculta a sus hijos; oculto no se ve;
  *  4. abierto.
  * Abrir a mano, por un paso o por automatización (`unlockedIds`) abre aunque la regla diga otra cosa. Un
- * `after_complete` que apunta a algo inactivo queda cumplido.
+ * `after_complete` que apunta a algo inactivo queda cumplido. Su `id` es una clase o un módulo (`target: program_item`)
+ * o la clave de un paso del camino (`target: journey_item`). Con candado, el texto propio (`locked_text`) reemplaza
+ * al automático en cualquier tipo.
  */
 
 export type UnlockDisplay = "open" | "locked" | "coming_soon" | "hidden";
@@ -99,6 +101,8 @@ function defaultDisplay(rule: UnlockRule): "locked" | "coming_soon" | "hidden" {
 
 function reasonOf(rule: UnlockRule, ctx: UnlockInput["ctx"], display: string): string {
   if (display === "coming_soon" && rule.coming_soon_text) return rule.coming_soon_text;
+  // El texto propio del candado gana sobre el automático, sea cual sea el tipo (00502).
+  if (display !== "coming_soon" && rule.locked_text) return rule.locked_text;
   const d = opensOn(rule, ctx);
   switch (rule.type) {
     case "fixed_date":
@@ -149,6 +153,8 @@ export function unlockRuleProblems(rule: UnlockRule): string[] {
   if (t === "fixed_date" && !(rule.date && /^\d{4}-\d{2}-\d{2}$/.test(rule.date))) p.push("elegí la fecha");
   if (t === "days_after_start" && !(typeof rule.days === "number" && Number.isInteger(rule.days) && rule.days >= 0 && rule.days <= 3650)) p.push("los días tienen que ser de 0 a 3650");
   if (t === "after_complete" && !rule.id) p.push("elegí qué hay que completar");
+  if (t === "after_complete" && rule.target && !["journey_item", "program_item"].includes(rule.target)) p.push("lo que hay que completar no es válido");
+  if (rule.locked_text && rule.locked_text.length > 80) p.push("el texto del candado tiene hasta 80 caracteres");
   if (rule.display && !["locked", "coming_soon", "hidden"].includes(rule.display)) p.push("«cómo se ve» no es válido");
   if (rule.coming_soon_text && rule.coming_soon_text.length > 80) p.push("el texto de «Próximamente» tiene hasta 80 caracteres");
   if (rule.coming_soon_text && rule.display !== "coming_soon" && !(t === "fixed_date" && !rule.display)) p.push("el texto solo va con «Próximamente»");

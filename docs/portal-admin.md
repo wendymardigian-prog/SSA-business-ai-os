@@ -57,6 +57,12 @@ sin contestar).
 | Afiliados | Qué links ven los estudiantes | `portal.sections` |
 | ⚙ Ajustes del programa (`/dashboard/portal/<id>/ajustes`) | Secciones, términos al entrar y el resumen de las variantes | `portal.sections` |
 
+- **Desbloqueo «Al completar algo»** (`after_complete`): se elige de una lista un paso del camino de las variantes del
+  producto (se guarda su clave, `target: journey_item`: se cumple cuando ese paso queda completo en cualquiera de los
+  servicios vigentes de la persona) u otra clase o módulo (`target: program_item`). Las opciones salen de
+  `lib/program/unlock-targets.ts`. **Texto propio del candado** (00502): con candado, `locked_text` reemplaza al texto
+  automático en cualquier tipo de regla; con «Próximamente» manda `coming_soon_text`. Gemelas `reasonOf` /
+  `program_unlock_plan`, casos en `lib/program/unlock.cases.json`.
 - **Una clase de video también puede llevar una página HTML** (00490): el cajón de la clase muestra «Página debajo del
   video (opcional)» y el portal la dibuja debajo del video (o del botón de Fathom), en el mismo marco aislado que una
   clase de tipo Página. Solo la clase de tipo Página se marca vista sola al abrirla.
