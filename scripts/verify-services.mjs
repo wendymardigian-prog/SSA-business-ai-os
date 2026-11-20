@@ -1032,7 +1032,8 @@ try {
   if (run("pc") && sql(`SELECT to_regprocedure('app_servicio.portal_item_form_link(text,uuid)') IS NOT NULL AS ok`)[0]?.ok) {
     console.log("\npc · Pasos del camino: tildado en una fase cerrada y el link del botón del portal (00503)");
     sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
-    const mkForm = (type, status = "published") => sql(`INSERT INTO public.forms (workspace_id, name, type, slug, status) VALUES (${lit(ws.id)}, ${lit(`zz-test ${type}`)}, ${lit(type)}, ${lit(`zz-test-pc-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)}, ${lit(status)}) RETURNING id`)[0]?.id;
+    // Un contrato necesita su contract_config (CHECK forms_contract_config_required, 00150).
+    const mkForm = (type, status = "published") => sql(`INSERT INTO public.forms (workspace_id, name, type, slug, status, contract_config) VALUES (${lit(ws.id)}, ${lit(`zz-test ${type}`)}, ${lit(type)}, ${lit(`zz-test-pc-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)}, ${lit(status)}, ${type === "contract" ? "'{}'::jsonb" : "NULL"}) RETURNING id`)[0]?.id;
     const fForm = mkForm("custom");
     const fContract = mkForm("contract");
     const fDraft = mkForm("custom", "draft");
@@ -1085,8 +1086,9 @@ try {
     check(signed === item("it_pc0001").id && item("it_pc0001").status === "completed", "el contrato firmado con el paso en el link se tilda en la fase cerrada");
 
     // 4. A mano: en una fase cerrada se tilda, pero no se destilda (SV020).
-    const manual = asUser(owner.id, `SELECT app_servicio.svc_complete_item(${lit(item("it_pc0003").id)}) r`);
-    check(manual.ok && item("it_pc0003").status === "completed", "tildar a mano un paso de una fase cerrada funciona", manual.error);
+    // Por la API con la sesión (asUser deshace todo al final: sirve para leer o ver un error, no para guardar).
+    const manual = await rpcAs(owner, "svc_complete_item", { p_item_id: item("it_pc0003").id });
+    check(!manual.error && item("it_pc0003").status === "completed", "tildar a mano un paso de una fase cerrada funciona", manual.error ?? JSON.stringify(item("it_pc0003")));
     const undo = asUser(owner.id, `SELECT app_servicio.svc_uncomplete_item(${lit(item("it_pc0003").id)}) r`);
     check(!undo.ok && undo.code === "SV020", "destildar en una fase cerrada sigue rechazado (SV020)", undo.error);
     sql(`DELETE FROM app_servicio_portal.portal_sessions WHERE token_hash IN (app_servicio.portal_token_hash(${lit(tok)}), app_servicio.portal_token_hash(${lit(tokP)}))`);
