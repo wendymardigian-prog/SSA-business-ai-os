@@ -2,7 +2,9 @@
  * El link de un formulario FIRMADO para un contacto (F20, D13). SOLO servidor.
  *
  * `<base>/f/<slug>?c=<token>`, con `token = base64url(JSON) + "." + base64url(HMAC)`.
- * El JSON es `{ v: 1, f: form_id, c: contact_id, s?: service_id, o?: sale_id, e: exp }`.
+ * El JSON es `{ v: 1, f: form_id, c: contact_id, s?: service_id, o?: sale_id, i?: service_item_id, e: exp }`.
+ * `i` (00503) es el paso del camino que abre el botón del portal: al enviar, viaja en `meta.service_item_id` y la
+ * base completa ESE paso (`submission_item_hook` comprueba que sea del mismo contacto y servicio).
  *
  * - Los tres ids viajan DENTRO de la firma, nunca sueltos en la URL: alterar uno
  *   rompe el HMAC. Un `service_id`, `sale_id` o `contact_id` que llegue como
@@ -34,6 +36,7 @@ export interface TokenPayload {
   c: string;
   s?: string;
   o?: string;
+  i?: string;
   e: number;
 }
 
@@ -50,6 +53,8 @@ export interface TokenInput {
   contactId: string;
   serviceId?: string | null;
   saleId?: string | null;
+  /** El paso del camino (botón del portal). Sin él, el token es idéntico al de siempre. */
+  itemId?: string | null;
   ttlDays?: number;
   now?: number;
 }
@@ -63,6 +68,7 @@ export function createToken(input: TokenInput, secret: string): string {
     c: input.contactId,
     ...(input.serviceId ? { s: input.serviceId } : {}),
     ...(input.saleId ? { o: input.saleId } : {}),
+    ...(input.itemId ? { i: input.itemId } : {}),
     e: Math.floor((now + (input.ttlDays ?? FORM_LIMITS.signedLinkDays) * DAY_MS) / 1000),
   };
   const body = b64(JSON.stringify(payload));
@@ -97,6 +103,7 @@ export function readToken(token: string, secret: string, expected: { formId: str
   if (typeof payload.c !== "string" || !UUID.test(payload.c)) return { ok: false, reason: "ids" };
   if (payload.s !== undefined && !UUID.test(String(payload.s))) return { ok: false, reason: "ids" };
   if (payload.o !== undefined && !UUID.test(String(payload.o))) return { ok: false, reason: "ids" };
+  if (payload.i !== undefined && !UUID.test(String(payload.i))) return { ok: false, reason: "ids" };
 
   return { ok: true, payload };
 }
@@ -121,7 +128,7 @@ export async function signFormLink(service: Db, input: SignInput): Promise<strin
 }
 
 export type VerifyResult =
-  | { ok: true; contactId: string; serviceId: string | null; saleId: string | null }
+  | { ok: true; contactId: string; serviceId: string | null; saleId: string | null; itemId: string | null }
   | { ok: false; reason: TokenReason | "contact" };
 
 /**
@@ -156,5 +163,11 @@ export async function verifyFormLink(
     .maybeSingle();
   if (!contact) return { ok: false, reason: "contact" };
 
-  return { ok: true, contactId: read.payload.c, serviceId: read.payload.s ?? null, saleId: read.payload.o ?? null };
+  return {
+    ok: true,
+    contactId: read.payload.c,
+    serviceId: read.payload.s ?? null,
+    saleId: read.payload.o ?? null,
+    itemId: read.payload.i ?? null,
+  };
 }

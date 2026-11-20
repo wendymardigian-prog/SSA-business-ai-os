@@ -123,11 +123,13 @@ export type SaveResult =
   | ({ ok: true; duplicate: boolean; submissionId: string; status: string; signatureId?: string | null } & SavedContact)
   | { ok: false; error: "already_answered" | "failed" };
 
-/** Un link firmado verificado: el contacto al que pertenece y, si los trae, sus ids de servicio y venta. */
+/** Un link firmado verificado: el contacto al que pertenece y, si los trae, sus ids de servicio, venta y paso. */
 export interface VerifiedLink {
   contactId: string;
   serviceId: string | null;
   saleId: string | null;
+  /** El paso del camino que abrió el botón del portal (00503); opcional para los puertos de prueba viejos. */
+  itemId?: string | null;
 }
 
 export interface SubmitPorts {
@@ -507,6 +509,8 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   // 10c. Modo Contrato: el texto que se firma lo arma el SERVIDOR con la plantilla congelada y las respuestas ya
   // validadas (nunca el navegador). La base comprueba que sea esa plantilla con solo los huecos completados (00242).
   const meta = buildMeta(ports, input, payload, mapped?.notes ?? []);
+  // El paso del camino sale SOLO de un link firmado válido (nunca de la URL ni del cuerpo): la base completa ese paso.
+  if (linksContacts && link?.itemId) meta.service_item_id = link.itemId;
   if (rendersContract) meta.contract_render = await buildContractRender(ports, form, values, link);
 
   const saved = await ports.save({

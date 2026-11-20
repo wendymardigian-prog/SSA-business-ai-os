@@ -423,6 +423,24 @@ describe("submitForm: contacto, toque y aviso (FO2)", () => {
     expect(sent2.contactHint).not.toHaveProperty("signed_contact_id");
   });
 
+  it("el paso del camino viaja en meta.service_item_id solo si vino en el link firmado (00503)", async () => {
+    const signedItem = makePorts(mapped(), {
+      save: withContact(),
+      verifyLink: vi.fn(async () => ({ contactId: "c-9", serviceId: "s-1", saleId: null, itemId: "i-1" })),
+    });
+    await submitForm(signedItem.ports, baseInput({ answers: { nombre: "Ana" }, link_token: "tok.firma" }));
+    const sent = (signedItem.ports.save as ReturnType<typeof vi.fn>).mock.calls[0][0] as SaveInput;
+    expect(sent.meta.service_item_id).toBe("i-1");
+
+    const noItem = makePorts(mapped(), {
+      save: withContact(),
+      verifyLink: vi.fn(async () => ({ contactId: "c-9", serviceId: "s-1", saleId: null })),
+    });
+    await submitForm(noItem.ports, baseInput({ answers: { nombre: "Ana" }, link_token: "tok.firma" }));
+    const sent2 = (noItem.ports.save as ReturnType<typeof vi.fn>).mock.calls[0][0] as SaveInput;
+    expect(sent2.meta).not.toHaveProperty("service_item_id");
+  });
+
   it("con el interruptor de contactos apagado (none) no viaja nada: ni el mapeo ni un link firmado (R3)", async () => {
     const form = { ...mapped(), contactConfig: { ...mapped().contactConfig, mode: "none" as const } };
     const { ports } = makePorts(form, {
