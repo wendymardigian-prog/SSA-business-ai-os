@@ -83,17 +83,17 @@ export function KnownBadge() {
   );
 }
 
-export function TagChip({ name, color }: { name: string; color?: string | null }) {
+export function TagChip({ name, color, className }: { name: string; color?: string | null; className?: string }) {
   return (
     <span
-      className="inline-flex rounded-full border border-border px-2.5 py-0.5 text-xs font-medium"
+      className={`inline-flex rounded-full border border-border px-2.5 py-0.5 text-xs font-medium ${className ?? ""}`}
       style={
         color
           ? { backgroundColor: `${color}20`, borderColor: `${color}40`, color }
           : undefined
       }
     >
-      {name}
+      <span className="min-w-0 truncate">{name}</span>
     </span>
   );
 }

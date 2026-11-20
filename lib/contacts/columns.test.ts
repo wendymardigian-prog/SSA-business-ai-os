@@ -32,7 +32,7 @@ describe("el catálogo de columnas", () => {
   });
 
   it("por defecto se ven las de siempre y las nuevas nacen ocultas", () => {
-    expect(defaultVisibleKeys(defs)).toEqual(["name", "status", "contact", "setter", "vendedor", "product", "tags", "last_interaction"]);
+    expect(defaultVisibleKeys(defs)).toEqual(["name", "status", "email", "phone", "setter", "vendedor", "product", "tags", "last_interaction"]);
   });
 });
 

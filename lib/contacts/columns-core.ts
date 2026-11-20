@@ -34,7 +34,10 @@ function contactColumn(key: string, label: string, group: ContactColumnDef["grou
 export const CORE_COLUMNS: readonly ContactColumnDef[] = [
   { key: "name", label: "Nombre", group: GROUPS.data, hideable: false, defaultVisible: true, source: "special" },
   { key: "status", label: "Último estado", group: GROUPS.pipeline, hideable: true, defaultVisible: true, source: "special", keywords: "estado" },
-  { key: "contact", label: "Email y teléfono", group: GROUPS.data, hideable: true, defaultVisible: true, source: "special", keywords: "contacto" },
+  // Email y teléfono van en columnas separadas (cada fila, un renglón). La combinada queda para quien la elija.
+  { ...contactColumn("email", "Email", GROUPS.data, (r) => text(r.email), "correo"), defaultVisible: true },
+  { ...contactColumn("phone", "Teléfono", GROUPS.data, (r) => text(r.phone)), defaultVisible: true },
+  { key: "contact", label: "Email y teléfono", group: GROUPS.data, hideable: true, defaultVisible: false, source: "special", keywords: "contacto" },
   { key: "setter", label: "Setter", group: GROUPS.assignment, hideable: true, defaultVisible: true, source: "special" },
   { key: "vendedor", label: "Vendedor", group: GROUPS.assignment, hideable: true, defaultVisible: true, source: "special", keywords: "closer" },
   { key: "product", label: "Producto de interés", group: GROUPS.pipeline, hideable: true, defaultVisible: true, source: "special" },
@@ -43,8 +46,6 @@ export const CORE_COLUMNS: readonly ContactColumnDef[] = [
   { key: "last_interaction", label: "Última interacción", group: GROUPS.data, hideable: true, defaultVisible: true, source: "special", keywords: "ultima fecha" },
 
   // Nuevas (bloque 4): todas ocultas hasta que alguien las elija.
-  contactColumn("email", "Email", GROUPS.data, (r) => text(r.email), "correo"),
-  contactColumn("phone", "Teléfono", GROUPS.data, (r) => text(r.phone)),
   contactColumn("whatsapp", "WhatsApp", GROUPS.data, (r) => text(r.whatsapp_phone)),
   contactColumn("country", "País", GROUPS.data, (r) => {
     const c = str(r.country);
