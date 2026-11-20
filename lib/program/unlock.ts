@@ -13,6 +13,10 @@
  * `after_complete` que apunta a algo inactivo queda cumplido. Su `id` es una clase o un módulo (`target: program_item`)
  * o la clave de un paso del camino (`target: journey_item`). Con candado, el texto propio (`locked_text`) reemplaza
  * al automático en cualquier tipo.
+ *
+ * Lo que el equipo cambió a mano para ESTA persona (00503, `ctx.overrides`, solo en módulos desde la ficha):
+ * `open` lo abre, `closed` lo cierra (le gana también a `unlockedIds`) y `rule` usa su propia regla en vez de la del
+ * programa. `open` y `rule` lo incluyen aunque la variante no lo incluya.
  */
 
 export type UnlockDisplay = "open" | "locked" | "coming_soon" | "hidden";
@@ -52,8 +56,19 @@ export interface UnlockInput {
     challengeStarted: boolean;
     /** Lo que se abrió para esta persona (paso, automatización o a mano). */
     unlockedIds: string[];
+    /** Lo cambiado a mano por el equipo, por id (00503). */
+    overrides?: Record<string, ModuleOverride>;
   };
 }
+
+export type ModuleOverrideMode = "open" | "closed" | "rule";
+export interface ModuleOverride {
+  mode: ModuleOverrideMode;
+  rule?: UnlockRule | null;
+}
+
+/** Los tipos de regla que se pueden programar para una persona («Programar…» en la ficha). */
+export const OVERRIDE_RULE_TYPES = ["fixed_date", "days_after_start", "after_complete", "challenge_started"] as const;
 
 export interface UnlockResult {
   visible: boolean;
@@ -74,9 +89,21 @@ function opensOn(rule: UnlockRule, ctx: UnlockInput["ctx"]): string | null {
   return null;
 }
 
+const CLOSED: UnlockRule = { type: "closed" };
+
+/** La regla que vale para ese nodo: la cerrada a mano, la propia o la del programa. */
+function ruleOf(node: UnlockNode, ctx: UnlockInput["ctx"]): UnlockRule {
+  const o = ctx.overrides?.[node.id];
+  if (o?.mode === "closed") return CLOSED;
+  if (o?.mode === "rule" && o.rule && typeof o.rule === "object") return o.rule;
+  return node.rule ?? { type: "open" };
+}
+
 function isOpen(node: UnlockNode, ctx: UnlockInput["ctx"]): boolean {
-  const r = node.rule ?? { type: "open" };
-  if (ctx.unlockedIds.includes(node.id)) return true;
+  const mode = ctx.overrides?.[node.id]?.mode;
+  if (mode === "open") return true;
+  const r = ruleOf(node, ctx);
+  if (mode !== "closed" && ctx.unlockedIds.includes(node.id)) return true;
   switch (r.type ?? "open") {
     case "open":
       return true;
@@ -123,12 +150,13 @@ export function unlockPlan(input: UnlockInput): UnlockResult {
   const { chain, ctx } = input;
   if (chain.length === 0) return HIDDEN(true);
   if (chain.some((n) => n.status !== "active")) return HIDDEN(true);
-  if (chain.some((n) => n.included === false)) return HIDDEN(false);
+  const gifted = (n: UnlockNode) => ["open", "rule"].includes(ctx.overrides?.[n.id]?.mode ?? "");
+  if (chain.some((n) => n.included === false && !gifted(n))) return HIDDEN(false);
   const last = chain.length - 1;
   for (let i = 0; i <= last; i++) {
     const node = chain[i];
     if (isOpen(node, ctx)) continue;
-    const rule = node.rule ?? {};
+    const rule = ruleOf(node, ctx);
     const display = defaultDisplay(rule);
     const own = i === last;
     const visible = own ? display !== "hidden" : display === "locked";

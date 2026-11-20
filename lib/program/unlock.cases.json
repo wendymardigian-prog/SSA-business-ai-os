@@ -1257,6 +1257,564 @@
         "reason": "Entregá tu Plan",
         "opensOn": null
       }
+    },
+    {
+      "name": "a mano: abierto aunque la fecha no llegó",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "fixed_date",
+              "date": "2026-12-05"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "open"
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": true,
+        "included": true,
+        "display": "open",
+        "reason": null,
+        "opensOn": null
+      }
+    },
+    {
+      "name": "a mano: abierto aunque la variante no lo incluye",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            },
+            "included": false
+          },
+          {
+            "id": "l1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "open"
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": true,
+        "included": true,
+        "display": "open",
+        "reason": null,
+        "opensOn": null
+      }
+    },
+    {
+      "name": "a mano: cerrado aunque la regla lo abre",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "closed"
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "locked",
+        "reason": "Todavía no está disponible",
+        "opensOn": null
+      }
+    },
+    {
+      "name": "a mano: cerrado le gana a lo abierto por un paso",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "journey_item"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [
+            "m1"
+          ],
+          "overrides": {
+            "m1": {
+              "mode": "closed"
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "locked",
+        "reason": "Todavía no está disponible",
+        "opensOn": null
+      }
+    },
+    {
+      "name": "a mano: la clase de un módulo cerrado queda con candado",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            }
+          },
+          {
+            "id": "l1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "closed"
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "locked",
+        "reason": "Todavía no está disponible",
+        "opensOn": null
+      }
+    },
+    {
+      "name": "a mano: la clase de un módulo abierto se ve",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "fixed_date",
+              "date": "2026-12-05"
+            }
+          },
+          {
+            "id": "l1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "open"
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": true,
+        "included": true,
+        "display": "open",
+        "reason": null,
+        "opensOn": null
+      }
+    },
+    {
+      "name": "a mano: cerrado y no incluido sigue sin verse",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            },
+            "included": false
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "closed"
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": false,
+        "unlocked": false,
+        "included": false,
+        "display": "hidden",
+        "reason": null,
+        "opensOn": null
+      }
+    },
+    {
+      "name": "regla propia: fecha que no llegó",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "rule",
+              "rule": {
+                "type": "fixed_date",
+                "date": "2026-12-05"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "coming_soon",
+        "reason": "Se abre el 05/12/2026",
+        "opensOn": "2026-12-05"
+      }
+    },
+    {
+      "name": "regla propia: fecha que ya pasó",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "fixed_date",
+              "date": "2026-12-05"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "rule",
+              "rule": {
+                "type": "fixed_date",
+                "date": "2026-11-20"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": true,
+        "included": true,
+        "display": "open",
+        "reason": null,
+        "opensOn": null
+      }
+    },
+    {
+      "name": "regla propia: días desde que empezó",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "rule",
+              "rule": {
+                "type": "days_after_start",
+                "days": 40
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "locked",
+        "reason": "Se abre el 11/12/2026",
+        "opensOn": "2026-12-11"
+      }
+    },
+    {
+      "name": "regla propia: al completar, sin completar, en un módulo no incluido",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            },
+            "included": false
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "rule",
+              "rule": {
+                "type": "after_complete",
+                "target": "journey_item",
+                "id": "it_plan90"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "locked",
+        "reason": "Se abre cuando completes lo anterior",
+        "opensOn": null
+      }
+    },
+    {
+      "name": "regla propia: al completar, ya completo, en un módulo no incluido",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            },
+            "included": false
+          },
+          {
+            "id": "l1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [
+            "it_plan90"
+          ],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m1": {
+              "mode": "rule",
+              "rule": {
+                "type": "after_complete",
+                "target": "journey_item",
+                "id": "it_plan90"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": true,
+        "included": true,
+        "display": "open",
+        "reason": null,
+        "opensOn": null
+      }
+    },
+    {
+      "name": "regla propia: lo abierto por un paso sigue abierto",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "open"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [
+            "m1"
+          ],
+          "overrides": {
+            "m1": {
+              "mode": "rule",
+              "rule": {
+                "type": "fixed_date",
+                "date": "2026-12-05"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": true,
+        "included": true,
+        "display": "open",
+        "reason": null,
+        "opensOn": null
+      }
+    },
+    {
+      "name": "a mano en otro módulo no cambia este",
+      "input": {
+        "chain": [
+          {
+            "id": "m1",
+            "status": "active",
+            "rule": {
+              "type": "fixed_date",
+              "date": "2026-12-05"
+            }
+          }
+        ],
+        "ctx": {
+          "today": "2026-11-30",
+          "accessStartsOn": "2026-11-01",
+          "completed": [],
+          "inactiveIds": [],
+          "challengeStarted": false,
+          "unlockedIds": [],
+          "overrides": {
+            "m9": {
+              "mode": "open"
+            }
+          }
+        }
+      },
+      "expected": {
+        "visible": true,
+        "unlocked": false,
+        "included": true,
+        "display": "coming_soon",
+        "reason": "Se abre el 05/12/2026",
+        "opensOn": "2026-12-05"
+      }
     }
   ]
 }

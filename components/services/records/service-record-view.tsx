@@ -24,6 +24,9 @@ import { LightDot } from "@/components/services/clients/services-list-view";
 import { cn } from "@/lib/utils";
 import { rememberRecordOpener } from "./record-modal";
 import { ServiceActionDialog } from "./service-action-dialog";
+import { ModuleOverrideDialog } from "./module-override-dialog";
+import { setModuleOverride } from "@/lib/actions/program";
+import type { ModuleTargetOptions } from "@/lib/program/module-override";
 import { ScheduleCallButton } from "@/components/scheduling/bookings/schedule-call-button";
 import { SidePanel } from "@/components/tasks/overlay";
 import { EvidenceBox } from "@/components/services/evidence-box";
@@ -73,6 +76,8 @@ export interface ServiceRecordData {
   payment: NextPaymentView | null;
   attendance: AttendanceRateView | null;
   classroom: ClassroomProgressView | null;
+  /** 00503: las opciones de «al completar algo» para programar un módulo (solo con services.access). */
+  moduleTargets?: ModuleTargetOptions | null;
   assistant: AssistantCreditsView | null;
   assistantInfo: { conversations: number; lastAt: string | null } | null;
   alerts: RecordAlert[];
@@ -540,7 +545,16 @@ export function ServiceRecordView({
 
         {data.hasPortal && <ServiceProjectsSection serviceId={data.id} />} {/* @plantilla-quitar(proyectos) */}
 
-        {data.hasPortal && <ClassroomBlock classroom={data.classroom} />}
+        {data.hasPortal && (
+          <ClassroomBlock
+            classroom={data.classroom}
+            serviceId={data.id}
+            canOverride={can("services.access") && ["active", "paused", "completed"].includes(data.status)}
+            targets={data.moduleTargets ?? null}
+            pending={pending}
+            run={run}
+          />
+        )}
 
         {challenge}
 
@@ -661,8 +675,25 @@ const LESSON_LABEL: Record<LessonState["kind"], string> = {
   locked: "Bloqueada",
 };
 
-function ClassroomBlock({ classroom }: { classroom: ClassroomProgressView | null }) {
+function ClassroomBlock({
+  classroom,
+  serviceId,
+  canOverride,
+  targets,
+  pending,
+  run,
+}: {
+  classroom: ClassroomProgressView | null;
+  serviceId: string;
+  /** 00503: abrir, cerrar o programar cada módulo para este cliente (services.access, servicio vigente). */
+  canOverride: boolean;
+  targets: ModuleTargetOptions | null;
+  pending: boolean;
+  run: (task: () => Promise<{ ok: boolean; error?: { message: string } }>) => void;
+}) {
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [programming, setProgramming] = useState<ClassroomProgressView["modules"][number] | null>(null);
+  const router = useRouter();
   const all = useMemo(() => classroom?.modules.map((m) => m.id) ?? [], [classroom]);
   return (
     <section aria-labelledby="record-classroom" className="rounded-xl border border-border">
@@ -696,31 +727,62 @@ function ClassroomBlock({ classroom }: { classroom: ClassroomProgressView | null
             const isOpen = open.has(m.id);
             return (
               <li key={m.id}>
-                <button
-                  type="button"
-                  aria-expanded={isOpen}
-                  onClick={() => setOpen((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(m.id)) next.delete(m.id);
-                    else next.add(m.id);
-                    return next;
-                  })}
-                  className={cn("flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm", m.locked && "text-muted-foreground")}
-                >
-                  <ChevronRight className={cn("h-4 w-4 shrink-0 transition-transform", isOpen && "rotate-90")} aria-hidden />
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-medium">
-                      {i + 1}. {m.title}
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => setOpen((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(m.id)) next.delete(m.id);
+                      else next.add(m.id);
+                      return next;
+                    })}
+                    className={cn("flex min-h-11 min-w-0 flex-1 items-center gap-2 py-2 pl-3 text-left text-sm", canOverride ? "pr-1" : "pr-3", m.locked && "text-muted-foreground")}
+                  >
+                    <ChevronRight className={cn("h-4 w-4 shrink-0 transition-transform", isOpen && "rotate-90")} aria-hidden />
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="font-medium">
+                        {i + 1}. {m.title}
+                      </span>
+                      {m.locked && m.opensText && <span className="text-xs"> · {m.opensText.charAt(0).toLowerCase() + m.opensText.slice(1)}</span>}
+                      {m.overrideText && <span className="text-xs text-primary-ink"> · {m.overrideText}</span>}
                     </span>
-                    {m.locked && m.opensText && <span className="text-xs"> · {m.opensText.charAt(0).toLowerCase() + m.opensText.slice(1)}</span>}
-                  </span>
-                  <span className="hidden w-28 sm:block">
-                    <MiniBar pct={m.pct} />
-                  </span>
-                  <span className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                    {m.done} de {m.total}
-                  </span>
-                </button>
+                    <span className="hidden w-28 sm:block">
+                      <MiniBar pct={m.pct} />
+                    </span>
+                    <span className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                      {m.done} de {m.total}
+                    </span>
+                  </button>
+                  {canOverride && (
+                    <PortalMenu
+                      label={`Opciones de ${m.title} para este cliente`}
+                      align="end"
+                      width={260}
+                      triggerClassName="mr-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent md:h-8 md:w-8"
+                      trigger={<MoreHorizontal className="h-4 w-4" aria-hidden />}
+                    >
+                      {m.override?.mode !== "open" && (
+                        <PortalMenuItem disabled={pending} onSelect={() => run(() => setModuleOverride(serviceId, m.id, "open"))}>
+                          {m.notIncluded ? "Darle acceso ya" : "Abrir ya"}
+                        </PortalMenuItem>
+                      )}
+                      {m.override?.mode !== "closed" && !m.notIncluded && (
+                        <PortalMenuItem disabled={pending} onSelect={() => run(() => setModuleOverride(serviceId, m.id, "closed"))}>
+                          Cerrar
+                        </PortalMenuItem>
+                      )}
+                      <PortalMenuItem disabled={pending} onSelect={() => setProgramming(m)}>
+                        {m.override?.mode === "rule" ? "Cambiar su regla…" : "Programar…"}
+                      </PortalMenuItem>
+                      {m.override && (
+                        <PortalMenuItem disabled={pending} onSelect={() => run(() => setModuleOverride(serviceId, m.id, null))}>
+                          Volver a la regla del programa
+                        </PortalMenuItem>
+                      )}
+                    </PortalMenu>
+                  )}
+                </div>
                 {isOpen && (
                   <ul className="space-y-1 pb-2 pl-9 pr-3">
                     {m.lessons.length === 0 && <li className="text-xs text-muted-foreground">Sin clases todavía.</li>}
@@ -740,6 +802,20 @@ function ClassroomBlock({ classroom }: { classroom: ClassroomProgressView | null
             );
           })}
         </ul>
+      )}
+      {programming && (
+        <ModuleOverrideDialog
+          serviceId={serviceId}
+          moduleId={programming.id}
+          moduleTitle={programming.title}
+          current={programming.override?.mode === "rule" ? programming.override.rule : null}
+          targets={targets}
+          onClose={() => setProgramming(null)}
+          onSaved={() => {
+            setProgramming(null);
+            router.refresh();
+          }}
+        />
       )}
     </section>
   );

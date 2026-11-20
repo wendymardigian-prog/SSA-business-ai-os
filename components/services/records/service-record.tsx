@@ -23,6 +23,8 @@ import { loadDesignLinks } from "@/lib/designer/public-links";
 import { createServiceClient } from "@/lib/supabase/server";
 import { ServiceAssistantCard } from "@/components/services/clients/service-assistant-card";
 import { svcRpc } from "@/lib/services/db";
+import { loadServicePicker } from "@/lib/services/service-picker-load";
+import { moduleTargetOptions, type ModuleTargetOptions } from "@/lib/program/module-override";
 import { accessViewRows, pendingSections } from "@/lib/portal-admin/accesses-view";
 import { programSections, readVariantPortal } from "@/lib/services/screens/variant-portal-form";
 import { loadReviewItems } from "@/lib/program/load-review";
@@ -92,6 +94,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
 
   // Lo del portal: classroom, asistencia, asistente y entregas. Sin portal no se lee nada de eso.
   let classroom = null;
+  let moduleTargets: ModuleTargetOptions | null = null;
   let attendance = null;
   let assistant = null;
   let assistantInfo: { conversations: number; lastAt: string | null } | null = null;
@@ -107,13 +110,22 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     ]);
     pointsDaily = daily.ok ? daily.data : null;
     pointsRows = hist.ok ? hist.data ?? [] : [];
-    const [cls, att, rev] = await Promise.all([
+    const canOverride = ctx.can("services.access");
+    const [cls, att, rev, pickerVariants] = await Promise.all([
       svcRpc<{ items: ClassroomItem[] }>(supabase, "service_classroom", { p_service_id: s.id }),
       svcRpc<AttendanceOccurrence[]>(supabase, "service_attendance", { p_service_id: s.id }),
       // Las entregas de esa persona en este programa, con el cliente de servicio: la sesión ya vio el servicio.
       loadReviewItems(service, workspace.id, { contactId: s.contact_id, productId: s.product_id }),
+      // 00503: los pasos del camino para «Programar…» un módulo (solo quien puede); si fallan, sin pasos.
+      canOverride
+        ? loadServicePicker(supabase, workspace.id).then((o) => o.products.find((x) => x.id === s.product_id)?.variants ?? []).catch(() => [])
+        : Promise.resolve([]),
     ]);
     classroom = cls.ok ? classroomProgressView(cls.data?.items ?? []) : null;
+    if (canOverride && cls.ok) {
+      const rows = (cls.data?.items ?? []).map((i) => ({ id: i.id, parent_id: i.parent_id, kind: i.kind, lesson_type: i.lesson_type, title: i.title, position: i.position, status: "active" as const }));
+      moduleTargets = moduleTargetOptions(rows, pickerVariants);
+    }
     attendance = att.ok ? attendanceRateView(att.data ?? [], 6) : null;
     reviews = rev.filter((r) => r.formType === "activity");
     if (prod?.tutor_agent_id) {
@@ -277,6 +289,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     payment,
     attendance,
     classroom,
+    moduleTargets,
     assistant,
     assistantInfo,
     alerts: recordAlerts({ base: baseAlerts, pendingReviews, payment, saleId: s.sale_id, portal: portalState, loginDays, today }),

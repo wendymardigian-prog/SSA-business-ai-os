@@ -1,6 +1,7 @@
 // @plantilla-quitar(servicios)
 import { describe, expect, it } from "vitest";
 import { assistantCreditsView, attendanceRateView, classroomProgressView, elapsedView, nextPaymentView, type ClassroomItem } from "./record-figures";
+import type { UnlockRule } from "@/lib/program/unlock";
 
 describe("nextPaymentView", () => {
   const p = (status: string, due: string | null, amount = 800, type = "installment") => ({ status, type, amount, due_date: due });
@@ -74,6 +75,20 @@ describe("classroomProgressView", () => {
     const m = classroomProgressView(items)!.modules[2];
     expect(m).toMatchObject({ locked: true, opensText: "Se abre el 9 dic" });
     expect(m.lessons.map((l) => l.state.kind)).toEqual(["locked", "locked"]);
+  });
+  it("un módulo que su plan no incluye lo dice", () => {
+    const m = classroomProgressView([item({ id: "m9", kind: "module", title: "Extra", unlock: { unlocked: false, visible: false, included: false, reason: null } })])!.modules[0];
+    expect(m).toMatchObject({ locked: true, notIncluded: true, opensText: "No está incluido en su plan", override: null, overrideText: null });
+  });
+  it("lo cambiado a mano se lee sin ids ni claves", () => {
+    const at = (mode: "open" | "closed" | "rule", rule: UnlockRule | null = null) =>
+      classroomProgressView([item({ id: "m1", kind: "module", title: "M", unlock: { unlocked: mode === "open" }, override: { mode, rule } })])!.modules[0].overrideText;
+    expect(at("open")).toBe("Abierto a mano");
+    expect(at("closed")).toBe("Cerrado a mano");
+    expect(at("rule", { type: "fixed_date", date: "2026-11-25" })).toBe("Regla propia · se abre el 25/11/2026");
+    expect(at("rule", { type: "days_after_start", days: 1 })).toBe("Regla propia · se abre 1 día después de empezar");
+    expect(at("rule", { type: "after_complete", target: "journey_item", id: "it_plan90" })).toBe("Regla propia · se abre al completar algo");
+    expect(at("rule", { type: "challenge_started" })).toBe("Regla propia · se abre al empezar el Reto");
   });
   it("una entrega sin revisar cuenta como entregada", () => {
     const v = classroomProgressView([items[0], { ...items[2], submission: { created_at: "2026-11-05T10:00:00Z", review_status: "pending" } }])!;
