@@ -94,6 +94,7 @@ export const MODULES = {
       "lib/contacts/related/forms.test.ts",
       "components/contacts/form-pdf-button.tsx",
       "components/flow-builder/panels/FormTriggerPanel.tsx",
+      "components/flow-builder/panels/EodTriggerPanel.tsx",
       // Tu sitio web (CORS por workspace): la pantalla y su guía son de los formularios.
       `${D}/settings/integrations/sitio-web`,
       "components/settings/integrations/website-screen.tsx",
@@ -136,6 +137,10 @@ export const MODULES = {
       "components/settings/sales-settings.tsx",
       "components/settings/payment-methods-card.tsx",
       "components/flow-builder/panels/SalesTriggerPanel.tsx",
+      // Filtros de los disparadores: el catálogo de productos y variantes, y el de afiliados.
+      "components/flow-builder/panels/AffiliateTriggerPanel.tsx",
+      "components/flow-builder/panels/use-product-scope-catalog.ts",
+      "lib/actions/product-scope-catalog.ts",
       "lib/actions/sales.ts",
       "lib/actions/sales.test.ts",
       "lib/actions/sales-attribution.ts",

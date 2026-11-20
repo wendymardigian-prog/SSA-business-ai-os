@@ -8,7 +8,6 @@ import { memoryDb } from "@/lib/agent/testing/memory-db";
 import "./index";
 import { getTrigger } from "./registry";
 import { TRIGGER_CATALOG } from "../trigger-catalog";
-import { SERVICE_TRIGGER_TYPES } from "@/lib/services/automation";
 
 type Fixture = {
   payload: Record<string, unknown>;
@@ -79,8 +78,11 @@ const FIXTURES: Record<string, Fixture> = {
   service_status_changed: { payload: { ...svc, service_status: "completed", previous_status: "active" }, miss: { to_statuses: ["paused"] } },
   service_light_changed: { payload: { ...svc, light: "red", previous_light: "green" }, miss: { lights: ["green"] } },
 };
-// El resto de Servicios: todos llevan producto y variante.
-for (const type of SERVICE_TRIGGER_TYPES) FIXTURES[type] ??= { payload: svc, miss: { product_ids: ["p9"] } };
+// El resto de Servicios y portal: todos llevan producto y variante (`app_servicio.emit`). Se toman del catálogo y no
+// del módulo, así el test viaja también a la plantilla sin Servicios.
+for (const entry of TRIGGER_CATALOG as ReadonlyArray<{ type: string; group: string }>) {
+  if (entry.group === "servicios") FIXTURES[entry.type] ??= { payload: svc, miss: { product_ids: ["p9"] } };
+}
 
 function argsFor(type: string, f: Fixture, config: Record<string, unknown>) {
   const db = memoryDb({ contacts: [{ id: "c-1", do_not_contact: false }] });
