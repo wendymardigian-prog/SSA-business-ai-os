@@ -5,6 +5,7 @@ import { FlowCanvas } from "@/components/flow-builder/flow-canvas";
 import { parseAttributionSettings } from "@/lib/attribution/settings";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadAutomationCapabilities } from "@/lib/flow-engine/capabilities";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
 import Link from "next/link"; // @plantilla-quitar(servicios)
 import { ArrowLeft } from "lucide-react"; // @plantilla-quitar(servicios)
@@ -41,6 +42,17 @@ export default async function FlowEditorPage({
   // al abrir: al conectar un proveedor y volver, las acciones quedan habilitadas sin tocar el flujo.
   const capabilities = await loadAutomationCapabilities(await createServiceClient(), workspace.id);
 
+  // Quién dejó los cambios sin publicar (00508): el aviso al entrar dice de quién son. Sin nombre, el aviso igual sale.
+  const draftAuthorId = (flow as { draft_updated_by?: string | null }).draft_updated_by ?? null;
+  let draftAuthorName: string | null = null;
+  if (flow.status === "published" && Array.isArray(flow.draft_nodes) && draftAuthorId) {
+    try {
+      draftAuthorName = (await getWorkspaceMembers(workspace.id)).find((m) => m.userId === draftAuthorId)?.name ?? null;
+    } catch {
+      draftAuthorName = null;
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* @plantilla-desde(servicios) */}
@@ -53,6 +65,7 @@ export default async function FlowEditorPage({
       {/* @plantilla-hasta(servicios) */}
       <FlowCanvas
         flow={flow}
+        draftAuthorName={draftAuthorName}
         capabilities={capabilities}
         servicesEnabled={isModuleEnabled(workspace as { services_enabled?: boolean | null })} // @plantilla-quitar(servicios)
         attributionDefaults={{ append: attribution.links_append_default, trackClicks: attribution.links_track_clicks_default }}

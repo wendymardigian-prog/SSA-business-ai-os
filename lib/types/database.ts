@@ -2126,6 +2126,7 @@ export interface Database {
           viewport: Json | null;
           name: string;
           published_by: string | null;
+          note: string | null;
           created_at: string;
         };
         Insert: {
@@ -2137,6 +2138,7 @@ export interface Database {
           viewport?: Json | null;
           name: string;
           published_by?: string | null;
+          note?: string | null;
           created_at?: string;
         };
         Update: Record<string, never>;
@@ -2167,6 +2169,8 @@ export interface Database {
           draft_nodes?: Json | null;
           draft_edges?: Json | null;
           draft_updated_at?: string | null;
+          draft_updated_by?: string | null;
+          draft_rev?: number;
           status: FlowStatus;
           nodes: Json;
           edges: Json;
@@ -2201,6 +2205,8 @@ export interface Database {
           draft_nodes?: Json | null;
           draft_edges?: Json | null;
           draft_updated_at?: string | null;
+          draft_updated_by?: string | null;
+          draft_rev?: number;
           status?: FlowStatus;
           nodes?: Json;
           edges?: Json;

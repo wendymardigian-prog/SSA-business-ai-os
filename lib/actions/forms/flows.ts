@@ -1,5 +1,6 @@
 "use server";
 
+import { canvasDraftBlock, recordStepEditorVersion } from "@/lib/flows/step-editor-versions";
 import { revalidatePath } from "next/cache";
 import { getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -247,6 +248,9 @@ export async function saveFormLinearFlow(input: { flowId: string; linear: Linear
   }
 
   const graph = linearToFlow(input.linear);
+  // Con cambios sin publicar en el lienzo no se guarda desde acá: «Publicar cambios» los pisaría (00508).
+  const draftBlock = await canvasDraftBlock(ctx.supabase, input.flowId);
+  if (draftBlock) return { ok: false, error: draftBlock };
   const { error } = await ctx.supabase.from("flows").update({ nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json }).eq("id", input.flowId);
   if (error) return { ok: false, error: "No pude guardar. Probá de nuevo." };
 
@@ -256,6 +260,8 @@ export async function saveFormLinearFlow(input: { flowId: string; linear: Linear
     const triggers = await replaceFlowTriggers(ctx.supabase, { flowId: input.flowId, workspaceId: ctx.workspace.id, desired, isActive: true });
     if (!triggers.ok) return { ok: false, error: `Guardé los pasos, pero ${lowerFirst(triggers.error)}` };
   }
+  // Lo guardado corre desde ya: queda en el historial de versiones, como al publicar.
+  await recordStepEditorVersion(ctx.supabase, { flowId: input.flowId, nodes: graph.nodes as unknown[], edges: graph.edges as unknown[], userId: ctx.user.id });
 
   await audit(ctx, found.formId, { flow_id: input.flowId, saved: true });
   refresh(found.formId, input.flowId);
@@ -305,6 +311,9 @@ export async function saveFormFlowTree(input: {
   const prepared = prepareTreeSave({ screen: isEod ? "eod" : "forms", stored: { nodes: found.nodes, edges: found.edges }, tree: input.tree, triggerData });
   if (!prepared.ok) return { ok: false, error: prepared.error };
   const graph = prepared.graph;
+  // Con cambios sin publicar en el lienzo no se guarda desde acá: «Publicar cambios» los pisaría (00508).
+  const draftBlock = await canvasDraftBlock(ctx.supabase, input.flowId);
+  if (draftBlock) return { ok: false, error: draftBlock };
 
   // Un flujo sin contacto no puede tener pasos que necesiten uno (aunque ya estuvieran guardados).
   const problems = await checkMemberFlow(ctx.supabase, ctx.workspace.id, graph.nodes as unknown[], graph.edges as unknown[]);
@@ -319,6 +328,8 @@ export async function saveFormFlowTree(input: {
     const triggers = await replaceFlowTriggers(ctx.supabase, { flowId: input.flowId, workspaceId: ctx.workspace.id, desired, isActive: true });
     if (!triggers.ok) return { ok: false, error: `Guardé los pasos, pero ${lowerFirst(triggers.error)}` };
   }
+  // Lo guardado corre desde ya: queda en el historial de versiones, como al publicar.
+  await recordStepEditorVersion(ctx.supabase, { flowId: input.flowId, nodes: graph.nodes as unknown[], edges: graph.edges as unknown[], userId: ctx.user.id });
 
   await audit(ctx, found.formId, { flow_id: input.flowId, saved: true });
   refresh(found.formId, input.flowId);

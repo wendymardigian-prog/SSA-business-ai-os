@@ -40,7 +40,7 @@ export async function POST(
 
   const { data: current } = await supabase
     .from("flows")
-    .select("status")
+    .select("*")
     .eq("id", flowId)
     .eq("workspace_id", membership.workspace_id)
     .maybeSingle();
@@ -49,12 +49,16 @@ export async function POST(
   // Restaurar deja esa version como BORRADOR (auditoria de automatizaciones): en una automatizacion publicada va a los
   // cambios sin publicar y lo que corre sigue igual hasta "Publicar cambios". Antes la pasaba a borrador y dejaba de
   // correr sin avisar.
+  // Tambien cuenta como una escritura del borrador (00508): quien lo dejo y la revision suben, asi un lienzo abierto en
+  // otra pestaña no lo pisa sin enterarse.
+  const rev = typeof (current as { draft_rev?: unknown }).draft_rev === "number" ? (current as { draft_rev: number }).draft_rev : null;
+  const meta = rev === null ? {} : { draft_updated_by: user.id, draft_rev: rev + 1 };
   const { error } = await supabase
     .from("flows")
     .update(
       current.status === "published"
-        ? { draft_nodes: version.nodes, draft_edges: version.edges, draft_updated_at: new Date().toISOString(), viewport: version.viewport }
-        : { nodes: version.nodes, edges: version.edges, viewport: version.viewport, updated_at: new Date().toISOString() },
+        ? { draft_nodes: version.nodes, draft_edges: version.edges, draft_updated_at: new Date().toISOString(), viewport: version.viewport, ...meta }
+        : { nodes: version.nodes, edges: version.edges, viewport: version.viewport, updated_at: new Date().toISOString(), ...meta },
     )
     .eq("id", flowId)
     .eq("workspace_id", membership.workspace_id);

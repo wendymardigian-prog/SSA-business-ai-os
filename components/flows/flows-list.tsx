@@ -257,7 +257,7 @@ export function FlowsList({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium", STATUS_CLASSES[flow.status])}>{FLOW_STATUS_LABELS[flow.status]}</span>
-                        {flow.hasDraft && <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">Cambios sin publicar</span>}
+                        {flow.hasDraft && <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">{flow.draftBy ? `Cambios sin publicar de ${flow.draftBy}` : "Cambios sin publicar"}</span>}
                         {flow.origin !== "manual" && <span className="inline-flex rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{FLOW_ORIGIN_LABELS[flow.origin]}</span>}
                       </div>
                       {canEdit && (

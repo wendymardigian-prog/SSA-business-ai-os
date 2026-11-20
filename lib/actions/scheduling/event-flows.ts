@@ -1,5 +1,6 @@
 "use server";
 
+import { canvasDraftBlock, recordStepEditorVersion } from "@/lib/flows/step-editor-versions";
 import { revalidatePath } from "next/cache";
 import { getAnyPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -146,6 +147,9 @@ export async function saveLinearFlow(input: { flowId: string; linear: LinearFlow
   }
 
   const graph = linearToFlow(input.linear);
+  // Con cambios sin publicar en el lienzo no se guarda desde acá: «Publicar cambios» los pisaría (00508).
+  const draftBlock = await canvasDraftBlock(db, input.flowId);
+  if (draftBlock) return { ok: false, error: draftBlock };
   const { error } = await db
     .from("flows")
     .update({ nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json })
@@ -158,6 +162,8 @@ export async function saveLinearFlow(input: { flowId: string; linear: LinearFlow
     const triggers = await replaceFlowTriggers(db, { flowId: input.flowId, workspaceId: ctx.workspace.id, desired, isActive: true });
     if (!triggers.ok) return { ok: false, error: `Guardé los pasos, pero ${lowerFirst(triggers.error)}` };
   }
+  // Lo guardado corre desde ya: queda en el historial de versiones, como al publicar.
+  await recordStepEditorVersion(db, { flowId: input.flowId, nodes: graph.nodes as unknown[], edges: graph.edges as unknown[], userId: ctx.user.id });
 
   revalidatePath(path);
   return { ok: true };
@@ -180,6 +186,9 @@ export async function saveEventFlowTree(input: { flowId: string; tree: Pick<Step
   const prepared = prepareTreeSave({ screen: "agenda", stored: { nodes: found.nodes, edges: found.edges }, tree: input.tree });
   if (!prepared.ok) return { ok: false, error: prepared.error };
   const graph = prepared.graph;
+  // Con cambios sin publicar en el lienzo no se guarda desde acá: «Publicar cambios» los pisaría (00508).
+  const draftBlock = await canvasDraftBlock(db, input.flowId);
+  if (draftBlock) return { ok: false, error: draftBlock };
 
   const { error } = await db
     .from("flows")
@@ -193,6 +202,8 @@ export async function saveEventFlowTree(input: { flowId: string; tree: Pick<Step
     const triggers = await replaceFlowTriggers(db, { flowId: input.flowId, workspaceId: ctx.workspace.id, desired, isActive: true });
     if (!triggers.ok) return { ok: false, error: `Guardé los pasos, pero ${lowerFirst(triggers.error)}` };
   }
+  // Lo guardado corre desde ya: queda en el historial de versiones, como al publicar.
+  await recordStepEditorVersion(db, { flowId: input.flowId, nodes: graph.nodes as unknown[], edges: graph.edges as unknown[], userId: ctx.user.id });
 
   revalidatePath(path);
   return { ok: true };

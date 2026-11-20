@@ -959,3 +959,16 @@ El selector «Cuánto antes / después de la reunión» suma **10 minutos**.
 - «Evento del CRM → cambió la asignación»: se elige el rol de una lista, y `closer` y `vendedor` son lo mismo.
 
 **La prueba de todos los disparadores.** `registry/trigger-matrix.test.ts` tiene un evento de ejemplo por tipo. Sin filtros, el disparador arranca; con un filtro que no coincide, no. Un tipo nuevo sin ejemplo (o sin decir dónde se prueba) hace fallar el test.
+
+## Borrador y versiones (20/11/2026, 00508)
+
+Una automatización tiene **una sola versión publicada** (lo que corre, `flows.nodes`), **el historial** de las anteriores (`flow_versions`) y, si alguien está editando, **un borrador** (`flows.draft_nodes` / `draft_edges`, desde la 00254). El borrador es uno solo por automatización, compartido por todo el equipo. Una automatización que nunca se publicó no tiene borrador: guarda directo en `nodes`.
+
+- **El aviso al entrar.** Si hay borrador, una franja dice de quién es (`draft_updated_by`) y cuándo se guardó, con **Ver cambios**, **Publicar**, **Descartar** y **Seguir editando**. La lista de automatizaciones dice «Cambios sin publicar de …».
+- **Ver cambios** (`lib/flow-engine/graph-diff.ts`, PURO; panel `DraftChangesPanel`). Compara lo que corre con lo que está en el lienzo, paso por paso (por id) y conexión por conexión. Mover un paso no cuenta. Lo muestra como frases, y tocar una lleva al paso. En el lienzo, mientras el panel está abierto, lo nuevo se ve en verde y lo cambiado en ámbar. Las marcas van en la copia que se dibuja (`className`), **nunca en `node.data`**.
+- **Dos personas a la vez.** `flows.draft_rev` sube con cada escritura del borrador: guardar, descartar, publicar y restaurar. El lienzo guarda, descarta y publica con la revisión que vio, en un `UPDATE … WHERE draft_rev = <la vista>`. Si otra persona escribió en el medio, no se pisa: vuelve un conflicto con su nombre y el lienzo ofrece «Recargar». Publicar responde 409. Sin la columna (antes de la 00508), todo funciona como antes.
+- **Publicar** pide una nota opcional (`flow_versions.note`, hasta 280). Además revisa el error de cada escritura: si no se pudo publicar, lo dice.
+- **El historial** muestra quién publicó cada versión y su nota. «Restaurar» carga esa versión como borrador, sin publicar nada.
+- **Los editores de pasos de Formularios y Agenda** siguen activando al guardar (`lib/flows/step-editor-versions.ts`):
+  - si hay un borrador del lienzo, no guardan (`CANVAS_DRAFT_BLOCK`): el próximo «Publicar cambios» los pisaría;
+  - cada guardado de una automatización publicada suma una versión al historial.

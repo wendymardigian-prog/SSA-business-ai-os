@@ -10,6 +10,8 @@ interface Version {
   version: number;
   name: string;
   published_by: string | null;
+  published_by_name?: string | null;
+  note?: string | null;
   created_at: string;
 }
 
@@ -115,7 +117,7 @@ export function VersionHistoryPanel({
                     <span className="text-sm font-medium">v{v.version}</span>
                     {v.version === currentVersion && (
                       <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
-                        actual
+                        publicada
                       </span>
                     )}
                   </div>
@@ -139,7 +141,9 @@ export function VersionHistoryPanel({
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground/70">
                   {formatDate(v.created_at)}
+                  {v.published_by_name ? ` · ${v.published_by_name}` : ""}
                 </p>
+                {v.note && <p className="mt-1.5 whitespace-pre-wrap rounded-md bg-muted px-2 py-1.5 text-xs text-foreground">{v.note}</p>}
               </div>
             ))}
           </div>

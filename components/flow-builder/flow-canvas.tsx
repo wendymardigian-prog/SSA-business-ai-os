@@ -17,9 +17,11 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useRef, useState, type DragEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Activity, ArrowLeft, Save, Rocket, Loader2, History, Play, Trash2, Info, Undo2 } from "lucide-react";
+import { Activity, ArrowLeft, Save, Rocket, Loader2, History, Play, Trash2, Info, Undo2, GitCompare } from "lucide-react";
+import { diffGraphs } from "@/lib/flow-engine/graph-diff";
+import { DraftChangesPanel } from "./panels/DraftChangesPanel";
 import { cn } from "@/lib/utils";
 import { flowFingerprint } from "@/lib/unsaved-changes";
 import { useUnsavedChanges } from "@/lib/hooks/use-unsaved-changes";
@@ -33,7 +35,7 @@ import { conditionToBranch, type ConvertibleEdge, type ConvertibleNode } from "@
 import { newPathId, pathsOf } from "@/lib/flow-engine/branch-paths";
 import { pruneBranchEdges } from "@/lib/automations/branch-edit";
 
-import { NodePalette, type PaletteItem } from "./node-palette";
+import { NodePalette, paletteLabelFor, type PaletteItem } from "./node-palette";
 // @plantilla-desde(servicios)
 import { FlowCapabilitiesProvider, FlowConnectionBanner, FlowModulesProvider, useFlowCapabilities } from "./capabilities-context";
 // @plantilla-hasta(servicios)
@@ -86,6 +88,8 @@ interface FlowCanvasProps {
   attributionDefaults?: AttributionDefaults;
   /** Si el modulo de Servicios esta prendido en el negocio: sin esto, el editor no ofrece sus disparadores ni sus pasos. */
   servicesEnabled?: boolean; // @plantilla-quitar(servicios)
+  /** Quién dejó los cambios sin publicar (00508), para el aviso al entrar. */
+  draftAuthorName?: string | null;
 }
 
 const NO_ATTRIBUTION_DEFAULTS: AttributionDefaults = { append: false, trackClicks: true };
@@ -135,7 +139,8 @@ const STATUS_LABELS: Record<string, string> = { draft: "Borrador", published: "P
  * disparador: una automatizacion vieja (o vacia) sin disparador recibe uno sin elegir. El disparador no se borra.
  */
 function initialGraph(flow: Flow): { nodes: Node[]; edges: Edge[] } {
-  const useDraft = Array.isArray(flow.draft_nodes);
+  // El borrador solo existe en una publicada: en una que nunca se publicó, lo guardado es `nodes`.
+  const useDraft = flow.status === "published" && Array.isArray(flow.draft_nodes);
   const rawNodes = useDraft ? flow.draft_nodes : Array.isArray(flow.nodes) ? flow.nodes : [];
   const rawEdges = useDraft ? (Array.isArray(flow.draft_edges) ? flow.draft_edges : []) : Array.isArray(flow.edges) ? flow.edges : [];
   let nodes = (rawNodes as unknown as Node[]).map((n) => (n.type === "trigger" ? { ...n, deletable: false } : n));
@@ -145,7 +150,7 @@ function initialGraph(flow: Flow): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges: rawEdges as unknown as Edge[] };
 }
 
-function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }: FlowCanvasProps) {
+function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS, draftAuthorName = null }: FlowCanvasProps) {
   const router = useRouter();
   const timeZone = useViewerTimezone();
   const capabilities = useFlowCapabilities();
@@ -157,7 +162,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
   const savedGraph = useRef<{ nodes: unknown[]; edges: unknown[] }>({ nodes: initialNodes, edges: initialEdges });
   const [publishProblems, setPublishProblems] = useState<string[]>([]);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition, getViewport } = useReactFlow();
+  const { screenToFlowPosition, getViewport, setCenter, getNode } = useReactFlow();
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -172,6 +177,19 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
   // Una automatizacion publicada con cambios que todavia no corren (00254).
   const [hasDraft, setHasDraft] = useState(flow.status === "published" && Array.isArray(flow.draft_nodes));
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // 00508: la revisión del borrador que vimos (guardar exige esa; si otra persona escribió en el medio, no se pisa),
+  // quién lo dejó y cuándo, y lo que corre hoy (para «Ver cambios»).
+  const draftRev = useRef<number | undefined>(typeof (flow as { draft_rev?: unknown }).draft_rev === "number" ? (flow as { draft_rev: number }).draft_rev : undefined);
+  const [draftMeta, setDraftMeta] = useState<{ by: string | null; at: string | null }>({ by: draftAuthorName, at: flow.draft_updated_at ?? null });
+  const [draftBannerHidden, setDraftBannerHidden] = useState(false);
+  const [conflict, setConflict] = useState<string | null>(null);
+  const publishedGraph = useRef<{ nodes: unknown[]; edges: unknown[] }>({
+    nodes: Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : [],
+    edges: Array.isArray(flow.edges) ? (flow.edges as unknown[]) : [],
+  });
+  const [changesOpen, setChangesOpen] = useState(false);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [publishNote, setPublishNote] = useState("");
   const [details, setDetails] = useState<FlowDetails>({ name: flow.name, description: flow.description ?? null, categories: flow.categories ?? [] });
   const [detailsOpen, setDetailsOpen] = useState(false);
   // El selector de disparador: se abre solo si todavia no se eligio como arranca.
@@ -363,11 +381,21 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
       try {
         // Por el servidor (no directo a la base): en una automatizacion PUBLICADA esto va a los cambios sin publicar y
         // lo que corre no cambia hasta "Publicar cambios".
-        const res = await saveFlowDraft({ flowId: flow.id, name: flowName, nodes: nodes as unknown[], edges: edges as unknown[] });
+        const res = await saveFlowDraft({ flowId: flow.id, name: flowName, nodes: nodes as unknown[], edges: edges as unknown[], expectedRev: draftRev.current });
         if (!res.ok) {
+          if (res.conflict) {
+            setConflict(res.conflict.by ? `${res.conflict.by} cambió esta automatización después de que la abriste. Recargá para ver sus cambios: lo tuyo no se guardó.` : res.error);
+            setSaveError("No se guardó");
+            return false;
+          }
           setSaveError(res.error);
           setTimeout(() => setSaveError(null), 4000);
           return false;
+        }
+        draftRev.current = res.draftRev;
+        if (res.unpublishedChanges) {
+          setDraftMeta({ by: "vos", at: res.savedAt });
+          setDraftBannerHidden(true);
         }
         setHasDraft(res.unpublishedChanges);
         setSaveError(null);
@@ -387,12 +415,18 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
   );
 
   const handleDiscard = useCallback(async () => {
-    const res = await discardFlowDraft(flow.id);
+    const res = await discardFlowDraft(flow.id, draftRev.current);
     if (!res.ok) {
+      if (res.conflict) {
+        setConflict(res.conflict.by ? `${res.conflict.by} cambió el borrador después de que lo abriste. Recargá para ver sus cambios antes de descartarlos.` : res.error);
+        return;
+      }
       setSaveError(res.error);
       setTimeout(() => setSaveError(null), 4000);
       return;
     }
+    draftRev.current = res.draftRev;
+    setChangesOpen(false);
     const restored = initialGraph({ ...flow, draft_nodes: null, draft_edges: null, nodes: res.nodes as never, edges: res.edges as never });
     setNodes(restored.nodes);
     setEdges(restored.edges);
@@ -424,16 +458,28 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
       setDeleting(false);
     }
   }, [flow.id, router]);
-  const handlePublish = useCallback(async () => {
+  const handlePublish = useCallback(() => {
+    setPublishNote("");
+    setPublishDialogOpen(true);
+  }, []);
+  const doPublish = useCallback(async (note: string) => {
+    setPublishDialogOpen(false);
     setPublishing(true);
     try {
       setPublishProblems([]);
       // First save the current state
       if (!(await saveFlow())) return;
-      // Then call the publish API which increments version and saves snapshot
+      // Se publica lo que esta persona vio (la revisión del borrador) con su nota opcional.
       const res = await fetch(`/api/v1/flows/${flow.id}/publish`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedDraftRev: draftRev.current, note: note.trim() || null }),
       });
+      if (res.status === 409) {
+        const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
+        setConflict(typeof body?.error === "string" ? body.error : "Alguien cambió esta automatización. Recargá antes de publicar.");
+        return;
+      }
       if (!res.ok) {
         // El servidor dice QUE falta (una conexion, un contacto...): se muestra, no un "Failed to publish" mudo (G1).
         const body = (await res.json().catch(() => null)) as { error?: unknown; problems?: unknown } | null;
@@ -450,11 +496,43 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
       setSaveError(null);
       setLastSaved(new Date());
       setHasDraft(false);
+      setChangesOpen(false);
+      // Publicar también sube la revisión y lo publicado pasa a ser lo que acabamos de ver.
+      if (typeof draftRev.current === "number") draftRev.current += 1;
+      publishedGraph.current = { nodes: nodes as unknown[], edges: edges as unknown[] };
       router.refresh();
     } finally {
       setPublishing(false);
     }
-  }, [saveFlow, flow.id, router]);
+  }, [saveFlow, flow.id, router, nodes, edges]);
+
+  // «Ver cambios»: lo distinto entre lo que corre y lo que está en el lienzo. Solo se calcula con el panel abierto.
+  const diff = useMemo(
+    () => (changesOpen ? diffGraphs(publishedGraph.current, { nodes, edges }, paletteLabelFor) : null),
+    [changesOpen, nodes, edges],
+  );
+  // Las marcas de color van en la copia que se dibuja, nunca en los datos del paso (no se guardan).
+  const shownNodes = useMemo(
+    () =>
+      diff
+        ? nodes.map((n) =>
+            diff.marks[n.id]
+              ? { ...n, className: cn(n.className, diff.marks[n.id] === "added" ? "rounded-xl ring-2 ring-emerald-500 ring-offset-2 ring-offset-background" : "rounded-xl ring-2 ring-amber-500 ring-offset-2 ring-offset-background") }
+              : n,
+          )
+        : nodes,
+    [diff, nodes],
+  );
+  const focusNode = useCallback(
+    (id: string) => {
+      const node = getNode(id);
+      if (!node) return;
+      const w = node.measured?.width ?? 200;
+      const h = node.measured?.height ?? 80;
+      void setCenter(node.position.x + w / 2, node.position.y + h / 2, { zoom: 1.1, duration: 400 });
+    },
+    [getNode, setCenter],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -533,6 +611,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             onClick={() => {
               setTestPanelOpen(!testPanelOpen);
               if (!testPanelOpen) {
+                setChangesOpen(false);
                 setVersionPanelOpen(false);
                 setSelectedNodeId(null);
               }
@@ -553,6 +632,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             onClick={() => {
               setVersionPanelOpen(!versionPanelOpen);
               if (!versionPanelOpen) {
+                setChangesOpen(false);
                 setTestPanelOpen(false);
                 setSelectedNodeId(null);
               }
@@ -591,6 +671,26 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
           </button>
           {hasDraft && (
             <button
+              onClick={() => {
+                setChangesOpen(!changesOpen);
+                if (!changesOpen) {
+                  setVersionPanelOpen(false);
+                  setTestPanelOpen(false);
+                  setSelectedNodeId(null);
+                }
+              }}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                changesOpen ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border bg-background hover:bg-accent",
+              )}
+              title="Qué cambió respecto de lo que está corriendo"
+            >
+              <GitCompare className="h-3.5 w-3.5" />
+              Ver cambios
+            </button>
+          )}
+          {hasDraft && (
+            <button
               onClick={() => setConfirmDiscard(true)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors"
               title="Volver a la versión que está corriendo"
@@ -625,10 +725,50 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             )}
           </button>
           <ConfirmDialog {...unsaved.confirmProps} />
+          {publishDialogOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="publish-title">
+              <form
+                className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-xl"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void doPublish(publishNote);
+                }}
+              >
+                <h2 id="publish-title" className="text-base font-semibold text-foreground">
+                  {flow.status === "published" ? "Publicar los cambios" : "Publicar la automatización"}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">Desde ahora corre esta versión. La anterior queda en el historial y se puede restaurar.</p>
+                <label htmlFor="publish-note" className="mt-4 block text-xs font-semibold text-foreground">Nota de la versión (opcional)</label>
+                <textarea
+                  id="publish-note"
+                  value={publishNote}
+                  maxLength={280}
+                  rows={3}
+                  onChange={(e) => setPublishNote(e.target.value)}
+                  placeholder="Qué cambiaste, por ejemplo: ahora solo para la variante Lite"
+                  className="mt-1 w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <p className="mt-1 text-right text-[11px] text-muted-foreground">{publishNote.length}/280</p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setPublishDialogOpen(false)} className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent">
+                    Cancelar
+                  </button>
+                  <button type="submit" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">
+                    <Rocket className="h-3.5 w-3.5" />
+                    Publicar
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
           <ConfirmDialog
             open={confirmDiscard}
             title="Descartar los cambios sin publicar"
-            message="Vuelve a la versión que está corriendo ahora. Lo que cambiaste desde la última publicación se pierde."
+            message={
+              draftMeta.by && draftMeta.by !== "vos"
+                ? `Vuelve a la versión que está corriendo ahora. Los cambios sin publicar de ${draftMeta.by} se pierden.`
+                : "Vuelve a la versión que está corriendo ahora. Lo que cambiaste desde la última publicación se pierde."
+            }
             confirmLabel="Descartar"
             destructive
             onConfirm={() => {
@@ -660,6 +800,38 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
         </div>
       </div>
 
+      {/* 00508: alguien cambió el borrador en el medio. Lo tuyo no se guardó: hay que recargar. */}
+      {conflict && (
+        <div role="alert" className="flex items-center gap-3 border-b border-red-300/60 bg-red-50 px-4 py-2.5 text-xs text-red-900 dark:bg-red-950/30 dark:text-red-200">
+          <p className="min-w-0 flex-1">{conflict}</p>
+          <button type="button" onClick={() => window.location.reload()} className="shrink-0 rounded-md bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-700">
+            Recargar
+          </button>
+        </div>
+      )}
+
+      {/* El aviso al entrar: hay cambios sin publicar (de quién y cuándo) y qué hacer con ellos. */}
+      {hasDraft && !draftBannerHidden && !conflict && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-amber-300/60 bg-amber-50 px-4 py-2.5 text-xs text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+          <p className="min-w-0 flex-1">
+            Hay cambios sin publicar{draftMeta.by ? ` de ${draftMeta.by}` : ""}
+            {draftMeta.at ? `, guardados el ${new Date(draftMeta.at).toLocaleString("es", { dateStyle: "short", timeStyle: "short", timeZone })}` : ""}. Lo que corre es la versión publicada.
+          </p>
+          <button type="button" onClick={() => { setChangesOpen(true); setVersionPanelOpen(false); setTestPanelOpen(false); setSelectedNodeId(null); }} className="rounded-md border border-amber-400/70 px-2.5 py-1 font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40">
+            Ver cambios
+          </button>
+          <button type="button" onClick={handlePublish} className="rounded-md border border-amber-400/70 px-2.5 py-1 font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40">
+            Publicar
+          </button>
+          <button type="button" onClick={() => setConfirmDiscard(true)} className="rounded-md border border-amber-400/70 px-2.5 py-1 font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40">
+            Descartar
+          </button>
+          <button type="button" onClick={() => setDraftBannerHidden(true)} className="rounded-md px-2.5 py-1 font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40">
+            Seguir editando
+          </button>
+        </div>
+      )}
+
       {/* Los pasos que no se van a ejecutar por una conexion que falta (G1.6): un flujo publicado no se despublica solo. */}
       <FlowConnectionBanner nodes={nodes as unknown as GraphNodeLike[]} edges={edges as unknown as GraphEdgeLike[]} published={flow.status === "published"} />
       <FlowMetricsError />
@@ -689,7 +861,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
         />
         <div ref={reactFlowWrapper} className="flex-1">
           <ReactFlow
-            nodes={nodes}
+            nodes={shownNodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -715,7 +887,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             />
           </ReactFlow>
         </div>
-        {selectedNode && !versionPanelOpen && !testPanelOpen && (
+        {selectedNode && !versionPanelOpen && !testPanelOpen && !changesOpen && (
           <NodeConfigSidebar
             flowId={flow.id}
             flowName={flowName}
@@ -728,6 +900,16 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             onDelete={deleteNode}
             onConvert={convertCondition}
             onChangeTrigger={() => setPickerOpen(true)}
+          />
+        )}
+        {changesOpen && diff && (
+          <DraftChangesPanel
+            diff={diff}
+            onClose={() => setChangesOpen(false)}
+            onFocus={focusNode}
+            onPublish={handlePublish}
+            onDiscard={() => setConfirmDiscard(true)}
+            canPublish={!publishing}
           />
         )}
         {versionPanelOpen && (
@@ -774,9 +956,9 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
 }
 
 // @plantilla-desde(servicios)
-export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNECTED, servicesEnabled = false }: FlowCanvasProps) {
+export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNECTED, servicesEnabled = false, draftAuthorName = null }: FlowCanvasProps) {
 // @plantilla-hasta(servicios)
-// @plantilla-sin(servicios): export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNECTED }: FlowCanvasProps) {
+// @plantilla-sin(servicios): export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNECTED, draftAuthorName = null }: FlowCanvasProps) {
   return (
     <ReactFlowProvider>
       <FlowCapabilitiesProvider capabilities={capabilities}>
@@ -784,7 +966,7 @@ export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNE
         <FlowModulesProvider modules={{ services: servicesEnabled }}>
         {/* @plantilla-hasta(servicios) */}
           <FlowMetricsProvider flowId={flow.id}>
-            <FlowCanvasInner flow={flow} attributionDefaults={attributionDefaults} />
+            <FlowCanvasInner flow={flow} attributionDefaults={attributionDefaults} draftAuthorName={draftAuthorName} />
           </FlowMetricsProvider>
         {/* @plantilla-desde(servicios) */}
         </FlowModulesProvider>
