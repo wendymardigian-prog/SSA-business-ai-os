@@ -12,7 +12,7 @@ vi.mock("@/lib/vault", async (importOriginal) => {
 });
 
 import { getAccessToken, resetTokenCache, TOKEN_MARGIN_MS } from "./auth";
-import { buildEventBody, createEvent, deleteEvent, freeBusyChunks, getBusy, listCalendars, listEvents, updateEvent } from "./client";
+import { buildEventBody, buildEventWriteBody, createEvent, deleteEvent, freeBusyChunks, getBusy, isEtagConflict, listCalendars, listEvents, parseGoogleEvent, patchEvent, updateEvent } from "./client";
 import { classifyGoogleError, GoogleCalendarError } from "./errors";
 
 const NOW = new Date("2026-10-01T12:00:00.000Z");
@@ -186,11 +186,13 @@ describe("eventos", () => {
     const r = await listEvents(deps, CONN, "cal a", { syncToken: "tok-viejo", fullSyncFrom: "2026-09-30T12:00:00.000Z" });
     expect(r.fullSync).toBe(false);
     expect(r.nextSyncToken).toBe("tok-nuevo");
-    expect(r.items).toEqual([
+    expect(r.items.map(({ id, status, startUtc, endUtc }) => ({ id, status, startUtc, endUtc }))).toEqual([
       { id: "a", status: "confirmed", startUtc: "2026-10-02T08:00:00.000Z", endUtc: "2026-10-02T08:30:00.000Z" },
       { id: "b", status: "cancelled", startUtc: null, endUtc: null },
       { id: "c", status: "confirmed", startUtc: null, endUtc: null },
     ]);
+    // 00510: el de todo el día trae su fecha civil.
+    expect(r.items[2]).toMatchObject({ allDay: true, startDate: "2026-10-03", endDate: "2026-10-04" });
     const first = new URL(calls[0].url);
     expect(first.pathname).toBe("/calendar/v3/calendars/cal%20a/events");
     expect(first.searchParams.get("syncToken")).toBe("tok-viejo");
@@ -275,5 +277,63 @@ describe("clasificacion de errores (documentacion de Google, 27/9/2026)", () => 
     const e = new GoogleCalendarError("x", "permanent", 403, "insufficientPermissions");
     expect(e.name).toBe("GoogleCalendarError");
     expect([e.kind, e.status, e.reason]).toEqual(["permanent", 403, "insufficientPermissions"]);
+  });
+});
+
+describe("00510: eventos completos y escritura con If-Match", () => {
+  it("parseGoogleEvent: invitados, Meet, organizador, transparencia y la reunión de la plataforma", () => {
+    const ev = parseGoogleEvent({
+      id: "e1",
+      etag: '"123"',
+      summary: "Café",
+      start: { dateTime: "2026-10-02T10:00:00-06:00", timeZone: "America/Costa_Rica" },
+      end: { dateTime: "2026-10-02T11:00:00-06:00" },
+      organizer: { email: "yo@ejemplo.com", self: true },
+      attendees: [
+        { email: "yo@ejemplo.com", self: true, responseStatus: "accepted", organizer: true },
+        { email: "ana@ejemplo.com", displayName: "Ana", responseStatus: "rara" },
+        { displayName: "sin email" },
+      ],
+      hangoutLink: "https://meet.google.com/x",
+      transparency: "transparent",
+      extendedProperties: { private: { bookingUid: "uid-1" } },
+    })!;
+    expect(ev).toMatchObject({
+      id: "e1",
+      etag: '"123"',
+      startUtc: "2026-10-02T16:00:00.000Z",
+      endUtc: "2026-10-02T17:00:00.000Z",
+      allDay: false,
+      timeZone: "America/Costa_Rica",
+      organizerSelf: true,
+      meetUrl: "https://meet.google.com/x",
+      transparency: "transparent",
+      bookingUid: "uid-1",
+    });
+    expect(ev.attendees.map((a) => [a.email, a.responseStatus, a.self])).toEqual([
+      ["yo@ejemplo.com", "accepted", true],
+      ["ana@ejemplo.com", "needsAction", false],
+    ]);
+    expect(parseGoogleEvent({ summary: "sin id" })).toBeNull();
+  });
+
+  it("buildEventWriteBody: al crear no manda null; al editar vacía el otro campo de la hora", () => {
+    expect(buildEventWriteBody({ start: { date: "2026-10-03" }, end: { date: "2026-10-04" } }, "insert")).toEqual({
+      start: { date: "2026-10-03" },
+      end: { date: "2026-10-04" },
+    });
+    expect(buildEventWriteBody({ start: { dateTime: "2026-10-03T10:00:00.000Z", timeZone: "UTC" } }, "patch")).toEqual({
+      start: { dateTime: "2026-10-03T10:00:00.000Z", timeZone: "UTC", date: null },
+    });
+  });
+
+  it("patchEvent manda If-Match y un 412 se reconoce como conflicto", async () => {
+    const database = db();
+    const { fetchImpl, calls } = fakeFetch(() => ({ status: 412, body: { error: { message: "Precondition Failed" } } }));
+    const deps = { supabase: database.client, fetchImpl, now: () => NOW };
+    const err = await patchEvent(deps, CONN, "cal-a", "e1", { summary: "x" }, { sendUpdates: "none", ifMatch: '"123"' }).catch((e) => e);
+    expect(isEtagConflict(err)).toBe(true);
+    expect((calls[0].init.headers as Record<string, string>)["If-Match"]).toBe('"123"');
+    expect(new URL(calls[0].url).searchParams.get("sendUpdates")).toBe("none");
   });
 });
