@@ -10,7 +10,6 @@ import { Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight, Tag, ArrowU
 import { cn } from "@/lib/utils";
 import {
   DoNotContactBadge,
-  TagChip,
   TemperatureBadge,
   formatRelative,
   ActionError,
@@ -38,6 +37,7 @@ import { CONTACTS_TABLE_KEY, WRAPPING_CONTACT_COLUMNS, contactColumnMetas } from
 import { ContactFiltersPanel } from "@/components/contacts/filters-panel";
 import { ActiveFilterChips } from "@/components/contacts/active-filter-chips";
 import { ContactCell } from "@/components/contacts/contact-cell";
+import { TagChipsFit } from "@/components/contacts/tag-chips-fit";
 import { type CustomFieldRef, type CustomFilterOp } from "@/lib/contacts/list-filters";
 import { CUSTOM_FILTER_PARAMS, MENU_FILTER_PARAMS, countActiveFilters, countMenuFilters, type ContactListFilters } from "@/lib/contacts/list-query";
 import { CONTACT_FILTERS } from "@/lib/contacts/list-modules";
@@ -190,20 +190,23 @@ export function ContactsView({
       columnMetas.map(({ def, ...meta }) => ({
         ...meta,
         wrap: WRAPPING_CONTACT_COLUMNS.has(meta.key),
+        // Todas las celdas con la misma altura (la de una etiqueta): así cada fila mide lo mismo, tenga o no insignias.
         render: (contact: ContactRow) => (
-          <TableCell
-            col={def}
-            contact={contact}
-            memberLabel={memberLabel}
-            statusSettings={statusSettings}
-            qualificationSettings={qualificationSettings}
-            interestCatalog={interestCatalog}
-            customField={def.key.startsWith("cf:") ? customById.get(def.key.slice(3)) : undefined}
-            related={related[contact.id]}
-            members={members}
-            canEdit={canEdit}
-            canAssign={canAssign}
-          />
+          <div className="flex h-6 min-w-0 items-center [&>*]:min-w-0 [&>*]:max-w-full">
+            <TableCell
+              col={def}
+              contact={contact}
+              memberLabel={memberLabel}
+              statusSettings={statusSettings}
+              qualificationSettings={qualificationSettings}
+              interestCatalog={interestCatalog}
+              customField={def.key.startsWith("cf:") ? customById.get(def.key.slice(3)) : undefined}
+              related={related[contact.id]}
+              members={members}
+              canEdit={canEdit}
+              canAssign={canAssign}
+            />
+          </div>
         ),
       })),
     [columnMetas, memberLabel, statusSettings, qualificationSettings, interestCatalog, customById, related, members, canEdit, canAssign],
@@ -606,12 +609,17 @@ function TableCell({
       return (
         <>
           {/* La fila entera abre la ficha (docs/tablas.md): el nombre es texto. */}
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium">{contact.displayName ?? "Sin nombre"}</span>
-            <TemperatureBadge value={contact.temperature} />
-            {contact.doNotContact && <DoNotContactBadge />}
-            {contact.isCustomer && <MarkBadge mark="customer" />}
-            {contact.isKnown && <MarkBadge mark="known" />}
+          {/* Un renglón: el nombre se corta con «…» y las marcas quedan al lado. */}
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate text-sm font-medium" title={contact.displayName ?? undefined}>
+              {contact.displayName ?? "Sin nombre"}
+            </span>
+            <span className="flex shrink-0 items-center gap-1.5">
+              <TemperatureBadge value={contact.temperature} />
+              {contact.doNotContact && <DoNotContactBadge />}
+              {contact.isCustomer && <MarkBadge mark="customer" />}
+              {contact.isKnown && <MarkBadge mark="known" />}
+            </span>
           </span>
         </>
       );
@@ -663,9 +671,8 @@ function TableCell({
     }
     case "contact":
       return (
-        <span className="text-sm">
-          <span className="block truncate text-muted-foreground" title={contact.email ?? undefined}>{contact.email ?? "—"}</span>
-          {contact.phone && <span className="block truncate text-xs text-muted-foreground/70">{contact.phone}</span>}
+        <span className="block truncate text-sm text-muted-foreground" title={[contact.email, contact.phone].filter(Boolean).join(" · ") || undefined}>
+          {[contact.email, contact.phone].filter(Boolean).join(" · ") || "—"}
         </span>
       );
     case "setter":
@@ -696,11 +703,7 @@ function TableCell({
     case "tags":
       return (
         <>
-          <span className="flex flex-wrap gap-1">
-            {contact.tags.map((tag) => (
-              <TagChip key={tag.id} name={tag.name} color={tag.color} />
-            ))}
-          </span>
+          <TagChipsFit tags={contact.tags} />
         </>
       );
     case "last_interaction":
