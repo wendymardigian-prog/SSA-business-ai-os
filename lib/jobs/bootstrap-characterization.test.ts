@@ -99,6 +99,7 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "whatsapp_group_import",
       // La importacion del historial de WhatsApp guardado en Evolution.
       "whatsapp_history_import",
+      "whatsapp_media_retry",
       // Atribucion (Extra L, Tiron 2, A1): el anuncio de origen de una conversacion de Instagram, desde Zernio.
       "zernio_ad_origin",
     ]);

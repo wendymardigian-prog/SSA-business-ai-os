@@ -39,6 +39,7 @@ import { registerCommunityPostEmailHandlers } from "@/lib/jobs/handlers/communit
 import { registerCallMissingRecordingHandler } from "@/lib/jobs/handlers/call-missing-recording"; // @plantilla-quitar(servicios)
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
+import { registerWhatsappMediaRetryHandler } from "@/lib/jobs/handlers/whatsapp-media-retry";
 import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync"; // @plantilla-quitar(llamadas)
 import { registerFathomHistoryImportHandler } from "@/lib/jobs/handlers/fathom-history-import"; // @plantilla-quitar(llamadas)
 import { registerCallClassifyHandler } from "@/lib/jobs/handlers/call-classify"; // @plantilla-quitar(llamadas)
@@ -146,6 +147,9 @@ export function registerPublishing(): void {
 
   // Y describir las imagenes, para que una captura no sea un mensaje vacio (F8).
   registerDescribeMediaHandler();
+
+  // Y volver a pedirle a Evolution un archivo de WhatsApp que fallo.
+  registerWhatsappMediaRetryHandler();
 
   // @plantilla-desde(llamadas)
   // Llamadas: la consulta a Fathom de una conexion (F8) y la importacion de su historial.

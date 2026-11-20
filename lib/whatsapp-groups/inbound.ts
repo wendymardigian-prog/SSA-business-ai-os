@@ -19,7 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import type { WhatsappSender } from "@/lib/whatsapp-sender";
 import { extractText, describeAttachment, messageTimestamp } from "@/lib/evolution-message";
-import { describeWhatsappMessage, evolutionMediaFetcher } from "@/lib/evolution-media";
+import { describeWhatsappMessage, evolutionMediaFetcher, whatsappWebMessage } from "@/lib/evolution-media";
 import { hasDownloadableMedia, toAttachmentsColumn } from "@/lib/messages/attachments";
 import { previewForMessage } from "@/lib/message-preview";
 import { downloadAttachments, chatMediaEnabled } from "@/lib/inbound-media";
@@ -336,7 +336,7 @@ async function storeGroupMessage(
 
   // La media se pide ahora (WhatsApp la borra de su servidor). Sin transcribir: en un grupo no hay agente.
   if (hasDownloadableMedia(items)) {
-    await storeGroupMedia(db, channel, group, inserted.id, data.message ?? null, items);
+    await storeGroupMedia(db, channel, group, inserted.id, whatsappWebMessage(data), items);
   }
   return "stored";
 }
@@ -346,7 +346,7 @@ async function storeGroupMedia(
   channel: InboundGroupChannel,
   group: GroupRow,
   messageId: string,
-  rawMessage: Record<string, unknown> | null,
+  webMessage: Record<string, unknown> | null,
   items: ReturnType<typeof describeWhatsappMessage>,
 ): Promise<void> {
   try {
@@ -360,7 +360,7 @@ async function storeGroupMedia(
           conversationId: groupMediaFolder(group.id),
           messageId,
           items,
-          fetcher: evolutionMediaFetcher({ config, instance: channel.evolution_instance, rawMessage }),
+          fetcher: evolutionMediaFetcher({ config, instance: channel.evolution_instance, webMessage }),
         })
       : { items: items.map((item) => (item.status === "pending" ? { ...item, status: "none" as const } : item)) };
     await db
