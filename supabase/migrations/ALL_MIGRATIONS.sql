@@ -91923,6 +91923,8 @@ CREATE TABLE IF NOT EXISTS public.google_calendar_events (
   google_event_type     text NOT NULL DEFAULT 'default',
   -- Si el evento es de una reunión de la plataforma (creada acá o pasada al sistema): la Agenda la muestra como reunión.
   booking_id            uuid REFERENCES public.bookings(id) ON DELETE SET NULL,
+  -- Mientras se pasa al sistema: el reclamo que evita que un doble clic cree dos reuniones.
+  importing_until       timestamptz,
   google_updated_at     timestamptz,
   synced_at             timestamptz NOT NULL DEFAULT now(),
   created_at            timestamptz NOT NULL DEFAULT now()
@@ -91950,6 +91952,8 @@ BEGIN
       CHECK ((all_day AND start_date IS NOT NULL AND end_date IS NOT NULL) OR (NOT all_day));
   END IF;
 END $$;
+
+ALTER TABLE public.google_calendar_events ADD COLUMN IF NOT EXISTS importing_until timestamptz;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_google_calendar_events_calendar_event
   ON public.google_calendar_events (calendar_id, external_event_id);

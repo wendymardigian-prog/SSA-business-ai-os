@@ -195,3 +195,13 @@ describe("el filtro de las reuniones sin evento", () => {
     expect(matchesCommonFilters({}, booking)).toBe(true);
   });
 });
+
+describe("00510: una reunión pasada desde Google", () => {
+  it("no dispara «Se agendó una reunión», pero sí los demás", async () => {
+    const { bookingEventMatches } = await import("./triggers");
+    const booking = { event_type_id: "ev", host_user_id: "u", origin: "manual", status: "scheduled" as const, metadata: { google_import: { event_id: "g" } } };
+    expect(bookingEventMatches("booking_created", {}, { booking_id: "b" }, booking)).toBe(false);
+    expect(bookingEventMatches("booking_cancelled", {}, { booking_id: "b" }, booking)).toBe(true);
+    expect(bookingEventMatches("booking_created", {}, { booking_id: "b" }, { ...booking, metadata: null })).toBe(true);
+  });
+});

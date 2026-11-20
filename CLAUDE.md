@@ -2635,6 +2635,27 @@ El modelo de datos y la arquitectura se disenan pensando en todas las etapas, au
 - La tabla `channels` abstrae la fuente de conexion (Zernio vs API directa) para que el inbox unificado no dependa de como se conecto cada canal.
 - La tabla `integration_configs` es generica y extensible (canales, IA, email) — sumar un proveedor es un registro, no una tabla nueva.
 
+# Google Calendar en la Agenda (00510, 20/11/2026)
+
+La Agenda se usa como Google Calendar: ve los eventos de Google de quien mira, los mueve, edita, crea y borra, y pasa un evento al sistema como reunión. Detalle en [docs/agendamiento.md](docs/agendamiento.md) («Google Calendar de ida y vuelta» y «Google Calendar en la Agenda»).
+
+## Lo que no se puede romper
+
+- **Un solo lector por calendario**: `google_calendar_inbound` hace la ida y vuelta de las reuniones Y la copia (`google_calendar_events`) con el mismo `sync_token`, bajo el candado `calendars.events_sync_lock_until`. Nada más lee eventos de Google.
+- **La ida y vuelta solo toca reuniones que terminaron hace menos de 24 h** (`withinReconcileHorizon`), aunque la copia lea 60 días atrás.
+- **La copia la ve solo su dueña** (RLS) y la escribe solo el servidor. El «Ocupado» de otra persona sale SOLO de `google_busy_blocks`, sin título ni invitados. Sin `contact_id` a propósito (la fusión no la toca).
+- **Escribir en Google**: solo la dueña del calendario, en eventos que organiza, con If-Match (412 = no se pisa). La descripción de Google se trata como TEXTO, nunca como HTML.
+- **Una reunión importada (`metadata.google_import`) nunca crea otro evento en Google** (`booking_google_sync` vincula), no dispara «Se agendó una reunión» y, si el evento lo organiza otra persona, lo que cambia acá no se escribe allá.
+- **Una redefinición de `private.enqueue_google_calendar_inbound` parte de la 00510.**
+
+## Migración
+
+`00510_google_calendar_events` (aditiva: la copia, `calendars.show_in_agenda`/`events_synced_at`/`events_sync_lock_until`, `google_busy_blocks`, el lector ampliado y un índice único parcial en `bookings`) va **ANTES** de desplegar el código.
+
+```
+node scripts/verify-google-events.mjs   # RLS de la copia, «Ocupado» por rol, nadie escribe con la sesión, candados a la vez
+```
+
 # Video y transcripción de anuncios (7/11/2026)
 
 `meta_ads.video_id` (lo guarda el sync) y `transcript`, `transcript_status`, `transcript_source`, `transcript_updated_at/by`. Por ahora la transcripción se escribe a mano en el detalle del anuncio; la automática queda para más adelante. Detalle en [docs/dashboards.md](docs/dashboards.md) («Video y transcripción de un anuncio»).

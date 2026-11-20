@@ -105,6 +105,53 @@ La zona de un contacto también se corrige en la ficha y en el panel de la bande
 - Un 403 por cuota es temporal y se reintenta; un 403 por permisos es
   permanente y no. Eso sale de la documentación, no del plano.
 
+## Google Calendar de ida y vuelta (00430, 19/11/2026)
+
+Lo que quien atiende mueve o borra **en su Google Calendar** en una reunión del sistema, se refleja acá. Sin webhooks:
+`private.enqueue_google_calendar_inbound()` (parte del cron de 5 minutos) encola un job `google_calendar_inbound` por
+calendario y el handler (`lib/jobs/handlers/google-calendar-inbound.ts`) lee los cambios con `calendars.sync_token`.
+
+- Decide `decideInbound` (`lib/google-calendar/inbound.ts`, pura): cancelada en Google → se cancela acá; movida → se
+  reagenda (con `fromGoogle`, que no vuelve a escribir en Google); si la plataforma tiene un `booking_google_sync`
+  pendiente, gana la plataforma; de todo el día o de más de 8 h, se ignora.
+- **Solo toca reuniones que terminaron hace menos de 24 h** (`withinReconcileHorizon`, desde la 00510). El 19/11 una
+  primera lectura canceló una reunión vieja cuyo evento se había borrado y disparó sus flujos.
+
+## Google Calendar en la Agenda (00510, 20/11/2026)
+
+La Agenda se usa como Google Calendar: el calendario muestra los eventos de Google de quien mira, se mueven, se
+editan, se crean y se borran desde acá, y un evento se puede **pasar al sistema** como reunión.
+
+- **Una copia en la base**, no lectura en vivo: `google_calendar_events`, de los calendarios con «Mostrar en Agenda»
+  (`calendars.show_in_agenda`, Ajustes de calendarios; nace prendido solo el principal), de 60 días atrás a 12 meses
+  adelante. La escribe SOLO el mismo lector de la ida y vuelta (un lector por calendario: el `sync_token` es uno), con
+  el candado `calendars.events_sync_lock_until`. La primera vez (`events_synced_at` null) lee desde 60 días atrás.
+  Apagar «Mostrar en Agenda» o desconectar la cuenta borra la copia. Reglas puras en `lib/google-calendar/mirror.ts`.
+- **Quién ve qué**: la copia la ve SOLO su dueña (RLS). Otra persona del equipo que ya ve agendas ajenas (Owner, Admin,
+  `scheduling.manage_others` o `bookings.view` con alcance `all`) ve el **«Ocupado»** de quien elija en el filtro de
+  anfitrión, sin título ni invitados, por `google_busy_blocks` (SECURITY DEFINER, decide la base).
+- **La capa** (`?google=0` la apaga; prendida por defecto): `placeGoogleInCalendar` (`lib/google-calendar/agenda.ts`),
+  franja «Todo el día», tarjetas con el color del calendario, «Disponible» tenue y el «Ocupado» de otros con rayas. No
+  se muestra lo de una reunión del sistema (se ve como reunión, nunca dos veces), lo rechazado ni la ubicación de
+  trabajo. La carga es `loadAgendaGoogle` (`agenda-load.ts`); al abrir el calendario se relee si pasó más de un minuto
+  (`refreshMyGoogleEvents`, tope de 5 s) y hay un botón «Actualizar».
+- **Escribir** (`lib/actions/scheduling/google-events.ts`): solo la dueña del calendario, en uno donde puede escribir y
+  en eventos que organiza (`canEditGoogleEvent`). Mover y estirar SIEMPRE con confirmación; «solo este» o «toda la
+  serie» en lo que se repite (la serie se corre lo mismo que la instancia, `shiftSeries`; no hay «este y los
+  siguientes»); con invitados, se pregunta si se les avisa. Todo va con **If-Match** (el etag que se vio): si cambió en
+  Google, 412 y «actualizá», nunca se pisa. La descripción de Google es HTML: se muestra y se edita como TEXTO
+  (`descriptionToText`), nunca se pinta. Arrastrar sobre un hueco ofrece «Reunión» o «Evento de Google».
+- **Pasar al sistema** (`importGoogleEvent`): pide `bookings.manage` y `scheduling.use`. Contacto elegido o por email
+  (sugiere el invitado externo, `suggestedContact`), área o un evento propio. Va por `createManualBooking` con
+  `metadata.google_import` y deja la reunión vinculada al evento que ya existe. Un doble clic no crea dos
+  (`google_calendar_events.importing_until`) y un evento es de UNA reunión viva (`uq_bookings_google_event_live`).
+  - `booking_google_sync` con `google_import` **vincula, nunca crea** otro evento; al mover solo cambia el horario (no
+    pisa la descripción); si el evento lo organiza otra persona, no escribe en Google.
+  - **No dispara «Se agendó una reunión»** (`bookingEventMatches`): el invitado ya tiene la invitación de Google. Los
+    recordatorios futuros y lo de después (terminó, no asistió) sí.
+- Sin reconectar nada: el permiso `calendar.events` que ya se pedía alcanza para leer y escribir.
+- Pendiente: el aviso instantáneo de Google (push), responder invitaciones, reglas automáticas de importación.
+
 ## Reuniones sin evento (00289, 4/11/2026)
 
 Una reunión con título libre se cuelga del evento interno, que no se edita ni tiene pestaña Flujos.
