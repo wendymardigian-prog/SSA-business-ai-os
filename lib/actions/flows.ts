@@ -37,13 +37,50 @@ function cleanName(value: unknown): string | null {
   return name || null;
 }
 
+/** Otra persona guardó (o descartó, o publicó) después de que abriste: no se pisa. */
+export interface DraftConflict {
+  by: string | null;
+  at: string | null;
+}
+
+export type DraftWriteResult<T extends object> = ({ ok: true } & T) | { ok: false; error: string; conflict?: DraftConflict };
+
+const CONFLICT_ERROR = "Alguien cambió esta automatización después de que la abriste. Recargá para ver sus cambios: lo tuyo no se guardó.";
+
+/** El nombre de quien guardó el borrador (para el aviso). Nunca lanza. */
+async function draftAuthorName(workspaceId: string, userId: string | null | undefined): Promise<string | null> {
+  if (!userId) return null;
+  try {
+    const { getWorkspaceMembers } = await import("@/lib/workspace-members");
+    const members = await getWorkspaceMembers(workspaceId);
+    return members.find((m) => m.userId === userId)?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function conflictFor(
+  ctx: NonNullable<Awaited<ReturnType<typeof getPermissionAction>>>,
+  flowId: string,
+): Promise<{ ok: false; error: string; conflict: DraftConflict }> {
+  const { data } = await ctx.supabase.from("flows").select("draft_updated_by, draft_updated_at, updated_at").eq("id", flowId).maybeSingle();
+  const row = (data ?? {}) as { draft_updated_by?: string | null; draft_updated_at?: string | null; updated_at?: string | null };
+  return { ok: false, error: CONFLICT_ERROR, conflict: { by: await draftAuthorName(ctx.workspace.id, row.draft_updated_by), at: row.draft_updated_at ?? row.updated_at ?? null } };
+}
+
+/**
+ * Guardar desde el lienzo. `expectedRev` es la revisión del borrador que vio la persona al abrir (o al guardar la vez
+ * anterior): si otra persona escribió en el medio, NO se guarda y se avisa quién (00508). Sin `expectedRev` (otros
+ * llamadores) se guarda como antes, igual subiendo la revisión.
+ */
 export async function saveFlowDraft(input: {
   flowId: string;
   name?: string;
   nodes: unknown[];
   edges: unknown[];
   viewport?: unknown;
-}): Promise<FlowActionResult<{ unpublishedChanges: boolean; savedAt: string }>> {
+  expectedRev?: number;
+}): Promise<DraftWriteResult<{ unpublishedChanges: boolean; savedAt: string; draftRev: number }>> {
   const ctx = await getPermissionAction("flows.edit");
   if (!ctx) return { ok: false, error: NO_PERMISSION };
   if (!UUID.test(input.flowId)) return { ok: false, error: NOT_FOUND };
@@ -54,12 +91,16 @@ export async function saveFlowDraft(input: {
 
   const { data: flow, error: readError } = await ctx.supabase
     .from("flows")
-    .select("id, status")
+    .select("id, status, draft_rev")
     .eq("id", input.flowId)
     .eq("workspace_id", ctx.workspace.id)
     .maybeSingle();
   if (readError) return { ok: false, error: "No pude leer la automatización. Probá de nuevo." };
   if (!flow) return { ok: false, error: NOT_FOUND };
+  // Sin la columna (antes de la 00508) no hay revisión: se guarda como siempre.
+  const hasRev = typeof (flow as { draft_rev?: unknown }).draft_rev === "number";
+  const currentRev = hasRev ? (flow as { draft_rev: number }).draft_rev : 0;
+  if (hasRev && typeof input.expectedRev === "number" && input.expectedRev !== currentRev) return conflictFor(ctx, input.flowId);
 
   const savedAt = new Date().toISOString();
   const published = flow.status === "published";
@@ -70,35 +111,48 @@ export async function saveFlowDraft(input: {
     ...(published
       ? { draft_nodes: input.nodes as Json, draft_edges: input.edges as Json, draft_updated_at: savedAt }
       : { nodes: input.nodes as Json, edges: input.edges as Json }),
+    ...(hasRev ? { draft_updated_by: ctx.user.id, draft_rev: currentRev + 1 } : {}),
   };
-  const { error } = await ctx.supabase.from("flows").update(update).eq("id", input.flowId).eq("workspace_id", ctx.workspace.id);
+  // Condicional sobre la revisión: dos guardados a la vez, gana uno y el otro se entera.
+  let query = ctx.supabase.from("flows").update(update).eq("id", input.flowId).eq("workspace_id", ctx.workspace.id);
+  if (hasRev) query = query.eq("draft_rev", currentRev);
+  const { data: written, error } = await query.select("id").maybeSingle();
   if (error) {
     console.error("[flows] no pude guardar la automatizacion:", error.message);
     return { ok: false, error: "No se pudo guardar. Probá de nuevo." };
   }
+  if (!written) return conflictFor(ctx, input.flowId);
   revalidatePath("/dashboard/flows");
-  return { ok: true, unpublishedChanges: published, savedAt };
+  return { ok: true, unpublishedChanges: published, savedAt, draftRev: currentRev + 1 };
 }
 
 /** Descarta los cambios sin publicar: vuelve a lo que corre. Devuelve los pasos publicados para el lienzo. */
-export async function discardFlowDraft(flowId: string): Promise<FlowActionResult<{ nodes: unknown[]; edges: unknown[] }>> {
+export async function discardFlowDraft(flowId: string, expectedRev?: number): Promise<DraftWriteResult<{ nodes: unknown[]; edges: unknown[]; draftRev: number }>> {
   const ctx = await getPermissionAction("flows.edit");
   if (!ctx) return { ok: false, error: NO_PERMISSION };
   if (!UUID.test(flowId)) return { ok: false, error: NOT_FOUND };
-  const { data, error } = await ctx.supabase
+  const { data: flow, error: readError } = await ctx.supabase.from("flows").select("draft_rev").eq("id", flowId).eq("workspace_id", ctx.workspace.id).maybeSingle();
+  if (readError) return { ok: false, error: "No pude leer la automatización. Probá de nuevo." };
+  if (!flow) return { ok: false, error: NOT_FOUND };
+  const hasRev = typeof (flow as { draft_rev?: unknown }).draft_rev === "number";
+  const currentRev = hasRev ? (flow as { draft_rev: number }).draft_rev : 0;
+  // Descartar lo que otra persona guardó después de que miraste sería borrar algo que no viste.
+  if (hasRev && typeof expectedRev === "number" && expectedRev !== currentRev) return conflictFor(ctx, flowId);
+  let query = ctx.supabase
     .from("flows")
-    .update({ draft_nodes: null, draft_edges: null, draft_updated_at: null })
+    .update({ draft_nodes: null, draft_edges: null, draft_updated_at: null, ...(hasRev ? { draft_updated_by: null, draft_rev: currentRev + 1 } : {}) })
     .eq("id", flowId)
-    .eq("workspace_id", ctx.workspace.id)
-    .select("nodes, edges")
-    .maybeSingle();
+    .eq("workspace_id", ctx.workspace.id);
+  if (hasRev) query = query.eq("draft_rev", currentRev);
+  const { data, error } = await query.select("nodes, edges").maybeSingle();
   if (error) return { ok: false, error: "No pude descartar los cambios. Probá de nuevo." };
-  if (!data) return { ok: false, error: NOT_FOUND };
+  if (!data) return conflictFor(ctx, flowId);
   revalidatePath("/dashboard/flows");
   return {
     ok: true,
     nodes: Array.isArray(data.nodes) ? (data.nodes as unknown[]) : [],
     edges: Array.isArray(data.edges) ? (data.edges as unknown[]) : [],
+    draftRev: currentRev + 1,
   };
 }
 

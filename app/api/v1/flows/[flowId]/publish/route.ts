@@ -5,7 +5,7 @@ import { getActiveWorkspace } from "@/lib/workspace";
 import { publishFlow } from "@/lib/flow-engine/publish";
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ flowId: string }> }
 ) {
   const { flowId } = await params;
@@ -27,8 +27,22 @@ export async function POST(
   if (!membership)
     return NextResponse.json({ error: "No encontré tu negocio." }, { status: 404 });
 
+  // Del lienzo: la revision del borrador que vio (para no publicar algo que no vio) y la nota opcional de la version.
+  type PublishBody = { expectedDraftRev?: unknown; note?: unknown };
+  let body: PublishBody | null;
+  try {
+    body = (await request.json()) as PublishBody | null;
+  } catch {
+    // Sin cuerpo (otras pantallas publican sin nada): se publica lo que haya.
+    body = null;
+  }
+  const expectedDraftRev = typeof body?.expectedDraftRev === "number" && Number.isInteger(body.expectedDraftRev) ? body.expectedDraftRev : undefined;
+  const note = typeof body?.note === "string" ? body.note.slice(0, 280) : null;
+
   // Los pasos de publicar viven en `lib/flow-engine/publish.ts`, que usan tambien otras pantallas.
   const result = await publishFlow({
+    expectedDraftRev,
+    note,
     db: supabase,
     userId: user.id,
     workspaceId: membership.workspace_id,

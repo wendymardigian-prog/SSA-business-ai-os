@@ -41,6 +41,8 @@ export interface FlowListRow {
   updatedAt: string;
   /** Publicada con cambios que todavia no corren. */
   hasDraft: boolean;
+  /** Quién dejó esos cambios (00508), si se sabe. */
+  draftBy?: string | null;
   /** Pasos que no se van a ejecutar por una conexion que falta (texto ya armado), si hay. */
   blockedNote: string | null;
 }

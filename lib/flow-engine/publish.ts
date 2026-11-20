@@ -44,11 +44,18 @@ export interface PublishFlowArgs {
   getServiceClient: () => Promise<Db>;
   /** Una validacion extra (solo las plantillas del servidor la usan). Devuelve los problemas, o `[]`. */
   extraProblems?: (nodes: unknown[], edges: unknown[]) => string[];
+  /**
+   * La revision del borrador que vio quien publica (00508). Si otra persona cambio el borrador en el medio, no se
+   * publica algo que no vio: vuelve 409. Sin esto (otras pantallas), se publica lo que haya.
+   */
+  expectedDraftRev?: number;
+  /** Nota opcional de la version (hasta 280 caracteres). */
+  note?: string | null;
 }
 
 export type PublishFlowResult =
   | { ok: true; flow: FlowRow; version: number }
-  | { ok: false; status: 400 | 404; error: string; problems?: string[] };
+  | { ok: false; status: 400 | 404 | 409 | 500; error: string; problems?: string[] };
 
 export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowResult> {
   const { db, userId, workspaceId, flowId } = args;
@@ -56,6 +63,12 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
   // Get current flow
   const { data: flow, error } = await db.from("flows").select("*").eq("id", flowId).eq("workspace_id", workspaceId).single();
   if (error || !flow) return { ok: false, status: 404, error: "No encontré esa automatización." };
+  // Sin la columna (antes de la 00508) no hay revision: se publica como siempre.
+  const hasRev = typeof (flow as { draft_rev?: unknown }).draft_rev === "number";
+  const currentRev = hasRev ? (flow as { draft_rev: number }).draft_rev : 0;
+  if (hasRev && typeof args.expectedDraftRev === "number" && args.expectedDraftRev !== currentRev) {
+    return { ok: false, status: 409, error: "Alguien cambió esta automatización después de que la abriste. Recargá para ver sus cambios antes de publicar." };
+  }
 
   // Una automatizacion publicada con cambios sin publicar (00254): se publica el BORRADOR. Lo que corria hasta ahora
   // (`nodes`) se reemplaza recien aca, despues de validar.
@@ -88,19 +101,32 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
 
   // Update flow status to published and increment version
   const newVersion = flow.version + 1;
-  await db
+  // Condicional sobre la revision del borrador: dos «Publicar» a la vez (o alguien guardando en el medio) no publican
+  // dos veces ni algo que no se vio.
+  let publishQuery = db
     .from("flows")
     .update({
       status: "published",
       published_at: new Date().toISOString(),
       version: newVersion,
+      ...(hasRev ? { draft_rev: currentRev + 1 } : {}),
       // Lo publicado pasa a ser lo que corre, y el borrador se vacia.
-      ...(hasDraft ? { nodes: nodes as Json, edges: edges as Json, draft_nodes: null, draft_edges: null, draft_updated_at: null } : {}),
+      ...(hasDraft ? { nodes: nodes as Json, edges: edges as Json, draft_nodes: null, draft_edges: null, draft_updated_at: null, ...(hasRev ? { draft_updated_by: null } : {}) } : {}),
     })
     .eq("id", flowId);
+  if (hasRev) publishQuery = publishQuery.eq("draft_rev", currentRev);
+  const { data: published, error: publishError } = await publishQuery.select("id").maybeSingle();
+  if (publishError) {
+    console.error("[publish] no pude publicar:", publishError.message);
+    return { ok: false, status: 500, error: "No se pudo publicar. Probá de nuevo en un momento." };
+  }
+  if (!published) {
+    return { ok: false, status: 409, error: "Alguien cambió esta automatización mientras publicabas. Recargá para ver sus cambios antes de publicar." };
+  }
 
-  // Save version snapshot
-  await db.from("flow_versions").insert({
+  // La foto de la version. Si no se puede guardar, lo publicado ya corre: se avisa en el log y no se deshace.
+  const note = typeof args.note === "string" && args.note.trim() ? args.note.trim().slice(0, 280) : null;
+  const { error: versionError } = await db.from("flow_versions").insert({
     flow_id: flowId,
     version: newVersion,
     nodes: nodes as Json,
@@ -108,7 +134,9 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     viewport: flow.viewport,
     name: flow.name,
     published_by: userId,
+    ...(note ? { note } : {}),
   });
+  if (versionError) console.error("[publish] no pude guardar la version en el historial:", versionError.message);
 
   // Sync trigger rows from the flow's trigger nodes into the `triggers` table.
   // The runtime matcher (lib/flow-engine/trigger-matcher.ts) reads triggers.config,

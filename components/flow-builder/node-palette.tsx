@@ -503,6 +503,20 @@ function onDragStart(event: DragEvent, item: PaletteItem) {
   event.dataTransfer.effectAllowed = "move";
 }
 
+/**
+ * El nombre de un paso del lienzo para mostrarlo fuera de él («Ver cambios»): el de la paleta según su tipo (o su acción)
+ * y, si la persona le puso uno, el suyo. Un tipo que no está en la paleta cae al tipo crudo.
+ */
+export function paletteLabelFor(node: { type?: string; data?: Record<string, unknown> | null }): string {
+  const data = node.data ?? {};
+  const actionType = typeof data.actionType === "string" ? data.actionType : null;
+  const items = categories.flatMap((c) => c.items);
+  const item = (actionType && items.find((i) => i.actionType === actionType)) || items.find((i) => i.nodeType === node.type || i.type === node.type);
+  const base = item?.label ?? (node.type === "trigger" ? "Disparador" : node.type ?? "Paso");
+  const custom = typeof data.label === "string" && data.label.trim() ? data.label.trim() : null;
+  return custom && custom !== base ? `${base} · ${custom}` : base;
+}
+
 /** Los grupos con lo que coincide con la busqueda (vacios afuera). */
 export function filterPalette(list: PaletteCategory[], query: string): PaletteCategory[] {
   return list

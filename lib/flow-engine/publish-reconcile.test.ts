@@ -80,3 +80,26 @@ describe("publicar reconcilia todas las filas que arma el editor", () => {
     expect(growth).toMatchObject({ is_active: false });
   });
 });
+
+describe("publicar lo que se vio (00508)", () => {
+  function withDraft() {
+    const db = world({ triggerType: "new_contact" });
+    const row = db.rows("flows")[0] as Record<string, unknown>;
+    Object.assign(row, { status: "published", version: 2, draft_rev: 5, draft_nodes: row.nodes, draft_edges: row.edges, draft_updated_by: "u-2" });
+    return db;
+  }
+  it("si otra persona cambió el borrador, no publica (409) y no toca nada", async () => {
+    const db = withDraft();
+    const result = await publishFlow({ db: db.client, userId: "u-1", workspaceId: WS, flowId: "flow-1", getServiceClient: async () => db.client, expectedDraftRev: 4 });
+    expect(result).toMatchObject({ ok: false, status: 409 });
+    expect(db.rows("flows")[0]).toMatchObject({ version: 2, draft_rev: 5 });
+    expect(db.rows("flow_versions")).toHaveLength(0);
+  });
+  it("con la revisión que vio: publica, vacía el borrador, sube la revisión y guarda la nota", async () => {
+    const db = withDraft();
+    const result = await publishFlow({ db: db.client, userId: "u-1", workspaceId: WS, flowId: "flow-1", getServiceClient: async () => db.client, expectedDraftRev: 5, note: "  ahora para la variante Lite  " });
+    expect(result.ok).toBe(true);
+    expect(db.rows("flows")[0]).toMatchObject({ version: 3, draft_rev: 6, draft_nodes: null, draft_updated_by: null });
+    expect(db.rows("flow_versions")[0]).toMatchObject({ version: 3, note: "ahora para la variante Lite", published_by: "u-1" });
+  });
+});

@@ -1,3 +1,4 @@
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { getWorkspace } from "@/lib/workspace";
 import { requirePermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -37,6 +38,24 @@ export default async function FlowsPage({ searchParams }: { searchParams: Promis
   const published = list.filter((f) => f.status === "published" && Array.isArray(f.nodes) && (f.nodes as unknown as GraphNodeLike[]).some((n) => requirementsOfNode(n).length > 0));
   const capabilities = published.length > 0 ? await loadAutomationCapabilities(await createServiceClient(), workspace.id) : null;
 
+  // Quién dejó los cambios sin publicar (00508). Aparte y tolerante: sin la columna, la lista se ve igual.
+  const withDraft = list.filter((f) => f.status === "published" && Array.isArray(f.draft_nodes)).map((f) => f.id);
+  const draftBy = new Map<string, string>();
+  if (withDraft.length > 0) {
+    try {
+      const { data: authors, error } = await supabase.from("flows").select("id, draft_updated_by").in("id", withDraft);
+      if (!error && authors) {
+        const names = new Map((await getWorkspaceMembers(workspace.id)).map((m) => [m.userId, m.name]));
+        for (const a of authors as Array<{ id: string; draft_updated_by: string | null }>) {
+          const name = a.draft_updated_by ? names.get(a.draft_updated_by) : null;
+          if (name) draftBy.set(a.id, name);
+        }
+      }
+    } catch {
+      // Sin nombres, la marca dice solo «Cambios sin publicar».
+    }
+  }
+
   const rows: FlowListRow[] = list.map((f) => {
     const nodes = (Array.isArray(f.nodes) ? f.nodes : []) as Array<{ type?: string; data?: Record<string, unknown> }>;
     const trigger = nodes.find((n) => n?.type === "trigger");
@@ -54,6 +73,7 @@ export default async function FlowsPage({ searchParams }: { searchParams: Promis
       stepCount: nodes.filter((n) => n?.type !== "trigger").length,
       updatedAt: f.updated_at,
       hasDraft: f.status === "published" && Array.isArray(f.draft_nodes),
+      draftBy: draftBy.get(f.id) ?? null,
       blockedNote: blocked.length > 0 ? `${blocked.length === 1 ? "1 paso no se va a ejecutar" : `${blocked.length} pasos no se van a ejecutar`}: falta ${missing}.` : null,
     };
   });
