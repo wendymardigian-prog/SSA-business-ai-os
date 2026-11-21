@@ -27,13 +27,15 @@ import { snapMinutes } from "@/lib/calendar/snap";
 import { isDraggableTask, tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(tareas)
 import { layoutOverlaps, type Span } from "@/lib/calendar/layoutOverlaps";
 import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
-import { TaskCard, TaskMonthChip, TasksToggle, UndatedPanel } from "./calendar-tasks"; // @plantilla-quitar(tareas)
+import { TaskCard, TaskMonthChip, TasksToggle, UndatedPanel, taskHoverContent } from "./calendar-tasks"; // @plantilla-quitar(tareas)
 import { Avatar } from "@/components/ui/filter-menu";
 import { colorOf, initialsOf } from "@/lib/shared/people";
-import { statusLabel } from "@/lib/scheduling/booking-status";
 import { StatusChip, statusDotClass } from "./status-chip";
 import { placeGoogleInCalendar, canEditGoogleEvent, type AgendaGoogleBusy, type AgendaGoogleEvent } from "@/lib/google-calendar/agenda";
 import { GoogleCard, GoogleChip, GoogleToggle } from "./google-layer";
+import { useCalendarHover } from "./calendar-hover-card";
+import { bookingHover, busyHover, googleHover } from "@/lib/calendar/hover-content";
+import { clampStyle, linesThatFit } from "@/lib/calendar/card-lines";
 import { useIsDesktop } from "./use-desktop";
 
 const VIEWS: Array<{ key: CalendarView; label: string }> = [
@@ -234,6 +236,11 @@ export function BookingsCalendar({
   // ── crear arrastrando y cambiar la duración (punteros, no arrastre nativo) ──────────────────────────────
   const [selecting, setSelecting] = useState<{ date: string; from: number; to: number } | null>(null);
   const [resizing, setResizing] = useState<{ id: string; start: number; to: number; original: number } | null>(null);
+  // La tarjeta al pasar el mouse: al instante, nunca mientras se arrastra, se crea o se estira.
+  const hover = useCalendarHover(!!dragging || !!selecting || !!resizing);
+  const hoverBooking = (item: BookingListItem) => hover.bind(bookingHover(item, hostNames[item.hostUserId] ?? item.hostName ?? null, timezone, timeFormat));
+  const hoverGoogle = (gi: import("@/lib/google-calendar/agenda").GooglePlaced) =>
+    hover.bind(gi.kind === "event" ? googleHover(gi.event, timezone, timeFormat) : busyHover(gi.busy, hostNames[gi.busy.userId], timezone, timeFormat));
   const minutesAt = (e: PointerEvent<HTMLElement>, column: HTMLElement) =>
     snapMinutes(e.clientY - column.getBoundingClientRect().top, HOUR_PX, FIRST_HOUR);
   const canCreate = isDesktop && !!onCreateRange;
@@ -398,6 +405,7 @@ export function BookingsCalendar({
   });
 
   const openTask = (id: string) => wb?.openTask(id); // @plantilla-quitar(tareas)
+  const ownerOf = (id: string | null) => (id ? (wb?.members.find((m) => m.id === id)?.name ?? null) : null); // @plantilla-quitar(tareas)
   const ghostDate = ghost ? dateInTz(ghost.startUtc, timezone) : null;
   const ghostMinutes = ghost ? minutesOfDayInTz(ghost.startUtc, timezone) : 0;
 
@@ -420,7 +428,7 @@ export function BookingsCalendar({
                     onDragStart={canDrag ? (e) => startBooking(item, e) : undefined}
                     onDragEnd={canDrag ? endDrag : undefined}
                     style={{ borderLeftColor: it.eventColor ?? "var(--primary)" }}
-                    title={`${statusLabel(item.status)}${item.slotReleasedAt ? " · Espacio liberado: se puede agendar encima" : ""}`}
+                    {...hoverBooking(item)}
                     className={`flex w-full items-center gap-1 rounded border-l-2 bg-muted/60 px-1.5 py-0.5 text-left text-[11px] hover:bg-muted${item.slotReleasedAt ? " border-dashed opacity-60" : ""}`}
                   >
                     <HostAvatar item={item} hostNames={hostNames} />
@@ -434,12 +442,12 @@ export function BookingsCalendar({
               {/* @plantilla-desde(tareas) */}
               {taskPlacement &&
                 (taskPlacement.byDate[date] ?? []).map((ti) => (
-                  <TaskMonthChip key={ti.task.id} item={ti} timeFormat={timeFormat} draggable={taskDraggable(ti.task)} onOpen={openTask} onDragStart={startTask} onDragEnd={endDrag} />
+                  <TaskMonthChip key={ti.task.id} item={ti} timeFormat={timeFormat} draggable={taskDraggable(ti.task)} onOpen={openTask} onDragStart={startTask} onDragEnd={endDrag} hover={hover.bind(taskHoverContent(ti, ownerOf(ti.task.owner_id), timeFormat))} />
                 ))}
               {/* @plantilla-hasta(tareas) */}
               {googlePlacement &&
                 (googlePlacement.byDate[date] ?? []).map((gi) => (
-                  <GoogleChip key={gi.key} item={gi} timezone={timezone} timeFormat={timeFormat} ownerName={gi.kind === "busy" ? busyOwner(gi.busy.userId) : undefined} onOpen={google!.onOpen} />
+                  <GoogleChip key={gi.key} item={gi} timezone={timezone} timeFormat={timeFormat} ownerName={gi.kind === "busy" ? busyOwner(gi.busy.userId) : undefined} onOpen={google!.onOpen} hover={hoverGoogle(gi)} />
                 ))}
               {ghost && ghostDate === date && view === "month" && (
                 <span className="truncate rounded border border-dashed border-primary-edge bg-primary/10 px-1.5 py-0.5 text-[11px]">{ghost.label}</span>
@@ -483,7 +491,7 @@ export function BookingsCalendar({
                     {(googlePlacement.byDate[date] ?? [])
                       .filter((gi) => !gi.timed)
                       .map((gi) => (
-                        <GoogleChip key={gi.key} item={gi} timezone={timezone} timeFormat={timeFormat} ownerName={gi.kind === "busy" ? busyOwner(gi.busy.userId) : undefined} onOpen={google!.onOpen} />
+                        <GoogleChip key={gi.key} item={gi} timezone={timezone} timeFormat={timeFormat} ownerName={gi.kind === "busy" ? busyOwner(gi.busy.userId) : undefined} onOpen={google!.onOpen} hover={hoverGoogle(gi)} />
                       ))}
                   </div>
                 ))}
@@ -532,13 +540,13 @@ export function BookingsCalendar({
                       draggable={canDrag || undefined}
                       onDragStart={canDrag ? (e) => startBooking(item, e) : undefined}
                       onDragEnd={canDrag ? endDrag : undefined}
-                      title={`${statusLabel(item.status)}${item.slotReleasedAt ? " · Espacio liberado" : ""}`}
+                      {...hoverBooking(item)}
                       style={{ top, height, borderLeftColor: it.eventColor ?? "var(--primary)", ...(lane ? laneStyle(lane) : null) }}
                       className={lane ? `absolute ${cardClass}` : `absolute inset-x-1 ${cardClass}`}
                     >
-                      <span className="flex items-center gap-1">
-                        <span className="min-w-0 flex-1 truncate font-medium tabular-nums">
-                          {formatSlotLabel(item.startAt, timezone, timeFormat)} {item.contactName || item.bookerName || ""}
+                      <span className="flex items-start gap-1">
+                        <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-[14px]" style={clampStyle(linesThatFit(height, { reservedPx: roomy ? 16 : 0 }))}>
+                          <span className="tabular-nums">{formatSlotLabel(item.startAt, timezone, timeFormat)}</span> {item.contactName || item.bookerName || ""}
                         </span>
                         {!roomy && <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(item.status)}`} />}
                         <HostAvatar item={item} hostNames={hostNames} />
@@ -606,6 +614,8 @@ export function BookingsCalendar({
                           onDragEnd={endDrag}
                           style={{ top, height, ...(lane ? laneStyle(lane) : null) }}
                           className="absolute"
+                          lines={linesThatFit(height)}
+                          hover={hover.bind(taskHoverContent(ti, ownerOf(ti.task.owner_id), timeFormat))}
                         />
                       );
                     })}
@@ -635,6 +645,8 @@ export function BookingsCalendar({
                           onDragEnd={endDrag}
                           style={position}
                           className={lane ? "absolute" : "absolute inset-x-1"}
+                          lines={linesThatFit(height)}
+                          hover={hoverGoogle(gi)}
                         />
                       );
                       if (!ev || !googleResizable(ev)) return card;
@@ -713,7 +725,7 @@ export function BookingsCalendar({
                 {/* @plantilla-hasta(tareas) */}
                 {googlePlacement &&
                   (googlePlacement.byDate[date] ?? []).map((gi) => (
-                    <GoogleChip key={gi.key} item={gi} timezone={timezone} timeFormat={timeFormat} ownerName={gi.kind === "busy" ? busyOwner(gi.busy.userId) : undefined} onOpen={google!.onOpen} />
+                    <GoogleChip key={gi.key} item={gi} timezone={timezone} timeFormat={timeFormat} ownerName={gi.kind === "busy" ? busyOwner(gi.busy.userId) : undefined} onOpen={google!.onOpen} hover={hoverGoogle(gi)} />
                   ))}
               </div>
             </li>
@@ -725,6 +737,7 @@ export function BookingsCalendar({
 
   return (
     <div className="rounded-xl border border-border">
+      {hover.card}
       <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
         <h3 className="text-sm font-semibold">{titleFor(view, range)}</h3>
         <span className="text-xs text-muted-foreground">Las canceladas no se muestran</span>

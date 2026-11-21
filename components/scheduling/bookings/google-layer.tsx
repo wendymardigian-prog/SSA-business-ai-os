@@ -10,6 +10,7 @@ import { RefreshCw } from "lucide-react";
 import { googleTitle, type GooglePlaced } from "@/lib/google-calendar/agenda";
 import { formatSlotLabel } from "@/lib/scheduling/booker/format";
 import { cn } from "@/lib/utils";
+import { clampStyle } from "@/lib/calendar/card-lines";
 
 /** El logo de Google Calendar como un cuadradito de color: sin marca ajena dibujada. */
 function GoogleDot({ color }: { color: string | null }) {
@@ -64,11 +65,19 @@ const BUSY_STYLE: CSSProperties = {
   backgroundImage: "repeating-linear-gradient(135deg, transparent 0 6px, rgba(120,120,120,0.12) 6px 12px)",
 };
 
-function cardStyle(item: GooglePlaced): CSSProperties {
-  if (item.kind === "busy") return BUSY_STYLE;
-  const color = item.event.calendarColor ?? "#4285f4";
-  return { backgroundColor: `color-mix(in srgb, ${color} ${item.event.transparency === "transparent" ? 10 : 22}%, var(--card))`, borderColor: color };
+/**
+ * Lo que está solo en Google se ve en gris muy clarito, con letra gris: así se distingue enseguida de lo que está en el
+ * sistema. El único color es el puntito del calendario. «Disponible», todavía más tenue y con borde punteado; el
+ * «Ocupado» de otra persona, con rayas.
+ */
+function cardClasses(item: GooglePlaced): string {
+  if (item.kind === "busy") return "border-dashed border-border bg-muted/40 text-muted-foreground";
+  if (item.event.transparency === "transparent") return "border-dashed border-border bg-muted/20 text-muted-foreground";
+  return "border-border bg-muted/50 text-muted-foreground";
 }
+
+/** Lo que se le pasa a un bloque para la tarjeta al pasar el mouse (de `useCalendarHover`). */
+type HoverProps = Record<string, unknown>;
 
 interface CardProps {
   item: GooglePlaced;
@@ -81,23 +90,25 @@ interface CardProps {
   onDragEnd: () => void;
   style?: CSSProperties;
   className?: string;
+  /** Cuántas líneas de título entran en el alto del bloque. */
+  lines?: number;
+  hover?: HoverProps;
 }
 
 /** Un evento en la rejilla horaria. Los de otra persona no se abren. */
-export function GoogleCard({ item, timezone, timeFormat, ownerName, draggable, onOpen, onDragStart, onDragEnd, style, className }: CardProps) {
+export function GoogleCard({ item, timezone, timeFormat, ownerName, draggable, onOpen, onDragStart, onDragEnd, style, className, lines = 1, hover }: CardProps) {
   const title = googleTitle(item, ownerName);
   const time = item.kind === "event" ? formatSlotLabel(item.event.startAt, timezone, timeFormat) : formatSlotLabel(item.busy.startAt, timezone, timeFormat);
-  const faded = item.kind === "event" && item.event.transparency === "transparent";
-  const common = cn(
-    "overflow-hidden rounded-md border px-1.5 py-1 text-left text-[11px]",
-    item.kind === "busy" ? "border-dashed border-border bg-muted/40 text-muted-foreground" : "hover:ring-1 hover:ring-ring",
-    faded && "opacity-70",
-    className,
+  const common = cn("overflow-hidden rounded-md border px-1.5 py-1 text-left text-[11px] leading-[14px]", cardClasses(item), item.kind === "event" && "hover:ring-1 hover:ring-ring", className);
+  const text = (
+    <span className="min-w-0 flex-1 whitespace-normal break-words" style={clampStyle(lines)}>
+      <span className="tabular-nums">{time}</span> <span className="font-medium">{title}</span>
+    </span>
   );
   if (item.kind === "busy") {
     return (
-      <div aria-label={`${title}, ${time}`} title={title} style={{ ...cardStyle(item), ...style }} className={common}>
-        <span className="block truncate">{title}</span>
+      <div aria-label={`${title}, ${time}`} tabIndex={0} {...hover} style={{ ...BUSY_STYLE, ...style }} className={common}>
+        <span className="flex items-start gap-1">{text}</span>
       </div>
     );
   }
@@ -108,40 +119,43 @@ export function GoogleCard({ item, timezone, timeFormat, ownerName, draggable, o
       draggable={draggable || undefined}
       onDragStart={draggable ? (e) => onDragStart(item.event.id, e) : undefined}
       onDragEnd={draggable ? onDragEnd : undefined}
-      title={`${title} · ${item.event.calendarName}`}
-      style={{ ...cardStyle(item), ...style }}
+      aria-label={`${title}, ${time}, ${item.event.calendarName}`}
+      {...hover}
+      style={style}
       className={common}
     >
-      <span className="flex items-center gap-1">
-        <GoogleDot color={item.event.calendarColor} />
-        <span className="min-w-0 flex-1 truncate font-medium">
-          <span className="tabular-nums">{time}</span> {title}
+      <span className="flex items-start gap-1">
+        <span className="mt-[3px] shrink-0">
+          <GoogleDot color={item.event.calendarColor} />
         </span>
+        {text}
       </span>
     </button>
   );
 }
 
-/** Un evento en una celda del mes o en la franja «Todo el día». */
+/** Un evento en una celda del mes o en la franja «Todo el día» (una línea). */
 export function GoogleChip({
   item,
   timezone,
   timeFormat,
   ownerName,
   onOpen,
+  hover,
 }: {
   item: GooglePlaced;
   timezone: string;
   timeFormat: "12h" | "24h";
   ownerName?: string;
   onOpen: (id: string) => void;
+  hover?: HoverProps;
 }) {
   const title = googleTitle(item, ownerName);
   const time = item.timed ? `${formatSlotLabel(item.kind === "event" ? item.event.startAt : item.busy.startAt, timezone, timeFormat)} ` : "";
-  const cls = "flex w-full items-center gap-1 truncate rounded border px-1.5 py-0.5 text-left text-[11px]";
+  const cls = cn("flex w-full items-center gap-1 truncate rounded border px-1.5 py-0.5 text-left text-[11px]", cardClasses(item));
   if (item.kind === "busy") {
     return (
-      <span title={title} style={cardStyle(item)} className={cn(cls, "border-dashed border-border text-muted-foreground")}>
+      <span tabIndex={0} aria-label={`${time}${title}`} {...hover} style={BUSY_STYLE} className={cls}>
         <span className="truncate">
           {time}
           {title}
@@ -150,7 +164,7 @@ export function GoogleChip({
     );
   }
   return (
-    <button type="button" onClick={() => onOpen(item.event.id)} title={`${title} · ${item.event.calendarName}`} style={cardStyle(item)} className={cn(cls, "hover:ring-1 hover:ring-ring")}>
+    <button type="button" onClick={() => onOpen(item.event.id)} aria-label={`${time}${title}, ${item.event.calendarName}`} {...hover} className={cn(cls, "hover:ring-1 hover:ring-ring")}>
       <GoogleDot color={item.event.calendarColor} />
       <span className="truncate">
         {time}

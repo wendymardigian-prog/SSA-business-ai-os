@@ -131,7 +131,11 @@ editan, se crean y se borran desde acá, y un evento se puede **pasar al sistema
   `scheduling.manage_others` o `bookings.view` con alcance `all`) ve el **«Ocupado»** de quien elija en el filtro de
   anfitrión, sin título ni invitados, por `google_busy_blocks` (SECURITY DEFINER, decide la base).
 - **La capa** (`?google=0` la apaga; prendida por defecto): `placeGoogleInCalendar` (`lib/google-calendar/agenda.ts`),
-  franja «Todo el día», tarjetas con el color del calendario, «Disponible» tenue y el «Ocupado» de otros con rayas. No
+  franja «Todo el día». Lo que está solo en Google se ve **gris muy clarito** con un punto del color del calendario (el
+  de Google), «Disponible» más tenue y el «Ocupado» de otros con rayas: así se distingue de lo que está en el sistema.
+  En cada bloque (reuniones, Google y tareas) el título usa las líneas que entran (`lib/calendar/card-lines.ts`) y al
+  pasar el mouse aparece al instante una tarjeta con el detalle (`calendar-hover-card.tsx`, contenido puro en
+  `lib/calendar/hover-content.ts`). No
   se muestra lo de una reunión del sistema (se ve como reunión, nunca dos veces), lo rechazado ni la ubicación de
   trabajo. La carga es `loadAgendaGoogle` (`agenda-load.ts`); al abrir el calendario se relee si pasó más de un minuto
   (`refreshMyGoogleEvents`, tope de 5 s) y hay un botón «Actualizar».
