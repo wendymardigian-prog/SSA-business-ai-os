@@ -111,7 +111,8 @@ export function BookManualDialog({
    */
   presetContact?: ManualContactOption;
   /** el horario arrastrado en el calendario (día, hora de pared y duración). */
-  initialSlot?: { date: string; time: string; durationMinutes: number } | null;
+  /** El horario arrastrado en el calendario; en la vista de equipo, también quién atiende (la columna). */
+  initialSlot?: { date: string; time: string; durationMinutes: number; hostUserId?: string | null } | null;
 }) {
   const router = useRouter();
   const titleId = useId();
@@ -132,13 +133,14 @@ export function BookManualDialog({
   const [date, setDate] = useState(initial.date);
   const [time, setTime] = useState(initial.time);
   const [duration, setDuration] = useState(initialSlot?.durationMinutes ?? 30);
-  const [hostUserId, setHostUserId] = useState(currentUserId);
+  const startHost = initialSlot?.hostUserId && hosts.some((h) => h.userId === initialSlot.hostUserId) ? initialSlot.hostUserId : currentUserId;
+  const [hostUserId, setHostUserId] = useState(startHost);
   const [categoryId, setCategoryId] = useState(areas.find((a) => a.isDefault)?.id ?? areas[0]?.id ?? "");
   const [notes, setNotes] = useState("");
   // null = sin tocar: la zona sale del contacto o de su telefono, y sigue a lo que se cargue.
   const [chosenInviteeTz, setChosenInviteeTz] = useState<string | null>(null);
   // Sin evento, Meet arranca prendido si quien atiende puede crearlo (lo que pasaba siempre).
-  const [meetOn, setMeetOn] = useState(() => hosts.find((h) => h.userId === currentUserId)?.meetAvailable ?? false);
+  const [meetOn, setMeetOn] = useState(() => hosts.find((h) => h.userId === startHost)?.meetAvailable ?? false);
   const [locationText, setLocationText] = useState("");
 
   const [error, setError] = useState<{ field: ManualBookingField | null; message: string } | null>(null);

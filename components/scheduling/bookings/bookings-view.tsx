@@ -65,6 +65,7 @@ import { CalendarShowMenu } from "./calendar-show-menu";
 import { showsCancelled, statusParams } from "@/lib/scheduling/calendar-show";
 import { CreateChoiceDialog, GoogleCreateDialog, GoogleEventPanel, GoogleImportDialog, GoogleMoveDialog } from "./google-event-panel";
 import { groupOf } from "@/lib/scheduling/booking-status";
+import { TEAM_LAYOUT_STORAGE_KEY, type TeamBusyStatus } from "@/lib/scheduling/team-view";
 
 /** La pastilla rápida de la lista: los cuatro de siempre, más "Todas" (ahora el default). */
 export type QuickPick = QuickFilter | "all";
@@ -138,6 +139,8 @@ export function BookingsScreen({
   tasks,
   google,
   meetingsShown = true,
+  canSeeTeam = false,
+  team,
 }: {
   items: BookingListItem[];
   total: number;
@@ -202,13 +205,38 @@ export function BookingsScreen({
   google?: AgendaGoogleData;
   /** «Qué mostrar»: `?reuniones=0` oculta las reuniones del calendario. */
   meetingsShown?: boolean;
+  /** Quien mira ve las agendas de todos: en «Día» puede elegir «Por persona» (la vista de equipo) o «Todo junto». */
+  canSeeTeam?: boolean;
+  /** La vista de equipo, ya armada (solo en «Día», con permiso y sin `?equipo=0`): el ocupado real de cada persona. */
+  team?: Array<{ userId: string; name: string; status: TeamBusyStatus; busy: Array<{ startAt: string; endAt: string }> }>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { pending: navigating, setParam, setParams, setPeriod, clearAll } = useAgendaUrl();
+  // «Por persona / Todo junto» (vista de equipo en «Día»): vive en la URL (`?equipo=0`) y se recuerda en el navegador.
+  function setTeamLayout(on: boolean) {
+    try {
+      window.localStorage.setItem(TEAM_LAYOUT_STORAGE_KEY, on ? "1" : "0");
+    } catch {
+      // sin almacenamiento, solo la URL
+    }
+    setParam("equipo", on ? null : "0");
+  }
+  const teamParam = searchParams.get("equipo");
+  useEffect(() => {
+    if (!canSeeTeam || view !== "calendar" || calendarView !== "day" || teamParam !== null) return;
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem(TEAM_LAYOUT_STORAGE_KEY);
+    } catch {
+      saved = null;
+    }
+    if (saved === "0") setParam("equipo", "0");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeTeam, view, calendarView, teamParam]);
   const [manualOpen, setManualOpen] = useState(false);
   // el horario arrastrado en el calendario (sin esto, «Agendar» arranca en la próxima media hora).
-  const [manualSlot, setManualSlot] = useState<{ date: string; time: string; durationMinutes: number } | null>(null);
+  const [manualSlot, setManualSlot] = useState<{ date: string; time: string; durationMinutes: number; hostUserId?: string | null } | null>(null);
   const [cancelDrop, setCancelDrop] = useState<{ id: string; status: BookingStatus } | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -302,15 +330,15 @@ export function BookingsScreen({
     };
   }, [googleOn, router]);
   const [googleMove, setGoogleMove] = useState<{ event: AgendaGoogleEvent; startUtc: string; durationMinutes: number } | null>(null);
-  const [createChoice, setCreateChoice] = useState<{ date: string; startMinutes: number; durationMinutes: number } | null>(null);
+  const [createChoice, setCreateChoice] = useState<{ date: string; startMinutes: number; durationMinutes: number; hostUserId?: string | null } | null>(null);
   const [googleCreate, setGoogleCreate] = useState<{ date: string; startMinutes: number; durationMinutes: number } | null>(null);
   const [googleImport, setGoogleImport] = useState<AgendaGoogleEvent | null>(null);
   // Una tarea pedida desde «¿Qué querés crear?»: se abre cuando la capa de Tareas está montada.
   const [pendingTask, setPendingTask] = useState<PendingTask | null>(null);
   const canCreateTask = !!tasks && tasks.canEdit; // @plantilla-quitar(tareas)
   // @plantilla-sin(tareas): const canCreateTask = false;
-  function openMeeting(slot: { date: string; startMinutes: number; durationMinutes: number }) {
-    setManualSlot({ date: slot.date, time: wallTimeOfMinutes(slot.startMinutes), durationMinutes: slot.durationMinutes });
+  function openMeeting(slot: { date: string; startMinutes: number; durationMinutes: number; hostUserId?: string | null }) {
+    setManualSlot({ date: slot.date, time: wallTimeOfMinutes(slot.startMinutes), durationMinutes: slot.durationMinutes, hostUserId: slot.hostUserId ?? null });
     setManualOpen(true);
   }
   function openTask(slot: { date: string; startMinutes: number; durationMinutes: number }) {
@@ -577,8 +605,13 @@ export function BookingsScreen({
                 onResizeBooking={canManage ? reschedule.onResize : undefined}
                 onCreateRange={
                   canManage || canCreateGoogle || canCreateTask
-                    ? (date, startMinutes, durationMinutes) => {
-                        const slot = { date, startMinutes, durationMinutes };
+                    ? (date, startMinutes, durationMinutes, hostUserId) => {
+                        const slot = { date, startMinutes, durationMinutes, hostUserId };
+                        // En la columna de otra persona (vista de equipo) solo se le agenda una reunión.
+                        if (hostUserId && hostUserId !== viewerId) {
+                          if (canManage) openMeeting(slot);
+                          return;
+                        }
                         // Con más de una opción, se elige qué crear; con una sola, directo a esa.
                         const options = [canManage, canCreateTask, canCreateGoogle].filter(Boolean).length;
                         if (options > 1) return setCreateChoice(slot);
@@ -589,6 +622,12 @@ export function BookingsScreen({
                     : undefined
                 }
                 ghost={reschedule.ghost}
+                team={team ? { selfId: viewerId, people: team } : undefined}
+                teamControls={
+                  canSeeTeam && calendarView === "day"
+                    ? { on: !!team, onToggle: (on) => setTeamLayout(on) }
+                    : undefined
+                }
                 includeCancelled={showsCancelled(filters.statuses as BookingStatus[])}
                 showMenu={
                   <CalendarShowMenu

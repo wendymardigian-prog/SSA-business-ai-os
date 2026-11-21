@@ -4,6 +4,9 @@
  *
  * Actualizada a proposito el 10/11/2026 (mejoras de UX de Agenda): la tarjeta muestra el circulo de quien atiende
  * (foto o iniciales) en vez del icono de Meet, y el estado va como chip de color en vez de texto suelto.
+ *
+ * Actualizada a proposito el 21/11/2026 (calendario como Google): el boton «Hoy», la tarjeta al pasar el mouse en vez
+ * del `title` y el desplegable «Qué mostrar» (afuera de la rejilla) en lugar de «Las canceladas no se muestran».
  */
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -74,13 +77,56 @@ describe("BookingsCalendar sin tareas ni arrastre: lo que dibuja hoy (caracteriz
   it("una tarjeta baja (30 min) no apila el chip: lo cambia por un punto de color", () => {
     // Solo la rejilla de escritorio: la lista del celular (que va en el mismo HTML) si tiene lugar para el chip.
     const desktop = html("week").split('<ul class="divide-y divide-border md:hidden">')[0];
-    // b1 dura 30 minutos (26 px): su estado "Agendada" va solo como tooltip y punto.
-    expect(desktop).toContain('title="Agendada"');
+    // b1 dura 30 minutos (26 px): su estado "Agendada" va solo como punto de color (y en la tarjeta al pasar el mouse).
+    expect(desktop).toContain('<span aria-hidden="true" class="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"></span>');
     expect(desktop).not.toContain(">Agendada<");
   });
   it("no tiene ningun interruptor de tareas", () => {
     const out = html("week");
     expect(out).not.toContain("Tareas");
-    expect(out).toContain("Las canceladas no se muestran");
+  });
+  it("sin la vista de equipo, no hay columnas por persona ni el interruptor «Por persona»", () => {
+    const out = html("day");
+    expect(out).not.toContain("Por persona");
+    expect(out).not.toContain("Ocupado");
+  });
+});
+
+describe("la vista de equipo en «Día»", () => {
+  const team = {
+    selfId: "h1",
+    people: [
+      { userId: "h1", name: "Vos", status: "ok" as const, busy: [] },
+      // 18:00 a 19:00 UTC = 12:00 a 13:00 en Costa Rica.
+      { userId: "h2", name: "Bruno Diaz", status: "ok" as const, busy: [{ startAt: "2026-10-14T18:00:00Z", endAt: "2026-10-14T19:00:00Z" }] },
+      { userId: "h3", name: "Celia Ruiz", status: "no_google" as const, busy: [] },
+    ],
+  };
+  const items = [...ITEMS, item({ id: "b5", startAt: "2026-10-14T16:00:00Z", endAt: "2026-10-14T16:30:00Z", hostUserId: "h2", contactName: "Elena" })];
+  const out = renderToStaticMarkup(
+    createElement(BookingsCalendar, {
+      items, hostNames: { h1: "Ana Gomez", h2: "Bruno Diaz" }, timezone: "America/Costa_Rica", timeFormat: "24h", view: "day", anchor: "2026-10-14",
+      onView: () => undefined, onAnchor: () => undefined, onOpen: () => undefined, team,
+      teamControls: { on: true, onToggle: () => undefined },
+    }),
+  );
+  const desktop = out.split('<ul class="divide-y divide-border md:hidden">')[0];
+  const columns = desktop.split("data-cal-column").slice(1);
+
+  it("una columna por persona, con su nombre y el aviso si no revisa conflictos en Google", () => {
+    expect(columns).toHaveLength(3);
+    expect(desktop).toContain("Bruno Diaz");
+    expect(desktop).toContain("No revisa conflictos en Google");
+    expect(desktop).toContain('aria-checked="true"');
+    expect(desktop).toContain("Por persona");
+  });
+  it("cada reunión va en la columna de quien atiende, y el ocupado solo como horario", () => {
+    expect(columns[0]).toContain("Beto Perez");
+    expect(columns[0]).not.toContain("Elena");
+    expect(columns[1]).toContain("Elena");
+    expect(columns[1]).toContain(">Ocupado<");
+    // De 12:00 a 13:00: 5 horas desde las 07:00 de la rejilla (44 px por hora).
+    expect(columns[1]).toContain("top:220px;height:44px");
+    expect(columns[2]).not.toContain("Ocupado");
   });
 });

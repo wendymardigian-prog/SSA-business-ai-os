@@ -18,7 +18,8 @@ import { rangeFor, shiftAnchor } from "@/lib/scheduling/calendar-range";
 import { capitalize, formatSlotLabel } from "@/lib/scheduling/booker/format";
 import { groupOf } from "@/lib/scheduling/booking-status";
 import { bookingDropToStartUtc, dragCreateRange, durationLabel, isSameStart, resizeDuration, type BookingDrop } from "@/lib/scheduling/booking-drag";
-import { dateInTz, minutesOfDayInTz } from "@/lib/scheduling/time/tz";
+import { dateInTz, minutesOfDayInTz, wallClockToUtc } from "@/lib/scheduling/time/tz";
+import { busyBlocksForDay, TEAM_STATUS_TEXT, type TeamBusyStatus } from "@/lib/scheduling/team-view";
 import { useToast } from "@/components/content/drawer/toast";
 import { useOptionalTaskWorkbench } from "@/components/tasks/task-workbench"; // @plantilla-quitar(tareas)
 import { placeTasksInCalendar } from "@/lib/tasks/calendar"; // @plantilla-quitar(tareas)
@@ -127,6 +128,8 @@ export function BookingsCalendar({
   google,
   showMenu,
   includeCancelled = false,
+  team,
+  teamControls,
 }: {
   items: BookingListItem[];
   /** Nombre de cada anfitrión por su id, para el círculo de la tarjeta. */
@@ -152,7 +155,7 @@ export function BookingsCalendar({
   onDropBooking?: (item: BookingListItem, drop: BookingDrop, startUtc: string) => void;
   ghost?: BookingGhost | null;
   /** se arrastró sobre un hueco vacío de la rejilla (solo escritorio). Abre «Agendar» con ese horario. */
-  onCreateRange?: (date: string, startMinutes: number, durationMinutes: number) => void;
+  onCreateRange?: (date: string, startMinutes: number, durationMinutes: number, hostUserId?: string | null) => void;
   /** se estiró o encogió una reunión desde su borde de abajo. SIEMPRE pide confirmación. */
   onResizeBooking?: (item: BookingListItem, durationMinutes: number) => void;
   /** 00510: los eventos de Google Calendar. */
@@ -161,6 +164,13 @@ export function BookingsCalendar({
   showMenu?: ReactNode;
   /** Se eligió algún estado cancelado en «Qué mostrar»: se dibujan. */
   includeCancelled?: boolean;
+  /**
+   * La vista de equipo (solo en «Día», para quien ve las agendas de todos): una columna por persona con sus reuniones
+   * y su ocupado real de Google (solo horarios). `selfId` es quien mira: su columna lleva sus eventos con detalle.
+   */
+  team?: { selfId: string; people: Array<{ userId: string; name: string; status: TeamBusyStatus; busy: Array<{ startAt: string; endAt: string }> }> };
+  /** El interruptor «Por persona / Todo junto» (solo en «Día» y con permiso). */
+  teamControls?: { on: boolean; onToggle: (on: boolean) => void };
 }) {
   const range = useMemo(() => rangeFor(view, anchor), [view, anchor]);
   const wb = useOptionalTaskWorkbench(); // @plantilla-quitar(tareas)
@@ -187,6 +197,24 @@ export function BookingsCalendar({
   const [dayOpen, setDayOpen] = useState<string | null>(null);
 
   const days = Object.keys(placement.byDate).sort();
+
+  // Las columnas de la rejilla: un día cada una o, en la vista de equipo, una persona cada una (el mismo día).
+  const teamMode = view === "day" && !!team && team.people.length > 0;
+  const gridColumns: Array<{ key: string; date: string; userId: string | null }> = teamMode
+    ? team!.people.map((p) => ({ key: `u:${p.userId}`, date: days[0], userId: p.userId }))
+    : days.map((d) => ({ key: d, date: d, userId: null }));
+  const isSelfColumn = (userId: string | null) => !userId || userId === team?.selfId;
+  const personOf = (userId: string | null) => (userId ? team?.people.find((p) => p.userId === userId) : undefined);
+  // El ocupado real de una persona en la vista de equipo (minutos desde la medianoche de quien mira). En la propia
+  // columna solo si la capa de Google está apagada: prendida, ya se ven los eventos con su detalle.
+  const teamBusyIn = (date: string, userId: string | null) => {
+    const person = personOf(userId);
+    if (!teamMode || !person || person.busy.length === 0) return [];
+    if (userId === team?.selfId && google?.on) return [];
+    return busyBlocksForDay(person.busy, wallClockToUtc(date, "00:00", timezone).toISOString(), wallClockToUtc(date, "24:00", timezone).toISOString());
+  };
+  const bookingsIn = (date: string, userId: string | null) =>
+    (placement.byDate[date] ?? []).filter((it) => !userId || (it.booking as unknown as BookingListItem).hostUserId === userId);
 
   // @plantilla-desde(tareas)
   // Las tareas (solo con el interruptor encendido).
@@ -217,24 +245,34 @@ export function BookingsCalendar({
     // @plantilla-sin(tareas): const layered = !!googlePlacement;
     if (!layered) return out;
     const minMinutes = Math.ceil((MIN_CARD_PX / HOUR_PX) * 60);
-    for (const date of days) {
-      const spans: Span[] = (placement.byDate[date] ?? []).map((it) => ({ id: `b:${(it.booking as unknown as BookingListItem).id}`, start: it.startMinutes, end: it.endMinutes }));
+    // Las mismas columnas que la rejilla (días, o personas en la vista de equipo), armadas acá adentro para el memo.
+    const memoDays = Object.keys(placement.byDate).sort();
+    const memoTeam = view === "day" && team && team.people.length > 0 ? team : null;
+    const cols = memoTeam
+      ? memoTeam.people.map((p) => ({ key: `u:${p.userId}`, date: memoDays[0], userId: p.userId as string | null }))
+      : memoDays.map((d) => ({ key: d, date: d, userId: null as string | null }));
+    const self = (userId: string | null) => !userId || userId === memoTeam?.selfId;
+    for (const { key: colKey, date, userId: colUser } of cols) {
+      const spans: Span[] = (placement.byDate[date] ?? [])
+        .filter((it) => !colUser || (it.booking as unknown as BookingListItem).hostUserId === colUser)
+        .map((it) => ({ id: `b:${(it.booking as unknown as BookingListItem).id}`, start: it.startMinutes, end: it.endMinutes }));
       // @plantilla-desde(tareas)
-      if (taskPlacement) {
+      if (taskPlacement && self(colUser)) {
         spans.push(...(taskPlacement.byDate[date] ?? []).filter((i) => i.timed).map((i) => ({ id: `t:${i.task.id}`, start: i.startMinutes as number, end: i.endMinutes as number })));
       }
       // @plantilla-hasta(tareas)
-      if (googlePlacement) {
+      if (googlePlacement && self(colUser)) {
         for (const g of googlePlacement.byDate[date] ?? []) if (g.timed) spans.push({ id: g.key, start: g.startMinutes, end: g.endMinutes });
       }
-      out.set(date, new Map(layoutOverlaps(spans, minMinutes).map((p) => [p.id, { column: p.column, columns: p.columns }])));
+      out.set(colKey, new Map(layoutOverlaps(spans, minMinutes).map((p) => [p.id, { column: p.column, columns: p.columns }])));
     }
     return out;
   }, [
     taskPlacement, // @plantilla-quitar(tareas)
     googlePlacement,
     placement,
-    days,
+    team,
+    view,
   ]);
 
   // ── Arrastre ──────────────────────────────────────────────────────────────
@@ -258,7 +296,7 @@ export function BookingsCalendar({
   const endDrag = () => setDragging(null);
 
   // ── crear arrastrando y cambiar la duración (punteros, no arrastre nativo) ──────────────────────────────
-  const [selecting, setSelecting] = useState<{ date: string; from: number; to: number } | null>(null);
+  const [selecting, setSelecting] = useState<{ date: string; from: number; to: number; userId: string | null } | null>(null);
   const [resizing, setResizing] = useState<{ id: string; start: number; to: number; original: number } | null>(null);
   // La tarjeta al pasar el mouse: al instante, nunca mientras se arrastra, se crea o se estira.
   const hover = useCalendarHover(!!dragging || !!selecting || !!resizing);
@@ -270,13 +308,13 @@ export function BookingsCalendar({
   const canCreate = isDesktop && !!onCreateRange;
   const canResize = (item: BookingListItem) => bookingDraggable(item) && !!onResizeBooking;
 
-  function selectStart(date: string, e: PointerEvent<HTMLElement>) {
+  function selectStart(date: string, e: PointerEvent<HTMLElement>, userId: string | null = null) {
     if (!canCreate || e.button !== 0 || dragging) return;
     // Solo sobre el fondo de la columna: una tarjeta o su borde tienen lo suyo.
     if ((e.target as HTMLElement).closest("button,[data-cal-handle]")) return;
     const at = minutesAt(e, e.currentTarget);
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    setSelecting({ date, from: at, to: at });
+    setSelecting({ date, from: at, to: at, userId });
   }
   function selectMove(e: PointerEvent<HTMLElement>) {
     if (!selecting) return;
@@ -287,7 +325,7 @@ export function BookingsCalendar({
     if (!selecting || !onCreateRange) return setSelecting(null);
     const range = dragCreateRange(selecting.from, selecting.to);
     setSelecting(null);
-    onCreateRange(selecting.date, range.startMinutes, range.durationMinutes);
+    onCreateRange(selecting.date, range.startMinutes, range.durationMinutes, selecting.userId);
   }
 
   function resizeStart(item: BookingListItem, start: number, end: number, e: PointerEvent<HTMLElement>) {
@@ -530,10 +568,24 @@ export function BookingsCalendar({
       <>
         {/* Escritorio: rejilla por hora */}
         <div className="hidden overflow-x-auto md:block">
-          <div className="grid min-w-[640px]" style={{ gridTemplateColumns: `56px repeat(${days.length}, minmax(0, 1fr))` }}>
+          <div className="grid" style={{ gridTemplateColumns: `56px repeat(${gridColumns.length}, minmax(${teamMode ? 160 : 0}px, 1fr))`, minWidth: teamMode ? 56 + gridColumns.length * 160 : 640 }}>
             <div />
-            {days.map((date) => (
-              <div key={date} className={date === today ? "border-b border-border bg-primary/[0.08] p-1" : "border-b border-border p-1"}>
+            {gridColumns.map(({ key: colKey, date, userId: colUser }) => {
+              const person = personOf(colUser);
+              if (person) {
+                const note = person.status === "ok" ? null : TEAM_STATUS_TEXT[person.status];
+                return (
+                  <div key={colKey} className="border-b border-border p-1.5">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <Avatar initials={initialsOf(person.name)} color={colorOf(person.userId)} size="sm" userId={person.userId} />
+                      <span className="truncate text-xs font-medium">{person.name}</span>
+                    </div>
+                    {note && <p className="mt-0.5 text-center text-[10px] leading-tight text-amber-700 dark:text-amber-300">{note}</p>}
+                  </div>
+                );
+              }
+              return (
+              <div key={colKey} className={date === today ? "border-b border-border bg-primary/[0.08] p-1" : "border-b border-border p-1"}>
                 <button
                   type="button"
                   onClick={() => setDayOpen(date)}
@@ -543,14 +595,15 @@ export function BookingsCalendar({
                   {dayLabel(date)}
                 </button>
               </div>
-            ))}
+              );
+            })}
             {/* @plantilla-desde(tareas) */}
             {taskPlacement && (
               <>
                 <div className="border-b border-border pr-2 pt-1.5 text-right text-[11px] text-muted-foreground">Sin hora</div>
-                {days.map((date) => (
-                  <div key={date} aria-label={`Tareas sin hora, ${dayLabel(date)}`} className="flex min-h-9 flex-col gap-1 border-b border-l border-border p-1" {...stripDrop(date)}>
-                    {(taskPlacement.byDate[date] ?? [])
+                {gridColumns.map(({ key: colKey, date, userId: colUser }) => (
+                  <div key={colKey} aria-label={`Tareas sin hora, ${dayLabel(date)}`} className="flex min-h-9 flex-col gap-1 border-b border-l border-border p-1" {...stripDrop(date)}>
+                    {(isSelfColumn(colUser) ? (taskPlacement.byDate[date] ?? []) : [])
                       .filter((ti) => !ti.timed)
                       .map((ti) => (
                         <TaskCard key={ti.task.id} item={ti} timeFormat={timeFormat} draggable={taskDraggable(ti.task)} onOpen={openTask} onDragStart={startTask} onDragEnd={endDrag} compact />
@@ -563,9 +616,9 @@ export function BookingsCalendar({
             {hasAllDay && googlePlacement && (
               <>
                 <div className="border-b border-border pr-2 pt-1.5 text-right text-[11px] text-muted-foreground">Todo el día</div>
-                {days.map((date) => (
-                  <div key={date} aria-label={`Todo el día, ${dayLabel(date)}`} className="flex min-h-7 flex-col gap-1 border-b border-l border-border p-1">
-                    {(googlePlacement.byDate[date] ?? [])
+                {gridColumns.map(({ key: colKey, date, userId: colUser }) => (
+                  <div key={colKey} aria-label={`Todo el día, ${dayLabel(date)}`} className="flex min-h-7 flex-col gap-1 border-b border-l border-border p-1">
+                    {(isSelfColumn(colUser) ? (googlePlacement.byDate[date] ?? []) : [])
                       .filter((gi) => !gi.timed)
                       .map((gi) => (
                         <GoogleChip key={gi.key} item={gi} timezone={timezone} timeFormat={timeFormat} ownerName={gi.kind === "busy" ? busyOwner(gi.busy.userId) : undefined} onOpen={google!.onOpen} hover={hoverGoogle(gi)} />
@@ -581,13 +634,13 @@ export function BookingsCalendar({
                 </div>
               ))}
             </div>
-            {days.map((date) => (
+            {gridColumns.map(({ key: colKey, date, userId: colUser }) => (
               <div
-                key={date}
+                key={colKey}
                 data-cal-column
                 className={`${canCreate ? "relative cursor-cell select-none border-l border-border" : "relative border-l border-border"}${date === today ? " bg-primary/[0.08]" : ""}`}
                 {...columnDrop(date)}
-                onPointerDown={(e) => selectStart(date, e)}
+                onPointerDown={(e) => selectStart(date, e, colUser)}
                 onPointerMove={selectMove}
                 onPointerUp={selectEnd}
                 onPointerCancel={() => setSelecting(null)}
@@ -595,19 +648,40 @@ export function BookingsCalendar({
                 {Array.from({ length: LAST_HOUR - FIRST_HOUR }, (_, i) => (
                   <div key={i} className="border-t border-border" style={{ height: HOUR_PX }} />
                 ))}
+                {teamBusyIn(date, colUser).map((b) => {
+                  const from = Math.max(b.startMinutes, FIRST_HOUR * 60);
+                  const to = Math.min(b.endMinutes, LAST_HOUR * 60);
+                  if (to <= from) return null;
+                  const person = personOf(colUser);
+                  const startUtc = new Date(wallClockToUtc(date, "00:00", timezone).getTime() + b.startMinutes * 60_000);
+                  const endUtc = new Date(wallClockToUtc(date, "00:00", timezone).getTime() + b.endMinutes * 60_000);
+                  return (
+                    <div
+                      key={`busy:${b.startMinutes}`}
+                      {...hover.bind({
+                        title: person ? `Ocupado · ${person.name}` : "Ocupado",
+                        lines: [`${formatSlotLabel(startUtc, timezone, timeFormat)} a ${formatSlotLabel(endUtc, timezone, timeFormat)}`, "Según su Google Calendar (sin detalle)"],
+                      })}
+                      className="absolute inset-x-0.5 rounded-sm bg-muted/80 bg-[repeating-linear-gradient(135deg,var(--border)_0,var(--border)_2px,transparent_2px,transparent_8px)] ring-1 ring-inset ring-border"
+                      style={{ top: ((from - FIRST_HOUR * 60) / 60) * HOUR_PX, height: ((to - from) / 60) * HOUR_PX }}
+                    >
+                      {(to - from) >= 30 && <span className="block px-1.5 pt-0.5 text-[10px] text-muted-foreground">Ocupado</span>}
+                    </div>
+                  );
+                })}
                 {date === today && nowMinutes >= FIRST_HOUR * 60 && nowMinutes <= LAST_HOUR * 60 && (
                   <div aria-hidden className="pointer-events-none absolute inset-x-0 z-[6] h-0.5 bg-red-500" style={{ top: ((nowMinutes - FIRST_HOUR * 60) / 60) * HOUR_PX }}>
                     <span className="absolute -left-1 -top-[3px] h-2 w-2 rounded-full bg-red-500" />
                   </div>
                 )}
-                {(placement.byDate[date] ?? []).map((it) => {
+                {bookingsIn(date, colUser).map((it) => {
                   const item = it.booking as unknown as BookingListItem;
                   const top = ((it.startMinutes - FIRST_HOUR * 60) / 60) * HOUR_PX;
                   const live = resizing?.id === item.id ? resizeDuration(it.startMinutes, resizing.to) : null;
                   const height = Math.max(26, (((live ?? it.endMinutes - it.startMinutes)) / 60) * HOUR_PX);
                   const canDrag = bookingDraggable(item);
                   // Con tareas, lo que se superpone va lado a lado; sin ellas, ancho completo como siempre.
-                  const lane = columnsByDate.get(date)?.get(`b:${item.id}`);
+                  const lane = columnsByDate.get(colKey)?.get(`b:${item.id}`);
                   // Un espacio liberado se ve punteado; el resto, con el borde de siempre.
                   const cardClass = item.slotReleasedAt
                     ? "overflow-hidden rounded-md border border-dashed border-violet-400 border-l-2 bg-card px-1.5 py-1 text-left text-[11px] opacity-70 hover:border-ring"
@@ -666,7 +740,7 @@ export function BookingsCalendar({
                     card
                   );
                 })}
-                {selecting && selecting.date === date && (() => {
+                {selecting && selecting.date === date && selecting.userId === colUser && (() => {
                   const r = dragCreateRange(selecting.from, selecting.to);
                   return (
                     <div
@@ -680,10 +754,10 @@ export function BookingsCalendar({
                 })()}
                 {/* @plantilla-desde(tareas) */}
                 {taskPlacement &&
-                  (taskPlacement.byDate[date] ?? [])
+                  (isSelfColumn(colUser) ? (taskPlacement.byDate[date] ?? []) : [])
                     .filter((ti) => ti.timed)
                     .map((ti) => {
-                      const lane = columnsByDate.get(date)?.get(`t:${ti.task.id}`);
+                      const lane = columnsByDate.get(colKey)?.get(`t:${ti.task.id}`);
                       const rawTop = (((ti.startMinutes as number) - FIRST_HOUR * 60) / 60) * HOUR_PX;
                       const top = Math.max(0, Math.min(rawTop, (LAST_HOUR - FIRST_HOUR) * HOUR_PX - MIN_CARD_PX));
                       const height = Math.max(MIN_CARD_PX, (ti.durationMinutes / 60) * HOUR_PX);
@@ -705,11 +779,11 @@ export function BookingsCalendar({
                     })}
                 {/* @plantilla-hasta(tareas) */}
                 {googlePlacement &&
-                  (googlePlacement.byDate[date] ?? [])
+                  (isSelfColumn(colUser) ? (googlePlacement.byDate[date] ?? []) : [])
                     .filter((gi) => gi.timed)
                     .map((gi) => {
                       if (!gi.timed) return null;
-                      const lane = columnsByDate.get(date)?.get(gi.key);
+                      const lane = columnsByDate.get(colKey)?.get(gi.key);
                       const ev = gi.kind === "event" ? gi.event : null;
                       const live = ev && resizing?.id === `g:${ev.id}` ? resizeDuration(gi.startMinutes, resizing.to) : null;
                       const rawTop = ((gi.startMinutes - FIRST_HOUR * 60) / 60) * HOUR_PX;
@@ -757,7 +831,7 @@ export function BookingsCalendar({
                         </div>
                       );
                     })}
-                {ghost && ghostDate === date && (
+                {ghost && ghostDate === date && (!colUser || items.find((i) => i.id === ghost.bookingId)?.hostUserId === colUser) && (
                   <div
                     aria-label={`Nuevo horario: ${ghost.label}`}
                     className="pointer-events-none absolute inset-x-1 z-10 rounded-md border-2 border-dashed border-primary-edge bg-primary/10 px-1.5 py-1 text-[11px] font-medium"
@@ -842,6 +916,25 @@ export function BookingsCalendar({
       <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
         <h3 className="text-sm font-semibold">{titleFor(view, range, anchor)}</h3>
         <div className="ml-auto flex items-center gap-2">
+          {teamControls && (
+            <div role="radiogroup" aria-label="Cómo ver el día" className="inline-flex h-8 overflow-hidden rounded-md border border-border text-xs font-medium">
+              {[
+                { on: true, label: "Por persona" },
+                { on: false, label: "Todo junto" },
+              ].map((o) => (
+                <button
+                  key={o.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={teamControls.on === o.on}
+                  onClick={() => teamControls.onToggle(o.on)}
+                  className={teamControls.on === o.on ? "bg-muted px-2.5" : "px-2.5 text-muted-foreground hover:bg-muted"}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          )}
           {showMenu}
           {google?.on && <GoogleRefresh refreshing={google.refreshing} onRefresh={google.onRefresh} note={google.note} />}
           <button type="button" onClick={() => onAnchor(shiftAnchor(view, anchor, -1))} aria-label="Anterior" className="grid h-8 w-8 place-items-center rounded-md border border-border hover:bg-muted">
