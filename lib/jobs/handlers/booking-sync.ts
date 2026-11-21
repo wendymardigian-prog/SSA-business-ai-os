@@ -51,20 +51,8 @@ export interface SyncPayload {
   old_event_id?: string | null;
 }
 
-/** 00510: lo que guarda una reunión pasada desde Google Calendar (`bookings.metadata.google_import`). */
-export interface GoogleImportMeta {
-  calendar_id: string;
-  connection_id: string;
-  event_id: string;
-  ical_uid: string | null;
-  organizer_self: boolean;
-}
-
-export function googleImportOf(metadata: unknown): GoogleImportMeta | null {
-  const m = (metadata as { google_import?: Partial<GoogleImportMeta> } | null)?.google_import;
-  if (!m || typeof m.event_id !== "string" || typeof m.calendar_id !== "string" || typeof m.connection_id !== "string") return null;
-  return { calendar_id: m.calendar_id, connection_id: m.connection_id, event_id: m.event_id, ical_uid: m.ical_uid ?? null, organizer_self: m.organizer_self !== false };
-}
+export { googleImportOf, type GoogleImportMeta } from "@/lib/google-calendar/import-meta";
+import { googleImportOf } from "@/lib/google-calendar/import-meta";
 
 /** Cuando reintentar, o null si ya no hay que reintentar. */
 export function nextSyncRunAt(attempt: number, now: Date = new Date()): Date | null {

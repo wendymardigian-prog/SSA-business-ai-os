@@ -153,6 +153,19 @@ editan, se crean y se borran desde acá, y un evento se puede **pasar al sistema
     pisa la descripción); si el evento lo organiza otra persona, no escribe en Google.
   - **No dispara «Se agendó una reunión»** (`bookingEventMatches`): el invitado ya tiene la invitación de Google. Los
     recordatorios futuros y lo de después (terminó, no asistió) sí.
+- **Interacción del calendario** (21/11/2026):
+  - el panel (reunión o evento de Google) queda AL COSTADO en el escritorio, sin fondo que bloquee
+    (`side-panel.ts`): se sigue pudiendo arrastrar y estirar, y el panel de Google se re-arma con `key` (id + etag);
+  - el borde de abajo muestra una barrita para estirar y siempre confirma;
+  - TODO lo que cambia un evento de Google pasa por un modal (`GoogleConfirmDialog`, con «qué cambia», de
+    `edit-summary.ts`; crear muestra un resumen antes de «Sí, crear»);
+  - el panel de un evento propio tiene los campos editables de entrada;
+  - «¿Qué querés crear?» ofrece Reunión, Tarea (abre la tarea con día, hora y duración, y prende la capa en «Mías»)
+    y Evento de Google (con el logo, `public/brand/google-calendar.svg`, en gris);
+  - «Pasar al sistema» pide área y tipo;
+  - botón «Hoy».
+- La Papelera no borra de Google una reunión importada de un evento que organiza otra persona, y al borrar quita su
+  copia de la Agenda.
 - Sin reconectar nada: el permiso `calendar.events` que ya se pedía alcanza para leer y escribir.
 - Pendiente: el aviso instantáneo de Google (push), responder invitaciones, reglas automáticas de importación.
 

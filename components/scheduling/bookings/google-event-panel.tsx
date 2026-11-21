@@ -411,7 +411,7 @@ export function GoogleEventPanel({
           {!confirm && <ErrorLine error={error} onRefresh={onRefresh} />}
         </div>
 
-        <footer className="flex flex-wrap items-center gap-2 border-t border-border p-4">
+        <footer className="flex flex-wrap items-center gap-2 border-t border-border p-4 pr-20">
           {editable && dirty ? (
             <>
               <button type="button" onClick={() => setConfirm("save")} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
