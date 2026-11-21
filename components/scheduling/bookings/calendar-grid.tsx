@@ -81,6 +81,15 @@ export interface BookingGhost {
   label: string;
 }
 
+/**
+ * El borde para estirar: el cursor de «agrandar o achicar» y una barrita que aparece al pasar el mouse por la tarjeta
+ * (es la hermana anterior: `peer`) o por el borde, y con el foco de teclado.
+ */
+const RESIZE_HANDLE_CLASS =
+  "absolute z-[5] cursor-ns-resize rounded-b-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring peer-hover:[&>span]:opacity-100 hover:[&>span]:opacity-100 focus-visible:[&>span]:opacity-100";
+const RESIZE_GRIP_CLASS =
+  "pointer-events-none absolute left-1/2 top-1/2 h-1 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/50 opacity-0 transition-opacity";
+
 /** Alto minimo de una tarjeta, en pixeles: lo que ocupa aunque dure poco. */
 const MIN_CARD_PX = 26;
 /** Desde este alto la tarjeta tiene lugar para el estado como chip; mas baja, solo un punto de color. */
@@ -542,7 +551,7 @@ export function BookingsCalendar({
                       onDragEnd={canDrag ? endDrag : undefined}
                       {...hoverBooking(item)}
                       style={{ top, height, borderLeftColor: it.eventColor ?? "var(--primary)", ...(lane ? laneStyle(lane) : null) }}
-                      className={lane ? `absolute ${cardClass}` : `absolute inset-x-1 ${cardClass}`}
+                      className={lane ? `peer absolute ${cardClass}` : `peer absolute inset-x-1 ${cardClass}`}
                     >
                       <span className="flex items-start gap-1">
                         <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-[14px]" style={clampStyle(linesThatFit(height, { reservedPx: roomy ? 16 : 0 }))}>
@@ -574,9 +583,11 @@ export function BookingsCalendar({
                         onPointerUp={() => resizeEnd(item)}
                         onPointerCancel={() => setResizing(null)}
                         onKeyDown={(e) => resizeKey(item, it.startMinutes, it.endMinutes, e)}
-                        style={{ top: top + height - 5, height: 8, ...(lane ? laneStyle(lane) : null) }}
-                        className={`absolute z-[5] cursor-ns-resize rounded-b-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${lane ? "" : "inset-x-1"} ${live !== null ? "bg-primary/30" : "hover:bg-primary/20"}`}
-                      />
+                        style={{ top: top + height - 6, height: 10, ...(lane ? laneStyle(lane) : null) }}
+                        className={`${RESIZE_HANDLE_CLASS} ${lane ? "" : "inset-x-1"} ${live !== null ? "bg-primary/30 [&>span]:opacity-100" : "hover:bg-primary/15"}`}
+                      >
+                        <span aria-hidden className={RESIZE_GRIP_CLASS} />
+                      </div>
                     </div>
                   ) : (
                     card
@@ -644,7 +655,7 @@ export function BookingsCalendar({
                           onDragStart={startGoogle}
                           onDragEnd={endDrag}
                           style={position}
-                          className={lane ? "absolute" : "absolute inset-x-1"}
+                          className={lane ? "peer absolute" : "peer absolute inset-x-1"}
                           lines={linesThatFit(height)}
                           hover={hoverGoogle(gi)}
                         />
@@ -665,9 +676,11 @@ export function BookingsCalendar({
                             onPointerUp={() => googleResizeEnd(ev)}
                             onPointerCancel={() => setResizing(null)}
                             onKeyDown={(e) => googleResizeKey(ev, gi.startMinutes, gi.endMinutes, e)}
-                            style={{ top: top + height - 5, height: 8, ...(lane ? laneStyle(lane) : null) }}
-                            className={`absolute z-[5] cursor-ns-resize rounded-b-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${lane ? "" : "inset-x-1"} ${live !== null ? "bg-primary/30" : "hover:bg-primary/20"}`}
-                          />
+                            style={{ top: top + height - 6, height: 10, ...(lane ? laneStyle(lane) : null) }}
+                            className={`${RESIZE_HANDLE_CLASS} ${lane ? "" : "inset-x-1"} ${live !== null ? "bg-primary/30 [&>span]:opacity-100" : "hover:bg-primary/15"}`}
+                          >
+                            <span aria-hidden className={RESIZE_GRIP_CLASS} />
+                          </div>
                         </div>
                       );
                     })}
@@ -749,6 +762,21 @@ export function BookingsCalendar({
           <button type="button" onClick={() => onAnchor(shiftAnchor(view, anchor, -1))} aria-label="Anterior" className="grid h-8 w-8 place-items-center rounded-md border border-border hover:bg-muted">
             <ChevronLeft className="h-4 w-4" />
           </button>
+          {(() => {
+            // «Hoy»: el día, la semana o el mes actual (en la zona de quien mira). Deshabilitado si ya se ve.
+            const today = dateInTz(new Date(), timezone);
+            const showingToday = today >= range.from && today <= range.to;
+            return (
+              <button
+                type="button"
+                onClick={() => onAnchor(today)}
+                disabled={showingToday}
+                className="h-8 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+              >
+                Hoy
+              </button>
+            );
+          })()}
           <button type="button" onClick={() => onAnchor(shiftAnchor(view, anchor, 1))} aria-label="Siguiente" className="grid h-8 w-8 place-items-center rounded-md border border-border hover:bg-muted">
             <ChevronRight className="h-4 w-4" />
           </button>
