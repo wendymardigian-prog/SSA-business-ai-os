@@ -2650,7 +2650,7 @@ La Agenda se usa como Google Calendar: ve los eventos de Google de quien mira, l
 
 ## Migración
 
-`00510_google_calendar_events` (aditiva: la copia, `calendars.show_in_agenda`/`events_synced_at`/`events_sync_lock_until`, `google_busy_blocks`, el lector ampliado y un índice único parcial en `bookings`) va **ANTES** de desplegar el código.
+`00510_google_calendar_events` (aditiva: la copia, `calendars.show_in_agenda`/`events_synced_at`/`events_sync_lock_until`, `google_busy_blocks`, el lector ampliado y un índice único parcial en `bookings`) va **ANTES** de desplegar el código: **aplicada y registrada** el 21/11/2026 UTC (versión `20261121143800`), después de ensayarla dos veces en una transacción que se deshizo sola, con `verify-google-events` y `verify-booking-concurrency` en verde. **La próxima libre es la `00511`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-google-events.mjs   # RLS de la copia, «Ocupado» por rol, nadie escribe con la sesión, candados a la vez

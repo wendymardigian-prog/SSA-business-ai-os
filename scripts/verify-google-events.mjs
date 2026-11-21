@@ -86,11 +86,13 @@ try {
   check(cal.show_in_agenda === false && cal.events_synced_at === null && cal.events_sync_lock_until === null, "un calendario nuevo nace sin «Mostrar en Agenda» (lo prende el código al conectar)", JSON.stringify(cal));
   await svc.from("calendars").update({ show_in_agenda: true }).eq("id", cal.id);
 
-  const base = { workspace_id: ws, user_id: ana.id, connection_id: conn.id, calendar_id: cal.id };
+  // Todas las filas con las mismas columnas: en un insert de varias filas, PostgREST pone null (no el default) en la
+  // columna que una fila no trae.
+  const base = { workspace_id: ws, user_id: ana.id, connection_id: conn.id, calendar_id: cal.id, transparency: "opaque", self_response_status: "accepted", attendees: [] };
   const day = new Date(Date.now() + 2 * 86_400_000);
   const at = (h) => new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), h)).toISOString();
   const rows = [
-    { ...base, external_event_id: "zz-busy", summary: "Dentista privado", start_at: at(14), end_at: at(15), attendees: [{ email: "otro@example.test" }] },
+    { ...base, external_event_id: "zz-busy", summary: "Dentista privado", start_at: at(14), end_at: at(15) },
     { ...base, external_event_id: "zz-free", summary: "Libre", start_at: at(16), end_at: at(17), transparency: "transparent" },
     { ...base, external_event_id: "zz-declined", summary: "Rechazado", start_at: at(18), end_at: at(19), self_response_status: "declined" },
   ];
