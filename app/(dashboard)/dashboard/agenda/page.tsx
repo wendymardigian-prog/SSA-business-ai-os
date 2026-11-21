@@ -37,6 +37,8 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { parseGoogleLayer } from "@/lib/google-calendar/agenda";
 import { parseMeetingsShown } from "@/lib/scheduling/calendar-show";
+import { canSeeTeamAvailability, parseTeamLayout } from "@/lib/scheduling/team-view";
+import { loadTeamBusy, type TeamBusy } from "@/lib/scheduling/data/team-busy";
 import { EMPTY_AGENDA_GOOGLE, loadAgendaGoogle, type AgendaGoogleData } from "@/lib/google-calendar/agenda-load";
 
 export const dynamic = "force-dynamic";
@@ -239,6 +241,22 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const listPromise: Promise<{ items: BookingListItem[]; total: number }> = impossible || (view === "calendar" && !meetingsShown)
     ? Promise.resolve({ items: [], total: 0 })
     : listBookings(ctx.supabase, ctx.workspace.id, listQuery);
+  // La vista de equipo («Día», una columna por persona): solo quien ya ve las agendas de los demás. El ocupado es el
+  // real (los calendarios «Revisar conflictos» de cada uno, freeBusy): solo horarios, nunca títulos.
+  const canSeeTeam = canSeeTeamAvailability({
+    isAdmin: ctx.role === "owner" || ctx.role === "admin",
+    canManageOthers: ctx.can("scheduling.manage_others"),
+    canViewBookings: ctx.can("bookings.view"),
+    bookingsScope: ctx.scope("bookings"),
+  });
+  const teamOn = view === "calendar" && calendarView === "day" && canSeeTeam && parseTeamLayout(query.equipo);
+  const teamUserIds = teamOn
+    ? (() => {
+        const withAgenda = (profileRows ?? []).map((p) => p.user_id);
+        const chosen = filters.hostUserIds.length ? filters.hostUserIds : withAgenda;
+        return [ctx.user.id, ...chosen.filter((id) => id !== ctx.user.id)];
+      })()
+    : [];
   // 00510: los eventos de Google Calendar de quien mira (y el «Ocupado» de los anfitriones del filtro). Solo en el
   // calendario y con agenda propia; con el interruptor apagado no se consulta nada.
   const googleOn = view === "calendar" && !!calendarRange && ctx.can("scheduling.use") && parseGoogleLayer(query.google);
@@ -250,17 +268,29 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
             workspaceId: ctx.workspace.id,
             userId: ctx.user.id,
             range: calendarRange,
-            otherUserIds: filters.hostUserIds,
+            // En la vista de equipo el ocupado de los demás sale de freeBusy (abajo), no de la copia.
+            otherUserIds: teamOn ? [] : filters.hostUserIds,
             defaultDestinationId: profile?.default_destination_calendar_id ?? null,
           })
         : Promise.resolve(EMPTY_AGENDA_GOOGLE)
       : Promise.resolve(undefined);
-  const [{ items, total, bookingMatches, metaNames, lastTouches }, forCounts, meetContext, google] = await Promise.all([
+  const teamPromise: Promise<TeamBusy[] | null> =
+    teamOn && calendarRange
+      ? loadTeamBusy(service, {
+          workspaceId: ctx.workspace.id,
+          userIds: teamUserIds,
+          fromUtc: listQuery.from as string,
+          toUtc: listQuery.to as string,
+        })
+      : Promise.resolve(null);
+
+  const [{ items, total, bookingMatches, metaNames, lastTouches }, forCounts, meetContext, google, teamBusy] = await Promise.all([
     listPromise.then(async (list) => ({ ...list, ...(await loadListLinks(list.items)) })),
     listBookingStatuses(ctx.supabase, ctx.workspace.id, { from: resolvedPeriod.from, to: resolvedPeriod.to, ...base, statuses: fineStatuses }),
     // Quien puede crear un Google Meet al agendar a mano (lo vuelve a comprobar el servidor al agendar).
     loadMeetContext(service, ctx.workspace.id, [...names.keys(), ...events.map((e) => e.owner_user_id)]),
     googlePromise,
+    teamPromise,
   ]);
   const quickCounts = quickFilterCounts(forCounts, now);
   const counts: Record<QuickPick, number> = { all: forCounts.length, ...quickCounts };
@@ -382,6 +412,12 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       tasks={agendaTasks} // @plantilla-quitar(tareas)
       google={google}
       meetingsShown={meetingsShown}
+      canSeeTeam={canSeeTeam}
+      team={
+        teamBusy
+          ? teamBusy.map((t) => ({ ...t, name: t.userId === ctx.user.id ? "Vos" : (names.get(t.userId) ?? "Sin nombre") }))
+          : undefined
+      }
     />
   );
 }

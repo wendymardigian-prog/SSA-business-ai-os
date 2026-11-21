@@ -52,10 +52,8 @@ const done = makeTask({ id: taskId(3), title: "Ya hecha", due_date: "2026-10-16"
 const undated = makeTask({ id: taskId(4), title: "Sin fecha todavia", due_date: null });
 
 describe("el calendario con el interruptor de tareas (R7)", () => {
-  it("el interruptor existe, y apagado NO dibuja ninguna tarea ni la franja ni el panel", () => {
+  it("apagado (el interruptor vive en «Qué mostrar») NO dibuja ninguna tarea ni la franja ni el panel", () => {
     const out = render([timed, untimed], { mode: "off" });
-    expect(out).toContain("Tareas en el calendario");
-    expect(out).toContain('aria-pressed="false"');
     expect(out).not.toContain("Llamar a Ana");
     expect(out).not.toContain("Sin hora");
     expect(out).not.toContain("Tareas sin sin fecha");

@@ -175,6 +175,28 @@ editan, se crean y se borran desde acá, y un evento se puede **pasar al sistema
 - Sin reconectar nada: el permiso `calendar.events` que ya se pedía alcanza para leer y escribir.
 - Pendiente: el aviso instantáneo de Google (push), responder invitaciones, reglas automáticas de importación.
 
+### La vista de equipo en «Día» (21/11/2026, sin migración)
+
+Los eventos de Google con detalle los ve SOLO su dueño. Quien ve las agendas de todos (Owner, Admin,
+`scheduling.manage_others` o `bookings.view` con alcance `all`: `canSeeTeamAvailability`, `lib/scheduling/team-view.ts`,
+la misma regla que `google_busy_blocks`) ve en «Día» una columna por persona:
+
+- arriba, su nombre y su foto; las personas son las del filtro «Anfitrión» o, sin filtro, las que tienen agenda, con
+  quien mira primero;
+- sus reuniones del sistema (`host_user_id`), con las mismas tarjetas, arrastre y estirado;
+- de fondo, su **ocupado real**: `loadTeamBusy` (`lib/scheduling/data/team-busy.ts`) pide `freeBusy` de los calendarios
+  «Revisar conflictos» de cada persona (los mismos que cortan los horarios de la página de reservas), aunque no los
+  muestre en su Agenda. Solo horarios, nunca títulos. Caché de 60 s y 5 s de tope por conexión;
+- en la propia columna, los eventos de Google con detalle y las tareas (el ocupado propio solo con la capa de Google
+  apagada);
+- una persona sin calendarios de conflicto, con la conexión rota o cuyo Google no respondió a tiempo lleva el aviso en
+  su encabezado (`TEAM_STATUS_TEXT`) y su columna no se muestra «libre» de mentira;
+- arrastrar en la columna de otra persona abre «Agendar» con esa persona como anfitrión.
+
+«Por persona / Todo junto» (solo en «Día» y con permiso) vive en `?equipo=0` y se recuerda en el navegador
+(`ssa:agenda:equipo`, en `try/catch`). En la vista de equipo el «Ocupado» de `google_busy_blocks` no se pide. Semana y
+Mes no cambian, y quien solo ve su agenda ve el «Día» de siempre.
+
 ## Reuniones sin evento (00289, 4/11/2026)
 
 Una reunión con título libre se cuelga del evento interno, que no se edita ni tiene pestaña Flujos.
