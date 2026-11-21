@@ -30,6 +30,17 @@ export function useAgendaUrl() {
     apply(next, options?.keepPage);
   }
 
+  /** Varios parámetros en un solo cambio de URL (dos `setParam` seguidos se pisan). */
+  function setParams(patch: Record<string, string | string[] | null>) {
+    const next = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) {
+      next.delete(key);
+      if (Array.isArray(value)) for (const v of value) next.append(key, v);
+      else if (value) next.set(key, value);
+    }
+    apply(next);
+  }
+
   function toggle(key: string, value: string) {
     apply(toggleListParam(new URLSearchParams(searchParams.toString()), key, value));
   }
@@ -59,13 +70,13 @@ export function useAgendaUrl() {
    */
   function clearAll() {
     const next = new URLSearchParams();
-    for (const key of ["vista", "agenda", "cal", "dia", "tareas", "task"]) { // @plantilla-quitar(tareas)
-    // @plantilla-sin(tareas): for (const key of ["vista", "agenda", "cal", "dia"]) {
+    for (const key of ["vista", "agenda", "gcal", "google", "cal", "dia", "tareas", "task"]) { // @plantilla-quitar(tareas)
+    // @plantilla-sin(tareas): for (const key of ["vista", "agenda", "gcal", "google", "cal", "dia"]) {
       const v = searchParams.get(key);
       if (v) next.set(key, v);
     }
     start(() => router.replace(`${pathname}?${next.toString()}`, { scroll: false }));
   }
 
-  return { pending, setParam, toggle, setPeriod, clearAll };
+  return { pending, setParam, setParams, toggle, setPeriod, clearAll };
 }

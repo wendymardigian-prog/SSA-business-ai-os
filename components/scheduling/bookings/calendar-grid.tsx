@@ -10,7 +10,7 @@
  * hace la vista de contenido de la Etapa 2.
  */
 
-import { useMemo, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useMemo, useState, type DragEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { BookingListItem } from "@/lib/scheduling/data/bookings";
 import { placeInCalendar, type CalendarView } from "@/lib/scheduling/calendar-view";
@@ -27,12 +27,15 @@ import { snapMinutes } from "@/lib/calendar/snap";
 import { isDraggableTask, tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(tareas)
 import { layoutOverlaps, type Span } from "@/lib/calendar/layoutOverlaps";
 import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
-import { TaskCard, TaskMonthChip, TasksToggle, UndatedPanel, taskHoverContent } from "./calendar-tasks"; // @plantilla-quitar(tareas)
+import { TaskCard, TaskMonthChip, UndatedPanel, taskDayEntry, taskHoverContent } from "./calendar-tasks"; // @plantilla-quitar(tareas)
 import { Avatar } from "@/components/ui/filter-menu";
 import { colorOf, initialsOf } from "@/lib/shared/people";
 import { StatusChip, statusDotClass } from "./status-chip";
 import { placeGoogleInCalendar, canEditGoogleEvent, type AgendaGoogleBusy, type AgendaGoogleEvent } from "@/lib/google-calendar/agenda";
-import { GoogleCard, GoogleChip, GoogleToggle } from "./google-layer";
+import { GoogleCard, GoogleChip, GoogleRefresh } from "./google-layer";
+import { DayAgendaModal } from "./day-agenda-modal";
+import { daySummary, type DayEntry } from "@/lib/calendar/day-agenda";
+import { statusLabel } from "@/lib/scheduling/booking-status";
 import { useCalendarHover } from "./calendar-hover-card";
 import { bookingHover, busyHover, googleHover } from "@/lib/calendar/hover-content";
 import { clampStyle, linesThatFit } from "@/lib/calendar/card-lines";
@@ -122,6 +125,8 @@ export function BookingsCalendar({
   onCreateRange,
   onResizeBooking,
   google,
+  showMenu,
+  includeCancelled = false,
 }: {
   items: BookingListItem[];
   /** Nombre de cada anfitrión por su id, para el círculo de la tarjeta. */
@@ -152,6 +157,10 @@ export function BookingsCalendar({
   onResizeBooking?: (item: BookingListItem, durationMinutes: number) => void;
   /** 00510: los eventos de Google Calendar. */
   google?: GoogleLayerControls;
+  /** «Qué mostrar»: el desplegable de reuniones (estados), tareas y Google. */
+  showMenu?: ReactNode;
+  /** Se eligió algún estado cancelado en «Qué mostrar»: se dibujan. */
+  includeCancelled?: boolean;
 }) {
   const range = useMemo(() => rangeFor(view, anchor), [view, anchor]);
   const wb = useOptionalTaskWorkbench(); // @plantilla-quitar(tareas)
@@ -166,10 +175,16 @@ export function BookingsCalendar({
         items.map((i) => ({ ...i, status: i.status, start_at: i.startAt, end_at: i.endAt, event_color: i.eventColor })),
         timezone,
         view,
-        { range },
+        { range, includeCancelled },
       ),
-    [items, range, timezone, view],
+    [items, range, timezone, view, includeCancelled],
   );
+
+  // Hoy (en la zona de quien mira) y la hora actual: se actualizan solos cada minuto.
+  const now = useNow();
+  const today = dateInTz(now, timezone);
+  const nowMinutes = minutesOfDayInTz(now, timezone);
+  const [dayOpen, setDayOpen] = useState<string | null>(null);
 
   const days = Object.keys(placement.byDate).sort();
 
@@ -416,14 +431,60 @@ export function BookingsCalendar({
   const openTask = (id: string) => wb?.openTask(id); // @plantilla-quitar(tareas)
   const ownerOf = (id: string | null) => (id ? (wb?.members.find((m) => m.id === id)?.name ?? null) : null); // @plantilla-quitar(tareas)
   const ghostDate = ghost ? dateInTz(ghost.startUtc, timezone) : null;
+  const tasksAvailable = !!taskPlacement; // @plantilla-quitar(tareas)
+  // @plantilla-sin(tareas): const tasksAvailable = false;
+  const openTaskById = (id: string) => openTask(id); // @plantilla-quitar(tareas)
+  // @plantilla-sin(tareas): const openTaskById = (id: string) => void id;
+
+  /** Todo lo de un día para «Ver todo» (reuniones, tareas y eventos de Google), ya armado para la lista. */
+  function dayEntries(date: string): DayEntry[] {
+    const out: DayEntry[] = [];
+    for (const it of placement.byDate[date] ?? []) {
+      const item = it.booking as unknown as BookingListItem;
+      out.push({
+        kind: "booking",
+        id: item.id,
+        title: item.contactName || item.bookerName || "Sin nombre",
+        startMinutes: it.startMinutes,
+        timeLabel: `${formatSlotLabel(item.startAt, timezone, timeFormat)} a ${formatSlotLabel(item.endAt, timezone, timeFormat)}`,
+        sub: [statusLabel(item.status), item.title].filter(Boolean).join(" · "),
+        openable: true,
+      });
+    }
+    for (const gi of googlePlacement?.byDate[date] ?? []) {
+      const ev = gi.kind === "event" ? gi.event : null;
+      const startAt = ev ? ev.startAt : gi.kind === "busy" ? gi.busy.startAt : "";
+      const endAt = ev ? ev.endAt : gi.kind === "busy" ? gi.busy.endAt : "";
+      out.push({
+        kind: gi.kind === "event" ? "google" : "busy",
+        id: ev ? ev.id : gi.key,
+        title: gi.kind === "event" ? gi.event.summary?.trim() || "(Sin título)" : `Ocupado${busyOwner(gi.busy.userId) ? ` · ${busyOwner(gi.busy.userId)}` : ""}`,
+        startMinutes: gi.timed ? gi.startMinutes : null,
+        timeLabel: gi.timed ? `${formatSlotLabel(startAt, timezone, timeFormat)} a ${formatSlotLabel(endAt, timezone, timeFormat)}` : "Todo el día",
+        sub: ev ? `Google Calendar · ${ev.calendarName}` : "Google Calendar",
+        openable: gi.kind === "event",
+      });
+    }
+    // @plantilla-desde(tareas)
+    for (const ti of taskPlacement?.byDate[date] ?? []) out.push(taskDayEntry(ti, timeFormat));
+    // @plantilla-hasta(tareas)
+    return out;
+  }
   const ghostMinutes = ghost ? minutesOfDayInTz(ghost.startUtc, timezone) : 0;
 
   const content = (
     view === "month" ? (
       <div className="grid grid-cols-7 gap-px bg-border p-px">
         {days.map((date) => (
-          <div key={date} className="min-h-24 bg-card p-1.5" {...cellDrop(date)}>
-            <p className="mb-1 text-xs text-muted-foreground">{dayLabel(date)}</p>
+          <div key={date} className={date === today ? "min-h-24 bg-card bg-[linear-gradient(color-mix(in_srgb,var(--primary)_8%,transparent),color-mix(in_srgb,var(--primary)_8%,transparent))] p-1.5" : "min-h-24 bg-card p-1.5"} {...cellDrop(date)}>
+            <button
+              type="button"
+              onClick={() => setDayOpen(date)}
+              {...hover.bind({ title: "Ver todo", lines: [daySummary(dayEntries(date))] })}
+              className={date === today ? "mb-1 rounded px-1 text-xs font-semibold text-primary-ink hover:bg-muted" : "mb-1 rounded px-1 text-xs text-muted-foreground hover:bg-muted"}
+            >
+              {dayLabel(date)}
+            </button>
             <div className="flex flex-col gap-1">
               {(placement.byDate[date] ?? []).map((it) => {
                 const item = it.booking as unknown as BookingListItem;
@@ -472,8 +533,15 @@ export function BookingsCalendar({
           <div className="grid min-w-[640px]" style={{ gridTemplateColumns: `56px repeat(${days.length}, minmax(0, 1fr))` }}>
             <div />
             {days.map((date) => (
-              <div key={date} className="border-b border-border p-2 text-center text-xs font-medium">
-                {dayLabel(date)}
+              <div key={date} className={date === today ? "border-b border-border bg-primary/[0.08] p-1" : "border-b border-border p-1"}>
+                <button
+                  type="button"
+                  onClick={() => setDayOpen(date)}
+                  {...hover.bind({ title: "Ver todo", lines: [daySummary(dayEntries(date))] })}
+                  className={date === today ? "w-full rounded-md p-1 text-center text-xs font-semibold text-primary-ink hover:bg-muted" : "w-full rounded-md p-1 text-center text-xs font-medium hover:bg-muted"}
+                >
+                  {dayLabel(date)}
+                </button>
               </div>
             ))}
             {/* @plantilla-desde(tareas) */}
@@ -517,7 +585,7 @@ export function BookingsCalendar({
               <div
                 key={date}
                 data-cal-column
-                className={canCreate ? "relative cursor-cell select-none border-l border-border" : "relative border-l border-border"}
+                className={`${canCreate ? "relative cursor-cell select-none border-l border-border" : "relative border-l border-border"}${date === today ? " bg-primary/[0.08]" : ""}`}
                 {...columnDrop(date)}
                 onPointerDown={(e) => selectStart(date, e)}
                 onPointerMove={selectMove}
@@ -527,6 +595,11 @@ export function BookingsCalendar({
                 {Array.from({ length: LAST_HOUR - FIRST_HOUR }, (_, i) => (
                   <div key={i} className="border-t border-border" style={{ height: HOUR_PX }} />
                 ))}
+                {date === today && nowMinutes >= FIRST_HOUR * 60 && nowMinutes <= LAST_HOUR * 60 && (
+                  <div aria-hidden className="pointer-events-none absolute inset-x-0 z-[6] h-0.5 bg-red-500" style={{ top: ((nowMinutes - FIRST_HOUR * 60) / 60) * HOUR_PX }}>
+                    <span className="absolute -left-1 -top-[3px] h-2 w-2 rounded-full bg-red-500" />
+                  </div>
+                )}
                 {(placement.byDate[date] ?? []).map((it) => {
                   const item = it.booking as unknown as BookingListItem;
                   const top = ((it.startMinutes - FIRST_HOUR * 60) / 60) * HOUR_PX;
@@ -701,8 +774,8 @@ export function BookingsCalendar({
         {/* Celular: una agenda por día */}
         <ul className="divide-y divide-border md:hidden">
           {days.map((date) => (
-            <li key={date} className="p-3">
-              <p className="mb-1.5 text-xs font-medium text-muted-foreground">{dayLabel(date)}</p>
+            <li key={date} className={date === today ? "bg-primary/[0.08] p-3" : "p-3"}>
+              <p className={date === today ? "mb-1.5 text-xs font-semibold text-primary-ink" : "mb-1.5 text-xs font-medium text-muted-foreground"}>{dayLabel(date)}{date === today ? " · Hoy" : ""}</p>
               {/* @plantilla-desde(tareas) */}
               {(placement.byDate[date] ?? []).length === 0 && !(taskPlacement?.byDate[date] ?? []).length && !(googlePlacement?.byDate[date] ?? []).length && <p className="text-xs text-muted-foreground">Sin agendas</p>}
               {/* @plantilla-hasta(tareas) */}
@@ -751,14 +824,26 @@ export function BookingsCalendar({
   return (
     <div className="rounded-xl border border-border">
       {hover.card}
+      {dayOpen && (
+        <DayAgendaModal
+          title={capitalize(new Intl.DateTimeFormat("es", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${dayOpen}T12:00:00Z`)))}
+          entries={dayEntries(dayOpen)}
+          tasksAvailable={tasksAvailable}
+          googleAvailable={googleOn}
+          onClose={() => setDayOpen(null)}
+          onPick={(entry) => {
+            setDayOpen(null);
+            if (entry.kind === "booking") onOpen(entry.id);
+            else if (entry.kind === "google") google?.onOpen(entry.id);
+            else if (entry.kind === "task") openTaskById(entry.id);
+          }}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-        <h3 className="text-sm font-semibold">{titleFor(view, range)}</h3>
-        <span className="text-xs text-muted-foreground">Las canceladas no se muestran</span>
+        <h3 className="text-sm font-semibold">{titleFor(view, range, anchor)}</h3>
         <div className="ml-auto flex items-center gap-2">
-          {/* @plantilla-desde(tareas) */}
-          {taskControls && <TasksToggle mode={taskControls.mode} onMode={taskControls.onMode} />}
-          {/* @plantilla-hasta(tareas) */}
-          {google && <GoogleToggle on={google.on} onToggle={google.onToggle} refreshing={google.refreshing} onRefresh={google.onRefresh} note={google.note} />}
+          {showMenu}
+          {google?.on && <GoogleRefresh refreshing={google.refreshing} onRefresh={google.onRefresh} note={google.note} />}
           <button type="button" onClick={() => onAnchor(shiftAnchor(view, anchor, -1))} aria-label="Anterior" className="grid h-8 w-8 place-items-center rounded-md border border-border hover:bg-muted">
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -816,7 +901,7 @@ function laneStyle(lane: { column: number; columns: number }): React.CSSProperti
   return { left: `calc(${(lane.column / lane.columns) * 100}% + 4px)`, width: `calc(${100 / lane.columns}% - 8px)` };
 }
 
-function titleFor(view: CalendarView, range: { from: string; to: string }): string {
+function titleFor(view: CalendarView, range: { from: string; to: string }, anchor?: string): string {
   if (view === "day") return capitalize(new Intl.DateTimeFormat("es", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${range.from}T12:00:00Z`)));
   if (view === "week") {
     const from = new Date(`${range.from}T12:00:00Z`);
@@ -824,5 +909,16 @@ function titleFor(view: CalendarView, range: { from: string; to: string }): stri
     const fmt = new Intl.DateTimeFormat("es", { day: "numeric", month: "long", timeZone: "UTC" });
     return `Semana del ${fmt.format(from)} al ${fmt.format(to)}`;
   }
-  return capitalize(new Intl.DateTimeFormat("es", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${range.from}T12:00:00Z`)));
+  // El mes que se mira es el del ancla: la grilla arranca el lunes de la primera semana (que puede ser del mes anterior).
+  return capitalize(new Intl.DateTimeFormat("es", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${anchor ?? range.from}T12:00:00Z`)));
+}
+
+/** La hora actual, actualizada cada minuto (para la línea roja y el día de hoy). */
+function useNow(): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
 }

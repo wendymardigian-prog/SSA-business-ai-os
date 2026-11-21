@@ -10,6 +10,22 @@ import { PRIORITY_LABELS, STATUS_LABELS, type TaskRow } from "@/lib/tasks/types"
 import { cn } from "@/lib/utils";
 import { clampStyle } from "@/lib/calendar/card-lines";
 import type { HoverContent } from "@/lib/calendar/hover-content";
+import type { DayEntry } from "@/lib/calendar/day-agenda";
+
+/** Una tarea en la lista de «Ver todo» del día. */
+export function taskDayEntry(item: CalendarTaskItem, timeFormat: TimeFormat): DayEntry {
+  const { task } = item;
+  const timed = item.timed && item.startMinutes !== null;
+  return {
+    kind: "task",
+    id: task.id,
+    title: task.title,
+    startMinutes: timed ? item.startMinutes : null,
+    timeLabel: timed ? formatTime(minutesToHHMM(item.startMinutes as number), timeFormat) : "Sin hora",
+    sub: `Tarea · ${STATUS_LABELS[task.status]}`,
+    openable: true,
+  };
+}
 
 /** Lo que dice la tarjeta al pasar el mouse por una tarea del calendario. */
 export function taskHoverContent(item: CalendarTaskItem, ownerName: string | null, timeFormat: TimeFormat): HoverContent {

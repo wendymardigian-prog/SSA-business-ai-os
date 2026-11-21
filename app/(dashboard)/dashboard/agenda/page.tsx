@@ -36,6 +36,7 @@ import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { parseGoogleLayer } from "@/lib/google-calendar/agenda";
+import { parseMeetingsShown } from "@/lib/scheduling/calendar-show";
 import { EMPTY_AGENDA_GOOGLE, loadAgendaGoogle, type AgendaGoogleData } from "@/lib/google-calendar/agenda-load";
 
 export const dynamic = "force-dynamic";
@@ -233,7 +234,9 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   // Segunda tanda, en paralelo: la lista (y, apenas llega, su vínculo con Meta y su último click), los contadores de
   // las pastillas y quien puede crear un Meet. Los contadores miran todo el período con los demás filtros, no la
   // pastilla elegida ni la página; traen solo estado y horario.
-  const listPromise: Promise<{ items: BookingListItem[]; total: number }> = impossible
+  // «Qué mostrar» del calendario: `reuniones=0` oculta las reuniones (no se consultan). Fuera del calendario no aplica.
+  const meetingsShown = parseMeetingsShown(query.reuniones);
+  const listPromise: Promise<{ items: BookingListItem[]; total: number }> = impossible || (view === "calendar" && !meetingsShown)
     ? Promise.resolve({ items: [], total: 0 })
     : listBookings(ctx.supabase, ctx.workspace.id, listQuery);
   // 00510: los eventos de Google Calendar de quien mira (y el «Ocupado» de los anfitriones del filtro). Solo en el
@@ -378,6 +381,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       needsProfile={ctx.can("scheduling.use") && !profile}
       tasks={agendaTasks} // @plantilla-quitar(tareas)
       google={google}
+      meetingsShown={meetingsShown}
     />
   );
 }

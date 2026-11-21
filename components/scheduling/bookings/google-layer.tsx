@@ -17,6 +17,25 @@ function GoogleDot({ color }: { color: string | null }) {
   return <span aria-hidden className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: color ?? "#4285f4" }} />;
 }
 
+/** Actualizar los eventos de Google (al lado de «Qué mostrar», con la capa prendida). */
+export function GoogleRefresh({ refreshing, onRefresh, note }: { refreshing: boolean; onRefresh: () => void; note: string | null }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={refreshing}
+        aria-label="Actualizar los eventos de Google"
+        title="Actualizar los eventos de Google"
+        className="grid h-8 w-8 place-items-center rounded-md border border-border hover:bg-muted disabled:opacity-50"
+      >
+        <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
+      </button>
+      {note && <span className="hidden text-[11px] text-muted-foreground lg:inline">{note}</span>}
+    </span>
+  );
+}
+
 export function GoogleToggle({
   on,
   onToggle,

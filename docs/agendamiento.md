@@ -163,7 +163,13 @@ editan, se crean y se borran desde acá, y un evento se puede **pasar al sistema
   - «¿Qué querés crear?» ofrece Reunión, Tarea (abre la tarea con día, hora y duración, y prende la capa en «Mías»)
     y Evento de Google (con el logo, `public/brand/google-calendar.svg`, en gris);
   - «Pasar al sistema» pide área y tipo;
-  - botón «Hoy».
+  - botón «Hoy»;
+  - hoy marcado (encabezado y columna con el color del sistema al 8 %) y una línea roja en la hora actual;
+  - «Ver todo» al pasar el mouse o hacer clic en el encabezado de un día (`day-agenda-modal.tsx`, reglas en
+    `lib/calendar/day-agenda.ts`), con «Mostrar tareas» y «Mostrar eventos de Google»; tocar un ítem abre su panel;
+  - un solo desplegable «Qué mostrar» (`calendar-show-menu.tsx`): los estados de las reuniones son el MISMO filtro
+    `?estado=` del menú Filtros (sin elegir, todo menos las canceladas; `lib/scheduling/calendar-show.ts`),
+    `?reuniones=0` oculta las reuniones del calendario, y ahí mismo van Tareas (mías o todas) y Eventos de Google.
 - La Papelera no borra de Google una reunión importada de un evento que organiza otra persona, y al borrar quita su
   copia de la Agenda.
 - Sin reconectar nada: el permiso `calendar.events` que ya se pedía alcanza para leer y escribir.

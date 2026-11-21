@@ -61,6 +61,8 @@ import { DEFAULT_CONFIG_SECTION } from "@/lib/scheduling/config-sections";
 import { durationMinutesOf, googleLayerParam, type AgendaGoogleEvent } from "@/lib/google-calendar/agenda";
 import type { AgendaGoogleData } from "@/lib/google-calendar/agenda-load";
 import { refreshMyGoogleEvents } from "@/lib/actions/scheduling/google-events";
+import { CalendarShowMenu } from "./calendar-show-menu";
+import { showsCancelled, statusParams } from "@/lib/scheduling/calendar-show";
 import { CreateChoiceDialog, GoogleCreateDialog, GoogleEventPanel, GoogleImportDialog, GoogleMoveDialog } from "./google-event-panel";
 import { groupOf } from "@/lib/scheduling/booking-status";
 
@@ -135,6 +137,7 @@ export function BookingsScreen({
   needsProfile,
   tasks,
   google,
+  meetingsShown = true,
 }: {
   items: BookingListItem[];
   total: number;
@@ -197,10 +200,12 @@ export function BookingsScreen({
   tasks?: AgendaTasksProps;
   /** 00510: los eventos de Google Calendar de quien mira (solo en el calendario y con `scheduling.use`). */
   google?: AgendaGoogleData;
+  /** «Qué mostrar»: `?reuniones=0` oculta las reuniones del calendario. */
+  meetingsShown?: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { pending: navigating, setParam, setPeriod, clearAll } = useAgendaUrl();
+  const { pending: navigating, setParam, setParams, setPeriod, clearAll } = useAgendaUrl();
   const [manualOpen, setManualOpen] = useState(false);
   // el horario arrastrado en el calendario (sin esto, «Agendar» arranca en la próxima media hora).
   const [manualSlot, setManualSlot] = useState<{ date: string; time: string; durationMinutes: number } | null>(null);
@@ -584,6 +589,17 @@ export function BookingsScreen({
                     : undefined
                 }
                 ghost={reschedule.ghost}
+                includeCancelled={showsCancelled(filters.statuses as BookingStatus[])}
+                showMenu={
+                  <CalendarShowMenu
+                    statuses={filters.statuses as BookingStatus[]}
+                    meetingsShown={meetingsShown}
+                    onStatuses={(next) => setParams(statusParams(next))}
+                    onMeetings={(on) => setParams(on ? { reuniones: null } : { reuniones: "0", estado: null })}
+                    tasks={tasks ? { mode: tasks.mode, onMode: (m) => setParam("tareas", tasksModeParam(m)) } : undefined} // @plantilla-quitar(tareas)
+                    google={google ? { on: google.on, onToggle: (on) => setParam("google", googleLayerParam(on)) } : undefined}
+                  />
+                }
                 google={
                   google
                     ? {
