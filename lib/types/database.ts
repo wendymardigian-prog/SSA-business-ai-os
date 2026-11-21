@@ -6910,6 +6910,12 @@ export interface Database {
           push_channel_id: string | null;
           push_channel_expires_at: string | null;
           sync_token: string | null;
+          /** 00510: «Mostrar en Agenda». */
+          show_in_agenda: boolean;
+          /** 00510: última lectura de la copia de eventos; null = falta la primera (60 días atrás). */
+          events_synced_at: string | null;
+          /** 00510: candado de la lectura. */
+          events_sync_lock_until: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -6941,8 +6947,86 @@ export interface Database {
           push_channel_id?: string | null;
           push_channel_expires_at?: string | null;
           sync_token?: string | null;
+          show_in_agenda?: boolean;
+          events_synced_at?: string | null;
+          events_sync_lock_until?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
+      };
+      /** 00510: copia de los eventos de Google Calendar que se ven en la Agenda. Escribe solo el servidor. */
+      google_calendar_events: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          user_id: string;
+          connection_id: string;
+          calendar_id: string;
+          external_event_id: string;
+          recurring_event_id: string | null;
+          ical_uid: string | null;
+          etag: string | null;
+          status: "confirmed" | "tentative" | "cancelled";
+          summary: string | null;
+          description: string | null;
+          location: string | null;
+          html_link: string | null;
+          meet_url: string | null;
+          organizer_email: string | null;
+          organizer_self: boolean;
+          attendees: Json;
+          self_response_status: string | null;
+          guests_can_modify: boolean;
+          start_at: string;
+          end_at: string;
+          all_day: boolean;
+          start_date: string | null;
+          end_date: string | null;
+          time_zone: string | null;
+          transparency: "opaque" | "transparent";
+          google_event_type: string;
+          booking_id: string | null;
+          importing_until: string | null;
+          google_updated_at: string | null;
+          synced_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          user_id: string;
+          connection_id: string;
+          calendar_id: string;
+          external_event_id: string;
+          recurring_event_id?: string | null;
+          ical_uid?: string | null;
+          etag?: string | null;
+          status?: "confirmed" | "tentative" | "cancelled";
+          summary?: string | null;
+          description?: string | null;
+          location?: string | null;
+          html_link?: string | null;
+          meet_url?: string | null;
+          organizer_email?: string | null;
+          organizer_self?: boolean;
+          attendees?: Json;
+          self_response_status?: string | null;
+          guests_can_modify?: boolean;
+          start_at: string;
+          end_at: string;
+          all_day?: boolean;
+          start_date?: string | null;
+          end_date?: string | null;
+          time_zone?: string | null;
+          transparency?: "opaque" | "transparent";
+          google_event_type?: string;
+          booking_id?: string | null;
+          importing_until?: string | null;
+          google_updated_at?: string | null;
+          synced_at?: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["google_calendar_events"]["Insert"]>;
         Relationships: [];
       };
       availability_schedules: {
@@ -8470,6 +8554,11 @@ export interface Database {
       release_scheduled_send_queue_items: {
         Args: { p_now: string };
         Returns: number;
+      };
+      /** 00510: el «Ocupado» (sin título ni invitados) de los eventos de Google de otras personas. */
+      google_busy_blocks: {
+        Args: { p_workspace_id: string; p_user_ids: string[]; p_from: string; p_to: string };
+        Returns: Array<{ user_id: string; start_at: string; end_at: string; all_day: boolean; start_date: string | null; end_date: string | null }>;
       };
       expire_send_queue_items: {
         Args: { p_now: string };

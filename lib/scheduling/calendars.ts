@@ -54,13 +54,15 @@ export interface CalendarUpsert {
   is_active: true;
   /** Solo en las filas nuevas: el default de la primera vez. */
   check_conflicts?: boolean;
+  /** 00510: «Mostrar en Agenda». Como `check_conflicts`, nace prendido solo en el principal. */
+  show_in_agenda?: boolean;
 }
 
 export interface CalendarSyncPlan {
   /** Filas nuevas, con su default de conflictos. */
   inserts: CalendarUpsert[];
   /** Filas que ya estaban: se refrescan nombre, color, rol y primario; el switch no se toca. */
-  updates: Array<{ id: string; patch: Omit<CalendarUpsert, "check_conflicts"> }>;
+  updates: Array<{ id: string; patch: Omit<CalendarUpsert, "check_conflicts" | "show_in_agenda"> }>;
   /** Ids de filas que ya no vienen: quedan inactivas. */
   deactivate: string[];
 }
@@ -96,7 +98,7 @@ export function planCalendarSync(existing: CalendarRow[], fromGoogle: GoogleCale
     if (current) {
       plan.updates.push({ id: current.id, patch: base });
     } else {
-      plan.inserts.push({ ...base, check_conflicts: item.primary });
+      plan.inserts.push({ ...base, check_conflicts: item.primary, show_in_agenda: item.primary });
     }
   }
 

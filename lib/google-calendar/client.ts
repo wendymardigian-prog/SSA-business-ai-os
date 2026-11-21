@@ -87,7 +87,7 @@ async function call(
   connectionId: string,
   method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string,
-  options: { query?: Record<string, string>; body?: unknown; fallback: string },
+  options: { query?: Record<string, string>; body?: unknown; fallback: string; headers?: Record<string, string> },
 ): Promise<{ status: number; json: unknown }> {
   const token = await getAccessToken(deps, connectionId);
   const url = new URL(`${BASE}${path}`);
@@ -101,6 +101,7 @@ async function call(
       headers: {
         Authorization: `Bearer ${token}`,
         ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers ?? {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     });
@@ -274,13 +275,54 @@ export async function updateEvent(
   return { meetUrl: ev.hangoutLink ?? null };
 }
 
-/** Un evento tal como lo devuelve events.list, solo lo que se usa al leer los cambios. */
+export type GoogleResponseStatus = "needsAction" | "declined" | "tentative" | "accepted";
+
+export interface GoogleEventAttendee {
+  email: string;
+  displayName: string | null;
+  responseStatus: GoogleResponseStatus;
+  self: boolean;
+  organizer: boolean;
+  optional: boolean;
+  /** Una sala o un recurso, no una persona. */
+  resource: boolean;
+}
+
+/**
+ * Un evento tal como lo devuelve events.list / events.get. `id`, `status`, `startUtc` y `endUtc` son lo que usa la
+ * ida y vuelta de las reuniones (00430); el resto lo usa la copia de la Agenda (00510).
+ */
 export interface GoogleEventChange {
   id: string;
   status: "confirmed" | "tentative" | "cancelled";
   /** null = evento de dia entero (o borrado, que viene sin hora). */
   startUtc: string | null;
   endUtc: string | null;
+  /** De todo el día: la fecha civil (fin exclusivo, como en Google). */
+  allDay: boolean;
+  startDate: string | null;
+  endDate: string | null;
+  timeZone: string | null;
+  summary: string | null;
+  description: string | null;
+  location: string | null;
+  htmlLink: string | null;
+  meetUrl: string | null;
+  etag: string | null;
+  iCalUID: string | null;
+  recurringEventId: string | null;
+  /** Solo en el evento madre de una serie. */
+  recurrence: string[] | null;
+  organizerEmail: string | null;
+  organizerSelf: boolean;
+  attendees: GoogleEventAttendee[];
+  transparency: "opaque" | "transparent";
+  /** default | outOfOffice | focusTime | workingLocation | fromGmail | birthday… */
+  eventType: string;
+  guestsCanModify: boolean;
+  /** El uid de la reunión de la plataforma que creó el evento (extendedProperties.private.bookingUid). */
+  bookingUid: string | null;
+  updated: string | null;
 }
 
 export interface ListEventsResult {
@@ -296,6 +338,81 @@ function toUtc(v: { dateTime?: string } | undefined): string | null {
   return Number.isNaN(ms) ? null : new Date(ms).toISOString();
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const RESPONSES = new Set(["needsAction", "declined", "tentative", "accepted"]);
+
+interface RawGoogleEvent {
+  id?: string;
+  status?: string;
+  etag?: string;
+  iCalUID?: string;
+  recurringEventId?: string;
+  recurrence?: string[];
+  summary?: string;
+  description?: string;
+  location?: string;
+  htmlLink?: string;
+  hangoutLink?: string;
+  conferenceData?: { entryPoints?: Array<{ entryPointType?: string; uri?: string }> };
+  start?: { dateTime?: string; date?: string; timeZone?: string };
+  end?: { dateTime?: string; date?: string; timeZone?: string };
+  organizer?: { email?: string; self?: boolean };
+  attendees?: Array<{ email?: string; displayName?: string; responseStatus?: string; self?: boolean; organizer?: boolean; optional?: boolean; resource?: boolean }>;
+  transparency?: string;
+  eventType?: string;
+  guestsCanModify?: boolean;
+  extendedProperties?: { private?: Record<string, string> };
+  updated?: string;
+}
+
+/** Un evento de la API de Google a nuestra forma. null si no trae id. Pura (expuesta para los tests). */
+export function parseGoogleEvent(raw: unknown): GoogleEventChange | null {
+  const it = (raw ?? {}) as RawGoogleEvent;
+  if (!it.id) return null;
+  const status = it.status === "cancelled" || it.status === "tentative" ? it.status : "confirmed";
+  const startDate = it.start?.date && DATE_RE.test(it.start.date) ? it.start.date : null;
+  const endDate = it.end?.date && DATE_RE.test(it.end.date) ? it.end.date : null;
+  const attendees: GoogleEventAttendee[] = (it.attendees ?? [])
+    .filter((a) => typeof a.email === "string" && a.email.length > 0)
+    .map((a) => ({
+      email: a.email as string,
+      displayName: a.displayName ?? null,
+      responseStatus: (RESPONSES.has(a.responseStatus ?? "") ? a.responseStatus : "needsAction") as GoogleResponseStatus,
+      self: Boolean(a.self),
+      organizer: Boolean(a.organizer),
+      optional: Boolean(a.optional),
+      resource: Boolean(a.resource),
+    }));
+  const meet = it.hangoutLink ?? it.conferenceData?.entryPoints?.find((e) => e.entryPointType === "video")?.uri ?? null;
+  return {
+    id: it.id,
+    status,
+    startUtc: toUtc(it.start),
+    endUtc: toUtc(it.end),
+    allDay: Boolean(startDate) && !it.start?.dateTime,
+    startDate,
+    endDate,
+    timeZone: it.start?.timeZone ?? null,
+    summary: it.summary ?? null,
+    description: it.description ?? null,
+    location: it.location ?? null,
+    htmlLink: it.htmlLink ?? null,
+    meetUrl: meet,
+    etag: it.etag ?? null,
+    iCalUID: it.iCalUID ?? null,
+    recurringEventId: it.recurringEventId ?? null,
+    recurrence: Array.isArray(it.recurrence) ? it.recurrence : null,
+    organizerEmail: it.organizer?.email ?? null,
+    organizerSelf: Boolean(it.organizer?.self),
+    attendees,
+    transparency: it.transparency === "transparent" ? "transparent" : "opaque",
+    eventType: it.eventType ?? "default",
+    guestsCanModify: Boolean(it.guestsCanModify),
+    bookingUid: it.extendedProperties?.private?.bookingUid ?? null,
+    updated: it.updated ?? null,
+  };
+}
+
 /**
  * Los cambios del calendario desde la ultima lectura, con events.list:
  *   - con `syncToken`: solo lo que cambio (incluye los borrados con status "cancelled");
@@ -307,29 +424,24 @@ export async function listEvents(
   deps: GoogleDeps,
   connectionId: string,
   calendarId: string,
-  options: { syncToken: string | null; fullSyncFrom: string; maxPages?: number },
+  options: { syncToken: string | null; fullSyncFrom: string; maxPages?: number; fullSyncMaxPages?: number },
 ): Promise<ListEventsResult> {
   const path = `/calendars/${encodeURIComponent(calendarId)}/events`;
   const read = async (syncToken: string | null): Promise<Omit<ListEventsResult, "fullSync">> => {
     const items: GoogleEventChange[] = [];
     let pageToken: string | null = null;
     let nextSyncToken: string | null = null;
-    const maxPages = options.maxPages ?? 20;
+    const maxPages = syncToken ? (options.maxPages ?? 20) : (options.fullSyncMaxPages ?? options.maxPages ?? 20);
     for (let page = 0; page < maxPages; page++) {
       const query: Record<string, string> = { maxResults: "250", showDeleted: "true", singleEvents: "true" };
       if (syncToken) query.syncToken = syncToken;
       else query.timeMin = options.fullSyncFrom;
       if (pageToken) query.pageToken = pageToken;
       const { json } = await call(deps, connectionId, "GET", path, { query, fallback: "No pude leer los cambios de Google Calendar" });
-      const body = json as {
-        items?: Array<{ id?: string; status?: string; start?: { dateTime?: string }; end?: { dateTime?: string } }>;
-        nextPageToken?: string;
-        nextSyncToken?: string;
-      } | null;
-      for (const it of body?.items ?? []) {
-        if (!it.id) continue;
-        const status = it.status === "cancelled" || it.status === "tentative" ? it.status : "confirmed";
-        items.push({ id: it.id, status, startUtc: toUtc(it.start), endUtc: toUtc(it.end) });
+      const body = json as { items?: unknown[]; nextPageToken?: string; nextSyncToken?: string } | null;
+      for (const raw of body?.items ?? []) {
+        const ev = parseGoogleEvent(raw);
+        if (ev) items.push(ev);
       }
       nextSyncToken = body?.nextSyncToken ?? nextSyncToken;
       pageToken = body?.nextPageToken ?? null;
@@ -357,6 +469,8 @@ export async function deleteEvent(
   eventId: string,
   /** «all» avisa a los invitados (cancelar). Eliminar una agenda (Papelera) pasa «none»: no se le avisa a nadie. */
   sendUpdates: "all" | "none" = "all",
+  /** 00510: con el etag que se vio, Google responde 412 si el evento cambió después (no se borra a ciegas). */
+  options: { ifMatch?: string | null } = {},
 ): Promise<void> {
   try {
     await call(
@@ -364,10 +478,117 @@ export async function deleteEvent(
       connectionId,
       "DELETE",
       `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
-      { query: { sendUpdates }, fallback: "No pude borrar el evento en Google Calendar" },
+      {
+        query: { sendUpdates },
+        fallback: "No pude borrar el evento en Google Calendar",
+        ...(options.ifMatch ? { headers: { "If-Match": options.ifMatch } } : {}),
+      },
     );
   } catch (err) {
     if (err instanceof GoogleCalendarError && err.kind === "not_found") return;
     throw err;
   }
+}
+
+// ---------------------------------------------------------------------------
+// 00510: usar la Agenda como Google Calendar (leer uno, crear, editar con If-Match).
+// ---------------------------------------------------------------------------
+
+export type GoogleEventTime = { dateTime: string; timeZone?: string } | { date: string };
+
+/** Lo que se puede escribir de un evento suelto de Google (no de una reunión de la plataforma). */
+export interface GoogleEventWrite {
+  summary?: string;
+  description?: string;
+  location?: string;
+  start?: GoogleEventTime;
+  end?: GoogleEventTime;
+  attendees?: Array<{ email: string; displayName?: string | null; responseStatus?: GoogleResponseStatus; optional?: boolean }>;
+  transparency?: "opaque" | "transparent";
+  /** Pedirle a Google que cree un link de Meet (solo al crear o si todavía no tiene). */
+  addMeet?: { requestId: string };
+}
+
+/** El cuerpo de events.insert / events.patch para un evento suelto. Pura (expuesta para los tests). */
+export function buildEventWriteBody(input: GoogleEventWrite, mode: "insert" | "patch" = "patch"): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  // En un PATCH, pasar de «todo el día» a «con hora» (o al revés) exige vaciar el otro campo con null.
+  const time = (t: GoogleEventTime) =>
+    "date" in t
+      ? { date: t.date, ...(mode === "patch" ? { dateTime: null } : {}) }
+      : { dateTime: t.dateTime, ...(t.timeZone ? { timeZone: t.timeZone } : {}), ...(mode === "patch" ? { date: null } : {}) };
+  if (input.summary !== undefined) body.summary = input.summary;
+  if (input.description !== undefined) body.description = input.description;
+  if (input.location !== undefined) body.location = input.location;
+  if (input.start) body.start = time(input.start);
+  if (input.end) body.end = time(input.end);
+  if (input.attendees) {
+    body.attendees = input.attendees.map((a) => ({
+      email: a.email,
+      ...(a.displayName ? { displayName: a.displayName } : {}),
+      ...(a.responseStatus ? { responseStatus: a.responseStatus } : {}),
+      ...(a.optional ? { optional: true } : {}),
+    }));
+  }
+  if (input.transparency) body.transparency = input.transparency;
+  if (input.addMeet) {
+    body.conferenceData = { createRequest: { requestId: input.addMeet.requestId, conferenceSolutionKey: { type: "hangoutsMeet" } } };
+  }
+  return body;
+}
+
+function eventPath(calendarId: string, eventId?: string): string {
+  return `/calendars/${encodeURIComponent(calendarId)}/events${eventId ? `/${encodeURIComponent(eventId)}` : ""}`;
+}
+
+function parsedOrThrow(json: unknown): GoogleEventChange {
+  const ev = parseGoogleEvent(json);
+  if (!ev) throw new GoogleCalendarError("Google no devolvio el evento", "temporary", 200, "no_event_id");
+  return ev;
+}
+
+export async function getEvent(deps: GoogleDeps, connectionId: string, calendarId: string, eventId: string): Promise<GoogleEventChange> {
+  const { json } = await call(deps, connectionId, "GET", eventPath(calendarId, eventId), { fallback: "No pude leer el evento de Google Calendar" });
+  return parsedOrThrow(json);
+}
+
+export async function insertEvent(
+  deps: GoogleDeps,
+  connectionId: string,
+  calendarId: string,
+  input: GoogleEventWrite,
+  options: { sendUpdates: "all" | "none" },
+): Promise<GoogleEventChange> {
+  const { json } = await call(deps, connectionId, "POST", eventPath(calendarId), {
+    query: { sendUpdates: options.sendUpdates, ...(input.addMeet ? { conferenceDataVersion: "1" } : {}) },
+    body: buildEventWriteBody(input, "insert"),
+    fallback: "No pude crear el evento en Google Calendar",
+  });
+  return parsedOrThrow(json);
+}
+
+/**
+ * Cambia un evento suelto. Con `ifMatch` (el etag que se vio) Google responde 412 si el evento cambió después: no se
+ * pisa lo que alguien cambió en Google mientras tanto.
+ */
+export async function patchEvent(
+  deps: GoogleDeps,
+  connectionId: string,
+  calendarId: string,
+  eventId: string,
+  input: GoogleEventWrite,
+  options: { sendUpdates: "all" | "none"; ifMatch?: string | null },
+): Promise<GoogleEventChange> {
+  const { json } = await call(deps, connectionId, "PATCH", eventPath(calendarId, eventId), {
+    query: { sendUpdates: options.sendUpdates, ...(input.addMeet ? { conferenceDataVersion: "1" } : {}) },
+    body: buildEventWriteBody(input, "patch"),
+    fallback: "No pude cambiar el evento en Google Calendar",
+    ...(options.ifMatch ? { headers: { "If-Match": options.ifMatch } } : {}),
+  });
+  return parsedOrThrow(json);
+}
+
+/** true si Google respondió 412: el evento cambió desde que se leyó. */
+export function isEtagConflict(err: unknown): boolean {
+  return err instanceof GoogleCalendarError && err.status === 412;
 }

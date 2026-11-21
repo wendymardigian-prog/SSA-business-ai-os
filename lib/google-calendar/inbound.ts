@@ -28,7 +28,7 @@ const MIN_MINUTES = 15;
 const MAX_MINUTES = 8 * 60;
 
 export function decideInbound(
-  event: GoogleEventChange,
+  event: Pick<GoogleEventChange, "id" | "status" | "startUtc" | "endUtc">,
   booking: InboundBooking,
   opts: { pendingPlatformSync: boolean },
 ): InboundDecision {
@@ -52,4 +52,16 @@ export function decideInbound(
 /** Desde cuándo se lee la primera vez (o tras un 410): un día atrás, para no traer el historial entero. */
 export function fullSyncFrom(now: Date): string {
   return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * 00510: hasta dónde hacia atrás la ida y vuelta toca reuniones. La copia de la Agenda lee 60 días atrás, pero una
+ * reunión que terminó hace más de 24 h no se mueve ni se cancela por lo que diga Google (el 19/11/2026 una lectura
+ * canceló una reunión vieja y disparó sus automatizaciones). Mismo horizonte que encola la 00430.
+ */
+export const RECONCILE_HORIZON_MS = 24 * 60 * 60 * 1000;
+
+export function withinReconcileHorizon(bookingEndAt: string, now: Date): boolean {
+  const end = Date.parse(bookingEndAt);
+  return Number.isFinite(end) && end >= now.getTime() - RECONCILE_HORIZON_MS;
 }

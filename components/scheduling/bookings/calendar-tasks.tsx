@@ -8,6 +8,23 @@ import type { TimeFormat } from "@/lib/calendar/time";
 import { formatTime } from "@/lib/calendar/time";
 import { PRIORITY_LABELS, STATUS_LABELS, type TaskRow } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
+import { clampStyle } from "@/lib/calendar/card-lines";
+import type { HoverContent } from "@/lib/calendar/hover-content";
+
+/** Lo que dice la tarjeta al pasar el mouse por una tarea del calendario. */
+export function taskHoverContent(item: CalendarTaskItem, ownerName: string | null, timeFormat: TimeFormat): HoverContent {
+  const { task } = item;
+  const lines = [
+    item.timed && item.startMinutes !== null
+      ? `${formatTime(minutesToHHMM(item.startMinutes), timeFormat)} · ${item.durationMinutes} min`
+      : "Sin hora",
+    `Estado: ${STATUS_LABELS[task.status]}`,
+    `Prioridad: ${PRIORITY_LABELS[task.priority].toLowerCase()}`,
+  ];
+  if (ownerName) lines.push(`Responsable: ${ownerName}`);
+  if (task.project) lines.push(`Proyecto: ${task.project}`);
+  return { title: task.title, lines };
+}
 
 /**
  * Las piezas de las tareas en el calendario de Agenda (Tareas × CRM, R7): el interruptor, la tarjeta de una tarea, el chip
@@ -52,10 +69,14 @@ interface CardProps {
   className?: string;
   /** Una linea mas: el estado. */
   compact?: boolean;
+  /** Cuántas líneas de título entran en el alto del bloque. */
+  lines?: number;
+  /** La tarjeta al pasar el mouse (de `useCalendarHover`). */
+  hover?: Record<string, unknown>;
 }
 
 /** Una tarea en la rejilla horaria o en la franja «Sin hora». */
-export function TaskCard({ item, timeFormat, draggable, onOpen, onDragStart, onDragEnd, style, className, compact = false }: CardProps) {
+export function TaskCard({ item, timeFormat, draggable, onOpen, onDragStart, onDragEnd, style, className, compact = false, lines = 1, hover }: CardProps) {
   const { task } = item;
   const done = task.status === "completed";
   return (
@@ -68,6 +89,7 @@ export function TaskCard({ item, timeFormat, draggable, onOpen, onDragStart, onD
       onClick={() => onOpen(task.id)}
       style={style}
       aria-label={`Tarea: ${task.title}`}
+      {...hover}
       className={cn(
         "flex items-start gap-1 overflow-hidden rounded-md border border-dashed border-l-4 bg-card px-1.5 py-1 text-left text-[11px] hover:border-ring",
         STATUS_BORDER[task.status],
@@ -78,7 +100,7 @@ export function TaskCard({ item, timeFormat, draggable, onOpen, onDragStart, onD
     >
       <CheckSquare className="mt-px h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
       <span className="min-w-0 flex-1">
-        <span className={cn("block truncate font-medium", done && "line-through")}>
+        <span className={cn("block whitespace-normal break-words font-medium leading-[14px]", done && "line-through")} style={clampStyle(compact ? lines : Math.max(1, lines - 1))}>
           {item.timed && <span className="mr-1 tabular-nums text-muted-foreground">{formatTime(minutesToHHMM(item.startMinutes as number), timeFormat)}</span>}
           {task.title}
         </span>
@@ -95,7 +117,7 @@ function minutesToHHMM(minutes: number): string {
 }
 
 /** Una tarea en una celda del mes. */
-export function TaskMonthChip({ item, timeFormat, draggable, onOpen, onDragStart, onDragEnd }: Omit<CardProps, "style" | "className" | "compact">) {
+export function TaskMonthChip({ item, timeFormat, draggable, onOpen, onDragStart, onDragEnd, hover }: Omit<CardProps, "style" | "className" | "compact" | "lines">) {
   const { task } = item;
   const done = task.status === "completed";
   return (
@@ -107,6 +129,7 @@ export function TaskMonthChip({ item, timeFormat, draggable, onOpen, onDragStart
       onDragEnd={draggable ? onDragEnd : undefined}
       onClick={() => onOpen(task.id)}
       aria-label={`Tarea: ${task.title}`}
+      {...hover}
       className={cn("flex items-center gap-1 truncate rounded border border-dashed border-l-4 bg-card px-1.5 py-0.5 text-left text-[11px] hover:bg-muted", STATUS_BORDER[task.status], done && "line-through opacity-60", draggable && "cursor-grab")}
     >
       <CheckSquare className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />

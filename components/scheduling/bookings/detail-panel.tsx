@@ -71,6 +71,8 @@ export interface BookingDetailData {
   emailUnread: number;
   /** Si la reunión ya tiene evento en Google: sin él no hay nada que recrear al reasignar. */
   hasGoogleEvent: boolean;
+  /** 00510: pasada al sistema desde Google Calendar. */
+  googleImport?: { organizerSelf: boolean } | null;
   internalNotes: string | null;
   locationType: string | null;
   locationText: string | null;
@@ -698,7 +700,13 @@ export function BookingDetailPanel({
               )}
             </dd>
             <dt className="text-muted-foreground">Origen</dt>
-            <dd>{booking.origin}</dd>
+            <dd>
+              {booking.origin}
+              {booking.googleImport && <span className="ml-1 text-xs text-muted-foreground">· Importada de Google</span>}
+              {booking.googleImport && !booking.googleImport.organizerSelf && (
+                <span className="mt-0.5 block text-xs text-amber-700 dark:text-amber-300">La organiza otra persona en Google: si la movés o cancelás acá, en Google no cambia.</span>
+              )}
+            </dd>
             <dt className="text-muted-foreground">Google Calendar</dt>
             <dd>
               {booking.syncStatus === "synced" && "Sincronizado"}

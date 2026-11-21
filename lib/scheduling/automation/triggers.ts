@@ -71,8 +71,8 @@ export interface BookingForFilter {
   origin: string;
   status: BookingStatus;
   category_snapshot?: { area_id?: string | null; type_id?: string | null } | null;
-  /** La columna `metadata`: una reunion con titulo libre lleva `without_event`. */
-  metadata?: { without_event?: boolean } | null;
+  /** La columna `metadata`: una reunion con titulo libre lleva `without_event`; una pasada desde Google, `google_import`. */
+  metadata?: { without_event?: boolean; google_import?: unknown } | null;
 }
 
 /** La configuración del trigger, tal como la guarda el editor. */
@@ -132,6 +132,10 @@ export function bookingEventMatches(
   booking: BookingForFilter,
 ): boolean {
   if (!matchesCommonFilters(config, booking)) return false;
+
+  // 00510: una reunión pasada al sistema desde Google Calendar no dispara «Se agendó una reunión» (la confirmación):
+  // el invitado ya tiene la invitación de Google. Los recordatorios y lo de después sí corren.
+  if (triggerType === "booking_created" && booking.metadata?.google_import) return false;
 
   if (triggerType === "booking_cancelled" || triggerType === "booking_rescheduled") {
     if (!listMatches(config.by_whom, payload.by_whom)) return false;

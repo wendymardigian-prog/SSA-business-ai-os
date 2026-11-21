@@ -131,6 +131,11 @@ export async function loadBookingDetail(bookingId: string): Promise<BookingDetai
     emailConversationId: chats.email.conversationId,
     emailUnread: chats.email.unread,
     hasGoogleEvent: Boolean(booking.google_event_id),
+    // 00510: pasada al sistema desde Google; `false` = el evento lo organiza otra persona (moverla acá no lo mueve allá).
+    googleImport: (() => {
+      const gi = (booking.metadata as { google_import?: { organizer_self?: boolean } } | null)?.google_import;
+      return gi ? { organizerSelf: gi.organizer_self !== false } : null;
+    })(),
     responses: answersOf(booking.responses, (detail.event?.booking_fields as BookingField[] | null) ?? []),
     internalNotes: booking.internal_notes,
     locationType: booking.location_type,

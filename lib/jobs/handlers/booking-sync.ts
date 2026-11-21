@@ -51,6 +51,21 @@ export interface SyncPayload {
   old_event_id?: string | null;
 }
 
+/** 00510: lo que guarda una reunión pasada desde Google Calendar (`bookings.metadata.google_import`). */
+export interface GoogleImportMeta {
+  calendar_id: string;
+  connection_id: string;
+  event_id: string;
+  ical_uid: string | null;
+  organizer_self: boolean;
+}
+
+export function googleImportOf(metadata: unknown): GoogleImportMeta | null {
+  const m = (metadata as { google_import?: Partial<GoogleImportMeta> } | null)?.google_import;
+  if (!m || typeof m.event_id !== "string" || typeof m.calendar_id !== "string" || typeof m.connection_id !== "string") return null;
+  return { calendar_id: m.calendar_id, connection_id: m.connection_id, event_id: m.event_id, ical_uid: m.ical_uid ?? null, organizer_self: m.organizer_self !== false };
+}
+
 /** Cuando reintentar, o null si ya no hay que reintentar. */
 export function nextSyncRunAt(attempt: number, now: Date = new Date()): Date | null {
   const minutes = SYNC_RETRY_MINUTES[attempt];
@@ -198,8 +213,40 @@ export async function handleBookingGoogleSync(ctx: JobContext): Promise<void> {
   const { data: workspace } = await service.from("workspaces").select("scheduling_public_base_url").eq("id", booking.workspace_id).maybeSingle();
   const manageUrl = bookingPublicUrl(publicBaseUrl(workspace as { scheduling_public_base_url?: string | null }), booking.uid);
 
+  // 00510: una reunión pasada al sistema desde Google ya tiene su evento. Nunca se crea otro: se vincula. Si el evento
+  // lo organiza otra persona, lo que cambia acá no se escribe en Google (moverlo solo cambiaría la copia propia).
+  const imported = googleImportOf(booking.metadata);
+  if (imported) {
+    if (!booking.google_event_id) {
+      await service
+        .from("bookings")
+        .update({
+          google_connection_id: imported.connection_id,
+          google_calendar_id: imported.calendar_id,
+          google_event_id: imported.event_id,
+          ical_uid: imported.ical_uid,
+          google_sync_status: "synced",
+          google_sync_error: null,
+        })
+        .eq("id", booking.id);
+      Object.assign(booking, { google_connection_id: imported.connection_id, google_calendar_id: imported.calendar_id, google_event_id: imported.event_id });
+    }
+    if (payload.action === "create") return;
+    if (!imported.organizer_self) return;
+  }
+
   try {
-    if (payload.action === "delete") {
+    if (imported && payload.action === "update" && booking.google_event_id && booking.google_connection_id && booking.google_calendar_id) {
+      // Solo el horario: la descripción y el lugar son los que la persona escribió en Google.
+      const { data: cal } = await service.from("calendars").select("external_calendar_id").eq("id", booking.google_calendar_id).maybeSingle();
+      if (!cal) throw new GoogleCalendarError("El calendario ya no existe", "permanent", null, "no_calendar");
+      await updateEvent({ supabase: service }, booking.google_connection_id, cal.external_calendar_id, booking.google_event_id, {
+        startUtc: booking.start_at,
+        endUtc: booking.end_at,
+        timeZone: googleEventTimezone(booking),
+      });
+      await service.from("bookings").update({ google_sync_status: "synced", google_sync_error: null }).eq("id", booking.id);
+    } else if (payload.action === "delete") {
       if (booking.google_event_id && booking.google_connection_id && booking.google_calendar_id) {
         const { data: cal } = await service.from("calendars").select("external_calendar_id").eq("id", booking.google_calendar_id).maybeSingle();
         if (cal) {

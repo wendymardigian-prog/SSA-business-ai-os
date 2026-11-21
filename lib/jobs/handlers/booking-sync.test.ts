@@ -427,3 +427,34 @@ describe("la zona del invitado en Google", () => {
     expect(text.split("\n")[0]).toBe(`Hora del invitado: ${line}`);
   });
 });
+
+describe("handleBookingGoogleSync · reunión pasada desde Google (00510)", () => {
+  const imported = (organizer_self: boolean) => ({
+    metadata: { google_import: { calendar_id: "cal-1", connection_id: "conn-1", event_id: "gev-9", ical_uid: "gev-9@google.com", organizer_self } },
+  });
+
+  it("al crear NO crea otro evento: vincula el que ya existe", async () => {
+    const db = world(imported(true));
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "create" }));
+    expect(createEvent).not.toHaveBeenCalled();
+    expect(db.rows("bookings")[0]).toMatchObject({ google_event_id: "gev-9", google_calendar_id: "cal-1", google_sync_status: "synced" });
+  });
+
+  it("al mover solo cambia el horario (no pisa la descripción de Google)", async () => {
+    const db = world(imported(true));
+    updateEvent.mockResolvedValue({ meetUrl: null });
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "update" }));
+    const [, , , eventId, body] = updateEvent.mock.calls[0];
+    expect(eventId).toBe("gev-9");
+    expect(body.description).toBeUndefined();
+    expect(body.startUtc).toBe("2026-10-01T15:00:00.000Z");
+  });
+
+  it("si el evento lo organiza otra persona, no se escribe en Google", async () => {
+    const db = world({ ...imported(false), google_event_id: "gev-9", google_connection_id: "conn-1", google_calendar_id: "cal-1" });
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "update" }));
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "delete" }));
+    expect(updateEvent).not.toHaveBeenCalled();
+    expect(deleteEvent).not.toHaveBeenCalled();
+  });
+});

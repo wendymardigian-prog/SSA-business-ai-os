@@ -72,6 +72,45 @@ export async function setCalendarCheckConflicts(calendarId: string, checkConflic
   return { ok: true };
 }
 
+/**
+ * 00510: «Mostrar en Agenda». Prender un calendario arranca la primera lectura (60 días atrás); apagarlo borra la
+ * copia de sus eventos. Solo la dueña del calendario.
+ */
+export async function setCalendarShowInAgenda(calendarId: string, show: boolean): Promise<CalendarActionResult> {
+  const ctx = await getPermissionAction("scheduling.use");
+  if (!ctx) return { ok: false, error: "No tenes permiso para tener una agenda" };
+  const service = await createServiceClient();
+  const { data: cal } = await service
+    .from("calendars")
+    .select("id, user_id, is_active")
+    .eq("id", calendarId)
+    .eq("workspace_id", ctx.workspace.id)
+    .maybeSingle();
+  if (!cal || cal.user_id !== ctx.user.id || !cal.is_active) return { ok: false, error: "Ese calendario no es tuyo" };
+
+  const { error } = await service
+    .from("calendars")
+    .update(show ? { show_in_agenda: true, events_synced_at: null } : { show_in_agenda: false, events_synced_at: null })
+    .eq("id", cal.id);
+  if (error) return { ok: false, error: "No pude cambiar ese calendario" };
+
+  if (show) {
+    // La primera lectura va por la cola (puede tardar con muchos eventos); el cron de 5 minutos también la encolaría.
+    await service.from("scheduled_jobs").insert({
+      type: "google_calendar_inbound",
+      payload: { calendar_id: cal.id },
+      run_at: new Date().toISOString(),
+      status: "pending",
+      dedupe_key: `gcal-inbound:${cal.id}`,
+    } as never).then(() => undefined, () => undefined);
+  } else {
+    await service.from("google_calendar_events").delete().eq("calendar_id", cal.id);
+  }
+  revalidatePath(CALENDARS_PATH);
+  revalidatePath("/dashboard/agenda");
+  return { ok: true };
+}
+
 export async function setDefaultDestinationCalendar(calendarId: string | null): Promise<CalendarActionResult> {
   const ctx = await getPermissionAction("scheduling.use");
   if (!ctx) return { ok: false, error: "No tenes permiso para tener una agenda" };
