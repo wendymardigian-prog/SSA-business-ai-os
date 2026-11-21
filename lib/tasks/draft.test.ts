@@ -88,3 +88,12 @@ describe("elegir la fecha en el drawer desde otra zona", () => {
     expect(viewerDueDatePatch(timed, "2026-10-20", same)).toEqual({ due_date: "2026-10-20" });
   });
 });
+
+describe("tarea nueva desde el calendario (día, hora y duración)", () => {
+  it("respeta la hora y la duración si hay fecha; sin fecha, no", () => {
+    const d = draftFromDefaults({ due_date: "2026-11-24", due_time: "10:30", duration_minutes: 45 }, "me");
+    expect([d.due_date, d.due_time, d.duration_minutes]).toEqual(["2026-11-24", "10:30", 45]);
+    const sinFecha = draftFromDefaults({ due_time: "10:30", duration_minutes: 45 }, "me");
+    expect([sinFecha.due_time, sinFecha.duration_minutes]).toEqual([null, null]);
+  });
+});

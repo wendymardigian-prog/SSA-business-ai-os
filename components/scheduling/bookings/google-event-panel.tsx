@@ -7,8 +7,9 @@
  * Todo cambio pasa por una acción del servidor que vuelve a mirar que el evento sea de quien lo cambia y que no haya
  * cambiado en Google mientras tanto. La descripción se muestra como texto, nunca como HTML.
  */
+import { SIDE_PANEL_BACKDROP_CLASS, SIDE_PANEL_CLASS } from "./side-panel";
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
-import { CalendarPlus, ExternalLink, Pencil, Trash2, Video, X } from "lucide-react";
+import { CalendarDays, CheckSquare, ExternalLink, Trash2, Video, X } from "lucide-react";
 import {
   canEditGoogleEvent,
   durationMinutesOf,
@@ -24,6 +25,9 @@ import { minutesToTime } from "@/lib/calendar/time";
 import { durationLabel } from "@/lib/scheduling/booking-drag";
 import type { WallTime } from "@/lib/scheduling/types";
 import { cn } from "@/lib/utils";
+import { categoryTree, type CategoryRow } from "@/lib/scheduling/categories";
+import { dayText, googleWhen } from "@/lib/calendar/hover-content";
+import { googleEditParts, googleEditSummary, type GoogleEditState } from "@/lib/google-calendar/edit-summary";
 
 const RESPONSE_LABEL: Record<string, string> = {
   accepted: "Va",
@@ -32,18 +36,8 @@ const RESPONSE_LABEL: Record<string, string> = {
   needsAction: "Sin responder",
 };
 
-function dayText(utcOrDate: string, timezone: string, civil = false): string {
-  const d = civil ? new Date(`${utcOrDate}T12:00:00Z`) : new Date(utcOrDate);
-  const s = new Intl.DateTimeFormat("es", { weekday: "long", day: "numeric", month: "long", timeZone: civil ? "UTC" : timezone }).format(d);
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 function whenText(ev: AgendaGoogleEvent, timezone: string, timeFormat: "12h" | "24h"): string {
-  if (ev.allDay && ev.startDate) {
-    const last = ev.endDate ? new Date(Date.parse(`${ev.endDate}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10) : ev.startDate;
-    return last > ev.startDate ? `${dayText(ev.startDate, timezone, true)} al ${dayText(last, timezone, true)} · Todo el día` : `${dayText(ev.startDate, timezone, true)} · Todo el día`;
-  }
-  return `${dayText(ev.startAt, timezone)} · ${formatSlotLabel(ev.startAt, timezone, timeFormat)} a ${formatSlotLabel(ev.endAt, timezone, timeFormat)}`;
+  return googleWhen(ev, timezone, timeFormat);
 }
 
 function guestsToText(ev: AgendaGoogleEvent): string {
@@ -123,8 +117,100 @@ function ErrorLine({ error, onRefresh }: { error: { text: string; conflict?: boo
   );
 }
 
+// ── Confirmar un cambio en Google ────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * El modal de confirmación de TODO lo que cambia un evento de Google desde la Agenda: qué cambia, «solo este / toda la
+ * serie» si se repite y «avisar a los invitados» si tiene. Nada se escribe en Google sin pasar por acá (o por
+ * `GoogleMoveDialog`, que es lo mismo para arrastrar y estirar).
+ */
+export function GoogleConfirmDialog({
+  title,
+  changes,
+  note,
+  recurring,
+  guests,
+  confirmLabel,
+  danger = false,
+  pending,
+  error,
+  onRefresh,
+  onClose,
+  onConfirm,
+}: {
+  title: string;
+  changes: string[];
+  note?: string;
+  recurring: boolean;
+  guests: boolean;
+  confirmLabel: string;
+  danger?: boolean;
+  pending: boolean;
+  error: { text: string; conflict?: boolean } | null;
+  onRefresh?: () => void;
+  onClose: () => void;
+  onConfirm: (opts: { scope: "instance" | "series"; notify: boolean }) => void;
+}) {
+  const [scope, setScope] = useState<"instance" | "series">("instance");
+  const [notify, setNotify] = useState(true);
+  return (
+    <Modal label={title} onClose={onClose}>
+      <p className="font-medium">{title}</p>
+      {changes.length > 0 && (
+        <>
+          <p className="mt-2 text-xs font-medium text-muted-foreground">Qué cambia en tu Google Calendar</p>
+          <ul className="mt-1 space-y-1">
+            {changes.map((c, i) => (
+              <li key={i} className="break-words text-sm">
+                • {c}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {note && <p className="mt-2 text-xs text-muted-foreground">{note}</p>}
+      <div className="mt-3">
+        <ScopeAndNotify recurring={recurring} guests={guests} scope={scope} onScope={setScope} notify={notify} onNotify={setNotify} />
+      </div>
+      <div className="mt-2">
+        <ErrorLine error={error} onRefresh={onRefresh} />
+      </div>
+      <div className="mt-3 flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+          Volver
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => onConfirm({ scope, notify })}
+          className={cn("rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60", danger ? "bg-destructive text-white" : "bg-primary text-primary-foreground")}
+        >
+          {pending ? "Guardando…" : confirmLabel}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ── El panel ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
+function stateOf(ev: AgendaGoogleEvent): GoogleEditState {
+  return {
+    summary: ev.summary ?? "",
+    location: ev.location ?? "",
+    description: ev.description ?? "",
+    guests: ev.attendees.filter((a) => !a.self && !a.resource).map((a) => a.email),
+    startUtc: ev.allDay ? null : new Date(ev.startAt).toISOString(),
+    durationMinutes: durationMinutesOf(ev),
+  };
+}
+
+/**
+ * El panel de un evento de Google: queda al costado del calendario (se sigue pudiendo arrastrar y estirar). Si el
+ * evento es tuyo, todo lo que se puede cambiar está editable de entrada; «Guardar cambios» y «Eliminar» siempre pasan
+ * por el modal de confirmación. Se re-arma con `key={id + etag}`: si cambió (por ejemplo, se movió desde el
+ * calendario), muestra lo nuevo.
+ */
 export function GoogleEventPanel({
   event,
   timezone,
@@ -146,76 +232,94 @@ export function GoogleEventPanel({
 }) {
   const editable = canEditGoogleEvent(event);
   const recurring = !!event.recurringEventId;
-  const guests = hasOtherGuests(event);
-  const [mode, setMode] = useState<"view" | "edit" | "delete">("view");
+  const before = useMemo(() => stateOf(event), [event]);
   const [error, setError] = useState<{ text: string; conflict?: boolean } | null>(null);
   const [pending, start] = useTransition();
-  const [scope, setScope] = useState<"instance" | "series">("instance");
-  const [notify, setNotify] = useState(true);
+  const [confirm, setConfirm] = useState<"save" | "delete" | null>(null);
 
-  // El formulario de edición.
-  const [summary, setSummary] = useState(event.summary ?? "");
-  const [location, setLocation] = useState(event.location ?? "");
-  const [description, setDescription] = useState(event.description ?? "");
-  const [guestText, setGuestText] = useState(guestsToText(event));
+  const [summary, setSummary] = useState(before.summary);
+  const [location, setLocation] = useState(before.location);
+  const [description, setDescription] = useState(before.description);
+  const [guestText, setGuestText] = useState(before.guests.join("\n"));
   const [date, setDate] = useState(dateInTz(event.startAt, timezone));
   const [time, setTime] = useState(minutesToTime(minutesOfDayInTz(event.startAt, timezone)));
-  const [duration, setDuration] = useState(durationMinutesOf(event));
+  const [duration, setDuration] = useState(before.durationMinutes);
+
+  const after: GoogleEditState = {
+    summary,
+    location,
+    description,
+    guests: parseGuests(guestText),
+    startUtc: event.allDay ? null : safeUtc(date, time, timezone),
+    durationMinutes: duration,
+  };
+  const parts = googleEditParts(before, after);
+  const dirty = parts.text || parts.time;
+  const changes = googleEditSummary(before, after, timezone, timeFormat);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && mode === "view") onClose();
+      // Con un modal abierto encima, Esc cierra solo el modal.
+      if (e.key === "Escape" && !document.querySelector('[role="dialog"][aria-modal="true"]')) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, mode]);
+  }, [onClose]);
 
-  function save() {
+  function discard() {
+    setSummary(before.summary);
+    setLocation(before.location);
+    setDescription(before.description);
+    setGuestText(before.guests.join("\n"));
+    setDate(dateInTz(event.startAt, timezone));
+    setTime(minutesToTime(minutesOfDayInTz(event.startAt, timezone)));
+    setDuration(before.durationMinutes);
+    setError(null);
+  }
+
+  function save(opts: { scope: "instance" | "series"; notify: boolean }) {
     setError(null);
     start(async () => {
-      const startUtc = wallClockToUtc(date, time as WallTime, timezone).toISOString();
-      const timeChanged = !event.allDay && (startUtc !== new Date(event.startAt).toISOString() || duration !== durationMinutesOf(event));
-      const textPatch: Parameters<typeof updateGoogleEvent>[0] = { id: event.id, scope, notify };
-      if (summary !== (event.summary ?? "")) textPatch.summary = summary;
-      if (location !== (event.location ?? "")) textPatch.location = location;
-      if (description !== (event.description ?? "")) textPatch.description = description;
-      const nextGuests = parseGuests(guestText);
-      if (nextGuests.join("\n") !== guestsToText(event)) textPatch.guests = nextGuests;
-      const hasText = Object.keys(textPatch).length > 3;
-
-      if (hasText) {
-        const r = await updateGoogleEvent(textPatch);
+      if (parts.text) {
+        const patch: Parameters<typeof updateGoogleEvent>[0] = { id: event.id, scope: opts.scope, notify: opts.notify };
+        if (summary !== before.summary) patch.summary = summary;
+        if (location !== before.location) patch.location = location;
+        if (description !== before.description) patch.description = description;
+        if (parts.guests) patch.guests = after.guests;
+        const r = await updateGoogleEvent(patch);
         if (!r.ok) return setError({ text: r.error, conflict: r.conflict });
       }
-      if (timeChanged) {
-        const r = await moveGoogleEvent({ id: event.id, startUtc, durationMinutes: duration, scope, notify });
+      if (parts.time && after.startUtc) {
+        const r = await moveGoogleEvent({ id: event.id, startUtc: after.startUtc, durationMinutes: duration, scope: opts.scope, notify: opts.notify });
         if (!r.ok) return setError({ text: r.error, conflict: r.conflict });
       }
+      setConfirm(null);
       onChanged();
-      onClose();
     });
   }
 
-  function remove() {
+  function remove(opts: { scope: "instance" | "series"; notify: boolean }) {
     setError(null);
     start(async () => {
-      const r = await deleteGoogleEvent({ id: event.id, scope, notify });
+      const r = await deleteGoogleEvent({ id: event.id, scope: opts.scope, notify: opts.notify });
       if (!r.ok) return setError({ text: r.error, conflict: r.conflict });
+      setConfirm(null);
       onChanged();
       onClose();
     });
   }
 
   const others = event.attendees.filter((a) => !a.self && !a.resource);
+  const input = "mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm";
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} aria-hidden />
-      <aside role="dialog" aria-label="Evento de Google Calendar" className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-card shadow-xl">
+      <div className={SIDE_PANEL_BACKDROP_CLASS} onClick={onClose} aria-hidden />
+      <aside role="dialog" aria-label="Evento de Google Calendar" className={SIDE_PANEL_CLASS}>
         <header className="flex items-start gap-2 border-b border-border p-4">
           <span aria-hidden className="mt-1.5 h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: event.calendarColor ?? "#4285f4" }} />
           <div className="min-w-0 flex-1">
-            <p className="font-semibold">{event.summary?.trim() || "(Sin título)"}</p>
+            <p className="break-words font-semibold">{event.summary?.trim() || "(Sin título)"}</p>
             <p className="text-sm text-muted-foreground">{whenText(event, timezone, timeFormat)}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Google Calendar · {event.calendarName}
@@ -229,154 +333,160 @@ export function GoogleEventPanel({
         </header>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
-          {mode !== "edit" && (
-            <>
-              <div className="flex flex-wrap gap-2">
-                {event.meetUrl && (
-                  <a href={event.meetUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
-                    <Video className="h-4 w-4" aria-hidden /> Unirse
-                  </a>
-                )}
-                {event.htmlLink && (
-                  <a href={event.htmlLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
-                    <ExternalLink className="h-4 w-4" aria-hidden /> Abrir en Google
-                  </a>
-                )}
-              </div>
+          <div className="flex flex-wrap gap-2">
+            {event.meetUrl && (
+              <a href={event.meetUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
+                <Video className="h-4 w-4" aria-hidden /> Unirse
+              </a>
+            )}
+            {event.htmlLink && (
+              <a href={event.htmlLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+                <ExternalLink className="h-4 w-4" aria-hidden /> Abrir en Google
+              </a>
+            )}
+          </div>
 
+          {editable ? (
+            <div className="space-y-3">
+              <label className="block text-sm">
+                <span className="text-xs text-muted-foreground">Título</span>
+                <input value={summary} onChange={(e) => setSummary(e.target.value)} maxLength={500} className={input} />
+              </label>
+              {!event.allDay && (
+                <div className="grid grid-cols-3 gap-2">
+                  <label className="block text-sm">
+                    <span className="text-xs text-muted-foreground">Día</span>
+                    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={cn(input, "px-2")} />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-xs text-muted-foreground">Hora</span>
+                    <input type="time" value={time} step={300} onChange={(e) => setTime(e.target.value)} className={cn(input, "px-2")} />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-xs text-muted-foreground">Duración (min)</span>
+                    <input type="number" min={5} max={1440} step={5} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 0)} className={cn(input, "px-2")} />
+                  </label>
+                </div>
+              )}
+              <label className="block text-sm">
+                <span className="text-xs text-muted-foreground">Lugar</span>
+                <input value={location} onChange={(e) => setLocation(e.target.value)} maxLength={500} className={input} />
+              </label>
+              <label className="block text-sm">
+                <span className="text-xs text-muted-foreground">Invitados (un email por línea)</span>
+                <textarea value={guestText} onChange={(e) => setGuestText(e.target.value)} rows={3} className={input} />
+              </label>
+              {others.length > 0 && <GuestResponses guests={others} />}
+              <label className="block text-sm">
+                <span className="text-xs text-muted-foreground">Descripción</span>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} className={input} />
+              </label>
+            </div>
+          ) : (
+            <div className="space-y-4">
               {event.location && (
                 <section>
                   <h3 className="text-xs font-medium text-muted-foreground">Lugar</h3>
                   <p className="text-sm">{event.location}</p>
                 </section>
               )}
-
               <section>
                 <h3 className="text-xs font-medium text-muted-foreground">Organiza</h3>
                 <p className="text-sm">{event.organizerSelf ? "Vos" : (event.organizerEmail ?? "Otra persona")}</p>
               </section>
-
-              {others.length > 0 && (
-                <section>
-                  <h3 className="text-xs font-medium text-muted-foreground">Invitados ({others.length})</h3>
-                  <ul className="mt-1 space-y-1">
-                    {others.map((a) => (
-                      <li key={a.email} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="min-w-0 truncate">{a.name ? `${a.name} · ${a.email}` : a.email}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">{RESPONSE_LABEL[a.response] ?? a.response}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
+              {others.length > 0 && <GuestResponses guests={others} />}
               {event.description && (
                 <section>
                   <h3 className="text-xs font-medium text-muted-foreground">Descripción</h3>
                   <p className="whitespace-pre-wrap break-words text-sm">{event.description}</p>
                 </section>
               )}
-
-              {!editable && (
-                <p className="rounded-lg bg-muted/60 p-2 text-xs text-muted-foreground">
-                  {event.organizerSelf
-                    ? "Este calendario es de solo lectura: este evento no se puede cambiar desde acá."
-                    : "Lo organiza otra persona: para cambiarlo, lo tiene que hacer ella. Desde acá lo podés ver o pasar al sistema."}
-                </p>
-              )}
-            </>
-          )}
-
-          {mode === "edit" && (
-            <form
-              className="space-y-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                save();
-              }}
-            >
-              <label className="block text-sm">
-                <span className="text-xs text-muted-foreground">Título</span>
-                <input value={summary} onChange={(e) => setSummary(e.target.value)} maxLength={500} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
-              </label>
-              {!event.allDay && (
-                <div className="grid grid-cols-3 gap-2">
-                  <label className="block text-sm">
-                    <span className="text-xs text-muted-foreground">Día</span>
-                    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-2 text-sm" />
-                  </label>
-                  <label className="block text-sm">
-                    <span className="text-xs text-muted-foreground">Hora</span>
-                    <input type="time" value={time} step={300} onChange={(e) => setTime(e.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-2 text-sm" />
-                  </label>
-                  <label className="block text-sm">
-                    <span className="text-xs text-muted-foreground">Duración (min)</span>
-                    <input type="number" min={5} max={1440} step={5} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 0)} className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-2 text-sm" />
-                  </label>
-                </div>
-              )}
-              <label className="block text-sm">
-                <span className="text-xs text-muted-foreground">Lugar</span>
-                <input value={location} onChange={(e) => setLocation(e.target.value)} maxLength={500} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
-              </label>
-              <label className="block text-sm">
-                <span className="text-xs text-muted-foreground">Invitados (un email por línea)</span>
-                <textarea value={guestText} onChange={(e) => setGuestText(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
-              </label>
-              <label className="block text-sm">
-                <span className="text-xs text-muted-foreground">Descripción</span>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
-              </label>
-              <ScopeAndNotify recurring={recurring} guests={guests || parseGuests(guestText).length > 0} scope={scope} onScope={setScope} notify={notify} onNotify={setNotify} />
-              <ErrorLine error={error} onRefresh={onRefresh} />
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setMode("view")} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
-                  Volver
-                </button>
-                <button type="submit" disabled={pending} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-                  {pending ? "Guardando…" : "Guardar en Google"}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {mode === "delete" && (
-            <div className="space-y-3 rounded-lg border border-red-200 p-3 dark:border-red-900">
-              <p className="text-sm font-medium">¿Eliminar este evento de tu Google Calendar?</p>
-              <p className="text-xs text-muted-foreground">Se borra de Google igual que si lo borraras allá.</p>
-              <ScopeAndNotify recurring={recurring} guests={guests} scope={scope} onScope={setScope} notify={notify} onNotify={setNotify} />
-              <ErrorLine error={error} onRefresh={onRefresh} />
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setMode("view")} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
-                  Volver
-                </button>
-                <button type="button" disabled={pending} onClick={remove} className="rounded-lg bg-destructive px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">
-                  {pending ? "Eliminando…" : "Sí, eliminar"}
-                </button>
-              </div>
+              <p className="rounded-lg bg-muted/60 p-2 text-xs text-muted-foreground">
+                {event.organizerSelf
+                  ? "Este calendario es de solo lectura: este evento no se puede cambiar desde acá."
+                  : "Lo organiza otra persona: para cambiarlo, lo tiene que hacer ella. Desde acá lo podés ver o pasar al sistema."}
+              </p>
             </div>
           )}
-          {mode === "view" && <ErrorLine error={error} onRefresh={onRefresh} />}
+          {!confirm && <ErrorLine error={error} onRefresh={onRefresh} />}
         </div>
 
-        {mode === "view" && (
-          <footer className="flex flex-wrap gap-2 border-t border-border p-4">
-            {importSlot}
-            {editable && (
-              <>
-                <button type="button" onClick={() => setMode("edit")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
-                  <Pencil className="h-4 w-4" aria-hidden /> Editar
-                </button>
-                <button type="button" onClick={() => setMode("delete")} className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-red-600 hover:bg-muted">
-                  <Trash2 className="h-4 w-4" aria-hidden /> Eliminar
-                </button>
-              </>
-            )}
-          </footer>
-        )}
+        <footer className="flex flex-wrap items-center gap-2 border-t border-border p-4 pr-20">
+          {editable && dirty ? (
+            <>
+              <button type="button" onClick={() => setConfirm("save")} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
+                Guardar cambios
+              </button>
+              <button type="button" onClick={discard} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+                Descartar
+              </button>
+            </>
+          ) : (
+            importSlot
+          )}
+          {editable && (
+            <button type="button" onClick={() => setConfirm("delete")} className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-red-600 hover:bg-muted">
+              <Trash2 className="h-4 w-4" aria-hidden /> Eliminar
+            </button>
+          )}
+        </footer>
       </aside>
+
+      {confirm === "save" && (
+        <GoogleConfirmDialog
+          title="¿Guardar los cambios en tu Google Calendar?"
+          changes={changes}
+          recurring={recurring}
+          guests={hasOtherGuests(event) || after.guests.length > 0}
+          confirmLabel="Sí, guardar"
+          pending={pending}
+          error={error}
+          onRefresh={onRefresh}
+          onClose={() => setConfirm(null)}
+          onConfirm={save}
+        />
+      )}
+      {confirm === "delete" && (
+        <GoogleConfirmDialog
+          title={`¿Eliminar «${event.summary?.trim() || "(Sin título)"}» de tu Google Calendar?`}
+          changes={[whenText(event, timezone, timeFormat)]}
+          note="Se borra de Google igual que si lo borraras allá."
+          recurring={recurring}
+          guests={hasOtherGuests(event)}
+          confirmLabel="Sí, eliminar"
+          danger
+          pending={pending}
+          error={error}
+          onRefresh={onRefresh}
+          onClose={() => setConfirm(null)}
+          onConfirm={remove}
+        />
+      )}
     </>
   );
+}
+
+function GuestResponses({ guests }: { guests: AgendaGoogleEvent["attendees"] }) {
+  return (
+    <section>
+      <h3 className="text-xs font-medium text-muted-foreground">Respuestas ({guests.length})</h3>
+      <ul className="mt-1 space-y-1">
+        {guests.map((a) => (
+          <li key={a.email} className="flex items-center justify-between gap-2 text-sm">
+            <span className="min-w-0 truncate">{a.name ? `${a.name} · ${a.email}` : a.email}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{RESPONSE_LABEL[a.response] ?? a.response}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** El instante de un día y una hora escritos en la zona de quien mira (o null si falta algo). */
+function safeUtc(date: string, time: string, timezone: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return null;
+  const d = wallClockToUtc(date, time as WallTime, timezone);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 // ── Confirmar un arrastre ─────────────────────────────────────────────────────────────────────────────────────────
@@ -448,22 +558,63 @@ export function GoogleMoveDialog({
 
 // ── Elegir qué crear al arrastrar sobre un hueco ─────────────────────────────────────────────────────────────────
 
-export function CreateChoiceDialog({ label, onMeeting, onGoogle, onClose }: { label: string; onMeeting: () => void; onGoogle: () => void; onClose: () => void }) {
+/** El logo de Google Calendar (public/brand/google-calendar.svg): solo para señalar lo que va a Google. */
+export function GoogleCalendarLogo({ className }: { className?: string }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/brand/google-calendar.svg" alt="" aria-hidden className={cn("h-5 w-5 shrink-0", className)} />;
+}
+
+/**
+ * «¿Qué querés crear?» al hacer clic o arrastrar sobre un hueco del calendario: Reunión, Tarea o Evento de Google, cada
+ * una con su ícono. El evento de Google se ve más apagado (no queda en el sistema), pero se puede elegir.
+ * Solo aparecen las opciones que quien mira puede usar.
+ */
+export function CreateChoiceDialog({
+  label,
+  onMeeting,
+  onTask,
+  onGoogle,
+  onClose,
+}: {
+  label: string;
+  onMeeting?: () => void;
+  onTask?: () => void;
+  onGoogle?: () => void;
+  onClose: () => void;
+}) {
+  const option = "flex items-start gap-3 rounded-lg border border-border p-3 text-left hover:bg-muted";
   return (
     <Modal label="Qué crear" onClose={onClose}>
       <p className="font-medium">¿Qué querés crear?</p>
       <p className="mt-1 text-sm text-muted-foreground">{label}</p>
       <div className="mt-3 grid gap-2">
-        <button type="button" onClick={onMeeting} className="rounded-lg border border-border p-3 text-left hover:bg-muted">
-          <span className="block text-sm font-medium">Reunión</span>
-          <span className="block text-xs text-muted-foreground">Con un contacto: queda en el sistema y en tu Google Calendar.</span>
-        </button>
-        <button type="button" onClick={onGoogle} className="rounded-lg border border-border p-3 text-left hover:bg-muted">
-          <span className="flex items-center gap-1.5 text-sm font-medium">
-            <CalendarPlus className="h-4 w-4" aria-hidden /> Evento de Google
-          </span>
-          <span className="block text-xs text-muted-foreground">Solo en tu Google Calendar: para bloquear tiempo o anotar algo.</span>
-        </button>
+        {onMeeting && (
+          <button type="button" onClick={onMeeting} className={option}>
+            <CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-primary-ink" aria-hidden />
+            <span>
+              <span className="block text-sm font-medium">Reunión</span>
+              <span className="block text-xs text-muted-foreground">Con un contacto: queda en el sistema y en tu Google Calendar.</span>
+            </span>
+          </button>
+        )}
+        {onTask && (
+          <button type="button" onClick={onTask} className={option}>
+            <CheckSquare className="mt-0.5 h-5 w-5 shrink-0 text-primary-ink" aria-hidden />
+            <span>
+              <span className="block text-sm font-medium">Tarea</span>
+              <span className="block text-xs text-muted-foreground">Algo para hacer, con ese día y esa hora.</span>
+            </span>
+          </button>
+        )}
+        {onGoogle && (
+          <button type="button" onClick={onGoogle} className={cn(option, "bg-muted/40 text-muted-foreground")}>
+            <GoogleCalendarLogo className="mt-0.5 opacity-60 grayscale-[40%]" />
+            <span className="opacity-80">
+              <span className="block text-sm font-medium">Evento de Google</span>
+              <span className="block text-xs">Solo en tu Google Calendar, no en el sistema: para bloquear tiempo o anotar algo.</span>
+            </span>
+          </button>
+        )}
       </div>
     </Modal>
   );
@@ -499,6 +650,8 @@ export function GoogleCreateDialog({
   const [notify, setNotify] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // Antes de crear, el resumen de lo que se va a crear en Google (siempre se confirma).
+  const [confirming, setConfirming] = useState(false);
   const guests = parseGuests(guestText);
 
   if (writable.length === 0) {
@@ -517,27 +670,72 @@ export function GoogleCreateDialog({
 
   return (
     <Modal label="Crear un evento de Google" onClose={onClose}>
+      {confirming && (
+        <div className="space-y-3">
+          <p className="font-medium">¿Crear este evento en tu Google Calendar?</p>
+          <ul className="space-y-1 text-sm">
+            <li>• {summary.trim()}</li>
+            <li>
+              •{" "}
+              {allDay
+                ? `${dayText(date, timezone, true)} · Todo el día`
+                : (() => {
+                    const startUtc = safeUtc(date, time, timezone);
+                    return startUtc
+                      ? `${dayText(startUtc, timezone)} · ${time} (${durationLabel(duration)})`
+                      : `${date} ${time}`;
+                  })()}
+            </li>
+            <li>• Calendario: {writable.find((c) => c.id === calendarId)?.name ?? ""}</li>
+            {guests.length > 0 && <li>• Invitados: {guests.join(", ")}{notify ? " (les llega la invitación por email)" : " (sin avisarles)"}</li>}
+            {addMeet && !allDay && <li>• Con Google Meet</li>}
+            {!busy && <li>• Marcado «Disponible»: no bloquea horarios</li>}
+          </ul>
+          {error && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setConfirming(false)} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+              Volver
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setError(null);
+                start(async () => {
+                  const r = await createGoogleEvent({
+                    calendarId,
+                    summary,
+                    description,
+                    location,
+                    ...(allDay ? { allDayDate: date } : { startUtc: wallClockToUtc(date, time as WallTime, timezone).toISOString(), durationMinutes: duration }),
+                    timeZone: timezone,
+                    guests,
+                    addMeet,
+                    busy,
+                    notify,
+                  });
+                  if (!r.ok) return setError(r.error);
+                  onCreated(r.id ?? null);
+                });
+              }}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+            >
+              {pending ? "Creando…" : "Sí, crear"}
+            </button>
+          </div>
+        </div>
+      )}
       <form
-        className="space-y-3"
+        className={cn("space-y-3", confirming && "hidden")}
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
-          start(async () => {
-            const r = await createGoogleEvent({
-              calendarId,
-              summary,
-              description,
-              location,
-              ...(allDay ? { allDayDate: date } : { startUtc: wallClockToUtc(date, time as WallTime, timezone).toISOString(), durationMinutes: duration }),
-              timeZone: timezone,
-              guests,
-              addMeet,
-              busy,
-              notify,
-            });
-            if (!r.ok) return setError(r.error);
-            onCreated(r.id ?? null);
-          });
+          if (!summary.trim()) return setError("Ponele un título.");
+          setConfirming(true);
         }}
       >
         <p className="font-medium">Nuevo evento de Google</p>
@@ -615,7 +813,7 @@ export function GoogleCreateDialog({
             Volver
           </button>
           <button type="submit" disabled={pending || !calendarId} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-            {pending ? "Creando…" : "Crear en Google"}
+            Crear en Google
           </button>
         </div>
       </form>
@@ -629,14 +827,15 @@ type ContactHit = { id: string; name: string; detail: string };
 
 export function GoogleImportDialog({
   event,
-  areas,
+  categories,
   ownEvents,
   searchContacts,
   onClose,
   onImported,
 }: {
   event: AgendaGoogleEvent;
-  areas: Array<{ id: string; name: string; isDefault: boolean }>;
+  /** Las áreas y sus tipos de reunión (`booking_categories`). */
+  categories: CategoryRow[];
   /** Los eventos de quien importa (para elegir uno, opcional). */
   ownEvents: Array<{ id: string; title: string }>;
   searchContacts: (term: string) => Promise<ContactHit[]>;
@@ -650,7 +849,10 @@ export function GoogleImportDialog({
   const [term, setTerm] = useState(suggested?.email ?? "");
   const [hits, setHits] = useState<ContactHit[]>([]);
   const [picked, setPicked] = useState<ContactHit | null>(null);
-  const [areaId, setAreaId] = useState((areas.find((a) => a.isDefault) ?? areas[0])?.id ?? "");
+  const tree = useMemo(() => categoryTree(categories.filter((c) => !c.archived_at)), [categories]);
+  const [areaId, setAreaId] = useState(tree[0]?.area.id ?? "");
+  const [typeId, setTypeId] = useState("");
+  const types = tree.find((t) => t.area.id === areaId)?.types ?? [];
   const [eventTypeId, setEventTypeId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -678,7 +880,8 @@ export function GoogleImportDialog({
             const r = await importGoogleEvent({
               id: event.id,
               ...(mode === "existing" ? { contactId: picked?.id ?? null } : { name, email }),
-              categoryId: eventTypeId ? null : areaId || null,
+              // El tipo si se eligió uno; si no, el área.
+              categoryId: eventTypeId ? null : typeId || areaId || null,
               eventTypeId: eventTypeId || null,
             });
             if (!r.ok) return setError(r.error);
@@ -756,17 +959,37 @@ export function GoogleImportDialog({
             </select>
           </label>
         )}
-        {!eventTypeId && areas.length > 0 && (
-          <label className="block text-sm">
-            <span className="text-xs text-muted-foreground">Área</span>
-            <select value={areaId} onChange={(e) => setAreaId(e.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-              {areas.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        {!eventTypeId && tree.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="text-xs text-muted-foreground">Área</span>
+              <select
+                value={areaId}
+                onChange={(e) => {
+                  setAreaId(e.target.value);
+                  setTypeId("");
+                }}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              >
+                {tree.map((t) => (
+                  <option key={t.area.id} value={t.area.id}>
+                    {t.area.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-xs text-muted-foreground">Tipo de reunión</span>
+              <select value={typeId} onChange={(e) => setTypeId(e.target.value)} disabled={types.length === 0} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm disabled:opacity-60">
+                <option value="">{types.length === 0 ? "Esta área no tiene tipos" : "Sin tipo"}</option>
+                {types.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         )}
 
         {error && (

@@ -194,7 +194,7 @@ export function PortalMenu({
               onClick={(event) => event.stopPropagation()}
               onKeyDown={onPanelKeyDown}
               style={{ left: placement.left, width: placement.width, top: placement.top, bottom: placement.bottom, maxHeight: placement.maxHeight }}
-              className="fixed z-[70] overflow-y-auto rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-lg"
+              className="fixed z-[70] overflow-y-auto overscroll-contain rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-lg"
             >
               {children}
             </div>

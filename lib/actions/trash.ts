@@ -16,6 +16,7 @@ import { getAnyPermissionAction, getPermissionAction, type PermissionContext } f
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { deleteEvent } from "@/lib/google-calendar/client";
+import { googleImportOf } from "@/lib/google-calendar/import-meta";
 import {
   isSoftDeleteEntity,
   isTrashEntity,
@@ -108,13 +109,18 @@ async function removeGoogleEvent(ctx: PermissionContext, bookingId: string): Pro
     const service = await createServiceClient();
     const { data: b } = await service
       .from("bookings")
-      .select("google_event_id, google_connection_id, google_calendar_id, google_event_deleted_at")
+      .select("google_event_id, google_connection_id, google_calendar_id, google_event_deleted_at, metadata")
       .eq("id", bookingId)
       .maybeSingle();
     if (!b?.google_event_id || !b.google_connection_id || !b.google_calendar_id || b.google_event_deleted_at) return;
+    // 00510: una reunión pasada al sistema desde un evento que organiza otra persona no se borra de Google (borrarla
+    // solo la sacaría del calendario propio, como rechazarla). Queda como evento de Google.
+    if (googleImportOf(b.metadata)?.organizer_self === false) return;
     const { data: cal } = await service.from("calendars").select("external_calendar_id").eq("id", b.google_calendar_id).maybeSingle();
     if (!cal) return;
     await deleteEvent({ supabase: service }, b.google_connection_id, cal.external_calendar_id, b.google_event_id, "none");
+    // La copia de la Agenda: si no, el evento quedaría a la vista como «solo en Google» hasta la próxima lectura.
+    await service.from("google_calendar_events").delete().eq("calendar_id", b.google_calendar_id).eq("external_event_id", b.google_event_id);
   } catch (e) {
     console.error("[papelera] no pude borrar el evento de Google:", e instanceof Error ? e.message : String(e));
   }

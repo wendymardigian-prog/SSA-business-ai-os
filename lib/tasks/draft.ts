@@ -51,6 +51,9 @@ export interface DraftDefaults {
   priority?: TaskPriority;
   start_date?: string | null;
   due_date?: string | null;
+  /** Con hora (desde el calendario de la Agenda): en la zona del negocio, como se guarda. Sin fecha no se usa. */
+  due_time?: string | null;
+  duration_minutes?: number | null;
   owner_id?: string | null;
   follower_ids?: string[];
   project?: string | null;
@@ -67,8 +70,8 @@ export function draftFromDefaults(defaults: DraftDefaults | undefined, currentUs
     priority: defaults?.priority ?? "normal",
     start_date: defaults?.start_date ?? null,
     due_date: defaults?.due_date ?? null,
-    due_time: null,
-    duration_minutes: null,
+    due_time: defaults?.due_date ? (defaults?.due_time ?? null) : null,
+    duration_minutes: defaults?.due_date && defaults?.due_time ? (defaults?.duration_minutes ?? null) : null,
     owner_id: owner,
     follower_ids: (defaults?.follower_ids ?? []).filter((id) => id !== owner),
     project: project.ok ? project.project : null,
