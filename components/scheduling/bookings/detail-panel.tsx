@@ -10,6 +10,7 @@
  * deshabilitados con el motivo, en vez de esconderse.
  */
 
+import { SIDE_PANEL_BACKDROP_CLASS, SIDE_PANEL_CLASS } from "./side-panel";
 import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
 import { MetaMatchControl } from "@/components/attribution/meta-match-control";
 import { LastClicksBlock } from "@/components/attribution/last-click";
@@ -114,8 +115,8 @@ export function BookingDetailSkeleton({ missing, onClose }: { missing: boolean; 
   }, [onClose]);
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} aria-hidden />
-      <aside role="dialog" aria-label="Detalle de la agenda" aria-busy={!missing} className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-card shadow-xl">
+      <div className={SIDE_PANEL_BACKDROP_CLASS} onClick={onClose} aria-hidden />
+      <aside role="dialog" aria-label="Detalle de la agenda" aria-busy={!missing} className={SIDE_PANEL_CLASS}>
         <header className="flex items-start gap-2 border-b border-border p-4">
           <div className="min-w-0 flex-1 space-y-2">
             {missing ? <p className="font-semibold">No encontré esa agenda</p> : <div className="h-4 w-40 animate-pulse rounded bg-muted" />}
@@ -410,8 +411,8 @@ export function BookingDetailPanel({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} aria-hidden />
-      <aside role="dialog" aria-label="Detalle de la agenda" className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-card shadow-xl">
+      <div className={SIDE_PANEL_BACKDROP_CLASS} onClick={onClose} aria-hidden />
+      <aside role="dialog" aria-label="Detalle de la agenda" className={SIDE_PANEL_CLASS}>
         <header className="flex items-start gap-2 border-b border-border p-4">
           <div className="min-w-0 flex-1">
             {booking.contactId && canEditContact ? (

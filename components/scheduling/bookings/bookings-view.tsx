@@ -12,7 +12,7 @@
  * no sueltos en el contenido como antes.
  */
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CalendarDays, KanbanSquare, List, Plus, Settings } from "lucide-react";
@@ -31,7 +31,8 @@ import { BookingsKanban } from "./kanban-board";
 import { BookingsCalendar } from "./calendar-grid";
 import { useRescheduleDrag } from "./reschedule-dialog";
 import { wallTimeOfMinutes } from "@/lib/scheduling/booking-drag";
-import { TaskWorkbench } from "@/components/tasks/task-workbench"; // @plantilla-quitar(tareas)
+import { TaskWorkbench, useTaskWorkbench } from "@/components/tasks/task-workbench"; // @plantilla-quitar(tareas)
+import { dueToStored } from "@/lib/tasks/due-view"; // @plantilla-quitar(tareas)
 import { tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(tareas)
 import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
 import type { MemberLite } from "@/lib/tasks/table-model"; // @plantilla-quitar(tareas)
@@ -241,6 +242,7 @@ export function BookingsScreen({
   const openDetail = useCallback((id: string) => {
     const next = new URLSearchParams(window.location.search);
     next.set("agenda", id);
+    next.delete("gcal");
     window.history.pushState(null, "", `?${next.toString()}`);
   }, []);
   const closeDetail = useCallback(() => {
@@ -257,6 +259,7 @@ export function BookingsScreen({
   const openGoogle = useCallback((id: string) => {
     const next = new URLSearchParams(window.location.search);
     next.set("gcal", id);
+    next.delete("agenda");
     window.history.pushState(null, "", `?${next.toString()}`);
   }, []);
   const closeGoogle = useCallback(() => {
@@ -297,6 +300,19 @@ export function BookingsScreen({
   const [createChoice, setCreateChoice] = useState<{ date: string; startMinutes: number; durationMinutes: number } | null>(null);
   const [googleCreate, setGoogleCreate] = useState<{ date: string; startMinutes: number; durationMinutes: number } | null>(null);
   const [googleImport, setGoogleImport] = useState<AgendaGoogleEvent | null>(null);
+  // Una tarea pedida desde «¿Qué querés crear?»: se abre cuando la capa de Tareas está montada.
+  const [pendingTask, setPendingTask] = useState<PendingTask | null>(null);
+  const canCreateTask = !!tasks && tasks.canEdit; // @plantilla-quitar(tareas)
+  // @plantilla-sin(tareas): const canCreateTask = false;
+  function openMeeting(slot: { date: string; startMinutes: number; durationMinutes: number }) {
+    setManualSlot({ date: slot.date, time: wallTimeOfMinutes(slot.startMinutes), durationMinutes: slot.durationMinutes });
+    setManualOpen(true);
+  }
+  function openTask(slot: { date: string; startMinutes: number; durationMinutes: number }) {
+    setPendingTask({ date: slot.date, time: wallTimeOfMinutes(slot.startMinutes), minutes: slot.durationMinutes });
+    // Con la capa de Tareas apagada se prende en «Mías», para ver la tarea al guardarla.
+    if (tasks && tasks.mode === "off") setParam("tareas", "1"); // @plantilla-quitar(tareas)
+  }
   const canCreateGoogle = googleOn && (google?.calendars ?? []).some((c) => c.writable);
   const overlapsBooking = (startUtc: string, minutes: number) => {
     const s0 = Date.parse(startUtc);
@@ -455,7 +471,9 @@ export function BookingsScreen({
       {noGoogle && <NoGoogleNotice state="none" />}
       <AgendaFilterSummary filters={filters} catalog={catalog} />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6 pt-3 md:px-6">
+      {/* El calendario y, al lado, el panel abierto (en el teléfono el panel va encima, a pantalla completa). */}
+      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6 pt-3 md:px-6">
         {needsProfile && (
           <p className="rounded-xl border border-border bg-muted/50 p-3 text-sm">
             Todavía no configuraste tu agenda.{" "}
@@ -534,6 +552,9 @@ export function BookingsScreen({
         ) : (
           <CalendarWithTasks
             tasks={tasks}
+            pendingTask={pendingTask}
+            onPendingTaskUsed={() => setPendingTask(null)}
+            viewerTimeZone={timezone}
             calendar={
               <BookingsCalendar
                 items={items}
@@ -550,13 +571,15 @@ export function BookingsScreen({
                 onDropBooking={reschedule.onDrop}
                 onResizeBooking={canManage ? reschedule.onResize : undefined}
                 onCreateRange={
-                  canManage || canCreateGoogle
+                  canManage || canCreateGoogle || canCreateTask
                     ? (date, startMinutes, durationMinutes) => {
-                        // Con Google, se elige qué crear; sin permiso de reuniones, directo el evento de Google.
-                        if (canCreateGoogle && canManage) return setCreateChoice({ date, startMinutes, durationMinutes });
-                        if (canCreateGoogle) return setGoogleCreate({ date, startMinutes, durationMinutes });
-                        setManualSlot({ date, time: wallTimeOfMinutes(startMinutes), durationMinutes });
-                        setManualOpen(true);
+                        const slot = { date, startMinutes, durationMinutes };
+                        // Con más de una opción, se elige qué crear; con una sola, directo a esa.
+                        const options = [canManage, canCreateTask, canCreateGoogle].filter(Boolean).length;
+                        if (options > 1) return setCreateChoice(slot);
+                        if (canManage) return openMeeting(slot);
+                        if (canCreateTask) return openTask(slot);
+                        setGoogleCreate(slot);
                       }
                     : undefined
                 }
@@ -580,6 +603,44 @@ export function BookingsScreen({
               />
             }
             timeFormat={timeFormat}
+          />
+        )}
+      </div>
+        {openId && !detail && <BookingDetailSkeleton missing={detailMissing} onClose={closeDetail} />}
+
+        {openId && detail && (
+          <BookingDetailPanel
+            key={detail.id}
+            booking={detail}
+            canLinkMeta={canLinkMeta}
+            canEditContact={canEditContact}
+            categories={categories}
+            timezone={timezone}
+            timeFormat={timeFormat}
+            canManage={canManage}
+            canDelete={canDelete}
+            canReassign={canReassign}
+            hostOptions={reassignHostOptions.filter((h) => h.userId !== detail.hostUserId)}
+            onClose={closeDetail}
+          />
+        )}
+
+        {gcalId && gcalEvent && (
+          <GoogleEventPanel
+            key={`${gcalEvent.id}:${gcalEvent.etag ?? ""}:${gcalEvent.startAt}:${gcalEvent.endAt}`}
+            event={gcalEvent}
+            timezone={timezone}
+            timeFormat={timeFormat}
+            onClose={closeGoogle}
+            onChanged={() => router.refresh()}
+            onRefresh={() => refreshGoogle(true)}
+            importSlot={
+              canManage && !gcalEvent.allDay ? (
+                <button type="button" onClick={() => setGoogleImport(gcalEvent)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
+                  Pasar al sistema
+                </button>
+              ) : undefined
+            }
           />
         )}
       </div>
@@ -607,48 +668,10 @@ export function BookingsScreen({
         </div>
       )}
 
-      {openId && !detail && <BookingDetailSkeleton missing={detailMissing} onClose={closeDetail} />}
-
-      {openId && detail && (
-        <BookingDetailPanel
-          key={detail.id}
-          booking={detail}
-          canLinkMeta={canLinkMeta}
-          canEditContact={canEditContact}
-          categories={categories}
-          timezone={timezone}
-          timeFormat={timeFormat}
-          canManage={canManage}
-          canDelete={canDelete}
-          canReassign={canReassign}
-          hostOptions={reassignHostOptions.filter((h) => h.userId !== detail.hostUserId)}
-          onClose={closeDetail}
-        />
-      )}
-
-      {gcalId && gcalEvent && (
-        <GoogleEventPanel
-          key={gcalEvent.id}
-          event={gcalEvent}
-          timezone={timezone}
-          timeFormat={timeFormat}
-          onClose={closeGoogle}
-          onChanged={() => router.refresh()}
-          onRefresh={() => refreshGoogle(true)}
-          importSlot={
-            canManage && !gcalEvent.allDay ? (
-              <button type="button" onClick={() => setGoogleImport(gcalEvent)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
-                Pasar al sistema
-              </button>
-            ) : undefined
-          }
-        />
-      )}
-
       {googleImport && (
         <GoogleImportDialog
           event={googleImport}
-          areas={manualAreas}
+          categories={categories}
           ownEvents={events.filter((e) => e.hostUserId === viewerId && e.status !== "inactive").map((e) => ({ id: e.id, title: e.title }))}
           searchContacts={async (term) => (await searchContactsForBooking(term)).map((c) => ({ id: c.id, name: c.name, detail: c.detail }))}
           onClose={() => setGoogleImport(null)}
@@ -683,17 +706,32 @@ export function BookingsScreen({
 
       {createChoice && (
         <CreateChoiceDialog
-          label={`${createChoice.date} · ${wallTimeOfMinutes(createChoice.startMinutes)}`}
+          label={slotLabel(createChoice)}
           onClose={() => setCreateChoice(null)}
-          onMeeting={() => {
-            setManualSlot({ date: createChoice.date, time: wallTimeOfMinutes(createChoice.startMinutes), durationMinutes: createChoice.durationMinutes });
-            setCreateChoice(null);
-            setManualOpen(true);
-          }}
-          onGoogle={() => {
-            setGoogleCreate(createChoice);
-            setCreateChoice(null);
-          }}
+          onMeeting={
+            canManage
+              ? () => {
+                  openMeeting(createChoice);
+                  setCreateChoice(null);
+                }
+              : undefined
+          }
+          onTask={
+            canCreateTask
+              ? () => {
+                  openTask(createChoice);
+                  setCreateChoice(null);
+                }
+              : undefined
+          }
+          onGoogle={
+            canCreateGoogle
+              ? () => {
+                  setGoogleCreate(createChoice);
+                  setCreateChoice(null);
+                }
+              : undefined
+          }
         />
       )}
 
@@ -741,7 +779,21 @@ export function BookingsScreen({
  * El calendario con el anfitrion de tareas (el drawer, las acciones y las tareas en pantalla) cuando hay tareas que mostrar.
  * Con el interruptor apagado (o sin permiso) devuelve el calendario tal cual: no monta nada de tareas.
  */
-function CalendarWithTasks({ tasks, calendar, timeFormat }: { tasks?: AgendaTasksProps; calendar: React.ReactNode; timeFormat: "12h" | "24h" }) {
+function CalendarWithTasks({
+  tasks,
+  calendar,
+  timeFormat,
+  pendingTask,
+  onPendingTaskUsed,
+  viewerTimeZone,
+}: {
+  tasks?: AgendaTasksProps;
+  calendar: React.ReactNode;
+  timeFormat: "12h" | "24h";
+  pendingTask: PendingTask | null;
+  onPendingTaskUsed: () => void;
+  viewerTimeZone: string;
+}) {
   // @plantilla-desde(tareas)
   if (!tasks || tasks.mode === "off") return <>{calendar}</>;
   return (
@@ -757,8 +809,38 @@ function CalendarWithTasks({ tasks, calendar, timeFormat }: { tasks?: AgendaTask
       canDelete={tasks.canDelete}
     >
       {calendar}
+      {pendingTask && <PendingTaskStarter task={pendingTask} workspaceTz={tasks.workspaceTimeZone} viewerTz={viewerTimeZone} onUsed={onPendingTaskUsed} />}
     </TaskWorkbench>
   );
   // @plantilla-hasta(tareas)
-  // @plantilla-sin(tareas): return <>{calendar}</>;
+  // @plantilla-sin(tareas): void pendingTask; void onPendingTaskUsed; void viewerTimeZone; return <>{calendar}</>;
+}
+
+// @plantilla-desde(tareas)
+/** Abre UNA vez la tarea nueva pedida desde el calendario, con su día, hora y duración (en la zona del negocio). */
+function PendingTaskStarter({ task, workspaceTz, viewerTz, onUsed }: { task: PendingTask; workspaceTz: string; viewerTz: string; onUsed: () => void }) {
+  const wb = useTaskWorkbench();
+  const used = useRef(false);
+  useEffect(() => {
+    if (used.current) return;
+    used.current = true;
+    const stored = dueToStored({ date: task.date, time: task.time }, workspaceTz, viewerTz);
+    wb.startCreate({ due_date: stored.due_date, due_time: stored.due_time, duration_minutes: task.minutes });
+    onUsed();
+  }, [wb, task, workspaceTz, viewerTz, onUsed]);
+  return null;
+}
+// @plantilla-hasta(tareas)
+
+/** Una tarea pedida desde «¿Qué querés crear?»: día y hora en la zona de quien mira. */
+interface PendingTask {
+  date: string;
+  time: string;
+  minutes: number;
+}
+
+/** «Martes, 24 de noviembre · 10:30»: el día y la hora del hueco, tal como se ven en el calendario (fecha civil). */
+function slotLabel(slot: { date: string; startMinutes: number }): string {
+  const day = new Intl.DateTimeFormat("es", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${slot.date}T12:00:00Z`));
+  return `${day.charAt(0).toUpperCase()}${day.slice(1)} · ${wallTimeOfMinutes(slot.startMinutes)}`;
 }
