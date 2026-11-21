@@ -43,8 +43,11 @@ export interface InboundResult {
   error: string | null;
 }
 
-/** Cuánto dura el candado de una lectura (si el proceso muere, se libera solo). */
-const LOCK_MS = 2 * 60 * 1000;
+/**
+ * Cuánto dura el candado de una lectura (si el proceso muere, se libera solo). La primera lectura de un calendario con
+ * muchos eventos (60 días atrás, las repeticiones expandidas) tarda más de un par de minutos: al terminar se libera.
+ */
+const LOCK_MS = 10 * 60 * 1000;
 /** La primera lectura de la copia puede traer muchos eventos (60 días atrás, recurrentes expandidos). */
 const MIRROR_FULL_SYNC_MAX_PAGES = 60;
 const UPSERT_CHUNK = 200;

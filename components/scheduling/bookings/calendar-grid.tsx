@@ -268,7 +268,9 @@ export function BookingsCalendar({
   }
   function resizeMove(e: PointerEvent<HTMLElement>) {
     if (!resizing) return;
-    const column = e.currentTarget.parentElement;
+    // La columna del día (el borde está dentro de un envoltorio `display: contents`, que no tiene posición propia:
+    // medir contra él corría la hora de fin varias horas).
+    const column = e.currentTarget.closest<HTMLElement>("[data-cal-column]");
     if (!column) return;
     const at = minutesAt(e, column);
     if (at !== resizing.to) setResizing({ ...resizing, to: at });
@@ -497,6 +499,7 @@ export function BookingsCalendar({
             {days.map((date) => (
               <div
                 key={date}
+                data-cal-column
                 className={canCreate ? "relative cursor-cell select-none border-l border-border" : "relative border-l border-border"}
                 {...columnDrop(date)}
                 onPointerDown={(e) => selectStart(date, e)}
