@@ -94,7 +94,7 @@ export interface PermissionDefinition {
  * La etiqueta importa tanto como la clave: la pantalla de roles la muestra
  * tal cual, y "contacts.merge" no le dice nada a nadie.
  *
- * Son 136 claves; 134 visibles (dos estan reservadas). Las 13 de «Eliminar …» (Papelera, 00410) son de Owner y Admin. La bandeja no tiene claves: se da por
+ * Son 137 claves; 135 visibles (dos estan reservadas). Las 13 de «Eliminar …» (Papelera, 00410) son de Owner y Admin. La bandeja no tiene claves: se da por
  * cuenta conectada (`channels`, 00249). Cada clave nueva se suma
  * aca, en la pantalla, en el guard, en la RLS y en `catalog-usage.test.ts` en el
  * MISMO cambio (ver `docs/roles.md`, "Como sumar una clave nueva").
@@ -150,6 +150,10 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   // Asistente del equipo (traído de RER, decisión de producto del 18/11/2026): Owner/Admin sí, Member no; se puede dar a
   // otros roles. El asistente solo hace lo que el rol de la persona permite y lo que escribe espera su aprobación.
   { key: "assistant.use", module: "agents", label: "Usar el asistente", description: "Hablar con el asistente del equipo y pedirle que busque o prepare cosas. Solo hace lo que tu rol permite y lo que escribe espera tu aprobación." },
+  // Conector MCP (traído de RER, 25/11/2026): conectar Claude u otra app y hacer desde ahí todo lo que el rol permite
+  // (docs/mcp.md). Se comprueba en cada pedido a /api/mcp y en el consentimiento. Owner y Admin lo tienen; el Member
+  // de sistema no (se le puede dar a un rol personalizado).
+  { key: "mcp.usar", module: "agents", label: "Usar el MCP", description: "Conectar Claude u otra app por MCP y hacer desde ahí todo lo que tu rol permite: consultar, crear, editar y configurar." },
   { key: "ai_limits.manage", module: "agents", label: "Administrar topes y precios de IA", description: "Los topes de gasto, los avisos y los precios de cada modelo." },
 
   // ── Conocimiento ────────────────────────────────────────────────────────

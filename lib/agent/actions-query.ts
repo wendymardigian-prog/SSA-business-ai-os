@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuditAction, Database, Json } from "@/lib/types/database";
 import { DATE_PRESETS, formatDateOnly, resolveDateRange, type DatePreset } from "@/lib/dates";
 import { firstParam, pickEnum, pickPage, type SearchParams } from "@/lib/url-params";
-import { REVERTIBLE_ACTIONS } from "./revert";
+import { REVERTIBLE_ACTIONS } from "./revertible-actions";
 import { AGENT_ACTION_LABELS } from "./action-labels";
 import type { ActionFilters, ActionRow } from "./screen";
 

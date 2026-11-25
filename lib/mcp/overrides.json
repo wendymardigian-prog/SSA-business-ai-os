@@ -1,0 +1,22 @@
+{
+ "_comment": "Lo que el catálogo del MCP no saca solo (scripts/build-mcp-catalog.mjs). excludedFiles/excludedActions: lo que no tiene sentido o no es seguro por el conector (contraseñas, aceptar o registrarse por invitación, links públicos, cambiar el negocio por cookie: para eso está la herramienta cambiar_negocio). kind: pisa la clasificación por nombre (read | write | sensitive). descriptions: una descripción mejor que el JSDoc.",
+ "excludedFiles": [
+  "password-reset",
+  "email-unsubscribe"
+ ],
+ "excludedActions": [
+  "workspace#switchWorkspace",
+  "account#changeMyPassword",
+  "team#acceptInvite",
+  "team#registerFromInvite",
+  "mcp-connections#approveMcpAuthorization",
+  "mcp-connections#denyMcpAuthorization"
+ ],
+ "kind": {
+  "account#sendMyTestWhatsApp": "write",
+  "mcp-connections#disconnectMcpConnection": "sensitive"
+ },
+ "descriptions": {
+  "knowledge#uploadDocument": "Sube un documento a Conocimiento (FormData con 'file' y 'title' opcional). Se indexa (vectoriza) solo; sin Voyage conectado queda pendiente. Mejor usar la herramienta subir_documento_conocimiento."
+ }
+}

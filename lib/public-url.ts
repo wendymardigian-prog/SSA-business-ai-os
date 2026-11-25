@@ -137,7 +137,7 @@ export function normalizeDomainInput(raw: string): DomainInputResult {
 }
 
 /** Rutas que nunca se redirigen al dominio principal (ver `canonicalRedirectUrl`). */
-const NO_REDIRECT_PREFIXES = ["/api/", "/_next/", "/auth/", "/embed/"];
+const NO_REDIRECT_PREFIXES = ["/api/", "/_next/", "/auth/", "/embed/", "/.well-known/"];
 
 /**
  * A dónde mandar a quien entra por el dominio de Railway, o null para dejarlo pasar.
@@ -146,6 +146,7 @@ const NO_REDIRECT_PREFIXES = ["/api/", "/_next/", "/auth/", "/embed/"];
  * - `/api/`: los webhooks ya registrados en Zernio, Evolution y Resend, el clic de baja de un email (POST) y los
  *   formularios de otras webs siguen llegando por Railway.
  * - `/auth/`: el retorno de Supabase guarda su verificación en una cookie del dominio por el que se pidió.
+ * - `/.well-known/`: los metadatos OAuth del conector MCP (docs/mcp.md); un cliente que llegó por Railway los pide ahí.
  * - `/embed/` y `?embed=1`: un embed ya instalado en otra web confía SOLO en los mensajes de su dominio; si la agenda
  *   se abriera en otro, dejaría de avisarle (alto, reserva hecha).
  * - Server Actions y envíos (POST): un 307 los repetiría en otro dominio sin la sesión.

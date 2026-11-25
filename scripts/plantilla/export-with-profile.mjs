@@ -59,6 +59,14 @@ export async function exportWithProfile({ repo, dest, perfil, skipGates, selfChe
     return false;
   }
   console.log(`public/embed/embed.js regenerado. [${secs()} s]`);
+  // El catálogo del conector MCP importa cada archivo de lib/actions: con módulos podados hay que rearmarlo con el código
+  // que quedó (docs/mcp.md), o la ruta /api/mcp apuntaría a archivos que ya no están.
+  const mcpCatalog = spawnSync(process.execPath, ["scripts/build-mcp-catalog.mjs"], { cwd: dest, encoding: "utf8" });
+  if (mcpCatalog.status !== 0) {
+    console.error(`No se pudo regenerar el catálogo del MCP:\n${mcpCatalog.stdout}${mcpCatalog.stderr}`);
+    return false;
+  }
+  console.log(`Catálogo del MCP regenerado. [${secs()} s]`);
 
   if (skipGates) {
     cleanGateArtifacts(dest);

@@ -18,6 +18,13 @@ jwt_expiry = 3600
 # Authentication -> Sign In / Providers -> "Allow new users to sign up".
 enable_signup = false
 
+# Conector MCP (docs/mcp.md): el servidor OAuth 2.1 de Supabase emite los tokens de Claude y otras apps; la persona
+# da su consentimiento en /oauth/consent de la app. En el proyecto alojado: Authentication -> OAuth Server.
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/oauth/consent"
+allow_dynamic_registration = true
+
 # Este proyecto no usa Edge Functions. Los webhooks entrantes los recibe la app
 # (app/api/webhooks/), que es donde corre el motor de flows: desde Deno no se
 # puede llamar. Hubo una Edge Function `channel-webhook` haciendo de receptor

@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { currentIdentity } from "@/lib/request-identity";
 
 /**
  * Quien esta logueado en este request, sin ir a Supabase Auth.
@@ -28,7 +29,9 @@ export type AuthUser = Pick<User, "id" | "email" | "user_metadata" | "app_metada
 
 export const getAuthUser = cache(async () => {
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.getClaims();
+  // Un pedido del conector MCP no tiene sesión guardada: se verifica su token (misma firma, misma clave pública).
+  const identity = currentIdentity();
+  const { data, error } = await supabase.auth.getClaims(identity?.jwt);
   if (error || !data?.claims?.sub) return { supabase, user: null };
 
   const claims = data.claims;
