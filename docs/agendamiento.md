@@ -221,6 +221,16 @@ un tope de 3 minutos: después sale igual, porque es peor que no salga (`shouldW
 `{{booking.meeting_place}}` dice dónde es en una línea que nunca queda vacía («Google Meet: link», el texto
 escrito o «A confirmar»). Las plantillas nuevas la usan; los flujos ya creados conservan su texto.
 
+## Horarios libres al agendar (25/11/2026, traído de RER #128)
+
+Con un evento elegido, el cuadro de «Agendar» (el de la Agenda y el de las fichas, que es el mismo) muestra los
+próximos 8 horarios libres de quien lo atiende en las próximas dos semanas. Salen de `slotsForManualBooking`, que llama
+a `getPublicSlots` como la página pública (sin el aviso mínimo: lo agenda el equipo); reglas puras en
+`lib/scheduling/booking/free-slots.ts`. Elegir uno solo completa día y hora; se puede seguir escribiendo a mano. Al
+agendar, el servidor vuelve a comprobar que quien atiende no tenga otra reunión a esa hora (la exclusión de la base) y
+ofrece alternativas si se ocupó. Sin evento (una reunión suelta) no hay horarios sugeridos: no hay reglas de
+disponibilidad que mirar.
+
 ## Agendar a mano en un solo paso (00269, 28/10/2026)
 
 El botón «Agendar» abre UN modal, como en Google Calendar: título (escrito, o un evento elegido de la lista: activos arriba, inactivos abajo), invitado (un contacto que ya existe o uno nuevo con nombre y email), día, hora, duración y notas. Sin evento se elige además quién atiende y el área (por defecto «Otros»).

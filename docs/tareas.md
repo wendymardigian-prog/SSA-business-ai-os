@@ -156,6 +156,19 @@ con `<Historial entityType="task">`; la ficha del contacto, en su historial.
 - **Agrupar por vencimiento**: vencidas, hoy, mañana, próximos 7 días, más adelante, sin fecha y completadas.
 - **Comentarios** del equipo con @menciones en el panel (`?panel=comentarios` los trae a la vista).
 
+## Todas las tareas, archivos en los comentarios y las vueltas (25/11/2026, traído de RER)
+
+- **La pantalla lee todas las tareas** (RER #145): `loadAllTasks` (`lib/tasks/load-all.ts`) pide páginas de 1.000 en
+  paralelo, sin repetidas, hasta 5.000; los nombres de contactos y flujos van con `inChunks` (tandas de 200). PostgREST
+  corta cada respuesta en 1.000 filas sin avisar.
+- **Archivos en los comentarios** (00521, RER #140 B-TAR-27): hasta 5 de 25 MB por comentario, validados por sus
+  bytes, en `record-attachments/<ws>/comments/<comentario>/`. Tabla `comment_attachments` (FK a `public.comments`, la
+  entidad copiada y comprobada por un trigger, sin `contact_id`), lectura con `can_see_comment_entity`, escritura solo
+  del servidor. Adjunta solo quien escribió el comentario, con `tasks.view`; por ahora solo en las tareas (el hilo de
+  una reunión no muestra el clip).
+- **La vuelta de un paso que se repite** (00522): título «… · vuelta N», ícono ↻ en la tabla, la lista y el tablero, y
+  el bloque «Se repite» en el detalle (ver docs/servicios.md, «Pasos que se repiten»).
+
 ## Scripts de verificación
 
 ```
