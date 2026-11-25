@@ -9,11 +9,20 @@
  * falló, el job lanza AL FINAL (la cola lo reintenta y repetirlo no duplica nada).
  */
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
-import { svcRpc } from "@/lib/services/db";
+import { svcRpc, type SvcError } from "@/lib/services/db";
 import { enqueuePortalDigests, enqueuePortalDueToday } from "@/lib/jobs/handlers/portal-digest";
 import { syncWorkspaceSeries } from "@/lib/scheduling/series/run";
 
 export const SVC_DAILY_JOB = "svc_daily";
+
+/**
+ * El motivo de un fallo de la base, para `last_error` y el aviso de «Fallos del sistema» (25/11/2026): el código de
+ * Postgres y el texto original (el mensaje de `svcRpc` es el genérico «No se pudo hacer»).
+ */
+export function svcFailureReason(fn: string, error: SvcError): string {
+  const parts = [error.code ? `código ${error.code}` : null, error.technical ?? error.message, error.detail].filter(Boolean);
+  return `${fn}: ${parts.join(" · ")}`;
+}
 
 const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
@@ -21,7 +30,7 @@ export async function runSvcDaily({ supabase, job }: JobContext): Promise<void> 
   const p = (job.payload ?? {}) as { workspace_id?: unknown; local_date?: unknown };
   if (!isUuid(p.workspace_id)) return;
   const res = await svcRpc<{ errors?: string[] }>(supabase, "svc_daily_run", { p_workspace_id: p.workspace_id });
-  if (!res.ok) throw new Error(`svc_daily_run: ${res.error.message}`);
+  if (!res.ok) throw new Error(svcFailureReason("svc_daily_run", res.error));
   const errors = res.data?.errors ?? [];
   // A3 (F128): los lunes, el resumen semanal del estudiante (solo los programas que lo tienen prendido).
   if (typeof p.local_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.local_date)) {

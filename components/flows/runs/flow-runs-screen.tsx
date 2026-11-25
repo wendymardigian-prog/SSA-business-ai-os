@@ -19,6 +19,7 @@ import {
 import type { FlowRunRow, FlowRunStep } from "@/lib/flows/runs-query";
 import { cn } from "@/lib/utils";
 import { FlowRunSheet } from "./flow-run-sheet";
+import type { RunAudit } from "@/lib/flows/run-audit";
 import { ClickableTr } from "@/components/ui/clickable-row";
 
 export function RunStateBadge({ run }: { run: FlowRunRow }) {
@@ -81,7 +82,7 @@ export function FlowRunsScreen({
   loadFailed: boolean;
   filters: FlowRunFilters;
   timeZone: string;
-  detail: { run: FlowRunRow; steps: FlowRunStep[] } | null;
+  detail: { run: FlowRunRow; steps: FlowRunStep[]; audit?: RunAudit | null } | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -189,6 +190,7 @@ export function FlowRunsScreen({
           canRetry={canRetry}
           run={detail.run}
           steps={detail.steps}
+          audit={detail.audit ?? null}
           timeZone={timeZone}
           onClose={() => router.replace(hrefFor(null), { scroll: false })}
         />

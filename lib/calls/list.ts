@@ -44,6 +44,23 @@ export function isNonSaleRow(r: { call_type: string | null; analysis_status: str
   return !!r.call_type && !isSaleCallType(r.call_type);
 }
 
+/**
+ * El título que trae el calendario sin la marca repetida al final («Reunión de equipo | Mi Marca» → «Reunión de
+ * equipo»). La marca es la del negocio (`resolveBrand`), nunca escrita en el código. Solo se quita si queda algo;
+ * también quita un « - » suelto al principio (títulos sin nombre: «- Reunión de equipo»).
+ */
+export function cleanCallTitle(title: string | null | undefined, brandName: string | null | undefined): string {
+  let out = (title ?? "").trim();
+  const brand = (brandName ?? "").trim();
+  if (brand) {
+    const esc = brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const stripped = out.replace(new RegExp(`\\s*[|·–—-]\\s*${esc}\\s*$`, "i"), "").trim();
+    if (stripped) out = stripped;
+  }
+  const lead = out.replace(/^[-–—|·]\s+/, "").trim();
+  return lead || out;
+}
+
 /** Quien decidio el tipo, en texto chico: «regla: …», «IA 91%» o «persona». */
 export function typeDeciderText(r: {
   classification_source: string | null; classification_rule: string | null; classification_confidence: number | null;
@@ -139,6 +156,8 @@ export function estimateBatch(count: number, perCallUsd: number, spentUsd: numbe
 // ── Filtros en la URL ─────────────────────────────────────────────────────
 
 export const LINK_FILTERS = ["vinculada", "sin_vincular"] as const;
+/** Las reuniones internas (las del área Equipo): ocultarlas o ver solo esas. */
+export const INTERNAL_FILTERS = ["ocultar", "solo"] as const;
 export const ANALYSIS_STATUSES: readonly CallAnalysisStatus[] = [
   "classifying", "needs_review", "pending", "analyzing", "analyzed", "not_applicable", "error",
 ];
@@ -164,6 +183,8 @@ export interface CallFilters {
   resultado: string;
   estado: CallAnalysisStatus | "";
   vinculo: (typeof LINK_FILTERS)[number] | "";
+  /** Las internas (área Equipo): «ocultar» o «solo». */
+  internas: (typeof INTERNAL_FILTERS)[number] | "";
   /** Rangos de puntaje, 0..100. null = sin limite. */
   closerMin: number | null;
   closerMax: number | null;
@@ -184,7 +205,7 @@ export interface CallFilters {
 }
 
 export const EMPTY_FILTERS: CallFilters = {
-  closer: "", contacto: "", area: "", tipo: "", resultado: "", estado: "", vinculo: "",
+  closer: "", contacto: "", area: "", tipo: "", resultado: "", estado: "", vinculo: "", internas: "",
   closerMin: null, closerMax: null, leadMin: null, leadMax: null,
   desde: "", hasta: "", q: "", servicio: "", manual: false, pagina: 1,
 };
@@ -199,6 +220,9 @@ export interface FilterContext {
   /** Servicios A4: con el módulo apagado, el filtro de servicio se ignora. */
   servicesOn?: boolean;
 }
+
+/** Un id que no existe: el filtro «solo internas» sin área Equipo no trae nada. */
+const NO_AREA_ID = "00000000-0000-0000-0000-000000000000";
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PARAM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -234,6 +258,7 @@ export function parseCallFilters(sp: SearchParams, ctx: FilterContext): CallFilt
     resultado: /^[a-z0-9_]{1,60}$/.test(resultado) ? resultado : "",
     estado: pickEnum<CallAnalysisStatus, "">(sp.estado, ANALYSIS_STATUSES, ""),
     vinculo: pickEnum<(typeof LINK_FILTERS)[number], "">(sp.vinculo, LINK_FILTERS, ""),
+    internas: pickEnum<(typeof INTERNAL_FILTERS)[number], "">(sp.internas, INTERNAL_FILTERS, ""),
     closerMin: score(sp.cmin),
     closerMax: score(sp.cmax),
     leadMin: score(sp.lmin),
@@ -255,7 +280,7 @@ function serviceParam(raw: string): string {
 /** Los filtros activos (sin contar la pagina), para el contador del boton. */
 export function countActiveCallFilters(f: CallFilters): number {
   return [
-    f.closer, f.contacto, f.area, f.tipo, f.resultado, f.estado, f.vinculo, f.desde, f.hasta, f.q,
+    f.closer, f.contacto, f.area, f.tipo, f.resultado, f.estado, f.vinculo, f.internas, f.desde, f.hasta, f.q,
     f.closerMin, f.closerMax, f.leadMin, f.leadMax, f.servicio, f.manual ? "1" : "",
   ].filter((v) => v !== "" && v !== null).length;
 }
@@ -265,7 +290,7 @@ export function callFiltersToParams(f: CallFilters): URLSearchParams {
   const p = new URLSearchParams();
   const put = (k: string, v: string | number | null) => { if (v !== "" && v !== null) p.set(k, String(v)); };
   put("closer", f.closer); put("contacto", f.contacto); put("area", f.area); put("tipo", f.tipo); put("resultado", f.resultado); put("estado", f.estado);
-  put("vinculo", f.vinculo); put("cmin", f.closerMin); put("cmax", f.closerMax);
+  put("vinculo", f.vinculo); put("internas", f.internas); put("cmin", f.closerMin); put("cmax", f.closerMax);
   put("lmin", f.leadMin); put("lmax", f.leadMax); put("desde", f.desde); put("hasta", f.hasta); put("q", f.q);
   put("servicio", f.servicio); if (f.manual) p.set("manual", "1");
   if (f.pagina > 1) p.set("pagina", String(f.pagina));
@@ -292,6 +317,8 @@ export interface ApplyOptions {
    */
   serviceAreaId?: string | null;
   classTypeId?: string | null;
+  /** El área Equipo (id de `booking_categories`), para el filtro «Internas». Sin el área no hay internas que ocultar o mostrar. */
+  teamAreaId?: string | null;
 }
 
 /**
@@ -309,6 +336,9 @@ export function applyCallFilters<Q extends FilterableQuery<Q>>(query: Q, f: Call
   if (f.estado) q = q.eq("analysis_status", f.estado);
   if (f.vinculo === "sin_vincular") q = q.is("contact_id", null);
   if (f.vinculo === "vinculada") q = q.not("contact_id", "is", null);
+  // Las internas son las del área Equipo (por su clave fija, nunca por el nombre). La consulta decide, no la memoria.
+  if (f.internas === "solo") q = q.eq("area_id", opts.teamAreaId ?? NO_AREA_ID);
+  else if (f.internas === "ocultar" && opts.teamAreaId) q = q.or(`area_id.is.null,area_id.neq.${opts.teamAreaId}`);
   if (f.closerMin !== null) q = q.gte("closer_score", f.closerMin);
   if (f.closerMax !== null) q = q.lte("closer_score", f.closerMax);
   if (f.leadMin !== null) q = q.gte("lead_score", f.leadMin);
@@ -339,7 +369,7 @@ export function applyCallFilters<Q extends FilterableQuery<Q>>(query: Q, f: Call
 
 /** Las columnas que lee la lista (nunca la transcripcion ni el analisis entero). */
 export const CALL_LIST_COLUMNS =
-  "id, title, recorded_at, duration_seconds, recorded_by_user_id, recorded_by_email, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, classification_source, classification_rule, classification_confidence, analysis_status, analysis_status_reason, closer_score, lead_score, lead_qualification, outcome, has_open_alerts, source, link_method";
+  "id, title, recorded_at, duration_seconds, recorded_by_user_id, recorded_by_email, attendees, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, classification_source, classification_rule, classification_confidence, analysis_status, analysis_status_reason, closer_score, lead_score, lead_qualification, outcome, has_open_alerts, source, link_method";
 
 /** Con el módulo de Servicios prendido (Servicios A4, F136): suma el servicio y su vínculo. */
 export const CALL_LIST_SERVICE_COLUMNS = ", service_id, service_link";
@@ -363,6 +393,7 @@ export function callListColumns(opts: { servicesOn: boolean }): CallListColumn[]
     { key: "fecha", label: "Fecha", defaultWidth: 150 },
     { key: "duracion", label: "Duración", defaultWidth: 100 },
     { key: "grabo", label: "Quien grabó", defaultWidth: 150 },
+    { key: "participantes", label: "Participantes", defaultWidth: 240 },
     { key: "tipo", label: "Tipo", defaultWidth: 200 },
   ];
   if (opts.servicesOn) base.push({ key: "servicio", label: "Servicio", defaultWidth: 200 });

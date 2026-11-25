@@ -168,3 +168,12 @@ describe("suggestMapRows: la sugerencia automática", () => {
     expect(suggestMapRows([1], [])).toEqual([]);
   });
 });
+
+describe("una fila recién agregada (ruta vacía)", () => {
+  it("no se descarta al leer la configuración del paso de contacto", async () => {
+    const { parseUpsertContactConfig } = await import("./upsert-config");
+    const config = parseUpsertContactConfig({ map: [{ target: "contact.email", source: { path: "" } }] });
+    expect(config.map).toHaveLength(1);
+    expect(readSource({ email: "a@b.com" }, {}, { path: "" })).toBeNull();
+  });
+});

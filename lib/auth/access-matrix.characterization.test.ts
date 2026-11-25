@@ -76,6 +76,8 @@ const MANUAL: Record<string, Triple> = {
   // RLS de la grabación (lee con la sesión). Se clasificó al traer main a la rama de IA (18/11/2026).
   "lib/actions/call-action-proposals.ts#resolveCallProposal": [true, true, true], // @plantilla-quitar(llamadas)
   "lib/actions/calls-badge.ts#countMyPendingProposals": [true, true, true], // @plantilla-quitar(llamadas)
+  // Cada persona guarda SUS avisos; `isAdminRole` solo frena los avisos que no son para su rol (Fallos del sistema, 25/11/2026).
+  "lib/actions/account.ts#setNotificationPref": [true, true, true],
   // Poner la marca puede cualquiera; QUITARLA exige `getAdminContext` (rama parcial).
   "lib/actions/contacts.ts#setDoNotContact": [true, true, "partial"],
 };
@@ -315,6 +317,8 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     ADDED_AGENT_TYPES.push("project_reviewer"); // @plantilla-quitar(proyectos)
     // IA (18/11/2026, traído de RER): el asistente del equipo, otro tipo nuevo con sus pestañas.
     ADDED_AGENT_TYPES.push("assistant"); // @plantilla-quitar(disenador)
+    // Grabaciones (00536, traído de RER): los analizadores por área, dos tipos nuevos con sus pestañas.
+    ADDED_AGENT_TYPES.push("sales_analyzer", "service_analyzer"); // @plantilla-quitar(llamadas)
     const withoutAdded = (r: Record<string, unknown>): Record<string, unknown> => {
       const tabs = { ...((r.agentTabs ?? {}) as Record<string, unknown>) };
       for (const t of ADDED_AGENT_TYPES) delete tabs[t];

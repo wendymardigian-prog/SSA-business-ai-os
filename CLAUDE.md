@@ -602,6 +602,16 @@ Llamadas **no suma ninguna variable de entorno**: la app OAuth de Fathom (Client
 y Secret) y los tokens viven en Supabase Vault, y el cron usa los secretos que ya
 estan en el Vault.
 
+## Panel, selección múltiple y analizadores por área (25/11/2026, traído de RER)
+
+Detalle en [docs/llamadas.md](docs/llamadas.md) («Panel, selección múltiple y analizadores por área»).
+
+- **La ficha se arma en UN lugar** (`loadCallDetail`, `lib/calls/load-detail.ts`): la página `/dashboard/llamadas/[id]` y el panel de la lista (`loadCallPanel`, `?llamada=`) usan lo mismo. Una pieza nueva de la ficha se suma ahí. Toda acción de adentro del panel termina en `router.refresh()`: cuando llegan filas nuevas, la lista vuelve a pedir solo el detalle.
+- **Lote**: reglas puras en `lib/calls/bulk.ts` y `lib/calls/reclassify-request.ts`, acciones en `lib/actions/calls-edit.ts` (todas con `calls.edit`, leen con la sesión y escriben con servicio). Topes: tipo 30, volver a clasificar 30, analizar 20 (una cada 30 s). Volver a clasificar nunca toca lo elegido a mano, lo analizado ni lo que está en curso.
+- **Los analizadores por área son agentes declarados** (`sales_analyzer`, `service_analyzer`, 00536), apagados al nacer, reconocidos por su `type` (único por negocio entre los vivos). Aportan su modelo solo a las grabaciones de SU área y solo encendidos y con modelo (`withAreaAnalyzerModel`); sin eso, el modelo de la tarea. **Sin respaldo todavía** (las tareas de IA no tienen motor de respaldo). Sus instrucciones por tipo siguen siendo `call_analysis_profiles`: «sin analizador no se gasta IA» y lo importado del historial no cambian.
+- **«Internas» = el área Equipo** (`TEAM_AREA_KEY`), filtrado en la consulta.
+- **`00536_area_analyzer_agents`** (aditiva) va **ANTES** de desplegar el código; **aplicada y registrada** el 25/11/2026 UTC (versión `20261125201211`), después de ensayarla en una transacción que se deshizo sola (crea los dos agentes apagados, la segunda llamada no crea nada, un borrado no se resucita y el único frena un segundo vivo). La próxima libre sigue siendo la `00514` (la `00536` era una banda reservada; confirmar con `list_migrations`).
+
 # Mejoras de Chat (Bloques 1-6)
 
 Lo que arregla, en una frase: hasta ahora un lead mandaba una nota de voz y el
@@ -2009,6 +2019,16 @@ node scripts/verify-account.mjs --despues-de-00275 # además, que cada aviso enc
 
 **SECURITY DEFINER cerradas para anon (2/11/2026).** `00276_security_definer_not_callable_by_anon`: a `can_give_role`, `can_grant_permissions` e `is_own_role` se les saca PUBLIC y anon (authenticated se queda: lo necesitan las policies de equipo), y a diez trigger functions de Agenda, Ventas, mensajes y roles se les saca PUBLIC, anon y authenticated (como la 00048). **Aplicada y registrada** el 2/11/2026 (versión `20261102230245`), con `verify-roles --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212 --despues-de-00249` en verde antes y después. En el linter, «Public Can Execute SECURITY DEFINER Function» queda solo con `get_public_form` (pública a propósito: `/f/[slug]`). Toda SECURITY DEFINER nueva lleva su `REVOKE ALL ... FROM PUBLIC, anon` (y `GRANT` explícito): la `00000` le da EXECUTE a anon por defecto. **La próxima libre es la `00277`** (confirmar con `list_migrations` y las ramas locales).
 
+# Fallos del sistema: avisos para Owner y Admin (25/11/2026, sin migración)
+
+Cuando algo deja de funcionar (un trabajo de la cola que se pierde, Slack, Resend, Zernio, Meta, la conexión de Google del negocio, el render, una conexión personal cortada), Owner y Admin reciben un aviso en **Mi cuenta → Notificaciones → «Fallos del sistema»**, con **campana, email y Slack prendidos de entrada** (WhatsApp apagado). Detalle y la lista completa en [docs/fallos-del-sistema.md](docs/fallos-del-sistema.md).
+
+- **Un solo camino: `notifySystemFailure`** (`lib/notifications/system-alerts.ts`). Nunca lanza, va sin `recipient_id` y con `entity_type: "system"`, y el clic sale de `metadata.area`. No repite el mismo tipo y clave en 7 días, **leído o no**. Lo que tiene estado avisa solo en la transición.
+- **Solo Owner y Admin**: el evento `system_failures` es `audience: { kind: "admins" }` sin permisos, y `setNotificationPref` rechaza en el servidor un evento que no es para el rol de la persona.
+- **El runner de la cola avisa al dar un trabajo por perdido** (`lib/jobs/failure-alert.ts`), salvo `notification_deliver` (sería un bucle) y los que ya tienen su aviso. Un trabajo nuevo suma su nombre en `JOB_LABELS`.
+- **Slack rechazado** va por `alertSlackTokenRejected` (`lib/integrations/slack-alert.ts`), desde la entrega de avisos y el paso «Enviar a Slack»; ya no es «Una integración necesita atención».
+- `svcRpc` guarda el texto original de la base en `error.technical`, solo para logs y avisos internos. `svc_daily` lo usa para decir por qué falló.
+
 # Broadcasts y la cola de envíos (3/11/2026)
 
 Un mensaje a muchos contactos por WhatsApp (Evolution) o email (Resend), con los MISMOS filtros de Contactos, variables con respaldo, hasta 5 variantes y una **cola de envíos** con ritmo por número. Resumen en [docs/broadcasts.md](docs/broadcasts.md).
@@ -2724,3 +2744,16 @@ Rama `feat/ia-aprendizaje-asistente` (PR #268). Migraciones `00440` a `00444`, a
 - **Conocimiento** (00443): carpetas (escribe solo el servidor), enlaces (se bajan con `safeFetch`), alcance del agente por etiqueta/documento/carpeta (`match_knowledge_chunks_scoped`, solo documentos `ready`: reemplazar o reprocesar retira los trozos viejos). La página de cada trozo sale de las marcas `<!-- pagina N -->` del PDF; los trozos viejos quedan sin página hasta reindexar. «Citar la fuente» (`agents.cite_sources`) APAGADO de serie: apagado, el lead no ve nada nuevo.
 - **Estado de las claves de IA** en Agentes IA (`lib/ai/provider-states.ts`): un 401/403 del proveedor deja `integration_configs.last_error` y la clave «Con error» hasta volver a guardarla.
 - **`agent_runs_source_check`** suma `assistant` en la 00444: si otra rama redefine ese CHECK, partir del vigente en la base.
+
+# Variables «grupo.campo» y webhooks auditables (25/11/2026, traído de RER)
+
+Rama `feat/rer-variables-webhooks`. Sin empresas ni GHL (son de RER). Detalle en [docs/flow-registry.md](docs/flow-registry.md) («Webhooks auditables» y «Variables «grupo.campo»»).
+
+- **Los datos del contacto salen de `buildContactVariables`** (`lib/flow-engine/contact-variables.ts`, puro) y los lee `loadContactVariables` en una sola consulta. Se leen al arrancar (gana lo del disparador), **otra vez al retomar después de una espera** (ganan los de ahora) y después de «Crear o actualizar contacto». Nunca frena un flujo.
+- **Los nombres nuevos son alias** (`lib/flow-engine/variable-aliases.ts`): primero la ruta tal cual, después la del alias. Lo publicado no cambia; el selector ofrece solo los nuevos. Una variable nueva sin grupo va con su alias.
+- **`CONTACT_VARIABLES` son las cuatro que comparte el Diseñador IA**: lo nuevo va en `CONTACT_EXTRA_VARIABLES`.
+- **Un solo selector** (`VariableChips`, grupos y nombres en `lib/flow-engine/variable-labels.ts`): ningún panel arma su propia lista de fichas.
+- **`flow_session_steps.input`/`.output` e `inbound_webhooks.headers` tienen datos personales**: la sesión NO lee `input`/`output` (GRANT por columnas, 00515; `lib/flows/step-columns-grant.test.ts`). Los lee el servidor solo con `flows.edit` (`lib/flows/run-audit.ts`) y se vacían a los 90 días. **Una columna nueva de `flow_session_steps` que lea la pantalla se suma al GRANT.** `flow_node_stats` no puede usarlas.
+- **«Volver a ejecutar con el mismo webhook»** (`rerunFlowRunFromWebhook`, `flows.edit`): solo ejecuciones terminadas, solo esa automatización (`onlyFlowId`), queda en `audit_log`.
+
+`00515_flow_step_audit` (aditiva) puede ir antes o después del deploy: **aplicada y registrada** el 25/11/2026 UTC (versión `20261125201655`), después de ensayarla dos veces en una transacción que se deshizo sola, con `verify-flow-runs` en verde (incluye que la sesión no lee `input`/`output`). Después de un DDL así, `NOTIFY pgrst, 'reload schema'` para que la API vea las columnas. La `00514` y de la `00516` en adelante son de otras sesiones (confirmar con `list_migrations` y las ramas locales).

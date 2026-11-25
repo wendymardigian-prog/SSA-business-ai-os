@@ -6,6 +6,8 @@
  */
 
 import type { ConditionFieldSpec } from "@/lib/flow-engine/condition-eval";
+import { aliasFor } from "@/lib/flow-engine/variable-aliases";
+import { variableLabel } from "@/lib/flow-engine/variable-labels";
 
 /** Si falta un dato (F55). En automatizaciones, «No generar y avisarme» por defecto. */
 export type NodeMissingPolicy = "fail" | "template_default" | "empty";
@@ -206,6 +208,9 @@ export function mappingRows(
   return rows.sort((a, b) => Number(b.group === "Propias") - Number(a.group === "Propias"));
 }
 
+/** Lo que deja un paso anterior, con su nombre de siempre y con el nuevo «grupo.campo» (24/11/2026). */
+const STEP_OUTPUT_VARIABLES = new Set(["ai_response", "contact_result", "contact_fail_reason", "ai.response", "contact.result", "contact.fail_reason"]);
+
 /** Los grupos del selector de cada variable (F57), a partir de las variables que el lienzo ofrece en este paso. */
 export function groupVariableOptions(available: readonly string[]): Array<{ label: string; vars: string[] }> {
   const trigger: string[] = [];
@@ -215,7 +220,7 @@ export function groupVariableOptions(available: readonly string[]): Array<{ labe
   for (const v of available) {
     if (v.startsWith("contact.")) contact.push(v);
     else if (v.startsWith("workspace.")) business.push(v);
-    else if (v.startsWith("design.") || v === "ai_response" || v === "contact_result" || v === "contact_fail_reason" || !v.includes(".")) previous.push(v);
+    else if (v.startsWith("design.") || STEP_OUTPUT_VARIABLES.has(v) || !v.includes(".")) previous.push(v);
     else trigger.push(v);
   }
   return [
@@ -260,7 +265,10 @@ const KNOWN_VARIABLE_LABELS: Record<string, string> = {
  */
 export function variableOptionLabel(path: string, schemaLabels: Record<string, string> = {}): string {
   const fromDesign = designGenerateOutputs().find((o) => o.path === path)?.label;
-  const label = schemaLabels[path] || KNOWN_VARIABLE_LABELS[path] || fromDesign;
+  // Con el nombre nuevo (`form.answer.x`), el rótulo del esquema está en la ruta de siempre (`answer.x`).
+  const alias = aliasFor(path);
+  const known = variableLabel(path);
+  const label = schemaLabels[path] || (alias ? schemaLabels[alias] : undefined) || KNOWN_VARIABLE_LABELS[path] || fromDesign || (known !== path ? known : undefined);
   return label && label !== path ? `${label} · ${path}` : path;
 }
 

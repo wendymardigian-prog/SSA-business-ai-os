@@ -54,8 +54,12 @@ export interface StripResult<T = unknown> {
 export function stripWebhookCopies(variables: unknown): StripResult {
   if (!isObject(variables) || !isObject(variables.webhook)) return { value: variables, changed: false };
   const webhook = variables.webhook;
-  if (isEmpty(webhook.payload) && isEmpty(webhook.query)) return { value: variables, changed: false };
-  return { value: { ...variables, webhook: { ...webhook, payload: {}, query: {} } }, changed: true };
+  // `data` y `query_data` son la copia normalizada (normalize.ts): se vacían junto con el original.
+  if (isEmpty(webhook.payload) && isEmpty(webhook.query) && isEmpty(webhook.data) && isEmpty(webhook.query_data)) return { value: variables, changed: false };
+  const cleared: Record<string, unknown> = { ...webhook, payload: {}, query: {} };
+  if ("data" in webhook) cleared.data = {};
+  if ("query_data" in webhook) cleared.query_data = {};
+  return { value: { ...variables, webhook: cleared }, changed: true };
 }
 
 /** El `payload` de un job `resume_flow` (que lleva `variables`) sin la copia del envio. Puro. */

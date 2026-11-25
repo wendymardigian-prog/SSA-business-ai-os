@@ -92446,6 +92446,54 @@ REVOKE ALL ON FUNCTION app_servicio.tutor_conversations(uuid, text, integer, tim
 GRANT EXECUTE ON FUNCTION app_servicio.tutor_conversations(uuid, text, integer, timestamptz) TO authenticated, service_role;
 
 -- ============================================================
+-- MIGRATION 515: FLOW STEP AUDIT
+-- ============================================================
+-- 00515_flow_step_audit.sql
+--
+-- Automatizaciones auditables (traído de RER-BAIOS #102 el 25/11/2026, sin el paso de empresa). Aditiva e idempotente:
+-- puede ir ANTES o DESPUÉS del deploy (el motor anota los pasos sin las columnas nuevas si todavía no existen).
+--
+-- 1. `flow_session_steps.input` / `.output`: con qué datos corrió cada paso y qué dejó (lib/flow-engine/step-io.ts).
+--    Tienen datos personales, así que la sesión del navegador NO las puede leer: el GRANT SELECT de la tabla (00292)
+--    pasa a ser por columnas, sin estas dos. Las lee el servidor después de comprobar `flows.edit`
+--    (lib/flows/run-audit.ts) y el barrido de 90 días las vacía (lib/webhooks/sweep.ts).
+-- 2. `inbound_webhooks.headers`: las cabeceras del envío, ya saneadas (sin secreto, credenciales ni IP;
+--    lib/webhooks/headers.ts). Mismo acceso que el payload; se vacían con él a los 90 días.
+--
+-- La política de lectura de `flow_session_steps` (00292, `can_see_flow_session`) no cambia. `flow_node_stats` (00317,
+-- SECURITY INVOKER) solo lee columnas de la lista de abajo.
+--
+-- Para volver atrás (lo que dejaba la 00292):
+--   REVOKE SELECT ON TABLE public.flow_session_steps FROM authenticated;
+--   GRANT SELECT ON TABLE public.flow_session_steps TO authenticated;
+--   DROP INDEX IF EXISTS public.idx_flow_session_steps_audit_retention;
+--   ALTER TABLE public.flow_session_steps DROP COLUMN IF EXISTS input, DROP COLUMN IF EXISTS output;
+--   ALTER TABLE public.inbound_webhooks DROP COLUMN IF EXISTS headers;
+
+-- ─── 1. Lo que usó y dejó cada paso ────────────────────────────────────────
+ALTER TABLE public.flow_session_steps ADD COLUMN IF NOT EXISTS input jsonb NULL;
+ALTER TABLE public.flow_session_steps ADD COLUMN IF NOT EXISTS output jsonb NULL;
+
+COMMENT ON COLUMN public.flow_session_steps.input IS 'Con qué datos corrió el paso (su configuración con las variables reemplazadas). Datos personales: no lo lee la sesión; se vacía a los 90 días. 00515.';
+COMMENT ON COLUMN public.flow_session_steps.output IS 'Qué dejó el paso (lo que creó, las variables que cambió, el contacto). Datos personales: no lo lee la sesión; se vacía a los 90 días. 00515.';
+
+-- La sesión lee todas las columnas MENOS input y output. La lista es explícita: una columna nueva que tenga que leer la
+-- pantalla se suma acá (lib/flows/run-audit.test.ts compara esta lista con las columnas que pide la pantalla).
+REVOKE SELECT ON TABLE public.flow_session_steps FROM PUBLIC, anon, authenticated;
+GRANT SELECT (
+  id, seq, session_id, flow_id, node_id, node_type, node_label, status, exit_label, reason,
+  resumes_at, started_at, finished_at, error_kind, exit_handle
+) ON public.flow_session_steps TO authenticated;
+GRANT ALL ON TABLE public.flow_session_steps TO service_role;
+
+CREATE INDEX IF NOT EXISTS idx_flow_session_steps_audit_retention ON public.flow_session_steps (finished_at)
+  WHERE input IS NOT NULL OR output IS NOT NULL;
+
+-- ─── 2. Las cabeceras del envío ────────────────────────────────────────────
+ALTER TABLE public.inbound_webhooks ADD COLUMN IF NOT EXISTS headers jsonb NULL;
+COMMENT ON COLUMN public.inbound_webhooks.headers IS 'Las cabeceras del envío, saneadas (sin secreto, credenciales ni IP). Se vacían con el payload a los 90 días. 00515.';
+
+-- ============================================================
 -- MIGRATION 520: CONTACT NOTE ATTACHMENTS
 -- ============================================================
 -- 00520 · Archivos adjuntos en los comentarios de la ficha del cliente (25/11/2026, traído de RER #110, su 00506).
@@ -94778,3 +94826,85 @@ GRANT EXECUTE ON FUNCTION app_servicio.svc_client_label(uuid), app_servicio.book
   app_servicio.svc_series_request_fix(uuid), app_servicio.svc_end_meeting_series(uuid, text)
 TO service_role;
 GRANT EXECUTE ON FUNCTION app_servicio.svc_round_mark(uuid, text) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 536: AREA ANALYZER AGENTS
+-- ============================================================
+-- ============================================================
+-- 00536 — Los analizadores de reuniones por área (Ventas y Servicio)
+-- ============================================================
+-- Dos agentes declarados en el código: «Analizador de reuniones de Ventas» (type `sales_analyzer`) y «Analizador de
+-- reuniones de Servicio» (type `service_analyzer`). Cada uno aporta su modelo al análisis de las grabaciones de SU área
+-- (lib/calls/area-analyzers.ts) y su pantalla muestra los analizadores por tipo de esa área. Nacen APAGADOS: apagado,
+-- el análisis usa el modelo de la tarea «Análisis de llamadas», igual que antes.
+--
+--   1. `uq_agents_area_analyzer_type`: uno por negocio y por tipo entre los vivos. Dos aperturas de la pantalla a la
+--      vez no crean dos agentes.
+--   2. `ensure_area_analyzer_agents(p_workspace_id, p_agents)`: crea los que falten, en una sola transacción y con
+--      candado por negocio. Idempotente y nunca pisa lo elegido por una persona: no toca un agente que ya existe y
+--      tampoco resucita uno que alguien borró (mira también los borrados). Solo la ejecuta `service_role`.
+--
+-- Cada elemento de `p_agents`: { type, name, provider?, model? }. El proveedor y el modelo van juntos o ninguno.
+-- No hace falta ninguna columna nueva: el agente se reconoce por su `type`.
+--
+-- Aditiva e idempotente. Para volver atrás:
+--   DROP FUNCTION IF EXISTS public.ensure_area_analyzer_agents(uuid, jsonb);
+--   DROP INDEX IF EXISTS public.uq_agents_area_analyzer_type;
+--   (los agentes creados se pueden borrar desde Agentes IA o con un UPDATE de deleted_at)
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_agents_area_analyzer_type
+  ON public.agents (workspace_id, type)
+  WHERE type IN ('sales_analyzer', 'service_analyzer') AND deleted_at IS NULL;
+
+CREATE OR REPLACE FUNCTION public.ensure_area_analyzer_agents(p_workspace_id uuid, p_agents jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_item jsonb;
+  v_type text;
+  v_name text;
+  v_provider text;
+  v_model text;
+  v_created text[] := '{}';
+BEGIN
+  IF p_workspace_id IS NULL OR NOT EXISTS (SELECT 1 FROM public.workspaces w WHERE w.id = p_workspace_id) THEN
+    RAISE EXCEPTION 'El workspace no existe.' USING ERRCODE = '22023';
+  END IF;
+  IF p_agents IS NULL OR jsonb_typeof(p_agents) <> 'array' THEN
+    RAISE EXCEPTION 'Faltan los agentes.' USING ERRCODE = '22023';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended('ensure_area_analyzer_agents:' || p_workspace_id::text, 0));
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_agents) LOOP
+    v_type := v_item ->> 'type';
+    v_name := nullif(btrim(coalesce(v_item ->> 'name', '')), '');
+    v_provider := nullif(btrim(coalesce(v_item ->> 'provider', '')), '');
+    v_model := nullif(btrim(coalesce(v_item ->> 'model', '')), '');
+
+    IF v_type NOT IN ('sales_analyzer', 'service_analyzer') OR v_name IS NULL THEN
+      RAISE EXCEPTION 'Agente no válido.' USING ERRCODE = '22023';
+    END IF;
+    IF (v_provider IS NULL) <> (v_model IS NULL) THEN
+      RAISE EXCEPTION 'El proveedor y el modelo van juntos.' USING ERRCODE = '22023';
+    END IF;
+
+    -- Uno que ya existió (también borrado) no se vuelve a crear.
+    IF EXISTS (SELECT 1 FROM public.agents a WHERE a.workspace_id = p_workspace_id AND a.type = v_type) THEN
+      CONTINUE;
+    END IF;
+
+    INSERT INTO public.agents (workspace_id, name, type, is_enabled, provider, model)
+    VALUES (p_workspace_id, v_name, v_type, false, v_provider, v_model);
+    v_created := v_created || v_type;
+  END LOOP;
+
+  RETURN jsonb_build_object('created', to_jsonb(v_created));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.ensure_area_analyzer_agents(uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ensure_area_analyzer_agents(uuid, jsonb) TO service_role;

@@ -45,7 +45,8 @@ export interface ResendMessage {
 
 export type ResendResult =
   | { ok: true; id: string | null; attempts: number }
-  | { ok: false; error: string; attempts: number };
+  /** `status`: el código HTTP de Resend cuando respondió (un 401/403 es la clave: no se arregla reintentando). */
+  | { ok: false; error: string; attempts: number; status?: number };
 
 /**
  * Manda el email. Nunca lanza: devuelve el resultado para que quien llama
@@ -100,7 +101,7 @@ export async function sendViaResend(
           : parsed;
       lastError = `Resend respondio ${res.status}${detail ? `: ${typeof detail === "string" ? detail : JSON.stringify(detail)}` : ""}`;
 
-      if (!isRetriable(res.status)) return { ok: false, error: lastError, attempts };
+      if (!isRetriable(res.status)) return { ok: false, error: lastError, attempts, status: res.status };
     } catch (err) {
       lastError = `No se pudo contactar a Resend: ${err instanceof Error ? err.message : String(err)}`;
     }

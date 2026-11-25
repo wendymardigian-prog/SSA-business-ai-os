@@ -972,3 +972,52 @@ Una automatización tiene **una sola versión publicada** (lo que corre, `flows.
 - **Los editores de pasos de Formularios y Agenda** siguen activando al guardar (`lib/flows/step-editor-versions.ts`):
   - si hay un borrador del lienzo, no guardan (`CANVAS_DRAFT_BLOCK`): el próximo «Publicar cambios» los pisaría;
   - cada guardado de una automatización publicada suma una versión al historial.
+
+## Webhooks auditables (traído de RER el 25/11/2026, 00515)
+
+**Cualquier formato de payload.** Además de `{{webhook.payload.…}}` (tal como llegó), cada flujo de webhook tiene `{{webhook.data.…}}` y `{{webhook.query_data.…}}`: la copia **normalizada** (`lib/webhooks/normalize.ts`, pura). Expande las claves con corchetes de un formulario (`cliente[email]` → `cliente.email`, `items[0][precio]` → `items.0.precio`), lee un JSON metido como texto en un campo y pasa cada clave a una forma segura (minúsculas, sin tildes; espacios, puntos y signos → `_`; dos claves que chocan, `_2`). Se calcula al armar las variables, así que sirve para envíos viejos y reprocesos. El selector, el «Solo si…» y «Elegir del ejemplo» de «Crear o actualizar contacto» ofrecen `webhook.data.*` primero. En el mapeo, una ruta `webhook.data.x` lee la copia normalizada; lo guardado como `payload.x`, `query.x` o `x` sigue igual.
+
+**`{{contact.*}}` después de crear el contacto.** «Crear o actualizar contacto» carga los datos del contacto (y `contact.id`) para los pasos siguientes: un flujo de webhook arranca sin contacto y antes `{{contact.email}}` quedaba sin resolver.
+
+**Qué usó y qué dejó cada paso.** El motor guarda en `flow_session_steps.input` la configuración del paso con las variables ya reemplazadas, y en `.output` lo que el paso declaró (`noteStep({ output })`), las variables que cambió y el contacto si cambió (`lib/flow-engine/step-io.ts`, recortado a 32 KB). Tiene datos personales: la sesión del navegador **no puede leer esas columnas** (GRANT por columnas, 00515; `lib/flows/step-columns-grant.test.ts` lo cuida). Las lee el servidor (`lib/flows/run-audit.ts`) solo para quien tiene `flows.edit`, y el barrido de 90 días las vacía. Las cabeceras del envío (`inbound_webhooks.headers`, sin secreto, credenciales ni IP: `lib/webhooks/headers.ts`) se guardan y se vacían igual. **Una columna nueva de `flow_session_steps` que tenga que leer la pantalla se suma al GRANT** en su migración.
+
+**La ficha de la ejecución** muestra, para una ejecución de webhook, el envío (Datos, Variables `webhook.data`, URL y Cabeceras), por paso «Usó» y «Resultado» con el enlace al contacto, y la duración. **«Volver a ejecutar con el mismo webhook»** (`rerunFlowRunFromWebhook`, `flows.edit`, solo ejecuciones terminadas) reprocesa el envío limitado a esa automatización (`onlyFlowId`) forzando volver a correr; queda en `audit_log`. El contacto no se duplica; un mensaje sí se repetiría (la confirmación lo avisa). El detalle del envío enlaza a su ejecución y la ficha del envío se abre con `?envio=<id>`.
+
+**«Esperar» en una ejecución terminada** se lee «Esperó»: la pantalla mira si la ejecución sigue activa y, al retomarse, la fila de la espera guarda cuándo siguió (`noteWaitResumed`; el estado sigue `waiting` para las métricas del lienzo).
+
+**«Agregar campo» en «Crear o actualizar contacto»** suma la fila: la ruta principal puede estar vacía mientras se arma (`editablePath`, `lib/webhooks/upsert-config.ts`). Al correr, una ruta vacía no lee nada y nunca escribe.
+
+## Variables «grupo.campo» (traído de RER el 25/11/2026, sin migración)
+
+Toda variable se escribe `{{grupo.campo}}` y admite respaldo: `{{contact.first_name|amigo}}`.
+
+**Datos del contacto** (`lib/flow-engine/contact-variables.ts`, puro; lo lee `contact-variables-load.ts` en UNA consulta con etiquetas y campos personalizados, más los nombres del setter y el vendedor):
+
+| Grupo | Variables |
+|---|---|
+| `contact.` | `first_name`, `display_name`, `name`, `email`, `phone`, `id`, `secondary_email`, `whatsapp`, `instagram`, `tiktok`, `twitter`, `linkedin`, `country`, `timezone`, `tags`, `setter_name`, `vendedor_name`, `setter_status`, `vendedor_status`, `last_status`, `qualification`, `qualification_level`, `temperature` |
+| `contact.custom.` | Un campo personalizado por slug (`{{contact.custom.presupuesto}}`), formateado con `displayCustomValue` (Sí/No, dd/mm/aaaa) |
+
+Todo es texto; un dato que falta es `""` (la variable desaparece y el respaldo funciona). `first_name` sale de `firstNameOf` (un nombre de relleno queda vacío). Los estados salen con su nombre (también uno archivado); una clave que ya no existe, vacía. No se exponen notas ni el resumen de la IA. `CONTACT_VARIABLES` sigue siendo las cuatro que comparte el Diseñador IA; las demás están en `CONTACT_EXTRA_VARIABLES`.
+
+**Cuándo se leen.** Al arrancar (`existing-wins`: lo que trae el disparador gana, como siempre), **al retomar después de una espera** (`fresh-wins`: si cambió el vendedor, el mensaje usa el nuevo) y después de «Crear o actualizar contacto» (`fresh-wins`). Si la lectura falla, el flujo sigue con lo que tenía.
+
+**Nombres nuevos para lo que no seguía la regla** (`lib/flow-engine/variable-aliases.ts`, puro). `resolveVariablePath` y el simulador miran primero la ruta tal cual y, si no existe, la del alias: lo publicado no cambia y los nombres viejos siguen funcionando. El selector ofrece solo los nuevos (`preferredName`).
+
+| Nuevo | De siempre |
+|---|---|
+| `form.answer.x`, `form.answer_raw.x` | `answer.x`, `answer_raw.x` |
+| `booking.answer.x` | `booking.answers.x` |
+| `message.text`, `message.origin.*` | `message`, `message_origin.*` |
+| `comment.text`, `comment.id`, `comment.author_name`, `comment.post_id` | `comment_text`, `comment_id`, `commenter_name`, `post_id` |
+| `email.subject`, `inactivity.hours` | `email_subject`, `inactivity_hours` |
+| `event.type`, `event.source`, `event.tag_name`, `event.value`, `event.role`, `event.reason`, `event.level`, `event.previous_level` | `event_*` |
+| `ai.response`, `contact.result`, `contact.fail_reason` | `ai_response`, `contact_result`, `contact_fail_reason` |
+
+**Respuestas de la agenda en el selector.** El esquema de los disparadores de agenda suma las preguntas propias del formulario de reserva de los eventos elegidos (o de todos): `bookingAnswerSchema`, ruta `booking.answers.<clave>`, que «Condiciones» ya sabía leer.
+
+**El selector.** Un solo componente (`components/flow-builder/panels/variable-chips.tsx`): botón «Insertar variable», lista agrupada con nombre y `{{ruta}}`, y buscador con más de 12. Grupos y nombres en `lib/flow-engine/variable-labels.ts`; los rótulos del disparador y los nombres de los campos personalizados llegan por `VariableLabelsProvider` desde el panel lateral. Ningún panel arma su propia lista de fichas; una variable fija nueva lleva su nombre en `variable-labels.ts`.
+
+**Broadcasts** entienden también `{{contact.custom.x}}` (igual a `{{custom.x}}`).
+
+**Lo que no cambió:** el Diseñador IA, las secuencias, la banca de recursos y las condiciones (leen las rutas reales). El panel «Probar» sigue sin datos reales del contacto.

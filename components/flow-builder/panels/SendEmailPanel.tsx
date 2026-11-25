@@ -117,18 +117,7 @@ export function SendEmailPanel({
       ) : null}
       {/* @plantilla-hasta(disenador) */}
 
-      {availableVariables && availableVariables.length > 0 && mode === "variable" && (
-        <div>
-          <p className="text-[11px] text-muted-foreground/70">Tocá una variable para agregarla a la dirección.</p>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {availableVariables.map((variable) => (
-              <button key={variable} type="button" onClick={() => insert(variable)} className="rounded px-1.5 py-0.5 font-mono text-[11px] font-medium text-blue-500 hover:bg-blue-50">
-                {`{{${variable}}}`}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {mode === "variable" && <VariableChips variables={availableVariables} onInsert={(_token, variable) => insert(variable)} hint="Tocá una variable para agregarla a la dirección." />}
     </div>
   );
 }

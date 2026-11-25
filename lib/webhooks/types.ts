@@ -33,6 +33,8 @@ export interface FlowResult {
   contact_remapped?: boolean | null;
   error?: string | null;
   finished_at?: string | null;
+  /** La ejecución de este flujo (para ir a su detalle en «Ejecuciones»). Los envíos viejos no lo tienen. */
+  session_id?: string | null;
 }
 
 export interface InboundResult {

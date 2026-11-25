@@ -19,6 +19,8 @@ import { upsertContactOutputs } from "../node-outputs";
 import { upsertContactFromWebhook } from "@/lib/webhooks/upsert-contact";
 import { parseUpsertContactConfig } from "@/lib/webhooks/upsert-config";
 import { webhookContactKey } from "@/lib/webhooks/trigger-config";
+import { seedBuiltContactVariables } from "../contact-variables";
+import { loadContactVariables } from "../contact-variables-load";
 
 export type UpsertContactNodeData = Record<string, unknown> & { label?: string };
 
@@ -65,6 +67,24 @@ async function adoptLatestConversation(supabase: SupabaseClient<Database>, conte
     context.lateAccountId = channel.late_account_id ?? undefined;
   }
   return { channelId: conversation.channel_id };
+}
+
+/**
+ * `{{contact.*}}` para los pasos que siguen: el motor siembra los datos del contacto al ARRANCAR, y un flujo de webhook
+ * arranca sin contacto. Acá se cargan los del contacto que se acaba de crear o encontrar (con su `contact.id`), sin
+ * arrastrar los de un contacto anterior. Un fallo de lectura deja al menos el id.
+ */
+async function refreshContactVariables(supabase: SupabaseClient<Database>, context: FlowExecutionContext, contactId: string): Promise<void> {
+  const vars = (context.variables ??= {});
+  const { contact: _old, ...rest } = vars;
+  void _old;
+  const loaded = await loadContactVariables(supabase, contactId, context.workspaceId);
+  if (!loaded?.built) {
+    vars.contact = { id: contactId };
+    return;
+  }
+  const seeded = seedBuiltContactVariables(rest, loaded.built, "fresh-wins");
+  vars.contact = { ...(seeded.contact as Record<string, unknown>), id: contactId };
 }
 
 /** Lo que queda anotado en el historial del envío cuando «una sola vez por contacto» frena la corrida. */
@@ -126,6 +146,8 @@ async function execute({ supabase, node, data, context, sessionId }: NodeExecuti
   context.contactId = outcome.contactId;
   context.variables.contact_result = outcome.result;
   context.variables.contact_fail_reason = "";
+  await refreshContactVariables(supabase, context, outcome.contactId);
+  context.noteStep?.({ status: "ok", output: { contact: { id: outcome.contactId, name: outcome.contactName ?? null, result: outcome.result } } });
 
   // El contacto y la conversación quedan en la sesión: una espera posterior los conserva.
   const adopted = await adoptLatestConversation(supabase, context, outcome.contactId);

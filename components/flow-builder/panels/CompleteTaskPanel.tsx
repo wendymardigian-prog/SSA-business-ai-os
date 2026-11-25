@@ -1,6 +1,7 @@
 "use client";
 
 import type { CompleteTaskNodeData } from "@/lib/flow-engine/nodes/complete-task";
+import { VariableChips } from "./variable-chips";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -24,18 +25,7 @@ export function CompleteTaskPanel({ data: raw, onChange, availableVariables }: {
         </p>
       </div>
 
-      {availableVariables && availableVariables.length > 0 && (
-        <div>
-          <p className="text-[11px] text-muted-foreground/70">Tocá una variable para agregarla a la clave.</p>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {availableVariables.map((variable) => (
-              <button key={variable} type="button" onClick={() => set({ sourceKey: `${data.sourceKey ?? ""}{{${variable}}}` })} className="rounded px-1.5 py-0.5 font-mono text-[11px] font-medium text-blue-500 hover:bg-blue-50">
-                {`{{${variable}}}`}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <VariableChips variables={availableVariables} onInsert={(token) => set({ sourceKey: `${data.sourceKey ?? ""}${token}` })} hint="Tocá una variable para agregarla a la clave." />
     </div>
   );
 }

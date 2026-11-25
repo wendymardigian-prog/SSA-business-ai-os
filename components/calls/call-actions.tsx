@@ -16,7 +16,27 @@ import type { BannerAction } from "@/lib/calls/detail-view";
  * Todo lo que escribe lo hace una Server Action que vuelve a chequear permisos.
  */
 
-export function TypeSelect({ callId, current, groups, disabled, label = "Área y tipo de la grabación" }: { callId: string; current: string | null; groups: CategoryGroup[]; disabled?: boolean; label?: string }) {
+export function TypeSelect({
+  callId,
+  current,
+  groups,
+  disabled,
+  label = "Área y tipo de la grabación",
+  autoFocus,
+  onDone,
+  compact,
+}: {
+  callId: string;
+  current: string | null;
+  groups: CategoryGroup[];
+  disabled?: boolean;
+  label?: string;
+  /** Para editar desde la lista: el selector abre con el foco y avisa cuando terminó (cambió o se salió). */
+  autoFocus?: boolean;
+  onDone?: () => void;
+  /** Más chico, para una fila de la lista. */
+  compact?: boolean;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -28,15 +48,18 @@ export function TypeSelect({ callId, current, groups, disabled, label = "Área y
         id={id}
         value={current ?? ""}
         disabled={disabled || pending}
+        autoFocus={autoFocus}
+        onBlur={onDone}
         onChange={(e) => {
           setError(null);
           start(async () => {
             const result = await changeCallType({ callId, categoryId: e.target.value });
             if (!result.ok) return setError(result.error);
             router.refresh();
+            onDone?.();
           });
         }}
-        className="rounded-lg border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+        className={`rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60 ${compact ? "max-w-[12rem] px-1.5 py-1 text-xs" : "px-2 py-1.5 text-sm"}`}
       >
         {!current && <option value="">Elegí el área y el tipo…</option>}
         {groups.map((g) => (

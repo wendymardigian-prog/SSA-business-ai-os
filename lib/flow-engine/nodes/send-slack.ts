@@ -10,6 +10,7 @@ import { interpolateVariables } from "../interpolate";
 import { readSecret } from "@/lib/vault";
 import { SECRET_NAMES } from "@/lib/secret-names";
 import { postMessage } from "@/lib/integrations/slack";
+import { alertSlackTokenRejected } from "@/lib/integrations/slack-alert";
 
 export const SLACK_TEXT_MAX = 3000;
 
@@ -80,7 +81,11 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
   }
   if (!token) return note("skipped", "Slack no está conectado.");
   const res = await postMessage(token, dest.to, text);
-  if (!res.ok) return note("failed", res.error);
+  if (!res.ok) {
+    // Fallos del sistema: un token rechazado avisa a Owner y Admin. Nunca lanza.
+    if (res.invalidToken) await alertSlackTokenRejected(supabase, context.workspaceId);
+    return note("failed", res.error);
+  }
 }
 
 export const sendSlackNode: NodeDefinition<SendSlackNodeData> = {

@@ -214,8 +214,8 @@ export function FormTriggerPanel({ triggerType, data, onChange }: { triggerType:
         </fieldset>
       )}
 
-      <p className="text-[11px] text-muted-foreground/60">
-        Las variables {"{{form.name}}"}, {"{{answer.<campo>}}"}, {"{{submission.url}}"}
+      <p className="text-[11px] text-muted-foreground">
+        Las variables {"{{form.name}}"}, {"{{form.answer.<campo>}}"}, {"{{submission.url}}"}
         {triggerType === "survey_answered" ? ", {{submission.score}} y {{submission.nps_category}}" : ""} quedan disponibles para los mensajes. Solo dispara si la respuesta tiene contacto (con email o teléfono).
       </p>
     </div>

@@ -14,7 +14,7 @@ export interface PayloadLeaf {
 }
 
 export const DEFAULT_MAX_DEPTH = 8;
-export const DEFAULT_MAX_LEAVES = 300;
+export const DEFAULT_MAX_LEAVES = 500;
 const SAMPLE_MAX = 80;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;

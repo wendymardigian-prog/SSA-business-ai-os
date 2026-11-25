@@ -43,7 +43,30 @@ describe("el catalogo de preferencias", () => {
 
   it("el email arranca prendido solo en lo critico", () => {
     const withEmail = NOTIFICATION_EVENTS.filter((e) => e.defaults.email).map((e) => e.key).sort();
-    expect(withEmail).toEqual(["channel_status", "chat_needs_person", "content_problems", "integration_attention"]);
+    expect(withEmail).toEqual([
+      "agent_problems",
+      "channel_status",
+      "chat_needs_person",
+      "content_problems",
+      "integration_attention",
+      "system_failures",
+    ]);
+  });
+
+  it("Slack arranca apagado en todo menos en los fallos del sistema", () => {
+    const withSlack = NOTIFICATION_EVENTS.filter((e) => e.defaults.slack).map((e) => e.key);
+    expect(withSlack).toEqual(["system_failures"]);
+  });
+
+  it("los fallos del sistema son solo para Owner y Admin, sin permisos que los abran", () => {
+    const event = NOTIFICATION_EVENTS.find((e) => e.key === "system_failures")!;
+    expect(event.audience).toEqual({ kind: "admins" });
+    const member = { isAdmin: false, can: () => true };
+    expect(eventVisibleTo(event, member)).toBe(false);
+    expect(eventVisibleTo(event, { isAdmin: true, can: () => false })).toBe(true);
+    expect(sectionsFor(member).some((sec) => sec.key === "sistema")).toBe(false);
+    expect(sectionsFor({ isAdmin: true, can: () => false }).some((sec) => sec.key === "sistema")).toBe(true);
+    expect(resolveTypePrefs({}, "system_job_failed")).toEqual({ bell: true, email: true, whatsapp: false, slack: true });
   });
 });
 

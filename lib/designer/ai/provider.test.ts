@@ -16,7 +16,7 @@ describe("ai/provider: aiSdkDesignerGenerate", () => {
     const out = await generate({ system: "s", text: "t", images: [], schema: z.object({ ok: z.boolean() }) });
     expect(out.object).toEqual({ ok: true });
     expect(generateObject).toHaveBeenCalledTimes(1);
-    expect(generateObject.mock.calls[0][0].providerOptions).toEqual({ anthropic: { structuredOutputMode: "jsonTool" } });
-    expect(DESIGNER_PROVIDER_OPTIONS).toEqual({ anthropic: { structuredOutputMode: "jsonTool" } });
+    expect(generateObject.mock.calls[0][0].providerOptions).toEqual({ anthropic: { structuredOutputMode: "jsonTool" }, openai: { strictJsonSchema: false } });
+    expect(DESIGNER_PROVIDER_OPTIONS).toEqual({ anthropic: { structuredOutputMode: "jsonTool" }, openai: { strictJsonSchema: false } });
   });
 });

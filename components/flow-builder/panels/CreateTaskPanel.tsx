@@ -6,6 +6,7 @@ import type { CreateTaskNodeData } from "@/lib/flow-engine/nodes/create-task";
 import { MAX_DUE_DAYS } from "@/lib/tasks/dates";
 import { PRIORITY_LABELS, TASK_LIMITS, TASK_PRIORITIES } from "@/lib/tasks/types";
 import { BusinessTimeNote } from "@/components/ui/business-time-note";
+import { VariableChips } from "./variable-chips";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -140,18 +141,7 @@ export function CreateTaskPanel({ data: raw, onChange, availableVariables }: { d
         <p className="mt-1.5 text-xs text-muted-foreground">Si ya hay una tarea abierta con la misma clave, no se crea otra. El paso «Completar tarea» la encuentra por esta clave. Si una variable queda vacía, no se usa la clave.</p>
       </div>
 
-      {availableVariables && availableVariables.length > 0 && (
-        <div>
-          <p className="text-[11px] text-muted-foreground/70">Tocá una variable para agregarla al {target === "sourceKey" ? "la clave de origen" : "título"}.</p>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {availableVariables.map((variable) => (
-              <button key={variable} type="button" onClick={() => insert(variable)} className="rounded px-1.5 py-0.5 font-mono text-[11px] font-medium text-blue-500 hover:bg-blue-50">
-                {`{{${variable}}}`}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <VariableChips variables={availableVariables} onInsert={(_token, variable) => insert(variable)} hint={`Tocá una variable para agregarla ${target === "sourceKey" ? "a la clave de origen" : "al título"}.`} />
     </div>
   );
 }

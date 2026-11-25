@@ -8,6 +8,7 @@
  */
 import { evaluateGroupDetailed, type ConditionFieldSpec, type ConditionGroup, type FieldResolver, type FieldValue } from "@/lib/flow-engine/condition-eval";
 import { getByPath } from "./paths";
+import { normalizePayload } from "./normalize";
 import { flattenPaths, type LeafType } from "./payload-tree";
 
 export const WEBHOOK_TRIGGER_TYPE = "webhook_received";
@@ -60,6 +61,10 @@ export interface WebhookVariablesInput {
 /**
  * `{{webhook.payload.data.email}}`, `{{webhook.payload.items.0.price}}`, `{{webhook.query.utm_source}}`.
  * `interpolate.ts` ya resuelve rutas anidadas: no se toca.
+ *
+ * Además, `webhook.data` y `webhook.query_data`: la copia NORMALIZADA del payload y de la URL (normalize.ts), que
+ * se lee siempre con `{{…}}` aunque el envío traiga claves con espacios, tildes, corchetes o un JSON dentro de un
+ * texto. Se calcula acá (no se guarda): sirve igual para envíos viejos y reprocesos.
  */
 export function webhookVariables(input: WebhookVariablesInput): Record<string, unknown> {
   return {
@@ -70,6 +75,8 @@ export function webhookVariables(input: WebhookVariablesInput): Record<string, u
       received_at: input.receivedAt,
       payload: input.payload ?? {},
       query: input.query ?? {},
+      data: normalizePayload(input.payload ?? {}),
+      query_data: normalizePayload(input.query ?? {}),
       reprocess_count: input.reprocessCount,
       ...(input.oncePerContactTriggerId ? { once_per_contact: true, trigger_id: input.oncePerContactTriggerId } : {}),
     },
@@ -122,15 +129,27 @@ export function webhookContactKey(flowId: string, contactId: string): string {
 const SCHEMA_TYPE: Record<LeafType, ConditionFieldSpec["type"]> = { text: "text", number: "number", boolean: "boolean", date: "date" };
 export const WEBHOOK_SCHEMA_GROUP = "Del webhook";
 
-/** Los campos que ofrece el «Solo si…» y los pasos de Condiciones: las hojas del ejemplo, con su tipo. */
+export const WEBHOOK_ORIGINAL_GROUP = "Del webhook · tal como llegó";
+
+/**
+ * Los campos que ofrecen el «Solo si…», los pasos de Condiciones y el selector de variables: las hojas del
+ * ejemplo, con su tipo. Primero la copia normalizada (`webhook.data.*`, siempre se puede usar en `{{…}}`) y la
+ * URL; después, en otro grupo, las rutas tal como llegaron (para las automatizaciones que ya las usaban).
+ */
 export function webhookVariableSchema(sample: { payload?: unknown; query?: unknown } | null | undefined): ConditionFieldSpec[] {
   const fields: ConditionFieldSpec[] = [{ path: "webhook.endpoint_name", label: "Nombre del endpoint", type: "text", group: WEBHOOK_SCHEMA_GROUP }];
   if (!sample) return fields;
+  for (const leaf of flattenPaths(normalizePayload(sample.payload))) {
+    fields.push({ path: `webhook.data.${leaf.path}`, label: leaf.path, type: SCHEMA_TYPE[leaf.type], group: WEBHOOK_SCHEMA_GROUP, hint: `Ejemplo: ${leaf.sample}` });
+  }
+  for (const leaf of flattenPaths(normalizePayload(sample.query))) {
+    fields.push({ path: `webhook.query_data.${leaf.path}`, label: `URL: ${leaf.path}`, type: SCHEMA_TYPE[leaf.type], group: WEBHOOK_SCHEMA_GROUP, hint: `Ejemplo: ${leaf.sample}` });
+  }
   for (const leaf of flattenPaths(sample.payload)) {
-    fields.push({ path: `webhook.payload.${leaf.path}`, label: leaf.path, type: SCHEMA_TYPE[leaf.type], group: WEBHOOK_SCHEMA_GROUP, hint: `Ejemplo: ${leaf.sample}` });
+    fields.push({ path: `webhook.payload.${leaf.path}`, label: leaf.path, type: SCHEMA_TYPE[leaf.type], group: WEBHOOK_ORIGINAL_GROUP, hint: `Ejemplo: ${leaf.sample}` });
   }
   for (const leaf of flattenPaths(sample.query)) {
-    fields.push({ path: `webhook.query.${leaf.path}`, label: `URL: ${leaf.path}`, type: SCHEMA_TYPE[leaf.type], group: WEBHOOK_SCHEMA_GROUP, hint: `Ejemplo: ${leaf.sample}` });
+    fields.push({ path: `webhook.query.${leaf.path}`, label: `URL: ${leaf.path}`, type: SCHEMA_TYPE[leaf.type], group: WEBHOOK_ORIGINAL_GROUP, hint: `Ejemplo: ${leaf.sample}` });
   }
   return fields;
 }

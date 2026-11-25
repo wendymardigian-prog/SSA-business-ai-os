@@ -28,6 +28,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ to
       // Solo se guarda truncada (`truncateIp`) como dato del envio; sin IP queda null.
       ip: requestIp(request.headers),
       userAgent: request.headers.get("user-agent"),
+      headers: request.headers.entries(),
     });
 
     if (result.process) {

@@ -33,6 +33,8 @@ interface ProcessOptions {
   now?: () => Date;
   /** «Volver a correr también los flujos que ya corrieron»: solo un reproceso con la casilla. */
   rerunCompleted?: boolean;
+  /** Solo esta automatización (ver `RunFlows`). */
+  onlyFlowId?: string;
 }
 
 /** Procesa un envio `received`. Idempotente: si otro proceso ya lo tomo, no hace nada. */
@@ -85,7 +87,7 @@ async function finishProcessing(db: Db, row: InboundForFlows, options: ProcessOp
   try {
     const { data: endpoint } = await db.from("webhook_endpoints").select("id, workspace_id, name").eq("id", row.endpoint_id).maybeSingle();
     if (!endpoint) throw new Error("el endpoint ya no existe");
-    flows = await run({ db, inbound: row, endpoint: endpoint as { id: string; workspace_id: string; name: string }, rerunCompleted: options.rerunCompleted });
+    flows = await run({ db, inbound: row, endpoint: endpoint as { id: string; workspace_id: string; name: string }, rerunCompleted: options.rerunCompleted, onlyFlowId: options.onlyFlowId });
   } catch (err) {
     crashed = err instanceof Error ? err.message : String(err);
   }

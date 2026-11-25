@@ -76,6 +76,26 @@ export const NOTIFICATION_TYPES = [
   // @plantilla-hasta(formularios)
   /** Un flujo mandó un aviso al equipo (nodo "Avisar en la campana"). */
   "flow_notice",
+  // Fallos del sistema (solo Owner y Admin, correo encendido por defecto). Todos van sin `recipient_id` y con
+  // `entity_type: "system"`; los crea `notifySystemFailure` (`lib/notifications/system-alerts.ts`).
+  /** Un trabajo automático falló después de todos sus intentos. */
+  "system_job_failed",
+  /** No se pudieron traer los anuncios de Meta, o falta su conexión. */
+  "meta_ads_sync_failed",
+  /** Un evento de la API de Conversiones de Meta no se pudo mandar. */
+  "meta_capi_failed",
+  /** Slack rechaza el token del bot: no sale ningún aviso ni mensaje por Slack. */
+  "slack_connection_error",
+  /** Resend rechaza la clave: no sale ningún correo. */
+  "email_provider_error",
+  /** Zernio rechaza la clave: Instagram no manda ni sincroniza por la API. */
+  "zernio_key_error",
+  /** Una conexión OAuth del negocio no se pudo renovar al leer métricas. */
+  "google_business_token_error",
+  /** El servicio de render del Diseñador IA no está configurado. */
+  "render_not_configured",
+  /** A una persona del equipo se le cortó su Google Calendar o su Fathom (copia para Owner y Admin). */
+  "team_connection_lost",
   // @plantilla-desde(webhooks)
   // Webhooks entrantes.
   /** Un endpoint acumuló 5 envíos con error en una hora. Va a quien lo creó y a Owner/Admin. */
@@ -172,6 +192,8 @@ export type NotificationEntity =
   | "contact"
   | "draft_queue"
   | "integration"
+  /** Un fallo del sistema (solo Owner y Admin): el destino sale de `metadata.area`. */
+  | "system"
   | "content_post"
   // @plantilla-desde(disenador)
   /** Diseñador IA: una plantilla (el aviso abre su pestaña Generaciones). */
@@ -214,7 +236,23 @@ export interface NotificationDefinition {
   entity?: NotificationEntity;
 }
 
+const systemDef = (type: NotificationType, label: string): NotificationDefinition => ({ type, label, tone: "warning", entity: "system" });
+
+/** Los fallos del sistema: todos avisan con el mismo tono y apuntan a `system`. */
+const SYSTEM_DEFINITIONS = {
+  system_job_failed: systemDef("system_job_failed", "Un trabajo automático falló"),
+  meta_ads_sync_failed: systemDef("meta_ads_sync_failed", "No se pudieron traer los anuncios de Meta"),
+  meta_capi_failed: systemDef("meta_capi_failed", "Un evento no se pudo mandar a Meta"),
+  slack_connection_error: systemDef("slack_connection_error", "Se cortó la conexión con Slack"),
+  email_provider_error: systemDef("email_provider_error", "Resend rechaza la clave"),
+  zernio_key_error: systemDef("zernio_key_error", "Zernio rechaza la clave"),
+  google_business_token_error: systemDef("google_business_token_error", "Una conexión del negocio no se renovó"),
+  render_not_configured: systemDef("render_not_configured", "Falta el servicio de render del Diseñador IA"),
+  team_connection_lost: systemDef("team_connection_lost", "Se cortó una conexión de alguien del equipo"),
+} satisfies Partial<Record<NotificationType, NotificationDefinition>>;
+
 export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefinition> = {
+  ...SYSTEM_DEFINITIONS,
   human_takeover: {
     type: "human_takeover",
     label: "Derivada a una persona",
@@ -540,6 +578,22 @@ export function toneFor(type: string): NotificationDefinition["tone"] {
   return isNotificationType(type) ? NOTIFICATION_DEFINITIONS[type].tone : "info";
 }
 
+/** Las áreas de un fallo del sistema y la pantalla donde se arregla cada una. */
+export const SYSTEM_AREA_LINKS = {
+  integrations: "/dashboard/settings/integrations",
+  channels: "/dashboard/channels",
+  ads: "/dashboard/anuncios",
+  designer: "/dashboard/disenos",
+  team: "/dashboard/settings/team",
+} as const;
+export type SystemArea = keyof typeof SYSTEM_AREA_LINKS;
+
+function systemAreaLink(area: unknown): string {
+  return typeof area === "string" && Object.hasOwn(SYSTEM_AREA_LINKS, area)
+    ? SYSTEM_AREA_LINKS[area as SystemArea]
+    : SYSTEM_AREA_LINKS.integrations;
+}
+
 /**
  * A donde lleva hacer clic en la notificacion.
  *
@@ -664,6 +718,10 @@ export function linkFor(
       // Todas llevan a la pantalla de integraciones, con el filtro puesto:
       // desde ahi se reconecta, que es lo unico que se puede hacer.
       return "/dashboard/settings/integrations";
+
+    // Fallos del sistema: la pantalla donde se arregla, según el área que viaja en la metadata.
+    case "system":
+      return systemAreaLink(metadata?.area);
 
     // @plantilla-desde(disenador)
     // Diseñador IA: la pestaña Generaciones de la plantilla, con el filtro de fallidas.

@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import { getAnyPermissionAction, getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
+import { ownContactsFilter } from "@/lib/contacts/own-scope-filter";
 import { deleteEvent } from "@/lib/google-calendar/client";
 import { googleImportOf } from "@/lib/google-calendar/import-meta";
 import {
@@ -308,13 +309,6 @@ function ownTasksFilter(ctx: PermissionContext): string | null {
   if (seesEverything(ctx, "tasks")) return null;
   const me = ctx.user.id;
   return `created_by.eq.${me},owner_id.eq.${me},follower_ids.cs.{${me}}`;
-}
-
-function ownContactsFilter(ctx: PermissionContext): string | null {
-  if (seesEverything(ctx, "leads")) return null;
-  const me = ctx.user.id;
-  const own = `setter_id.eq.${me},vendedor_id.eq.${me}`;
-  return ctx.scope("leads") === "own_unassigned" ? `${own},and(setter_id.is.null,vendedor_id.is.null)` : own;
 }
 
 function softItem(entity: "contact" | "task", id: string, label: string, deletedAt: string): TrashListItem {

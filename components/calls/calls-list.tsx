@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import type { CategoryGroup } from "@/lib/calls/catalog";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { ChevronLeft, ChevronRight, Link2, Loader2, Phone, Plus, RefreshCw, Settings, SlidersHorizontal, Sparkles, Star, Trash2, X } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { ChevronLeft, ChevronRight, Link2, Loader2, Pencil, Phone, Plus, RefreshCw, SlidersHorizontal, Sparkles, Star, Trash2, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
@@ -12,11 +12,20 @@ import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { ImportCallModal } from "@/components/calls/import-call-modal";
 import { AlertsChip, OutcomeChip, QualificationChip, ScoreCell, StatusChip, TypeChip } from "@/components/calls/call-chips";
 import { syncFathomNow } from "@/lib/actions/fathom";
-import { analyzePendingCalls, analyzeSelectedCalls } from "@/lib/actions/calls-edit";
+import { analyzePendingCalls } from "@/lib/actions/calls-edit";
+import { loadCallPanel } from "@/lib/actions/calls-panel";
+import { CallPanel, CallPanelSkeleton } from "@/components/calls/call-panel";
+import { CallPeople } from "@/components/calls/call-people";
+import { CallsBulkBar, type BulkItem } from "@/components/calls/calls-bulk-bar";
+import { TypeSelect } from "@/components/calls/call-actions";
+import type { CallDetailTab, CallPanelNav } from "@/components/calls/call-detail";
+import type { LoadedCallDetail } from "@/lib/calls/load-detail";
+import type { CallParticipants } from "@/lib/calls/participants";
+import { CallsAiAgentsButton } from "@/components/calls/calls-ai-agents";
+import type { CallsAiAgent } from "@/lib/calls/ai-agents";
 import { deleteManyToTrash } from "@/lib/actions/trash";
 import { TRASH_RETENTION_DAYS } from "@/lib/trash/entities";
 import { SaleModal } from "@/components/shared/sale-modal";
-import { Popover } from "@/components/ui/popover";
 import { formatCallDate, formatDuration, humanize } from "@/lib/calls/format";
 import {
   ANALYSIS_STATUSES,
@@ -27,6 +36,7 @@ import {
   parseSavedViews,
   savedViewsKey,
   typeDeciderText,
+  INTERNAL_FILTERS,
   type CallFilters,
   type SavedView,
   callListColumns,
@@ -54,6 +64,10 @@ export interface CallListRow {
   contactName: string | null;
   callType: string | null;
   categoryLabel: string;
+  /** El área o tipo elegido (para cambiarlo desde la fila y para el lote). */
+  categoryId: string | null;
+  /** El host y los invitados (la foto o las iniciales y «+N»). */
+  participants: CallParticipants;
   classificationSource: string | null;
   classificationRule: string | null;
   classificationConfidence: number | null;
@@ -91,6 +105,8 @@ interface Props {
   contactFilterName: string | null;
   /** Tiene `calls.configure`: ve el atajo a la configuracion de las dos tareas. */
   canConfigure: boolean;
+  /** «Agentes IA» (con `calls.configure` o `agents.view`): quién clasifica y analiza, y dónde se edita. null = no se muestra. */
+  aiAgents?: CallsAiAgent[] | null;
   /** Cuantas llamadas que ve estan pendientes de analisis (para "Analizar pendientes"). */
   pendingCount: number;
   /** Qué grabaciones ve esta persona, en una frase. */
@@ -144,6 +160,7 @@ export function CallsList(props: Props) {
   const canSelect = canEdit || canDelete;
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const timeZone = useViewerTimezone();
   const [importOpen, setImportOpen] = useState(false);
   const [syncMessage, setSyncMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -179,7 +196,81 @@ export function CallsList(props: Props) {
   // Lo elegido cuenta solo si sigue en la pagina: cambiar de filtro o de pagina no arrastra nada a ciegas.
   const [selected, setSelected] = useState<string[]>([]);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const selectedOnPage = selected.filter((id) => rows.some((r) => r.id === id));
+  const selectedOnPage = useMemo(() => selected.filter((id) => rows.some((r) => r.id === id)), [selected, rows]);
+  const bulkItems = useMemo<BulkItem[]>(
+    () =>
+      rows
+        .filter((r) => selectedOnPage.includes(r.id))
+        .map((r) => ({
+          callId: r.id,
+          title: r.contactName ?? r.title,
+          subtitle: `${formatCallDate(r.recordedAt, timeZone)} · ${r.title}`,
+          categoryId: r.categoryId,
+          needsType: !r.categoryId || r.status === "needs_review",
+        })),
+    [rows, selectedOnPage, timeZone],
+  );
+
+  // ── El panel de la grabación ──────────────────────────────────────────────────────────────────────────────────────
+  // El detalle abierto vive en `?llamada=` (un link lo abre), pero abrirlo o cerrarlo NO le pide la página al servidor:
+  // se cambia la URL con la API del navegador y el detalle se pide aparte (`loadCallPanel`), igual que la Agenda.
+  const openId = searchParams.get("llamada");
+  const rawTab = searchParams.get("tab");
+  const panelTab: CallDetailTab = (["resumen", "closer", "lead", "tecnico", "transcripcion", "actividad"] as const).find((t) => t === rawTab) ?? "resumen";
+  // Lo último que llegó del servidor, con el id que se pidió: si no coincide con el abierto, se muestra el esqueleto
+  // (y no los datos de otra grabación).
+  const [loaded, setLoaded] = useState<{ id: string; data: LoadedCallDetail | null } | null>(null);
+  const detail = loaded && loaded.id === openId ? loaded.data : null;
+  const detailMissing = loaded !== null && loaded.id === openId && loaded.data === null;
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!openId) return;
+    let cancelled = false;
+    void loadCallPanel(openId).then((data) => {
+      if (!cancelled) setLoaded({ id: openId, data });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openId, reloadKey]);
+
+  // Toda acción de adentro del panel termina con `router.refresh()`: cuando llegan filas nuevas del servidor, se vuelve
+  // a pedir solo el detalle (el primer render ya lo pidió). Se ajusta durante el render, no en un efecto.
+  const [seenRows, setSeenRows] = useState(rows);
+  if (seenRows !== rows) {
+    setSeenRows(rows);
+    setReloadKey((k) => k + 1);
+  }
+
+  const urlWith = useCallback((patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(window.location.search);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null) next.delete(k);
+      else next.set(k, v);
+    }
+    const qs = next.toString();
+    return qs ? `?${qs}` : window.location.pathname;
+  }, []);
+  const openDetail = useCallback((id: string) => window.history.pushState(null, "", urlWith({ llamada: id, tab: null })), [urlWith]);
+  const closeDetail = useCallback(() => window.history.replaceState(null, "", urlWith({ llamada: null, tab: null })), [urlWith]);
+  const setPanelTab = useCallback((tab: CallDetailTab) => window.history.replaceState(null, "", urlWith({ tab: tab === "resumen" ? null : tab })), [urlWith]);
+  const openIndex = openId ? rows.findIndex((r) => r.id === openId) : -1;
+  const panelNav: CallPanelNav | null = openId
+    ? {
+        tab: panelTab,
+        onTab: setPanelTab,
+        onClose: closeDetail,
+        onPrev: openIndex > 0 ? () => openDetail(rows[openIndex - 1].id) : null,
+        onNext: openIndex >= 0 && openIndex < rows.length - 1 ? () => openDetail(rows[openIndex + 1].id) : null,
+        position: openIndex >= 0 ? { index: openIndex, total: rows.length } : null,
+        openHref: `/dashboard/llamadas/${openId}${panelTab === "actividad" ? "?tab=actividad" : ""}`,
+        closeHref: (() => {
+          const qs = callFiltersToParams(filters).toString();
+          return qs ? `${pathname}?${qs}` : pathname;
+        })(),
+      }
+    : null;
 
   // Servicios A4 (F136): la columna Servicio aparece solo con el módulo prendido; se oculta desde «Columnas».
   const servicesOn = Boolean(props.services?.on);
@@ -190,20 +281,18 @@ export function CallsList(props: Props) {
       lead: {
         render: (r) => (
           <>
-            <span className="block truncate font-medium">{r.contactName ?? "Sin vincular"}</span>
+            {r.contactName ? <span className="block truncate font-medium">{r.contactName}</span> : <span className="block truncate font-medium text-red-700 dark:text-red-400">Sin vincular</span>}
             <span className="block truncate text-xs text-muted-foreground">{r.title}</span>
           </>
         ),
       },
+      participantes: { render: (r) => <CallPeople participants={r.participants} /> },
       fecha: { render: (r) => formatCallDate(r.recordedAt, timeZone) },
       duracion: { render: (r) => formatDuration(r.durationSeconds) },
       grabo: { render: (r) => r.closerName ?? "—" },
       tipo: {
         render: (r) => (
-          <span title={typeDeciderText({ classification_source: r.classificationSource, classification_rule: r.classificationRule, classification_confidence: r.classificationConfidence }) ?? undefined}>
-            <TypeChip type={r.callType} label={r.categoryLabel} needsReview={r.status === "needs_review"} />
-            {r.manual && <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Cargada a mano</span>}
-          </span>
+          <RowType row={r} groups={props.categoryGroups} canEdit={canEdit && r.status !== "classifying" && r.status !== "analyzing"} />
         ),
       },
       servicio: { render: (r) => <ServiceCell link={r.serviceLink ?? null} label={r.serviceLabel ?? null} /> },
@@ -238,7 +327,7 @@ export function CallsList(props: Props) {
     }
     // @plantilla-hasta(servicios)
     return out;
-  }, [servicesOn, timeZone, portal]);
+  }, [servicesOn, timeZone, portal, canEdit, props.categoryGroups]);
   const tablePrefs = useTablePrefs(CALLS_TABLE_KEY, "base", columns, null);
 
   function saveView() {
@@ -252,18 +341,6 @@ export function CallsList(props: Props) {
 
   function toggleSelected(id: string) {
     setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
-  }
-
-  function analyzeSelected() {
-    setSyncMessage(null);
-    startQueue(async () => {
-      const r = await analyzeSelectedCalls({ callIds: selectedOnPage });
-      if (!r.ok) return setSyncMessage({ ok: false, text: r.error });
-      const queued = r.queued === 0 ? "No se puede analizar ninguna de las elegidas." : `Se van a analizar ${r.queued} ${r.queued === 1 ? "grabación" : "grabaciones"}, una cada 30 segundos.`;
-      setSyncMessage({ ok: true, text: r.queued > 0 && r.skipped > 0 ? `${queued} ${r.skipped} no se pueden analizar: ya están analizadas, no tienen transcripción o a su tipo le falta el analizador.` : queued });
-      setSelected([]);
-      router.refresh();
-    });
   }
 
   function deleteSelected() {
@@ -402,6 +479,12 @@ export function CallsList(props: Props) {
                 <option value="sin_vincular">Sin vincular</option>
               </select>
             </Field>
+            <Field label="Reuniones internas">
+              <select className={selectClass} value={filters.internas} onChange={(e) => go({ internas: e.target.value as CallFilters["internas"] })}>
+                <option value="">Todas</option>
+                {INTERNAL_FILTERS.map((v) => <option key={v} value={v}>{v === "ocultar" ? "Ocultar las internas (Equipo)" : "Solo las internas (Equipo)"}</option>)}
+              </select>
+            </Field>
             <Field label="Puntaje del closer">
               <RangeInputs min={filters.closerMin} max={filters.closerMax} onMin={(v) => go({ closerMin: v })} onMax={(v) => go({ closerMax: v })} label="del closer" />
             </Field>
@@ -459,33 +542,13 @@ export function CallsList(props: Props) {
                 <span className="hidden sm:inline">Sincronizar ahora</span>
               </button>
             )}
-            {canEdit && selectedOnPage.length > 0 && (
-              <button type="button" onClick={analyzeSelected} disabled={queueing} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50" aria-label={`Analizar seleccionadas (${selectedOnPage.length})`}>
-                {queueing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
-                <span className="hidden sm:inline">Analizar seleccionadas ({selectedOnPage.length})</span>
-              </button>
-            )}
-            {canDelete && selectedOnPage.length > 0 && (
-              <button type="button" onClick={() => { setSyncMessage(null); setDeleteOpen(true); }} disabled={queueing} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-500/40 px-2.5 text-sm text-red-700 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400" aria-label={`Eliminar seleccionadas (${selectedOnPage.length})`}>
-                <Trash2 className="h-4 w-4" aria-hidden />
-                <span className="hidden sm:inline">Eliminar seleccionadas ({selectedOnPage.length})</span>
-              </button>
-            )}
             {canEdit && props.pendingCount > 0 && (
               <button type="button" onClick={analyzePending} disabled={queueing} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50" aria-label={`Analizar pendientes (${props.pendingCount})`}>
                 {queueing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
                 <span className="hidden sm:inline">Analizar pendientes ({props.pendingCount})</span>
               </button>
             )}
-            {props.canConfigure && (
-              <Popover label="Configurar clasificación y análisis" trigger={<Settings className="h-4 w-4" aria-hidden />} panelClassName="w-64" triggerClassName="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-accent">
-                <p className="mb-2 text-xs font-semibold">Configuración de grabaciones</p>
-                <ul className="space-y-1 text-sm">
-                  <li><Link href="/dashboard/agents/tareas/call_classification?tab=config" className="block rounded-md px-2 py-1.5 hover:bg-accent">Clasificación de llamadas</Link></li>
-                  <li><Link href="/dashboard/agents/tareas/call_analysis?tab=config" className="block rounded-md px-2 py-1.5 hover:bg-accent">Análisis de llamadas</Link></li>
-                </ul>
-              </Popover>
-            )}
+            {props.aiAgents && props.aiAgents.length > 0 && <CallsAiAgentsButton agents={props.aiAgents} />}
             {canEdit && (
               <button type="button" onClick={() => setImportOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 sm:px-3" aria-label="Importar una llamada">
                 <Plus className="h-4 w-4" aria-hidden />
@@ -557,6 +620,7 @@ export function CallsList(props: Props) {
                   state={tablePrefs}
                   caption="Llamadas"
                   rowHref={(r) => `/dashboard/llamadas/${r.id}`}
+                  onRowClick={(r) => openDetail(r.id)}
                   rowClassName={(r) => (isNonSaleRow({ call_type: r.callType, analysis_status: r.status }) ? "opacity-60" : undefined)}
                   selection={canSelect ? { selected: new Set(selectedOnPage), onChange: (next) => setSelected([...next]), rowLabel: (r) => `Elegir ${r.title}` } : undefined}
                 />
@@ -564,10 +628,19 @@ export function CallsList(props: Props) {
                 <ul className="space-y-2 md:hidden">
                   {rows.map((r) => (
                     <li key={r.id}>
-                      <Link href={`/dashboard/llamadas/${r.id}`} className="block rounded-xl border border-border bg-card p-3 hover:bg-muted/30">
+                      <Link
+                        href={`/dashboard/llamadas/${r.id}`}
+                        onClick={(e) => {
+                          // Un clic simple abre el panel; con Cmd/Ctrl o el botón del medio, el link normal.
+                          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                          e.preventDefault();
+                          openDetail(r.id);
+                        }}
+                        className="block rounded-xl border border-border bg-card p-3 hover:bg-muted/30"
+                      >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{r.contactName ?? "Sin vincular"}</p>
+                            <p className={`truncate text-sm font-medium ${r.contactName ? "" : "text-red-700 dark:text-red-400"}`}>{r.contactName ?? "Sin vincular"}</p>
                             <p className="truncate text-xs text-muted-foreground">{r.title}</p>
                           </div>
                           <AlertsChip open={r.hasOpenAlerts} />
@@ -600,6 +673,24 @@ export function CallsList(props: Props) {
         )}
       </div>
 
+      {canSelect && selectedOnPage.length > 0 && (
+        <CallsBulkBar
+          selected={bulkItems}
+          groups={props.categoryGroups}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          onClear={() => setSelected([])}
+          onResult={(text) => setSyncMessage({ ok: true, text })}
+          onDelete={() => {
+            setSyncMessage(null);
+            setDeleteOpen(true);
+          }}
+        />
+      )}
+
+      {openId && !detail && <CallPanelSkeleton missing={detailMissing} onClose={closeDetail} />}
+      {openId && detail && panelNav && <CallPanel detail={detail} nav={panelNav} />}
+
       {deleteOpen && canDelete && (
         <SaleModal
           title="Eliminar grabaciones"
@@ -624,6 +715,28 @@ export function CallsList(props: Props) {
         <ImportCallModal onClose={() => setImportOpen(false)} closers={closers} currentUserId={props.currentUserId} onImported={(id) => { setImportOpen(false); router.push(`/dashboard/llamadas/${id}`); }} />
       )}
     </div>
+  );
+}
+
+/**
+ * El tipo de una grabación en la lista: la etiqueta de siempre (con quién lo decidió al pasar el mouse) y, con
+ * `calls.edit`, un lápiz que abre el selector de área y tipo ahí mismo, sin entrar a la ficha.
+ */
+function RowType({ row, groups, canEdit }: { row: CallListRow; groups: CategoryGroup[]; canEdit: boolean }) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return <TypeSelect callId={row.id} current={row.categoryId} groups={groups} compact autoFocus onDone={() => setEditing(false)} label={`Cambiar el área y el tipo de ${row.title}`} />;
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1" title={typeDeciderText({ classification_source: row.classificationSource, classification_rule: row.classificationRule, classification_confidence: row.classificationConfidence }) ?? undefined}>
+      <TypeChip type={row.callType} label={row.categoryLabel} needsReview={row.status === "needs_review"} />
+      {row.manual && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Cargada a mano</span>}
+      {canEdit && (
+        <button type="button" onClick={() => setEditing(true)} aria-label={`Cambiar el área y el tipo de ${row.title}`} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+          <Pencil className="h-3 w-3" aria-hidden />
+        </button>
+      )}
+    </span>
   );
 }
 

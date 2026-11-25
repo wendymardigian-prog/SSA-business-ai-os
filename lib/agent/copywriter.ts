@@ -23,6 +23,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { getWorkspaceModel } from "@/lib/ai/provider";
 import { openAiRun } from "@/lib/ai/run";
+import { STRUCTURED_OUTPUT_PROVIDER_OPTIONS } from "@/lib/ai/structured-output";
 import { checkSpendLimits } from "@/lib/ai/spend";
 import { loadAutomationRules } from "@/lib/publishing/post-ids";
 import { getFormat } from "@/lib/content/network-format";
@@ -184,6 +185,7 @@ export async function runCopywriter(
       schema: copyOutputSchema,
       system: SYSTEM_PROMPT(workspace?.ai_language_style),
       prompt,
+      providerOptions: STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
       ...(agent.temperature !== null ? { temperature: agent.temperature } : {}),
       ...(agent.max_output_tokens !== null ? { maxOutputTokens: agent.max_output_tokens } : {}),
     } as never);

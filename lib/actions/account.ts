@@ -7,10 +7,13 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isOwnAvatarPath, userAvatarPath, userAvatarPublicUrl, USER_AVATARS_BUCKET } from "@/lib/account/avatar";
 import { effectiveWhatsApp, parseAvatarDataUrl, parseContactInput, parseDisplayName, parsePasswordChange, parseSlackUserId } from "@/lib/account/validation";
 import { getWorkspace } from "@/lib/workspace";
+import { getMemberAction } from "@/lib/auth/guards";
+import { isAdminRole } from "@/lib/auth/roles";
 import { checkLimit } from "@/lib/antispam/rate-limit";
 import { sendTeamWhatsApp } from "@/lib/notifications/team-whatsapp";
 import {
   eventByKey,
+  eventVisibleTo,
   NOTIFICATION_CHANNELS,
   parseStoredPrefs,
   withPref,
@@ -251,6 +254,15 @@ export async function setNotificationPref(input: {
 
   const ctx = await sessionUser();
   if (!ctx) return { ok: false, error: NO_SESSION };
+
+  // Un aviso que no es para todos (por ejemplo los fallos del sistema, solo Owner y Admin) lo guarda solo quien lo
+  // puede recibir: la misma regla que esconde la fila en la pantalla (`eventVisibleTo`), del lado del servidor.
+  if (event.audience.kind !== "all") {
+    const viewer = await getMemberAction();
+    if (!viewer || !eventVisibleTo(event, { isAdmin: isAdminRole(viewer.role), can: viewer.can })) {
+      return { ok: false, error: "Ese aviso no es para tu rol." };
+    }
+  }
 
   const { data: row, error: readError } = await ctx.supabase
     .from("user_preferences")

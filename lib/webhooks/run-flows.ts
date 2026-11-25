@@ -62,6 +62,11 @@ export type RunFlows = (args: {
   endpoint: EndpointForFlows;
   /** «Volver a correr también los flujos que ya corrieron» (un reproceso con la casilla). Apagado por defecto. */
   rerunCompleted?: boolean;
+  /**
+   * Solo esta automatización («Volver a ejecutar con el mismo webhook» desde una ejecución): las demás del endpoint no
+   * se tocan, y con `rerunCompleted` se sueltan solo SUS claves y se cancelan solo SUS esperas.
+   */
+  onlyFlowId?: string;
 }) => Promise<Record<string, FlowResult>>;
 
 interface FlowOfTrigger {
@@ -98,7 +103,7 @@ export function contactStepToResult(info: ContactStepInfo): Partial<FlowResult> 
 /** Lo que ya se sabe de cada flujo para ESTE envío (de la vez anterior). */
 const previousFlows = (inbound: InboundForFlows): Record<string, FlowResult> => inbound.result?.flows ?? {};
 
-export const runWebhookFlows: RunFlows = async ({ db, inbound, endpoint, rerunCompleted }) => {
+export const runWebhookFlows: RunFlows = async ({ db, inbound, endpoint, rerunCompleted, onlyFlowId }) => {
   const results: Record<string, FlowResult> = {};
   const previous = previousFlows(inbound);
 
@@ -112,12 +117,13 @@ export const runWebhookFlows: RunFlows = async ({ db, inbound, endpoint, rerunCo
 
   const triggers = ((data ?? []) as unknown as TriggerWithFlow[])
     .filter((t) => parseWebhookTriggerConfig(t.config).endpointId === endpoint.id)
+    .filter((t) => !onlyFlowId || t.flow_id === onlyFlowId)
     .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 
   // «Volver a correr también los flujos que ya corrieron»: se sueltan las claves del envío (y las de «una sola
   // vez por contacto» que este envío reclamó) y se cancelan las sesiones que seguían esperando, para que no
   // haya dos corridas del mismo flujo despertando después. Sin la casilla no se toca nada de esto.
-  if (rerunCompleted) await releaseForRerun(db, { inbound, previous });
+  if (rerunCompleted) await releaseForRerun(db, { inbound, previous, onlyFlowId });
 
   for (const trigger of triggers) {
     const flow = flowOf(trigger);
@@ -185,27 +191,28 @@ async function releaseClaim(db: Db, args: { triggerId: string; dedupeKey: string
 }
 
 /** La casilla «Volver a correr también los flujos que ya corrieron». Nunca lanza. */
-async function releaseForRerun(db: Db, args: { inbound: InboundForFlows; previous: Record<string, FlowResult> }): Promise<void> {
-  const { inbound, previous } = args;
+async function releaseForRerun(db: Db, args: { inbound: InboundForFlows; previous: Record<string, FlowResult>; onlyFlowId?: string }): Promise<void> {
+  const { inbound, previous, onlyFlowId } = args;
   try {
-    await db.from("trigger_fires").delete().eq("workspace_id", inbound.workspace_id).like("dedupe_key", `${webhookDedupePrefix(inbound.id)}%`);
+    if (onlyFlowId) {
+      // Solo esta automatización: su clave (la nueva y las viejas con `:<n>`).
+      await db.from("trigger_fires").delete().eq("workspace_id", inbound.workspace_id).like("dedupe_key", `${webhookDedupeKey(inbound.id, onlyFlowId)}%`);
+    } else {
+      await db.from("trigger_fires").delete().eq("workspace_id", inbound.workspace_id).like("dedupe_key", `${webhookDedupePrefix(inbound.id)}%`);
+    }
     for (const [flowId, result] of Object.entries(previous)) {
+      if (onlyFlowId && flowId !== onlyFlowId) continue;
       if (result.contact_id) {
         await db.from("trigger_fires").delete().eq("workspace_id", inbound.workspace_id).eq("dedupe_key", webhookContactKey(flowId, result.contact_id));
       }
     }
-    await db
-      .from("flow_sessions")
-      .update({ status: "cancelled" })
-      .eq("inbound_webhook_id" as never, inbound.id)
-      .eq("status", "active");
+    let cancel = db.from("flow_sessions").update({ status: "cancelled" }).eq("inbound_webhook_id" as never, inbound.id).eq("status", "active");
+    if (onlyFlowId) cancel = cancel.eq("flow_id", onlyFlowId);
+    await cancel;
     // Aparte del cambio de estado: anotar el motivo nunca puede dejar una sesion viva. Si falla, se ignora.
-    await db
-      .from("flow_sessions")
-      .update({ end_reason: "reprocessed" })
-      .eq("inbound_webhook_id" as never, inbound.id)
-      .eq("status", "cancelled")
-      .is("end_reason", null);
+    let mark = db.from("flow_sessions").update({ end_reason: "reprocessed" }).eq("inbound_webhook_id" as never, inbound.id).eq("status", "cancelled").is("end_reason", null);
+    if (onlyFlowId) mark = mark.eq("flow_id", onlyFlowId);
+    await mark;
   } catch (err) {
     console.error("[hooks] no pude soltar las claves del envío:", err instanceof Error ? err.message : String(err));
   }
@@ -299,7 +306,8 @@ async function runOneFlow(
     const message = err instanceof Error ? err.message : String(err);
     // Un paso reventó (un fallo de base): la sesión no puede quedar «activa» para siempre.
     await db.from("flow_sessions").update({ status: "cancelled" }).eq("inbound_webhook_id" as never, inbound.id).eq("flow_id", flowId).eq("status", "active");
-    return { status: "failed", ...base(), error: message, finished_at: new Date().toISOString() };
+    const { data: failedSession } = await db.from("flow_sessions").select("id").eq("inbound_webhook_id" as never, inbound.id).eq("flow_id", flowId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    return { status: "failed", ...base(), error: message, session_id: (failedSession as { id?: string } | null)?.id ?? null, finished_at: new Date().toISOString() };
   }
 
   const { data: session } = await db
@@ -310,10 +318,10 @@ async function runOneFlow(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const s = session as { status: string; contact_id: string | null } | null;
+  const s = session as { id: string; status: string; contact_id: string | null } | null;
   if (!s) return { status: "failed", ...base(), error: "El flujo no pudo iniciar.", finished_at: new Date().toISOString() };
 
   const contactId = s.contact_id ?? step.contact_id ?? null;
-  if (s.status === "active") return { status: "pending", ...base(), contact_id: contactId };
-  return { status: "completed", ...base(), contact_id: contactId, finished_at: new Date().toISOString() };
+  if (s.status === "active") return { status: "pending", ...base(), contact_id: contactId, session_id: s.id };
+  return { status: "completed", ...base(), contact_id: contactId, session_id: s.id, finished_at: new Date().toISOString() };
 }

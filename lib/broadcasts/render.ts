@@ -3,7 +3,8 @@
  * (en el navegador) y el despachador (en el servidor), así lo que se ve es lo que sale.
  *
  * - Variables del contacto, del negocio y de los campos personalizados:
- *   `{{contact.first_name}}`, `{{workspace.name}}`, `{{custom.<slug>}}`.
+ *   `{{contact.first_name}}`, `{{workspace.name}}`, `{{custom.<slug>}}` (o `{{contact.custom.<slug>}}`, como en las
+ *   automatizaciones).
  * - Valor de respaldo: `{{contact.first_name|amigo}}` usa "amigo" si el dato
  *   está vacío. Sin respaldo, un dato vacío deja un hueco y se cuenta en
  *   `missing` (el broadcast puede saltear a ese contacto).
@@ -75,6 +76,8 @@ export function broadcastVariables(
       first_name: firstNameOf(realName),
       email: contact.email ?? "",
       phone: contact.phone ?? contact.whatsapp_phone ?? "",
+      // `{{contact.custom.<slug>}}`, el mismo nombre que en las automatizaciones (24/11/2026). `{{custom.<slug>}}` sigue.
+      custom,
     },
     workspace: { name: workspace.name ?? "" },
     custom,
@@ -116,7 +119,7 @@ export function templateVariables(template: string): { path: string; hasFallback
 
 /** Variables que el broadcast no sabe resolver (una errata como `{{contact.nombre}}`). */
 export function unknownVariables(template: string, customFields: readonly { slug: string }[]): string[] {
-  const known = new Set<string>([...broadcastVariableList(customFields), "contact.name"]);
+  const known = new Set<string>([...broadcastVariableList(customFields), "contact.name", ...customFields.map((f) => `contact.custom.${f.slug}`)]);
   return templateVariables(template)
     .map((v) => v.path)
     .filter((p) => !known.has(p));

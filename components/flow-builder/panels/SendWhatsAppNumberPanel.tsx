@@ -12,6 +12,7 @@ import { BusinessTimeNote } from "@/components/ui/business-time-note";
 import { DEFAULT_SEND_WINDOW, sendWindowProblem } from "@/lib/flow-engine/send-window";
 import { MAX_HOURS_BEFORE, normalizeHoursBefore } from "@/lib/flow-engine/team-wrote";
 import { WhatsappDeliveryFields } from "./whatsapp-delivery-fields";
+import { VariableChips } from "./variable-chips";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -186,18 +187,7 @@ export function SendWhatsAppNumberPanel({
         )}
       </div>
 
-      {availableVariables && availableVariables.length > 0 && (
-        <div>
-          <p className="text-[11px] text-muted-foreground/70">Tocá una variable para agregarla {target === "toVariable" && mode === "variable" ? "al número" : "al mensaje"}.</p>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {availableVariables.map((variable) => (
-              <button key={variable} type="button" onClick={() => insert(variable)} className="rounded px-1.5 py-0.5 font-mono text-[11px] font-medium text-blue-500 hover:bg-blue-50">
-                {`{{${variable}}}`}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <VariableChips variables={availableVariables} onInsert={(_token, variable) => insert(variable)} hint={`Tocá una variable para agregarla ${target === "toVariable" && mode === "variable" ? "al número" : "al mensaje"}.`} />
 
       <WhatsappDeliveryFields idPrefix="wa-number" value={(data as { delivery?: unknown }).delivery} onChange={(delivery) => onChange({ ...data, delivery })} />
     </div>
