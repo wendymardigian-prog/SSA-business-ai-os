@@ -20,6 +20,7 @@ import type { Database } from "@/lib/types/database";
 import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webhook";
 import { getZernioKeyState } from "@/lib/integrations/zernio-key";
 import { createZernioClient } from "@/lib/zernio-client";
+import { alertZernioKeyRejected } from "@/lib/integrations/zernio-alert";
 import { syncZernioChannels, type ZernioListedAccount } from "@/lib/channels/zernio-channels";
 import { startInboxImports } from "@/lib/inbox-import/run";
 import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
@@ -115,6 +116,7 @@ export async function refreshZernioAccounts(service: Db, workspaceId: string, mo
         accounts = (res.data?.accounts ?? []) as ZernioListedAccount[];
       } catch (err) {
         console.error(`[webhook] no pude leer las cuentas de Zernio (${motivo}):`, err instanceof Error ? err.message : err);
+        await alertZernioKeyRejected(service, workspaceId, err);
       }
 
       if (accounts) {

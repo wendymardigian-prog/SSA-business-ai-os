@@ -9,6 +9,8 @@ import { PageHeader } from "@/components/page-header";
 import { FlowRunsScreen } from "@/components/flows/runs/flow-runs-screen";
 import { parseFlowRunFilters } from "@/lib/flows/runs";
 import { loadFlowRunDetail, loadFlowRuns } from "@/lib/flows/runs-query";
+import { loadFlowRunAudit } from "@/lib/flows/run-audit";
+import { createServiceClient } from "@/lib/supabase/server";
 import type { SearchParams } from "@/lib/url-params";
 
 /** El historial de ejecuciones de una automatizacion (00292). Lee con el cliente del usuario: la RLS decide que ve. */
@@ -40,6 +42,11 @@ export default async function FlowRunsPage({
     filters.ejecucion ? loadFlowRunDetail(supabase, { flowId, runId: filters.ejecucion }) : Promise.resolve(null),
   ]);
 
+  // Lo auditable (el webhook y los datos de cada paso) tiene datos personales: solo con `flows.edit`, y solo de una
+  // ejecución que la persona ya pudo leer con su sesión (`detail`). Se lee con el cliente de servicio (00504).
+  const canSeeData = permissions.can("flows.edit");
+  const audit = detail && canSeeData ? await loadFlowRunAudit(await createServiceClient(), { workspaceId: workspace.id, flowId, runId: detail.run.id }) : null;
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -60,7 +67,7 @@ export default async function FlowRunsPage({
           loadFailed={error}
           filters={filters}
           timeZone={timeZone}
-          detail={detail}
+          detail={detail ? { ...detail, audit } : null}
         />
       </div>
     </div>

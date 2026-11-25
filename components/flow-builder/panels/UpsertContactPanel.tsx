@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Plus, Trash2, Wand2 } from "lucide-react";
 import type { Node } from "@xyflow/react";
-import { JsonTree } from "@/components/webhooks/json-tree";
+import { WebhookSamplePicker } from "@/components/webhooks/sample-picker";
 import { getUpsertEditorContext, testUpsertMapping } from "@/lib/actions/webhook-flow-editor";
 import { FIXED_TARGETS, FIXED_TARGET_LABELS } from "@/lib/forms/contact-config";
 import { detectAttribution, WEBHOOK_ATTRIBUTION_KEYS } from "@/lib/webhooks/attribution";
@@ -92,15 +92,7 @@ export function UpsertContactPanel({ data, nodes, onChange }: { data: Record<str
 
   const picker = (slot: number | "tags" | `attr:${number}`) =>
     picking === slot && sample ? (
-      <div className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-background p-2">
-        <JsonTree value={sample.payload} onPick={(path) => pickInto(slot, path)} />
-        {Object.keys(sample.query).length > 0 && (
-          <>
-            <p className="mt-2 text-[11px] font-semibold text-muted-foreground">Parámetros de la URL</p>
-            <JsonTree value={sample.query} rootPath="query" onPick={(path) => pickInto(slot, path)} />
-          </>
-        )}
-      </div>
+      <WebhookSamplePicker sample={sample} onPick={(path) => pickInto(slot, path)} />
     ) : null;
 
   const pickButton = (slot: number | "tags" | `attr:${number}`) =>
@@ -117,7 +109,7 @@ export function UpsertContactPanel({ data, nodes, onChange }: { data: Record<str
       </p>
 
       {!endpointId && <p className="rounded-lg bg-amber-500/10 p-2 text-xs text-amber-800 dark:text-amber-300">Elegí primero el endpoint en el disparador «Webhook recibido»: de ahí sale el ejemplo para armar el mapeo.</p>}
-      {endpointId && context && !sample && <p className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">Escuchá un envío de prueba en el disparador para elegir los campos con un clic. Mientras tanto podés escribir las rutas a mano (por ejemplo <code>data.email</code>).</p>}
+      {endpointId && context && !sample && <p className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">Escuchá un envío de prueba en el disparador para elegir los campos con un clic. Mientras tanto podés escribir las rutas a mano (por ejemplo <code>webhook.data.email</code>).</p>}
 
       <div className="grid grid-cols-1 gap-3">
         <div>

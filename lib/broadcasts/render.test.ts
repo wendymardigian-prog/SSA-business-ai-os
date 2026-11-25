@@ -31,6 +31,11 @@ describe("renderTemplate", () => {
     expect(r.missing).toEqual([]);
   });
 
+  it("entiende {{contact.custom.x}}, el mismo nombre que en las automatizaciones", () => {
+    expect(renderTemplate("{{contact.custom.plan}} · {{contact.custom.vip}}", ana).text).toBe("Pro · Sí");
+    expect(unknownVariables("{{contact.custom.plan}} {{contact.custom.otro}}", [{ slug: "plan" }])).toEqual(["contact.custom.otro"]);
+  });
+
   it("acepta espacios adentro de las llaves", () => {
     expect(renderTemplate("Hola {{ contact.first_name }}", ana).text).toBe("Hola Ana");
   });

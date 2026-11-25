@@ -29,6 +29,7 @@ import { readSecret, storeSecret, oauthSecretName } from "@/lib/vault";
 import { SECRET_NAMES } from "@/lib/secret-names";
 import type { FetchLike } from "@/lib/oauth/types";
 import { createNotificationOnce } from "@/lib/notifications/create";
+import { notifyTeamConnectionLost } from "@/lib/notifications/system-alerts";
 import { FathomAuthError, fathomRefresh } from "./oauth-adapter";
 import { FathomError } from "./errors";
 
@@ -110,6 +111,10 @@ export async function markFathomConnectionError(supabase: Db, connection: Fathom
 async function markError(supabase: Db, connection: FathomConnection, reason: string): Promise<void> {
   await supabase.from("oauth_connections").update({ status: "error", last_error: reason }).eq("id", connection.id);
   await notifyFathomConnectionError(supabase, connection);
+  // Fallos del sistema (25/11/2026): copia para Owner y Admin, solo la primera vez que se corta. Nunca lanza.
+  if (connection.status !== "error" && connection.status !== "revoked") {
+    await notifyTeamConnectionLost({ supabase, workspaceId: connection.workspace_id, userId: connection.user_id, provider: "fathom", connectionId: connection.id });
+  }
 }
 
 function isFresh(expiresAt: string | null, nowMs: number): boolean {

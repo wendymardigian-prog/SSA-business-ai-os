@@ -41,6 +41,12 @@ describe("interpolador del motor y del simulador", () => {
     expect(SIMULADOR).toContain('typeof value === "object" ? JSON.stringify(value) : String(value)');
     expect(MOTOR).toContain('typeof value === "object" ? JSON.stringify(value) : String(value)');
   });
+
+  it("los dos leen los alias «grupo.campo» despues de la ruta tal cual", () => {
+    const step = "const alias = aliasFor(path);";
+    expect(SIMULADOR).toContain(step);
+    expect(MOTOR).toContain(step);
+  });
 });
 
 describe("interpolateVariables", () => {
@@ -70,5 +76,16 @@ describe("interpolateVariables", () => {
 
   it("una variable vacía sí reemplaza: vacío es un valor", () => {
     expect(interpolateVariables("Hola {{nombre}}!", { nombre: "" })).toBe("Hola !");
+  });
+
+  it("un nombre nuevo «grupo.campo» lee la ruta de siempre", () => {
+    expect(interpolateVariables("{{form.answer.nombre}}", { answer: { nombre: "Ana" } })).toBe("Ana");
+    expect(interpolateVariables("{{booking.answer.presupuesto}}", { booking: { answers: { presupuesto: "5000" } } })).toBe("5000");
+    expect(interpolateVariables("{{ai.response}}", { ai_response: "ok" })).toBe("ok");
+  });
+
+  it("la ruta tal cual gana al alias (en un grupo, message es un objeto)", () => {
+    expect(interpolateVariables("{{message.text}}", { message: { text: "hola grupo" } })).toBe("hola grupo");
+    expect(interpolateVariables("{{message.text}}", { message: "hola privado" })).toBe("hola privado");
   });
 });

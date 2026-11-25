@@ -15,13 +15,39 @@
  */
 
 import { isGreetingPlaceholder } from "@/lib/contacts/anonymous";
+import { preferredName } from "./variable-aliases";
 
 /** Los disparadores de mensaje: el texto del mensaje y su origen. */
 const MESSAGE_VARIABLES = ["message", "message_origin.ad_id", "message_origin.ad_title", "message_origin.is_story_mention"];
 
-/** Lo que el motor siembra cuando el flujo tiene contacto (y el negocio, siempre). */
+/**
+ * Lo que el motor siembra cuando el flujo tiene contacto (y el negocio, siempre). Estas cuatro las comparte el
+ * Diseñador IA (`designer/variables/catalog.ts`): no se tocan.
+ */
 export const CONTACT_VARIABLES = ["contact.display_name", "contact.first_name", "contact.email", "contact.phone"] as const;
 export const WORKSPACE_VARIABLES = ["workspace.name"] as const;
+
+/** El resto de los datos del contacto (traído de RER el 25/11/2026, `contact-variables.ts`), solo en las automatizaciones. */
+export const CONTACT_EXTRA_VARIABLES = [
+  "contact.secondary_email",
+  "contact.whatsapp",
+  "contact.instagram",
+  "contact.tiktok",
+  "contact.twitter",
+  "contact.linkedin",
+  "contact.country",
+  "contact.timezone",
+  "contact.tags",
+  "contact.setter_name",
+  "contact.vendedor_name",
+  "contact.setter_status",
+  "contact.vendedor_status",
+  "contact.last_status",
+  "contact.qualification",
+  "contact.qualification_level",
+  "contact.temperature",
+  "contact.id",
+] as const;
 
 /** Las variables fijas que trae cada disparador (las que dependen de la base vienen del esquema del servidor). */
 export function staticTriggerVariables(triggerType: string | null | undefined): string[] {
@@ -70,6 +96,8 @@ export interface PickerVariablesInput {
   upstreamOutputs?: string[];
   /** Hay un «Crear o actualizar contacto» antes de este paso (en un flujo que arranca sin contacto). */
   contactBefore?: boolean;
+  /** Los slugs de los campos personalizados del contacto (`{{contact.custom.<slug>}}`). */
+  customFieldSlugs?: readonly string[];
 }
 
 /** Una ruta del esquema como variable: sin el prefijo `variable:` y sin las que no son variables (`tag:`, campos sueltos). */
@@ -78,17 +106,26 @@ function schemaPathToVariable(path: string): string | null {
   return /^[a-z_]+\./i.test(path) ? path : null;
 }
 
-/** La lista final del selector, sin repetidas y en un orden que se lee: disparador, pasos anteriores, contacto, negocio. */
+/**
+ * La lista final del selector, sin repetidas y en un orden que se lee: disparador, pasos anteriores, contacto (con sus
+ * campos personalizados) y negocio. Todo con el nombre «grupo.campo» (`preferredName`): `{{answer.x}}` se
+ * ofrece como `{{form.answer.x}}` y `{{ai_response}}` como `{{ai.response}}` (los viejos siguen funcionando).
+ */
 export function pickerVariables(input: PickerVariablesInput): string[] {
   const out: string[] = [];
   const push = (v: string | null | undefined) => {
-    if (v && !out.includes(v)) out.push(v);
+    const name = v ? preferredName(v) : v;
+    if (name && !out.includes(name)) out.push(name);
   };
   for (const v of staticTriggerVariables(input.triggerType)) push(v);
   for (const path of input.schemaPaths ?? []) push(schemaPathToVariable(path));
   for (const v of input.upstreamOutputs ?? []) push(v);
   const hasContact = !NO_CONTACT_AT_START.has(input.triggerType ?? "") || input.contactBefore === true;
-  if (hasContact && input.triggerType !== "eod_submitted") for (const v of CONTACT_VARIABLES) push(v);
+  if (hasContact && input.triggerType !== "eod_submitted") {
+    for (const v of CONTACT_VARIABLES) push(v);
+    for (const v of CONTACT_EXTRA_VARIABLES) push(v);
+    for (const slug of input.customFieldSlugs ?? []) push(`contact.custom.${slug}`);
+  }
   for (const v of WORKSPACE_VARIABLES) push(v);
   return out;
 }

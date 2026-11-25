@@ -24,6 +24,8 @@ import { canUploadToYouTube } from "./google";
 import { adoptOrphanComments } from "@/lib/comments/adopt";
 import { getZernioKeyState } from "@/lib/integrations/zernio-key";
 import { createZernioClient } from "@/lib/zernio-client";
+import { createServiceClient } from "@/lib/supabase/server";
+import { alertZernioKeyRejected } from "@/lib/integrations/zernio-alert";
 import { platformLabel } from "@/lib/platforms";
 
 type Db = SupabaseClient<Database>;
@@ -719,6 +721,9 @@ async function readZernioAccounts(workspaceId: string): Promise<{
   } catch (err) {
     const detalle = err instanceof Error ? err.message : String(err);
     console.error("[social] no pude leer las cuentas de Zernio:", detalle);
+    // Fallos del sistema: un 401 es la clave rechazada. Avisa a Owner y Admin (con el cliente de servicio: la tabla de
+    // avisos no tiene policy de INSERT). Nunca lanza.
+    await createServiceClient().then((service) => alertZernioKeyRejected(service, workspaceId, err)).catch(() => false);
     // Hay clave pero Zernio no respondio: sigue conectado, solo que no se pudo
     // leer. Se usa el respaldo por canales y no se desactiva nada.
     return {

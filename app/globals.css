@@ -531,3 +531,14 @@ select.select-bare {
     transform: translateX(300%);
   }
 }
+
+/*
+ * La barra de carga del panel (components/ui/nav-progress.tsx, traída de RER-BAIOS el 25/11/2026). Mientras llega una
+ * pantalla que tarda, la barra marca `<main data-nav-pending>` y el contenido viejo se aclara, para que nadie lo use
+ * creyendo que ya es lo nuevo. La barra de la pantalla (`header[data-topbar]`, directa o dentro del contenedor de
+ * PageHeader) queda igual: ahí ya se ve marcada la pestaña elegida. No bloquea clics. Fuera de @layer a propósito.
+ */
+main[data-nav-pending] > * > :not([data-topbar]):not(:has([data-topbar])) {
+  opacity: 0.55;
+  transition: opacity 0.15s ease-out;
+}

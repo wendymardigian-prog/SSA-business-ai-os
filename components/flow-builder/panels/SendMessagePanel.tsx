@@ -11,6 +11,7 @@ import {
   type AttributionDefaults,
 } from "@/lib/attribution/panel-view";
 import { WhatsappDeliveryFields } from "./whatsapp-delivery-fields";
+import { VariableChips } from "./variable-chips";
 
 interface QuickReply {
   title: string;
@@ -68,35 +69,6 @@ interface SendMessagePanelProps {
   availableVariables?: string[];
   /** Sin esto el bloque de atribución no se muestra. */
   attributionContext?: AttributionPanelContext;
-}
-
-function VariablePicker({
-  variables,
-  onInsert,
-}: {
-  variables: string[];
-  onInsert: (variable: string) => void;
-}) {
-  return (
-    <div className="mt-1.5">
-      <p className="text-[11px] text-muted-foreground/60">
-        Tocá una variable para insertarla. Con puntos, como {"{{myvar.data.name}}"}, se leen
-        campos de una respuesta JSON.
-      </p>
-      <div className="mt-1 flex flex-wrap gap-1.5">
-        {variables.map((variable) => (
-          <button
-            key={variable}
-            type="button"
-            onClick={() => onInsert(variable)}
-            className="rounded px-1.5 py-0.5 font-mono text-[11px] font-medium text-blue-500 hover:bg-blue-50"
-          >
-            {`{{${variable}}}`}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 export function SendMessagePanel({ data: rawData, onChange, availableVariables, attributionContext }: SendMessagePanelProps) {
@@ -505,9 +477,10 @@ function MessageEditor({
                 className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               {availableVariables && availableVariables.length > 0 ? (
-                <VariablePicker
+                <VariableChips
                   variables={availableVariables}
-                  onInsert={insertVariable}
+                  onInsert={(_token, variable) => insertVariable(variable)}
+                  hint="Tocá una variable para agregarla donde está el cursor."
                 />
               ) : (
                 <p className="text-[11px] text-muted-foreground/60">

@@ -8,6 +8,7 @@ import { loadWorkspaceAgents } from "@/lib/agent/config";
 import { loadAgentsPageMode } from "@/lib/agent/usage";
 import { agentsNeedDefaults } from "@/lib/agent/page-mode";
 import { ensureDefaultAgents } from "@/lib/agent/defaults";
+import { areaAnalyzersMissing, ensureAreaAnalyzerAgents } from "@/lib/calls/area-analyzer-agents"; // @plantilla-quitar(llamadas)
 import { getAgentType } from "@/lib/agent/agent-types";
 import { agentAvailability } from "@/lib/agent/availability";
 import { NoAiConnection } from "@/components/agents/no-ai-connection";
@@ -91,6 +92,13 @@ export default async function AgentsPage({
       agents = await loadWorkspaceAgents(service, workspace.id);
     }
   }
+  // @plantilla-desde(llamadas)
+  // Los analizadores por área (00536): los que falten se crean apagados, una vez, por quien edita agentes.
+  if (aiProviders.length > 0 && permissions.can("agents.edit") && areaAnalyzersMissing(agents).length > 0) {
+    const created = await ensureAreaAnalyzerAgents(service, workspace.id, agents, aiProviders);
+    if (created && created.length > 0) agents = await loadWorkspaceAgents(service, workspace.id);
+  }
+  // @plantilla-hasta(llamadas)
   const connectedAi = aiProviders.map((p) => p.provider);
   const hasChatAgent = agents.some((a) => getAgentType(a.type)?.conversational);
   const canViewCosts = permissions.can("ai_costs.view");

@@ -9,6 +9,8 @@ import { getNavFavorites } from "@/lib/nav/favorites";
 import { Sidebar } from "@/components/sidebar";
 import { DashboardChromeProvider } from "@/components/dashboard-chrome";
 import { TimezoneBootstrap } from "@/components/timezone-bootstrap";
+import { Suspense } from "react";
+import { NavProgress } from "@/components/ui/nav-progress";
 import { AssistantDock } from "@/components/assistant/assistant-dock"; // @plantilla-quitar(disenador)
 import { eodNavFlag } from "@/lib/eod/nav-flag"; // @plantilla-quitar(formularios)
 import { visibleSettingsTabs } from "@/lib/settings/tabs";
@@ -88,6 +90,10 @@ export default async function DashboardLayout({
     >
       <MemberAvatarsProvider avatars={memberAvatars}>
       <TimezoneBootstrap hasSaved={savedTimezone !== null} />
+      {/* La barra de carga del panel (lib/ui/nav-progress.ts). En Suspense: lee la búsqueda de la URL. */}
+      <Suspense fallback={null}>
+        <NavProgress />
+      </Suspense>
       {/* El color de ESTE negocio (00266) pisa el de la instalacion que pone app/layout.tsx: va despues, con los mismos selectores. */}
       {workspaceColorCss && <style dangerouslySetInnerHTML={{ __html: workspaceColorCss }} />}
       <div className="flex h-dvh">

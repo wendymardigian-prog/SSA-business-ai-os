@@ -12,6 +12,7 @@
  *
  * Nada de lo que entra se loguea: ni el token, ni el secreto, ni el payload.
  */
+import { sanitizeHeaders } from "./headers";
 import { createHash } from "node:crypto";
 import { isListening } from "./listen";
 import { getByPath, scalarText } from "./paths";
@@ -198,6 +199,8 @@ export interface InboundInsert {
   bodyHash: string;
   errorMessage: string | null;
   summary: string | null;
+  /** Las cabeceras ya saneadas (headers.ts): sin secreto, sin credenciales y sin la IP. */
+  headers?: Record<string, string>;
   /**
    * La ventana en que un cuerpo idéntico (sin id de envío) es un repetido. La verificación y el insert son UNA
    * operación con candado en la base (`receive_inbound_webhook`, 00216): dos entregas simultáneas no pasan las dos.
@@ -232,6 +235,8 @@ export interface ReceiveInput {
   searchParams: URLSearchParams;
   ip: string | null;
   userAgent: string | null;
+  /** Las cabeceras del pedido; se guardan saneadas (`sanitizeHeaders`). */
+  headers?: Iterable<[string, string]>;
 }
 
 export interface ReceiveResult {
@@ -325,6 +330,7 @@ export async function receiveWebhook(deps: ReceiveDeps, input: ReceiveInput): Pr
     bodyHash: hash,
     errorMessage,
     summary,
+    headers: input.headers ? sanitizeHeaders(input.headers) : undefined,
     duplicateWindowMs: DUPLICATE_WINDOW_MS,
   });
   if (outcome.kind === "duplicate") return { status: 200, body: { ok: true, duplicate: true } };

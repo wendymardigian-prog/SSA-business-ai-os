@@ -42,3 +42,12 @@ describe("tema y desplegables", () => {
     expect(rule).toMatch(/font-size:\s*16px;/);
   });
 });
+
+describe("barra de carga del panel", () => {
+  it("atenúa el contenido viejo pero no la barra de la pantalla, fuera de @layer", () => {
+    const rule = "main[data-nav-pending] > * > :not([data-topbar]):not(:has([data-topbar])) {";
+    const at = css.indexOf(`\n${rule}`);
+    expect(at).toBeGreaterThan(0);
+    expect(css.slice(at, css.indexOf("\n}", at))).toMatch(/opacity:\s*0\.55;/);
+  });
+});

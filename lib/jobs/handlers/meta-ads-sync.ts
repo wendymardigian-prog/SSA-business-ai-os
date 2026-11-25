@@ -22,6 +22,7 @@ import { linkAdsToContent } from "@/lib/meta/content-link";
 import { scheduleThumbnailJob } from "@/lib/meta/thumbnails";
 import { adAccountNeedsCatchUp } from "@/lib/metrics/rules";
 import type { PersistResult } from "@/lib/meta/catalog-store";
+import { notifySystemFailure } from "@/lib/notifications/system-alerts";
 
 type Db = SupabaseClient<Database>;
 
@@ -200,6 +201,23 @@ export async function syncCatalog(
   return result;
 }
 
+/**
+ * Fallos del sistema (25/11/2026): no se pudieron traer los anuncios de una cuenta. Un aviso por cuenta, que no se
+ * repite en 7 días (`notifySystemFailure`). Nunca lanza.
+ */
+async function alertSyncFailure(supabase: Db, workspaceId: string, adAccountId: string, name: string | null, message: string): Promise<void> {
+  await notifySystemFailure({
+    supabase,
+    workspaceId,
+    type: "meta_ads_sync_failed",
+    key: `meta-ads:${adAccountId}`,
+    title: `Meta: no se pudieron traer los anuncios de ${name?.trim() || "una cuenta publicitaria"}`,
+    body: `${message} Mientras tanto, Anuncios y el dashboard de Meta muestran datos viejos.`,
+    area: "ads",
+    metadata: { ad_account_id: adAccountId },
+  });
+}
+
 /** Deja anotado en la cuenta que este intento no pudo correr (el motivo queda en `last_error`, que la pantalla muestra). Nunca lanza. */
 async function recordSyncFailure(supabase: Db, workspaceId: string, adAccountId: string, message: string): Promise<void> {
   try {
@@ -211,7 +229,9 @@ async function recordSyncFailure(supabase: Db, workspaceId: string, adAccountId:
       .eq("provider", "meta")
       .maybeSingle();
     const config = parseMetaConfig(row?.config);
-    if (!config.ad_accounts.some((a) => a.ad_account_id === adAccountId)) return;
+    const account = config.ad_accounts.find((a) => a.ad_account_id === adAccountId);
+    if (!account) return;
+    await alertSyncFailure(supabase, workspaceId, adAccountId, account.name ?? null, message);
     const updated = markSync(config.ad_accounts, adAccountId, { at: new Date().toISOString(), error: message });
     await supabase
       .from("integration_configs")
@@ -304,6 +324,8 @@ async function handleMetaAdsSync({ supabase, job }: JobContext): Promise<void> {
       statuses,
     });
   }
+
+  if (errors[0]) await alertSyncFailure(supabase, payload.workspaceId, payload.adAccountId, account.name ?? null, errors[0]);
 
   // `markSync` decide "primera vez completa" solo por las metricas; el aviso del catalogo (tope,
   // limite de uso, error de Meta) se suma despues para que no se corte en silencio.

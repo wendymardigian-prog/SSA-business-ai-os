@@ -24,6 +24,8 @@ import { getSavedViewerTimezone, resolveViewerTimezone } from "@/lib/user-timezo
 import { AgentDetailView, AgentTabBody } from "@/components/agents/agent-detail-view";
 import { TabBodySkeleton } from "@/components/agents/detail-tabs";
 import { parseRulesSnapshot } from "@/lib/ai-learning/rules";
+import { areaKeyForAnalyzerAgent } from "@/lib/calls/area-analyzers"; // @plantilla-quitar(llamadas)
+import { loadCallConfig } from "@/lib/calls/config-data"; // @plantilla-quitar(llamadas)
 import { DEFAULT_ASSISTANT_TOOL_KEYS, PERSON_TOOLS } from "@/lib/ai-tools/registry";
 import type { AgentTypeDefinition } from "@/lib/agent/agent-types";
 
@@ -137,6 +139,31 @@ export default async function AgentDetailPage({
       return { value: e.id, label: e.title, hint: [label, `${e.duration_minutes} min`].filter(Boolean).join(" · ") };
     });
   };
+
+  // Los analizadores de un área (Ventas o Servicio): se editan con `calls.configure`.
+  // @plantilla-desde(llamadas)
+  const loadAreaAnalyzers = async (areaKey: string): Promise<AgentScreenData["analyzers"]> => {
+    try {
+      const canConfigure = viewerCan("calls.configure");
+      const [call, areas] = await Promise.all([
+        loadCallConfig({
+          service,
+          userClient: supabase,
+          workspaceId: workspace.id,
+          task: "call_analysis",
+          canEdit: canConfigure,
+          stored: (workspace as { ai_background_settings?: unknown }).ai_background_settings,
+        }),
+        service.from("booking_categories").select("id").eq("workspace_id", workspace.id).eq("system_key", areaKey).is("parent_id", null),
+      ]);
+      if (call.task !== "call_analysis") return null;
+      return { call, areaIds: (areas.data ?? []).map((a) => a.id) };
+    } catch (err) {
+      console.error("[agentes] no pude cargar los analizadores del área:", err instanceof Error ? err.message : "error");
+      return null;
+    }
+  };
+  // @plantilla-hasta(llamadas)
 
   const screenAgent = toScreenAgent(agent);
   if (!canEdit) {
@@ -319,8 +346,15 @@ export default async function AgentDetailPage({
       canEdit && on("config") && typeDef.configSections.includes("learning")
         ? await service.from("agent_learned_rules").select("id, reason_key, text, status, evidence, rejections, proposed_at, decided_at, decided_by").eq("agent_id", agent.id).neq("status", "discarded").order("proposed_at", { ascending: false }).limit(50)
         : null;
+    // Los analizadores por tipo de reunión del área de este agente: se editan desde su página.
+    // @plantilla-desde(llamadas)
+    let analyzers: AgentScreenData["analyzers"] = null;
+    const analyzerArea = on("config") && typeDef.configSections.includes("analyzers") ? areaKeyForAnalyzerAgent(agent.type) : null;
+    analyzers = analyzerArea ? await loadAreaAnalyzers(analyzerArea) : null;
+    // @plantilla-hasta(llamadas)
     const data: AgentScreenData = {
       viewer: { isAdmin: canEdit, permissionKeys: permissions.permissions.keys },
+      analyzers, // @plantilla-quitar(llamadas)
       copywriter,
       costs,
       actions,

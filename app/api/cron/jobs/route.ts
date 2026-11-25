@@ -14,6 +14,7 @@ import {
 } from "@/lib/knowledge/index-document";
 import { reapStuckTranscriptions } from "@/lib/chat-media/transcribe-message";
 import { getJobHandler, UnknownJobTypeError } from "@/lib/jobs/registry";
+import { notifyJobFailure } from "@/lib/jobs/failure-alert";
 import { registerPublishing } from "@/lib/publishing/bootstrap";
 import { sweepStuckPublications } from "@/lib/publishing/sweep";
 import { CONTENT_UPLOAD_JOB } from "@/lib/content/jobs";
@@ -249,6 +250,8 @@ export async function GET(request: NextRequest) {
           .from("scheduled_jobs")
           .update({ status: "failed", last_error: errorMessage })
           .eq("id", job.id);
+        // Fallos del sistema: un tipo que nadie sabe ejecutar es un error de código; avisa a Owner y Admin.
+        await notifyJobFailure(supabase, job, errorMessage);
       } else if (err instanceof SessionRecheckError) {
         // Requeue past the recency window and undo the claim's attempts bump:
         // a recheck is not a failure, and letting rechecks exhaust attempts
@@ -311,6 +314,9 @@ async function failJobAndSettleSession({
     .from("scheduled_jobs")
     .update({ status: "failed", last_error: errorMessage })
     .eq("id", job.id);
+
+  // Fallos del sistema (25/11/2026): un trabajo que se da por perdido avisa a Owner y Admin. Nunca lanza.
+  await notifyJobFailure(supabase, job, errorMessage);
 
   // Un job de indexado sin reintentos dejaria el documento en 'processing' para
   // siempre: nada mas vuelve a mirar esa fila, y en pantalla se veria un spinner

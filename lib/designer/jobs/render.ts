@@ -32,6 +32,7 @@ import { parseDesignSettings } from "../settings-schema";
 import { sampleValues, type CustomVar } from "../variables/catalog";
 import { assetUrlFrom, collectAssetPaths, DESIGN_RENDERS_BUCKET, exportFolder, pageFileName, pathBelongsTo, renderFolder, signAssetUrls } from "../storage";
 import { releasePreviousRenders } from "./render-replace";
+import { notifySystemFailure } from "@/lib/notifications/system-alerts";
 
 export const DESIGN_RENDER_JOB = "design_render";
 /** Esperas entre intentos cuando el servicio falla de forma pasajera: 1, 5 y 15 minutos. */
@@ -151,6 +152,19 @@ async function noteFailure(db: Db, row: DesignRow, payload: DesignRenderPayload,
     await db.from("designs").update({ attempts, next_attempt_at: null, error: message, ...(isGeneration ? { status: "failed" as const } : {}) }).eq("id", row.id);
   } catch (writeError) {
     console.error("[design_render] no pude anotar el fallo:", writeError instanceof Error ? writeError.message : "error");
+  }
+  // Fallos del sistema (25/11/2026): sin servicio de render no sale ningún archivo del Diseñador IA. Avisa a Owner y
+  // Admin una vez (no se repite en 7 días). Nunca lanza.
+  if (error instanceof RenderNotConfigured) {
+    await notifySystemFailure({
+      supabase: db,
+      workspaceId: row.workspace_id,
+      type: "render_not_configured",
+      key: "render",
+      title: "Falta conectar el servicio de render del Diseñador IA",
+      body: "No se puede generar ningún PDF ni imagen del Diseñador IA hasta configurar RENDER_SERVICE_URL y RENDER_SERVICE_SECRET en Railway.",
+      area: "designer",
+    });
   }
   return { status: "failed", error: message };
 }

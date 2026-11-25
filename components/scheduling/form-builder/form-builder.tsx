@@ -122,7 +122,7 @@ export function FormBuilder({
               </span>
               <button type="button" onClick={() => setEditing(editing === f.id ? null : f.id)} className="min-w-0 flex-1 text-left">
                 <span className="block text-sm font-medium">{f.label}</span>
-                <span className="block text-xs text-muted-foreground">{FIELD_TYPE_LABELS[f.type]} · {VISIBILITY_LABELS[f.visibility]} · {`{{answers.${f.identifier}}}`}</span>
+                <span className="block text-xs text-muted-foreground">{FIELD_TYPE_LABELS[f.type]} · {VISIBILITY_LABELS[f.visibility]} · {`{{booking.answer.${f.identifier}}}`}</span>
                 {hasIssue && editing !== f.id && <span className="block text-xs text-red-600 dark:text-red-400">Hay un texto demasiado largo: abrí la pregunta para verlo</span>}
               </button>
               <button type="button" disabled={disabled} aria-label={`Quitar ${f.label}`} onClick={() => onChange(fields.filter((x) => x.id !== f.id))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600">

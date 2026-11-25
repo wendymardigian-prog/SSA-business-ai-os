@@ -70,6 +70,24 @@ async function clearCopies(
   return total;
 }
 
+/** Vacía `input`/`output` de los pasos de más de 90 días, de a tandas por id (lo que sobre sigue mañana). */
+async function clearStepAudit(db: Db, clearBefore: string): Promise<void> {
+  for (let batch = 0; batch < COPY_MAX_BATCHES; batch++) {
+    const { data, error } = await db
+      .from("flow_session_steps")
+      .select("id")
+      .lte("finished_at", clearBefore)
+      .or("input.not.is.null,output.not.is.null")
+      .limit(COPY_BATCH);
+    if (error) throw new Error(error.message);
+    const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+    if (ids.length === 0) return;
+    const { error: updateError } = await db.from("flow_session_steps").update({ input: null, output: null } as never).in("id", ids);
+    if (updateError) throw new Error(updateError.message);
+    if (ids.length < COPY_BATCH) return;
+  }
+}
+
 export async function sweepInboundRetention(db: Db, now: Date = new Date()): Promise<SweepResult> {
   const { clearBefore, deleteBefore } = retentionCutoffs(now);
   let cleared = 0;
@@ -79,7 +97,7 @@ export async function sweepInboundRetention(db: Db, now: Date = new Date()): Pro
   try {
     const { data: cleared_ } = await db
       .from("inbound_webhooks")
-      .update({ payload: null, query: null } as never)
+      .update({ payload: null, query: null, headers: null } as never)
       .lte("received_at", clearBefore)
       .not("payload", "is", null)
       .select("id");
@@ -98,6 +116,13 @@ export async function sweepInboundRetention(db: Db, now: Date = new Date()): Pro
     }
   } catch (err) {
     console.error("[hooks] fallo la retencion de webhooks:", err instanceof Error ? err.message : String(err));
+  }
+
+  // Lo que usó y dejó cada paso de una ejecución (00515): tiene datos personales, se vacía a los mismos 90 días.
+  try {
+    await clearStepAudit(db, clearBefore);
+  } catch (err) {
+    console.error("[hooks] no pude vaciar los datos de los pasos:", err instanceof Error ? err.message : String(err));
   }
 
   // Las copias del envio, cada una por su lado: que una falle no frena a la otra.

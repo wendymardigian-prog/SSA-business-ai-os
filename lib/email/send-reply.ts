@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import { sendViaResend } from "./resend-client";
+import { alertResendKeyRejected } from "./provider-alert";
 import { bareAddress, canReply, replyHeaders, textToHtml } from "./reply";
 import { replyFromAddress } from "./inbound-address";
 import { canSendEmailTo, type EmailCategory, type EmailSkipReason } from "./subscription";
@@ -260,6 +261,7 @@ export async function sendEmailReply(
   else if (logBase) await logEmail(service as never, { ...logBase, html: "" }, row);
 
   if (!result.ok) {
+    await alertResendKeyRejected(service, params.workspaceId, result.status);
     return {
       ok: false,
       messageId: null,

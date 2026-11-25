@@ -11,6 +11,7 @@ import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "./branch-paths";
 import { resolveWhatsAppTarget } from "./whatsapp-target";
 import { pickSplitIndex, splitHandle } from "./nodes/ab-split";
 import { fallbackText, needsFallback } from "@/lib/templates/fallback";
+import { aliasFor } from "./variable-aliases";
 import { SERVICE_ACTION_TYPES, serviceActionDetail, type ServiceActionData, type ServiceActionType } from "./nodes/service-action-detail"; // @plantilla-quitar(servicios)
 
 /** Los mismos alias de salida que el motor (`engine.ts`): las condiciones viejas dibujaban `yes`/`no`. */
@@ -92,16 +93,24 @@ const EMAIL_TO_LABELS: Record<string, string> = {
   variable: "a la dirección de una variable",
 };
 
-function resolvePath(
-  variables: Record<string, string>,
-  path: string
-): unknown {
+function followPath(variables: Record<string, string>, path: string): unknown {
   let value: unknown = variables;
   for (const key of path.split(".")) {
     if (typeof value !== "object" || value === null) return undefined;
     value = (value as Record<string, unknown>)[key];
   }
   return value;
+}
+
+// Igual que `resolveVariablePath` del motor: primero la ruta tal cual y, si no existe, la del alias «grupo.campo».
+function resolvePath(
+  variables: Record<string, string>,
+  path: string
+): unknown {
+  const direct = followPath(variables, path);
+  if (direct !== undefined) return direct;
+  const alias = aliasFor(path);
+  return alias ? followPath(variables, alias) : undefined;
 }
 
 // Mirrors interpolateVariables in engine.ts (dot paths, JSON for objects,

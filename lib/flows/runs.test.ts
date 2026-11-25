@@ -64,6 +64,8 @@ describe("como se lee", () => {
   it("una espera que no es el ultimo paso ya paso", () => {
     expect(runStepStatusLabel("waiting", true)).toBe("En espera");
     expect(runStepStatusLabel("waiting", false)).toBe("Esperó");
+    // Una ejecución que ya terminó no está «En espera», aunque la espera sea su último paso.
+    expect(runStepStatusLabel("waiting", true, false)).toBe("Esperó");
   });
 
   it("un codigo se traduce y un texto queda igual", () => {

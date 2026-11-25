@@ -24,11 +24,13 @@ const STATUS_FILTERS = [
 
 const fmt = (iso: string, timeZone: string) => new Date(iso).toLocaleString("es", { dateStyle: "short", timeStyle: "medium", timeZone });
 
-export function EndpointDetailScreen({ endpoint, history, filters, timeZone }: {
+export function EndpointDetailScreen({ endpoint, history, filters, timeZone, initialInboundId = null }: {
   endpoint: EndpointDetail;
   history: { items: InboundListItem[]; total: number; page: number; pageSize: number };
   filters: { status: string; from: string; to: string };
   timeZone: string;
+  /** El envío que se abre al entrar (`?envio=`, desde una ejecución). */
+  initialInboundId?: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,7 +39,7 @@ export function EndpointDetailScreen({ endpoint, history, filters, timeZone }: {
   const [copied, setCopied] = useState(false);
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [drawerId, setDrawerId] = useState<string | null>(null);
+  const [drawerId, setDrawerId] = useState<string | null>(initialInboundId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
 

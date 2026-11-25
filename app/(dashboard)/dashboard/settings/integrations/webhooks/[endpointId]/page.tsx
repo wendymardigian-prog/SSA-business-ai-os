@@ -23,7 +23,7 @@ export default async function WebhookEndpointPage({
   searchParams,
 }: {
   params: Promise<{ endpointId: string }>;
-  searchParams: Promise<{ estado?: string; desde?: string; hasta?: string; pagina?: string }>;
+  searchParams: Promise<{ estado?: string; desde?: string; hasta?: string; pagina?: string; envio?: string }>;
 }) {
   const { endpointId } = await params;
   const query = await searchParams;
@@ -47,5 +47,8 @@ export default async function WebhookEndpointPage({
     page,
   });
 
-  return <EndpointDetailScreen endpoint={endpoint} history={history} filters={{ status, from, to }} timeZone={timeZone} />;
+  // `?envio=<id>` abre ese envío (el link «Ver el envío» de una ejecución). El cajón lo vuelve a leer filtrando por negocio.
+  const initialInboundId = query.envio && /^[0-9a-f-]{36}$/i.test(query.envio) ? query.envio : null;
+
+  return <EndpointDetailScreen endpoint={endpoint} history={history} filters={{ status, from, to }} timeZone={timeZone} initialInboundId={initialInboundId} />;
 }
