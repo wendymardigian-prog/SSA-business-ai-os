@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getWorkspace, setActiveWorkspaceCookie } from "@/lib/workspace";
 import { sendTransactionalEmail } from "@/lib/email/send";
@@ -10,6 +11,8 @@ import { inviteUrl } from "@/lib/app-url";
 import { logAudit } from "@/lib/audit";
 import type { Json } from "@/lib/types/database";
 import { getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
+import { checkLimit } from "@/lib/antispam/rate-limit";
+import { clientIp, hashIp } from "@/lib/scheduling/antispam";
 import { parsePermissions, systemRolePermissions } from "@/lib/auth/permissions";
 import { assertCanAssignRole, grantActorOf, type RoleToGive } from "@/lib/team/grant";
 import { canResend, inviteState, invalidInviteMessage, renewedExpiry } from "@/lib/team/invite-state";
@@ -527,12 +530,32 @@ export async function acceptInvite(inviteId: string) {
 }
 
 /**
+ * Tope de intentos de la accion publica de la invitacion (`registerFromInvite`): una clave por IP (hasheada, nunca la
+ * IP en claro), 20 cada 15 minutos. Cuenta DESPUES de las validaciones baratas (nombre y contraseña, que no tocan la
+ * base) y ANTES de mirar la invitacion, y el mensaje no dice si existe. Si la tabla de topes falla, deja pasar
+ * (`checkLimit`): es peor que nadie pueda aceptar una invitacion que un tope flojo por un rato.
+ */
+const INVITE_ATTEMPTS_PER_IP = 20;
+const INVITE_ATTEMPTS_WINDOW_MS = 15 * 60_000;
+const INVITE_TOO_MANY = "Demasiados intentos. Esperá unos minutos y volvé a intentarlo.";
+
+async function inviteAttemptAllowed(service: Awaited<ReturnType<typeof createServiceClient>>): Promise<boolean> {
+  const ip = clientIp(await headers());
+  const result = await checkLimit(service, {
+    key: `auth:invite:ip:${hashIp(ip)}`,
+    max: INVITE_ATTEMPTS_PER_IP,
+    windowMs: INVITE_ATTEMPTS_WINDOW_MS,
+  });
+  return result.allowed;
+}
+
+/**
  * Crea la cuenta y acepta la invitacion en un solo paso: es el unico lugar
  * donde alguien puede registrarse (no hay `/register` publico). El email
  * viene fijo de la invitacion, nunca del formulario.
  *
  * `email_confirm: true` porque el link ya llego a ese correo: pedirle que
- * confirme de nuevo es un paso de mas.
+ * confirme de nuevo es un paso de mas. Con tope de intentos por IP.
  */
 export async function registerFromInvite(inviteId: string, fullName: string, password: string) {
   const name = fullName.trim();
@@ -540,6 +563,7 @@ export async function registerFromInvite(inviteId: string, fullName: string, pas
   if (password.length < 6) return { error: "La contraseña tiene que tener al menos 6 caracteres" };
 
   const serviceClient = await createServiceClient();
+  if (!(await inviteAttemptAllowed(serviceClient))) return { error: INVITE_TOO_MANY };
   const validation = await validatePendingInvite(serviceClient, inviteId);
   if (!validation.ok) return { error: validation.error };
   const invite = validation.invite;
