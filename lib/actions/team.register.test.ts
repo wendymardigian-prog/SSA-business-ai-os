@@ -17,6 +17,7 @@ const setActiveWorkspaceCookie = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("@/lib/workspace", () => ({ getWorkspace: vi.fn(), setActiveWorkspaceCookie }));
 vi.mock("@/lib/fathom/revoke", () => ({ revokeFathomConnectionsOf: vi.fn(async () => 0) })); // @plantilla-quitar(llamadas)
 vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: vi.fn() }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ "x-real-ip": "203.0.113.7" }) }));
 
 const auth = vi.hoisted(() => ({ createUser: vi.fn(), signInWithPassword: vi.fn() }));
 let db: MemoryDb;
@@ -39,16 +40,35 @@ const pending = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** La tabla de topes en memoria: cuenta por clave. Con `rateLimitDown` lanza, como una base caida. */
+let rateCounts: Map<string, number>;
+let rateLimitDown = false;
+
 function seed(invites: Array<Record<string, unknown>>) {
-  db = memoryDb({
-    workspace_invites: invites,
-    workspace_members: [],
-    workspace_roles: [{ id: ROLE_MEMBER, workspace_id: WS, name: "Member", system_role: "member", permissions: { keys: [], scopes: {} } }],
-  });
+  rateCounts = new Map();
+  db = memoryDb(
+    {
+      workspace_invites: invites,
+      workspace_members: [],
+      workspace_roles: [{ id: ROLE_MEMBER, workspace_id: WS, name: "Member", system_role: "member", permissions: { keys: [], scopes: {} } }],
+    },
+    {
+      rpc: {
+        bump_rate_limit: (args) => {
+          if (rateLimitDown) throw new Error("base caida");
+          const key = String(args.p_key);
+          const next = (rateCounts.get(key) ?? 0) + 1;
+          rateCounts.set(key, next);
+          return next;
+        },
+      },
+    },
+  );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  rateLimitDown = false;
   auth.createUser.mockResolvedValue({ data: { user: { id: "u-ana" } }, error: null });
   auth.signInWithPassword.mockResolvedValue({ error: null });
 });
@@ -104,5 +124,62 @@ describe("registerFromInvite", () => {
     expect(r).toMatchObject({ alreadyRegistered: true });
     expect(auth.signInWithPassword).not.toHaveBeenCalled();
     expect(db.rows("workspace_members")).toHaveLength(0);
+  });
+});
+
+describe("tope de intentos por IP", () => {
+  const TOO_MANY = "Demasiados intentos. Esperá unos minutos y volvé a intentarlo.";
+
+  it("dentro del tope responde lo de siempre; el intento 21 desde la misma IP se frena sin mirar la invitacion", async () => {
+    seed([pending({ status: "revoked" })]);
+    for (let i = 0; i < 20; i++) {
+      const r = await registerFromInvite("inv-1", "Ana", "clave-segura");
+      expect(r).not.toMatchObject({ error: TOO_MANY });
+    }
+
+    expect(await registerFromInvite("inv-1", "Ana", "clave-segura")).toEqual({ error: TOO_MANY });
+    expect(auth.createUser).not.toHaveBeenCalled();
+  });
+
+  it("el mensaje es el mismo exista o no la invitacion", async () => {
+    seed([]);
+    for (let i = 0; i < 20; i++) await registerFromInvite("no-existe", "Ana", "clave-segura");
+    expect(await registerFromInvite("no-existe", "Ana", "clave-segura")).toEqual({ error: TOO_MANY });
+
+    // Con una invitación válida, pasado el tope, el mensaje es el mismo: no revela que existe.
+    seed([pending()]);
+    auth.createUser.mockResolvedValue({ data: { user: null }, error: { message: "already registered" } });
+    for (let i = 0; i < 20; i++) await registerFromInvite("inv-1", "Ana", "clave-segura");
+    auth.createUser.mockClear();
+    expect(await registerFromInvite("inv-1", "Ana", "clave-segura")).toEqual({ error: TOO_MANY });
+    expect(auth.createUser).not.toHaveBeenCalled();
+  });
+
+  it("la clave del tope lleva la IP hasheada, nunca en claro", async () => {
+    seed([pending()]);
+    await registerFromInvite("inv-1", "Ana", "clave-segura");
+
+    const keys = db.rpcCalls.filter((c) => c.name === "bump_rate_limit").map((c) => String(c.args.p_key));
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^auth:invite:ip:[0-9a-f]{32}$/);
+    expect(keys[0]).not.toContain("203.0.113.7");
+  });
+
+  it("si la tabla de topes falla, deja pasar", async () => {
+    seed([pending()]);
+    rateLimitDown = true;
+
+    const r = await registerFromInvite("inv-1", "Ana", "clave-segura");
+
+    expect(r).toMatchObject({ ok: true, workspaceId: WS });
+    expect(auth.createUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin nombre o con una contraseña corta no gasta un intento", async () => {
+    seed([pending()]);
+    await registerFromInvite("inv-1", "   ", "clave-segura");
+    await registerFromInvite("inv-1", "Ana", "123");
+
+    expect(db.rpcCalls.filter((c) => c.name === "bump_rate_limit")).toHaveLength(0);
   });
 });
