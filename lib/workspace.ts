@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { getAuthUser } from "@/lib/supabase/auth-user";
+import { currentIdentity } from "@/lib/request-identity";
 import { redirect } from "next/navigation";
 
 export const WORKSPACE_COOKIE = "workspace_id";
@@ -28,8 +29,10 @@ export const getActiveWorkspace = cache(async () => {
   const { supabase, user } = await getAuthUser();
   if (!user) return null;
 
-  const cookieStore = await cookies();
-  const selectedId = cookieStore.get(WORKSPACE_COOKIE)?.value;
+  // El conector MCP trae el negocio de su conexión, sin cookie. Igual se comprueba la membresía y, si ya no es
+  // miembro, NO se cae al negocio más viejo: el pedido queda sin negocio (la conexión dice cuál; no se adivina otro).
+  const identity = currentIdentity();
+  const selectedId = identity ? identity.workspaceId : (await cookies()).get(WORKSPACE_COOKIE)?.value;
 
   // Primero el workspace elegido (cookie), si la persona sigue siendo miembro.
   if (selectedId) {
@@ -52,6 +55,8 @@ export const getActiveWorkspace = cache(async () => {
       };
     }
   }
+
+  if (identity) return null;
 
   // Sin cookie (o con una que ya no vale): el workspace mas viejo de la persona.
   const { data: membership } = await supabase
@@ -99,4 +104,22 @@ export async function setActiveWorkspaceCookie(workspaceId: string) {
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 365,
   });
+}
+
+/**
+ * El negocio más antiguo de una persona (el mismo criterio que `getActiveWorkspace` sin cookie). Para el conector
+ * MCP (`lib/mcp/auth.ts`): una conexión nueva sin negocio elegido arranca en ese. Recibe el cliente (de servicio):
+ * no hay sesión de navegador.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function oldestWorkspaceIdFor(client: { from: (t: "workspace_members") => any }, userId: string): Promise<string | null> {
+  const { data } = await client
+    .from("workspace_members")
+    .select("workspace_id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .order("workspace_id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (data as { workspace_id: string } | null)?.workspace_id ?? null;
 }

@@ -19,6 +19,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuditActorType, AuditAction, AuditEntityType, Json } from "@/lib/types/database";
+import { currentIdentity, mcpActorLabel } from "@/lib/request-identity";
 
 export interface AuditChange {
   old: Json;
@@ -63,17 +64,21 @@ export async function logAudit({
   /** Nombre legible de un actor que no es una persona ("Analisis automatico"). */
   actorLabel?: string | null;
 }): Promise<string | null> {
+  const resolvedActor = actorType ?? inferActorType(performedBy, performedByAgentId);
+  // Lo que una persona hace por el conector MCP queda marcado (sigue siendo ella: `actor_type` = user).
+  const identity = currentIdentity();
+  const viaMcp = identity?.via === "mcp" && resolvedActor === "user";
   const { data, error } = await supabase.from("audit_log").insert({
     workspace_id: workspaceId,
     entity_type: entityType,
     entity_id: entityId,
     action,
     changes: (changes ?? null) as Json,
-    metadata: (metadata ?? null) as Json,
+    metadata: (viaMcp ? { ...((metadata as Record<string, Json> | null) ?? {}), via: "mcp" } : (metadata ?? null)) as Json,
     performed_by: performedBy,
     performed_by_agent_id: performedByAgentId,
-    actor_type: actorType ?? inferActorType(performedBy, performedByAgentId),
-    actor_label: actorLabel,
+    actor_type: resolvedActor,
+    actor_label: actorLabel ?? (viaMcp ? mcpActorLabel(identity?.clientName) : null),
   }).select("id").single();
 
   if (error) {

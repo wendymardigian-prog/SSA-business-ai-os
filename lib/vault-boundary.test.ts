@@ -143,6 +143,9 @@ const SERVER_ONLY = [
   // Vista previa de links: piden paginas que escribio cualquiera; la regla contra direcciones internas es solo de servidor.
   { label: "lib/net/safe-fetch.ts", file: join(ROOT, "lib/net/safe-fetch.ts") },
   { label: "lib/link-preview/fetch.ts", file: join(ROOT, "lib/link-preview/fetch.ts") },
+  // Conector MCP: la identidad de cada pedido vive en un `AsyncLocalStorage` de `node:async_hooks`, que el navegador no
+  // tiene (en RER rompió el build de producción: un componente de la pestaña Acciones llegaba por `lib/audit.ts`).
+  { label: "lib/request-identity.ts", file: join(ROOT, "lib/request-identity.ts") },
 ];
 
 describe("limite del servidor: lib/vault.ts", () => {
