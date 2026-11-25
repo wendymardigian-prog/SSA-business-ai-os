@@ -171,6 +171,15 @@ try {
   check(varsError, "ni el Owner lee variables");
   const { error: starError } = await owner.client.from("flow_sessions").select("*").eq("flow_id", flowId);
   check(starError, "un select * falla");
+  // 00515: lo que usó y dejó cada paso tiene datos personales; la sesión lee la tabla por columnas, sin esas dos.
+  for (const col of ["input", "output"] as const) {
+    const { error } = await owner.client.from("flow_session_steps").select(col).eq("session_id", running!.id);
+    check(error, `ni el Owner lee ${col} de los pasos`);
+  }
+  const { error: stepStar } = await owner.client.from("flow_session_steps").select("*").eq("session_id", running!.id);
+  check(stepStar, "un select * sobre los pasos falla");
+  const { error: svcIo } = await svc.from("flow_session_steps").select("input, output").eq("session_id", running!.id);
+  check(!svcIo, "el servidor lee input y output", svcIo?.message);
   const { error: stepInsert } = await owner.client.from("flow_session_steps").insert({ session_id: running!.id, flow_id: flowId, node_id: "x", node_type: "x", node_label: "x", status: "ok", started_at: new Date().toISOString() });
   check(stepInsert, "nadie escribe pasos con la sesion");
   const { data: updated } = await owner.client.from("flow_sessions").update({ status: "cancelled" }).eq("id", other1!.id).select("id");
