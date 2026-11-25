@@ -1,0 +1,10 @@
+{
+  "_comment": "Casos de seriesReached (00522). Corren contra la gemela TS (lib/services/repetition.ts) y contra app_servicio.svc_series_reached (verify-services, bloque rp). «Después de N vueltas» cuenta las vueltas CUMPLIDAS.",
+  "seriesReached": [
+    { "name": "sin n_times nunca termina por vueltas", "recurrence": { "every": "week", "until": "phase_end" }, "completed": 50, "expected": false },
+    { "name": "3 vueltas: con 2 cumplidas sigue", "recurrence": { "every": "week", "until": "n_times", "n_until": 3 }, "completed": 2, "expected": false },
+    { "name": "3 vueltas: con 3 cumplidas termina", "recurrence": { "every": "week", "until": "n_times", "n_until": 3 }, "completed": 3, "expected": true },
+    { "name": "sin número cuenta 1", "recurrence": { "every": "day", "until": "n_times" }, "completed": 1, "expected": true },
+    { "name": "ninguna cumplida", "recurrence": { "every": "day", "until": "n_times", "n_until": 1 }, "completed": 0, "expected": false }
+  ]
+}

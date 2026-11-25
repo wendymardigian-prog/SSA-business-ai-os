@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @plantilla-quitar(servicios)
 /**
- * Verificacion del modulo de Servicios (Corridas A1 y A2): bloques sv1, sv2, prd, ac, a2, a4 y pc (00503).
+ * Verificacion del modulo de Servicios (Corridas A1 y A2): bloques sv1, sv2, prd, ac, a2, a4, pc (00503) y rp (00522).
  *
  * Corre contra la base real con usuarios de verdad. Prueba lo que vitest no puede: que la BASE haga
  * cumplir las reglas (gemelas SQL = TS con los mismos casos, RLS por rol, la guardia SV003, el modulo
@@ -27,6 +27,14 @@ import { checkProtectedFunctions } from "./protected-functions.mjs";
 const execFileAsync = promisify(execFile);
 const repoFile = (p) => new URL(`../${p}`, import.meta.url);
 const json = (p) => JSON.parse(readFileSync(repoFile(p), "utf8"));
+// Los casos marcados con `since` solo corren si su migración ya está aplicada (los de la 00522 necesitan svc_occurrence_next).
+let has00522 = null;
+const casesFor = (file) => {
+  const { cases } = json(file);
+  if (!cases.some((c) => c.since === "00522")) return cases;
+  if (has00522 === null) has00522 = sql(`SELECT to_regprocedure('app_servicio.svc_occurrence_next(jsonb,date,date)') IS NOT NULL AS ok`)[0]?.ok === true;
+  return has00522 ? cases : cases.filter((c) => c.since !== "00522");
+};
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -152,7 +160,7 @@ try {
   if (run("sv1")) {
     console.log("\nsv1 · Casos compartidos contra la base (gemelas)");
     const runCases = (file, label, toSql, expected) => {
-      const { cases } = json(file);
+      const cases = casesFor(file);
       const bad = [];
       // Todos los casos de un archivo en UNA consulta (cada llamada a la CLI tarda segundos).
       const got = sql(`SELECT jsonb_build_array(${cases.map((c) => `to_jsonb(${toSql(c)})`).join(", ")}) AS r`)[0]?.r ?? [];
@@ -754,7 +762,7 @@ try {
   if (run("a2")) {
     console.log("\na2 · Casos compartidos (gemelas SQL = TS)");
     const runCasesA2 = (file, label, toSql, expected) => {
-      const { cases } = json(file);
+      const cases = casesFor(file);
       const bad = [];
       const got = sql(`SELECT jsonb_build_array(${cases.map((c) => `to_jsonb(${toSql(c)})`).join(", ")}) AS r`)[0]?.r ?? [];
       cases.forEach((c, i) => {
@@ -828,7 +836,7 @@ try {
   // ── A4: reuniones, propuestas, camino, tareas y automatizaciones (00364 a 00372) ─────────────────────
   if (run("a4")) {
     const runCasesA4 = (file, label, toSql, expected) => {
-      const { cases } = json(file);
+      const cases = casesFor(file);
       const bad = [];
       const got = sql(`SELECT jsonb_build_array(${cases.map((c) => `to_jsonb(${toSql(c)})`).join(", ")}) AS r`)[0]?.r ?? [];
       cases.forEach((c, i) => {
@@ -1092,6 +1100,67 @@ try {
     const undo = asUser(owner.id, `SELECT app_servicio.svc_uncomplete_item(${lit(item("it_pc0003").id)}) r`);
     check(!undo.ok && undo.code === "SV020", "destildar en una fase cerrada sigue rechazado (SV020)", undo.error);
     sql(`DELETE FROM app_servicio_portal.portal_sessions WHERE token_hash IN (app_servicio.portal_token_hash(${lit(tok)}), app_servicio.portal_token_hash(${lit(tokP)}))`);
+  }
+
+
+  // ── rp: pasos que se repiten (00522, traído de RER #70) ──────────────────────────────────────────────
+  if (run("rp") && sql(`SELECT to_regprocedure('app_servicio.svc_occurrence_next(jsonb,date,date)') IS NOT NULL AS ok`)[0]?.ok) {
+    console.log("\nrp · Pasos que se repiten: frecuencias, la vuelta en su tarea, el bloqueo, «N vueltas» y el fin de la serie (00522)");
+    const rep = json("lib/services/repetition.cases.json").seriesReached;
+    const gotR = sql(`SELECT jsonb_build_array(${rep.map((c) => `app_servicio.svc_series_reached(${jlit(c.recurrence)}, ${c.completed})`).join(", ")}) AS r`)[0]?.r ?? [];
+    const badR = rep.filter((c, i) => gotR[i] !== c.expected).map((c) => c.name);
+    check(badR.length === 0, `svc_series_reached: los ${rep.length} casos dan lo mismo que en TypeScript`, badR.join(" | "));
+
+    sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+    const vR = await mkVariant("zz-test Pasos que se repiten");
+    const tplR = { v: 1, phases: [{ key: "ph_rp0001", name: "Acompañamiento", advance: "manual", items: [
+      { key: "it_rp0001", kind: "checkbox", name: "Kickoff" },
+      { key: "it_rp0002", kind: "team_task", name: "Llamada de seguimiento", recurrence: { every: "day", until: "n_times", n_until: 1 }, ref: { lock: { after_item_key: "it_rp0001" } } },
+      { key: "it_rp0003", kind: "team_task", name: "Revisión semanal", recurrence: { every: "week", weekdays: [1, 2, 3, 4, 5, 6, 7], until: "phase_end" } },
+    ] }] };
+    const setR = sqlErr(`UPDATE public.product_variants SET journey_template = ${jlit(tplR)}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vR.id)}`);
+    check(setR === null, "un camino con «cada semana, todos los días» y «después de 1 vuelta» se guarda", setR?.slice(0, 300));
+    const cR = await newContact("repetición");
+    const sR = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cR.id)}, 'variant_id', ${lit(vR.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
+    const tpl = (k) => sql(`SELECT id, series_ended_at, series_end_reason FROM app_servicio.service_items WHERE service_id = ${lit(sR)} AND template_key = ${lit(k)} AND is_recurring_template`)[0];
+    const rounds = (k) => sql(`SELECT i.id, i.status, i.round_on, i.occurrence_index, i.ref, t.title FROM app_servicio.service_items i LEFT JOIN public.tasks t ON t.id = i.task_id WHERE i.service_id = ${lit(sR)} AND i.template_key = ${lit(k)} AND i.parent_item_id IS NOT NULL ORDER BY i.occurrence_index`);
+    sql(`SELECT app_servicio.svc_generate_occurrences(${lit(sR)})`);
+    const again = sql(`SELECT app_servicio.svc_generate_occurrences(${lit(sR)}) n`)[0]?.n;
+    const r2 = rounds("it_rp0002");
+    const r3 = rounds("it_rp0003");
+    check(r2.length === 1 && r3.length === 1 && again === 0, "la primera vuelta se crea una sola vez (correrlo dos veces no duplica)", JSON.stringify({ r2: r2.length, r3: r3.length, again }));
+    check(r2[0]?.title === "Llamada de seguimiento · vuelta 1", "la tarea de la vuelta se llama «… · vuelta 1»", r2[0]?.title);
+    check(!!r2[0]?.round_on, "la vuelta guarda su día (round_on)", JSON.stringify(r2[0]));
+    check(r2[0]?.ref?.lock?.after_item_key === "it_rp0001", "la vuelta hereda el bloqueo del paso (B-PRD-15)", JSON.stringify(r2[0]?.ref));
+    const locked = sql(`SELECT (app_servicio.svc_item_lock_state(${lit(r2[0]?.id)}) ->> 'locked')::boolean AS l`)[0]?.l;
+    check(locked === true, "la vuelta de un paso bloqueado está bloqueada mientras el otro paso siga abierto", String(locked));
+
+    // «Después de 1 vuelta»: cumplida la primera, la serie termina sola.
+    // Se abre el bloqueo (Kickoff hecho) y se cumple la vuelta.
+    sql(`SELECT app_servicio.svc_mark_item(id, 'manual', 'user', ${lit(member.id)}) FROM app_servicio.service_items WHERE service_id = ${lit(sR)} AND template_key = 'it_rp0001'`);
+    sql(`SELECT app_servicio.svc_mark_item(${lit(r2[0]?.id)}, 'manual', 'user', ${lit(member.id)})`);
+    sql(`SELECT app_servicio.svc_generate_occurrences(${lit(sR)})`);
+    check(tpl("it_rp0002")?.series_end_reason === "n_times", "con su vuelta cumplida, «después de 1 vuelta» termina la serie", JSON.stringify(tpl("it_rp0002")));
+
+    // Cambiar y terminar la serie: con la sesión y `services.items`.
+    const bad = asUser(owner.id, `SELECT app_servicio.svc_set_item_series(${lit(tpl("it_rp0003").id)}, '{"every":"n_weeks","until":"phase_end"}'::jsonb) r`);
+    check(!bad.ok && bad.code === "SV045", "una regla inválida no se guarda (SV045)", bad.error);
+    const good = await rpcAs(owner, "svc_set_item_series", { p_item_id: tpl("it_rp0003").id, p_recurrence: { every: "n_weeks", n: 2, weekdays: [1], until: "phase_end" } });
+    check(!good.error, "cambiar cada cuánto se repite en este servicio funciona", good.error);
+    const end = await rpcAs(owner, "svc_end_series", { p_item_id: tpl("it_rp0003").id, p_note: "zz-test" });
+    check(!end.error, "terminar la serie a mano funciona", end.error);
+    const endAgain = asUser(owner.id, `SELECT app_servicio.svc_end_series(${lit(tpl("it_rp0003").id)}, NULL) r`);
+    check(!endAgain.ok && endAgain.code === "SV044", "una serie terminada no se termina dos veces (SV044)", endAgain.error);
+    const notRep = asUser(owner.id, `SELECT app_servicio.svc_end_series(${lit(sql(`SELECT id FROM app_servicio.service_items WHERE service_id = ${lit(sR)} AND template_key = 'it_rp0001'`)[0]?.id)}, NULL) r`);
+    check(!notRep.ok && notRep.code === "SV044", "un paso que no se repite no tiene serie (SV044)", notRep.error);
+
+    // Al terminar el servicio, las series que seguían terminan.
+    const vR2 = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit((await newContact("repetición 2")).id)}, 'variant_id', ${lit(vR.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(member.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
+    sql(`UPDATE app_servicio.services SET status = 'completed' WHERE id = ${lit(vR2)}`);
+    const ended = sql(`SELECT count(*) FILTER (WHERE series_end_reason = 'service_end') e, count(*) t FROM app_servicio.service_items WHERE service_id = ${lit(vR2)} AND is_recurring_template`)[0];
+    check(Number(ended?.t) > 0 && ended?.e === ended?.t, "al terminar el servicio sus series terminan", JSON.stringify(ended));
+    const privs = sql(`SELECT has_function_privilege('anon', 'app_servicio.svc_end_series(uuid,text)', 'EXECUTE') a, has_function_privilege('anon', 'app_servicio.svc_set_item_series(uuid,jsonb)', 'EXECUTE') b`)[0];
+    check(privs?.a === false && privs?.b === false, "anon no ejecuta svc_end_series ni svc_set_item_series", JSON.stringify(privs));
   }
 
   console.log("\nHuellas de las funciones protegidas");

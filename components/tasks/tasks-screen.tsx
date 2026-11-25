@@ -19,6 +19,7 @@ import { summarizeMine } from "@/lib/tasks/mine";
 import { listProjects } from "@/lib/tasks/project";
 import { buildRows, groupRows, nextSort, remainingToLoad, sortRows, visibleLimit, type MemberLite } from "@/lib/tasks/table-model";
 import type { TaskRow, TaskStatus } from "@/lib/tasks/types";
+import type { TaskRepeatInfo } from "@/lib/tasks/format";
 import { clearFilters, countActiveFilters, parseViewState, serializeViewState, toggleMine, type SortColumn, type TasksViewState } from "@/lib/tasks/view-state";
 import { MineToggle, TasksFiltersButton, TasksSearch, TasksSummaryLine } from "./filters-bar";
 import { ShiftDialog } from "./shift-dialog";
@@ -45,6 +46,8 @@ export interface TasksScreenProps {
   canDelete: boolean;
   contactNames: Record<string, string>;
   flowNames: Record<string, string>;
+  /** 00522: las tareas que son la vuelta de un paso que se repite. */
+  repeats?: Record<string, TaskRepeatInfo>;
   /** No se pudieron leer las tareas. */
   loadError: boolean;
   /** 12 h / 24 h de quien mira (R6). */
@@ -61,7 +64,7 @@ export function TasksScreen(props: TasksScreenProps) {
   );
 }
 
-function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZone, canEdit, canDelete, contactNames, flowNames, loadError }: TasksScreenProps) {
+function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZone, canEdit, canDelete, contactNames, flowNames, repeats, loadError }: TasksScreenProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const state = useMemo(() => parseViewState(searchParams), [searchParams]);
@@ -111,7 +114,7 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
   const limit = visibleLimit(sorted.length, loadedMore);
   const groups = useMemo(() => groupRows(sorted.slice(0, limit), state.group, today), [sorted, limit, state.group, today]);
 
-  const source = useMemo(() => ({ flowNames: new Map(Object.entries(flowNames)) }), [flowNames]);
+  const source = useMemo(() => ({ flowNames: new Map(Object.entries(flowNames)), repeats: new Map(Object.entries(repeats ?? {})) }), [flowNames, repeats]);
   const env: CellEnv = useMemo(() => ({ members, memberNames, projects, today, zones, canEdit, source }), [members, memberNames, projects, today, zones, canEdit, source]);
 
   // ── El drawer ─────────────────────────────────────────────────────────────

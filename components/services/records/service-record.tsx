@@ -1,5 +1,7 @@
 // @plantilla-quitar(servicios)
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
+import { ServiceSeriesBlock } from "./service-series-block";
+import { seriesView, type SeriesRoundRow, type SeriesTemplateRow } from "@/lib/services/screens/series-view";
 import { offeredSections } from "@/lib/services/availability";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { contactNames, loadService } from "@/lib/services/screens/load-services";
@@ -22,7 +24,7 @@ import { certificateState } from "@/lib/services/certificate";
 import { loadDesignLinks } from "@/lib/designer/public-links";
 import { createServiceClient } from "@/lib/supabase/server";
 import { ServiceAssistantCard } from "@/components/services/clients/service-assistant-card";
-import { svcRpc } from "@/lib/services/db";
+import { svcRpc, svcSchema } from "@/lib/services/db";
 import { loadServicePicker } from "@/lib/services/service-picker-load";
 import { moduleTargetOptions, type ModuleTargetOptions } from "@/lib/program/module-override";
 import { accessViewRows, pendingSections } from "@/lib/portal-admin/accesses-view";
@@ -267,6 +269,27 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
       if (note) capacityNotes[m.userId] = note;
     }
   }
+  // 00522: las series de los pasos que se repiten. Consulta aparte: si las columnas todavía no existen, no hay bloque.
+  let seriesBlock: React.ReactNode = null;
+  if (items.some((i) => i.is_recurring_template)) {
+    const [tplRes, roundRes] = await Promise.all([
+      svcSchema(supabase).from("service_items").select("id, phase_id, name, recurrence, series_ended_at, series_end_reason").eq("service_id", s.id).eq("is_recurring_template", true).order("position"),
+      svcSchema(supabase).from("service_items").select("parent_item_id, status, occurrence_index, round_on, due_on").eq("service_id", s.id).not("parent_item_id", "is", null),
+    ]);
+    if (!tplRes.error && !roundRes.error) {
+      const open = new Set(phases.filter((p) => p.status === "in_progress").map((p) => p.id));
+      const series = seriesView((tplRes.data ?? []) as SeriesTemplateRow[], (roundRes.data ?? []) as SeriesRoundRow[], (id) => open.has(id));
+      seriesBlock = (
+        <ServiceSeriesBlock
+          series={series}
+          canEdit={ctx.can("services.items") && (s.status === "active" || s.status === "paused")}
+          phaseOptions={phases.filter((p) => p.template_key).map((p) => ({ id: p.template_key, name: p.name }))}
+          itemOptions={items.filter((i) => i.template_key && !i.parent_item_id).map((i) => ({ id: i.template_key, name: i.name }))}
+          phaseKeys={Object.fromEntries(phases.map((p) => [p.id, p.template_key]))}
+        />
+      );
+    }
+  }
   const data: ServiceRecordData = {
     id: s.id,
     viewerId: ctx.user?.id ?? null,
@@ -349,6 +372,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
         challenge={challengeCard}
         assistantCard={assistantCard}
         meetings={meetings}
+        series={seriesBlock}
         activity={pointsDaily ? <PortalActivityChart serviceId={s.id} initial={pointsDaily} /> : null}
         pointsHistory={
           pointsDaily && (pointsDaily.enabled || pointsRows.length > 0) ? (

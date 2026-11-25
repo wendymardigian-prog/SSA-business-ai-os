@@ -10,6 +10,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/tooltip";
 import type { JourneyItem } from "@/lib/services/journey-template";
+import { WEEKDAY_NAMES, WEEKDAY_SHORT } from "@/lib/services/repetition";
 import type { NamedOption } from "./service-settings-panel";
 
 const input = "h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge";
@@ -27,7 +28,7 @@ export const CHALLENGE_HELP = {
   stuck: "Si el reporte tiene un campo «Trabado en», escribí su clave: en la ficha se marcan los días con algo escrito.",
   startBy: "Si el cliente no lo empezó para esa fecha, le avisa al responsable (una vez). No le impide empezar.",
   from: "Desde cuándo se crean las repeticiones. Igual, solo se crean mientras la fase de este paso está abierta.",
-  until: "Hasta cuándo se repite. «Tope de días» corta antes si llega primero.",
+  until: "Hasta cuándo se repite. «Una cantidad de vueltas cumplidas» cuenta solo las que se completaron. «Tope de días» corta antes si llega primero.",
   late: "Por defecto, una repetición no se puede cargar antes de su día. Pasado el plazo (y las horas de gracia), solo si aceptás tarde.",
   certificate: "Si el paso elegido se completó dentro de su plazo (sin gracia), emite la primera plantilla; si no, la otra.",
 };
@@ -146,6 +147,35 @@ export function ChallengeSettings({ challenge, onChange }: { challenge: Obj; onC
   );
 }
 
+// ── Los días de la semana de una repetición semanal (00522) ─────────────────
+function WeekdayPicker({ value, onChange }: { value: number[]; onChange: (days: number[]) => void }) {
+  return (
+    <div>
+      <span className={label}>Qué días</span>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Días de la semana">
+        {WEEKDAY_NAMES.map((name, i) => {
+          const day = i + 1;
+          const on = value.includes(day);
+          return (
+            <button
+              key={day}
+              type="button"
+              aria-pressed={on}
+              aria-label={name}
+              title={name}
+              onClick={() => onChange(on ? value.filter((d) => d !== day) : [...value, day].sort((a, b) => a - b))}
+              className={`h-10 w-10 rounded-full border text-xs font-medium md:h-8 md:w-8 ${on ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border text-muted-foreground hover:bg-accent"}`}
+            >
+              {WEEKDAY_SHORT[i]}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">{value.length ? "Una vuelta cada uno de esos días." : "Sin días elegidos: el mismo día de la semana en que empieza."}</p>
+    </div>
+  );
+}
+
 // ── Paso: repetición y atraso ────────────────────────────────────────────────
 export function RepeatSection({
   item,
@@ -183,9 +213,25 @@ export function RepeatSection({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <span className={label}>Cada</span>
-              <select aria-label="Cada cuánto" value={(r.every as string) ?? "day"} onChange={(e) => setR({ every: e.target.value, n: e.target.value === "n_days" ? 2 : undefined })} className={input}>
+              <select
+                aria-label="Cada cuánto"
+                value={(r.every as string) ?? "day"}
+                onChange={(e) => {
+                  const every = e.target.value;
+                  // Al cambiar la frecuencia se sacan los datos que ya no le corresponden (la base los rechazaría).
+                  setR({
+                    every,
+                    n: every === "n_days" || every === "n_weeks" ? 2 : undefined,
+                    weekdays: every === "week" || every === "n_weeks" ? r.weekdays : undefined,
+                    day_of_month: every === "month" ? r.day_of_month : undefined,
+                  });
+                }}
+                className={input}
+              >
                 <option value="day">Día</option>
                 <option value="week">Semana</option>
+                <option value="n_weeks">Cada N semanas</option>
+                <option value="month">Mes</option>
                 <option value="n_days">Cada N días</option>
               </select>
             </div>
@@ -195,7 +241,30 @@ export function RepeatSection({
                 <input aria-label="Cada cuántos días" inputMode="numeric" value={(r.n as number) ?? ""} onChange={(e) => setR({ n: numOrNull(e.target.value) })} className={input} />
               </div>
             )}
+            {r.every === "n_weeks" && (
+              <div>
+                <span className={label}>Semanas</span>
+                <input aria-label="Cada cuántas semanas" inputMode="numeric" value={(r.n as number) ?? ""} onChange={(e) => setR({ n: numOrNull(e.target.value) })} className={input} />
+              </div>
+            )}
+            {r.every === "month" && (
+              <div>
+                <span className={label}>Día del mes</span>
+                <input
+                  aria-label="Qué día del mes"
+                  inputMode="numeric"
+                  placeholder="El día en que empieza"
+                  value={(r.day_of_month as number | null) ?? ""}
+                  onChange={(e) => setR({ day_of_month: numOrNull(e.target.value) ?? undefined })}
+                  className={input}
+                />
+              </div>
+            )}
           </div>
+          {(r.every === "week" || r.every === "n_weeks") && (
+            <WeekdayPicker value={Array.isArray(r.weekdays) ? (r.weekdays as number[]) : []} onChange={(days) => setR({ weekdays: days.length ? days : undefined })} />
+          )}
+          {r.every === "month" && <p className="text-xs text-muted-foreground">Si un mes no tiene ese día (por ejemplo el 31), cae el último día del mes.</p>}
 
           <div>
             <span className={label}>
@@ -271,7 +340,7 @@ export function RepeatSection({
               <option value="phase_end:other">El fin de otra fase</option>
               <option value="service_end">El fin del servicio</option>
               <option value="n_days">Una cantidad de días</option>
-              <option value="n_times">Una cantidad de veces</option>
+              <option value="n_times">Una cantidad de vueltas cumplidas</option>
               <option value="item_completed">Que se complete otro paso</option>
             </select>
             {(r.until === "n_days" || r.until === "n_times") && (

@@ -115,8 +115,14 @@ export function phaseShouldAdvance(advance: string, requiredTotal: number, requi
 
 // ── F21: las fechas de las repeticiones ────────────────────────────────────
 export interface Recurrence {
-  every: "day" | "week" | "n_days";
+  /** 25/11 (traído de RER #70, 00522): suma `n_weeks` (cada N semanas) y `month` (cada mes). */
+  every: "day" | "week" | "n_weeks" | "month" | "n_days";
+  /** `n_days`: cada cuántos días (1 a 365). `n_weeks`: cada cuántas semanas (1 a 52). */
   n?: number | null;
+  /** `week` / `n_weeks`: los días de la semana, 1 = lunes … 7 = domingo. Vacío = el día en que empieza. */
+  weekdays?: number[] | null;
+  /** `month`: el día del mes (1 a 31; si el mes no lo tiene, el último). Vacío = el día en que empieza. */
+  day_of_month?: number | null;
   /** F127.2: `item_completed` (y `phase_end` de otra fase) llegan ya resueltos en `phaseEnd` (ver `recurrenceWindow`). */
   until: "phase_end" | "service_end" | "n_days" | "n_times" | "item_completed";
   n_until?: number | null;
@@ -126,11 +132,57 @@ export interface Recurrence {
 export interface Occurrence {
   index: number;
   occursOn: string;
+  /** El último día de la vuelta: el día antes de la siguiente. */
   dueOn: string;
 }
+
+/** Lunes = 1 … domingo = 7 (como `isodow` de Postgres). */
+function isoWeekday(date: string): number {
+  const d = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return d === 0 ? 7 : d;
+}
+
+/** Los días de la semana elegidos, limpios (vacío = ninguno elegido). */
+function cleanWeekdays(r: Recurrence): number[] {
+  if (!Array.isArray(r.weekdays)) return [];
+  return [...new Set(r.weekdays.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7))].sort((a, b) => a - b);
+}
+
+/**
+ * La primera fecha de la serie que cae el día `from` o después (`from >= start`). Gemela de
+ * `app_servicio.svc_occurrence_next` (00522).
+ */
+export function nextOccurrence(r: Recurrence, start: string, from: string): string {
+  if (r.every === "month") {
+    const want = Number.isInteger(r.day_of_month) && r.day_of_month! >= 1 && r.day_of_month! <= 31 ? r.day_of_month! : Number(start.slice(8, 10));
+    // El día pedido de un mes (o el último, si el mes no lo tiene), empezando por el mes de `from`.
+    for (let m = 0; m < 3; m++) {
+      const first = addMonths(`${from.slice(0, 7)}-01`, m);
+      const last = Number(addDays(addMonths(first, 1), -1).slice(8, 10));
+      const cand = `${first.slice(0, 8)}${String(Math.min(want, last)).padStart(2, "0")}`;
+      if (cand >= from) return cand;
+    }
+    return addMonths(from, 1);
+  }
+  const days = cleanWeekdays(r);
+  if ((r.every === "week" || r.every === "n_weeks") && days.length > 0) {
+    const n = r.every === "n_weeks" ? Math.max(1, r.n ?? 1) : 1;
+    // Las semanas se cuentan desde el lunes de la semana en que empieza la serie.
+    const monday = addDays(start, 1 - isoWeekday(start));
+    for (let k = 0; k <= 7 * n + 7; k++) {
+      const d = addDays(from, k);
+      const week = Math.floor(daysBetween(monday, d) / 7);
+      if (week % n === 0 && days.includes(isoWeekday(d))) return d;
+    }
+    return addDays(from, 7 * n);
+  }
+  const step = r.every === "day" ? 1 : r.every === "week" ? 7 : r.every === "n_weeks" ? 7 * Math.max(1, r.n ?? 1) : Math.max(1, r.n ?? 1);
+  const k = Math.max(0, Math.ceil(daysBetween(start, from) / step));
+  return addDays(start, k * step);
+}
+
 /** Las repeticiones que ya llegaron (occursOn <= upTo), desde `start`. Nunca devuelve mas de 1000. */
 export function occurrenceDates(r: Recurrence, start: string, phaseEnd: string | null, serviceEnd: string | null, upTo: string): Occurrence[] {
-  const step = r.every === "day" ? 1 : r.every === "week" ? 7 : Math.max(1, r.n ?? 1);
   let limitDate =
     r.until === "phase_end" || r.until === "item_completed" ? phaseEnd
     : r.until === "service_end" ? serviceEnd
@@ -142,11 +194,13 @@ export function occurrenceDates(r: Recurrence, start: string, phaseEnd: string |
   }
   const maxCount = r.until === "n_times" ? Math.max(1, r.n_until ?? 1) : 1000;
   const out: Occurrence[] = [];
+  let occursOn = nextOccurrence(r, start, start);
   for (let k = 0; k < maxCount; k++) {
-    const occursOn = addDays(start, k * step);
     if (limitDate && occursOn > limitDate) break;
     if (occursOn > upTo) break;
-    out.push({ index: k + 1, occursOn, dueOn: addDays(occursOn, step - 1) });
+    const next = nextOccurrence(r, start, addDays(occursOn, 1));
+    out.push({ index: k + 1, occursOn, dueOn: addDays(next, -1) });
+    occursOn = next;
   }
   return out;
 }

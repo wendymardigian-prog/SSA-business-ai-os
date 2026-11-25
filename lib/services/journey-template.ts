@@ -19,7 +19,7 @@ export const DUE_FROM = ["service_created", "service_start", "phase_start", "ite
 export const ADVANCE = ["auto", "auto_all", "manual"] as const;
 export const CHALLENGE_START = ["previous_phase", "student", "automation", "fixed_date"] as const;
 export const FUTURE_VISIBILITY = ["names", "names_and_descriptions", "hidden"] as const;
-export const RECUR_EVERY = ["day", "week", "n_days"] as const;
+export const RECUR_EVERY = ["day", "week", "n_weeks", "month", "n_days"] as const;
 export const RECUR_UNTIL = ["phase_end", "service_end", "n_days", "n_times", "item_completed"] as const;
 /** F127.2: desde cuándo se repite (sin `from`, desde el inicio de su fase). */
 export const RECUR_FROM = ["service_created", "service_start", "phase_start", "phase_end", "item_completed"] as const;
@@ -313,6 +313,18 @@ function recurrenceProblems(item: JourneyItem, nm: string): string[] {
   const p: string[] = [];
   if (!(RECUR_EVERY as readonly string[]).includes(r.every as string)) p.push(`«${nm}»: elegí cada cuánto se repite`);
   if (r.every === "n_days" && !(isInt(r.n) && r.n >= 1 && r.n <= 365)) p.push(`«${nm}»: elegí cada cuántos días se repite`);
+  // 00522 (traído de RER #70): cada N semanas, cada mes y los días de la semana (mismo orden que la base).
+  if (r.every === "n_weeks" && !(isInt(r.n) && r.n >= 1 && r.n <= 52)) p.push(`«${nm}»: elegí cada cuántas semanas se repite`);
+  if (has(r, "weekdays") && r.weekdays !== null) {
+    const w = r.weekdays;
+    const ok =
+      (r.every === "week" || r.every === "n_weeks") &&
+      Array.isArray(w) && w.length >= 1 && w.length <= 7 && w.every((d) => isInt(d) && d >= 1 && d <= 7) && new Set(w).size === w.length;
+    if (!ok) p.push(`«${nm}»: los días de la semana no son válidos`);
+  }
+  if (has(r, "day_of_month") && r.day_of_month !== null && !(r.every === "month" && isInt(r.day_of_month) && r.day_of_month >= 1 && r.day_of_month <= 31)) {
+    p.push(`«${nm}»: el día del mes no es válido`);
+  }
   if (!(RECUR_UNTIL as readonly string[]).includes(r.until as string)) p.push(`«${nm}»: elegí hasta cuándo se repite`);
   if ((r.until === "n_days" || r.until === "n_times") && !(isInt(r.n_until) && r.n_until >= 1 && r.n_until <= 1000)) p.push(`«${nm}»: elegí cuántas veces o días`);
   // F127.2: anclas nuevas (mismo orden que app_servicio.journey_recurrence_problems, 00376).

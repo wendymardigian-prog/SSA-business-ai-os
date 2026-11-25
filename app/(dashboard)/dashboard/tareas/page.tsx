@@ -9,6 +9,8 @@ import { flowIdOf } from "@/lib/tasks/format";
 import type { TaskRow } from "@/lib/tasks/types";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { inChunks, loadAllTasks } from "@/lib/tasks/load-all";
+import type { TaskRepeatInfo } from "@/lib/tasks/format";
+import { loadTaskRepeats } from "@/lib/tasks/repeat-load"; // @plantilla-quitar(servicios)
 
 export const dynamic = "force-dynamic";
 
@@ -41,10 +43,14 @@ export default async function TareasPage() {
   // Segunda tanda: los nombres que la tabla y el drawer muestran (contactos vinculados y flujos de origen).
   const contactIds = [...new Set(tasks.map((t) => t.contact_id).filter((id): id is string => !!id))];
   const flowIds = [...new Set(tasks.filter((t) => t.source === "flow").map((t) => flowIdOf(t.source_ref)).filter((id): id is string => !!id))];
-  const [contacts, flows] = await Promise.all([
+  // 00522: qué tareas son la vuelta de un paso que se repite (el ícono ↻ y el bloque «Se repite»). Nunca lanza.
+  let repeatsPromise: Promise<Record<string, TaskRepeatInfo>> = Promise.resolve({});
+  repeatsPromise = loadTaskRepeats(supabase, tasks); // @plantilla-quitar(servicios)
+  const [contacts, flows, repeats] = await Promise.all([
     // En tandas: con miles de tareas, un solo `.in()` pasaba el largo máximo de la URL.
     inChunks<{ id: string; display_name: string | null; email: string | null }>(contactIds, 200, (slice) => supabase.from("contacts").select("id, display_name, email").in("id", slice)).then((data) => ({ data })),
     inChunks<{ id: string; name: string }>(flowIds, 200, (slice) => service.from("flows").select("id, name").eq("workspace_id", workspace.id).in("id", slice)).then((data) => ({ data })),
+    repeatsPromise,
   ]);
 
   return (
@@ -58,6 +64,7 @@ export default async function TareasPage() {
       canDelete={ctx.can("tasks.delete")}
       contactNames={Object.fromEntries((contacts.data ?? []).map((c) => [c.id, c.display_name || c.email || "Sin nombre"]))}
       flowNames={Object.fromEntries((flows.data ?? []).map((f) => [f.id, f.name]))}
+      repeats={repeats}
       loadError={!!error}
       timeFormat={timeFormat}
     />
