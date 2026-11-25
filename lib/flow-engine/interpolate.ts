@@ -8,23 +8,34 @@
  */
 
 import { EMPTY_NAME_MARK, fallbackText, isEmptyName, needsFallback, tidyEmptyNames } from "@/lib/templates/fallback";
+import { aliasFor } from "./variable-aliases";
 
-/**
- * Sigue un dot-path adentro de un objeto de variables.
- *
- * `{{pedido.cliente.nombre}}` sirve para leer adentro de la respuesta JSON que
- * dejo un nodo HTTP Request. Devuelve undefined si el camino se corta.
- */
-export function resolveVariablePath(
-  variables: Record<string, unknown>,
-  path: string
-): unknown {
+function followPath(variables: Record<string, unknown>, path: string): unknown {
   let value: unknown = variables;
   for (const key of path.split(".")) {
     if (typeof value !== "object" || value === null) return undefined;
     value = (value as Record<string, unknown>)[key];
   }
   return value;
+}
+
+/**
+ * Sigue un dot-path adentro de un objeto de variables.
+ *
+ * `{{pedido.cliente.nombre}}` sirve para leer adentro de la respuesta JSON que
+ * dejo un nodo HTTP Request. Devuelve undefined si el camino se corta.
+ *
+ * Si la ruta no existe y es un nombre nuevo «grupo.campo» (`{{form.answer.x}}`, `{{ai.response}}`…), se lee la ruta
+ * de siempre (`variable-aliases.ts`). Primero va la ruta tal cual: un alias nunca cambia lo que ya se resolvia.
+ */
+export function resolveVariablePath(
+  variables: Record<string, unknown>,
+  path: string
+): unknown {
+  const direct = followPath(variables, path);
+  if (direct !== undefined) return direct;
+  const alias = aliasFor(path);
+  return alias ? followPath(variables, alias) : undefined;
 }
 
 /**

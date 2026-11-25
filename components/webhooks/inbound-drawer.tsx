@@ -142,6 +142,11 @@ function FlowResultCard({ flowId, flow }: { flowId: string; flow: FlowResult }) 
         <Link href={`/dashboard/flows/${flowId}`} className="font-medium hover:underline">{flow.flow_name ?? "Flujo"}</Link>
         <span className={flow.status === "failed" ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}>{STATUS_LABEL[flow.status]}</span>
       </div>
+      {flow.session_id && (
+        <Link href={`/dashboard/flows/${flowId}/ejecuciones?ejecucion=${flow.session_id}`} className="mt-1 inline-block text-xs font-medium text-primary-ink hover:underline">
+          Ver la ejecución paso a paso
+        </Link>
+      )}
       {flow.contact_result && <p className="mt-1">Contacto {flow.contact_result === "created" ? "creado" : flow.contact_result === "updated" ? "actualizado" : "sin cambios"}{flow.contact_name ? `: ${flow.contact_name}` : ""}</p>}
       {flow.contact_fail_reason && <p className="mt-1 text-amber-700 dark:text-amber-300">Sin contacto ({flow.contact_fail_reason === "no_identifier" ? "el envío no trae teléfono, email ni usuario de red" : flow.contact_fail_reason === "not_found" ? "no existe y el paso solo actualiza" : flow.contact_fail_reason}).</p>}
       {diff.length > 0 && (

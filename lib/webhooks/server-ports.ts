@@ -73,6 +73,12 @@ export function receiveDeps(db: Db, request: Request): ReceiveDeps {
       if (out.kind === "duplicate") return { kind: "duplicate" };
       if (out.kind !== "inserted" || !out.id || !out.status) throw new Error("no pude guardar el envio");
 
+      // Las cabeceras saneadas, para auditar. Aparte del RPC (00216 no se toca); si falla, el envío sigue igual.
+      if (row.headers && Object.keys(row.headers).length > 0) {
+        const { error: headersError } = await db.from("inbound_webhooks").update({ headers: row.headers } as never).eq("id", out.id);
+        if (headersError) console.error(`[hooks] no pude guardar las cabeceras del envio ${out.id}: ${headersError.message}`);
+      }
+
       // Para la pantalla ("ultimo envio hace 3 min"). Si falla, no frena nada.
       await db.from("webhook_endpoints").update({ last_received_at: new Date().toISOString() } as never).eq("id", row.endpointId);
       return { kind: "inserted", id: out.id, status: out.status };

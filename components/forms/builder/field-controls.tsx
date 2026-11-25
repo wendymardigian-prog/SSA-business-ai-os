@@ -237,7 +237,7 @@ export function PrefillControl({ field, fields, disabled, onPatch }: { field: Fo
   );
 }
 
-/** La clave de la pregunta: identifica la respuesta en `{{answer.clave}}`. Se cambia solo mientras el formulario nunca se publico. */
+/** La clave de la pregunta: identifica la respuesta en `{{form.answer.clave}}` (o `{{answer.clave}}`, el nombre de siempre). Se cambia solo mientras el formulario nunca se publico. */
 export function KeyControl({
   field,
   neverPublished,
@@ -252,7 +252,7 @@ export function KeyControl({
   onSetKey: (key: string) => string | undefined;
 }) {
   const [keyError, setKeyError] = useState<string | undefined>();
-  const token = isEod ? "{{answer.clave}} o {{channel.canal.clave}}" : "{{answer.clave}}";
+  const token = isEod ? "{{form.answer.clave}} o {{channel.canal.clave}}" : "{{form.answer.clave}}";
   return (
     <div>
       <Field

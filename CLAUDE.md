@@ -2726,3 +2726,16 @@ Rama `feat/ia-aprendizaje-asistente` (PR #268). Migraciones `00440` a `00444`, a
 - **Conocimiento** (00443): carpetas (escribe solo el servidor), enlaces (se bajan con `safeFetch`), alcance del agente por etiqueta/documento/carpeta (`match_knowledge_chunks_scoped`, solo documentos `ready`: reemplazar o reprocesar retira los trozos viejos). La página de cada trozo sale de las marcas `<!-- pagina N -->` del PDF; los trozos viejos quedan sin página hasta reindexar. «Citar la fuente» (`agents.cite_sources`) APAGADO de serie: apagado, el lead no ve nada nuevo.
 - **Estado de las claves de IA** en Agentes IA (`lib/ai/provider-states.ts`): un 401/403 del proveedor deja `integration_configs.last_error` y la clave «Con error» hasta volver a guardarla.
 - **`agent_runs_source_check`** suma `assistant` en la 00444: si otra rama redefine ese CHECK, partir del vigente en la base.
+
+# Variables «grupo.campo» y webhooks auditables (25/11/2026, traído de RER)
+
+Rama `feat/rer-variables-webhooks`. Sin empresas ni GHL (son de RER). Detalle en [docs/flow-registry.md](docs/flow-registry.md) («Webhooks auditables» y «Variables «grupo.campo»»).
+
+- **Los datos del contacto salen de `buildContactVariables`** (`lib/flow-engine/contact-variables.ts`, puro) y los lee `loadContactVariables` en una sola consulta. Se leen al arrancar (gana lo del disparador), **otra vez al retomar después de una espera** (ganan los de ahora) y después de «Crear o actualizar contacto». Nunca frena un flujo.
+- **Los nombres nuevos son alias** (`lib/flow-engine/variable-aliases.ts`): primero la ruta tal cual, después la del alias. Lo publicado no cambia; el selector ofrece solo los nuevos. Una variable nueva sin grupo va con su alias.
+- **`CONTACT_VARIABLES` son las cuatro que comparte el Diseñador IA**: lo nuevo va en `CONTACT_EXTRA_VARIABLES`.
+- **Un solo selector** (`VariableChips`, grupos y nombres en `lib/flow-engine/variable-labels.ts`): ningún panel arma su propia lista de fichas.
+- **`flow_session_steps.input`/`.output` e `inbound_webhooks.headers` tienen datos personales**: la sesión NO lee `input`/`output` (GRANT por columnas, 00515; `lib/flows/step-columns-grant.test.ts`). Los lee el servidor solo con `flows.edit` (`lib/flows/run-audit.ts`) y se vacían a los 90 días. **Una columna nueva de `flow_session_steps` que lea la pantalla se suma al GRANT.** `flow_node_stats` no puede usarlas.
+- **«Volver a ejecutar con el mismo webhook»** (`rerunFlowRunFromWebhook`, `flows.edit`): solo ejecuciones terminadas, solo esa automatización (`onlyFlowId`), queda en `audit_log`.
+
+`00515_flow_step_audit` (aditiva) puede ir antes o después del deploy: **aplicada y registrada** el 25/11/2026 UTC (versión `20261125201655`), después de ensayarla dos veces en una transacción que se deshizo sola, con `verify-flow-runs` en verde (incluye que la sesión no lee `input`/`output`). Después de un DDL así, `NOTIFY pgrst, 'reload schema'` para que la API vea las columnas. La `00514` y de la `00516` en adelante son de otras sesiones (confirmar con `list_migrations` y las ramas locales).

@@ -22,7 +22,7 @@ import {
   type BookingForFilter,
   type BookingTriggerConfig,
 } from "@/lib/scheduling/automation/triggers";
-import { bookingVariableSchema } from "@/lib/scheduling/automation/variable-schema";
+import { bookingAnswerSchema, bookingVariableSchema } from "@/lib/scheduling/automation/variable-schema";
 
 /** La agenda que llega en `args.booking`, adaptada a lo que los filtros piden. */
 function bookingForFilter(args: TriggerEventArgs): BookingForFilter | null {
@@ -53,7 +53,16 @@ for (const type of BOOKING_TRIGGER_TYPES) {
     eventTypes: [type],
 
     // Los datos de la reunion que un camino condicional puede comparar.
-    variableSchema: () => bookingVariableSchema(),
+    // Los datos de la reunión y las preguntas del formulario de la agenda de los eventos elegidos (o de todos).
+    variableSchema: async (config, ctx) => {
+      const ids = Array.isArray(config?.event_type_ids) ? (config.event_type_ids as unknown[]).filter((id): id is string => typeof id === "string") : [];
+      let query = ctx.supabase.from("event_types").select("booking_fields").eq("workspace_id", ctx.workspaceId).is("deleted_at", null);
+      if (ids.length > 0) query = query.in("id", ids);
+      const { data, error } = await query;
+      // Sin las preguntas, igual se ofrecen los datos de la reunión.
+      if (error) console.error("[booking-triggers] no pude leer las preguntas de los eventos:", error.message);
+      return [...bookingVariableSchema(), ...bookingAnswerSchema((data ?? []) as Array<{ booking_fields: unknown }>)];
+    },
 
     eventMatches: (args) => {
       // Un aviso relativo viene dirigido a UN trigger (el que lo agendó). Sin esto, el evento de "24 h antes" disparaba

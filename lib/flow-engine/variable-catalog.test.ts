@@ -44,8 +44,39 @@ describe("pickerVariables", () => {
     expect(pickerVariables({ triggerType: "webhook_received", contactBefore: true })).toContain("contact.display_name");
   });
   // @plantilla-hasta(webhooks)
-  it("suma lo de los pasos anteriores sin repetir", () => {
-    expect(pickerVariables({ triggerType: "keyword", upstreamOutputs: ["ai_response", "ai_response"] }).filter((v) => v === "ai_response")).toHaveLength(1);
+  it("suma lo de los pasos anteriores sin repetir (con su nombre «grupo.campo»)", () => {
+    expect(pickerVariables({ triggerType: "keyword", upstreamOutputs: ["ai_response", "ai_response", "ai.response"] }).filter((v) => v === "ai.response")).toHaveLength(1);
+  });
+
+  it("ofrece solo los nombres nuevos (los viejos siguen funcionando)", () => {
+    const vars = pickerVariables({ triggerType: "comment_keyword", schemaPaths: ["answer.horario", "booking.answers.presupuesto"] });
+    expect(vars).toEqual(expect.arrayContaining(["message.text", "comment.text", "comment.author_name", "form.answer.horario", "booking.answer.presupuesto"]));
+    expect(vars).not.toContain("message");
+    expect(vars).not.toContain("comment_text");
+    expect(vars).not.toContain("answer.horario");
+  });
+
+  it("con contacto ofrece sus datos, y los campos personalizados", () => {
+    const vars = pickerVariables({ triggerType: "keyword", customFieldSlugs: ["presupuesto"] });
+    expect(vars).toEqual(expect.arrayContaining(["contact.vendedor_name", "contact.setter_status", "contact.tags", "contact.custom.presupuesto"]));
+    expect(vars.some((v) => v.startsWith("company."))).toBe(false);
+  });
+});
+
+describe("cada variable nueva del contacto se resuelve con lo que siembra el motor", () => {
+  it("contacto y campos personalizados", async () => {
+    const { buildContactVariables, seedBuiltContactVariables } = await import("./contact-variables");
+    const vars = seedBuiltContactVariables(
+      {},
+      buildContactVariables({
+        contact: { id: "c-1", display_name: "Ana", email: null, phone: null },
+        customFields: [{ slug: "presupuesto", type: "text", value: "x" }],
+      }),
+      "existing-wins",
+    );
+    for (const v of pickerVariables({ triggerType: "keyword", customFieldSlugs: ["presupuesto"] }).filter((p) => p.startsWith("contact."))) {
+      expect(interpolateVariables(`{{${v}}}`, vars), v).not.toBe(`{{${v}}}`);
+    }
   });
 });
 

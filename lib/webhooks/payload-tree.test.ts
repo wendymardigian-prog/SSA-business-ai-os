@@ -25,8 +25,8 @@ describe("flattenPaths", () => {
   });
 
   it("respeta el tope de hojas", () => {
-    const big = Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`k${i}`, i]));
-    expect(flattenPaths(big)).toHaveLength(300);
+    const big = Object.fromEntries(Array.from({ length: 700 }, (_, i) => [`k${i}`, i]));
+    expect(flattenPaths(big)).toHaveLength(500);
     expect(flattenPaths(big, 8, 10)).toHaveLength(10);
   });
 
