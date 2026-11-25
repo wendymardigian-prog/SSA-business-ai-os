@@ -1,5 +1,10 @@
 import { getPermissionContext } from "@/lib/auth/guards";
 import { MyGoogleCard } from "@/components/settings/integrations/my-google-card";
+import { McpCard } from "@/components/account/mcp-card";
+import { listMyMcpConnections } from "@/lib/actions/mcp-connections";
+import { mcpResourceUrl } from "@/lib/mcp/auth";
+import { mcpCliName } from "@/lib/mcp/connection-types";
+import { brandName } from "@/lib/brand";
 import { MiFathomCard } from "@/components/calls/mi-fathom-card"; // @plantilla-quitar(llamadas)
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { listCalendarConnections } from "@/lib/scheduling/data/calendars";
@@ -54,12 +59,15 @@ export async function ConnectionsTab() {
   const fathomView = fathomCardView({ hasApp: hasFathomApp, connection: mineFathom, mode: parseFathomSettings(mineFathom?.fathom_settings).mode, callsLast7d });
   // @plantilla-hasta(llamadas)
 
+  // Conector MCP (docs/mcp.md): solo con «Usar el MCP».
+  const mcp = ctx.can("mcp.usar") ? await listMyMcpConnections() : null;
+
   return (
     <section aria-labelledby="mis-conexiones" className="space-y-4">
       <div>
         <h2 id="mis-conexiones" className="text-sm font-semibold">Conexiones</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Tu propio Google Calendar y tu propio Fathom. Nadie más ve ni toca lo tuyo.</p> {/* @plantilla-quitar(llamadas) */}
-        {/* @plantilla-sin(llamadas): <p className="mt-1 text-xs text-muted-foreground">Tu propio Google Calendar. Nadie más ve ni toca lo tuyo.</p> */}
+        <p className="mt-1 text-xs text-muted-foreground">Tu propio Google Calendar, tu propio Fathom y las apps que conectás por MCP. Nadie más ve ni toca lo tuyo.</p> {/* @plantilla-quitar(llamadas) */}
+        {/* @plantilla-sin(llamadas): <p className="mt-1 text-xs text-muted-foreground">Tu propio Google Calendar y las apps que conectás por MCP. Nadie más ve ni toca lo tuyo.</p> */}
       </div>
       <MyGoogleCard
         canUse={ctx.can("scheduling.use")}
@@ -70,6 +78,9 @@ export async function ConnectionsTab() {
           status: calendarConnectionStatus({ id: c.id, status: c.status, granted_scopes: c.granted_scopes }),
         }))}
       />
+      {mcp && (
+        <McpCard url={mcpResourceUrl()} cliName={mcpCliName(brandName())} connections={mcp.ok ? mcp.connections : []} workspaces={mcp.ok ? mcp.workspaces : []} />
+      )}
       {/* @plantilla-desde(llamadas) */}
       {ctx.can("calls.view") && <MiFathomCard view={fathomView} connectionId={fathomConnectionId} flash={null} embedded />}
       {/* @plantilla-hasta(llamadas) */}
