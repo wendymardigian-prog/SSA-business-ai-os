@@ -168,7 +168,10 @@ describe("E4 · el contexto que junta antes de escribir", () => {
     const result = await runCopywriter(db.client, { agentId: AGENT_A, postId: POST_A }, { generate });
 
     expect(result.ok).toBe(true);
-    const prompt = (generate as unknown as { mock: { calls: Array<[{ prompt: string }]> } }).mock.calls[0][0].prompt;
+    const call = (generate as unknown as { mock: { calls: Array<[{ prompt: string; providerOptions?: unknown }]> } }).mock.calls[0][0];
+    const prompt = call.prompt;
+    // La salida estructurada pide jsonTool a Anthropic y apaga el modo estricto de OpenAI.
+    expect(call.providerOptions).toEqual({ anthropic: { structuredOutputMode: "jsonTool" }, openai: { strictJsonSchema: false } });
 
     expect(prompt).toContain("Mi tasa paso de 40 a 90");
     expect(prompt).toContain("El que mejor anduvo");
