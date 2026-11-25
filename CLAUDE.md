@@ -2375,7 +2375,7 @@ RER #145, #110, #140 (B-TAR-27 y B-PRD-15), #70, #96 (solo Servicios) y #128, ad
 
 ## Migraciones
 
-`00520` y `00521` (aditivas, pueden ir antes o después del deploy), `00522` (aditiva, va **ANTES** del deploy: la ficha del servicio y Tareas leen sus columnas; sin ella, el bloque de series no aparece) y `00523` (políticas, antes o después). Las cuatro ensayadas en una transacción que se deshizo sola (dos pasadas: idempotentes; 00522: 17 de 17 casos de fechas y 9 de 9 del editor iguales a TypeScript; 00523: 0 diferencias en lo que ve cada persona, `service_items` de 134 a 9 ms). **Escritas y SIN aplicar** (esperan el OK de Wendy). Rango de esta tanda: `00520`–`00529`.
+`00520` y `00521` (aditivas, pueden ir antes o después del deploy), `00522` (aditiva, va **ANTES** del deploy: la ficha del servicio y Tareas leen sus columnas; sin ella, el bloque de series no aparece) y `00523` (políticas, antes o después). Las cuatro ensayadas en una transacción que se deshizo sola (dos pasadas: idempotentes; 00522: 17 de 17 casos de fechas y 9 de 9 del editor iguales a TypeScript; 00523: 0 diferencias en lo que ve cada persona, `service_items` de 134 a 9 ms). **Aplicadas y registradas** el 25/11/2026 UTC (versiones `20261125215230`, `…238`, `…252` y `…301`), con `verify-services --bloque rp` y `--bloque rls` en verde (salvo la huella de `find_or_create_contact`, que ya fallaba antes). Rango de esta tanda: `00520`–`00529`.
 
 # Papelera: eliminar y restaurar (00410, 00411, 18/11/2026, traída de RER-BAIOS)
 
