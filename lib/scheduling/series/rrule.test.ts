@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cutRrule, firstDateProblem, rruleFor } from "./rrule";
+import { cutRrule } from "@/lib/google-calendar/client";
+import { firstDateProblem, rruleFor } from "./rrule";
 
 describe("rruleFor", () => {
   it("cada día y cada N días", () => {

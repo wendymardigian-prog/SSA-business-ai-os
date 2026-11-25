@@ -592,3 +592,93 @@ export async function patchEvent(
 export function isEtagConflict(err: unknown): boolean {
   return err instanceof GoogleCalendarError && err.status === 412;
 }
+
+// ---------------------------------------------------------------------------
+// 00524 (traído de RER #71): la serie de reuniones del camino, UN evento que se repite en el Google de quien atiende.
+// ---------------------------------------------------------------------------
+
+/** Corta una regla en un instante: le saca UNTIL/COUNT y le pone UNTIL (formato básico UTC de RFC 5545). Pura. */
+export function cutRrule(rrule: string, untilUtc: string): string {
+  const until = untilUtc.replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const base = rrule.replace(/;?(UNTIL|COUNT)=[^;]*/g, "");
+  return `${base};UNTIL=${until}`;
+}
+
+export interface RecurringEventInput extends CreateEventInput {
+  /** La regla RFC 5545, con el prefijo: «RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU» (lib/scheduling/series/rrule.ts). */
+  rrule: string;
+}
+
+/** Crea el evento que se repite, con Meet si se pide; Google manda la invitación a los invitados. */
+export async function createRecurringEvent(deps: GoogleDeps, connectionId: string, calendarId: string, input: RecurringEventInput): Promise<CreatedEvent> {
+  const body = buildEventBody(input);
+  body.recurrence = [input.rrule];
+  const { json } = await call(deps, connectionId, "POST", `/calendars/${encodeURIComponent(calendarId)}/events`, {
+    query: { sendUpdates: "all", ...(input.location.kind === "google_meet" ? { conferenceDataVersion: "1" } : {}) },
+    body,
+    fallback: "No pude crear la serie en Google Calendar",
+  });
+  const ev = json as { id?: string; iCalUID?: string; hangoutLink?: string; conferenceData?: { entryPoints?: Array<{ entryPointType?: string; uri?: string }> } };
+  if (!ev.id) throw new GoogleCalendarError("Google no devolvio el id del evento", "temporary", 200, "no_event_id");
+  const meet = ev.hangoutLink ?? ev.conferenceData?.entryPoints?.find((e) => e.entryPointType === "video")?.uri ?? null;
+  return { eventId: ev.id, iCalUID: ev.iCalUID ?? null, meetUrl: meet };
+}
+
+/** Una fecha del evento que se repite (events.instances). Su id es estable aunque se mueva. */
+export interface EventInstance {
+  id: string;
+  status: "confirmed" | "tentative" | "cancelled";
+  startUtc: string | null;
+  endUtc: string | null;
+  /** La fecha que le tocaba según la regla (si se movió, `startUtc` es otra). */
+  originalStartUtc: string | null;
+}
+
+/** Las fechas del evento entre dos instantes, también las borradas (status «cancelled»). */
+export async function listInstances(
+  deps: GoogleDeps,
+  connectionId: string,
+  calendarId: string,
+  eventId: string,
+  options: { timeMin: string; timeMax: string; maxPages?: number },
+): Promise<EventInstance[]> {
+  const out: EventInstance[] = [];
+  let pageToken: string | null = null;
+  for (let page = 0; page < (options.maxPages ?? 10); page++) {
+    const query: Record<string, string> = { timeMin: options.timeMin, timeMax: options.timeMax, showDeleted: "true", maxResults: "250" };
+    if (pageToken) query.pageToken = pageToken;
+    const { json } = await call(deps, connectionId, "GET", `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}/instances`, {
+      query,
+      fallback: "No pude leer las fechas de la serie en Google Calendar",
+    });
+    const body = json as {
+      items?: Array<{ id?: string; status?: string; start?: { dateTime?: string }; end?: { dateTime?: string }; originalStartTime?: { dateTime?: string } }>;
+      nextPageToken?: string;
+    } | null;
+    for (const it of body?.items ?? []) {
+      if (!it.id) continue;
+      const status = it.status === "cancelled" || it.status === "tentative" ? it.status : "confirmed";
+      out.push({ id: it.id, status, startUtc: toUtc(it.start), endUtc: toUtc(it.end), originalStartUtc: toUtc(it.originalStartTime) });
+    }
+    pageToken = body?.nextPageToken ?? null;
+    if (!pageToken) break;
+  }
+  return out;
+}
+
+/**
+ * Corta el evento que se repite: le cambia la regla para que no tenga fechas después de `untilUtc`. Google borra las
+ * que sobran y avisa a los invitados. Un evento que ya no existe cuenta como cortado.
+ */
+export async function cutRecurringEvent(deps: GoogleDeps, connectionId: string, calendarId: string, eventId: string, rrule: string, untilUtc: string): Promise<void> {
+  try {
+    await call(deps, connectionId, "PATCH", `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
+      query: { sendUpdates: "all" },
+      body: { recurrence: [cutRrule(rrule, untilUtc)] },
+      fallback: "No pude cortar la serie en Google Calendar",
+    });
+  } catch (err) {
+    if (err instanceof GoogleCalendarError && err.kind === "not_found") return;
+    throw err;
+  }
+}

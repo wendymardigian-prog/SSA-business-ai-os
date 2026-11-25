@@ -113,7 +113,7 @@ export function inviteeTimeLine(booking: { start_at: string; booker_timezone?: s
  * del evento es un calendario de quien es dueño del evento; si no es uno de
  * los del anfitrión de la agenda, se usa el destino por defecto de su perfil.
  */
-async function destinationFor(
+export async function destinationFor(
   service: Db,
   booking: { workspace_id: string; host_user_id: string; event_type_id: string },
   opts: { ownEventDestinationOnly?: boolean } = {},

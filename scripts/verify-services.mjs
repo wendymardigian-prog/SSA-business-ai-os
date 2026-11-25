@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @plantilla-quitar(servicios)
 /**
- * Verificacion del modulo de Servicios (Corridas A1 y A2): bloques sv1, sv2, prd, ac, a2, a4, pc (00503), rp (00522) y rls (00523).
+ * Verificacion del modulo de Servicios (Corridas A1 y A2): bloques sv1, sv2, prd, ac, a2, a4, pc (00503), rp (00522), rls (00523) y ms (00524).
  *
  * Corre contra la base real con usuarios de verdad. Prueba lo que vitest no puede: que la BASE haga
  * cumplir las reglas (gemelas SQL = TS con los mismos casos, RLS por rol, la guardia SV003, el modulo
@@ -1127,6 +1127,84 @@ try {
     check(Number(pol?.n) === 3, "las tres políticas de lectura usan el conjunto", JSON.stringify(pol));
     const anonFn = sql(`SELECT has_function_privilege('anon', 'app_servicio.rls_visible_service_ids()', 'EXECUTE') a`)[0]?.a;
     check(anonFn === false, "anon no ejecuta rls_visible_service_ids");
+  }
+
+  // ── ms: reuniones que se repiten (00524, traído de RER #71) ───────────────────────────────────────────
+  if (run("ms") && sql(`SELECT to_regprocedure('app_servicio.svc_round_mark(uuid,text)') IS NOT NULL AS ok`)[0]?.ok) {
+    console.log("\nms · Reuniones que se repiten: la vuelta del equipo, la serie fijada, marcar y cortar (00524)");
+    sql(`SELECT app_servicio.set_module_enabled(${lit(ws.id)}, true)`);
+    const { data: catM } = await svc.from("booking_categories").insert({ workspace_id: ws.id, name: "zz-test Series" }).select("id").single();
+    const { data: evM } = await svc.from("event_types").insert({ workspace_id: ws.id, category_id: catM.id, owner_user_id: owner.id, title: "zz-test Sesión", slug: `zz-test-sesion-ms-${Date.now()}` }).select("id").single();
+    const vM = await mkVariant("zz-test Reuniones que se repiten");
+    const tplM = { v: 1, phases: [{ key: "ph_ms0001", name: "Acompañamiento", advance: "manual", items: [
+      { key: "it_ms0001", kind: "booking", name: "Sesión del equipo", assignee: "owner", ref: { event_type_id: evM.id, schedule: "team" }, recurrence: { every: "week", until: "phase_end" } },
+      { key: "it_ms0002", kind: "booking", name: "Sesión en serie", assignee: "owner", ref: { event_type_id: evM.id, schedule: "series" }, recurrence: { every: "week", until: "phase_end" } },
+    ] }] };
+    const setM = sqlErr(`UPDATE public.product_variants SET journey_template = ${jlit(tplM)}, journey_template_rev = journey_template_rev + 1 WHERE id = ${lit(vM.id)}`);
+    check(setM === null, "un camino con una reunión que agenda el equipo y otra en serie se guarda", setM?.slice(0, 300));
+    const cM = await newContact("reuniones");
+    const sM = sql(`SELECT app_servicio.svc_create_service(jsonb_build_object('contact_id', ${lit(cM.id)}, 'variant_id', ${lit(vM.id)}, 'origin', 'manual', 'origin_reason', 'zz-test', 'owner_user_id', ${lit(owner.id)}, 'starts_on', ${lit(hoy)})) id`)[0]?.id;
+    sql(`SELECT app_servicio.svc_generate_occurrences(${lit(sM)})`);
+    const round = (k) => sql(`SELECT i.id, i.status, i.round_state, i.booking_id, i.task_id, t.title, t.status AS task_status, t.source_ref FROM app_servicio.service_items i LEFT JOIN public.tasks t ON t.id = i.task_id WHERE i.service_id = ${lit(sM)} AND i.template_key = ${lit(k)} AND i.parent_item_id IS NOT NULL ORDER BY i.occurrence_index LIMIT 1`)[0];
+    const tplId = (k) => sql(`SELECT id FROM app_servicio.service_items WHERE service_id = ${lit(sM)} AND template_key = ${lit(k)} AND is_recurring_template`)[0]?.id;
+
+    // La agenda el equipo: «Agendar … · vuelta 1», que no completa la vuelta al cerrarse.
+    const r1 = round("it_ms0001");
+    check(r1?.round_state === "to_schedule" && /^Agendar zz-test Sesión con .+ · vuelta 1$/.test(r1?.title ?? "") && r1?.source_ref?.startsWith("svc_round:"),
+      "la vuelta del equipo nace «por agendar» con su tarea «Agendar … · vuelta 1»", JSON.stringify(r1));
+    // La serie sin fijar: no crea vueltas y pide «Fijar reuniones recurrentes…».
+    check(!round("it_ms0002"), "la serie sin fijar no crea vueltas (nada se agenda solo)");
+    const fix = sql(`SELECT title, status FROM public.tasks WHERE source = 'cx' AND source_ref = ${lit(`svc_series_fix:${tplId("it_ms0002")}`)}`)[0];
+    check(/^Fijar reuniones recurrentes con /.test(fix?.title ?? "") && fix?.status === "pending", "quien atiende recibe «Fijar reuniones recurrentes con …»", JSON.stringify(fix));
+
+    // Una reunión del tipo: se une a la vuelta, que queda «agendada»; la tarea se cierra sola.
+    const st = new Date(Date.now() + 26 * 3_600_000);
+    const { data: bkM } = await svc.from("bookings").insert({ workspace_id: ws.id, uid: `zz-test-${randomUUID()}`, event_type_id: evM.id, host_user_id: owner.id, contact_id: cM.id, title: "zz-test Sesión",
+      start_at: st.toISOString(), end_at: new Date(st.getTime() + 1_800_000).toISOString(), origin: "manual", status: "scheduled" }).select("id").single();
+    const r1b = round("it_ms0001");
+    check(r1b?.booking_id === bkM.id && r1b?.round_state === "scheduled" && r1b?.task_status === "completed" && r1b?.status === "pending",
+      "la reunión se une a la vuelta pendiente más antigua; la tarea se cierra y la vuelta sigue sin cumplirse", JSON.stringify(r1b));
+    // Cancelada: vuelve a «por agendar» y la tarea se abre.
+    await svc.from("bookings").update({ status: "cancelled_other" }).eq("id", bkM.id);
+    const r1c = round("it_ms0001");
+    check(r1c?.booking_id === null && r1c?.round_state === "to_schedule" && r1c?.task_status === "pending", "cancelada: la vuelta vuelve a «por agendar» y su tarea se abre", JSON.stringify(r1c));
+    // Otra reunión y asistió: la vuelta se cumple.
+    const st2 = new Date(Date.now() + 50 * 3_600_000);
+    const { data: bkM2 } = await svc.from("bookings").insert({ workspace_id: ws.id, uid: `zz-test-${randomUUID()}`, event_type_id: evM.id, host_user_id: owner.id, contact_id: cM.id, title: "zz-test Sesión",
+      start_at: st2.toISOString(), end_at: new Date(st2.getTime() + 1_800_000).toISOString(), origin: "manual", status: "scheduled" }).select("id").single();
+    await svc.from("bookings").update({ status: "sale" }).eq("id", bkM2.id);
+    const r1d = round("it_ms0001");
+    check(r1d?.status === "completed" && r1d?.round_state === "attended", "con la reunión en un resultado (asistió), la vuelta se cumple", JSON.stringify(r1d));
+
+    // La serie fijada (sin Google: la fila que dejaría «Fijar…»): crea la vuelta y la une a SU reunión.
+    // Una hora atrás: la primera fecha cae hoy (las vueltas se crean hasta hoy).
+    const first = new Date(Date.now() - 3_600_000);
+    const msId = sql(`INSERT INTO app_servicio.meeting_series (workspace_id, service_id, service_item_id, host_user_id, event_type_id, rrule, first_start_at, duration_minutes, timezone)
+      VALUES (${lit(ws.id)}, ${lit(sM)}, ${lit(tplId("it_ms0002"))}, ${lit(owner.id)}, ${lit(evM.id)}, 'RRULE:FREQ=WEEKLY', ${lit(first.toISOString())}, 30, 'America/Costa_Rica') RETURNING id`)[0]?.id;
+    const { data: bkS } = await svc.from("bookings").insert({ workspace_id: ws.id, uid: `zz-test-${randomUUID()}`, event_type_id: evM.id, host_user_id: owner.id, contact_id: cM.id, title: "zz-test Serie",
+      start_at: first.toISOString(), end_at: new Date(first.getTime() + 1_800_000).toISOString(), origin: "manual", status: "scheduled", metadata: { series_id: msId } }).select("id").single();
+    sql(`SELECT app_servicio.svc_generate_occurrences(${lit(sM)})`);
+    const r2 = round("it_ms0002");
+    check(r2?.booking_id === bkS.id && r2?.round_state === "scheduled" && !r2?.task_id, "con la serie fijada, la vuelta se une a su reunión de la serie (y no pide «Agendar…»)", JSON.stringify(r2));
+
+    // Marcar: no se presentó y después perdida (no cuenta como cumplida).
+    const ns = await rpcAs(owner, "svc_round_mark", { p_item_id: r2.id, p_state: "no_show" });
+    check(!ns.error && round("it_ms0002")?.round_state === "no_show", "«No se presentó» marca la vuelta y la reunión", ns.error);
+    const lost = await rpcAs(owner, "svc_round_mark", { p_item_id: r2.id, p_state: "lost" });
+    const r2b = round("it_ms0002");
+    check(!lost.error && r2b?.status === "completed" && r2b?.round_state === "lost", "«Dar por perdida» la cierra como perdida", lost.error ?? JSON.stringify(r2b));
+    const again = asUser(owner.id, `SELECT app_servicio.svc_round_mark(${lit(r2.id)}, 'attended') r`);
+    check(!again.ok && again.code === "SV047", "una vuelta cerrada no se marca otra vez (SV047)", again.error);
+
+    // Pausar corta la serie y encola el corte en Google.
+    sql(`UPDATE app_servicio.services SET status = 'paused', paused_at = now() WHERE id = ${lit(sM)}`);
+    const msRow = sql(`SELECT status, ended_reason, google_cleanup FROM app_servicio.meeting_series WHERE id = ${lit(msId)}`)[0];
+    check(msRow?.status === "ended" && msRow?.ended_reason === "paused", "al pausar el servicio, la serie termina", JSON.stringify(msRow));
+    const job = sql(`SELECT count(*)::int n FROM public.scheduled_jobs WHERE type = 'meeting_series_end' AND payload ->> 'series_id' = ${lit(msId)}`)[0]?.n;
+    check(job === 1, "el corte en Google queda en la cola (meeting_series_end)", `dio ${job}`);
+    sql(`DELETE FROM public.scheduled_jobs WHERE type = 'meeting_series_end' AND payload ->> 'series_id' = ${lit(msId)}`);
+    const anonFn = sql(`SELECT has_function_privilege('anon', 'app_servicio.svc_round_mark(uuid,text)', 'EXECUTE') a`)[0]?.a;
+    check(anonFn === false, "anon no ejecuta svc_round_mark");
   }
 
   // ── rp: pasos que se repiten (00522, traído de RER #70) ──────────────────────────────────────────────

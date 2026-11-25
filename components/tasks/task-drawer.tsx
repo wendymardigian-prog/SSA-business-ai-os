@@ -25,7 +25,7 @@ import { foldText } from "@/lib/tasks/text";
 import { TaskChecklist } from "./task-checklist";
 import { CommentThread } from "@/components/team-comments/comment-thread";
 import { TaskServiceBlock } from "@/components/services/task-service-block"; // @plantilla-quitar(servicios)
-import { TaskRepeatSection } from "./task-repeat-section"; // @plantilla-quitar(servicios)
+import { TaskRepeatSection, TaskSeriesFixButton, seriesFixItemOf } from "./task-repeat-section"; // @plantilla-quitar(servicios)
 
 export interface TaskDrawerProps {
   /** `view`: una tarea que existe. `create`: el formulario completo de una tarea nueva. */
@@ -268,6 +268,7 @@ function DrawerBody(props: TaskDrawerProps) {
             {/* @plantilla-desde(servicios) */}
             <TaskServiceBlock taskId={task.id} canEdit={canEdit} version={task.updated_at} />
             {repeatOf(task.id, source) && <TaskRepeatSection info={repeatOf(task.id, source)!} />}
+            {seriesFixItemOf(task) && task.status !== "completed" && <TaskSeriesFixButton itemId={seriesFixItemOf(task)!} title={task.title} canEdit={canEdit} />}
             {/* @plantilla-hasta(servicios) */}
             <DependenciesSection
               task={task}

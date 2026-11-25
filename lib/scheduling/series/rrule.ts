@@ -61,10 +61,3 @@ export function firstDateProblem(r: Recurrence, firstDate: string): string | nul
   }
   return null;
 }
-
-/** Corta una regla en un instante: le saca UNTIL/COUNT y le pone UNTIL (formato básico UTC de RFC 5545). */
-export function cutRrule(rrule: string, untilUtc: string): string {
-  const until = untilUtc.replace(/[-:]/g, "").replace(/\.\d+/, "");
-  const base = rrule.replace(/;?(UNTIL|COUNT)=[^;]*/g, "");
-  return `${base};UNTIL=${until}`;
-}

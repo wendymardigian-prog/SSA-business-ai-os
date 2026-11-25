@@ -11,6 +11,7 @@
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { svcRpc } from "@/lib/services/db";
 import { enqueuePortalDigests, enqueuePortalDueToday } from "@/lib/jobs/handlers/portal-digest";
+import { syncWorkspaceSeries } from "@/lib/scheduling/series/run";
 
 export const SVC_DAILY_JOB = "svc_daily";
 
@@ -35,6 +36,14 @@ export async function runSvcDaily({ supabase, job }: JobContext): Promise<void> 
     } catch (e) {
       errors.push(`portal_due_today: ${e instanceof Error ? e.message : String(e)}`);
     }
+  }
+  // 00524: las fechas de las series de reuniones de las próximas semanas, como reuniones de la plataforma. Un problema de
+  // Google no hace reintentar todo el barrido (la cola lo repetiría encima): se anota y se reintenta mañana.
+  try {
+    const problems = await syncWorkspaceSeries(supabase, p.workspace_id);
+    if (problems.length > 0) console.warn(`[series] ${problems.length} serie(s) no se pudieron leer de Google hoy`);
+  } catch (e) {
+    console.warn("[series] no pude revisar las series de reuniones:", e instanceof Error ? e.name : "error");
   }
   if (errors.length > 0) throw new Error(`svc_daily: ${errors.length} paso(s) fallaron: ${errors.map((e) => e.split(":")[0]).join(", ")}`);
 }

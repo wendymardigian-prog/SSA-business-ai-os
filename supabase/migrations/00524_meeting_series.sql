@@ -23,8 +23,9 @@
 --     molde de un paso que se repite podía ganar y la reunión no completaba nada). Lo que no es una vuelta sigue igual.
 --  4. `svc_generate_occurrences`, `svc_ensure_task` y `svc_end_series` (de la 00522) con lo de las reuniones.
 --  5. `journey_item_ref_problems` acepta `ref.schedule` (gemela `refProblems`, journey-template.cases.json).
---  6. Funciones nuevas: `svc_client_label`, `svc_series_request_fix`, `svc_end_meeting_series`, `svc_round_mark`
---     (con la sesión y `services.items`), `svc_cancel_series_booking` (solo servidor: una fecha borrada en Google).
+--  6. Funciones nuevas: `svc_client_label`, `booking_round_candidate`, `svc_series_request_fix`, `svc_end_meeting_series`
+--     y `svc_round_mark` (con la sesión y `services.items`). Una fecha borrada en Google la cancela el lector de Google
+--     (`cancelBooking` con `fromGoogle`) y el enganche devuelve la vuelta a «por agendar».
 --  7. Triggers: al pausar, terminar o cambiar el responsable se corta la serie; mover una reunión mueve su vuelta.
 --
 -- Volver atrás: recrear las cinco funciones de abajo con su definición vieja; DROP de las funciones y triggers nuevos;
@@ -508,12 +509,13 @@ AS $function$
     JOIN app_servicio.services s ON s.id = r.service_id
    WHERE s.workspace_id = p_booking.workspace_id AND s.contact_id = p_booking.contact_id AND s.status = 'active'
      AND r.parent_item_id IS NOT NULL AND r.kind = 'booking' AND r.status = 'pending'
-     AND r.ref ->> 'event_type_id' = p_booking.event_type_id::text
      AND (r.booking_id IS NULL OR r.booking_id = p_booking.id
           OR EXISTS (SELECT 1 FROM public.bookings o WHERE o.id = r.booking_id AND o.status_group = 'cancelled'))
-     AND (p_booking.metadata ->> 'series_id' IS NULL
-          OR r.parent_item_id = (SELECT ms.service_item_id FROM app_servicio.meeting_series ms
-                                  WHERE ms.id::text = p_booking.metadata ->> 'series_id'))
+     -- Una reunión de una serie (la crea la app con quien atiende, no con el tipo de evento) va a las vueltas de SU
+     -- paso; cualquier otra, a las del tipo de reunión del paso.
+     AND (CASE WHEN p_booking.metadata ? 'series_id'
+               THEN r.parent_item_id = (SELECT ms.service_item_id FROM app_servicio.meeting_series ms WHERE ms.id::text = p_booking.metadata ->> 'series_id')
+               ELSE r.ref ->> 'event_type_id' = p_booking.event_type_id::text END)
    ORDER BY (r.booking_id IS NOT DISTINCT FROM p_booking.id) DESC, s.created_at, r.occurrence_index
    LIMIT 1;
 $function$;
@@ -751,25 +753,6 @@ BEGIN
   PERFORM app_servicio.svc_generate_occurrences(it.service_id);
   PERFORM app_servicio.svc_compute_light(it.service_id);
   RETURN p_state;
-END;
-$function$;
-
--- Una reunión de una serie que alguien BORRÓ en Google: se cancela acá (su vuelta vuelve a «por agendar» por el
--- enganche) sin volver a crearla. Solo el servidor (el trabajo que lee los cambios de Google).
-CREATE OR REPLACE FUNCTION app_servicio.svc_cancel_series_booking(p_booking_id uuid, p_reason text)
- RETURNS boolean
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
-AS $function$
-DECLARE v_n integer;
-BEGIN
-  UPDATE public.bookings
-     SET status = 'cancelled_other', status_changed_at = now(), cancelled_at = now(), cancelled_by_type = 'host',
-         cancellation_reason = left(COALESCE(p_reason, 'Borrada en Google Calendar'), 500)
-   WHERE id = p_booking_id AND status_group = 'active' AND metadata ? 'series_id';
-  GET DIAGNOSTICS v_n = ROW_COUNT;
-  RETURN v_n > 0;
 END;
 $function$;
 
@@ -1214,9 +1197,9 @@ $function$;
 -- Las funciones reescritas conservan los suyos. Las nuevas:
 REVOKE ALL ON FUNCTION app_servicio.svc_client_label(uuid), app_servicio.booking_round_candidate(public.bookings),
   app_servicio.booking_round_moved(), app_servicio.svc_series_request_fix(uuid), app_servicio.svc_end_meeting_series(uuid, text),
-  app_servicio.svc_round_mark(uuid, text), app_servicio.svc_cancel_series_booking(uuid, text), app_servicio.services_meeting_series_hook()
+  app_servicio.svc_round_mark(uuid, text), app_servicio.services_meeting_series_hook()
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION app_servicio.svc_client_label(uuid), app_servicio.booking_round_candidate(public.bookings),
-  app_servicio.svc_series_request_fix(uuid), app_servicio.svc_end_meeting_series(uuid, text), app_servicio.svc_cancel_series_booking(uuid, text)
+  app_servicio.svc_series_request_fix(uuid), app_servicio.svc_end_meeting_series(uuid, text)
 TO service_role;
 GRANT EXECUTE ON FUNCTION app_servicio.svc_round_mark(uuid, text) TO authenticated, service_role;

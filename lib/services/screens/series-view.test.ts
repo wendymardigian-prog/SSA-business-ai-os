@@ -24,4 +24,11 @@ describe("seriesView", () => {
   it("días de la semana cada semana: la próxima es el siguiente día elegido", () => {
     expect(seriesView([tpl({ every: "week", weekdays: [1, 3], until: "phase_end" })], [round(1, "2026-11-02"), round(2, "2026-11-04")], () => true)[0].nextOn).toBe("2026-11-09");
   });
+  it("una Reunión que fija quien atiende: sin fijar y fijada", () => {
+    const t = tpl({ every: "week", until: "phase_end" }, { kind: "booking", ref: { schedule: "series" } });
+    expect(seriesView([t], [], () => true)[0].meeting).toEqual({ fixed: null });
+    const fixed = seriesView([t], [], () => true, [{ service_item_id: "t1", first_start_at: "2026-11-26T15:00:00Z", timezone: "America/Costa_Rica", meet_url: "https://meet.google.com/x" }])[0];
+    expect(fixed.meeting?.fixed?.meetUrl).toBe("https://meet.google.com/x");
+    expect(seriesView([tpl({ every: "week", until: "phase_end" })], [], () => true)[0].meeting).toBeNull();
+  });
 });
