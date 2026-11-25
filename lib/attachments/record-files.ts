@@ -78,7 +78,6 @@ export function classifyRecordFile(
 /** El nombre del archivo, sin rutas ni caracteres raros, hasta 200. PURO. */
 export function cleanRecordFileName(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? "";
-  // eslint-disable-next-line no-control-regex
   const clean = base.replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
   return (clean || "archivo").slice(0, 200);
 }
