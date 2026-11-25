@@ -137,7 +137,7 @@ export interface Occurrence {
 }
 
 /** Lunes = 1 … domingo = 7 (como `isodow` de Postgres). */
-function isoWeekday(date: string): number {
+export function isoWeekday(date: string): number {
   const d = new Date(`${date}T00:00:00Z`).getUTCDay();
   return d === 0 ? 7 : d;
 }

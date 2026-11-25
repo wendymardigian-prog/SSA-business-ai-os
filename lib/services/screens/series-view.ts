@@ -13,6 +13,9 @@ export interface SeriesTemplateRow {
   id: string;
   phase_id: string;
   name: string;
+  /** 00524: una Reunión que se repite puede tener su serie en Google. */
+  kind?: string;
+  ref?: Record<string, unknown> | null;
   recurrence: unknown;
   series_ended_at: string | null;
   series_end_reason: string | null;
@@ -37,11 +40,21 @@ export interface SeriesView {
   ended: boolean;
   endedLabel: string | null;
   recurrence: Record<string, unknown> | null;
+  /** 00524: una Reunión que fija quien atiende: si ya la fijó, desde cuándo y con qué Meet. null = no es una serie así. */
+  meeting: { fixed: { firstStartAt: string; timezone: string; meetUrl: string | null } | null } | null;
+}
+
+/** La serie activa de cada paso (00524). */
+export interface MeetingSeriesRow {
+  service_item_id: string;
+  first_start_at: string;
+  timezone: string;
+  meet_url: string | null;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-export function seriesView(templates: SeriesTemplateRow[], rounds: SeriesRoundRow[], phaseOpen: (phaseId: string) => boolean): SeriesView[] {
+export function seriesView(templates: SeriesTemplateRow[], rounds: SeriesRoundRow[], phaseOpen: (phaseId: string) => boolean, meetingSeries: MeetingSeriesRow[] = []): SeriesView[] {
   return templates.map((t) => {
     const own = rounds.filter((r) => r.parent_item_id === t.id).sort((a, b) => (a.occurrence_index ?? 0) - (b.occurrence_index ?? 0));
     const first = own[0];
@@ -66,6 +79,11 @@ export function seriesView(templates: SeriesTemplateRow[], rounds: SeriesRoundRo
       ended,
       endedLabel: ended ? (SERIES_END_LABEL[t.series_end_reason ?? ""] ?? "Terminó") : null,
       recurrence: isObj(t.recurrence) ? t.recurrence : null,
+      meeting: t.kind === "booking" && t.ref?.schedule === "series" ? { fixed: fixedOf(meetingSeries.find((m) => m.service_item_id === t.id)) } : null,
     };
   });
+}
+
+function fixedOf(m: MeetingSeriesRow | undefined): { firstStartAt: string; timezone: string; meetUrl: string | null } | null {
+  return m ? { firstStartAt: m.first_start_at, timezone: m.timezone, meetUrl: m.meet_url } : null;
 }

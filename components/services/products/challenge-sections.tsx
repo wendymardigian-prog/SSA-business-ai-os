@@ -204,12 +204,37 @@ export function RepeatSection({
         <input
           type="checkbox"
           checked={!!r}
-          onChange={(e) => onChange(e.target.checked ? { recurrence: { every: "day", until: "phase_end" } } : { recurrence: null, late: null })}
+          onChange={(e) => {
+            if (e.target.checked) return onChange({ recurrence: { every: "day", until: "phase_end" } });
+            // Sin repetición no hay serie: «cómo se agenda» se saca (la base rechazaría una serie que no se repite).
+            const { schedule: _schedule, ...restRef } = ((item.ref as Obj | undefined) ?? {}) as Obj;
+            void _schedule;
+            onChange(item.kind === "booking" ? { recurrence: null, late: null, ref: restRef as JourneyItem["ref"] } : { recurrence: null, late: null });
+          }}
         />
         Se repite
       </label>
       {r && (
         <>
+          {item.kind === "booking" && (
+            <div>
+              <span className={label}>Cómo se agenda</span>
+              <select
+                aria-label="Cómo se agenda cada reunión"
+                value={(item.ref as Obj | undefined)?.schedule === "series" ? "series" : "team"}
+                onChange={(e) => onChange({ ref: { ...((item.ref as Obj | undefined) ?? {}), schedule: e.target.value } as JourneyItem["ref"] })}
+                className={input}
+              >
+                <option value="team">La agenda el equipo en cada vuelta</option>
+                <option value="series">La fija quien atiende, como una serie en su Google</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {(item.ref as Obj | undefined)?.schedule === "series"
+                  ? "Cuando empiece, quien atiende recibe la tarea «Fijar reuniones recurrentes»: elige el primer día y la hora, y se crea un solo evento que se repite en su Google Calendar, con Meet e invitación al cliente. Necesita Google conectado."
+                  : "Cada vuelta crea la tarea «Agendar … · vuelta N» para quien atiende; se cierra sola cuando la reunión queda agendada."}
+              </p>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <span className={label}>Cada</span>

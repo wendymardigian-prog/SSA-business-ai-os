@@ -2360,9 +2360,9 @@ node scripts/verify-servicios-migracion.mjs --a4 M1   # M1 a M9 (o --todas)
 node scripts/backfill-call-services.mjs --dry-run     # vincular las reuniones viejas (--aplicar para escribir)
 ```
 
-# Traído de RER: tareas, adjuntos, pasos que se repiten, velocidad y horarios libres (25/11/2026)
+# Traído de RER: tareas, adjuntos, pasos que se repiten, velocidad, horarios libres y reuniones en serie (25/11/2026)
 
-RER #145, #110, #140 (B-TAR-27 y B-PRD-15), #70, #96 (solo Servicios) y #128, adaptados a SSA. Detalle en [docs/servicios.md](docs/servicios.md) («Pasos que se repiten», «Velocidad de la lectura», «Archivos en los comentarios de la ficha»), [docs/tareas.md](docs/tareas.md) y [docs/agendamiento.md](docs/agendamiento.md) («Horarios libres al agendar»).
+RER #145, #110, #140 (B-TAR-27 y B-PRD-15), #70, #71, #96 (solo Servicios) y #128, adaptados a SSA. Detalle en [docs/servicios.md](docs/servicios.md) («Pasos que se repiten», «Velocidad de la lectura», «Archivos en los comentarios de la ficha»), [docs/tareas.md](docs/tareas.md) y [docs/agendamiento.md](docs/agendamiento.md) («Horarios libres al agendar»).
 
 ## Lo que no se puede romper
 
@@ -2371,11 +2371,12 @@ RER #145, #110, #140 (B-TAR-27 y B-PRD-15), #70, #96 (solo Servicios) y #128, ad
 - **La repetición de un paso es la de SSA** (00376) más la 00522: `n_weeks`, `month`, `weekdays`, `day_of_month`; `n_times` cuenta vueltas CUMPLIDAS. Gemelas SQL = TS con `recurrence.cases.json`, `journey-template.cases.json` y `repetition.cases.json` (los casos nuevos llevan `"since": "00522"`). Con un paso fijo, las fechas son exactamente las de antes. Las vueltas copian `ref`: heredan bloqueo, evidencia y checklist.
 - **La serie de un servicio** se cambia o termina solo con `svc_set_item_series` / `svc_end_series` (`services.items`, con la sesión); termina sola al terminar el servicio (trigger con `hook_failed`).
 - **La lectura de Servicios es por conjunto** (`rls_visible_service_ids`, 00523): si cambia la regla de `can_see_service_row`, cambia también el conjunto en la misma migración (bloque `rls` de verify-services). Una política nueva no llama a una función con columnas de la fila.
+- **Reuniones que se repiten (00524, RER #71)**: `ref.schedule` `team` (tarea «Agendar … · vuelta N», `svc_round:`) o `series` (UNA serie en el Google de quien atiende, `app_servicio.meeting_series`). Las fechas de una serie son reuniones con `metadata.google_import` + `metadata.series_id`: nunca otro evento en Google. Una vuelta se cumple SOLO al asistir; «perdida» no cuenta. Una reunión de una serie activa no se cancela desde la plataforma (`cancelBooking`, salvo `fromGoogle`/sistema). Cortar la serie es el job `meeting_series_end` (1/5/15 min, nunca lanza). `booking_hook` ya no elige el molde de un paso que se repite.
 - **Los horarios libres de «Agendar»** salen de `slotsForManualBooking` → `getPublicSlots` (la misma de la página pública), solo con un evento elegido. El servidor vuelve a comprobar al agendar.
 
 ## Migraciones
 
-`00520` y `00521` (aditivas, pueden ir antes o después del deploy), `00522` (aditiva, va **ANTES** del deploy: la ficha del servicio y Tareas leen sus columnas; sin ella, el bloque de series no aparece) y `00523` (políticas, antes o después). Las cuatro ensayadas en una transacción que se deshizo sola (dos pasadas: idempotentes; 00522: 17 de 17 casos de fechas y 9 de 9 del editor iguales a TypeScript; 00523: 0 diferencias en lo que ve cada persona, `service_items` de 134 a 9 ms). **Aplicadas y registradas** el 25/11/2026 UTC (versiones `20261125215230`, `…238`, `…252` y `…301`), con `verify-services --bloque rp` y `--bloque rls` en verde (salvo la huella de `find_or_create_contact`, que ya fallaba antes). Rango de esta tanda: `00520`–`00529`.
+`00520` y `00521` (aditivas, pueden ir antes o después del deploy), `00522` (aditiva, va **ANTES** del deploy: la ficha del servicio y Tareas leen sus columnas; sin ella, el bloque de series no aparece) y `00523` (políticas, antes o después). Las cuatro ensayadas en una transacción que se deshizo sola (dos pasadas: idempotentes; 00522: 17 de 17 casos de fechas y 9 de 9 del editor iguales a TypeScript; 00523: 0 diferencias en lo que ve cada persona, `service_items` de 134 a 9 ms). `00524` (reuniones que se repiten; aditiva, va **ANTES** del deploy del PR 2 y después de la 00522/00523): ensayada igual, 13/13 casos del editor y un recorrido real en una transacción (por agendar → agendada → cancelada → asistió, 0 fallas del enganche). **Las cinco aplicadas y registradas** el 25/11/2026 UTC (versiones `20261125215230`, `…238`, `…252`, `…301` y `…310`), con `verify-services --bloque rp`, `--bloque rls` y `--bloque ms` en verde (salvo la huella de `find_or_create_contact`, que ya fallaba antes). Rango de esta tanda: `00520`–`00529`; la próxima libre es la `00525`.
 
 # Papelera: eliminar y restaurar (00410, 00411, 18/11/2026, traída de RER-BAIOS)
 

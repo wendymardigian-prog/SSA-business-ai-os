@@ -2,7 +2,7 @@
 /**
  * Qué tareas son la vuelta de un paso del camino que se repite (00522). Solo servidor.
  *
- * Una tarea de Servicios lleva `source = 'cx'` y `source_ref = 'svc_item:<paso>'`. Se leen los pasos con la SESIÓN (la
+ * Una tarea de Servicios lleva `source = 'cx'` y `source_ref = 'svc_item:<paso>'` (o `svc_round:<paso>`, 00524). Se leen los pasos con la SESIÓN (la
  * RLS de Servicios decide qué se ve) y, de los que son una vuelta, la regla del paso que se repite. Nunca lanza: si
  * algo falla (o el módulo no existe en esta copia), no hay ícono y la pantalla sigue igual.
  */
@@ -14,7 +14,8 @@ import type { TaskRepeatInfo } from "./format";
 
 type Db = SupabaseClient<any, any, any>;
 
-const ITEM_REF = /^svc_item:([0-9a-f-]{36})$/i;
+// `svc_round:` = la tarea «Agendar … · vuelta N» de una Reunión que se repite (00524).
+const ITEM_REF = /^svc_(?:item|round):([0-9a-f-]{36})$/i;
 
 export async function loadTaskRepeats(supabase: Db, tasks: Array<{ id: string; source: string | null; source_ref: string | null }>): Promise<Record<string, TaskRepeatInfo>> {
   try {

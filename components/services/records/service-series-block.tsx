@@ -15,9 +15,17 @@ import type { NamedOption } from "@/components/services/products/service-setting
 import { RepeatSection } from "@/components/services/products/challenge-sections";
 import { ActionError } from "@/components/contacts/ui";
 import { SidePanel } from "@/components/tasks/overlay";
+import { FixSeriesDialog } from "./fix-series-dialog";
 
 const civilShort = new Intl.DateTimeFormat("es", { timeZone: "UTC", day: "numeric", month: "short" });
 const fmt = (d: string | null) => (d ? civilShort.format(new Date(`${d}T12:00:00Z`)) : "—");
+/** «26 nov a las 10:00» en la zona en la que se fijó la serie. */
+function fixedLabel(f: { firstStartAt: string; timezone: string }): string {
+  const d = new Date(f.firstStartAt);
+  const day = new Intl.DateTimeFormat("es", { timeZone: f.timezone, day: "numeric", month: "short" }).format(d);
+  const time = new Intl.DateTimeFormat("es", { timeZone: f.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+  return `${day} a las ${time}`;
+}
 
 export function ServiceSeriesBlock({
   series,
@@ -38,6 +46,7 @@ export function ServiceSeriesBlock({
   const [editing, setEditing] = useState<SeriesView | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
   const [ending, setEnding] = useState<SeriesView | null>(null);
+  const [fixing, setFixing] = useState<{ series: SeriesView; mode: "fix" | "change" } | null>(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -76,6 +85,19 @@ export function ServiceSeriesBlock({
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{s.name}</p>
               <p className="text-xs text-muted-foreground">{s.rule}</p>
+              {s.meeting && (
+                <p className="text-xs text-muted-foreground">
+                  {s.meeting.fixed ? `Serie fijada en Google desde el ${fixedLabel(s.meeting.fixed)}` : "La fija quien atiende: todavía no está fijada"}
+                  {s.meeting.fixed?.meetUrl && (
+                    <>
+                      {" · "}
+                      <a href={s.meeting.fixed.meetUrl} target="_blank" rel="noopener noreferrer" className="text-primary-ink hover:underline">
+                        Meet
+                      </a>
+                    </>
+                  )}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 {s.rounds === 0 ? "Todavía no tuvo vueltas" : `${s.rounds} ${s.rounds === 1 ? "vuelta" : "vueltas"} · ${s.done} cumplidas · la última el ${fmt(s.lastOn)}`}
                 {s.nextOn ? ` · la próxima el ${fmt(s.nextOn)}` : ""}
@@ -84,7 +106,16 @@ export function ServiceSeriesBlock({
             {s.ended ? (
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{s.endedLabel}</span>
             ) : canEdit ? (
-              <span className="flex gap-1.5">
+              <span className="flex flex-wrap gap-1.5">
+                {s.meeting && (
+                  <button
+                    type="button"
+                    onClick={() => setFixing({ series: s, mode: s.meeting?.fixed ? "change" : "fix" })}
+                    className="inline-flex min-h-10 items-center rounded-lg border border-border px-3 text-xs hover:bg-accent md:min-h-8"
+                  >
+                    {s.meeting.fixed ? "Cambiar día y hora" : "Fijar reuniones"}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -139,6 +170,8 @@ export function ServiceSeriesBlock({
           </div>
         </SidePanel>
       )}
+
+      {fixing && <FixSeriesDialog itemId={fixing.series.id} stepName={fixing.series.name} rule={fixing.series.rule} mode={fixing.mode} onClose={() => setFixing(null)} />}
 
       {ending && (
         <SidePanel label={`Terminar «${ending.name}»`} header={<h2 className="text-base font-semibold">Terminar «{ending.name}»</h2>} onClose={() => setEnding(null)}>

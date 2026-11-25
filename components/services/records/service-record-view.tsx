@@ -10,6 +10,8 @@ import { serviceActions, type ServiceActionKey } from "@/lib/services/screens/se
 import { LIGHT_LABELS, STATUS_LABELS, type Light, type ServiceStatus } from "@/lib/services/screens/list";
 import { withRecord, type ServiceRecordTab } from "@/lib/services/screens/record-url";
 import { itemToggleState } from "@/lib/services/screens/item-toggle";
+import { ROUND_ACTION_LABEL, ROUND_STATE_LABEL, roundActions, type RoundState } from "@/lib/services/screens/round-state";
+import { markMeetingRound } from "@/lib/actions/meeting-series";
 import { DeleteDialog } from "@/components/trash/delete-dialog";
 import type { AssistantCreditsView, AttendanceRateView, ClassroomProgressView, LessonState, NextPaymentView } from "@/lib/services/screens/record-figures";
 import type { LightSignal, RecordAlert, RecordTone } from "@/lib/services/screens/service-record";
@@ -44,6 +46,8 @@ export interface ServiceRecordStep {
   taskId: string | null;
   needsAttention: boolean;
   occurrence: number | null;
+  /** 00524: el estado de una vuelta de Reunión que se repite (null si no es una). */
+  roundState?: RoundState | null;
   /** A4 (F146): «Desde el 13/11» o «Después de: …», y el texto de por qué no se puede tildar. */
   lock: { label: string; message: string } | null;
   /** A4 (F147). */
@@ -910,6 +914,7 @@ function JourneyColumn({
                               {!it.required && <span className="ml-1 text-xs text-muted-foreground">(opcional)</span>}
                             </button>
                             <span className={cn("block text-xs", late ? "text-bad" : "text-muted-foreground")}>
+                              {it.roundState ? `${ROUND_STATE_LABEL[it.roundState]} · ` : ""}
                               {isDone ? "Completado" : late ? `Vencido · ${fmtShort(it.dueOn)}` : it.dueOn ? `Vence ${fmtShort(it.dueOn)}` : "Sin plazo"}
                               {it.needsAttention && <span className="ml-1 text-warn">· Requiere atención</span>}
                               {it.lock && <span className="ml-1">· {it.lock.label}</span>}
@@ -968,6 +973,10 @@ function JourneyColumn({
 /** El paso abierto en la ficha (A4): estado, candado, evidencia y su tarea. */
 function ItemPanel({ item, viewerId, can, onClose }: { item: ServiceRecordStep; viewerId: string | null; can: (k: string) => boolean; onClose: () => void }) {
   const isDone = item.status === "completed";
+  const router = useRouter();
+  const [roundError, setRoundError] = useState<string | null>(null);
+  const [marking, startMarking] = useTransition();
+  const actions = can("services.items") ? roundActions(item.roundState ?? null, !isDone) : [];
   return (
     <SidePanel label={`Paso «${item.name}»`} onClose={onClose} header={<p className="truncate text-sm font-semibold">{item.name}</p>}>
       <div className="space-y-4 p-4 text-sm">
@@ -982,6 +991,36 @@ function ItemPanel({ item, viewerId, can, onClose }: { item: ServiceRecordStep; 
             </>
           )}
         </p>
+        {item.roundState && (
+          <div className="space-y-2 rounded-lg border border-border px-3 py-2">
+            <p>
+              Vuelta {item.occurrence} · <span className="font-medium">{ROUND_STATE_LABEL[item.roundState]}</span>
+            </p>
+            {actions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {actions.map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    disabled={marking}
+                    onClick={() => {
+                      setRoundError(null);
+                      startMarking(async () => {
+                        const r = await markMeetingRound(item.id, a);
+                        if (!r.ok) return setRoundError(r.error.message);
+                        router.refresh();
+                      });
+                    }}
+                    className={cn("inline-flex min-h-10 items-center rounded-lg border border-border px-3 text-xs hover:bg-accent md:min-h-8", a === "lost" && "text-bad")}
+                  >
+                    {ROUND_ACTION_LABEL[a]}
+                  </button>
+                ))}
+              </div>
+            )}
+            {roundError && <ActionError message={roundError} />}
+          </div>
+        )}
         {item.lock && !isDone && (
           <p className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
             <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
