@@ -43,7 +43,7 @@ interface Tab {
 export const COMUNICACION_TABS: Tab[] = [
   { name: "Conversaciones", href: "/dashboard/inbox", icon: MessageSquare },
   { name: "Broadcasts", href: "/dashboard/broadcasts", icon: Radio },
-  { name: "Sequences", href: "/dashboard/sequences", icon: ListOrdered },
+  { name: "Secuencias", href: "/dashboard/sequences", icon: ListOrdered },
   { name: "Comentarios", href: "/dashboard/comentarios", icon: MessageCircle },
 ];
 

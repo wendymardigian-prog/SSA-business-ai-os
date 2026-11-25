@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition, type MouseEvent as ReactMouseEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowRight, ChevronRight, Loader2, Maximize2, SquarePen, Sparkles, Undo2, X } from "lucide-react";
 import { continueAssistantMessage, loadAssistantPanel, newAssistantConversation, sendAssistantMessage, type AssistantPanelData } from "@/lib/actions/assistant";
 import { MessageBubble } from "./assistant-parts";
+import { useLongPress } from "./use-long-press";
 
 /**
  * El asistente del equipo: un botón flotante en todas las pantallas del panel y, al
@@ -16,6 +17,8 @@ import { MessageBubble } from "./assistant-parts";
  */
 
 export const ASSISTANT_FULL_PATH = "/dashboard/asistente";
+/** La Bandeja: ahí el botón va siempre como pestañita (no tapa la caja de escribir). */
+const INBOX_PATH = "/dashboard/inbox";
 
 const OPEN_KEY = "rer-assistant-open";
 const OPEN_EVENT = "rer-assistant-open-change";
@@ -126,6 +129,13 @@ export function AssistantDock() {
     window.dispatchEvent(new Event(LAUNCHER_EVENT));
   }, []);
 
+  // En la Bandeja el botón redondo tapaba el micrófono y el de mandar del chat:
+  // ahí siempre va la pestañita, sin tocar lo que la persona eligió para el resto.
+  const forcedTab = !!pathname?.startsWith(INBOX_PATH);
+  const shownLauncher: Launcher = forcedTab ? "tab" : launcher;
+  // En el celular (sin mouse) se cambia de forma manteniendo apretado 2 segundos.
+  const longPress = useLongPress(forcedTab ? null : () => setLauncher(shownLauncher === "tab" ? "bubble" : "tab"));
+
   useEffect(() => {
     if (!open) return;
     inputRef.current?.focus();
@@ -174,23 +184,31 @@ export function AssistantDock() {
   if (pathname?.startsWith(ASSISTANT_FULL_PATH)) return null;
 
   if (!open) {
-    // El botoncito de achicar o volver se ve al pasar el mouse o con el teclado; en un teléfono (sin mouse), siempre.
+    // El botoncito de achicar o volver se ve al pasar el mouse o con el teclado; en un teléfono (sin mouse) no
+    // aparece: ahí se mantiene apretado el botón 2 segundos.
     const miniButton =
-      "absolute flex size-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100";
+      "absolute flex size-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:none)]:hidden";
+    const openFromLauncher = (e: ReactMouseEvent) => {
+      if (longPress.swallowClick(e)) return;
+      setOpen(true);
+    };
 
-    if (launcher === "tab") {
+    if (shownLauncher === "tab") {
       // La pestañita: finita, pegada al borde derecho y más arriba, para no tapar el botón de mandar del chat.
       return (
         <div className="group fixed bottom-28 right-0 z-40 flex items-center">
-          <button type="button" onClick={() => setLauncher("bubble")} aria-label="Volver el botón a su lugar" title="Volver el botón a su lugar" className={`${miniButton} -top-6 right-1`}>
-            <Undo2 className="size-3" aria-hidden />
-          </button>
+          {!forcedTab && (
+            <button type="button" onClick={() => setLauncher("bubble")} aria-label="Volver el botón a su lugar" title="Volver el botón a su lugar" className={`${miniButton} -top-6 right-1`}>
+              <Undo2 className="size-3" aria-hidden />
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setOpen(true)}
+            onClick={openFromLauncher}
+            {...longPress.handlers}
             aria-label="Abrir el asistente"
             title="Asistente"
-            className="flex h-11 w-2.5 items-center justify-center overflow-hidden rounded-l-md bg-primary text-primary-foreground shadow-lg transition-[width] duration-150 group-hover:w-9 focus-visible:w-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge [@media(hover:none)]:w-7"
+            className="flex h-11 w-2.5 select-none items-center [-webkit-touch-callout:none] justify-center overflow-hidden rounded-l-md bg-primary text-primary-foreground shadow-lg transition-[width] duration-150 group-hover:w-9 focus-visible:w-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge [@media(hover:none)]:w-7"
           >
             <Sparkles className="size-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100" aria-hidden />
           </button>
@@ -202,10 +220,11 @@ export function AssistantDock() {
       <div className="group fixed bottom-4 right-4 z-40">
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={openFromLauncher}
+          {...longPress.handlers}
           aria-label="Abrir el asistente"
           title="Asistente"
-          className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-offset-2 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge"
+          className="flex size-12 select-none [-webkit-touch-callout:none] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-offset-2 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge"
         >
           <Sparkles className="size-5" aria-hidden />
         </button>

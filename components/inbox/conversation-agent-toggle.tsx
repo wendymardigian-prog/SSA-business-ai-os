@@ -163,9 +163,12 @@ export function ConversationAgentToggle({
           ) : (
             <Bot className={on ? "h-3.5 w-3.5 text-emerald-600" : "h-3.5 w-3.5 text-muted-foreground"} aria-hidden />
           )}
-          <span className="text-muted-foreground">IA:</span>
-          {MODE_LABELS[mode]}
-          <ChevronDown className="h-3 w-3 text-muted-foreground" aria-hidden />
+          {/* Con el hilo angosto queda solo el icono (el estado sigue en el
+              tooltip y en el texto para el lector de pantalla). */}
+          <span className="hidden text-muted-foreground @md:inline">IA:</span>
+          <span className="hidden @md:inline">{MODE_LABELS[mode]}</span>
+          <span className="sr-only @md:hidden">IA: {MODE_LABELS[mode]}</span>
+          <ChevronDown className="hidden h-3 w-3 text-muted-foreground @md:block" aria-hidden />
         </button>
       </Tip>
       {/* La explicacion del estado, para el lector de pantalla (el tooltip
