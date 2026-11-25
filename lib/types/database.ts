@@ -207,6 +207,8 @@ export type InboundWebhookRow = {
   reprocess_count: number;
   processing_started_at: string | null;
   processed_at: string | null;
+  /** 00515: las cabeceras del envío, saneadas (sin secreto, credenciales ni IP). */
+  headers: Json | null;
 };
 // @plantilla-hasta(webhooks)
 
@@ -2617,6 +2619,10 @@ export interface Database {
           error_kind: string | null;
           /** 00317: el handle crudo por el que siguio el paso (`true`, `else`, `reply`...). */
           exit_handle: string | null;
+          /** 00515: con qué datos corrió el paso. Datos personales: la sesión no lo puede leer. */
+          input: Json | null;
+          /** 00515: qué dejó el paso. Datos personales: la sesión no lo puede leer. */
+          output: Json | null;
         };
         Insert: {
           id?: string;
@@ -2633,6 +2639,8 @@ export interface Database {
           resumes_at?: string | null;
           started_at: string;
           finished_at?: string;
+          input?: Json | null;
+          output?: Json | null;
         };
         Update: Record<string, never>;
         Relationships: [
