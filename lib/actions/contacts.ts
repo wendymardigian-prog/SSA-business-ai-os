@@ -11,6 +11,7 @@ import { parseTrackingParams } from "@/lib/contacts/attribution";
 import { recordManualTouch } from "@/lib/contacts/touch-entry";
 import { findOrCreateContact } from "@/lib/contacts/find-or-create";
 import { describeContactUniqueViolation } from "@/lib/contacts/unique-errors";
+import { ownContactsFilter } from "@/lib/contacts/own-scope-filter";
 import type { Json } from "@/lib/types/database";
 import { BULK_TAG_LIMIT } from "@/lib/tags/effects";
 import { mergeErrorMessage, mergeNotes, summarizeMerge } from "@/lib/contacts/merge";
@@ -464,34 +465,62 @@ async function pauseSequencesForOptOut(
 // Borrado logico (F15)
 // ------------------------------------------------------------------
 
-/** Marca el contacto como borrado. A los 30 dias lo purga el cron. */
+/**
+ * Marca el contacto como borrado. A los 30 dias lo purga el cron.
+ *
+ * Se escribe con el cliente de SERVIDOR, no con el del usuario: la policy de
+ * lectura de `contacts` (`deleted_at IS NULL`, 00024) tambien se le exige a la
+ * fila NUEVA de un UPDATE con WHERE, y una fila recien marcada como borrada no
+ * la pasa. Con la sesion la base rechazaba todo borrado, tambien el del Owner
+ * ("new row violates row-level security policy"). Lo mismo con `conversations`.
+ * El permiso ya se comprobo (`contacts.delete`) y que la persona VE el contacto
+ * se comprueba leyendolo con su sesion (`can_see_contact`) antes de escribir.
+ */
 export async function softDeleteContact(contactId: string): Promise<ContactActionResult> {
   const ctx = await getPermissionAction("contacts.delete");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden eliminar contactos" };
 
   const { workspace, supabase, user } = ctx;
-  const now = new Date().toISOString();
 
-  const { error } = await supabase
+  const { data: visible, error: readError } = await supabase
+    .from("contacts")
+    .select("id")
+    .eq("id", contactId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (readError) {
+    console.error("[contacts] borrado: no pude leer el contacto:", readError.message);
+    return { ok: false, error: "No pude eliminar el contacto. Volvé a intentarlo." };
+  }
+  if (!visible) return { ok: false, error: "No encuentro ese contacto" };
+
+  const now = new Date().toISOString();
+  const service = await createServiceClient();
+  const { data: marked, error } = await service
     .from("contacts")
     .update({ deleted_at: now })
     .eq("id", contactId)
     .eq("workspace_id", workspace.id)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .select("id");
 
   if (error) {
     console.error("[contacts] borrado fallido:", error.message);
     return { ok: false, error: `No pude eliminar el contacto: ${error.message}` };
   }
+  // Otra persona (o un doble clic) lo elimino en el medio.
+  if (!marked || marked.length === 0) return { ok: false, error: "No encuentro ese contacto" };
 
   // Las conversaciones acompañan al contacto: si no, quedan hilos en la
   // bandeja apuntando a alguien que ya no esta en la lista.
-  await supabase
+  const { error: convError } = await service
     .from("conversations")
     .update({ deleted_at: now })
     .eq("contact_id", contactId)
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null);
+  if (convError) console.error("[contacts] no pude ocultar las conversaciones del contacto:", convError.message);
 
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "contact", entityId: contactId,
@@ -502,21 +531,30 @@ export async function softDeleteContact(contactId: string): Promise<ContactActio
   return { ok: true, contactId };
 }
 
-/** Deshace el borrado mientras el cron no lo haya purgado. */
+/**
+ * Deshace el borrado mientras el cron no lo haya purgado.
+ *
+ * Con el cliente de SERVIDOR: la policy de lectura esconde los borrados, y un
+ * UPDATE con WHERE con la sesion no encontraba la fila (0 filas, sin error:
+ * decia "listo" sin restaurar nada). El alcance se aplica a mano con el mismo
+ * filtro que usa la Papelera para listarlos (`ownContactsFilter`).
+ */
 export async function restoreContact(contactId: string): Promise<ContactActionResult> {
   const ctx = await getPermissionAction("contacts.delete");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden restaurar contactos" };
 
   const { workspace, supabase, user } = ctx;
+  const service = await createServiceClient();
 
-  // La policy de SELECT esconde los borrados, asi que el UPDATE se hace a
-  // ciegas por id + workspace. El USING del UPDATE no filtra deleted_at
-  // justamente para que esto sea posible.
-  const { error } = await supabase
+  let restore = service
     .from("contacts")
     .update({ deleted_at: null })
     .eq("id", contactId)
-    .eq("workspace_id", workspace.id);
+    .eq("workspace_id", workspace.id)
+    .not("deleted_at", "is", null);
+  const leadsFilter = ownContactsFilter(ctx);
+  if (leadsFilter) restore = restore.or(leadsFilter);
+  const { data: restored, error } = await restore.select("id");
 
   if (error) {
     // Mientras estuvo borrado, otra persona pudo cargar el mismo telefono o email.
@@ -525,12 +563,14 @@ export async function restoreContact(contactId: string): Promise<ContactActionRe
     console.error("[contacts] restauracion fallida:", error.message);
     return { ok: false, error: `No pude restaurar el contacto: ${error.message}` };
   }
+  if (!restored || restored.length === 0) return { ok: false, error: "No encuentro ese contacto en la Papelera" };
 
-  await supabase
+  const { error: convError } = await service
     .from("conversations")
     .update({ deleted_at: null })
     .eq("contact_id", contactId)
     .eq("workspace_id", workspace.id);
+  if (convError) console.error("[contacts] no pude devolver las conversaciones del contacto:", convError.message);
 
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "contact", entityId: contactId,
