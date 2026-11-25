@@ -19,6 +19,8 @@ import { resolveBrand } from "@/lib/brand";
 import { ProgramPointsPanel, type RankingRow } from "@/components/services/portal/program-points-panel";
 import type { PointsSettings } from "@/lib/portal-points/rules";
 import { ProgramAssistant, type AssistantUsage, type TutorKnowledge } from "@/components/services/portal/program-assistant";
+import { ProgramTutorConversations } from "@/components/services/portal/program-tutor-conversations";
+import { CONVERSATION_FILTERS, CONVERSATION_FILTER_LABELS, parseConversationFilter, readConversationsPage } from "@/lib/program/tutor-conversations";
 import { svcSchema } from "@/lib/services/db";
 import { loadServicePicker } from "@/lib/services/service-picker-load";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -213,6 +215,21 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   // Asistente IA (F84-F86, F110): el tutor, sus límites, el uso del mes y la base de conocimiento. El tutor y los otros
   // programas se leen con el cliente de servicio, del negocio de la sesión, después del permiso de la página.
   async function assistantTab() {
+    // «Conversaciones» (00513): lo que preguntan los estudiantes y cómo respondió el tutor. La base mira el permiso
+    // (`services.view` o `tutor.manage`, igual que el uso del mes).
+    if (assistantView === "conversaciones") {
+      const filter = parseConversationFilter(sp.filtro);
+      const res = await svcRpc<unknown>(supabase, "tutor_conversations", { p_product_id: productId, p_filter: filter, p_limit: 30, p_before: null });
+      return (
+        <ProgramTutorConversations
+          key={filter}
+          productId={productId}
+          filter={filter}
+          initial={res.ok ? readConversationsPage(res.data) : null}
+          error={res.ok ? null : res.error.message}
+        />
+      );
+    }
     const service = await createServiceClient();
     const [{ data: tutorRow }, { data: others }, usage, knowledge] = await Promise.all([
       service.from("products").select("tutor_agent_id" as never).eq("id", productId).eq("workspace_id", workspace.id).maybeSingle(),
@@ -315,6 +332,7 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   const base = `/dashboard/portal/${p.id}`;
   const calView = sp.vista === "mes" || sp.vista === "series" || sp.vista === "grilla" ? sp.vista : "lista";
   const calMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.mes ?? "") ? (sp.mes as string) : new Date().toISOString().slice(0, 7);
+  const assistantView = sp.vista === "conversaciones" ? "conversaciones" : "tutor";
   const calHref = (v: string, extra: Record<string, string> = {}) => `${base}?${new URLSearchParams({ tab: "calendario", vista: v, mes: calMonth, ...extra })}`;
   let view: React.ReactNode = null;
   let quickFilter: React.ReactNode = null;
@@ -357,6 +375,32 @@ export default async function PortalProgramPage({ params, searchParams }: { para
         label: multiCommunity ? "Comunidades y espacios" : "Espacios de la comunidad",
         href: intentHref(`${base}?${new URLSearchParams({ tab: "comunidad", ...(keepCommunity ? { comunidad: keepCommunity } : {}) })}`, "espacios", "1"),
       });
+    }
+  } else if (tab === "asistente") {
+    const assistantHref = (extra: Record<string, string> = {}) => `${base}?${new URLSearchParams({ tab: "asistente", ...extra })}`;
+    view = (
+      <LinkViewToggle
+        label="Vistas del Asistente IA"
+        value={assistantView}
+        options={[
+          { value: "tutor", label: "Tutor", href: assistantHref() },
+          { value: "conversaciones", label: "Conversaciones", href: assistantHref({ vista: "conversaciones" }) },
+        ]}
+      />
+    );
+    if (assistantView === "conversaciones") {
+      quickFilter = (
+        <LinkQuickFilterMenu
+          label="Mostrar"
+          value={parseConversationFilter(sp.filtro)}
+          allKey="todas"
+          options={CONVERSATION_FILTERS.map((f) => ({
+            key: f,
+            label: CONVERSATION_FILTER_LABELS[f],
+            href: assistantHref(f === "todas" ? { vista: "conversaciones" } : { vista: "conversaciones", filtro: f }),
+          }))}
+        />
+      );
     }
   } else if (tab === "puntos" && multiCommunity) {
     view = communityToggle("puntos");
