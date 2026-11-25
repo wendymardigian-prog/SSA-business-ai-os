@@ -39,8 +39,8 @@ export type RevertPlan =
   /** Calificación (00329): el nivel vuelve al anterior, por `set_contact_qualification` (queda en el historial). */
   | { kind: "qualification"; contactId: string; level: number | null };
 
-/** Las acciones del agente que se pueden deshacer desde la pestana. */
-export const REVERTIBLE_ACTIONS: AuditAction[] = ["tag", "temperature", "followup", "summary", "assign", "human_takeover", "agent_paused", "update", "setter_status", "qualification"];
+/** Las acciones del agente que se pueden deshacer desde la pestana (en su propio archivo: la pantalla la importa). */
+export { REVERTIBLE_ACTIONS } from "./revertible-actions";
 
 function change(entry: AuditEntry, field: string): { old: Json; new: Json } | null {
   const changes = entry.changes;

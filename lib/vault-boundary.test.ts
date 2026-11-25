@@ -202,6 +202,16 @@ describe("limite del servidor: lib/vault.ts", () => {
     // por defecto (corrido solo tarda ~4 s). El tiempo propio no cambia nada de lo que comprueba.
   }, 30_000);
 
+  it("ningun Client Component llega a lib/request-identity.ts (node:async_hooks; RER #109)", () => {
+    const identity = join(ROOT, "lib/request-identity.ts");
+    const offenders = clientFiles
+      .map((f) => ({ file: f, chain: pathTo(f, identity) }))
+      .filter((r) => r.chain)
+      .map((r) => r.chain!.map((f) => relative(ROOT, f)).join(" -> "));
+
+    expect(offenders).toEqual([]);
+  }, 30_000);
+
   it("la lista de modulos prohibidos existe y apunta a archivos reales", () => {
     for (const entry of SERVER_ONLY) {
       expect(existsSync(entry.file), entry.label).toBe(true);
