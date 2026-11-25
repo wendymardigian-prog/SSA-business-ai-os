@@ -25,7 +25,7 @@ import { sendTeamWhatsApp } from "@/lib/notifications/team-whatsapp";
 import { readSecret } from "@/lib/vault";
 import { SECRET_NAMES } from "@/lib/secret-names";
 import { postMessage as postSlackMessage, slackNotificationText } from "@/lib/integrations/slack";
-import { notifyIntegrationAttention } from "@/lib/notifications/integration-alerts";
+import { alertSlackTokenRejected } from "@/lib/integrations/slack-alert";
 
 type Db = SupabaseClient<Database>;
 
@@ -129,21 +129,8 @@ export function realDeliverDeps(db: Db): DeliverDeps {
       const result = await postSlackMessage(token, to, slackNotificationText({ title: n.title, body: n.body, url: absolute(link) }));
       if (result.ok) return { ok: true };
       if (result.invalidToken) {
-        // Token inválido: la tarjeta queda con el error y Owner/Admin reciben un aviso (con su ventana de repetición).
-        await db
-          .from("integration_configs")
-          .update({ last_error: "Slack rechazó el token del bot." })
-          .eq("workspace_id", n.workspace_id)
-          .eq("type", "slack")
-          .eq("provider", "slack");
-        await notifyIntegrationAttention({
-          supabase: db,
-          workspaceId: n.workspace_id,
-          providerId: "slack",
-          providerLabel: "Slack",
-          cause: "revoked",
-          detail: "Slack rechazó el token del bot: los avisos por Slack no salen hasta que lo vuelvas a conectar.",
-        }).catch(() => undefined);
+        // Token inválido: la tarjeta queda con el error y Owner/Admin reciben «Fallos del sistema» (una vez por semana).
+        await alertSlackTokenRejected(db, n.workspace_id);
       }
       return { ok: false, retryable: result.temporary };
     },

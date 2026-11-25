@@ -76,6 +76,8 @@ const MANUAL: Record<string, Triple> = {
   // RLS de la grabación (lee con la sesión). Se clasificó al traer main a la rama de IA (18/11/2026).
   "lib/actions/call-action-proposals.ts#resolveCallProposal": [true, true, true], // @plantilla-quitar(llamadas)
   "lib/actions/calls-badge.ts#countMyPendingProposals": [true, true, true], // @plantilla-quitar(llamadas)
+  // Cada persona guarda SUS avisos; `isAdminRole` solo frena los avisos que no son para su rol (Fallos del sistema, 25/11/2026).
+  "lib/actions/account.ts#setNotificationPref": [true, true, true],
   // Poner la marca puede cualquiera; QUITARLA exige `getAdminContext` (rama parcial).
   "lib/actions/contacts.ts#setDoNotContact": [true, true, "partial"],
 };
