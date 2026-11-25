@@ -347,14 +347,14 @@ export default async function AgentDetailPage({
         ? await service.from("agent_learned_rules").select("id, reason_key, text, status, evidence, rejections, proposed_at, decided_at, decided_by").eq("agent_id", agent.id).neq("status", "discarded").order("proposed_at", { ascending: false }).limit(50)
         : null;
     // Los analizadores por tipo de reunión del área de este agente: se editan desde su página.
-    let analyzers: AgentScreenData["analyzers"] = null;
     // @plantilla-desde(llamadas)
+    let analyzers: AgentScreenData["analyzers"] = null;
     const analyzerArea = on("config") && typeDef.configSections.includes("analyzers") ? areaKeyForAnalyzerAgent(agent.type) : null;
     analyzers = analyzerArea ? await loadAreaAnalyzers(analyzerArea) : null;
     // @plantilla-hasta(llamadas)
     const data: AgentScreenData = {
       viewer: { isAdmin: canEdit, permissionKeys: permissions.permissions.keys },
-      analyzers,
+      analyzers, // @plantilla-quitar(llamadas)
       copywriter,
       costs,
       actions,

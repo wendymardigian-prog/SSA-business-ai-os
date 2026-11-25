@@ -40,6 +40,10 @@ export const MODULES = {
       "lib/actions/call-task-settings.test.ts",
       "lib/actions/calls-edit.ts",
       "lib/actions/calls-edit.test.ts",
+      "lib/actions/calls-panel.ts",
+      // Los analizadores por área (00536): el modelo del agente de Ventas o Servicio para el análisis de grabaciones.
+      "lib/ai-tasks/area-analyzer-models.ts",
+      "lib/ai-tasks/area-analyzer-models.test.ts",
       "lib/actions/calls-import.ts",
       "lib/actions/calls-import.test.ts",
       "lib/actions/calls-link.ts",

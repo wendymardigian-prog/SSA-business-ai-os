@@ -5,7 +5,7 @@ import type { Json } from "@/lib/types/database";
 import type { DatePreset } from "@/lib/dates";
 import type { ScreenSkill, ScreenTool } from "./tools/config";
 import type { ToolConfigOption, ToolOptionSource } from "./tools/types";
-import type { CallConfigData } from "@/lib/calls/config-data";
+import type { CallConfigData } from "@/lib/calls/config-data"; // @plantilla-quitar(llamadas)
 
 /**
  * Lo que la pantalla de Agentes recibe del servidor, ya aplanado. Sin
@@ -266,11 +266,13 @@ export interface AgentScreenData {
   viewer: { isAdmin: boolean; permissionKeys?: string[] };
   /** Solo cuando la pestana activa es Etiquetas (y solo Owner/Admin). */
   tags?: TagsTabData;
+  // @plantilla-desde(llamadas)
   /**
    * Los analizadores por tipo de reunión del área de este agente (Analizador de reuniones de Ventas o de Servicio,
    * `lib/calls/area-analyzers.ts`): se editan ahí mismo. Solo en Configuración. `areaIds` filtra la lista.
    */
   analyzers?: { call: Extract<CallConfigData, { task: "call_analysis" }>; areaIds: string[] } | null;
+  // @plantilla-hasta(llamadas)
   /**
    * Solo Owner/Admin. Es una PROMESA: la pagina no la espera, la vista la
    * muestra cuando llega (el reporte del mes es lo mas pesado de la cabecera).

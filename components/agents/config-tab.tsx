@@ -13,7 +13,7 @@ import { LearningSection } from "./learning-section";
 import { LearnedRulesPanel } from "./learned-rules-panel";
 import { AssistantToolsSection } from "./assistant-tools-section";
 import { ProfileList } from "@/components/agents/tasks/calls/analysis-config"; // @plantilla-quitar(llamadas)
-import Link from "next/link";
+import Link from "next/link"; // @plantilla-quitar(llamadas)
 import { Checkbox, Field, Notice, NumberInput, Section, inputClass, linesToList } from "./fields";
 import { BusinessTimeNote, InViewerZone } from "@/components/ui/business-time-note";
 
@@ -462,7 +462,7 @@ export function ConfigTab({ data, typeDef }: { data: AgentScreenData; typeDef: A
       {typeDef.configSections.includes("learning") && data.learnedRules && <LearnedRulesPanel data={data} />}
       {typeDef.configSections.includes("learning") && <LearningSection data={data} />}
       {typeDef.configSections.includes("assistant_tools") && <AssistantToolsSection data={data} />}
-      {typeDef.configSections.includes("analyzers") && <AnalyzersSection data={data} />}
+      {typeDef.configSections.includes("analyzers") && <AnalyzersSection data={data} />} {/* @plantilla-quitar(llamadas) */}
       {typeDef.configSections.map((key) => {
         const render = SECTIONS[key];
         return render ? <div key={key}>{render({ form, set, data, typeDef })}</div> : null;
@@ -502,6 +502,7 @@ export function ConfigTab({ data, typeDef }: { data: AgentScreenData; typeDef: A
   );
 }
 
+// @plantilla-desde(llamadas)
 /**
  * Los analizadores por tipo de reunión del área de este agente (Ventas o Servicio): instrucciones (con su historial de
  * quién y cuándo), rúbrica y modo, ahí mismo. Lo que comparten todos (contexto del negocio, categorías) sigue en
@@ -528,3 +529,4 @@ function AnalyzersSection({ data }: { data: AgentScreenData }) {
     </Section>
   );
 }
+// @plantilla-hasta(llamadas)
