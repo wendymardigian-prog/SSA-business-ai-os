@@ -85,6 +85,15 @@ sin contestar).
 - **Evaluaciones y actividades** son formularios de tipo `quiz` / `activity` atados al programa (no aparecen en
   Formularios ni tienen página pública). La nota la calcula la base; las respuestas correctas nunca salen. Portal ›
   Por revisar tiene las entregas (`submissions.review`) y los comentarios sin contestar.
+  **Encuestas en las actividades (00512)**: una actividad puede tener preguntas de **estrellas** (`rating`, 1 a 5, con
+  `min`/`max` en la definición: la misma convención que las encuestas de Formularios, así un tablero común las suma sin
+  convertir nada) y cada pregunta suma una **ayuda** (`help`, hasta 300 caracteres): en un texto se ve dentro del
+  cuadro; en estrellas u opciones, debajo de la pregunta. Las reglas del editor y del guardado viven en
+  `lib/program/activity-fields.ts`. `portal_submit` valida estrellas y opciones con `activity_answers_valid` (gemela
+  `lib/program/activity-answers.ts`, casos en `activity-answers.cases.json`; una respuesta vieja guardada no se toca).
+  La entrega sigue pasando por Por revisar (ahí se ve «★★★★☆ (4)») y el editor de la actividad muestra el promedio de
+  cada pregunta de estrellas con la última entrega de cada estudiante (`loadActivityRatings`). El portal dibuja las
+  estrellas, las opciones de selección y el texto corto (antes todo era un cuadro de texto).
 - **Calendario**: las fechas no se guardan, se calculan en la zona de la sesión (`live_session_occurrences`). El link
   de la reunión no lo lee la sesión (permiso por columnas). La asistencia se mide sobre su base (todos con acceso,
   empezaron hace N días, una fase o una variante); quien asiste fuera de la base queda registrado sin sumar ni restar.

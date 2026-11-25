@@ -8,6 +8,7 @@ import { filesOfAnswers } from "@/lib/forms/files";
 import type { ReviewItem } from "@/lib/program/load-review";
 import { gradeLabel, isLatestSubmission, matchesReviewFilter, reviewRowView, submissionHistory, type ReviewFilter } from "@/lib/program/review";
 import { SCALE_LABELS, WORD_LABELS, WORD_SCALE } from "@/lib/program/grading";
+import { ratingAnswerLabel } from "@/lib/program/activity-survey";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 import { ClickableTr } from "@/components/ui/clickable-row";
@@ -129,11 +130,14 @@ export function ReviewDrawer({ item, history = [], timeZone, canReview, onClose,
         <dl className="space-y-3">
           {item.fields.map((f) => {
             const a = item.answers[f.key];
+            const stars = f.type === "rating" ? ratingAnswerLabel(a) : null;
             return (
               <div key={f.key}>
                 <dt className="text-xs text-muted-foreground">{f.label}</dt>
                 <dd className="whitespace-pre-wrap text-sm">
-                  {filesOfAnswers({ [f.key]: a }).length ? (
+                  {stars ? (
+                    <span aria-label={`${a} de 5 estrellas`}>{stars}</span>
+                  ) : filesOfAnswers({ [f.key]: a }).length ? (
                     <SubmissionFiles submissionId={item.id} files={filesOfAnswers({ [f.key]: a })} />
                   ) : Array.isArray(a) ? (
                     a.join(", ")

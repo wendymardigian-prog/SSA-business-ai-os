@@ -3,12 +3,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Star, Trash2 } from "lucide-react";
 import { savePortalForm, type PortalFormField } from "@/lib/actions/program";
 import { quizDefinitionIssues, type QuizSettings } from "@/lib/program/quiz";
 import { DEFAULT_PASS_AT, GRADING_SCALES, SCALE_LABELS, WORD_LABELS, WORD_SCALE, gradingIssues, type GradingDef } from "@/lib/program/grading";
 import { DEFAULT_SUBMISSION_LIMITS, submissionLimitsIssues, type SubmissionLimits } from "@/lib/program/submission-limits";
 import { fieldInput } from "@/components/content/dialog";
+import { HELP_MAX, fieldForType } from "@/lib/program/activity-fields";
+import type { RatingQuestionSummary } from "@/lib/program/activity-survey";
 
 type Kind = "quiz" | "activity" | "terms";
 
@@ -22,6 +24,8 @@ export interface PortalFormInitial {
   submission?: SubmissionLimits;
   /** Solo actividades y evaluaciones (F129): puntos propios al entregar y al aprobar; vacío = los del programa. */
   points?: { submit?: number | null; pass?: number | null } | null;
+  /** Solo actividades: promedio y cantidad de cada pregunta de estrellas (última entrega de cada estudiante). */
+  ratings?: RatingQuestionSummary[];
 }
 
 const TYPES: Record<Kind, Array<{ v: PortalFormField["type"]; label: string }>> = {
@@ -35,6 +39,7 @@ const TYPES: Record<Kind, Array<{ v: PortalFormField["type"]; label: string }>> 
     { v: "file", label: "Archivo" },
     { v: "single_select", label: "Selección única" },
     { v: "multi_select", label: "Selección múltiple" },
+    { v: "rating", label: "Estrellas (1 a 5)" },
   ],
   terms: [{ v: "consent", label: "Compromiso para tildar" }],
 };
@@ -142,6 +147,23 @@ export function PortalFormEditor({ productId, kind, itemId, initial, canEdit }: 
         {kind === "terms" ? "Texto de los términos" : "Instrucciones"}
         <textarea className={fieldInput} rows={kind === "terms" ? 6 : 3} value={intro} disabled={disabled} onChange={(e) => setIntro(e.target.value)} />
       </label>
+      {kind === "activity" && (initial.ratings?.length ?? 0) > 0 && (
+        <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs">
+          <p className="font-semibold text-foreground">Cómo la vienen puntuando</p>
+          <ul className="mt-1 space-y-0.5 text-muted-foreground">
+            {initial.ratings!.map((r) => (
+              <li key={r.key} className="flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 truncate">{r.label || "Estrellas"}</span>
+                <span className="tabular-nums text-foreground">
+                  {r.average === null ? "—" : `${r.average.toLocaleString("es-AR")} de ${r.max} ★`}
+                  <span className="ml-1 text-muted-foreground">· {r.responses === 1 ? "1 respuesta" : `${r.responses} respuestas`}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-muted-foreground">Cuenta la última entrega de cada estudiante.</p>
+        </div>
+      )}
 
       <ol className="space-y-3">
         {fields.map((f, idx) => {
@@ -158,7 +180,7 @@ export function PortalFormEditor({ productId, kind, itemId, initial, canEdit }: 
                 )}
               </div>
               {TYPES[kind].length > 1 && (
-                <select className={fieldInput} value={f.type} disabled={disabled} onChange={(e) => setField(f.key, { type: e.target.value as PortalFormField["type"], options: e.target.value.endsWith("select") ? f.options ?? ["", ""] : undefined })}>
+                <select className={fieldInput} value={f.type} disabled={disabled} onChange={(e) => setFields((fs) => fs.map((x) => (x.key === f.key ? fieldForType(x, e.target.value as PortalFormField["type"]) : x)))}>
                   {TYPES[kind].map((t) => (
                     <option key={t.v} value={t.v}>
                       {t.label}
@@ -219,6 +241,27 @@ export function PortalFormEditor({ productId, kind, itemId, initial, canEdit }: 
                     </label>
                   )}
                 </div>
+              )}
+              {kind === "activity" && f.type === "rating" && (
+                <div className="flex items-center gap-1 text-muted-foreground" aria-label="Vista previa: 5 estrellas">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <Star key={n} className="h-5 w-5" aria-hidden />
+                  ))}
+                  <span className="ml-1 text-xs">El estudiante elige de 1 a 5</span>
+                </div>
+              )}
+              {kind === "activity" && f.type !== "file" && (
+                <label className="block text-xs text-muted-foreground">
+                  {f.type === "long_text" || f.type === "short_text" ? "Ayuda (lo que se ve dentro del cuadro, opcional)" : "Ayuda (una aclaración debajo de la pregunta, opcional)"}
+                  <input
+                    className={fieldInput}
+                    value={f.help ?? ""}
+                    maxLength={HELP_MAX}
+                    disabled={disabled}
+                    placeholder={f.type === "long_text" ? "Ej.: Contanos qué te gustó, qué te costó entender, si te quedaron dudas o qué mejorarías" : f.type === "rating" ? "Ej.: 1 = nada · 5 = muchísimo" : ""}
+                    onChange={(e) => setField(f.key, { help: e.target.value })}
+                  />
+                </label>
               )}
               {kind === "activity" && (
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">

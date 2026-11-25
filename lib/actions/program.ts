@@ -18,6 +18,7 @@ import { indexLessonPageQuietly } from "@/lib/program/page-store";
 import { quizDefinitionIssues, type QuizSettings } from "@/lib/program/quiz";
 import { gradingIssues, type GradingDef } from "@/lib/program/grading";
 import { DEFAULT_SUBMISSION_LIMITS, limitValue, submissionLimitsIssues, type SubmissionLimits } from "@/lib/program/submission-limits";
+import { fieldDefinition, portalFieldsIssue, type PortalFieldInput } from "@/lib/program/activity-fields";
 
 /**
  * El contenido del programa (bloque PR). Escribir pide `program.manage`; prender, apagar y archivar,
@@ -183,20 +184,8 @@ export async function setModuleOverride(
 
 // ─── Evaluaciones, actividades y términos (bloque EV) ───────────────────────
 
-export interface PortalFormField {
-  key: string;
-  type: "short_text" | "long_text" | "file" | "single_select" | "multi_select" | "consent";
-  label: string;
-  required: boolean;
-  options?: string[];
-  consentText?: string;
-}
-
-const PORTAL_FIELD_TYPES: Record<"quiz" | "activity" | "terms", readonly string[]> = {
-  quiz: ["single_select", "multi_select"],
-  activity: ["short_text", "long_text", "file", "single_select", "multi_select"],
-  terms: ["consent"],
-};
+/** Una pregunta del formulario (las reglas y los tipos de cada formulario viven en `lib/program/activity-fields.ts`). */
+export type PortalFormField = PortalFieldInput;
 
 /**
  * Guarda y publica el formulario de una evaluación, una actividad o los términos (F52-F55, F113). Es de un programa
@@ -211,15 +200,8 @@ export async function savePortalForm(
 ): Promise<SvcResult<{ formId: string }>> {
   const ctx = await getPermissionAction(target.kind === "terms" ? "portal.sections" : "program.manage");
   if (!ctx || !UUID.test(productId) || ("itemId" in target && !UUID.test(target.itemId))) return NOT_ALLOWED;
-  const allowed = PORTAL_FIELD_TYPES[target.kind];
-  const keys = new Set<string>();
-  for (const f of input.fields) {
-    if (!allowed.includes(f.type)) return fail(`«${f.label || f.key}»: ese tipo de pregunta no va acá`);
-    if (!/^[a-z][a-z0-9_]{0,39}$/.test(f.key) || keys.has(f.key)) return fail("Hay preguntas con la misma clave");
-    keys.add(f.key);
-    if ((f.type === "single_select" || f.type === "multi_select") && (f.options ?? []).filter((o) => o.trim()).length < 2) return fail(`«${f.label}»: agregá al menos dos opciones`);
-  }
-  if (input.fields.length === 0) return fail("Agregá al menos una pregunta");
+  const fieldsIssue = portalFieldsIssue(input.fields, target.kind);
+  if (fieldsIssue) return fail(fieldsIssue);
   if (target.kind === "quiz") {
     const problems = quizDefinitionIssues(input.quiz ?? {}, input.fields);
     if (problems.length) return fail(problems.join(". "));
@@ -241,7 +223,7 @@ export async function savePortalForm(
   }
   const definition: Record<string, unknown> = {
     intro: input.intro ?? "",
-    fields: input.fields.map((f) => ({ id: f.key, key: f.key, type: f.type, label: f.label, required: f.required, ...(f.options ? { options: f.options } : {}), ...(f.consentText ? { consentText: f.consentText } : {}) })),
+    fields: input.fields.map((f) => fieldDefinition(f, target.kind)),
   };
   if (target.kind === "quiz") definition.quiz = input.quiz ?? {};
   if (target.kind === "activity") {
