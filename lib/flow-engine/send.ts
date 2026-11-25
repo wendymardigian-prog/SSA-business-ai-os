@@ -4,6 +4,7 @@ import type { StepNote } from "./run-log";
 
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
+import { alertZernioKeyRejected } from "@/lib/integrations/zernio-alert";
 import { sendText, sendWhatsAppAudio, sendMedia, sendSticker, EvolutionError, type EvolutionConfig } from "@/lib/evolution-client";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { describeSendError, RATE_LIMIT_REACHED, type FriendlyError } from "@/lib/instagram-errors";
@@ -434,6 +435,8 @@ async function sendViaZernio(
     // mensaje y datos del contacto. Alcanza con el motivo.
     const failure = describeSendError(error);
     console.error(`[send] Instagram rechazo el envio (${failure.kind})`);
+    // Fallos del sistema: un 401 es la clave de Zernio, no el mensaje. Avisa a Owner y Admin. Nunca lanza.
+    await alertZernioKeyRejected(secrets, context.workspaceId, error);
     return { ok: false, failure };
   }
 }

@@ -36,6 +36,7 @@ import { canReadComments, readThreadsReplies, readYouTubeComments, readZernioCom
 import { storeComment } from "@/lib/comments/store";
 import { adoptOrphanComments } from "@/lib/comments/adopt";
 import { createZernioClient } from "@/lib/zernio-client";
+import { notifySystemFailure } from "@/lib/notifications/system-alerts";
 
 type Db = SupabaseClient<Database>;
 
@@ -75,7 +76,20 @@ async function oauthToken(
           vault_secret_prefix: data.vault_secret_prefix,
         }, adapter);
       } catch (err) {
-        console.error(`[metrics-sync] no pude renovar ${provider}:`, err instanceof Error ? err.message : err);
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error(`[metrics-sync] no pude renovar ${provider}:`, detail);
+        // Fallos del sistema (25/11/2026): la conexión del negocio no se renovó. Un aviso por proveedor (y canal, en
+        // YouTube) que no se repite en 7 días. Nunca lanza.
+        await notifySystemFailure({
+          supabase,
+          workspaceId,
+          type: "google_business_token_error",
+          key: `oauth:${provider}${externalAccountId ? `:${externalAccountId}` : ""}`,
+          title: `${adapter.label}: no se pudo renovar la conexión del negocio`,
+          body: `Motivo: ${detail}. Las métricas de esa red no se actualizan hasta reconectarla en Integraciones.`,
+          area: "integrations",
+          metadata: { provider },
+        });
         return null;
       }
     }

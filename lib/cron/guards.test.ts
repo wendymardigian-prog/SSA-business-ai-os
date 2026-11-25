@@ -300,6 +300,8 @@ const ENTRY_POINTS: Record<string, EntryPoint[]> = {
       calls: [
         "createServiceClient",
         "failJobAndSettleSession",
+        // Fallos del sistema (25/11/2026): avisa al dar un job por perdido. No es trabajo nuevo: no cambia la guarda.
+        "notifyJobFailure",
         "processJob",
         "purgeDeletedKnowledgeDocuments",
         "reapInboundWebhooks", // @plantilla-quitar(webhooks)

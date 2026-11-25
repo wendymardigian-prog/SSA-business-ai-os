@@ -2009,6 +2009,16 @@ node scripts/verify-account.mjs --despues-de-00275 # además, que cada aviso enc
 
 **SECURITY DEFINER cerradas para anon (2/11/2026).** `00276_security_definer_not_callable_by_anon`: a `can_give_role`, `can_grant_permissions` e `is_own_role` se les saca PUBLIC y anon (authenticated se queda: lo necesitan las policies de equipo), y a diez trigger functions de Agenda, Ventas, mensajes y roles se les saca PUBLIC, anon y authenticated (como la 00048). **Aplicada y registrada** el 2/11/2026 (versión `20261102230245`), con `verify-roles --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212 --despues-de-00249` en verde antes y después. En el linter, «Public Can Execute SECURITY DEFINER Function» queda solo con `get_public_form` (pública a propósito: `/f/[slug]`). Toda SECURITY DEFINER nueva lleva su `REVOKE ALL ... FROM PUBLIC, anon` (y `GRANT` explícito): la `00000` le da EXECUTE a anon por defecto. **La próxima libre es la `00277`** (confirmar con `list_migrations` y las ramas locales).
 
+# Fallos del sistema: avisos para Owner y Admin (25/11/2026, sin migración)
+
+Cuando algo deja de funcionar (un trabajo de la cola que se pierde, Slack, Resend, Zernio, Meta, la conexión de Google del negocio, el render, una conexión personal cortada), Owner y Admin reciben un aviso en **Mi cuenta → Notificaciones → «Fallos del sistema»**, con **campana, email y Slack prendidos de entrada** (WhatsApp apagado). Detalle y la lista completa en [docs/fallos-del-sistema.md](docs/fallos-del-sistema.md).
+
+- **Un solo camino: `notifySystemFailure`** (`lib/notifications/system-alerts.ts`). Nunca lanza, va sin `recipient_id` y con `entity_type: "system"`, y el clic sale de `metadata.area`. No repite el mismo tipo y clave en 7 días, **leído o no**. Lo que tiene estado avisa solo en la transición.
+- **Solo Owner y Admin**: el evento `system_failures` es `audience: { kind: "admins" }` sin permisos, y `setNotificationPref` rechaza en el servidor un evento que no es para el rol de la persona.
+- **El runner de la cola avisa al dar un trabajo por perdido** (`lib/jobs/failure-alert.ts`), salvo `notification_deliver` (sería un bucle) y los que ya tienen su aviso. Un trabajo nuevo suma su nombre en `JOB_LABELS`.
+- **Slack rechazado** va por `alertSlackTokenRejected` (`lib/integrations/slack-alert.ts`), desde la entrega de avisos y el paso «Enviar a Slack»; ya no es «Una integración necesita atención».
+- `svcRpc` guarda el texto original de la base en `error.technical`, solo para logs y avisos internos. `svc_daily` lo usa para decir por qué falló.
+
 # Broadcasts y la cola de envíos (3/11/2026)
 
 Un mensaje a muchos contactos por WhatsApp (Evolution) o email (Resend), con los MISMOS filtros de Contactos, variables con respaldo, hasta 5 variantes y una **cola de envíos** con ritmo por número. Resumen en [docs/broadcasts.md](docs/broadcasts.md).

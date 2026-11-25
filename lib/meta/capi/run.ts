@@ -19,6 +19,7 @@ import { buildCapiEvent, type CapiEventInput, type CapiSourceType, type SkipReas
 import { parseCapiConfig, META_CAPI_PROVIDER_ID, type CapiConfig } from "./config";
 import { sendCapiEvents } from "./send";
 import { normalizeIp, normalizeUserAgent } from "./normalize";
+import { notifySystemFailure } from "@/lib/notifications/system-alerts";
 
 type Db = SupabaseClient<Database>;
 
@@ -374,6 +375,17 @@ export async function runCapiSend(db: Db, payload: CapiSendPayload, deps: CapiRu
   };
   const fail = async (message: string): Promise<CapiOutcome> => {
     await update({ status: "failed", error: message.slice(0, 500), attempts: attempt });
+    // Fallos del sistema (25/11/2026): un aviso por negocio que no se repite en 7 días. Nunca lanza.
+    await notifySystemFailure({
+      supabase: db,
+      workspaceId: row.workspace_id,
+      type: "meta_capi_failed",
+      key: "capi",
+      title: "Meta: un evento no se pudo mandar a la API de Conversiones",
+      body: `Motivo: ${message}. Meta no cuenta ese lead, esa reunión o ese pago para optimizar los anuncios. Revisá el Pixel y el token en Integraciones.`,
+      area: "integrations",
+      metadata: { event_name: row.event_name },
+    });
     return "failed";
   };
   const retryLater = async (message: string): Promise<CapiOutcome> => {
