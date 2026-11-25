@@ -31,6 +31,8 @@ import { categorySnapshot } from "@/lib/scheduling/categories";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { transcriptText } from "@/lib/calls/transcript-text";
 import type { Json } from "@/lib/types/database";
+import { BULK_TYPE_LIMIT, type BulkSkipReason } from "@/lib/calls/bulk";
+import { RECLASSIFY_LIMIT, reclassifyDecision, type ReclassifySkip } from "@/lib/calls/reclassify-request";
 
 /**
  * Editar una llamada y su analisis (F18, F22 a F25). Todo con `calls.edit`.
@@ -55,41 +57,56 @@ function refresh(callId: string) {
   revalidatePath("/dashboard/llamadas");
 }
 
-async function loadSettings(workspaceId: string) {
-  const service = await createServiceClient();
-  const { data } = await service.from("workspaces").select("ai_background_settings").eq("id", workspaceId).maybeSingle();
-  return { service, settings: resolveCallTaskSettings(data?.ai_background_settings) };
-}
-
 // ── F18: cambiar el tipo ──────────────────────────────────────────────────
 
 export async function changeCallType(input: { callId: string; categoryId: string }): Promise<CallEditResult> {
   const ctx = await getPermissionAction("calls.edit");
   if (!ctx) return { ok: false, error: NOT_ALLOWED };
   if (!UUID.test(input.callId) || !UUID.test(input.categoryId)) return { ok: false, error: "Los datos no son válidos" };
+  const service = await createServiceClient();
+  const res = await applyCallType(ctx, service, input.callId, input.categoryId, { enqueue: true });
+  if (res.ok) refresh(input.callId);
+  return res;
+}
 
+type TypeEnv = { categories: ReturnType<typeof toCategoryRow>[]; profiles: Awaited<ReturnType<typeof loadCallProfiles>> };
+
+/**
+ * El núcleo de cambiar el tipo, para una o para varias (en grupo se carga el catálogo y los analizadores una sola vez).
+ * Lee la grabación con la SESIÓN (la RLS decide si la ve) y escribe con el cliente de servicio. Confirmar el mismo tipo
+ * que puso la IA en una «por revisar» también cuenta: queda como elegido por una persona y sale de la revisión.
+ * `enqueue`: si al quedar clasificada corresponde analizarla sola (lo de siempre); en «Analizar con IA» en grupo, no,
+ * porque las encola después el análisis, de a una.
+ */
+async function applyCallType(
+  ctx: Ctx,
+  service: Awaited<ReturnType<typeof createServiceClient>>,
+  callId: string,
+  categoryId: string,
+  opts: { enqueue: boolean },
+  env?: TypeEnv,
+): Promise<CallEditResult> {
   const { data: call } = await ctx.supabase
     .from("calls")
     .select("id, title, duration_seconds, attendees, category_id, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
-    .eq("id", input.callId)
+    .eq("id", callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
     .maybeSingle();
   if (!call) return { ok: false, error: NOT_FOUND };
 
-  const { service, settings } = await loadSettings(ctx.workspace.id);
-  const categories = (await listCategories(service, ctx.workspace.id)).map(toCategoryRow);
-  const chosen = categories.find((c) => c.id === input.categoryId && !c.archived_at);
+  const categories = env?.categories ?? (await listCategories(service, ctx.workspace.id)).map(toCategoryRow);
+  const chosen = categories.find((c) => c.id === categoryId && !c.archived_at);
   if (!chosen) return { ok: false, error: "Esa área o tipo ya no existe" };
-  if (call.category_id === input.categoryId) return { ok: true };
+  if (call.category_id === categoryId && call.analysis_status !== "needs_review") return { ok: true };
 
-  const snapshot = categorySnapshot(input.categoryId, categories);
+  const snapshot = categorySnapshot(categoryId, categories);
 
   // El estado solo se mueve mientras la llamada espera: una analizada o en curso no se toca.
   const movable = ["classifying", "needs_review", "pending", "not_applicable", "error"].includes(call.analysis_status);
   // Lo importado del historial no se analiza solo: se analiza con el boton.
-  const profiles = await loadCallProfiles(service, ctx.workspace.id);
-  const next = statusAfterClassification(resolveProfile(profiles, { categoryId: input.categoryId, areaId: snapshot.area_id }), {
+  const profiles = env?.profiles ?? (await loadCallProfiles(service, ctx.workspace.id));
+  const next = statusAfterClassification(resolveProfile(profiles, { categoryId, areaId: snapshot.area_id }), {
     transcript: call.transcript,
     title: call.title,
     duration_seconds: call.duration_seconds,
@@ -102,7 +119,7 @@ export async function changeCallType(input: { callId: string; categoryId: string
     .from("calls")
     .update({
       area_id: snapshot.area_id,
-      category_id: input.categoryId,
+      category_id: categoryId,
       category_snapshot: snapshot as unknown as Json,
       classification_source: "human",
       classification_rule: null,
@@ -114,7 +131,7 @@ export async function changeCallType(input: { callId: string; categoryId: string
     console.error("[llamadas] no pude cambiar el tipo:", error.message);
     return { ok: false, error: "No pude guardar el cambio" };
   }
-  if (movable && next.enqueueAnalysis) await enqueueCallJob(service, "call_analyze", call.id);
+  if (opts.enqueue && movable && next.enqueueAnalysis) await enqueueCallJob(service, "call_analyze", call.id);
 
   await logAudit({
     supabase: ctx.supabase,
@@ -126,8 +143,146 @@ export async function changeCallType(input: { callId: string; categoryId: string
     metadata: { source: "human", category: callCategoryLabel(snapshot) },
     performedBy: ctx.user.id,
   });
-  refresh(call.id);
   return { ok: true };
+}
+
+async function loadTypeEnv(service: Awaited<ReturnType<typeof createServiceClient>>, workspaceId: string): Promise<TypeEnv> {
+  const [categories, profiles] = await Promise.all([listCategories(service, workspaceId).then((rows) => rows.map(toCategoryRow)), loadCallProfiles(service, workspaceId)]);
+  return { categories, profiles };
+}
+
+/** «Cambiar tipo» a varias grabaciones a la vez (selección múltiple). Mismo permiso y reglas que una sola. */
+export async function changeCallTypeMany(input: { callIds: string[]; categoryId: string }): Promise<{ ok: true; changed: number; failed: number } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("calls.edit");
+  if (!ctx) return { ok: false, error: NOT_ALLOWED };
+  const ids = [...new Set(Array.isArray(input.callIds) ? input.callIds : [])];
+  if (!UUID.test(input.categoryId) || ids.length === 0 || ids.length > BULK_TYPE_LIMIT || !ids.every((id) => typeof id === "string" && UUID.test(id))) {
+    return { ok: false, error: `Elegí entre 1 y ${BULK_TYPE_LIMIT} grabaciones` };
+  }
+  const service = await createServiceClient();
+  const env = await loadTypeEnv(service, ctx.workspace.id);
+  if (!env.categories.some((c) => c.id === input.categoryId && !c.archived_at)) return { ok: false, error: "Esa área o tipo ya no existe" };
+  let changed = 0;
+  let failed = 0;
+  for (const id of ids) {
+    const res = await applyCallType(ctx, service, id, input.categoryId, { enqueue: true }, env);
+    if (res.ok) changed += 1;
+    else failed += 1;
+  }
+  refresh("");
+  return { ok: true, changed, failed };
+}
+
+/**
+ * «Analizar con IA» en grupo: primero guarda el tipo de las que no lo tenían (o lo tenían por revisar), elegido por la
+ * persona en la ventanita, y después encola el análisis de todas, de a una cada 30 segundos y hasta 20 (el mismo tope y
+ * ritmo de «Analizar seleccionadas»). Devuelve cuántas se encolaron y por qué no las otras.
+ */
+export async function classifyAndAnalyzeCalls(input: {
+  callIds: string[];
+  types?: Array<{ callId: string; categoryId: string }>;
+}): Promise<{ ok: true; queued: number; skipped: Partial<Record<BulkSkipReason, number>>; typeErrors: number } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("calls.edit");
+  if (!ctx) return { ok: false, error: NOT_ALLOWED };
+  const ids = [...new Set(Array.isArray(input.callIds) ? input.callIds : [])];
+  if (ids.length === 0 || ids.length > ANALYZE_PENDING_LIMIT || !ids.every((id) => typeof id === "string" && UUID.test(id))) {
+    return { ok: false, error: `Elegí entre 1 y ${ANALYZE_PENDING_LIMIT} grabaciones` };
+  }
+  const types = Array.isArray(input.types) ? input.types : [];
+  if (!types.every((t) => t && UUID.test(t.callId) && UUID.test(t.categoryId) && ids.includes(t.callId))) return { ok: false, error: "Los datos no son válidos" };
+
+  const service = await createServiceClient();
+  const env = await loadTypeEnv(service, ctx.workspace.id);
+  let typeErrors = 0;
+  for (const t of types) {
+    const res = await applyCallType(ctx, service, t.callId, t.categoryId, { enqueue: false }, env);
+    if (!res.ok) typeErrors += 1;
+  }
+
+  const { data } = await ctx.supabase
+    .from("calls")
+    .select("id, area_id, category_id, no_show, analysis_status, transcript")
+    .eq("workspace_id", ctx.workspace.id)
+    .is("archived_at", null)
+    .in("id", ids);
+  const skipped: Partial<Record<BulkSkipReason, number>> = {};
+  const skip = (why: BulkSkipReason) => (skipped[why] = (skipped[why] ?? 0) + 1);
+  const found = new Set((data ?? []).map((c) => c.id));
+  for (const id of ids) if (!found.has(id)) skip("not_found");
+  const eligible: Array<{ id: string; area_id: string | null; category_id: string | null }> = [];
+  for (const c of data ?? []) {
+    if (c.analysis_status === "analyzed") skip("analyzed");
+    else if (c.analysis_status === "analyzing" || c.analysis_status === "classifying") skip("busy");
+    else if (c.no_show) skip("no_show");
+    else if (!Array.isArray(c.transcript) || c.transcript.length === 0) skip("no_transcript");
+    else if (!c.area_id || c.analysis_status === "needs_review") skip("no_type");
+    else if (!resolveProfile(env.profiles, { categoryId: c.category_id, areaId: c.area_id })) skip("no_profile");
+    else eligible.push(c);
+  }
+  const { queued } = await enqueueAnalyses(ctx, eligible);
+  const already = eligible.length - queued;
+  if (already > 0) skipped.queued_already = already;
+  return { ok: true, queued, skipped, typeErrors };
+}
+
+/**
+ * «Volver a clasificar» varias grabaciones (selección múltiple). Cada una vuelve a la cola de clasificación, que aplica
+ * primero las reglas sin IA y pregunta a la IA solo si ninguna decide. Lo que eligió una persona, lo analizado y lo
+ * que está en curso no se toca (`reclassifyDecision`). A pedido de una persona, la IA también se usa en lo importado
+ * del historial. El cambio de estado es condicional: dos clics a la vez dejan UN job (dedupe de la cola).
+ */
+export async function reclassifyCalls(input: { callIds: string[] }): Promise<{ ok: true; queued: number; skipped: Partial<Record<ReclassifySkip | "not_found", number>> } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("calls.edit");
+  if (!ctx) return { ok: false, error: NOT_ALLOWED };
+  const ids = [...new Set(Array.isArray(input.callIds) ? input.callIds : [])];
+  if (ids.length === 0 || ids.length > RECLASSIFY_LIMIT || !ids.every((id) => typeof id === "string" && UUID.test(id))) {
+    return { ok: false, error: `Elegí entre 1 y ${RECLASSIFY_LIMIT} grabaciones` };
+  }
+  // Se lee con la sesión: solo entra lo que la persona puede ver.
+  const { data, error } = await ctx.supabase
+    .from("calls")
+    .select("id, classification_source, analysis_status")
+    .eq("workspace_id", ctx.workspace.id)
+    .is("archived_at", null)
+    .in("id", ids);
+  if (error) return { ok: false, error: "No se pudieron leer las grabaciones. Probá de nuevo." };
+
+  const service = await createServiceClient();
+  const skipped: Partial<Record<ReclassifySkip | "not_found", number>> = {};
+  const skip = (why: ReclassifySkip | "not_found") => (skipped[why] = (skipped[why] ?? 0) + 1);
+  const found = new Set((data ?? []).map((c) => c.id));
+  for (const id of ids) if (!found.has(id)) skip("not_found");
+  let queued = 0;
+  for (const c of data ?? []) {
+    const decision = reclassifyDecision(c);
+    if (decision.action === "skip") {
+      skip(decision.why);
+      continue;
+    }
+    const { data: moved } = await service
+      .from("calls")
+      .update({ analysis_status: "classifying", analysis_status_reason: null, analysis_error: null })
+      .eq("id", c.id)
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("analysis_status", c.analysis_status)
+      .or("classification_source.is.null,classification_source.neq.human")
+      .select("id");
+    if (!moved || moved.length === 0) {
+      skip("busy");
+      continue;
+    }
+    try {
+      await enqueueCallJob(service, "call_classify", c.id);
+      queued += 1;
+    } catch (err) {
+      console.error("[llamadas] no pude encolar la clasificación:", err instanceof Error ? err.message : "error");
+      // Que no quede colgada en «clasificando»: vuelve a por revisar con el motivo.
+      await service.from("calls").update({ analysis_status: "needs_review", analysis_status_reason: "ai_error" }).eq("id", c.id).eq("analysis_status", "classifying");
+      skip("busy");
+    }
+  }
+  refresh("");
+  return { ok: true, queued, skipped };
 }
 
 /** Marcar o sacar "no se presento". Es una marca: no cambia el area ni el tipo. */

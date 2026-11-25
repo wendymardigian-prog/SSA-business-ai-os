@@ -198,14 +198,14 @@ describe("runCallClassification", () => {
   });
 
   it("una regla decide sin gastar IA", async () => {
-    const db = setup({ call: { duration_seconds: 120 } }); // regla por defecto: menos de 10 min => no_show
+    const db = setup({ call: { duration_seconds: 120 } }); // regla por defecto: menos de 5 min => no_show
     const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 1, motivo: "x" });
     const r = await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
     expect(r.outcome).toBe("rule");
     expect(generate).not.toHaveBeenCalled();
     expect(mocks.openAiRun).not.toHaveBeenCalled();
     const update = db.writesTo("calls")[0].values as Record<string, unknown>;
-    expect(update).toMatchObject({ no_show: true, classification_rule: "menos de 10 min", analysis_status: "not_applicable" });
+    expect(update).toMatchObject({ no_show: true, classification_rule: "menos de 5 min", analysis_status: "not_applicable" });
   });
 
   it("sin regla y con la IA prendida, clasifica con el modelo y registra el run", async () => {

@@ -20,6 +20,7 @@ import { auditAsSystem, logAudit } from "@/lib/audit";
 import { openAiRun } from "@/lib/ai/run";
 import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
+import { withAreaAnalyzerModel } from "@/lib/ai-tasks/area-analyzer-models";
 import { getJobHandler } from "@/lib/jobs/registry";
 import { derivedCallType } from "./legacy-type";
 import { aiSdkGenerate, usageOfFailure, type GenerateFn } from "./ai-generate";
@@ -123,10 +124,13 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
   const { data: ws } = await db.from("workspaces").select("ai_background_settings").eq("id", workspaceId).maybeSingle();
   const settings = resolveCallTaskSettings(ws?.ai_background_settings).call_analysis;
 
-  const [model, instructions] = await Promise.all([
+  const [taskModel, instructions, areaKey] = await Promise.all([
     resolveTaskModel(db, workspaceId, "call_analysis"),
     loadProfileInstructionsForRun(db, workspaceId, profile),
+    callAreaKey(db, workspaceId, call.area_id),
   ]);
+  // El analizador del área (Ventas o Servicio) aporta su modelo a las grabaciones de su área, si está encendido y lo tiene.
+  const model = await withAreaAnalyzerModel(db, workspaceId, taskModel, areaKey);
   if (!deps.generate && (!model.ok || !model.model)) {
     return fail(db, callId, "error", model.message ?? "No hay un proveedor de IA conectado", "ai_error");
   }
@@ -320,4 +324,17 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
 async function fail(db: Db, callId: string, status: "error", message: string, reason: string | null): Promise<{ outcome: AnalyzeOutcome }> {
   await db.from("calls").update({ analysis_status: status, analysis_status_reason: reason, analysis_error: message.slice(0, 300) }).eq("id", callId);
   return { outcome: "error" };
+}
+
+/** La clave fija del área de una grabación (`servicio`, `ventas`…), o null. Si no se puede leer, null: se usa el modelo de la tarea. */
+async function callAreaKey(db: Db, workspaceId: string, areaId: string | null): Promise<string | null> {
+  if (!areaId) return null;
+  try {
+    const { data, error } = await db.from("booking_categories").select("system_key").eq("workspace_id", workspaceId).eq("id", areaId).maybeSingle();
+    if (error) return null;
+    const key = (data as { system_key?: string | null } | null)?.system_key;
+    return typeof key === "string" ? key : null;
+  } catch {
+    return null;
+  }
 }

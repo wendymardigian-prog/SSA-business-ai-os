@@ -12,6 +12,8 @@ import { CopywriterSection } from "./copywriter-section";
 import { LearningSection } from "./learning-section";
 import { LearnedRulesPanel } from "./learned-rules-panel";
 import { AssistantToolsSection } from "./assistant-tools-section";
+import { ProfileList } from "@/components/agents/tasks/calls/analysis-config"; // @plantilla-quitar(llamadas)
+import Link from "next/link"; // @plantilla-quitar(llamadas)
 import { Checkbox, Field, Notice, NumberInput, Section, inputClass, linesToList } from "./fields";
 import { BusinessTimeNote, InViewerZone } from "@/components/ui/business-time-note";
 
@@ -426,6 +428,8 @@ const SECTIONS: Record<AgentConfigSection, ((props: SectionProps) => React.React
   // Tienen su propio formulario y su propio botón: ver learning-section y assistant-tools-section.
   learning: null,
   assistant_tools: null,
+  // Su propia lista (los analizadores por tipo de reunión del área): ver `AnalyzersSection`.
+  analyzers: null,
 };
 
 export function ConfigTab({ data, typeDef }: { data: AgentScreenData; typeDef: AgentTypeDefinition }) {
@@ -458,6 +462,7 @@ export function ConfigTab({ data, typeDef }: { data: AgentScreenData; typeDef: A
       {typeDef.configSections.includes("learning") && data.learnedRules && <LearnedRulesPanel data={data} />}
       {typeDef.configSections.includes("learning") && <LearningSection data={data} />}
       {typeDef.configSections.includes("assistant_tools") && <AssistantToolsSection data={data} />}
+      {typeDef.configSections.includes("analyzers") && <AnalyzersSection data={data} />} {/* @plantilla-quitar(llamadas) */}
       {typeDef.configSections.map((key) => {
         const render = SECTIONS[key];
         return render ? <div key={key}>{render({ form, set, data, typeDef })}</div> : null;
@@ -496,3 +501,32 @@ export function ConfigTab({ data, typeDef }: { data: AgentScreenData; typeDef: A
     </>
   );
 }
+
+// @plantilla-desde(llamadas)
+/**
+ * Los analizadores por tipo de reunión del área de este agente (Ventas o Servicio): instrucciones (con su historial de
+ * quién y cuándo), rúbrica y modo, ahí mismo. Lo que comparten todos (contexto del negocio, categorías) sigue en
+ * «Análisis de llamadas».
+ */
+function AnalyzersSection({ data }: { data: AgentScreenData }) {
+  const analyzers = data.analyzers;
+  return (
+    <Section
+      title="Analizadores por tipo de reunión"
+      description="Cada tipo de reunión tiene su analizador: sus instrucciones, su rúbrica y si analiza solo o a mano. Este agente solo analiza las grabaciones de su área; un tipo sin analizador no se analiza ni gasta IA. El modelo de abajo se usa para las de su área mientras el agente esté encendido."
+    >
+      {analyzers && analyzers.areaIds.length > 0 ? (
+        <>
+          {!analyzers.call.canEdit && <p className="text-xs text-muted-foreground">Para cambiarlos necesitás el permiso «Configurar el análisis de llamadas».</p>}
+          <ProfileList data={analyzers.call} areaIds={analyzers.areaIds} />
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">No se pudieron cargar los analizadores de esta área.</p>
+      )}
+      <Link href="/dashboard/agents/tareas/call_analysis" className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-sm font-medium text-primary-ink hover:bg-accent">
+        Contexto del negocio y categorías (comunes a todos)
+      </Link>
+    </Section>
+  );
+}
+// @plantilla-hasta(llamadas)
