@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { MessageSquare, RefreshCw, User } from "lucide-react";
+import { MessageSquare, RefreshCw } from "lucide-react";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread, type InboxAsset } from "@/components/inbox/message-thread";
 import { ContactPanel } from "@/components/inbox/contact-panel";
@@ -12,6 +12,7 @@ import { useGroupListRealtime } from "@/components/inbox/groups/use-group-list-r
 import { knownLabel } from "@/lib/inbox/known";
 import { customerLabel, markGate } from "@/lib/inbox/marks";
 import { assigneeName } from "@/lib/inbox/assignee";
+import { inboxLayoutClasses, type ContactPanelPref } from "@/lib/inbox/layout";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/lib/types/database";
@@ -136,7 +137,9 @@ export function InboxView({
   const searchParams = useSearchParams();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [showContactPanel, setShowContactPanel] = useState(true);
+  // «Datos del contacto» en la computadora: en `auto` se ve solo si entran las
+  // tres columnas (lo decide el ancho de la bandeja, ver lib/inbox/layout.ts).
+  const [panelPref, setPanelPref] = useState<ContactPanelPref>("auto");
   // En el telefono el panel del contacto es una hoja que se abre a pedido:
   // abierto por defecto taparia el hilo entero.
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
@@ -302,13 +305,23 @@ export function InboxView({
   }, [selected?.id, gated]);
 
   const anyOpen = !!selected || !!selectedGroup || !!opening;
+  const hasPanel = !!selected?.contact_id && !gated;
+  const layout = inboxLayoutClasses(panelPref, hasPanel);
+
+  /** El botón del encabezado: en el teléfono abre la hoja; en la computadora, la columna. */
+  const openContact = useCallback(() => {
+    if (window.matchMedia("(min-width: 768px)").matches) setPanelPref("open");
+    else setContactSheetOpen(true);
+  }, []);
 
   return (
     // En el telefono (Bloque 2d) es lista -> hilo a pantalla completa: con una
     // conversacion abierta se ve el hilo, sin ninguna se ve la lista.
-    <div className="flex h-full">
+    // `@container/inbox`: las columnas se acomodan por el ancho de la bandeja, no
+    // de la pantalla (el menu lateral y el asistente le sacan lugar).
+    <div className="@container/inbox relative flex h-full">
       {/* Left panel: Conversation list */}
-      <div className={cn("w-full flex-shrink-0 md:block md:w-80", anyOpen ? "hidden" : "block")}>
+      <div className={cn("w-full flex-shrink-0 md:block md:w-80", anyOpen ? "hidden" : "block", layout.list)}>
         <ConversationList
           conversations={conversations}
           workspaceId={workspaceId}
@@ -343,19 +356,6 @@ export function InboxView({
 
       {/* Center panel: Message thread */}
       <div className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", anyOpen ? "flex" : "hidden")}>
-        {/* Toggle contact panel button */}
-        {selected && !showContactPanel && (
-          <div className="hidden shrink-0 justify-end border-b border-border px-2 py-1 md:flex">
-            <button
-              onClick={() => setShowContactPanel(true)}
-              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-              aria-label="Ver datos del contacto"
-            >
-              <User className="h-3.5 w-3.5" />
-              Datos del contacto
-            </button>
-          </div>
-        )}
         <div className="min-h-0 flex-1">
           {/* El CTA de sincronizar es para una bandeja que nunca recibio nada.
               Una bandeja vacia porque el filtro no encontro nada es otra cosa:
@@ -432,7 +432,8 @@ export function InboxView({
               canEditContacts={canEditContacts}
               canDeleteContacts={canDeleteContacts}
               onBack={selected ? handleBack : undefined}
-              onOpenContact={selected?.contact_id ? () => setContactSheetOpen(true) : undefined}
+              onOpenContact={selected?.contact_id ? openContact : undefined}
+              contactButtonClassName={layout.contactButton}
             />
           )}
         </div>
@@ -441,17 +442,18 @@ export function InboxView({
       {/* Right panel: Contact info. En la computadora es la tercera columna; en
           el telefono, una hoja a pantalla completa que se abre a pedido. Una
           sola instancia, para no cargar el contacto dos veces. */}
-      {selected?.contact_id && !gated && (showContactPanel || contactSheetOpen) && (
+      {hasPanel && selected?.contact_id && (panelPref !== "closed" || contactSheetOpen) && (
         <div
           className={cn(
-            contactSheetOpen ? "fixed inset-0 z-40 flex bg-background" : "hidden",
-            showContactPanel ? "md:static md:z-auto md:flex" : "md:hidden",
+            // z-50: por encima de la pestañita del asistente (z-40).
+            contactSheetOpen ? "fixed inset-0 z-50 flex bg-background md:static md:z-auto" : "hidden",
+            layout.panel,
           )}
         >
           <ContactPanel
             contactId={selected.contact_id}
             workspaceId={workspaceId}
-            onClose={() => (contactSheetOpen ? setContactSheetOpen(false) : setShowContactPanel(false))}
+            onClose={() => (contactSheetOpen ? setContactSheetOpen(false) : setPanelPref("closed"))}
             members={members}
             allTags={tags}
             currentUserId={currentUserId}

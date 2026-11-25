@@ -87,6 +87,7 @@ import { messageLinkCardUrl } from "@/lib/inbox/message-link-card";
 import { ComposerLinkPreview } from "./composer-link-preview";
 import { MessageLinkCard } from "./link-preview-card";
 import { useStickToBottom } from "./use-stick-to-bottom";
+import { useNarrow } from "./use-narrow";
 import { fitTextareaToRows } from "@/components/ui/auto-textarea";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"] & {
@@ -492,6 +493,7 @@ export function MessageThread({
   canDeleteContacts = false,
   onBack,
   onOpenContact,
+  contactButtonClassName = "flex md:hidden",
 }: {
   conversation: Conversation | null;
   messages: Message[];
@@ -527,8 +529,13 @@ export function MessageThread({
   canDeleteContacts?: boolean;
   /** Telefono (Bloque 2d): el hilo ocupa la pantalla y se vuelve a la lista. */
   onBack?: () => void;
-  /** Telefono (Bloque 2d): abre los datos del contacto como hoja. */
+  /** Abre los datos del contacto: hoja en el telefono, columna en la computadora. */
   onOpenContact?: () => void;
+  /**
+   * Cuando se ve el boton de la persona en el encabezado (lo decide la bandeja
+   * con `inboxLayoutClasses`: no hace falta si el panel ya esta a la vista).
+   */
+  contactButtonClassName?: string;
 }) {
   const timeZone = useViewerTimezone();
   const router = useRouter();
@@ -563,6 +570,9 @@ export function MessageThread({
   const markAtBottom = useStickToBottom(scrollContainerRef, messagesListRef);
   const linkCards = linkPreviewCapability(channelProvider).card;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Con el hilo angosto (telefono, o la bandeja con el panel abierto) el texto
+  // de ayuda largo se cortaba a la mitad.
+  const [threadRootRef, narrowThread] = useNarrow(480);
   // "Sugerir respuesta" (A1): hay un borrador vivo (lo informa PendingDraft) y se esta esperando uno.
   const [hasLiveDraft, setHasLiveDraft] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
@@ -1431,54 +1441,65 @@ export function MessageThread({
   }
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    // `@container`: el encabezado se acomoda por el ancho del hilo, no de la
+    // pantalla (con la lista y el panel abiertos el hilo puede ser angosto).
+    <div ref={threadRootRef} className="@container flex h-full flex-col bg-background">
       {/* Header: una sola fila tambien en el telefono (lo secundario va en el menu "⋯"). */}
-      <div className="flex min-h-14 items-center justify-between gap-x-2 border-b border-border px-2 py-1.5 md:gap-x-3 md:px-4 md:py-0">
-        <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
+      <div className="flex min-h-14 items-center justify-between gap-x-1.5 border-b border-border px-2 py-1.5 @lg:gap-x-3 @lg:px-4 @lg:py-0">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 @lg:gap-3">
           {onBack && (
             <button
               type="button"
               onClick={onBack}
               aria-label="Volver a la bandeja"
-              className="-ml-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
+              className="-ml-1 flex h-11 w-9 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
             >
               <ChevronLeft className="h-5 w-5" aria-hidden />
             </button>
           )}
-          <div className="relative flex-shrink-0">
+          {/* Tocar la foto o el nombre abre los datos del contacto (como en
+              WhatsApp): en un hilo angosto no entra el boton aparte. */}
+          <button
+            type="button"
+            onClick={onOpenContact}
+            disabled={!onOpenContact}
+            aria-label={onOpenContact ? `Ver datos de ${conversation.contacts?.display_name ?? "este contacto"}` : undefined}
+            className="flex min-w-0 items-center gap-1.5 rounded-lg text-left enabled:cursor-pointer enabled:hover:opacity-80 disabled:cursor-default @lg:gap-3"
+          >
+          <span className="relative block flex-shrink-0">
             <ContactAvatar avatarUrl={conversation.contacts?.avatar_url} displayName={conversation.contacts?.display_name} size="sm" />
-            <div className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-background bg-background">
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-background bg-background">
               <PlatformIcon
                 platform={conversation.platform}
                 className="h-2.5 w-2.5"
                 size={10}
               />
-            </div>
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">
+            </span>
+          </span>
+          <span className="block min-w-0">
+            <span className="block truncate text-sm font-medium">
               {conversation.contacts?.display_name ?? "Sin nombre"}
-            </p>
+            </span>
             {/* Con varias cuentas de la misma red, por cual cuenta entro: quien
                 contesta tiene que saber desde cual esta hablando. */}
             {accountToShow(accounts, conversation) && (
-              <p className="truncate text-[11px] text-muted-foreground">
+              <span className="block truncate text-[11px] text-muted-foreground">
                 Vía {accountToShow(accounts, conversation)}
-              </p>
+              </span>
             )}
             {/* F18: quien esta por escribir tiene que verlo antes de escribir,
                 no despues de apretar enviar. */}
             {conversation.contacts?.do_not_contact && (
-              <p
-                className="mt-0.5 text-[11px] font-semibold text-red-600 dark:text-red-400"
+              <span
+                className="mt-0.5 block text-[11px] font-semibold text-red-600 dark:text-red-400"
                 title={conversation.contacts.do_not_contact_reason ?? undefined}
               >
                 No contactar
-              </p>
+              </span>
             )}
             {/* Conocido (00256) y Cliente (00268): quien lo abrio igual sabe que no es un lead. */}
             {(conversation.contacts?.is_known || conversation.contacts?.is_customer) && (
-              <p className="mt-0.5 flex flex-wrap items-center gap-1">
+              <span className="mt-0.5 flex flex-wrap items-center gap-1">
                 {conversation.contacts.is_customer && (
                   <MarkBadge
                     mark="customer"
@@ -1489,9 +1510,10 @@ export function MessageThread({
                 {conversation.contacts.is_known && (
                   <MarkBadge mark="known" size="xs" title={knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))} />
                 )}
-              </p>
+              </span>
             )}
-          </div>
+          </span>
+          </button>
         </div>
 
         {/* A la vista: el interruptor del agente y la accion mas frecuente (cerrar o
@@ -1503,14 +1525,20 @@ export function MessageThread({
               type="button"
               onClick={onOpenContact}
               aria-label="Ver datos del contacto"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
+              title="Datos del contacto"
+              className={cn(
+                "h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent",
+                contactButtonClassName,
+                // Angosto: se abre tocando el nombre; el boton aparte no entra.
+                "@max-md:hidden",
+              )}
             >
               <UserRound className="h-4 w-4" aria-hidden />
             </button>
           )}
           <span
             className={cn(
-              "hidden whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium sm:inline",
+              "hidden whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium @xl:inline",
               conversation.status === "open"
                 ? "bg-green-100 text-green-700"
                 : conversation.status === "snoozed"
@@ -1529,7 +1557,7 @@ export function MessageThread({
               aria-label={needsHumanBadge(conversation).title}
             >
               <UserRoundSearch className="h-3 w-3" aria-hidden />
-              <span className="hidden sm:inline">Necesita humano</span>
+              <span className="hidden @xl:inline">Necesita humano</span>
             </span>
           )}
           {currentUserId && (
@@ -1563,7 +1591,7 @@ export function MessageThread({
             ) : (
               <RotateCcw className="h-4 w-4" aria-hidden />
             )}
-            <span className="hidden md:inline">{headerPlan.primary === "close" ? "Cerrar" : "Reabrir"}</span>
+            <span className="hidden @2xl:inline">{headerPlan.primary === "close" ? "Cerrar" : "Reabrir"}</span>
           </button>
           <ConversationMenu
             plan={headerPlan}
@@ -1780,7 +1808,7 @@ export function MessageThread({
                         handleSendClick();
                       }
                     }}
-                    placeholder="Escribí un mensaje o / para un recurso guardado"
+                    placeholder={narrowThread ? "Escribí un mensaje" : "Escribí un mensaje o / para un recurso guardado"}
                     rows={1}
                     className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   />

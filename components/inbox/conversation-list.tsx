@@ -421,6 +421,7 @@ export function ConversationList({
                         key={mark}
                         mark={mark}
                         size="xs"
+                        iconOnly
                         title={
                           mark === "known"
                             ? knownLabel(assigneeName(members, conversation.contacts?.known_marked_by ?? null))

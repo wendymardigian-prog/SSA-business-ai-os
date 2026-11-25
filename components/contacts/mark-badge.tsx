@@ -25,20 +25,32 @@ export const MARK_STYLE: Record<ContactMark, { icon: LucideIcon; chip: string; t
 /**
  * La etiqueta con icono y texto. `size="xs"` es la de la lista de chats (entra
  * en la fila del nombre); `title` es el texto largo ("Cliente de Ana").
+ * `iconOnly` deja solo el icono (el texto queda para el lector de pantalla y
+ * en el tooltip): en la lista de chats le deja lugar al nombre.
  */
-export function MarkBadge({ mark, title, size = "sm" }: { mark: ContactMark; title?: string; size?: "xs" | "sm" }) {
+export function MarkBadge({
+  mark,
+  title,
+  size = "sm",
+  iconOnly = false,
+}: {
+  mark: ContactMark;
+  title?: string;
+  size?: "xs" | "sm";
+  iconOnly?: boolean;
+}) {
   const { icon: Icon, chip } = MARK_STYLE[mark];
   return (
     <span
       title={title ?? MARK_SHORT[mark]}
       className={cn(
         "inline-flex flex-shrink-0 items-center gap-1 rounded-full border font-semibold",
-        size === "xs" ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-xs",
+        iconOnly ? "p-0.5" : size === "xs" ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-xs",
         chip,
       )}
     >
       <Icon className={size === "xs" ? "h-3 w-3" : "h-3.5 w-3.5"} aria-hidden />
-      {MARK_SHORT[mark]}
+      {iconOnly ? <span className="sr-only">{MARK_SHORT[mark]}</span> : MARK_SHORT[mark]}
       {title && title !== MARK_SHORT[mark] && <span className="sr-only">: {title}</span>}
     </span>
   );

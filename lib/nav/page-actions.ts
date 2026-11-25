@@ -116,7 +116,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip: "A quiénes, por qué canal, el mensaje y el ritmo. Una vez en cola, el avance de cada envío.",
   },
   "/dashboard/sequences": {
-    title: "Sequences",
+    title: "Secuencias",
     tooltip: "Seguimientos automaticos que se pausan solos cuando el contacto contesta.",
   },
   "/dashboard/sequences/[sequenceId]": {

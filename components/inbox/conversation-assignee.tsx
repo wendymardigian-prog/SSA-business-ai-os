@@ -82,7 +82,7 @@ export function ConversationAssignee({
           className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
         >
           {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Hand className="h-4 w-4" aria-hidden />}
-          <span className="hidden md:inline">Tomar</span>
+          <span className="hidden @xl:inline">Tomar</span>
         </button>
         {error && <ErrorNote text={error} />}
       </span>

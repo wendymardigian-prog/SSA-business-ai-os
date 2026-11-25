@@ -27,7 +27,7 @@ describe("lo que salio del menú", () => {
   // vuelvan a aparecer como item del menu lateral.
   const fuera = [
     { name: "Broadcasts", href: "/dashboard/broadcasts" },
-    { name: "Sequences", href: "/dashboard/sequences" },
+    { name: "Secuencias", href: "/dashboard/sequences" },
     { name: "Comentarios", href: "/dashboard/comentarios" },
     { name: "Channels", href: "/dashboard/channels" },
   ];
