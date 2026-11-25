@@ -165,6 +165,32 @@ Gemelas SQL = TS: `nextOccurrence` / `occurrenceDates` ↔ `svc_occurrence_next`
 `seriesReached` ↔ `svc_series_reached` (`repetition.cases.json`). Los casos nuevos llevan `"since": "00522"`: el
 verificador los saltea si la migración todavía no está aplicada.
 
+## Reuniones que se repiten (00524, 25/11/2026, traído de RER #71)
+
+Un paso de Reunión que se repite elige **cómo se agenda** (`ref.schedule`, editor → «Cómo se agenda»):
+
+- **La agenda el equipo** (`team`, lo de siempre): cada vuelta crea la tarea «Agendar [tipo] con [cliente] · vuelta N»
+  (`source_ref = svc_round:<vuelta>`: completarla NO cumple la vuelta). Se cierra sola cuando la reunión queda
+  agendada y se abre otra vez si se cancela.
+- **La fija quien atiende** (`series`): cuando la serie tendría que empezar, quien atiende (la persona del paso o el
+  responsable del servicio) recibe «Fijar reuniones recurrentes con [cliente]». Elige el primer día y la hora y la app
+  crea UN evento que se repite en su Google Calendar, con Meet e invitación al cliente (`lib/scheduling/series/run.ts`).
+  Las fechas de los próximos 60 días pasan a la Agenda (barrido diario) como las traídas de Google
+  (`metadata.google_import`, 00510): nunca se crea otro evento, mover una mueve esa fecha en Google y no dispara «Se
+  agendó una reunión». Llevan `metadata.series_id`. Sin Google conectado, no se puede fijar. Nada se agenda solo.
+
+Cada vuelta de Reunión tiene su estado (`round_state`): por agendar, agendada, asistió, no se presentó, perdida. Una
+reunión nueva se une a la vuelta pendiente **más antigua** de su paso (`booking_round_candidate`; las de una serie, solo
+a las de SU paso) y la vuelta se cumple **solo al asistir** (la reunión pasa a un resultado, o «Asistió» a mano). «No se
+presentó» no cuenta; «Dar por perdida» la cierra sin contar para «N vueltas». Se marca desde el paso en la ficha
+(`svc_round_mark`, `services.items`).
+
+Una reunión de una serie activa **no se cancela** desde la plataforma (se mueve o se marca «No se presentó»); si la
+borran en Google, se cancela acá, su vuelta vuelve a «por agendar» y se le avisa a quien atiende. Pausar, terminar el
+servicio, cambiar el responsable (si el paso es del responsable), terminar la serie a mano o cumplir sus N vueltas
+cortan la serie: el trabajo `meeting_series_end` corta el evento en Google (UNTIL) y cancela las reuniones futuras;
+reintenta a 1, 5 y 15 minutos y, si sigue fallando, avisa. «Cambiar día y hora» corta la serie y fija una nueva.
+
 ## Velocidad de la lectura (00523, traído de RER #96)
 
 Las políticas de lectura de `services`, `service_items` y `service_phases` preguntan
@@ -240,7 +266,7 @@ otra se suspende con sus sesiones revocadas. Dos servicios activos del mismo pro
 
 ```
 node scripts/verify-servicios-migracion.mjs --todas   # cada migración S01-S16: objetos, RLS, permisos, CHECK y triggers
-node scripts/verify-services.mjs                      # sv1, sv2, prd, ac, a2, a4, pc, rp (00522) y rls (00523)
+node scripts/verify-services.mjs                      # sv1, sv2, prd, ac, a2, a4, pc, rp (00522), rls (00523) y ms (00524)
 node scripts/verify-comments.mjs                      # comentarios del equipo con @menciones (A4)
 node scripts/verify-program.mjs                       # pr, ev, ca, ce (vite-node, render simulado), co, ia, x
 node scripts/verify-affiliates.mjs
