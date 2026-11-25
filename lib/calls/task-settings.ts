@@ -55,7 +55,7 @@ export interface CallClassificationSettings {
 }
 
 export const DEFAULT_RULES: ClassificationRuleSetting[] = [
-  { id: "r-no-show", on: true, cond: "duration_lt", value: 10, type: "no_show" },
+  { id: "r-no-show", on: true, cond: "duration_lt", value: 5, type: "no_show" },
   { id: "r-muchos", on: true, cond: "people_gte", value: 4, type: "equipo" },
   { id: "r-titulo", on: true, cond: "title_contains", value: [], type: "equipo" },
   { id: "r-equipo", on: true, cond: "only_team", value: null, type: "equipo" },

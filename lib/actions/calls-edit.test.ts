@@ -29,7 +29,7 @@ vi.mock("@/lib/calls/ai-generate", () => ({ aiSdkGenerate: () => mocks.generate 
 const emit = vi.hoisted(() => vi.fn(async () => true));
 vi.mock("@/lib/calls/automation/emit", () => ({ emitCallEvent: emit }));
 
-import { analyzeCall, analyzePendingCalls, analyzeSelectedCalls, changeCallType, proposeSectionCorrection, regenerateCall, saveCallSections, setCallNoShow } from "./calls-edit";
+import { analyzeCall, analyzePendingCalls, analyzeSelectedCalls, changeCallType, changeCallTypeMany, classifyAndAnalyzeCalls, reclassifyCalls, proposeSectionCorrection, regenerateCall, saveCallSections, setCallNoShow } from "./calls-edit";
 import { DEFAULT_ANALYSIS, DEFAULT_CLASSIFICATION } from "@/lib/calls/task-settings";
 
 const CALL = "11111111-1111-4111-8111-111111111111";
@@ -185,6 +185,12 @@ describe("changeCallType", () => {
     expect((await changeCallType({ callId: CALL, categoryId: ARCHIVADA })).ok).toBe(false);
     expect((await changeCallType({ callId: CALL, categoryId: CIERRE })).ok).toBe(true);
     expect(service.writes()).toHaveLength(0);
+  });
+
+  it("confirmar el mismo tipo que puso la IA en una por revisar la saca de la revision", async () => {
+    const { service } = setup({ call: { analysis_status: "needs_review", category_id: CIERRE, no_show: false } });
+    expect((await changeCallType({ callId: CALL, categoryId: CIERRE })).ok).toBe(true);
+    expect(service.writesTo("calls")[0].values).toMatchObject({ category_id: CIERRE, classification_source: "human", analysis_status: "pending" });
   });
 
   it("una llamada que no se presento sigue siendo no_show aunque se le elija el tipo", async () => {
@@ -446,5 +452,111 @@ describe("regenerateCall", () => {
   it("solo se regenera una llamada analizada o con error", async () => {
     setup({ call: { analysis_status: "pending" } });
     expect((await regenerateCall({ callId: CALL, reason: "prompt_nuevo" })).ok).toBe(false);
+  });
+});
+
+describe("changeCallTypeMany", () => {
+  const A = "77777777-7777-4777-8777-777777777777";
+  it("cambia el tipo de cada una con las mismas reglas y cuenta lo hecho", async () => {
+    const { service } = setup({ call: { analysis_status: "needs_review", category_id: null, no_show: false } });
+    expect(await changeCallTypeMany({ callIds: [CALL, A], categoryId: CIERRE })).toEqual({ ok: true, changed: 2, failed: 0 });
+    expect(service.writesTo("calls")).toHaveLength(2);
+    expect(mocks.audit).toHaveBeenCalledTimes(2);
+  });
+  it("pide entre 1 y 30, ids validos y un tipo que exista", async () => {
+    const { service } = setup();
+    expect((await changeCallTypeMany({ callIds: [], categoryId: CIERRE })).ok).toBe(false);
+    expect((await changeCallTypeMany({ callIds: ["no-es-uuid"], categoryId: CIERRE })).ok).toBe(false);
+    const many = Array.from({ length: 31 }, (_, i) => `${String(i).padStart(8, "0")}-7777-4777-8777-777777777777`);
+    expect((await changeCallTypeMany({ callIds: many, categoryId: CIERRE })).ok).toBe(false);
+    expect((await changeCallTypeMany({ callIds: [CALL], categoryId: ARCHIVADA })).ok).toBe(false);
+    expect(service.writes()).toHaveLength(0);
+  });
+  it("sin permiso no hace nada", async () => {
+    const { service } = setup();
+    mocks.permission.mockResolvedValue(null);
+    expect((await changeCallTypeMany({ callIds: [CALL], categoryId: CIERRE })).ok).toBe(false);
+    expect(service.writes()).toHaveLength(0);
+  });
+});
+
+describe("classifyAndAnalyzeCalls", () => {
+  const A = "77777777-7777-4777-8777-777777777777";
+  const B = "88888888-8888-4888-8888-888888888888";
+  const C = "99999999-9999-4999-8999-999999999999";
+  const row = (id: string, over: Record<string, unknown> = {}) => ({ id, area_id: VENTAS, category_id: CIERRE, no_show: false, analysis_status: "pending", transcript, ...over });
+
+  it("encola las que se pueden analizar y dice por que no las otras", async () => {
+    const { service } = setup({ selected: [row(A), row(B, { analysis_status: "analyzed" }), row(C, { transcript: [] })] });
+    const r = await classifyAndAnalyzeCalls({ callIds: [A, B, C] });
+    expect(r).toEqual({ ok: true, queued: 1, skipped: { analyzed: 1, no_transcript: 1 }, typeErrors: 0 });
+    expect(service.writesTo("scheduled_jobs")).toHaveLength(1);
+  });
+  it("sin analizador para su tipo no se encola (no se gasta IA)", async () => {
+    const { service } = setup({ selected: [row(A, { category_id: SEGUIMIENTO })] });
+    expect(await classifyAndAnalyzeCalls({ callIds: [A] })).toEqual({ ok: true, queued: 0, skipped: { no_profile: 1 }, typeErrors: 0 });
+    expect(service.writesTo("scheduled_jobs")).toHaveLength(0);
+  });
+  it("guarda primero el tipo elegido, sin encolar el analisis dos veces", async () => {
+    const { service } = setup({ call: { analysis_status: "needs_review", category_id: null, no_show: false }, selected: [row(A)], profiles: [analyzer(CIERRE, "auto")] });
+    const r = await classifyAndAnalyzeCalls({ callIds: [A], types: [{ callId: A, categoryId: CIERRE }] });
+    expect(r.ok).toBe(true);
+    expect(service.writesTo("calls")[0].values).toMatchObject({ category_id: CIERRE, classification_source: "human" });
+    expect(service.writesTo("scheduled_jobs")).toHaveLength(1);
+  });
+  it("una sin tipo o por revisar no se analiza", async () => {
+    setup({ selected: [row(A, { area_id: null }), row(B, { analysis_status: "needs_review" })] });
+    expect(await classifyAndAnalyzeCalls({ callIds: [A, B] })).toEqual({ ok: true, queued: 0, skipped: { no_type: 2 }, typeErrors: 0 });
+  });
+  it("pide ids validos, un tope de 20 y tipos de las elegidas", async () => {
+    setup();
+    expect((await classifyAndAnalyzeCalls({ callIds: [] })).ok).toBe(false);
+    const many = Array.from({ length: 21 }, (_, i) => `${String(i).padStart(8, "0")}-7777-4777-8777-777777777777`);
+    expect((await classifyAndAnalyzeCalls({ callIds: many })).ok).toBe(false);
+    expect((await classifyAndAnalyzeCalls({ callIds: [A], types: [{ callId: B, categoryId: CIERRE }] })).ok).toBe(false);
+  });
+  it("sin permiso no hace nada", async () => {
+    const { service } = setup();
+    mocks.permission.mockResolvedValue(null);
+    expect((await classifyAndAnalyzeCalls({ callIds: [A] })).ok).toBe(false);
+    expect(service.writes()).toHaveLength(0);
+  });
+});
+
+describe("reclassifyCalls", () => {
+  const A = "77777777-7777-4777-8777-777777777777";
+  const B = "88888888-8888-4888-8888-888888888888";
+  const C = "99999999-9999-4999-8999-999999999999";
+  const D = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const sel = (id: string, classification_source: string | null, analysis_status: string) => ({ id, classification_source, analysis_status });
+
+  it("manda a clasificar lo que se puede y no toca lo elegido a mano, lo analizado ni lo que esta en curso", async () => {
+    const { service } = setup({ selected: [sel(A, "ai", "needs_review"), sel(B, "human", "needs_review"), sel(C, "ai", "analyzed"), sel(D, null, "analyzing")] });
+    const r = await reclassifyCalls({ callIds: [A, B, C, D] });
+    expect(r).toEqual({ ok: true, queued: 1, skipped: { human: 1, analyzed: 1, busy: 1 } });
+    expect(service.writesTo("calls")).toHaveLength(1);
+    expect(service.writesTo("calls")[0].values).toMatchObject({ analysis_status: "classifying" });
+    expect(service.writesTo("scheduled_jobs")[0].values).toMatchObject({ type: "call_classify", dedupe_key: `call_classify:${A}` });
+    // A pedido de una persona la IA se usa tambien en lo importado: no viaja noAi.
+    expect(JSON.stringify(service.writesTo("scheduled_jobs")[0].values)).not.toContain("noAi");
+  });
+  it("si otra persona la movio en el medio, no la pisa", async () => {
+    const { service } = setup({ selected: [sel(A, "ai", "needs_review")], updated: [] });
+    expect(await reclassifyCalls({ callIds: [A] })).toEqual({ ok: true, queued: 0, skipped: { busy: 1 } });
+    expect(service.writesTo("scheduled_jobs")).toHaveLength(0);
+  });
+  it("lee con la sesion: lo que no ve cuenta como no encontrado", async () => {
+    setup({ selected: [] });
+    expect(await reclassifyCalls({ callIds: [A] })).toEqual({ ok: true, queued: 0, skipped: { not_found: 1 } });
+  });
+  it("pide entre 1 y 30 ids validos y permiso", async () => {
+    const { service } = setup();
+    expect((await reclassifyCalls({ callIds: [] })).ok).toBe(false);
+    expect((await reclassifyCalls({ callIds: ["no-es-uuid"] })).ok).toBe(false);
+    const many = Array.from({ length: 31 }, (_, i) => `${String(i).padStart(8, "0")}-7777-4777-8777-777777777777`);
+    expect((await reclassifyCalls({ callIds: many })).ok).toBe(false);
+    mocks.permission.mockResolvedValue(null);
+    expect((await reclassifyCalls({ callIds: [A] })).ok).toBe(false);
+    expect(service.writes()).toHaveLength(0);
   });
 });

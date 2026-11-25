@@ -7,7 +7,8 @@ import { CommentThread } from "@/components/team-comments/comment-thread";
 import { EMPTY_ACTIVITY, type ActivityEntry } from "@/lib/calls/activity";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { AlertTriangle, ExternalLink, Info, Loader2, Tag, Video } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Info, Loader2, Maximize2, Tag, Video, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { BackToCalls } from "@/components/calls/back-link";
 import { Tabs } from "@/components/ui/tabs";
@@ -87,6 +88,49 @@ export interface CallDetailData extends TabsData {
   initialTab?: "actividad" | null;
 }
 
+/** Las pestañas de la ficha (las de `detailView` más la transcripción y la actividad). */
+export type CallDetailTab = DetailTab | "transcripcion" | "actividad";
+
+/**
+ * Lo que el panel de la lista le da a la ficha: la pestaña (que vive en la URL), el paso a la anterior o la siguiente
+ * y cerrar. Sin esto la ficha es la página de siempre. Todo sin pedirle la página al servidor: la URL la cambia la
+ * lista con la API del navegador.
+ */
+export interface CallPanelNav {
+  tab: CallDetailTab;
+  onTab: (tab: CallDetailTab) => void;
+  onClose: () => void;
+  onPrev: (() => void) | null;
+  onNext: (() => void) | null;
+  position: { index: number; total: number } | null;
+  /** El link a la ficha como página entera. */
+  openHref: string;
+  /** Adónde ir al eliminar la grabación: la lista con sus filtros. */
+  closeHref: string;
+}
+
+function CallPanelBar({ panel }: { panel: CallPanelNav }) {
+  const arrow = "inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent";
+  return (
+    <div className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-2">
+      <button type="button" onClick={() => panel.onPrev?.()} disabled={!panel.onPrev} aria-label="Grabación anterior" className={arrow}>
+        <ChevronLeft className="h-4 w-4" aria-hidden />
+      </button>
+      <button type="button" onClick={() => panel.onNext?.()} disabled={!panel.onNext} aria-label="Grabación siguiente" className={arrow}>
+        <ChevronRight className="h-4 w-4" aria-hidden />
+      </button>
+      {panel.position && <span className="text-xs tabular-nums text-muted-foreground">{panel.position.index + 1} de {panel.position.total}</span>}
+      <span className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">Llamada</span>
+      <Link href={panel.openHref} aria-label="Abrir en una página" title="Abrir en una página" className={arrow}>
+        <Maximize2 className="h-4 w-4" aria-hidden />
+      </Link>
+      <button type="button" onClick={panel.onClose} aria-label="Cerrar" className={arrow}>
+        <X className="h-4 w-4" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 const BANNER_TONE = {
   info: "border-sky-500/30 bg-sky-500/10",
   warning: "border-amber-500/30 bg-amber-500/10",
@@ -106,11 +150,14 @@ function useIsDesktop(): boolean {
   );
 }
 
-export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view: DetailView; canEdit: boolean }) {
+export function CallDetail({ data, view, canEdit, panel }: { data: CallDetailData; view: DetailView; canEdit: boolean; panel?: CallPanelNav }) {
   const router = useRouter();
   const timeZone = useViewerTimezone();
-  const isDesktop = useIsDesktop();
-  const [tab, setTab] = useState<DetailTab | "transcripcion" | "actividad">(data.initialTab ?? "resumen");
+  // En el panel todo va en una sola columna, con la transcripción como una pestaña más.
+  const isDesktop = useIsDesktop() && !panel;
+  const [ownTab, setOwnTab] = useState<CallDetailTab>(data.initialTab ?? "resumen");
+  const tab = panel ? panel.tab : ownTab;
+  const setTab = panel ? panel.onTab : setOwnTab;
   const [unread, setUnread] = useState(data.unreadMentions ?? 0);
   const jumpRef = useRef<((timestamp: string) => void) | null>(null);
   const a = readAnalysis(data.analysis);
@@ -158,10 +205,10 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
   return (
     <CallEditProvider value={editState}>
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader route="/dashboard/llamadas/[id]" title="Llamada" backHref={<BackToCalls />} />
-      <div className="min-h-0 flex-1 overflow-y-auto lg:overflow-hidden">
-        <div className="grid min-h-full gap-0 lg:h-full lg:grid-cols-[3fr_2fr]">
-          <div className="min-w-0 space-y-4 p-4 md:p-6 lg:overflow-y-auto">
+      {panel ? <CallPanelBar panel={panel} /> : <PageHeader route="/dashboard/llamadas/[id]" title="Llamada" backHref={<BackToCalls />} />}
+      <div className={panel ? "min-h-0 flex-1 overflow-y-auto" : "min-h-0 flex-1 overflow-y-auto lg:overflow-hidden"}>
+        <div className={panel ? "min-h-full" : "grid min-h-full gap-0 lg:h-full lg:grid-cols-[3fr_2fr]"}>
+          <div className={panel ? "min-w-0 space-y-4 p-4" : "min-w-0 space-y-4 p-4 md:p-6 lg:overflow-y-auto"}>
             <header className="space-y-2">
               <h2 className="text-lg font-semibold">{heading}{data.contact ? <span className="font-normal text-muted-foreground"> · {data.title}</span> : null}</h2>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -186,7 +233,7 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
                 <ContactLink callId={data.callId} contact={data.contact} canEdit={canEdit} />
                 <BookingLink callId={data.callId} booking={data.booking} canEdit={canEdit} />
                 {data.service && <CallServiceChip callId={data.callId} info={data.service} />} {/* @plantilla-quitar(servicios) */}
-                {data.canDelete && <DeleteButton entity="call" id={data.callId} label="Eliminar grabación" redirectTo="/dashboard/llamadas" className={DELETE_CHIP_CLASS} />}
+                {data.canDelete && <DeleteButton entity="call" id={data.callId} label="Eliminar grabación" redirectTo={panel?.closeHref ?? "/dashboard/llamadas"} className={DELETE_CHIP_CLASS} />}
                 {data.source === "fathom" && (data.shareUrl || data.fathomUrl) && (
                   <a href={(data.shareUrl || data.fathomUrl) as string} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs hover:bg-muted">
                     <Video className="h-3 w-3" aria-hidden /> Ver en Fathom <ExternalLink className="h-3 w-3" aria-hidden />
