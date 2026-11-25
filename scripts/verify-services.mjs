@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @plantilla-quitar(servicios)
 /**
- * Verificacion del modulo de Servicios (Corridas A1 y A2): bloques sv1, sv2, prd, ac, a2, a4, pc (00503) y rp (00522).
+ * Verificacion del modulo de Servicios (Corridas A1 y A2): bloques sv1, sv2, prd, ac, a2, a4, pc (00503), rp (00522) y rls (00523).
  *
  * Corre contra la base real con usuarios de verdad. Prueba lo que vitest no puede: que la BASE haga
  * cumplir las reglas (gemelas SQL = TS con los mismos casos, RLS por rol, la guardia SV003, el modulo
@@ -1102,6 +1102,29 @@ try {
     sql(`DELETE FROM app_servicio_portal.portal_sessions WHERE token_hash IN (app_servicio.portal_token_hash(${lit(tok)}), app_servicio.portal_token_hash(${lit(tokP)}))`);
   }
 
+
+  // ── rls: la lectura de Servicios por conjuntos (00523, traído de RER #96) ───────────────────────────
+  if (run("rls") && sql(`SELECT to_regprocedure('app_servicio.rls_visible_service_ids()') IS NOT NULL AS ok`)[0]?.ok) {
+    console.log("\nrls · Servicios por conjuntos: cada persona ve exactamente lo mismo que con can_see_service_row (00523)");
+    const r = sql(`
+      CREATE TEMP TABLE zz_rls (u uuid, same boolean);
+      DO $do$
+      DECLARE u uuid; a text; b text;
+      BEGIN
+        FOR u IN SELECT DISTINCT user_id FROM public.workspace_members UNION ALL SELECT '00000000-0000-0000-0000-000000000001'::uuid LOOP
+          PERFORM set_config('request.jwt.claims', json_build_object('sub', u::text, 'role', 'authenticated')::text, true);
+          SELECT md5(COALESCE(string_agg(s.id::text, ',' ORDER BY s.id), '')) INTO a FROM app_servicio.services s WHERE app_servicio.can_see_service_row(s);
+          SELECT md5(COALESCE(string_agg(x::text, ',' ORDER BY x), '')) INTO b FROM app_servicio.rls_visible_service_ids() x;
+          INSERT INTO zz_rls VALUES (u, a = b);
+        END LOOP;
+      END $do$;
+      SELECT count(*) AS total, count(*) FILTER (WHERE NOT same) AS diffs FROM zz_rls;`)[0];
+    check(Number(r?.total) > 0 && Number(r?.diffs) === 0, `rls_visible_service_ids da lo mismo que can_see_service_row para las ${r?.total} personas`, JSON.stringify(r));
+    const pol = sql(`SELECT count(*) AS n FROM pg_policies WHERE schemaname = 'app_servicio' AND tablename IN ('services','service_items','service_phases') AND cmd = 'SELECT' AND qual ILIKE '%rls_visible_service_ids%'`)[0];
+    check(Number(pol?.n) === 3, "las tres políticas de lectura usan el conjunto", JSON.stringify(pol));
+    const anonFn = sql(`SELECT has_function_privilege('anon', 'app_servicio.rls_visible_service_ids()', 'EXECUTE') a`)[0]?.a;
+    check(anonFn === false, "anon no ejecuta rls_visible_service_ids");
+  }
 
   // ── rp: pasos que se repiten (00522, traído de RER #70) ──────────────────────────────────────────────
   if (run("rp") && sql(`SELECT to_regprocedure('app_servicio.svc_occurrence_next(jsonb,date,date)') IS NOT NULL AS ok`)[0]?.ok) {
