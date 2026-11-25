@@ -363,4 +363,4 @@ Dos agentes declarados, uno por negocio y **apagados al nacer**: «Analizador de
 - **Quién los crea:** `ensure_area_analyzer_agents` (solo `service_role`, candado por negocio, idempotente, nunca pisa un agente ni resucita uno borrado) la llama `ensureAreaAnalyzerAgents` al abrir Agentes IA o Grabaciones con `agents.edit`. Nunca lanza.
 - **Botón «Agentes IA» en Grabaciones** (con `calls.configure` o `agents.view`, `lib/calls/ai-agents.ts`): el clasificador (si usa IA y cuántas reglas), los dos analizadores (cuántos tipos corren solos o a mano), el contexto común del análisis y el resumen, cada uno con su enlace para editar. Reemplaza al engranaje que solo tenía dos enlaces.
 
-La 00536 es aditiva (un índice único parcial y una función): **va ANTES de desplegar el código**. Sin ella, la pantalla funciona igual, pero los dos agentes no se crean (el error se anota y no se muestra).
+La 00536 es aditiva (un índice único parcial y una función): **va ANTES de desplegar el código**. **Aplicada y registrada** el 25/11/2026 UTC (versión `20261125201211`). Sin ella, la pantalla funciona igual, pero los dos agentes no se crean (el error se anota y no se muestra).
