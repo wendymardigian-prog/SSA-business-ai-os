@@ -524,7 +524,8 @@ export async function slotsForManualBooking(input: {
   const ctx = await getPermissionAction("bookings.manage");
   if (!ctx) return {};
 
-  const { data: event } = await ctx.supabase.from("event_types").select("id").eq("id", input.eventTypeId).maybeSingle();
+  // El evento tiene que ser del negocio de la sesión (y verse con ella): el resto lo lee el cliente de servicio.
+  const { data: event } = await ctx.supabase.from("event_types").select("id").eq("id", input.eventTypeId).eq("workspace_id", ctx.workspace.id).maybeSingle();
   if (!event) return {};
 
   const result = await getPublicSlots(await createServiceClient(), {

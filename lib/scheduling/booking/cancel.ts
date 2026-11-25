@@ -53,6 +53,12 @@ export async function cancelBooking(service: Db, input: CancelInput): Promise<Ca
     return { ok: false, status: 409, reason: "too_late", message: input.by === "invitee" ? LATE_ACTION_MESSAGE.cancel : "Esta reunión ya estaba cancelada." };
   }
 
+  // 00524: una reunión de una serie que fijó quien atiende se mueve o se marca «No se presentó», no se cancela desde
+  // la plataforma. Sí si la borraron en Google (`fromGoogle`) o la cancela el sistema (la serie terminó).
+  if (!input.fromGoogle && input.by !== "system" && (await isActiveSeriesBooking(service, booking.metadata))) {
+    return { ok: false, status: 409, reason: "too_late", message: SERIES_NO_CANCEL_MESSAGE };
+  }
+
   const status: CancelStatus = input.status ?? "cancelled_other";
   const { error } = await service
     .from("bookings")
@@ -129,4 +135,23 @@ export async function cancelPendingJobs(service: Db, bookingId: string, types?: 
   else query = query.in("type", [BOOKING_ENDED_JOB, "booking_relative_trigger"]);
   const { error } = await query;
   if (error) console.error("[agenda] no pude anular los jobs de la agenda:", error.message);
+}
+
+export const SERIES_NO_CANCEL_MESSAGE =
+  "Esta reunión es parte de una serie: movela a otro día o, si no se hizo, marcala «No se presentó». Para terminar la serie, andá a la ficha del servicio.";
+
+/** Si la reunión es de una serie de reuniones (00524) que sigue activa. Ante la duda (no se pudo leer), no frena. */
+async function isActiveSeriesBooking(service: Db, metadata: unknown): Promise<boolean> {
+  const seriesId = (metadata as { series_id?: unknown } | null)?.series_id;
+  if (typeof seriesId !== "string") return false;
+  let active = false;
+  // @plantilla-desde(servicios)
+  try {
+    const { data } = await service.schema("app_servicio" as never).from("meeting_series").select("status").eq("id", seriesId).maybeSingle();
+    active = (data as { status?: string } | null)?.status === "active";
+  } catch {
+    active = false;
+  }
+  // @plantilla-hasta(servicios)
+  return active;
 }

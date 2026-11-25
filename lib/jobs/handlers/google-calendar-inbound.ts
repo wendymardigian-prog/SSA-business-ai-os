@@ -24,6 +24,7 @@ import { mirrorFullSyncFrom, mirrorWindow, toMirrorRow, type MirrorRow } from "@
 import { rescheduleBooking } from "@/lib/scheduling/booking/reschedule";
 import { cancelBooking } from "@/lib/scheduling/booking/cancel";
 import { logAudit } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications/create";
 import { BOOKING_GOOGLE_SYNC_JOB } from "./booking-sync";
 
 type Db = SupabaseClient<Database>;
@@ -118,7 +119,7 @@ async function readAndApply(deps: GoogleDeps, cal: CalendarForSync, now: Date, r
   const bookings = ids.length === 0 ? [] : (
     await service
       .from("bookings")
-      .select("id, uid, workspace_id, host_user_id, google_event_id, start_at, end_at, status_group")
+      .select("id, uid, workspace_id, host_user_id, google_event_id, start_at, end_at, status_group, metadata")
       .eq("workspace_id", cal.workspace_id)
       .eq("google_calendar_id", cal.id)
       .in("google_event_id", ids)
@@ -197,8 +198,23 @@ async function readAndApply(deps: GoogleDeps, cal: CalendarForSync, now: Date, r
         fromGoogle: true,
         now,
       });
-      if (r.ok) result.cancelled++;
-      else result.failed++;
+      if (r.ok) {
+        result.cancelled++;
+        // 00524: una fecha de una serie de reuniones borrada en Google no se vuelve a crear: su vuelta queda «por
+        // agendar» (el enganche de la base) y quien atiende se entera para agendarla o darla por perdida.
+        if (typeof (booking.metadata as { series_id?: unknown } | null)?.series_id === "string") {
+          await createNotification({
+            supabase: service,
+            workspaceId: booking.workspace_id,
+            recipientId: booking.host_user_id,
+            type: "booking_cancelled",
+            title: "Borraron en Google una reunión de la serie",
+            body: "Su vuelta volvió a «Por agendar»: agendala de nuevo o dala por perdida en la ficha del servicio.",
+            entityType: "booking",
+            entityId: booking.id,
+          });
+        }
+      } else result.failed++;
     }
   }
 

@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, type DragEvent } from "react";
-import { GripVertical, Lock, MoreHorizontal, Users } from "lucide-react";
-import { dueLabel, formatSource, type SourceContext } from "@/lib/tasks/format";
+import { GripVertical, Lock, MoreHorizontal, Repeat, Users } from "lucide-react";
+import { dueLabel, formatSource, repeatOf, type SourceContext } from "@/lib/tasks/format";
 import type { TaskRowView } from "@/lib/tasks/table-model";
 import { STATUS_LABELS, TASK_STATUSES, type TaskStatus } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
@@ -72,7 +72,10 @@ export function TaskCard({ view, today, canEdit, busy, source, variant, onOpen, 
           onClick={() => onOpen(root.current)}
           className={cn("min-w-0 flex-1 text-left text-sm font-medium leading-snug hover:underline focus-visible:underline focus-visible:outline-none", view.status === "completed" && "text-muted-foreground line-through")}
         >
-          <span className="line-clamp-3 break-words">{view.title}</span>
+          <span className="line-clamp-3 break-words">
+            {repeatOf(view.task.id, source) && <Repeat className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-muted-foreground" aria-label="Se repite" />}
+            {view.title}
+          </span>
         </button>
         {canEdit && (
           <button

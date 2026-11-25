@@ -1,5 +1,7 @@
 // @plantilla-quitar(servicios)
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
+import { ServiceSeriesBlock } from "./service-series-block";
+import { seriesView, type MeetingSeriesRow, type SeriesRoundRow, type SeriesTemplateRow } from "@/lib/services/screens/series-view";
 import { offeredSections } from "@/lib/services/availability";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { contactNames, loadService } from "@/lib/services/screens/load-services";
@@ -22,7 +24,8 @@ import { certificateState } from "@/lib/services/certificate";
 import { loadDesignLinks } from "@/lib/designer/public-links";
 import { createServiceClient } from "@/lib/supabase/server";
 import { ServiceAssistantCard } from "@/components/services/clients/service-assistant-card";
-import { svcRpc } from "@/lib/services/db";
+import { svcRpc, svcSchema } from "@/lib/services/db";
+import { readRoundState } from "@/lib/services/screens/round-state";
 import { loadServicePicker } from "@/lib/services/service-picker-load";
 import { moduleTargetOptions, type ModuleTargetOptions } from "@/lib/program/module-override";
 import { accessViewRows, pendingSections } from "@/lib/portal-admin/accesses-view";
@@ -232,6 +235,12 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
   // A4 (F146, F147): el candado y la evidencia de cada paso, con la misma regla que la base.
   const stepRules = recordStepRules(live, phases, { created_at: s.created_at as string, starts_on: s.starts_on }, today, toLocal);
   const namesByKey: Record<string, string> = Object.fromEntries(live.filter((i) => i.template_key).map((i) => [i.template_key, i.name]));
+  // 00524: el estado de cada vuelta de Reunión. Consulta aparte: sin la columna, no hay estado (y nada se rompe).
+  const roundStates = new Map<string, string | null>();
+  if (live.some((i) => i.kind === "booking" && i.parent_item_id)) {
+    const rs = await svcSchema(supabase).from("service_items").select("id, round_state").eq("service_id", s.id).eq("kind", "booking").not("parent_item_id", "is", null);
+    if (!rs.error) for (const r of (rs.data ?? []) as Array<{ id: string; round_state: string | null }>) roundStates.set(r.id, r.round_state);
+  }
   const stepItems = live.map((i) => {
     const r = stepRules.get(i.id);
     return {
@@ -245,6 +254,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
       taskId: i.task_id,
       needsAttention: i.needs_attention,
       occurrence: i.occurrence_index,
+      roundState: readRoundState(roundStates.get(i.id)),
       lock: r?.lock.locked ? { label: lockLabel(r.lock, namesByKey, civilShortDate) ?? "", message: lockErrorMessage(r.lock, namesByKey, civilShortDate) } : null,
       evidenceRule: r?.evidenceRule ?? null,
       evidence: r?.evidence ?? [],
@@ -265,6 +275,29 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     for (const m of team) {
       const note = overCapacityNote(m.userId, capacity, loads.ok ? loads.data ?? {} : {});
       if (note) capacityNotes[m.userId] = note;
+    }
+  }
+  // 00522: las series de los pasos que se repiten. Consulta aparte: si las columnas todavía no existen, no hay bloque.
+  let seriesBlock: React.ReactNode = null;
+  if (items.some((i) => i.is_recurring_template)) {
+    const [tplRes, roundRes, msRes] = await Promise.all([
+      svcSchema(supabase).from("service_items").select("id, phase_id, name, kind, ref, recurrence, series_ended_at, series_end_reason").eq("service_id", s.id).eq("is_recurring_template", true).order("position"),
+      svcSchema(supabase).from("service_items").select("parent_item_id, status, occurrence_index, round_on, due_on").eq("service_id", s.id).not("parent_item_id", "is", null),
+      // 00524: la serie de reuniones fijada de cada paso. Sin la tabla, ninguna.
+      svcSchema(supabase).from("meeting_series").select("service_item_id, first_start_at, timezone, meet_url").eq("service_id", s.id).eq("status", "active"),
+    ]);
+    if (!tplRes.error && !roundRes.error) {
+      const open = new Set(phases.filter((p) => p.status === "in_progress").map((p) => p.id));
+      const series = seriesView((tplRes.data ?? []) as SeriesTemplateRow[], (roundRes.data ?? []) as SeriesRoundRow[], (id) => open.has(id), msRes.error ? [] : ((msRes.data ?? []) as MeetingSeriesRow[]));
+      seriesBlock = (
+        <ServiceSeriesBlock
+          series={series}
+          canEdit={ctx.can("services.items") && (s.status === "active" || s.status === "paused")}
+          phaseOptions={phases.filter((p) => p.template_key).map((p) => ({ id: p.template_key, name: p.name }))}
+          itemOptions={items.filter((i) => i.template_key && !i.parent_item_id).map((i) => ({ id: i.template_key, name: i.name }))}
+          phaseKeys={Object.fromEntries(phases.map((p) => [p.id, p.template_key]))}
+        />
+      );
     }
   }
   const data: ServiceRecordData = {
@@ -349,6 +382,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
         challenge={challengeCard}
         assistantCard={assistantCard}
         meetings={meetings}
+        series={seriesBlock}
         activity={pointsDaily ? <PortalActivityChart serviceId={s.id} initial={pointsDaily} /> : null}
         pointsHistory={
           pointsDaily && (pointsDaily.enabled || pointsRows.length > 0) ? (

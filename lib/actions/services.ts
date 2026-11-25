@@ -503,7 +503,7 @@ export async function checkSaleRule(saleId: string): Promise<SvcResult<{ met: bo
 }
 
 // ── La ficha del cliente (F28): comentario interno, del cliente o de un servicio ──────────────────
-export async function addClientComment(contactId: string, serviceId: string | null, content: string): Promise<SvcResult<null>> {
+export async function addClientComment(contactId: string, serviceId: string | null, content: string): Promise<SvcResult<{ noteId: string | null }>> {
   const ctx = await getPermissionAction("services.view");
   if (!ctx) return NOT_ALLOWED;
   const text = content.trim().slice(0, 5000);
@@ -513,10 +513,13 @@ export async function addClientComment(contactId: string, serviceId: string | nu
     const { data } = await svcSchema(ctx.supabase).from("services").select("id").eq("id", serviceId).eq("contact_id", contactId).eq("workspace_id", ctx.workspace.id).maybeSingle();
     if (!data) return NOT_ALLOWED;
   }
-  const { error } = await ctx.supabase
+  const { data: inserted, error } = await ctx.supabase
     .from("contact_notes")
-    .insert({ workspace_id: ctx.workspace.id, contact_id: contactId, content: text, created_by: ctx.user.id, service_id: serviceId });
+    .insert({ workspace_id: ctx.workspace.id, contact_id: contactId, content: text, created_by: ctx.user.id, service_id: serviceId })
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: { code: null, message: "No se pudo guardar el comentario.", detail: null } };
   revalidatePath(`/dashboard/clientes/c/${contactId}`);
-  return { ok: true, data: null };
+  // El id sirve para adjuntarle archivos después (`attachNoteFile`).
+  return { ok: true, data: { noteId: (inserted as { id: string } | null)?.id ?? null } };
 }

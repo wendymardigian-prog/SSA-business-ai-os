@@ -73,6 +73,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "inbox_import",
       "inbox_import_pass",
       // Catalogo de Meta (Extra L, AT2): las miniaturas de los anuncios.
+      // Servicios (00524): cortar en Google una serie de reuniones que terminó. // @plantilla-quitar(servicios)
+      "meeting_series_end", // @plantilla-quitar(servicios)
       "meta_ad_thumbnails",
       "meta_ads_sync",
       // La API de Conversiones de Meta (00328): cada evento que se le manda.

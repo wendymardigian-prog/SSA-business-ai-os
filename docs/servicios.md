@@ -139,6 +139,76 @@ Cuando un servicio se cancela, termina o se renueva, sus tareas abiertas del cam
 sistema («Cerrada: el servicio se canceló.») y su entrada en el historial. Los pasos no cambian. Pausar no cierra
 nada.
 
+## Pasos que se repiten (00522, 25/11/2026, traído de RER #70)
+
+Cualquier paso del camino puede tener «Se repite» (editor de la variante). La regla vive en `recurrence` y es la de
+SSA desde el Reto (00376), con lo que sumó la 00522:
+
+- **Cada cuánto** (`every`): cada día, cada semana, cada N semanas (`n_weeks`, `n` de 1 a 52), cada mes (`month`) o
+  cada N días. Con semana o N semanas se pueden elegir **los días** (`weekdays`, 1 = lunes … 7 = domingo); sin días,
+  el mismo día en que empieza. Con mes, **el día del mes** (`day_of_month`); si el mes no lo tiene, el último.
+- **Desde** (`from`) y **hasta** (`until`), como antes. «Una cantidad de vueltas» (`n_times`) cuenta las
+  **cumplidas**: la serie sigue creando vueltas en sus fechas hasta que se completan N (en producción ningún paso usaba
+  `n_times` cuando cambió).
+- Cada vuelta es un paso hijo (`parent_item_id`, `occurrence_index`) con su día (`round_on`) y vence el día antes de
+  la siguiente. Copia `ref`, así que **hereda el bloqueo, la evidencia y el checklist** del paso (B-PRD-15).
+- La tarea de una vuelta se llama «… · vuelta N». En Tareas lleva el ícono ↻ y, en el detalle, el bloque «Se repite»
+  con el link a la serie (`lib/tasks/repeat-load.ts`, con la sesión; si falla, no hay ícono).
+- **La serie de un servicio** («Pasos que se repiten» en la ficha): cuántas vueltas hubo, cuántas se cumplieron, la
+  última y la próxima. Con `services.items`: «Cambiar» (solo en ese servicio; `svc_set_item_series`) y «Terminar
+  serie» (`svc_end_series`, con motivo opcional). Al terminar, cancelar o renovar el servicio, sus series terminan solas
+  (`trg_app_servicio_end_series`, nunca frena el cambio de estado). Una pausa no se recupera: al reanudar, las fechas se
+  corren con el inicio de la fase.
+
+Gemelas SQL = TS: `nextOccurrence` / `occurrenceDates` ↔ `svc_occurrence_next` / `svc_occurrence_dates`
+(`recurrence.cases.json`), `recurrenceProblems` ↔ `journey_recurrence_problems` (`journey-template.cases.json`) y
+`seriesReached` ↔ `svc_series_reached` (`repetition.cases.json`). Los casos nuevos llevan `"since": "00522"`: el
+verificador los saltea si la migración todavía no está aplicada.
+
+## Reuniones que se repiten (00524, 25/11/2026, traído de RER #71)
+
+Un paso de Reunión que se repite elige **cómo se agenda** (`ref.schedule`, editor → «Cómo se agenda»):
+
+- **La agenda el equipo** (`team`, lo de siempre): cada vuelta crea la tarea «Agendar [tipo] con [cliente] · vuelta N»
+  (`source_ref = svc_round:<vuelta>`: completarla NO cumple la vuelta). Se cierra sola cuando la reunión queda
+  agendada y se abre otra vez si se cancela.
+- **La fija quien atiende** (`series`): cuando la serie tendría que empezar, quien atiende (la persona del paso o el
+  responsable del servicio) recibe «Fijar reuniones recurrentes con [cliente]». Elige el primer día y la hora y la app
+  crea UN evento que se repite en su Google Calendar, con Meet e invitación al cliente (`lib/scheduling/series/run.ts`).
+  Las fechas de los próximos 60 días pasan a la Agenda (barrido diario) como las traídas de Google
+  (`metadata.google_import`, 00510): nunca se crea otro evento, mover una mueve esa fecha en Google y no dispara «Se
+  agendó una reunión». Llevan `metadata.series_id`. Sin Google conectado, no se puede fijar. Nada se agenda solo.
+
+Cada vuelta de Reunión tiene su estado (`round_state`): por agendar, agendada, asistió, no se presentó, perdida. Una
+reunión nueva se une a la vuelta pendiente **más antigua** de su paso (`booking_round_candidate`; las de una serie, solo
+a las de SU paso) y la vuelta se cumple **solo al asistir** (la reunión pasa a un resultado, o «Asistió» a mano). «No se
+presentó» no cuenta; «Dar por perdida» la cierra sin contar para «N vueltas». Se marca desde el paso en la ficha
+(`svc_round_mark`, `services.items`).
+
+Una reunión de una serie activa **no se cancela** desde la plataforma (se mueve o se marca «No se presentó»); si la
+borran en Google, se cancela acá, su vuelta vuelve a «por agendar» y se le avisa a quien atiende. Pausar, terminar el
+servicio, cambiar el responsable (si el paso es del responsable), terminar la serie a mano o cumplir sus N vueltas
+cortan la serie: el trabajo `meeting_series_end` corta el evento en Google (UNTIL) y cancela las reuniones futuras;
+reintenta a 1, 5 y 15 minutos y, si sigue fallando, avisa. «Cambiar día y hora» corta la serie y fija una nueva.
+
+## Velocidad de la lectura (00523, traído de RER #96)
+
+Las políticas de lectura de `services`, `service_items` y `service_phases` preguntan
+`service_id IN (SELECT app_servicio.rls_visible_service_ids())`: la misma regla que `can_see_service_row`, calculada
+una vez por consulta (antes, una vez por fila: 134 ms contra 9 ms para 184 pasos). `can_see_service(_row)` no cambió;
+**si cambia su regla, cambia también `rls_visible_service_ids` en la misma migración** (el bloque `rls` de
+verify-services lo compara persona por persona). Una política nueva de Servicios no llama a una función con columnas de
+la fila.
+
+## Archivos en los comentarios de la ficha (00520, traído de RER #110)
+
+Un comentario de la ficha del cliente o de un servicio (`contact_notes`) puede llevar hasta 5 archivos de 25 MB:
+imágenes, PDF u Office, validados por sus bytes (`lib/attachments/record-files.ts`). Adjunta solo quien escribió el
+comentario, con el mismo permiso con el que comenta (`services.view`). Bucket privado `record-attachments`
+(`<ws>/notes/<nota>/…`), registro en `contact_note_attachments` (escribe solo el servidor; sin `contact_id`, así la
+fusión no cambia) y descarga con un enlace de 5 minutos. Lo mismo para los comentarios de las tareas (00521, ver
+docs/tareas.md).
+
 ## El semáforo
 
 `svc_compute_light` (gemela `lib/services/light.ts`, ≥ 28 casos): verde, amarillo o rojo según los pasos
@@ -196,7 +266,7 @@ otra se suspende con sus sesiones revocadas. Dos servicios activos del mismo pro
 
 ```
 node scripts/verify-servicios-migracion.mjs --todas   # cada migración S01-S16: objetos, RLS, permisos, CHECK y triggers
-node scripts/verify-services.mjs                      # sv1, sv2, prd, ac, a2, a4
+node scripts/verify-services.mjs                      # sv1, sv2, prd, ac, a2, a4, pc, rp (00522), rls (00523) y ms (00524)
 node scripts/verify-comments.mjs                      # comentarios del equipo con @menciones (A4)
 node scripts/verify-program.mjs                       # pr, ev, ca, ce (vite-node, render simulado), co, ia, x
 node scripts/verify-affiliates.mjs

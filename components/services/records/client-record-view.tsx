@@ -6,6 +6,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight, Loader2, MessageCircle, Plus } from "lucide-react";
 import { addClientComment } from "@/lib/actions/services";
+import { AttachmentList, AttachmentPicker, PendingFiles, uploadRecordFiles } from "@/components/attachments/record-attachments";
+import type { RecordAttachmentView } from "@/lib/attachments/record-files";
 import { clientTimelineFilter, type TimelineFilter } from "@/lib/services/screens/service";
 import { LIGHT_LABELS, STATUS_LABELS, dayLabel, type Light, type ServiceStatus } from "@/lib/services/screens/list";
 import { clientRecordFacts } from "@/lib/services/screens/client-record";
@@ -58,7 +60,7 @@ export interface ClientRecordData {
   hasPortal: boolean;
   portal: { accountStatus: string | null; lastLoginAt: string | null; pendingReviews: number } | null;
   services: ClientRecordService[];
-  events: Array<{ id: string; at: string; serviceId: string | null; kind: string; text: string; author: string | null }>;
+  events: Array<{ id: string; at: string; serviceId: string | null; kind: string; text: string; author: string | null; attachments?: RecordAttachmentView[] }>;
 }
 
 const civil = new Intl.DateTimeFormat("es", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
@@ -145,6 +147,7 @@ export function ClientRecordView({ data, today, timeZone, portalCard }: { data: 
   const params = useSearchParams();
   const [filter, setFilter] = useState<TimelineFilter>({ kind: "all" });
   const [comment, setComment] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [about, setAbout] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -160,7 +163,11 @@ export function ClientRecordView({ data, today, timeZone, portalCard }: { data: 
     start(async () => {
       const r = await addClientComment(data.contactId, about || null, comment);
       if (!r.ok) return setError(r.error.message);
+      // Los archivos van de a uno, después de guardar el comentario (00520). Si uno falla, se avisa cuál.
+      const failed = r.data.noteId && files.length ? await uploadRecordFiles("note", r.data.noteId, files) : [];
+      if (failed.length) setError(`El comentario quedó guardado, pero no se adjuntó: ${failed.join(" · ")}`);
       setComment("");
+      setFiles([]);
       router.refresh();
     });
   }
@@ -252,7 +259,9 @@ export function ClientRecordView({ data, today, timeZone, portalCard }: { data: 
             Comentario interno
           </label>
           <textarea id="client-comment" value={comment} onChange={(e) => setComment(e.target.value)} rows={2} placeholder="Comentario interno (no lo ve el cliente)" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+          <PendingFiles files={files} onChange={setFiles} />
           <div className="flex flex-wrap items-center gap-2">
+            <AttachmentPicker files={files} onChange={setFiles} onError={setError} disabled={pending} />
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               Comentar en
               <select value={about} onChange={(e) => setAbout(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-2 text-xs text-foreground md:h-8">
@@ -276,6 +285,7 @@ export function ClientRecordView({ data, today, timeZone, portalCard }: { data: 
           {events.map((e) => (
             <li key={e.id} className="rounded-lg border border-border px-3 py-2 text-sm">
               <p className="whitespace-pre-wrap">{e.text}</p>
+              {e.attachments && e.attachments.length > 0 && <AttachmentList kind="note" items={e.attachments} />}
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {when(e.at)}
                 {e.author ? ` · ${e.author}` : ""}

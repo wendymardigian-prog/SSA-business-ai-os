@@ -16,6 +16,8 @@ import {
   type MentionCandidate,
 } from "@/lib/team-comments/mentions";
 import { bodySegments, threadItems, type CommentEntity, type ThreadItem } from "@/lib/team-comments/thread";
+import type { RecordAttachmentView } from "@/lib/attachments/record-files";
+import { AttachmentList, AttachmentPicker, PendingFiles, uploadRecordFiles } from "@/components/attachments/record-attachments";
 import {
   deleteTeamComment,
   editTeamComment,
@@ -146,6 +148,7 @@ export function CommentThread({
                   candidates={payload?.candidates ?? []}
                   viewerId={payload?.viewerId ?? null}
                   when={formatWhen(entry.comment.createdAt, timeZone)}
+                  attachments={payload?.attachments?.[entry.comment.id] ?? []}
                   onChanged={load}
                   onError={toast.error}
                 />
@@ -166,13 +169,18 @@ export function CommentThread({
           candidates={payload.candidates}
           viewerId={payload.viewerId}
           onError={toast.error}
-          onSend={async (body, mentions) => {
+          // Archivos adjuntos (00521): por ahora solo en las tareas.
+          allowFiles={entityType === "task"}
+          onSend={async (body, mentions, files) => {
             const res = await postTeamComment({ entityType, entityId, body, mentions });
             if (!res.ok) {
               toast.error(res.error);
               return false;
             }
             setNotice(null);
+            // El comentario ya quedó: si un archivo falla, se avisa cuál y se sigue.
+            const failed = files.length ? await uploadRecordFiles("comment", res.data.id, files) : [];
+            if (failed.length) setNotice(`El comentario quedó guardado, pero no se adjuntó: ${failed.join(" · ")}`);
             await load();
             return true;
           }}
@@ -190,6 +198,7 @@ function CommentBubble({
   candidates,
   viewerId,
   when,
+  attachments,
   onChanged,
   onError,
 }: {
@@ -200,6 +209,7 @@ function CommentBubble({
   candidates: MentionCandidate[];
   viewerId: string | null;
   when: string;
+  attachments: RecordAttachmentView[];
   onChanged: () => Promise<void>;
   onError: (message: string) => void;
 }) {
@@ -301,6 +311,7 @@ function CommentBubble({
             )}
           </p>
         )}
+        {!editing && <AttachmentList kind="comment" items={attachments} />}
       </div>
     </div>
   );
@@ -312,6 +323,7 @@ function CommentComposer({
   initial = "",
   initialPicked = [],
   submitLabel = "Comentar",
+  allowFiles = false,
   onSend,
   onCancel,
   onError,
@@ -321,7 +333,9 @@ function CommentComposer({
   initial?: string;
   initialPicked?: MentionCandidate[];
   submitLabel?: string;
-  onSend: (body: string, mentions: string[]) => Promise<boolean>;
+  /** Muestra el clip para adjuntar archivos (se suben después de guardar el comentario). */
+  allowFiles?: boolean;
+  onSend: (body: string, mentions: string[], files: File[]) => Promise<boolean>;
   onCancel?: () => void;
   onError: (message: string) => void;
 }) {
@@ -331,6 +345,7 @@ function CommentComposer({
   const [cursor, setCursor] = useState(initial.length);
   const [highlight, setHighlight] = useState(0);
   const [sending, setSending] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   const active = activeMentionQuery(text, cursor);
@@ -355,12 +370,13 @@ function CommentComposer({
       return;
     }
     setSending(true);
-    const ok = await onSend(text.trim(), mentionsInBody(text, picked, viewerId));
+    const ok = await onSend(text.trim(), mentionsInBody(text, picked, viewerId), files);
     setSending(false);
     if (ok && !onCancel) {
       setText("");
       setPicked([]);
       setCursor(0);
+      setFiles([]);
     }
   };
 
@@ -431,7 +447,17 @@ function CommentComposer({
           ))}
         </ul>
       )}
+      {allowFiles && (
+        <div className="mt-2">
+          <PendingFiles files={files} onChange={setFiles} />
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-end gap-2">
+        {allowFiles && (
+          <div className="mr-auto">
+            <AttachmentPicker files={files} onChange={setFiles} onError={(m) => m && toast.error(m)} disabled={sending} />
+          </div>
+        )}
         {onCancel && (
           <button type="button" onClick={onCancel} className="h-8 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted max-topbar:h-10">
             Cancelar
