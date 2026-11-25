@@ -18,6 +18,8 @@ import { normalizeSocialHandle } from "@/lib/contacts/social";
 import { normalizePhoneWithCountry } from "@/lib/scheduling/phone-countries";
 import { CUSTOM_PREFIX, customSlugOf, isCustomTarget, socialPlatformOf, type CustomFieldDef } from "@/lib/forms/contact-config";
 import { normalizeCustomValue } from "@/lib/custom-fields";
+import { normalizePayload } from "./normalize";
+import { flattenPaths } from "./payload-tree";
 import { getByPath, scalarText } from "./paths";
 import type { MapRow, MapSource, Transform, UpsertContactConfig } from "./upsert-config";
 
@@ -79,8 +81,35 @@ export const MAX_TEXT = 300;
 // Origen
 // ---------------------------------------------------------------------------
 
-/** La raíz sobre la que se leen las rutas: `payload.x` / `query.x`, o `x` a secas = `payload.x`. */
+const normalizedCache = new WeakMap<object, Record<string, unknown>>();
+
+/** La copia normalizada (normalize.ts), calculada una vez por payload: el mapeo lee varias filas del mismo envío. */
+function normalizedOf(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null) return normalizePayload(value);
+  const hit = normalizedCache.get(value);
+  if (hit) return hit;
+  const out = normalizePayload(value);
+  normalizedCache.set(value, out);
+  return out;
+}
+
+export const NORMALIZED_PREFIX = "webhook.data.";
+export const NORMALIZED_QUERY_PREFIX = "webhook.query_data.";
+
+const hasOwnKey = (value: unknown, key: string): boolean =>
+  typeof value === "object" && value !== null && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, key);
+
+/**
+ * La raíz sobre la que se leen las rutas: `payload.x` / `query.x` (tal como llegó), `webhook.data.x` /
+ * `webhook.query_data.x` (la copia normalizada, la misma ruta que la variable `{{webhook.data.x}}`, la que propone
+ * el selector), o `x` a secas = `payload.x`. Un payload que trae su propia clave `webhook` en la raíz se sigue
+ * leyendo como antes: lo guardado nunca cambia de significado.
+ */
 export function readPath(payload: unknown, query: unknown, path: string): unknown {
+  if (!hasOwnKey(payload, "webhook")) {
+    if (path.startsWith(NORMALIZED_PREFIX)) return getByPath(normalizedOf(payload), path.slice(NORMALIZED_PREFIX.length));
+    if (path.startsWith(NORMALIZED_QUERY_PREFIX)) return getByPath(normalizedOf(query), path.slice(NORMALIZED_QUERY_PREFIX.length));
+  }
   const root = { payload, query };
   if (path.startsWith("payload.") || path.startsWith("query.")) return getByPath(root, path);
   return getByPath(payload, path);
@@ -291,7 +320,14 @@ export { CUSTOM_PREFIX };
 // Sugerencia automática al elegir el ejemplo
 // ---------------------------------------------------------------------------
 
-const HINTS: Array<{ target: string; transform?: Transform; keys: string[] }> = [
+export interface SuggestHint {
+  target: string;
+  transform?: Transform;
+  /** Claves que se reconocen, en minúsculas y en su forma segura (normalize.ts). */
+  keys: string[];
+}
+
+const HINTS: SuggestHint[] = [
   { target: "contact.email", transform: "lowercase", keys: ["email", "correo", "e_mail", "mail", "email_address"] },
   { target: "contact.phone", transform: "clean_phone", keys: ["phone", "telefono", "tel", "celular", "mobile", "phone_number"] },
   { target: "contact.whatsapp_phone", transform: "clean_phone", keys: ["whatsapp", "whatsapp_phone", "wa"] },
@@ -301,18 +337,28 @@ const HINTS: Array<{ target: string; transform?: Transform; keys: string[] }> = 
 ];
 
 /**
- * Las filas que se sugieren a partir de las claves obvias del ejemplo (en la raíz del payload). NO pisa
- * una fila ya elegida (mismo criterio que `autoMapOnFieldAdded` de Formularios): solo agrega destinos
- * que todavía no tienen una fila.
+ * Las filas que se sugieren a partir de las claves obvias del ejemplo. Primero en la raíz del payload (la ruta tal
+ * como llegó); si no está ahí, en cualquier nivel de la copia normalizada (`webhook.data.cliente.email`), la menos
+ * profunda primero. NO pisa una fila ya elegida (mismo criterio que `autoMapOnFieldAdded` de Formularios): solo
+ * agrega destinos que todavía no tienen una fila.
  */
-export function suggestMapRows(samplePayload: unknown, existing: MapRow[]): MapRow[] {
+export function suggestMapRows(samplePayload: unknown, existing: MapRow[], hints: SuggestHint[] = HINTS): MapRow[] {
   if (typeof samplePayload !== "object" || samplePayload === null || Array.isArray(samplePayload)) return existing;
   const keys = Object.keys(samplePayload as Record<string, unknown>);
+  const leaves = flattenPaths(normalizedOf(samplePayload))
+    .map((leaf) => ({ leaf, parts: leaf.path.split(".") }))
+    .sort((a, b) => a.parts.length - b.parts.length);
   const out = [...existing];
-  for (const hint of HINTS) {
+  for (const hint of hints) {
     if (out.some((r) => r.target === hint.target)) continue;
+    const extra = hint.transform ? { transform: hint.transform } : {};
     const found = keys.find((k) => hint.keys.includes(k.toLowerCase()) && scalarText((samplePayload as Record<string, unknown>)[k]) !== null);
-    if (found) out.push({ target: hint.target, source: { path: found }, ...(hint.transform ? { transform: hint.transform } : {}) });
+    if (found) {
+      out.push({ target: hint.target, source: { path: found }, ...extra });
+      continue;
+    }
+    const nested = leaves.find(({ parts }) => hint.keys.includes(parts[parts.length - 1]));
+    if (nested) out.push({ target: hint.target, source: { path: `${NORMALIZED_PREFIX}${nested.leaf.path}` }, ...extra });
   }
   return out;
 }

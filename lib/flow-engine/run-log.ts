@@ -26,6 +26,11 @@ export interface StepNote {
    * se puede reintentar y para agrupar los fallos en las metricas del lienzo. Nunca un texto libre.
    */
   kind?: string | null;
+  /**
+   * Lo que el paso hizo, para auditar (`flow_session_steps.output.result`): el contacto que creó o
+   * encontró. Puede tener datos personales: nunca se muestra a quien no puede editar automatizaciones.
+   */
+  output?: Record<string, unknown> | null;
 }
 
 /** Por que termino una ejecucion. `lib/flows/runs.ts` lo traduce. */
@@ -69,12 +74,14 @@ const SEVERITY: Record<StepStatus, number> = { ok: 0, waiting: 1, skipped: 2, de
  */
 export function mergeStepNote(current: StepNote | null, next: StepNote): StepNote {
   if (!current) return next;
+  const output = current.output || next.output ? { ...(current.output ?? {}), ...(next.output ?? {}) } : undefined;
   if (SEVERITY[next.status] > SEVERITY[current.status]) {
     return {
       status: next.status,
       reason: next.reason ?? current.reason ?? null,
       resumesAt: next.resumesAt ?? current.resumesAt ?? null,
       kind: next.kind ?? current.kind ?? null,
+      ...(output ? { output } : {}),
     };
   }
   return {
@@ -82,6 +89,7 @@ export function mergeStepNote(current: StepNote | null, next: StepNote): StepNot
     reason: current.reason ?? next.reason ?? null,
     resumesAt: current.resumesAt ?? next.resumesAt ?? null,
     kind: current.kind ?? next.kind ?? null,
+    ...(output ? { output } : {}),
   };
 }
 
@@ -153,6 +161,10 @@ export interface RecordStepArgs {
   errorKind?: string | null;
   resumesAt?: string | null;
   startedAt: string;
+  /** Lo que usó el paso (`stepInput`). Columna de la 00515, con datos personales: solo la lee el servidor. */
+  input?: Record<string, unknown> | null;
+  /** Lo que dejó el paso (`stepOutput`). Columna de la 00515. */
+  output?: Record<string, unknown> | null;
 }
 
 /** Si la base todavia no tiene una columna nueva (la migracion no se aplico): se vuelve a intentar sin ellas. */
@@ -176,8 +188,11 @@ export async function recordStep(supabase: Db, args: RecordStepArgs): Promise<vo
       started_at: args.startedAt,
     };
     const extra = { exit_handle: args.exitHandle ?? null, error_kind: sanitizeErrorKind(args.errorKind) };
-    let { error } = await supabase.from("flow_session_steps").insert({ ...row, ...extra });
-    // Sin la 00317 la fila se anota igual, sin las dos columnas nuevas: el historial no se pierde por un deploy adelantado.
+    const io = { input: (args.input ?? null) as never, output: (args.output ?? null) as never };
+    let { error } = await supabase.from("flow_session_steps").insert({ ...row, ...extra, ...io } as never);
+    // Sin la 00515 (o la 00317) la fila se anota igual, sin las columnas nuevas: el historial no se pierde por un deploy
+    // adelantado.
+    if (isMissingColumn(error)) ({ error } = await supabase.from("flow_session_steps").insert({ ...row, ...extra }));
     if (isMissingColumn(error)) ({ error } = await supabase.from("flow_session_steps").insert(row));
     if (error) console.error(`[flow-engine] no pude anotar el paso (code=${error.code ?? "?"})`);
     if (args.status === "failed") {
@@ -213,6 +228,29 @@ export async function noteWaitExit(supabase: Db, sessionId: string, nodeId: stri
     }
   } catch (err) {
     console.error("[flow-engine] no pude anotar la salida de la espera:", err instanceof Error ? err.name : "error");
+  }
+}
+
+/**
+ * Un «Esperar» que se retomó: su fila (la última `waiting` de ese paso) pasa a terminar AHORA, así el historial dice
+ * cuándo siguió. El estado queda `waiting` (las métricas del lienzo lo cuentan así); la pantalla lo lee como «Esperó»
+ * cuando la ejecución ya no está activa o hay pasos después. Nunca lanza.
+ */
+export async function noteWaitResumed(supabase: Db, sessionId: string, nodeId: string): Promise<void> {
+  try {
+    const { data, error } = await supabase
+      .from("flow_session_steps")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("node_id", nodeId)
+      .eq("status", "waiting")
+      .order("seq", { ascending: false })
+      .limit(1);
+    if (error || !data?.[0]) return;
+    const { error: writeError } = await supabase.from("flow_session_steps").update({ finished_at: new Date().toISOString() } as never).eq("id", data[0].id);
+    if (writeError) console.error(`[flow-engine] no pude anotar el fin de la espera (code=${writeError.code ?? "?"})`);
+  } catch (err) {
+    console.error("[flow-engine] no pude anotar el fin de la espera:", err instanceof Error ? err.name : "error");
   }
 }
 

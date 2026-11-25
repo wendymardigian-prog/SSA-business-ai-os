@@ -5,8 +5,11 @@ import { getNode } from "./registry";
 import { SKIP_NEXT_STEP } from "./wait-until";
 import { messageOriginVariables } from "@/lib/messages/origin-context";
 import { seedContactVariables } from "./variable-catalog";
+import { seedBuiltContactVariables, type SeedMode } from "./contact-variables";
+import { loadContactVariables } from "./contact-variables-load";
 import type { AutomationSource, FlowRuntime } from "./registry/types";
-import { finalStepStatus, mergeStepNote, noteSessionEnd, noteSessionVersion, noteWaitExit, recordStep, stepExitHandle, stepExitLabel, stepLabel, type SessionEndReason, type StepNote } from "./run-log";
+import { snapshotVariables, stepInput, stepOutput } from "./step-io";
+import { finalStepStatus, mergeStepNote, noteSessionEnd, noteSessionVersion, noteWaitExit, noteWaitResumed, recordStep, stepExitHandle, stepExitLabel, stepLabel, type SessionEndReason, type StepNote } from "./run-log";
 
 /**
  * Lo que el motor le presta a los nodos que necesitan arrancar otro flow.
@@ -216,29 +219,25 @@ export async function executeFlow(
   return session.id;
 }
 
-/** Lee y siembra las variables del contacto y del negocio. Un fallo de lectura no frena el flujo: siguen sin sembrar. */
+/**
+ * Lee y siembra las variables del contacto y del negocio (`contact-variables.ts`). Un fallo de lectura no
+ * frena el flujo: siguen las variables que ya habia.
+ * - Al arrancar (`existing-wins`), lo que trajo el disparador gana.
+ * - Al retomar despues de una espera (`fresh-wins`), ganan los datos de AHORA: si cambio el vendedor durante la espera,
+ *   el mensaje usa el nuevo.
+ */
 async function withContactVariables(
   supabase: SupabaseClient<Database>,
   variables: Record<string, unknown>,
   contactId: string | null,
-  workspaceId: string
+  workspaceId: string,
+  mode: SeedMode = "existing-wins"
 ): Promise<Record<string, unknown>> {
-  try {
-    const [contact, workspace] = await Promise.all([
-      contactId
-        ? supabase.from("contacts").select("display_name, email, phone").eq("id", contactId).maybeSingle()
-        : Promise.resolve({ data: null }),
-      supabase.from("workspaces").select("name").eq("id", workspaceId).maybeSingle(),
-    ]);
-    return seedContactVariables(
-      variables,
-      (contact.data as { display_name?: string | null; email?: string | null; phone?: string | null } | null) ?? null,
-      (workspace.data as { name?: string | null } | null) ?? null
-    );
-  } catch (err) {
-    console.error("[flow-engine] no pude leer los datos del contacto para las variables:", err instanceof Error ? err.message : "error");
-    return variables;
-  }
+  const loaded = await loadContactVariables(supabase, contactId, workspaceId);
+  if (!loaded) return variables;
+  let next = loaded.built ? seedBuiltContactVariables(variables, loaded.built, mode) : variables;
+  next = seedContactVariables(next, null, { name: loaded.workspaceName });
+  return next;
 }
 
 /** Cuantos saltos de "Ir a otro flujo" seguidos se permiten antes de cortar. */
@@ -392,6 +391,9 @@ export async function resumeSession(
   restoreOriginFromSession(context, session);
 
   context.variables = (session.variables as Record<string, string>) || {};
+  // Los datos del contacto de AHORA (no los del arranque): una espera de dias puede haber cambiado el vendedor, el
+  // estado o un campo personalizado. Si la lectura falla, sigue con lo guardado.
+  context.variables = (await withContactVariables(supabase, context.variables, context.contactId, context.workspaceId, "fresh-wins")) as Record<string, string>;
 
   // The resume is driven by a fresh reply; make {{message}} reflect it.
   if (context.incomingMessage.text) {
@@ -430,6 +432,7 @@ export async function resumeSession(
   // "Si no responde a tiempo" (`timeout`). Respondio nunca toma la de timeout; timeout solo toma la suya.
   // Que quede en el historial por que salida siguio la espera (las metricas del lienzo cuentan «Respondió»).
   if (session.waiting_for_input) await noteWaitExit(supabase, session.id, currentNode.id, exit);
+  await noteWaitResumed(supabase, session.id, currentNode.id);
 
   const outgoing = edges.filter((e) => e.source === currentNode.id);
   // Vencido sin la salida "Si no responde a tiempo" conectada, sigue por la de siempre (lo que el panel prometia).
@@ -530,6 +533,10 @@ async function traverseNodes(
   // Execute the node. Lo que el paso avise (un envio rechazado no lanza) se junta aca y queda en el historial, tanto si
   // termina bien como si revienta.
   const startedAt = new Date().toISOString();
+  // Para auditar: con qué datos corrió el paso y qué cambió (step-io.ts). Nunca lanza.
+  const input = stepInput(node.data, context.variables as Record<string, unknown> | undefined);
+  const variablesBefore = snapshotVariables(context.variables as Record<string, unknown> | undefined);
+  const contactBefore = context.contactId ?? null;
   let note: StepNote | null = null;
   context.noteStep = (next) => {
     note = mergeStepNote(note, next);
@@ -548,6 +555,14 @@ async function traverseNodes(
       errorKind: (note as StepNote | null)?.kind ?? null,
       resumesAt: (note as StepNote | null)?.resumesAt ?? null,
       startedAt,
+      input,
+      output: stepOutput({
+        declared: (note as StepNote | null)?.output ?? null,
+        before: variablesBefore,
+        variables: context.variables as Record<string, unknown> | undefined,
+        contactBefore,
+        contactAfter: context.contactId ?? null,
+      }),
     });
 
   let result: Awaited<ReturnType<typeof executeNode>>;

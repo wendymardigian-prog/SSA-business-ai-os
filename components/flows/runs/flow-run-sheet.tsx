@@ -17,6 +17,8 @@ import {
   type RunStepStatus,
 } from "@/lib/flows/runs";
 import type { FlowRunRow, FlowRunStep } from "@/lib/flows/runs-query";
+import type { RunAudit } from "@/lib/flows/run-audit";
+import { RunStepData, RunWebhookSection } from "./run-audit";
 import { cn } from "@/lib/utils";
 import { RunStateBadge, runContactName } from "./flow-runs-screen";
 
@@ -36,6 +38,7 @@ export function FlowRunSheet({
   steps,
   timeZone,
   onClose,
+  audit = null,
 }: {
   flowId: string;
   canRetry: boolean;
@@ -43,7 +46,10 @@ export function FlowRunSheet({
   steps: FlowRunStep[];
   timeZone: string;
   onClose: () => void;
+  /** Lo auditable (00504). Solo llega a quien tiene `flows.edit` (`canRetry`). */
+  audit?: RunAudit | null;
 }) {
+  const runActive = run.status === "active";
   const endReason = runEndReasonLabel(run.end_reason);
   const lastFailureId = [...steps].reverse().find((s) => s.status === "failed")?.id ?? null;
 
@@ -77,6 +83,10 @@ export function FlowRunSheet({
           </div>
         )}
 
+        {run.source_type === "webhook" && (
+          <RunWebhookSection audit={audit} canSeeData={canRetry} timeZone={timeZone} flowId={flowId} runId={run.id} canRerun={canRetry && !runActive} />
+        )}
+
         <section aria-label="Pasos">
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pasos</h3>
           {steps.length === 0 ? (
@@ -96,12 +106,14 @@ export function FlowRunSheet({
                     <div className="min-w-0 flex-1">
                       <p className="break-words text-sm font-medium">{step.node_label}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {runStepStatusLabel(step.status, isLast)} · {formatRunDate(step.started_at, timeZone)}
+                        {runStepStatusLabel(step.status, isLast, runActive)} · {formatRunDate(step.started_at, timeZone)}
+                        {step.status !== "waiting" && step.status !== "deferred" && formatRunDuration(step.started_at, step.finished_at) !== "—" ? ` · ${formatRunDuration(step.started_at, step.finished_at)}` : ""}
                       </p>
-                      {step.resumes_at && isLast && <p className="mt-1 text-xs text-muted-foreground">Sigue el {formatRunDate(step.resumes_at, timeZone)}</p>}
+                      {step.resumes_at && isLast && runActive && <p className="mt-1 text-xs text-muted-foreground">Sigue el {formatRunDate(step.resumes_at, timeZone)}</p>}
                       {step.exit_label && <p className="mt-1 text-xs text-muted-foreground">Siguió por: {step.exit_label}</p>}
                       {reason && <p className={cn("mt-1 break-words text-xs", step.status === "failed" ? "text-red-700 dark:text-red-300" : "text-muted-foreground")}>{reason}</p>}
                       {step.status === "failed" && step.id === lastFailureId && canRetry && <RetryStep flowId={flowId} run={run} step={step} />}
+                      {canRetry && <RunStepData data={audit?.steps[step.id]} />}
                     </div>
                   </li>
                 );

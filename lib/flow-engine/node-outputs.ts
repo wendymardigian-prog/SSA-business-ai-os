@@ -63,6 +63,7 @@ export function upsertContactOutputs(): ConditionFieldSpec[] {
       group: GROUP,
     },
     { path: "variable:contact_fail_reason", label: "Por qué no se pudo", type: "text", group: GROUP, hint: "no_identifier (sin teléfono, email ni red) o not_found (no existe)" },
+    { path: "contact.id", label: "Contacto: id", type: "text", group: GROUP },
   ];
 }
 // @plantilla-hasta(webhooks)

@@ -8,6 +8,7 @@ import type { Json } from "@/lib/types/database";
 import { canRetryStep } from "@/lib/flows/runs";
 import { buildNodeMetrics, isMetricPeriod, periodRange, type NodeMetrics, type NodeStatRow } from "@/lib/flows/node-metrics";
 import { PROVIDER_RETRY_VAR } from "@/lib/flow-engine/provider-retry";
+import { reprocessInbound } from "@/lib/webhooks/process";
 
 /**
  * Las metricas de cada paso en el lienzo y «Reintentar desde este paso» en las ejecuciones (00317).
@@ -167,4 +168,75 @@ export async function retryFlowStep(input: { flowId: string; runId: string; step
 
   revalidatePath(`/dashboard/flows/${input.flowId}/ejecuciones`);
   return { ok: true };
+}
+
+export type RerunResult = { ok: true; runId: string | null } | { ok: false; error: string };
+
+/**
+ * «Volver a ejecutar con el mismo webhook»: corre la automatización entera otra vez con el envío que arrancó esta
+ * ejecución, como si acabara de llegar. Reutiliza el reproceso de los webhooks (`reprocessInbound`) limitado a ESTE
+ * flujo y forzando volver a correr. Pide `flows.edit`; comprueba con la sesión que la ejecución se ve y es de este
+ * negocio, y recién después lee y escribe con el cliente de servicio. Queda en el historial (`audit_log`).
+ *
+ * «Crear o actualizar contacto» no duplica (busca antes de crear); un mensaje sí se repetiría: la pantalla lo avisa antes de confirmar.
+ */
+export async function rerunFlowRunFromWebhook(input: { flowId: string; runId: string }): Promise<RerunResult> {
+  if (![input.flowId, input.runId].every((id) => UUID.test(id))) return { ok: false, error: "El pedido no es válido." };
+  const ctx = await getPermissionAction("flows.edit");
+  if (!ctx) return { ok: false, error: "No tenés permiso para editar automatizaciones." };
+
+  const { data: flow } = await ctx.supabase.from("flows").select("id, status").eq("id", input.flowId).eq("workspace_id", ctx.workspace.id).maybeSingle();
+  if (!flow) return { ok: false, error: "No encontré esa automatización." };
+  if ((flow as { status: string }).status !== "published") return { ok: false, error: "La automatización no está publicada: publicala para volver a ejecutarla." };
+
+  const { data: run } = await ctx.supabase.from("flow_sessions").select("id, status, source_type").eq("id", input.runId).eq("flow_id", input.flowId).maybeSingle();
+  if (!run) return { ok: false, error: "No encontré esa ejecución." };
+  const runRow = run as { id: string; status: string; source_type: string | null };
+  if (runRow.source_type !== "webhook") return { ok: false, error: "Solo se puede volver a ejecutar una ejecución que arrancó con un webhook." };
+  if (runRow.status === "active") return { ok: false, error: "La ejecución sigue en curso: esperá a que termine." };
+
+  const service = await createServiceClient();
+  const { data: session } = await service.from("flow_sessions").select("inbound_webhook_id").eq("id", runRow.id).maybeSingle();
+  const inboundId = (session as { inbound_webhook_id?: string | null } | null)?.inbound_webhook_id ?? null;
+  if (!inboundId) return { ok: false, error: "Ya no está el webhook de esta ejecución." };
+
+  const { data: inbound } = await service
+    .from("inbound_webhooks")
+    .select("id, status, reprocess_count, payload")
+    .eq("id", inboundId)
+    .eq("workspace_id", ctx.workspace.id)
+    .maybeSingle();
+  const row = inbound as { id: string; status: string; reprocess_count: number; payload: unknown } | null;
+  if (!row) return { ok: false, error: "Ya no está el webhook de esta ejecución." };
+  if (row.payload === null) return { ok: false, error: "Los datos de este webhook ya se borraron (se guardan 90 días)." };
+  if (row.status === "received" || row.status === "processing") return { ok: false, error: "Ese webhook se está procesando ahora mismo: probá en un minuto." };
+
+  const startedAt = new Date().toISOString();
+  const outcome = await reprocessInbound(service, row.id, row.reprocess_count, { rerunCompleted: true, onlyFlowId: input.flowId });
+  if (outcome.kind === "not_claimed") return { ok: false, error: "Otra persona acaba de volver a ejecutarlo." };
+  if (outcome.kind !== "processed") return { ok: false, error: "No pude volver a ejecutarlo. Probá de nuevo en un rato." };
+
+  const { data: fresh } = await service
+    .from("flow_sessions")
+    .select("id")
+    .eq("inbound_webhook_id" as never, row.id)
+    .eq("flow_id", input.flowId)
+    .gte("created_at", startedAt)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const newRunId = (fresh as { id?: string } | null)?.id ?? null;
+
+  await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspace.id,
+    entityType: "flow",
+    entityId: input.flowId,
+    action: "update",
+    metadata: { kind: "run_rerun", run_id: runRow.id, new_run_id: newRunId, inbound_id: row.id },
+    performedBy: ctx.user.id,
+  });
+
+  revalidatePath(`/dashboard/flows/${input.flowId}/ejecuciones`);
+  return { ok: true, runId: newRunId };
 }

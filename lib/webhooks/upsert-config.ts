@@ -37,8 +37,14 @@ export const DEFAULT_UPSERT_CONFIG: UpsertContactConfig = {
 };
 
 const path = z.string().trim().min(1).max(300);
+/**
+ * La ruta principal de una fila puede estar VACÍA mientras se arma: el panel suma la fila con la ruta en blanco y la
+ * persona la completa después. Con `min(1)` la fila se descartaba al leer la configuración y «Agregar campo» parecía
+ * no hacer nada. Al correr, una ruta vacía no lee ningún valor (la fila queda «vacía», nunca escribe nada).
+ */
+const editablePath = z.string().trim().max(300);
 const sourceSchema = z.union([
-  z.object({ path, fallbacks: z.array(path).max(10).optional() }),
+  z.object({ path: editablePath, fallbacks: z.array(path).max(10).optional() }),
   z.object({ const: z.string().max(500) }),
 ]);
 

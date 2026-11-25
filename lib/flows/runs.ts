@@ -81,8 +81,12 @@ export function runEndReasonLabel(reason: string | null | undefined): string | n
 
 export type RunStepStatus = "ok" | "failed" | "skipped" | "waiting" | "deferred";
 
-/** Como se lee un paso. Una espera que no es el ultimo paso ya termino: se cuenta en pasado. */
-export function runStepStatusLabel(status: RunStepStatus, isLast: boolean): string {
+/**
+ * Como se lee un paso. Una espera que no es el ultimo paso, o de una ejecucion que ya no esta activa, ya termino: se
+ * cuenta en pasado (antes una ejecucion terminada mostraba «En espera» en su ultimo «Esperar»).
+ */
+export function runStepStatusLabel(status: RunStepStatus, isLast: boolean, runActive = true): string {
+  const current = isLast && runActive;
   switch (status) {
     case "ok":
       return "Salió bien";
@@ -91,9 +95,9 @@ export function runStepStatusLabel(status: RunStepStatus, isLast: boolean): stri
     case "skipped":
       return "Se salteó";
     case "waiting":
-      return isLast ? "En espera" : "Esperó";
+      return current ? "En espera" : "Esperó";
     case "deferred":
-      return isLast ? "Quedó para más tarde" : "Quedó para más tarde y se retomó";
+      return current ? "Quedó para más tarde" : "Quedó para más tarde y se retomó";
   }
 }
 

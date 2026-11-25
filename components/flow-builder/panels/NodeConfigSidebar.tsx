@@ -22,6 +22,7 @@ import { flowSendsMessages } from "@/lib/webhooks/once-per-contact"; // @plantil
 import { getConditionCatalogInputs } from "@/lib/actions/flow-conditions";
 import { chosenType } from "@/lib/flow-engine/trigger-catalog";
 import { pickerVariables } from "@/lib/flow-engine/variable-catalog";
+import { VariableLabelsProvider } from "./variable-chips";
 import { actionLabel } from "../nodes/action-node";
 
 interface NodeConfigSidebarProps {
@@ -62,7 +63,7 @@ function getUpstreamNodeIds(nodeId: string, edges: Edge[]): Set<string> {
  * Las variables que ofrece el selector en este paso: las del disparador (las fijas y las que manda el servidor), las
  * de los pasos ANTERIORES y las del contacto y el negocio (lib/flow-engine/variable-catalog.ts).
  */
-function getFlowVariables({ node, nodes, edges, schemaPaths }: { node: Node; nodes: Node[]; edges: Edge[]; schemaPaths: string[] }): string[] {
+function getFlowVariables({ node, nodes, edges, schemaPaths, customFieldSlugs }: { node: Node; nodes: Node[]; edges: Edge[]; schemaPaths: string[]; customFieldSlugs: string[] }): string[] {
   const triggerNode = nodes.find((n) => n.type === "trigger");
   const triggerType = chosenType((triggerNode?.data ?? {}) as Record<string, unknown>);
 
@@ -76,7 +77,7 @@ function getFlowVariables({ node, nodes, edges, schemaPaths }: { node: Node; nod
     if (kind === "aiResponse") upstreamOutputs.push("ai_response");
     if (kind === "upsert_contact") {
       contactBefore = true;
-      upstreamOutputs.push("contact_result", "contact_fail_reason");
+      upstreamOutputs.push("contact_result", "contact_fail_reason", "contact.id");
     }
     // El canvas guarda el HTTP Request como `type: "action"` con el tipo real en `data.actionType`.
     if (kind === "httpRequest") {
@@ -87,12 +88,21 @@ function getFlowVariables({ node, nodes, edges, schemaPaths }: { node: Node; nod
     if (kind === "designGenerate") upstreamOutputs.push(...DESIGN_OUTPUT_KEYS); // @plantilla-quitar(disenador)
   }
 
-  return pickerVariables({ triggerType, schemaPaths, upstreamOutputs, contactBefore });
+  return pickerVariables({ triggerType, schemaPaths, upstreamOutputs, contactBefore, customFieldSlugs });
 }
 
 /** Las rutas del esquema del disparador (las preguntas de un formulario, los datos de la reunion…), del servidor. */
-function useTriggerSchemaPaths(flowId: string, triggerData: Record<string, unknown> | undefined): { paths: string[]; labels: Record<string, string> } {
-  const [paths, setPaths] = useState<{ paths: string[]; labels: Record<string, string> }>({ paths: [], labels: {} });
+interface TriggerSchemaInfo {
+  paths: string[];
+  labels: Record<string, string>;
+  /** Los campos personalizados del contacto: slug → nombre (`{{contact.custom.<slug>}}`). */
+  customFields: Record<string, string>;
+}
+
+const EMPTY_SCHEMA: TriggerSchemaInfo = { paths: [], labels: {}, customFields: {} };
+
+function useTriggerSchemaPaths(flowId: string, triggerData: Record<string, unknown> | undefined): TriggerSchemaInfo {
+  const [paths, setPaths] = useState<TriggerSchemaInfo>(EMPTY_SCHEMA);
   const key = JSON.stringify(triggerData ?? {});
   useEffect(() => {
     let alive = true;
@@ -102,10 +112,14 @@ function useTriggerSchemaPaths(flowId: string, triggerData: Record<string, unkno
         const fields = res.ok ? res.inputs.triggerSchema : [];
         // El rótulo de cada variable (el texto de la pregunta, «Fecha de la reunión»…): lo usa el selector de «Generar
         // desde plantilla» (F57: las variables del disparador «con sus rótulos»).
-        setPaths({ paths: fields.map((f) => f.path), labels: Object.fromEntries(fields.map((f) => [f.path.replace(/^variable:/, ""), f.label])) });
+        setPaths({
+          paths: fields.map((f) => f.path),
+          labels: Object.fromEntries(fields.map((f) => [f.path.replace(/^variable:/, ""), f.label])),
+          customFields: res.ok ? Object.fromEntries(res.inputs.customFields.map((f) => [f.slug, f.name])) : {},
+        });
       })
       .catch(() => {
-        if (alive) setPaths({ paths: [], labels: {} });
+        if (alive) setPaths(EMPTY_SCHEMA);
       });
     return () => {
       alive = false;
@@ -170,8 +184,10 @@ const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: s
 export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node, nodes, edges, onChange, onClose, onDelete, onConvert, onChangeTrigger }: NodeConfigSidebarProps) {
   const nodeType = node.type || "action";
   const triggerNodeData = nodes.find((n) => n.type === "trigger")?.data as Record<string, unknown> | undefined;
-  const { paths: schemaPaths, labels: schemaLabels } = useTriggerSchemaPaths(flowId, triggerNodeData);
-  const variables = useMemo(() => getFlowVariables({ node, nodes, edges, schemaPaths }), [node, nodes, edges, schemaPaths]);
+  const { paths: schemaPaths, labels: schemaLabels, customFields } = useTriggerSchemaPaths(flowId, triggerNodeData);
+  const customFieldSlugs = useMemo(() => Object.keys(customFields), [customFields]);
+  const variables = useMemo(() => getFlowVariables({ node, nodes, edges, schemaPaths, customFieldSlugs }), [node, nodes, edges, schemaPaths, customFieldSlugs]);
+  const variableLabelSources = useMemo(() => ({ schemaLabels, customFieldNames: customFields }), [schemaLabels, customFields]);
   const baseConfig = nodeTypeConfig[nodeType] || nodeTypeConfig.action;
   // Una accion se llama por lo que hace ("Enviar email"), no "Acción".
   const config = nodeType === "action" ? { ...baseConfig, label: actionLabel((node.data as { actionType?: string }).actionType) } : baseConfig;
@@ -316,7 +332,7 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
 
       {/* Panel Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        {renderPanel()}
+        <VariableLabelsProvider value={variableLabelSources}>{renderPanel()}</VariableLabelsProvider>
       </div>
 
     </div>
