@@ -90,6 +90,25 @@ export interface SourceInfo {
 export interface SourceContext {
   /** id del flujo -> nombre. */
   flowNames?: ReadonlyMap<string, string>;
+  /** 00522: id de la tarea -> la vuelta del paso que se repite (solo las tareas de una vuelta). */
+  repeats?: ReadonlyMap<string, TaskRepeatInfo>;
+}
+
+/** La tarea es una vuelta de un paso del camino que se repite (00522). */
+export interface TaskRepeatInfo {
+  /** El número de la vuelta. */
+  round: number;
+  /** La regla en palabras: «Cada semana · hasta que termina su fase». */
+  rule: string;
+  /** El día de la vuelta (AAAA-MM-DD), si se sabe. */
+  roundOn: string | null;
+  /** La serie ya terminó. */
+  ended: boolean;
+  serviceId: string;
+}
+
+export function repeatOf(taskId: string, ctx: SourceContext | undefined): TaskRepeatInfo | null {
+  return ctx?.repeats?.get(taskId) ?? null;
 }
 
 /** `flow_id:run:nodo` -> el id del flujo (o null si no tiene esa forma). */

@@ -391,6 +391,7 @@ export function ServiceRecordView({
   meetings,
   activity,
   pointsHistory,
+  series,
 }: {
   data: ServiceRecordData;
   tab: ServiceRecordTab;
@@ -409,6 +410,8 @@ export function ServiceRecordView({
   activity?: ReactNode;
   /** Servicios A3 (F129): el plegable «Historial de puntos». */
   pointsHistory?: ReactNode;
+  /** 00522: «Pasos que se repiten». */
+  series?: ReactNode;
 }) {
   const router = useRouter();
   const can = (k: string) => permissions.includes(k);
@@ -591,7 +594,10 @@ export function ServiceRecordView({
           ))}
         </div>
         {panel === "camino" ? (
-          <JourneyColumn data={data} today={today} can={can} pending={pending} run={run} />
+          <>
+            {series}
+            <JourneyColumn data={data} today={today} can={can} pending={pending} run={run} />
+          </>
         ) : (
           <Historial key={data.id} entityType="service" entityId={data.id} names={{ users: userNames }} timeZone={timeZone} />
         )}

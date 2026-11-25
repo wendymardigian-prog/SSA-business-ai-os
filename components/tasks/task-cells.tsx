@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { X } from "lucide-react";
+import { Repeat, X } from "lucide-react";
 import { Avatar } from "@/components/ui/filter-menu";
 import { cellKeyAction, type CellPatch, type EditableColumn } from "@/lib/tasks/cell-edit";
 import { dueEditPatch, type DueZones } from "@/lib/tasks/due-view";
-import { dueLabel, formatSource, type SourceContext } from "@/lib/tasks/format";
+import { dueLabel, formatSource, repeatOf, type SourceContext } from "@/lib/tasks/format";
 import { colorOf, initialsOf, summarizeNames } from "@/lib/shared/people";
 import type { ProjectSummary } from "@/lib/tasks/project";
 import type { MemberLite, TaskRowView } from "@/lib/tasks/table-model";
@@ -115,7 +115,10 @@ export function TaskCell(props: CellProps) {
       body = editing ? (
         <TitleEditor initial={view.title} onCommit={(title, dir) => commit({ title }, dir)} onCancel={(dir) => end(dir)} />
       ) : (
-        <span className={cn("block truncate text-sm font-medium", view.status === "completed" && "text-muted-foreground line-through")}>{view.title}</span>
+        <span className="flex min-w-0 items-center gap-1">
+          {repeatOf(view.task.id, env.source) && <Repeat className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Se repite" />}
+          <span className={cn("block truncate text-sm font-medium", view.status === "completed" && "text-muted-foreground line-through")}>{view.title}</span>
+        </span>
       );
       break;
     case "owner":

@@ -9,7 +9,7 @@ import type { CellPatch } from "@/lib/tasks/cell-edit";
 import { applyDraftPatch, draftFromDefaults, draftProblem, valuesFromTask, viewerDueDatePatch, type DraftDefaults, type TaskValues } from "@/lib/tasks/draft";
 import { dueSeen, type DueZones } from "@/lib/tasks/due-view";
 import { wouldCreateCycle } from "@/lib/tasks/dependencies";
-import { dueLabelForViewer, formatSource, type SourceContext } from "@/lib/tasks/format";
+import { dueLabelForViewer, formatSource, repeatOf, type SourceContext } from "@/lib/tasks/format";
 import type { ProjectSummary } from "@/lib/tasks/project";
 import { openBlockers, type MemberLite } from "@/lib/tasks/table-model";
 import { PRIORITY_LABELS, TASK_LIMITS, type TaskRow } from "@/lib/tasks/types";
@@ -25,6 +25,7 @@ import { foldText } from "@/lib/tasks/text";
 import { TaskChecklist } from "./task-checklist";
 import { CommentThread } from "@/components/team-comments/comment-thread";
 import { TaskServiceBlock } from "@/components/services/task-service-block"; // @plantilla-quitar(servicios)
+import { TaskRepeatSection } from "./task-repeat-section"; // @plantilla-quitar(servicios)
 
 export interface TaskDrawerProps {
   /** `view`: una tarea que existe. `create`: el formulario completo de una tarea nueva. */
@@ -266,6 +267,7 @@ function DrawerBody(props: TaskDrawerProps) {
             <TaskChecklist key={task.id} taskId={task.id} initial={task.checklist} canEdit={canEdit} />
             {/* @plantilla-desde(servicios) */}
             <TaskServiceBlock taskId={task.id} canEdit={canEdit} version={task.updated_at} />
+            {repeatOf(task.id, source) && <TaskRepeatSection info={repeatOf(task.id, source)!} />}
             {/* @plantilla-hasta(servicios) */}
             <DependenciesSection
               task={task}

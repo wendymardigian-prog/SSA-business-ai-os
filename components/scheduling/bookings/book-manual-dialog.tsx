@@ -25,7 +25,8 @@ import { useEffect, useId, useMemo, useRef, useState, useTransition } from "reac
 import { useRouter } from "next/navigation";
 import { CalendarClock, Check, Loader2, UserPlus, Video, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { bookManuallyQuick } from "@/lib/actions/scheduling/bookings";
+import { bookManuallyQuick, slotsForManualBooking } from "@/lib/actions/scheduling/bookings";
+import { FREE_SLOTS_DAYS, firstFreeSlots, freeSlotLabel, slotToWallClock } from "@/lib/scheduling/booking/free-slots";
 import { initialInviteeTimezone, MANUAL_DURATIONS, MANUAL_LOCATION_MAX, planManualBooking, type ManualBookingField } from "@/lib/scheduling/booking/manual-input";
 import { confirmationSettingsPath, guestNotice, hasActiveConfirmation } from "@/lib/scheduling/booking/guest-notice";
 import type { BookingTriggerConfig } from "@/lib/scheduling/automation/triggers";
@@ -146,6 +147,9 @@ export function BookManualDialog({
   const [error, setError] = useState<{ field: ManualBookingField | null; message: string } | null>(null);
   // si el horario chocó con otra reunión, los huecos libres siguientes de quien atiende (UTC).
   const [alternatives, setAlternatives] = useState<string[]>([]);
+  // Los próximos horarios libres del evento elegido (la misma búsqueda que la página pública). `null` = buscando o sin
+  // evento; una lista vacía = no hay o no se pudieron leer (se escribe día y hora a mano, como siempre).
+  const [freeSlots, setFreeSlots] = useState<{ eventId: string; slots: string[] } | null>(null);
   const [pending, start] = useTransition();
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -212,6 +216,25 @@ export function BookManualDialog({
       clearTimeout(id);
     };
   }, [contact, guestTerm, newGuest, searchContacts]);
+
+  // Con un evento elegido se piden sus próximos horarios libres (de quien lo atiende). Nunca frena el formulario.
+  useEffect(() => {
+    if (!eventId) return;
+    let alive = true;
+    const from = new Date();
+    const to = new Date(from.getTime() + FREE_SLOTS_DAYS * 86_400_000);
+    slotsForManualBooking({ eventTypeId: eventId, from: from.toISOString(), to: to.toISOString(), timezone, ignoreMinimumNotice: true })
+      .then((byDay) => alive && setFreeSlots({ eventId, slots: firstFreeSlots(byDay, new Date().toISOString()) }))
+      .catch(() => alive && setFreeSlots({ eventId, slots: [] }));
+    return () => {
+      alive = false;
+    };
+  }, [eventId, timezone]);
+  const shownSlots = eventId && freeSlots?.eventId === eventId ? freeSlots.slots : null;
+  const pickedSlot = shownSlots?.find((s) => {
+    const w = slotToWallClock(s, timezone);
+    return w.date === date && w.time === time;
+  });
 
   // Los eventos que coinciden con lo escrito: activos (y ocultos) arriba, inactivos abajo.
   const needle = title.trim().toLowerCase();
@@ -555,6 +578,49 @@ export function BookManualDialog({
           <p className="-mt-2 text-[11px] text-muted-foreground">
             Tu hora: {timezoneCityLabel(timezone)} ({gmtOffsetLabel(new Date(), timezone)}). Podés elegir cualquier horario.
           </p>
+
+          {/* Con un evento: sus próximos horarios libres (elegir uno completa día y hora) */}
+          {event && (
+            <div role="group" aria-label="Próximos horarios libres" className="-mt-1">
+              <p className="mb-1.5 text-xs font-medium">
+                Próximos horarios libres{event.hostName ? ` de ${event.hostName}` : ""}
+              </p>
+              {shownSlots === null ? (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Buscando horarios…
+                </p>
+              ) : shownSlots.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No encontré horarios libres en las próximas dos semanas. Escribí el día y la hora.</p>
+              ) : (
+                <ul className="flex flex-wrap gap-1.5">
+                  {shownSlots.map((s) => {
+                    const on = s === pickedSlot;
+                    return (
+                      <li key={s}>
+                        <button
+                          type="button"
+                          aria-pressed={on}
+                          disabled={pending}
+                          onClick={() => {
+                            const w = slotToWallClock(s, timezone);
+                            setDate(w.date);
+                            setTime(w.time);
+                            setError(null);
+                          }}
+                          className={cn(
+                            "min-h-10 rounded-md border px-2.5 text-xs md:min-h-8",
+                            on ? "border-primary-edge bg-primary/10 font-medium text-primary-ink" : "border-border hover:bg-accent",
+                          )}
+                        >
+                          {freeSlotLabel(s, timezone)}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
 
           {/* La zona del invitado: en la que le llegan los emails */}
           <div>

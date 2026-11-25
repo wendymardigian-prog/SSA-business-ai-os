@@ -3471,6 +3471,266 @@
       "expected": [
         "«Paso»: los puntos tienen que ser un número entero de 0 a 10.000"
       ]
+    },
+    {
+      "name": "repetición: cada 2 semanas los lunes y jueves",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_rep001",
+            "name": "Seguimiento",
+            "items": [
+              {
+                "key": "it_rep001",
+                "kind": "team_task",
+                "name": "Llamada",
+                "recurrence": {
+                  "every": "n_weeks",
+                  "n": 2,
+                  "weekdays": [
+                    1,
+                    4
+                  ],
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [],
+      "since": "00522"
+    },
+    {
+      "name": "repetición: cada mes el 31",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_rep001",
+            "name": "Seguimiento",
+            "items": [
+              {
+                "key": "it_rep001",
+                "kind": "team_task",
+                "name": "Llamada",
+                "recurrence": {
+                  "every": "month",
+                  "day_of_month": 31,
+                  "until": "n_times",
+                  "n_until": 6
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [],
+      "since": "00522"
+    },
+    {
+      "name": "repetición: cada N semanas sin N",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_rep001",
+            "name": "Seguimiento",
+            "items": [
+              {
+                "key": "it_rep001",
+                "kind": "team_task",
+                "name": "Llamada",
+                "recurrence": {
+                  "every": "n_weeks",
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Llamada»: elegí cada cuántas semanas se repite"
+      ],
+      "since": "00522"
+    },
+    {
+      "name": "repetición: cada 60 semanas",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_rep001",
+            "name": "Seguimiento",
+            "items": [
+              {
+                "key": "it_rep001",
+                "kind": "team_task",
+                "name": "Llamada",
+                "recurrence": {
+                  "every": "n_weeks",
+                  "n": 60,
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Llamada»: elegí cada cuántas semanas se repite"
+      ],
+      "since": "00522"
+    },
+    {
+      "name": "repetición: días de la semana en una repetición diaria",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_rep001",
+            "name": "Seguimiento",
+            "items": [
+              {
+                "key": "it_rep001",
+                "kind": "team_task",
+                "name": "Llamada",
+                "recurrence": {
+                  "every": "day",
+                  "weekdays": [
+                    1
+                  ],
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Llamada»: los días de la semana no son válidos"
+      ],
+      "since": "00522"
+    },
+    {
+      "name": "repetición: un día de la semana que no existe",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_rep001",
+            "name": "Seguimiento",
+            "items": [
+              {
+                "key": "it_rep001",
+                "kind": "team_task",
+                "name": "Llamada",
+                "recurrence": {
+                  "every": "week",
+                  "weekdays": [
+                    0,
+                    8
+                  ],
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Llamada»: los días de la semana no son válidos"
+      ],
+      "since": "00522"
+    },
+    {
+      "name": "repetición: días repetidos",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_rep001",
+            "name": "Seguimiento",
+            "items": [
+              {
+                "key": "it_rep001",
+                "kind": "team_task",
+                "name": "Llamada",
+                "recurrence": {
+                  "every": "week",
+                  "weekdays": [
+                    2,
+                    2
+                  ],
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Llamada»: los días de la semana no son válidos"
+      ],
+      "since": "00522"
+    },
+    {
+      "name": "repetición: día del mes en una repetición semanal",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_rep001",
+            "name": "Seguimiento",
+            "items": [
+              {
+                "key": "it_rep001",
+                "kind": "team_task",
+                "name": "Llamada",
+                "recurrence": {
+                  "every": "week",
+                  "day_of_month": 3,
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Llamada»: el día del mes no es válido"
+      ],
+      "since": "00522"
+    },
+    {
+      "name": "repetición: día del mes 32",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_rep001",
+            "name": "Seguimiento",
+            "items": [
+              {
+                "key": "it_rep001",
+                "kind": "team_task",
+                "name": "Llamada",
+                "recurrence": {
+                  "every": "month",
+                  "day_of_month": 32,
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Llamada»: el día del mes no es válido"
+      ],
+      "since": "00522"
     }
   ]
 }

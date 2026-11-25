@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { commentErrorMessage, type CommentEntity, type CommentRow } from "@/lib/team-comments/thread";
 import { MAX_COMMENT_LENGTH, MAX_MENTIONS, type MentionCandidate } from "@/lib/team-comments/mentions";
+import type { RecordAttachmentView } from "@/lib/attachments/record-files";
 
 /**
  * Comentarios con @menciones (Servicios A4, F132). Capa fina sobre las funciones de la base (00364): ellas miran
@@ -41,7 +42,24 @@ export type ThreadPayload = {
   candidates: MentionCandidate[];
   unreadMentionCommentIds: string[];
   viewerId: string;
+  /** Los archivos de cada comentario (00521). Sin la tabla, vacío. */
+  attachments: Record<string, RecordAttachmentView[]>;
 };
+
+/** Los archivos de los comentarios, con la sesión (la RLS: quien ve la entidad). Nunca lanza. */
+async function loadAttachments(supabase: NonNullable<Awaited<ReturnType<typeof getMemberAction>>>["supabase"], workspaceId: string, ids: string[]): Promise<Record<string, RecordAttachmentView[]>> {
+  if (ids.length === 0) return {};
+  const { data, error } = await supabase
+    .from("comment_attachments" as never)
+    .select("id, comment_id, file_name, created_at")
+    .eq("workspace_id", workspaceId)
+    .in("comment_id", ids)
+    .order("created_at", { ascending: true });
+  if (error) return {};
+  const out: Record<string, RecordAttachmentView[]> = {};
+  for (const r of (data ?? []) as Array<{ id: string; comment_id: string; file_name: string }>) (out[r.comment_id] ??= []).push({ id: r.id, name: r.file_name });
+  return out;
+}
 
 /** El hilo de una entidad con lo necesario para dibujarlo. Si la sesión no ve la entidad, un hilo vacío. */
 export async function loadCommentThread(raw: { entityType: CommentEntity; entityId: string }): Promise<Result<ThreadPayload>> {
@@ -83,10 +101,13 @@ export async function loadCommentThread(raw: { entityType: CommentEntity; entity
     const unread = ((unreadRes.data ?? []) as Array<{ metadata: { comment_id?: string } | null }>)
       .map((r) => r.metadata?.comment_id)
       .filter((id): id is string => typeof id === "string");
+    const rows = (rowsRes.data ?? []) as CommentRow[];
+    const attachments = await loadAttachments(ctx.supabase, ctx.workspace.id, rows.map((r) => r.id));
     return {
       ok: true,
       data: {
-        rows: (rowsRes.data ?? []) as CommentRow[],
+        rows,
+        attachments,
         names,
         avatars,
         candidates,

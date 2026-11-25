@@ -53,6 +53,18 @@ export async function ClientRecord({ ctx, contactId }: { ctx: Ctx; contactId: st
         () => contactChatsSummary([]).whatsapp,
       ),
   ]);
+  // Los archivos de los comentarios (00520), con la sesión: la RLS decide cuáles se ven. Sin la tabla, ninguno.
+  const noteRows = (notes.data ?? []) as Array<{ id: string; content: string; created_at: string; created_by: string | null; service_id: string | null }>;
+  const noteFiles = new Map<string, Array<{ id: string; name: string }>>();
+  if (noteRows.length) {
+    const { data: files, error: filesError } = await supabase
+      .from("contact_note_attachments" as never)
+      .select("id, note_id, file_name, created_at")
+      .eq("workspace_id", workspace.id)
+      .in("note_id", noteRows.map((n) => n.id))
+      .order("created_at", { ascending: true });
+    if (!filesError) for (const f of (files ?? []) as Array<{ id: string; note_id: string; file_name: string }>) noteFiles.set(f.note_id, [...(noteFiles.get(f.note_id) ?? []), { id: f.id, name: f.file_name }]);
+  }
   const c = contact.data as { display_name: string | null; email: string | null; phone: string | null; whatsapp_phone: string | null; avatar_url: string | null; last_interaction_at: string | null; created_at: string } | null;
   const names = new Map(team.map((m) => [m.userId, m.name]));
   const withPortal = new Set(((products ?? []) as unknown as Array<{ id: string; portal_enabled: boolean }>).filter((p) => p.portal_enabled).map((p) => p.id));
@@ -127,13 +139,14 @@ export async function ClientRecord({ ctx, contactId }: { ctx: Ctx; contactId: st
       createdAt: s.created_at,
       hasPortal: withPortal.has(s.product_id),
     })),
-    events: ((notes.data ?? []) as Array<{ id: string; content: string; created_at: string; created_by: string | null; service_id: string | null }>).map((n) => ({
+    events: noteRows.map((n) => ({
       id: n.id,
       at: n.created_at,
       serviceId: n.service_id,
       kind: "note",
       text: n.content,
       author: n.created_by ? names.get(n.created_by) ?? null : null,
+      attachments: noteFiles.get(n.id) ?? [],
     })),
   };
 
