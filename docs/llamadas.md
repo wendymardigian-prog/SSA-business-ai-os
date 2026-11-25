@@ -342,3 +342,25 @@ node scripts/verify-audit-visibility.mjs --despues-de-00147
 Valen las mismas reglas que los demás `verify-*`: crean y limpian lo suyo
 (prefijo `zz-test-`) y no se corren dos a la vez. Ninguno llama a Fathom ni a un
 proveedor de IA; los tests de Vitest usan dobles (`generate`, `fetchImpl`).
+
+
+## Panel, selección múltiple y analizadores por área (25/11/2026, traído de RER)
+
+Qué cambia en la pantalla de Grabaciones:
+
+- **Panel instantáneo.** Tocar una fila abre la ficha en un panel al costado de la lista, sin recargar. El detalle se pide aparte (`loadCallPanel`, `lib/actions/calls-panel.ts`) y la URL (`?llamada=`, `?tab=`) se cambia con la API del navegador, igual que la Agenda. El armado de la ficha vive en un solo lugar, `loadCallDetail` (`lib/calls/load-detail.ts`), y lo usan la página `/dashboard/llamadas/<id>` (sigue andando) y el panel. Cerrar con la X, Esc o un clic afuera; flechas a la grabación anterior y la siguiente de la página.
+- **Lista.** Columna «Participantes» (host con aro del color de marca, invitados con foto o iniciales y «+N»; reglas puras en `lib/calls/participants.ts`), «Sin vincular» en rojo, título sin el «| marca» repetido (`cleanCallTitle`, la marca sale de `resolveBrand`) y el tipo se cambia desde la fila con un lápiz (`calls.edit`). Filtro **«Reuniones internas»** (`?internas=ocultar|solo`): las internas son las del área Equipo (por su clave fija `equipo`, en la consulta).
+- **Selección múltiple con barra roja** (`components/calls/calls-bulk-bar.tsx`): **Cambiar tipo** (hasta 30, `changeCallTypeMany`), **Volver a clasificar** (hasta 30, `reclassifyCalls`: primero las reglas sin IA y la IA solo si ninguna decide; no toca lo elegido a mano, lo analizado ni lo que está en curso, `reclassifyDecision`; a pedido de una persona la IA también se usa en lo importado del historial), **Analizar con IA** (hasta 20, una cada 30 s, `classifyAndAnalyzeCalls`: si falta el tipo o está por revisar, una ventanita lo pide antes; respeta «sin analizador no se gasta IA» y lo importado) y **Eliminar**.
+- **Confirmar el mismo tipo que puso la IA en una grabación «por revisar» la saca de la revisión** (queda elegido por una persona). Antes salía sin cambiar el estado.
+- **El corte de no-show por defecto baja a 5 minutos** (`DEFAULT_RULES`); un negocio con reglas guardadas no cambia.
+
+### Un analizador por área (migración 00536)
+
+Dos agentes declarados, uno por negocio y **apagados al nacer**: «Analizador de reuniones de Ventas» (`type = sales_analyzer`) y «de Servicio» (`service_analyzer`). Cada uno aporta su **modelo** al análisis de las grabaciones de SU área (`withAreaAnalyzerModel`, `lib/ai-tasks/area-analyzer-models.ts`; `lib/calls/area-analyzers.ts` dice qué agente es de qué área por la clave fija `ventas` / `servicio`). Encendido y con modelo, ese modelo se usa y, si su proveedor ya no está conectado, falla con un mensaje claro (nunca cambia de modelo en silencio, como `resolveTaskModel`). Apagado, sin modelo o de otra área: el modelo de la tarea «Análisis de llamadas», igual que antes.
+
+- **Las instrucciones, la rúbrica y el modo de cada tipo se editan en la página del agente** (sección «Analizadores por tipo de reunión»: `ProfileList` filtrada por su área). Siguen siendo `call_analysis_profiles` (00303): no se duplicó nada. El historial de versiones de las instrucciones de un analizador muestra **quién la guardó y su nota**.
+- **El respaldo del agente (`fallback_*`) todavía no se usa**: las tareas de IA de SSA no tienen un motor de respaldo. Se guarda el campo y queda para cuando llegue.
+- **Quién los crea:** `ensure_area_analyzer_agents` (solo `service_role`, candado por negocio, idempotente, nunca pisa un agente ni resucita uno borrado) la llama `ensureAreaAnalyzerAgents` al abrir Agentes IA o Grabaciones con `agents.edit`. Nunca lanza.
+- **Botón «Agentes IA» en Grabaciones** (con `calls.configure` o `agents.view`, `lib/calls/ai-agents.ts`): el clasificador (si usa IA y cuántas reglas), los dos analizadores (cuántos tipos corren solos o a mano), el contexto común del análisis y el resumen, cada uno con su enlace para editar. Reemplaza al engranaje que solo tenía dos enlaces.
+
+La 00536 es aditiva (un índice único parcial y una función): **va ANTES de desplegar el código**. Sin ella, la pantalla funciona igual, pero los dos agentes no se crean (el error se anota y no se muestra).

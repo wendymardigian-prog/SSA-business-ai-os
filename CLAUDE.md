@@ -602,6 +602,16 @@ Llamadas **no suma ninguna variable de entorno**: la app OAuth de Fathom (Client
 y Secret) y los tokens viven en Supabase Vault, y el cron usa los secretos que ya
 estan en el Vault.
 
+## Panel, selección múltiple y analizadores por área (25/11/2026, traído de RER)
+
+Detalle en [docs/llamadas.md](docs/llamadas.md) («Panel, selección múltiple y analizadores por área»).
+
+- **La ficha se arma en UN lugar** (`loadCallDetail`, `lib/calls/load-detail.ts`): la página `/dashboard/llamadas/[id]` y el panel de la lista (`loadCallPanel`, `?llamada=`) usan lo mismo. Una pieza nueva de la ficha se suma ahí. Toda acción de adentro del panel termina en `router.refresh()`: cuando llegan filas nuevas, la lista vuelve a pedir solo el detalle.
+- **Lote**: reglas puras en `lib/calls/bulk.ts` y `lib/calls/reclassify-request.ts`, acciones en `lib/actions/calls-edit.ts` (todas con `calls.edit`, leen con la sesión y escriben con servicio). Topes: tipo 30, volver a clasificar 30, analizar 20 (una cada 30 s). Volver a clasificar nunca toca lo elegido a mano, lo analizado ni lo que está en curso.
+- **Los analizadores por área son agentes declarados** (`sales_analyzer`, `service_analyzer`, 00536), apagados al nacer, reconocidos por su `type` (único por negocio entre los vivos). Aportan su modelo solo a las grabaciones de SU área y solo encendidos y con modelo (`withAreaAnalyzerModel`); sin eso, el modelo de la tarea. **Sin respaldo todavía** (las tareas de IA no tienen motor de respaldo). Sus instrucciones por tipo siguen siendo `call_analysis_profiles`: «sin analizador no se gasta IA» y lo importado del historial no cambian.
+- **«Internas» = el área Equipo** (`TEAM_AREA_KEY`), filtrado en la consulta.
+- **`00536_area_analyzer_agents`** (aditiva) va **ANTES** de desplegar el código; **escrita, sin aplicar todavía**. Confirmar con `list_migrations`.
+
 # Mejoras de Chat (Bloques 1-6)
 
 Lo que arregla, en una frase: hasta ahora un lead mandaba una nota de voz y el
