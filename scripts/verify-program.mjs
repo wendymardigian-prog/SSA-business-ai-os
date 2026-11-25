@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @plantilla-quitar(servicios)
 /**
- * Verificacion del programa del portal y lo que cuelga de el (Servicios A1): bloques pr, ev, ca, ce, co, ia y a3 (entregas de actividades, F126).
+ * Verificacion del programa del portal y lo que cuelga de el (Servicios A1): bloques pr, ev, ca, ce, co, ia, a3 (entregas de actividades, F126) y en (encuestas en las actividades, 00512).
  *
  * Corre contra la base real con usuarios de verdad: gemelas SQL = TS con los mismos casos, la estructura del arbol
  * (PR001), lo que incluye cada variante, el desbloqueo por persona, el avance que completa modulos y pasos, la RLS por
@@ -634,6 +634,25 @@ try {
     const badD = nc.activeDays.filter((c, i) => !eq(days[i] ?? null, c.expected)).map((c) => c.name);
     check(badD.length === 0, `portal_active_days_plan: los ${nc.activeDays.length} casos dan lo mismo que en TypeScript`, badD.join(" | "));
     check(sql(`SELECT count(*)::int n FROM public.products WHERE portal_settings #> '{notifications,weekly_digest}' = 'true'::jsonb AND name NOT LIKE 'zz-test%'`)[0]?.n === 0, "el resumen semanal sigue apagado en todos los programas (se prende con el portal en línea)");
+  }
+
+  // Encuestas en las actividades (00512): estrellas y opciones. Los mismos casos que lib/program/activity-answers.test.ts.
+  if (run("en") && sql(`SELECT to_regprocedure('app_servicio_portal.activity_answers_valid(jsonb,jsonb)') IS NOT NULL ok`)[0]?.ok === true) {
+    console.log("\nen · Encuestas en las actividades (estrellas y opciones)");
+    const list = json("lib/program/activity-answers.cases.json").cases;
+    const got = sql(`SELECT jsonb_build_array(${list.map((c) => `app_servicio_portal.activity_answers_valid(${jlit(c.fields)}, ${jlit(c.answers)})`).join(", ")}) AS r`)[0]?.r ?? [];
+    const bad = list.filter((c, i) => got[i] !== c.expected).map((c) => c.name);
+    check(bad.length === 0, `activity_answers_valid: los ${list.length} casos dan lo mismo que en TypeScript`, bad.slice(0, 3).join(" | "));
+    const fx = { workspace_id: randomUUID(), form_id: randomUUID(), version_id: randomUUID(), contact_id: randomUUID(), item_id: randomUUID(), definition: { fields: [{ key: "r", type: "rating", label: "¿Qué te pareció?", required: true, min: 1, max: 5 }] } };
+    const bad7 = sqlErr(`SELECT app_servicio_portal.portal_submit('{}'::jsonb, ${jlit(fx)}, ${jlit({ r: 7 })})`);
+    check(/PO400/.test(bad7 ?? "") && /no son válidas/.test(bad7 ?? ""), "portal_submit rechaza 7 estrellas", bad7?.slice(0, 200));
+    // Adentro de un bloque que termina con un error: aunque llegara a guardar, se deshace.
+    const ok4 = sqlErr(`DO $do$ BEGIN PERFORM app_servicio_portal.portal_submit('{}'::jsonb, ${jlit(fx)}, ${jlit({ r: 4 })}); RAISE EXCEPTION 'SE DESHACE'; END $do$`);
+    check(!/no son válidas/.test(ok4 ?? ""), "con 4 estrellas pasa el chequeo (y la prueba no guarda nada: el formulario no existe)", ok4?.slice(0, 200));
+    const pubF = sql(`SELECT app_servicio_portal.public_fields(${jlit({ fields: [{ key: "r", type: "rating", label: "x", min: 1, max: 5 }, { key: "t", type: "long_text", label: "y", help: "Contanos" }] })}) f`)[0]?.f ?? [];
+    check(pubF[0]?.min === 1 && pubF[0]?.max === 5 && !("min" in (pubF[1] ?? {})) && pubF[1]?.help === "Contanos", "public_fields pasa la escala de las estrellas y la ayuda", JSON.stringify(pubF));
+    const priv = sql(`SELECT has_function_privilege('anon', 'app_servicio_portal.activity_answers_valid(jsonb,jsonb)', 'EXECUTE') a, has_function_privilege('authenticated', 'app_servicio_portal.activity_answers_valid(jsonb,jsonb)', 'EXECUTE') u`)[0];
+    check(priv && !priv.a && !priv.u, "activity_answers_valid no la llama nadie de afuera");
   }
 
   if (run("x") && sql(`SELECT to_regprocedure('app_servicio.merge_contacts_hook(uuid,uuid)') IS NOT NULL ok`)[0]?.ok === true) {

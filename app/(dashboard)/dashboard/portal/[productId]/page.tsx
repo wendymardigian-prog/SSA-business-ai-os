@@ -25,6 +25,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { after } from "next/server";
 import { PAGE_LESSON_TYPES, PAGE_SOURCE_FILENAME, indexLessonPageQuietly } from "@/lib/program/page-store";
 import type { PortalFormInitial } from "@/components/services/portal/portal-form-editor";
+import { loadActivityRatings } from "@/lib/program/load-activity-ratings";
 import { LinkQuickFilterMenu, LinkViewToggle, PrimaryButton, TopbarMoreMenu, type MoreAction } from "@/components/ui/topbar-controls";
 import { MonthNav } from "@/components/ui/month-nav";
 import { intentHref } from "@/lib/ui/url-intent";
@@ -116,10 +117,12 @@ export default async function PortalProgramPage({ params, searchParams }: { para
     const formIds = ((items ?? []) as Array<{ form_id?: string | null }>).map((i) => i.form_id).filter((x): x is string => !!x);
     const { data: forms } = formIds.length ? await (await createServiceClient()).from("forms").select("id, name, draft_definition").in("id", formIds).eq("workspace_id", workspace.id) : { data: [] };
     const formById = new Map(((forms ?? []) as Array<{ id: string; name: string; draft_definition: Record<string, unknown> }>).map((f) => [f.id, f]));
+    // Encuestas en las actividades: el promedio de cada pregunta de estrellas (si falla, el editor se ve sin resumen).
+    const ratingsByForm = await loadActivityRatings(await createServiceClient(), workspace.id, [...formById.values()]);
     const rows = ((items ?? []) as unknown as Array<Omit<ContentRow, "hasTranscript" | "transcript"> & { form_id?: string | null; points?: PortalFormInitial["points"] }>).map((r) => {
       const f = r.form_id ? formById.get(r.form_id) : null;
       const d = (f?.draft_definition ?? {}) as { intro?: string; fields?: PortalFormInitial["fields"]; quiz?: PortalFormInitial["quiz"]; grading?: PortalFormInitial["grading"]; submission?: PortalFormInitial["submission"] };
-      return { ...r, hasTranscript: transcriptOf.has(r.id), transcript: transcriptOf.get(r.id) ?? null, portalForm: f ? { name: f.name, intro: d.intro ?? "", fields: d.fields ?? [], quiz: d.quiz ?? {}, grading: d.grading ?? { enabled: false }, submission: d.submission, points: r.points ?? null } : null };
+      return { ...r, hasTranscript: transcriptOf.has(r.id), transcript: transcriptOf.get(r.id) ?? null, portalForm: f ? { name: f.name, intro: d.intro ?? "", fields: d.fields ?? [], quiz: d.quiz ?? {}, grading: d.grading ?? { enabled: false }, submission: d.submission, points: r.points ?? null, ratings: ratingsByForm.get(f.id) } : null };
     });
     const counts = await svcRpc<{ by_item?: Record<string, number> }>(supabase, "community_item_counts", { p_product_id: productId });
     // F50: los otros programas del negocio (productos con portal), para «Copiar a otro programa».
