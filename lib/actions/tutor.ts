@@ -10,6 +10,7 @@ import { validateFileSize, validateTitle, titleFromFilename, storagePathFor } fr
 import { INDEX_DOCUMENT_JOB, KNOWLEDGE_BUCKET } from "@/lib/knowledge/index-document";
 import { isEmbeddingProviderConnected } from "@/lib/knowledge/embeddings";
 import { svcRpc, type SvcResult } from "@/lib/services/db";
+import { parseConversationFilter, readConversationsPage, type ConversationsPage } from "@/lib/program/tutor-conversations";
 
 /**
  * El tutor del programa (bloque IA, F83-F86, F110). Prender, apagar y duplicar piden `tutor.manage` (prender también
@@ -120,4 +121,16 @@ export async function setOwnAssistantLimit(serviceId: string, limitUsd: number |
   const res = await svcRpc<number>(ctx.supabase, "assistant_set_own_limit", { p_service_id: serviceId, p_limit_usd: limitUsd });
   if (res.ok) revalidatePath(`/dashboard/clientes/s/${serviceId}`);
   return res;
+}
+
+/**
+ * Más conversaciones del tutor para la pantalla «Conversaciones» (las anteriores a `before`). Mismo permiso que el uso
+ * del mes: `services.view` o `tutor.manage`; la base lo vuelve a mirar (`tutor_conversations`, 00513).
+ */
+export async function loadTutorConversations(productId: string, filter: string, before: string | null): Promise<SvcResult<ConversationsPage>> {
+  const ctx = await getAnyPermissionAction(["services.view", "tutor.manage"]);
+  if (!ctx || !UUID.test(productId)) return NOT_ALLOWED;
+  const at = before && !Number.isNaN(Date.parse(before)) ? new Date(before).toISOString() : null;
+  const res = await svcRpc<unknown>(ctx.supabase, "tutor_conversations", { p_product_id: productId, p_filter: parseConversationFilter(filter), p_limit: 30, p_before: at });
+  return res.ok ? { ok: true, data: readConversationsPage(res.data) } : res;
 }

@@ -22,9 +22,10 @@ import { newNonce, wrapUntrusted } from "@/lib/agent/untrusted";
 import { clampGeneration } from "@/lib/ai/generate-reply";
 import {
   TUTOR_HISTORY,
-  TUTOR_MAX_FRAGMENTS,
   TUTOR_MIN_SIMILARITY,
+  TUTOR_SEARCH_POOL,
   defaultTutorPrompt,
+  diversifyFragments,
   extractCitations,
   fragmentsBlock,
   tutorRules,
@@ -51,6 +52,7 @@ export type TutorAskResult =
 
 interface SearchRow {
   chunk_id: string;
+  document_id: string;
   document_title: string;
   content: string;
   item_id: string | null;
@@ -112,23 +114,28 @@ export async function askPortalTutor(db: Db, input: { session: string; productId
         p_contact_id: b.contact_id,
         p_product_id: b.product_id,
         p_embedding: toPgVector(embedded.embedding),
-        p_match_count: TUTOR_MAX_FRAGMENTS,
+        p_match_count: TUTOR_SEARCH_POOL,
         p_min_similarity: TUTOR_MIN_SIMILARITY,
       });
       if (found.ok) {
-        fragments = (found.data ?? []).map((r) => ({
+        const rows = found.data ?? [];
+        const pool: Array<TutorFragment & { chunkId: string }> = rows.map((r) => ({
+          chunkId: r.chunk_id,
+          documentId: r.document_id,
           title: r.document_title,
           content: r.content,
           itemId: r.item_id,
           itemTitle: r.item_title,
           startSecond: typeof r.start_second === "number" ? r.start_second : null,
         }));
+        const picked = diversifyFragments(pool) as Array<TutorFragment & { chunkId: string }>;
+        fragments = picked;
         await run.step({
           kind: "kb_search",
           name: "buscar_en_el_programa",
-          input: { consulta: input.question.slice(0, 300) },
-          output: (found.data ?? []).map((r) => ({ documento: r.document_title, clase: r.item_title, segundo: r.start_second })),
-          kbChunkIds: (found.data ?? []).map((r) => r.chunk_id),
+          input: { consulta: input.question.slice(0, 300), encontrados: rows.length },
+          output: picked.map((f) => ({ documento: f.title, clase: f.itemTitle, segundo: f.startSecond })),
+          kbChunkIds: picked.map((f) => f.chunkId),
           durationMs: Date.now() - startedAt,
         });
       }
@@ -186,11 +193,25 @@ export async function askPortalTutor(db: Db, input: { session: string; productId
     await run.close({ status: "responded" });
     const id = await finish(text, citations, run.runId);
     if (!id) return { ok: false, code: null, message: TUTOR_FAILED, thread_id: b.thread_id };
+    await saveAnswerStats(db, id, { fragments: fragments.length, cited: citations.length });
     return { ok: true, thread_id: b.thread_id, message_id: id };
   } catch (err) {
     console.error("[portal-tutor] falló la respuesta:", err instanceof Error ? err.message : "error desconocido");
     await run.close({ status: "error", statusDetail: "generation_failed", error: "generation_failed" }).catch(() => undefined);
     return fail(run.runId);
+  }
+}
+
+/**
+ * Cuántos trozos encontró y cuántas clases citó la respuesta, para la pantalla «Conversaciones» del panel (una respuesta
+ * que no citó ninguna clase se marca «Sin clases»). Nunca frena la respuesta: si falla, queda sin el dato.
+ */
+async function saveAnswerStats(db: Db, messageId: string, stats: { fragments: number; cited: number }): Promise<void> {
+  try {
+    const { error } = await db.from("ai_messages").update({ result: stats } as never).eq("id", messageId);
+    if (error) console.error("[portal-tutor] no se pudo guardar el resumen de la respuesta:", error.code);
+  } catch {
+    console.error("[portal-tutor] no se pudo guardar el resumen de la respuesta");
   }
 }
 

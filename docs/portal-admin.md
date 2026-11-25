@@ -123,6 +123,18 @@ sin contestar).
   prender Asistente IA en el programa y se apaga con él. Para un estudiante, busca solo en las clases que tiene
   abiertas; nunca evaluaciones, documentos internos ni lo excluido. Límite: el propio, el de su variante o el del
   programa; créditos = (límite − gasto del mes) × créditos por dólar.
+  - **Búsqueda variada** (`diversifyFragments`, `lib/portal-tutor/prompt.ts`): pide 20 trozos y usa 8, sin repetir el
+    mismo texto ni la misma clase y minuto, y con un máximo de 2 por documento (así un taller largo no tapa al resto).
+  - **Fuera de las clases**: por defecto responde solo con el material. Si las instrucciones del tutor lo permiten
+    (Agentes IA › el tutor), después de aclarar que no está en las clases puede dar una orientación general corta.
+  - **Guía del programa**: un documento del tutor sin clase (etiqueta `programa:<id>`) lo ve todo estudiante con el
+    Asistente abierto. Sirve para «¿por dónde empiezo?» y «¿qué tengo que entregar?»: nombra cada clase en una línea.
+  - **«Me sirvió / No me sirvió»** (00513): el estudiante marca cada respuesta en el portal
+    (`portal_tutor_feedback`, `ai_messages.feedback`; la vista previa no puede). Cada respuesta guarda en
+    `ai_messages.result` `{fragments, cited}` (nunca frena la respuesta).
+  - **Conversaciones** (Asistente IA › Conversaciones, `?vista=conversaciones&filtro=`): cada respuesta con su pregunta,
+    el estudiante, las citas y la marca; filtros Todas / No le sirvió / Le sirvió / Sin clases (respondió sin citar
+    ninguna clase). Lee `app_servicio.tutor_conversations` con `services.view` o `tutor.manage`.
 
 ## Las cards de Portal › Programas
 
