@@ -1,9 +1,12 @@
 import { CallsList, type CallListRow } from "@/components/calls/calls-list";
 import { callDisplayLabel, categoryGroups, legacyCallTypeFor, readCategorySnapshot } from "@/lib/calls/catalog";
+import { cardParticipants } from "@/lib/calls/participants";
+import { TEAM_AREA_KEY } from "@/lib/calls/area-analyzers";
+import { resolveBrand } from "@/lib/brand";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { redirect } from "next/navigation";
-import { applyCallFilters, CALL_LIST_COLUMNS, CALL_LIST_SERVICE_COLUMNS, callScopeLabel, PAGE_SIZE, parseCallFilters } from "@/lib/calls/list";
+import { applyCallFilters, CALL_LIST_COLUMNS, CALL_LIST_SERVICE_COLUMNS, callScopeLabel, cleanCallTitle, PAGE_SIZE, parseCallFilters } from "@/lib/calls/list";
 import { pickConnection, shouldNudgeToConnect } from "@/lib/fathom/connection-state";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
@@ -31,8 +34,12 @@ export default async function LlamadasPage({
   const { workspace, user, supabase } = ctx;
   const sp = await searchParams;
 
-  const timeZone = await resolveViewerTimezone(workspace.timezone);
-  const members = await getWorkspaceMembers(workspace.id);
+  // Lo que no depende de nada se pide junto: antes eran viajes en serie a la base.
+  const service = await createServiceClient();
+  const [timeZone, members, categoryRows] = await Promise.all([resolveViewerTimezone(workspace.timezone), getWorkspaceMembers(workspace.id), listCategories(supabase, workspace.id)]);
+  const categories = categoryRows.map(toCategoryRow);
+  // El área Equipo (por su clave fija) es la de las reuniones internas.
+  const teamAreaId = categories.find((c) => c.system_key === TEAM_AREA_KEY && !c.parent_id && !c.archived_at)?.id ?? null;
   // Servicios A4 (F136): con el módulo prendido, el servicio de cada reunión, su filtro y «por revisar».
   let servicesOn = false;
   servicesOn = isModuleEnabled(workspace as { services_enabled?: boolean | null }); // @plantilla-quitar(servicios)
@@ -55,27 +62,13 @@ export default async function LlamadasPage({
 
   const from = (filters.pagina - 1) * PAGE_SIZE;
   const base = supabase.from("calls").select(`${CALL_LIST_COLUMNS}, manual_summary:summary->manual${servicesOn ? CALL_LIST_SERVICE_COLUMNS : ""}`, { count: "exact" }).eq("workspace_id", workspace.id);
-  const { data, count, error } = await applyCallFilters(base, filters, { timeZone, searchContactIds, serviceAreaId: serviceCats.areaId, classTypeId: serviceCats.classId })
+  const mainQuery = applyCallFilters(base, filters, { timeZone, searchContactIds, serviceAreaId: serviceCats.areaId, classTypeId: serviceCats.classId, teamAreaId })
     .order("recorded_at", { ascending: false })
     .range(from, from + PAGE_SIZE - 1);
 
-  const raw = (data ?? []) as unknown as Array<Record<string, unknown>>;
-  const contactIds = [...new Set(raw.map((r) => r.contact_id as string | null).filter((x): x is string => !!x))];
-  const { data: contacts } = contactIds.length
-    ? await supabase.from("contacts").select("id, display_name, email").in("id", contactIds)
-    : { data: [] as Array<{ id: string; display_name: string | null; email: string | null }> };
-  const contactName = new Map((contacts ?? []).map((c) => [c.id, c.display_name || c.email || "Sin nombre"]));
-  const memberName = new Map(members.map((m) => [m.userId, m.name]));
-  const service = await createServiceClient();
-  let serviceLabels = new Map<string, { label: string }>();
-  if (servicesOn) {
-    const serviceIds = raw.map((r) => r.service_id as string | null).filter((x): x is string => Boolean(x));
-    if (filters.servicio && filters.servicio !== "review" && filters.servicio !== "sin") serviceIds.push(filters.servicio);
-    serviceLabels = await loadServiceLabels(service, workspace.id, serviceIds); // @plantilla-quitar(servicios)
-  }
-
-  // Para los estados vacios y el aviso de "conecta tu Fathom".
-  const [{ count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: outcomes }, { count: pendingCount }, categoryRows, { count: unclassifiedCount }] = await Promise.all([
+  // La lista y todo lo que no depende de ella, a la vez. Para los estados vacios y el aviso de "conecta tu Fathom".
+  const [{ data, count, error }, { count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: outcomes }, { count: pendingCount }, { count: unclassifiedCount }] = await Promise.all([
+    mainQuery,
     supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null),
     service.from("oauth_connections").select("status").eq("workspace_id", workspace.id).eq("provider", "fathom").neq("status", "revoked"),
     listSecretNames(service, workspace.id),
@@ -85,50 +78,74 @@ export default async function LlamadasPage({
     ctx.can("calls.edit")
       ? supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("analysis_status", "pending").is("archived_at", null)
       : Promise.resolve({ count: 0 }),
-    listCategories(supabase, workspace.id),
     supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null).is("area_id", null).eq("no_show", false),
   ]);
 
-  const categories = categoryRows.map(toCategoryRow);
-  const rows: CallListRow[] = raw.map((r) => ({
-    id: r.id as string,
-    title: r.title as string,
-    recordedAt: r.recorded_at as string,
-    durationSeconds: (r.duration_seconds as number | null) ?? null,
-    closerName: r.recorded_by_user_id ? memberName.get(r.recorded_by_user_id as string) ?? (r.recorded_by_email as string | null) : (r.recorded_by_email as string | null),
-    contactId: (r.contact_id as string | null) ?? null,
-    contactName: r.contact_id ? contactName.get(r.contact_id as string) ?? null : null,
-    callType: legacyCallTypeFor(readCategorySnapshot(r.category_snapshot), categories, r.no_show === true),
-    categoryLabel: callDisplayLabel(r.category_snapshot, r.no_show === true),
-    classificationSource: (r.classification_source as string | null) ?? null,
-    classificationRule: (r.classification_rule as string | null) ?? null,
-    classificationConfidence: r.classification_confidence === null || r.classification_confidence === undefined ? null : Number(r.classification_confidence),
-    status: r.analysis_status as CallAnalysisStatus,
-    outcome: (r.outcome as string | null) ?? null,
-    closerScore: (r.closer_score as number | null) ?? null,
-    leadScore: (r.lead_score as number | null) ?? null,
-    leadQualification: (r.lead_qualification as string | null) ?? null,
-    hasOpenAlerts: r.has_open_alerts === true,
-    hasBooking: !!r.booking_id,
-    source: r.source as string,
-    serviceId: (r.service_id as string | null | undefined) ?? null,
-    serviceLink: (r.service_link as string | null | undefined) ?? null,
-    serviceLabel: r.service_id ? serviceLabels.get(r.service_id as string)?.label ?? null : null,
-    manual: r.manual_summary !== null && r.manual_summary !== undefined && r.analysis_status !== "done",
-  }));
+  const raw = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const contactIds = [...new Set(raw.map((r) => r.contact_id as string | null).filter((x): x is string => !!x))];
+  const serviceIds = servicesOn ? raw.map((r) => r.service_id as string | null).filter((x): x is string => Boolean(x)) : [];
+  if (servicesOn && filters.servicio && filters.servicio !== "review" && filters.servicio !== "sin") serviceIds.push(filters.servicio);
 
-  // Si la lista viene filtrada por un contacto, su nombre (solo si quien mira lo ve).
-  let contactFilterName: string | null = null;
-  if (filters.contacto) {
-    const { data: filtered } = await supabase.from("contacts").select("display_name, email").eq("id", filters.contacto).eq("workspace_id", workspace.id).is("deleted_at", null).maybeSingle();
-    contactFilterName = filtered?.display_name || filtered?.email || null;
-  }
+  // Lo que depende de las filas de la lista, a la vez: los contactos y lo que sigue.
+  const [{ data: contacts }, reviewCount, contactFilterName] = await Promise.all([
+    contactIds.length
+      ? supabase.from("contacts").select("id, display_name, email, avatar_url").in("id", contactIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; display_name: string | null; email: string | null; avatar_url: string | null }> }),
+    // «N reuniones por revisar» (las que esta persona ve: la RLS decide).
+    servicesOn
+      ? supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("service_link", "review").is("archived_at", null).then((r) => r.count ?? 0)
+      : Promise.resolve(0),
+    // Si la lista viene filtrada por un contacto, su nombre (solo si quien mira lo ve).
+    filters.contacto
+      ? supabase.from("contacts").select("display_name, email").eq("id", filters.contacto).eq("workspace_id", workspace.id).is("deleted_at", null).maybeSingle().then((r) => r.data?.display_name || r.data?.email || null)
+      : Promise.resolve(null as string | null),
+  ]);
+  let serviceLabels = new Map<string, { label: string }>();
+  if (servicesOn) serviceLabels = await loadServiceLabels(service, workspace.id, serviceIds); // @plantilla-quitar(servicios)
+  const portal = await loadCallsPortalState(ctx, raw.map((r) => r.id as string)); // @plantilla-quitar(servicios)
+  const contactById = new Map((contacts ?? []).map((c) => [c.id, c]));
+  const memberName = new Map(members.map((m) => [m.userId, m.name]));
+  const brandName = resolveBrand(workspace as Parameters<typeof resolveBrand>[0]).name;
 
-  const portal = await loadCallsPortalState(ctx, rows.map((r) => r.id)); // @plantilla-quitar(servicios)
-  // «N reuniones por revisar» (las que esta persona ve: la RLS decide).
-  const reviewCount = servicesOn
-    ? (await supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("service_link", "review").is("archived_at", null)).count ?? 0
-    : 0;
+  const rows: CallListRow[] = raw.map((r) => {
+    const contact = r.contact_id ? contactById.get(r.contact_id as string) ?? null : null;
+    const contactName = contact ? contact.display_name || contact.email || "Sin nombre" : null;
+    return {
+      id: r.id as string,
+      title: cleanCallTitle(r.title as string, brandName),
+      recordedAt: r.recorded_at as string,
+      durationSeconds: (r.duration_seconds as number | null) ?? null,
+      closerName: r.recorded_by_user_id ? memberName.get(r.recorded_by_user_id as string) ?? (r.recorded_by_email as string | null) : (r.recorded_by_email as string | null),
+      contactId: (r.contact_id as string | null) ?? null,
+      contactName,
+      callType: legacyCallTypeFor(readCategorySnapshot(r.category_snapshot), categories, r.no_show === true),
+      categoryLabel: callDisplayLabel(r.category_snapshot, r.no_show === true),
+      categoryId: (r.category_id as string | null) ?? null,
+      participants: cardParticipants({
+        hostUserId: (r.recorded_by_user_id as string | null) ?? null,
+        hostEmail: (r.recorded_by_email as string | null) ?? null,
+        attendees: r.attendees,
+        contact: contact ? { name: contactName as string, email: contact.email, avatarUrl: contact.avatar_url } : null,
+        members,
+      }),
+      classificationSource: (r.classification_source as string | null) ?? null,
+      classificationRule: (r.classification_rule as string | null) ?? null,
+      classificationConfidence: r.classification_confidence === null || r.classification_confidence === undefined ? null : Number(r.classification_confidence),
+      status: r.analysis_status as CallAnalysisStatus,
+      outcome: (r.outcome as string | null) ?? null,
+      closerScore: (r.closer_score as number | null) ?? null,
+      leadScore: (r.lead_score as number | null) ?? null,
+      leadQualification: (r.lead_qualification as string | null) ?? null,
+      hasOpenAlerts: r.has_open_alerts === true,
+      hasBooking: !!r.booking_id,
+      source: r.source as string,
+      serviceId: (r.service_id as string | null | undefined) ?? null,
+      serviceLink: (r.service_link as string | null | undefined) ?? null,
+      serviceLabel: r.service_id ? serviceLabels.get(r.service_id as string)?.label ?? null : null,
+      manual: r.manual_summary !== null && r.manual_summary !== undefined && r.analysis_status !== "done",
+    };
+  });
+
   const hasApp = secretNames.includes(SECRET_NAMES.fathomClientId) && secretNames.includes(SECRET_NAMES.fathomClientSecret);
   const myConnection = pickConnection(mine ?? []);
   const hasLiveConnection = !!myConnection && (myConnection.status === "active" || myConnection.status === "attention");
@@ -154,7 +171,7 @@ export default async function LlamadasPage({
       hasAnyCall={(anyCall ?? 0) > 0}
       workspaceHasConnections={(workspaceConnections ?? []).length > 0}
       hasApp={hasApp}
-      categoryGroups={categoryGroups(categoryRows.map(toCategoryRow))}
+      categoryGroups={categoryGroups(categories)}
       unclassifiedCount={unclassifiedCount ?? 0}
       hasLiveConnection={hasLiveConnection}
       nudgeConnect={shouldNudgeToConnect({ hasLiveConnection, hasApp })}

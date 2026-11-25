@@ -369,7 +369,7 @@ export function applyCallFilters<Q extends FilterableQuery<Q>>(query: Q, f: Call
 
 /** Las columnas que lee la lista (nunca la transcripcion ni el analisis entero). */
 export const CALL_LIST_COLUMNS =
-  "id, title, recorded_at, duration_seconds, recorded_by_user_id, recorded_by_email, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, classification_source, classification_rule, classification_confidence, analysis_status, analysis_status_reason, closer_score, lead_score, lead_qualification, outcome, has_open_alerts, source, link_method";
+  "id, title, recorded_at, duration_seconds, recorded_by_user_id, recorded_by_email, attendees, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, classification_source, classification_rule, classification_confidence, analysis_status, analysis_status_reason, closer_score, lead_score, lead_qualification, outcome, has_open_alerts, source, link_method";
 
 /** Con el módulo de Servicios prendido (Servicios A4, F136): suma el servicio y su vínculo. */
 export const CALL_LIST_SERVICE_COLUMNS = ", service_id, service_link";
@@ -393,6 +393,7 @@ export function callListColumns(opts: { servicesOn: boolean }): CallListColumn[]
     { key: "fecha", label: "Fecha", defaultWidth: 150 },
     { key: "duracion", label: "Duración", defaultWidth: 100 },
     { key: "grabo", label: "Quien grabó", defaultWidth: 150 },
+    { key: "participantes", label: "Participantes", defaultWidth: 240 },
     { key: "tipo", label: "Tipo", defaultWidth: 200 },
   ];
   if (opts.servicesOn) base.push({ key: "servicio", label: "Servicio", defaultWidth: 200 });
