@@ -29,8 +29,8 @@ export function analyzerAgentForArea(areaKey: string | null | undefined): AreaAn
   return (AREA_ANALYZER_AGENT as Record<string, AreaAnalyzerAgentKey>)[areaKey] ?? null;
 }
 
-/** El área (clave fija) que analiza un agente declarado. */
-export function areaKeyForAnalyzerAgent(systemKey: string | null | undefined): string | null {
-  if (!systemKey) return null;
-  return Object.entries(AREA_ANALYZER_AGENT).find(([, agent]) => agent === systemKey)?.[0] ?? null;
+/** El área (clave fija) que analiza un agente declarado, por el `type` del agente. */
+export function areaKeyForAnalyzerAgent(agentType: string | null | undefined): string | null {
+  if (!agentType) return null;
+  return Object.entries(AREA_ANALYZER_AGENT).find(([, agent]) => agent === agentType)?.[0] ?? null;
 }

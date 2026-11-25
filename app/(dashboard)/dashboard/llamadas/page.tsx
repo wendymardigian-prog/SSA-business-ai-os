@@ -3,6 +3,7 @@ import { callDisplayLabel, categoryGroups, legacyCallTypeFor, readCategorySnapsh
 import { cardParticipants } from "@/lib/calls/participants";
 import { TEAM_AREA_KEY } from "@/lib/calls/area-analyzers";
 import { resolveBrand } from "@/lib/brand";
+import { loadCallsAiAgents } from "@/lib/calls/ai-agents-load";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { redirect } from "next/navigation";
@@ -67,7 +68,12 @@ export default async function LlamadasPage({
     .range(from, from + PAGE_SIZE - 1);
 
   // La lista y todo lo que no depende de ella, a la vez. Para los estados vacios y el aviso de "conecta tu Fathom".
-  const [{ data, count, error }, { count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: outcomes }, { count: pendingCount }, { count: unclassifiedCount }] = await Promise.all([
+  // «Agentes IA»: quien configura las llamadas o ve los agentes (los dos analizadores faltantes los crea quien edita agentes).
+  const aiAgentsPromise =
+    ctx.can("calls.configure") || ctx.can("agents.view")
+      ? loadCallsAiAgents(service, workspace.id, (workspace as { ai_background_settings?: unknown }).ai_background_settings, categories, { canCreate: ctx.can("agents.edit") })
+      : Promise.resolve(null);
+  const [{ data, count, error }, { count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: outcomes }, { count: pendingCount }, { count: unclassifiedCount }, aiAgents] = await Promise.all([
     mainQuery,
     supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null),
     service.from("oauth_connections").select("status").eq("workspace_id", workspace.id).eq("provider", "fathom").neq("status", "revoked"),
@@ -79,6 +85,7 @@ export default async function LlamadasPage({
       ? supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("analysis_status", "pending").is("archived_at", null)
       : Promise.resolve({ count: 0 }),
     supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null).is("area_id", null).eq("no_show", false),
+    aiAgentsPromise,
   ]);
 
   const raw = (data ?? []) as unknown as Array<Record<string, unknown>>;
@@ -166,6 +173,7 @@ export default async function LlamadasPage({
       canDelete={ctx.can("calls.delete")}
       contactFilterName={contactFilterName}
       canConfigure={ctx.can("calls.configure")}
+      aiAgents={aiAgents}
       pendingCount={pendingCount ?? 0}
       scopeLabel={callScopeLabel(ctx.scope("calls"), ctx.role)}
       hasAnyCall={(anyCall ?? 0) > 0}

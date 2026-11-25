@@ -105,8 +105,11 @@ const STATE_CLASS = {
   auto: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
 } as const;
 
-/** La lista por area y tipo, con su estado. Se edita uno a la vez, abajo de su fila. */
-function ProfileList({ data }: { data: Data }) {
+/**
+ * La lista por area y tipo, con su estado. Se edita uno a la vez, abajo de su fila. Con `areaIds`, solo esas areas
+ * (la pagina de cada analizador, Ventas o Servicio, muestra los suyos).
+ */
+export function ProfileList({ data, areaIds }: { data: Data; areaIds?: string[] }) {
   const [open, setOpen] = useState<string | null>(null);
   const profileFor = (id: string): CallAnalysisProfile | null => data.profiles.find((p) => p.categoryId === id) ?? null;
 
@@ -135,7 +138,7 @@ function ProfileList({ data }: { data: Data }) {
 
   return (
     <div className="space-y-3">
-      {data.categoryGroups.map((group) => (
+      {(areaIds ? data.categoryGroups.filter((g) => areaIds.includes(g.areaId)) : data.categoryGroups).map((group) => (
         <section key={group.areaId} aria-label={group.areaName} className="overflow-hidden rounded-lg border border-border">
           <h4 className="border-b border-border bg-muted/40 px-3 py-1.5 text-xs font-semibold">{group.areaName}</h4>
           <ul className="divide-y divide-border">

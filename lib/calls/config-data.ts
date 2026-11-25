@@ -84,7 +84,7 @@ export async function loadCallConfig(args: {
   }
 
   const analysis = settings.call_analysis;
-  const [proposals, calls, profiles, versions, salesDefault] = await Promise.all([
+  const [proposals, calls, profiles, versions, salesDefault, team] = await Promise.all([
     args.canEdit ? loadCategoryProposals(args.service, args.workspaceId, analysis.categories) : Promise.resolve([]),
     args.userClient
       .from("calls")
@@ -97,18 +97,21 @@ export async function loadCallConfig(args: {
     loadCallProfiles(args.service, args.workspaceId),
     args.service
       .from("ai_task_prompt_versions")
-      .select("variant, version, instructions, note, created_at")
+      .select("variant, version, instructions, note, created_at, created_by")
       .eq("workspace_id", args.workspaceId)
       .eq("task", "call_analysis")
       .not("variant", "is", null)
       .order("version", { ascending: false }),
     loadTaskInstructions(args.service, args.workspaceId, "call_analysis"),
+    // Los nombres del equipo: el historial de cada analizador dice quién cambió las instrucciones.
+    args.service.rpc("workspace_member_profiles", { p_workspace_id: args.workspaceId }),
   ]);
+  const memberNames = new Map((team.data ?? []).map((m) => [m.user_id, m.full_name || m.meta_name || m.email || ""] as const));
 
   const profileVersions: Record<string, TaskPromptVersion[]> = {};
   for (const v of versions.data ?? []) {
     if (!v.variant) continue;
-    (profileVersions[v.variant] ??= []).push({ version: v.version, instructions: v.instructions, note: v.note, createdAt: v.created_at, authorLabel: null });
+    (profileVersions[v.variant] ??= []).push({ version: v.version, instructions: v.instructions, note: v.note, createdAt: v.created_at, authorLabel: v.created_by ? memberNames.get(v.created_by) || null : null });
   }
 
   const salesCategoryIds = categories.filter((c) => c.system_key === "ventas" || c.system_key?.startsWith("ventas.")).map((c) => c.id);

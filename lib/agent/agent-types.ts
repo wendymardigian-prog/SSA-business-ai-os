@@ -24,7 +24,9 @@ export type AgentConfigSection =
   /** Aprobación de acciones, ejemplos y reglas aprendidas (00441, 00442). Formulario propio. */
   | "learning"
   /** Las herramientas que ofrece el asistente del equipo (00445). Formulario propio. */
-  | "assistant_tools";
+  | "assistant_tools"
+  /** Los analizadores por tipo de reunión del área del agente (00536). Lista propia. */
+  | "analyzers";
 
 export interface AgentTypeDefinition {
   type: string;
@@ -144,6 +146,38 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
     conversational: false,
   },
   // @plantilla-hasta(disenador)
+  // @plantilla-desde(llamadas)
+  /**
+   * El analizador de las reuniones de Ventas (00536, traído de RER). Declarado en el código, uno por negocio y apagado
+   * al nacer. Aporta el modelo a los análisis de las grabaciones del área Ventas y muestra los analizadores por tipo de
+   * esa área: las instrucciones, la rúbrica y el modo de cada tipo se editan ahí mismo (`lib/calls/area-analyzers.ts`).
+   */
+  sales_analyzer: {
+    type: "sales_analyzer",
+    label: "Analizador de reuniones de Ventas",
+    description: "Analiza solo las grabaciones clasificadas como Ventas con la rúbrica de ventas.",
+    configSections: ["identity", "model", "analyzers"],
+    tabs: [
+      { key: "config", label: "Configuracion", available: true, permission: "agents.edit" },
+      { key: "runs", label: "Runs", available: true },
+      { key: "costs", label: "Costos", available: true, permission: "ai_costs.view" },
+    ],
+    conversational: false,
+  },
+  /** El analizador de las reuniones de Servicio (00536): lo mismo, para el área Servicio. */
+  service_analyzer: {
+    type: "service_analyzer",
+    label: "Analizador de reuniones de Servicio",
+    description: "Analiza solo las grabaciones clasificadas como Servicio y propone lo que hay que hacer; nada se ejecuta sin aprobación.",
+    configSections: ["identity", "model", "analyzers"],
+    tabs: [
+      { key: "config", label: "Configuracion", available: true, permission: "agents.edit" },
+      { key: "runs", label: "Runs", available: true },
+      { key: "costs", label: "Costos", available: true, permission: "ai_costs.view" },
+    ],
+    conversational: false,
+  },
+  // @plantilla-hasta(llamadas)
 };
 
 export function getAgentType(type: string): AgentTypeDefinition | null {

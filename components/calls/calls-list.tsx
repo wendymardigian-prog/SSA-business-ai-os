@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { CategoryGroup } from "@/lib/calls/catalog";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { ChevronLeft, ChevronRight, Link2, Loader2, Pencil, Phone, Plus, RefreshCw, Settings, SlidersHorizontal, Sparkles, Star, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Link2, Loader2, Pencil, Phone, Plus, RefreshCw, SlidersHorizontal, Sparkles, Star, Trash2, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
@@ -21,10 +21,11 @@ import { TypeSelect } from "@/components/calls/call-actions";
 import type { CallDetailTab, CallPanelNav } from "@/components/calls/call-detail";
 import type { LoadedCallDetail } from "@/lib/calls/load-detail";
 import type { CallParticipants } from "@/lib/calls/participants";
+import { CallsAiAgentsButton } from "@/components/calls/calls-ai-agents";
+import type { CallsAiAgent } from "@/lib/calls/ai-agents";
 import { deleteManyToTrash } from "@/lib/actions/trash";
 import { TRASH_RETENTION_DAYS } from "@/lib/trash/entities";
 import { SaleModal } from "@/components/shared/sale-modal";
-import { Popover } from "@/components/ui/popover";
 import { formatCallDate, formatDuration, humanize } from "@/lib/calls/format";
 import {
   ANALYSIS_STATUSES,
@@ -104,6 +105,8 @@ interface Props {
   contactFilterName: string | null;
   /** Tiene `calls.configure`: ve el atajo a la configuracion de las dos tareas. */
   canConfigure: boolean;
+  /** «Agentes IA» (con `calls.configure` o `agents.view`): quién clasifica y analiza, y dónde se edita. null = no se muestra. */
+  aiAgents?: CallsAiAgent[] | null;
   /** Cuantas llamadas que ve estan pendientes de analisis (para "Analizar pendientes"). */
   pendingCount: number;
   /** Qué grabaciones ve esta persona, en una frase. */
@@ -545,15 +548,7 @@ export function CallsList(props: Props) {
                 <span className="hidden sm:inline">Analizar pendientes ({props.pendingCount})</span>
               </button>
             )}
-            {props.canConfigure && (
-              <Popover label="Configurar clasificación y análisis" trigger={<Settings className="h-4 w-4" aria-hidden />} panelClassName="w-64" triggerClassName="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-accent">
-                <p className="mb-2 text-xs font-semibold">Configuración de grabaciones</p>
-                <ul className="space-y-1 text-sm">
-                  <li><Link href="/dashboard/agents/tareas/call_classification?tab=config" className="block rounded-md px-2 py-1.5 hover:bg-accent">Clasificación de llamadas</Link></li>
-                  <li><Link href="/dashboard/agents/tareas/call_analysis?tab=config" className="block rounded-md px-2 py-1.5 hover:bg-accent">Análisis de llamadas</Link></li>
-                </ul>
-              </Popover>
-            )}
+            {props.aiAgents && props.aiAgents.length > 0 && <CallsAiAgentsButton agents={props.aiAgents} />}
             {canEdit && (
               <button type="button" onClick={() => setImportOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 sm:px-3" aria-label="Importar una llamada">
                 <Plus className="h-4 w-4" aria-hidden />

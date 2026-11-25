@@ -222,7 +222,7 @@ export function ProfileEditor({ data, target, profile, onClose }: { data: Data; 
             <ul className="divide-y divide-border border-t border-border">
               {versions.map((v) => (
                 <li key={v.version} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-                  <span>Versión {v.version} · {new Date(v.createdAt).toLocaleString("es", { timeZone })}{v.version === profile.activePromptVersion ? " · en uso" : ""}</span>
+                  <span>Versión {v.version} · {new Date(v.createdAt).toLocaleString("es", { timeZone })}{v.authorLabel ? ` · ${v.authorLabel}` : ""}{v.version === profile.activePromptVersion ? " · en uso" : ""}{v.note ? <span className="block text-muted-foreground">{v.note}</span> : null}</span>
                   {v.version !== profile.activePromptVersion && (
                     <button type="button" disabled={pending} onClick={() => restore(v.version)} className="rounded-md border border-border px-2 py-1 font-medium hover:bg-accent disabled:opacity-50">Volver a esta</button>
                   )}

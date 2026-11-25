@@ -7946,6 +7946,11 @@ export interface Database {
         };
         Returns: Json;
       };
+      /** Analizadores por área (00536): crea «Analizador de reuniones de Ventas» y «de Servicio» si faltan, apagados. Idempotente. Solo service_role. */
+      ensure_area_analyzer_agents: {
+        Args: { p_workspace_id: string; p_agents: Json };
+        Returns: Json;
+      };
       /** Agentes IA (00252): crea el agente de chat y completa modelo e instrucciones de los agentes. Idempotente. Solo service_role. */
       ensure_default_agents: {
         Args: {
