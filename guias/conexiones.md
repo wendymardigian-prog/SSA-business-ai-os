@@ -360,7 +360,7 @@ Cada persona del equipo con el permiso **«Usar el MCP»** (Owner y Admin lo tie
 
 **Cada persona:**
 
-1. En el sistema: **Mi cuenta → Conexiones → «Conectar Claude (MCP)»** → **Copiar** la dirección (por ejemplo `https://sistema.tuempresa.com/api/mcp`; es la misma para todo el equipo).
+1. En el sistema: **Mi cuenta → Conexiones → «Conectar Claude (MCP)»** → **Copiar** la dirección (por ejemplo `https://app.tunegocio.com/api/mcp`; es la misma para todo el equipo).
 2. En Claude: **Configuración → Conectores → Agregar conector personalizado** → pegá la dirección → **Conectar**. En Claude Code, el comando que muestra la tarjeta.
 3. Se abre una página del sistema: entrá con tu usuario, elegí el negocio y tocá **Permitir**.
 

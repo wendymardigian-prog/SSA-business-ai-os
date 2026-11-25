@@ -31,7 +31,7 @@ try {
 } catch {
   /* sin perfil: la copia de una plantilla */
 }
-const MARK = "@plantilla-" + "quitar";
+const MARK = ["@plantilla", "quitar"].join("-");
 
 function walk(dir) {
   const out = [];
