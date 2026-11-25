@@ -27,13 +27,16 @@ import { checkProtectedFunctions } from "./protected-functions.mjs";
 const execFileAsync = promisify(execFile);
 const repoFile = (p) => new URL(`../${p}`, import.meta.url);
 const json = (p) => JSON.parse(readFileSync(repoFile(p), "utf8"));
-// Los casos marcados con `since` solo corren si su migración ya está aplicada (los de la 00522 necesitan svc_occurrence_next).
-let has00522 = null;
+// Los casos marcados con `since` solo corren si su migración ya está aplicada (se reconoce por una función que suma).
+const SINCE_PROBE = { "00522": "app_servicio.svc_occurrence_next(jsonb,date,date)", "00524": "app_servicio.svc_round_mark(uuid,text)" };
+const applied = {};
 const casesFor = (file) => {
   const { cases } = json(file);
-  if (!cases.some((c) => c.since === "00522")) return cases;
-  if (has00522 === null) has00522 = sql(`SELECT to_regprocedure('app_servicio.svc_occurrence_next(jsonb,date,date)') IS NOT NULL AS ok`)[0]?.ok === true;
-  return has00522 ? cases : cases.filter((c) => c.since !== "00522");
+  return cases.filter((c) => {
+    if (!c.since) return true;
+    if (applied[c.since] === undefined) applied[c.since] = sql(`SELECT to_regprocedure(${lit(SINCE_PROBE[c.since] ?? "")}) IS NOT NULL AS ok`)[0]?.ok === true;
+    return applied[c.since];
+  });
 };
 
 const env = Object.fromEntries(

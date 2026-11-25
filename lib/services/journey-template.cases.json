@@ -3731,6 +3731,126 @@
         "«Llamada»: el día del mes no es válido"
       ],
       "since": "00522"
+    },
+    {
+      "name": "serie de reuniones: la fija el responsable, cada 2 semanas",
+      "since": "00524",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_ser001",
+            "name": "Acompañamiento",
+            "items": [
+              {
+                "key": "it_ser001",
+                "kind": "booking",
+                "name": "Sesión",
+                "ref": {
+                  "event_type_id": "44444444-4444-4444-8444-444444444444",
+                  "schedule": "series"
+                },
+                "recurrence": {
+                  "every": "n_weeks",
+                  "n": 2,
+                  "weekdays": [
+                    2
+                  ],
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "serie de reuniones: la agenda el equipo",
+      "since": "00524",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_ser001",
+            "name": "Acompañamiento",
+            "items": [
+              {
+                "key": "it_ser001",
+                "kind": "booking",
+                "name": "Sesión",
+                "ref": {
+                  "event_type_id": "44444444-4444-4444-8444-444444444444",
+                  "schedule": "team"
+                },
+                "recurrence": {
+                  "every": "week",
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "serie de reuniones: sin repetición no hay serie",
+      "since": "00524",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_ser001",
+            "name": "Acompañamiento",
+            "items": [
+              {
+                "key": "it_ser001",
+                "kind": "booking",
+                "name": "Sesión",
+                "ref": {
+                  "event_type_id": "44444444-4444-4444-8444-444444444444",
+                  "schedule": "series"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Sesión»: una serie de reuniones necesita que el paso se repita"
+      ]
+    },
+    {
+      "name": "serie de reuniones: un modo que no existe",
+      "since": "00524",
+      "template": {
+        "v": 1,
+        "phases": [
+          {
+            "key": "ph_ser001",
+            "name": "Acompañamiento",
+            "items": [
+              {
+                "key": "it_ser001",
+                "kind": "booking",
+                "name": "Sesión",
+                "ref": {
+                  "event_type_id": "44444444-4444-4444-8444-444444444444",
+                  "schedule": "client"
+                },
+                "recurrence": {
+                  "every": "week",
+                  "until": "phase_end"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        "«Sesión»: elegí cómo se agenda"
+      ]
     }
   ]
 }

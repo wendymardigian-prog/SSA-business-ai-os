@@ -20,6 +20,9 @@ export const ADVANCE = ["auto", "auto_all", "manual"] as const;
 export const CHALLENGE_START = ["previous_phase", "student", "automation", "fixed_date"] as const;
 export const FUTURE_VISIBILITY = ["names", "names_and_descriptions", "hidden"] as const;
 export const RECUR_EVERY = ["day", "week", "n_weeks", "month", "n_days"] as const;
+/** 00524: cómo se agenda una Reunión que se repite. «team» (o nada) = cada vuelta la agenda el equipo. */
+export const MEETING_SCHEDULES = ["team", "series"] as const;
+export type MeetingSchedule = (typeof MEETING_SCHEDULES)[number];
 export const RECUR_UNTIL = ["phase_end", "service_end", "n_days", "n_times", "item_completed"] as const;
 /** F127.2: desde cuándo se repite (sin `from`, desde el inicio de su fase). */
 export const RECUR_FROM = ["service_created", "service_start", "phase_start", "phase_end", "item_completed"] as const;
@@ -131,6 +134,12 @@ function refProblems(item: JourneyItem, ctx: JourneyContext, nm: string): string
     if (!(typeof ref.event_type_id === "string" && UUID.test(ref.event_type_id))) p.push(`«${nm}»: elegí el tipo de reunión`);
     else if (ctx.eventTypes && !ctx.eventTypes.includes(ref.event_type_id)) p.push(`«${nm}»: el tipo de reunión no existe`);
     if (ref.complete_on !== undefined && !(COMPLETE_ON.booking ?? []).includes(ref.complete_on as string)) p.push(`«${nm}»: elegí cuándo se completa`);
+    // 00524 (traído de RER #71): cómo se agenda una reunión que se repite: cada vuelta la agenda el equipo, o el
+    // responsable fija UNA serie en su Google Calendar.
+    if (has(ref, "schedule") && ref.schedule !== null) {
+      if (!(MEETING_SCHEDULES as readonly unknown[]).includes(ref.schedule)) p.push(`«${nm}»: elegí cómo se agenda`);
+      else if (ref.schedule === "series" && (item.recurrence === null || item.recurrence === undefined)) p.push(`«${nm}»: una serie de reuniones necesita que el paso se repita`);
+    }
   } else if (item.kind === "program_item" || item.kind === "open_module") {
     if (!(typeof ref.program_item_id === "string" && UUID.test(ref.program_item_id))) p.push(`«${nm}»: elegí el módulo o la clase`);
     else if (ctx.programItems && !ctx.programItems.includes(ref.program_item_id)) p.push(`«${nm}»: el módulo o la clase no es de este programa`);
