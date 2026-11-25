@@ -2623,6 +2623,31 @@ Los WhatsApp de las automatizaciones que pueden salir en ráfaga entran en `send
 
 `00420_whatsapp_send_queue` (aditiva) va **ANTES** de desplegar (los pasos y la pantalla leen la tabla). `00421_send_queue_cron_guard` (aditiva, reescribe `private.cron_work_send_queue` desde la definición de producción del 18/11/2026) va después de la 00420. **Aplicadas y registradas** el 19/11/2026 UTC (versiones `20261119041841` y `20261119041842`), con el OK de Wendy, después de ensayarlas dos veces seguidas en una transacción que se deshizo sola: idempotentes, el cupo real del número dio 22 en el día, la guarda «sin trabajo» y el cron de 15 s siguió sin fallas. El rango 00420–00429 es de esta tanda (la 00430 en adelante, de otras sesiones; confirmar con `list_migrations` y las ramas locales).
 
+# Conector MCP (00530, 25/11/2026, traído de RER)
+
+Cada persona con **«Usar el MCP»** (`mcp.usar`; Owner y Admin siempre, el Member de sistema no) conecta Claude u otra app por MCP en `https://<dominio>/api/mcp` (Mi cuenta → Conexiones) y hace desde ahí todo lo que su rol permite. Inicio de sesión con el servidor OAuth 2.1 de Supabase (consentimiento propio en `/oauth/consent`). Detalle en [docs/mcp.md](docs/mcp.md).
+
+## Lo que no se puede romper
+
+- **Identidad inyectada, no reescrita** (`lib/request-identity.ts`, `AsyncLocalStorage`): dentro de `runWithIdentity`, `createClient()` usa el token de la persona (y `auth.getUser()` / `getClaims()` sin argumento lo toman solo) y `getActiveWorkspace()` el negocio de la conexión, sin caer a otro. Fuera de un pedido del MCP todo lee cookies como siempre. Así las acciones de `lib/actions` y las rutas de `/api/v1` corren sin cambios, con sus guards y la RLS.
+- **`lib/request-identity.ts` nunca llega al navegador** (`node:async_hooks`; en RER rompió el build): está en `SERVER_ONLY` de `lib/vault-boundary.test.ts`. Si un componente cliente necesita una constante de un módulo que llega a `lib/audit.ts`, se mueve a un archivo sin imports de servidor.
+- **`mcp.usar` se mira en cada pedido** y en el consentimiento; una conexión desconectada da 401. No es de Member ni solo-Owner: las listas SQL de claves no cambian.
+- **El catálogo de acciones se genera** (`node scripts/build-mcp-catalog.mjs`). **Una acción nueva o cambiada obliga a regenerarlo**: `lib/mcp/mcp.test.ts` falla si no está al día. Lo que no va por el MCP (contraseñas, aceptar o registrarse por invitación, links públicos, cambiar el negocio por cookie) está en `lib/mcp/overrides.json`. El import de un archivo de un módulo que la plantilla saca lleva su marca, y el export de la plantilla regenera el catálogo.
+- **Lo delicado pide confirmación** (`lib/mcp/confirm.ts`): sin token no hace nada; el token firma persona, negocio, acción y argumentos, vence a los 5 minutos y se usa una vez (`mcp_used_confirmations`). Confirmar no saltea ningún permiso.
+- **`sql_owner` es `mcp_readonly_sql`**: SECURITY INVOKER (manda la RLS) y la transacción pasa a solo lectura antes de ejecutar. Solo el Owner del negocio.
+- **El historial marca lo hecho por el MCP** (`logAudit`: `metadata.via = "mcp"`, `actor_label = "MCP · <app>"`), a nombre de la persona.
+- **Una cabecera HTTP solo lleva ASCII** (`headerSafe` en `lib/mcp/auth.ts`): un aviso con «→» hacía caer el 403 en un 500.
+- **Nunca se loguea el token, los argumentos ni el mensaje de error de una acción.**
+
+## Migración y puesta en marcha
+
+`00530_mcp_connector` (aditiva: `mcp_connections`, `mcp_readonly_sql`, `mcp_used_confirmations`; copia de la 00503 de RER) va **ANTES** de desplegar el código. Después, en el panel de Supabase: **Authentication → OAuth Server** prendido, *Authorization path* `/oauth/consent` y **Allow dynamic client registration** (`/setup` paso 4.7 y `guias/conexiones.md`, «Claude por MCP»). La banda `00530`-`00534` es de esta tanda (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/build-mcp-catalog.mjs --check
+MCP_APP_URL=http://localhost:3000 node scripts/verify-mcp.mjs --remota   # permisos, confirmación, RLS, SQL, Conocimiento y, con el OAuth Server prendido, el flujo OAuth
+```
+
 # Buenas practicas de desarrollo
 
 Un trabajo no esta terminado hasta cumplir la "Definicion de terminado" de `.claude/rules/00-protocolo-de-trabajo.md` (compila, lint, tests, pantalla mirada, `.env.example` al dia, migracion idempotente, sin secretos). No se dice "listo" si algo fallo.

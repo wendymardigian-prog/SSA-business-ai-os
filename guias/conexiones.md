@@ -348,6 +348,26 @@ Un servicio aparte que convierte los diseños en PDF e imágenes para exportarlo
 
 ---
 
+## Claude por MCP
+
+Cada persona del equipo con el permiso **«Usar el MCP»** (Owner y Admin lo tienen) puede conectar Claude al sistema y pedirle, en una conversación, todo lo que su rol le permite: consultar datos, agendar, mandar mensajes, subir documentos a Conocimiento. Lo delicado le pide confirmación antes.
+
+**Una sola vez, en Supabase** (lo hace el Owner):
+
+1. **Authentication → OAuth Server** → prendelo.
+2. **Authorization path:** `/oauth/consent`.
+3. Activá **Allow dynamic client registration** y guardá.
+
+**Cada persona:**
+
+1. En el sistema: **Mi cuenta → Conexiones → «Conectar Claude (MCP)»** → **Copiar** la dirección (por ejemplo `https://sistema.tuempresa.com/api/mcp`; es la misma para todo el equipo).
+2. En Claude: **Configuración → Conectores → Agregar conector personalizado** → pegá la dirección → **Conectar**. En Claude Code, el comando que muestra la tarjeta.
+3. Se abre una página del sistema: entrá con tu usuario, elegí el negocio y tocá **Permitir**.
+
+**Si algo sale mal:** si Claude dice que no puede iniciar sesión, revisá los tres pasos de Supabase. Si dice que tu rol no tiene permiso, pedile a un Owner o Admin «Usar el MCP» en **Ajustes → Roles**. Para cortar el acceso: **Mi cuenta → Conexiones → Desconectar**.
+
+---
+
 ## Si cambiás de dominio
 
 Cuando el sistema pasa de la dirección de Railway a un dominio propio (o de un dominio a otro), estos son todos los lugares donde va la dirección nueva:

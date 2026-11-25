@@ -178,6 +178,8 @@ Explicale que esto le dice a Supabase a qué dirección devolver a alguien despu
 
    Si todavía no tiene Resend, se puede dejar para después: el resto del sistema funciona igual.
 
+7. **Conectar Claude por MCP (recomendado):** explicale que así cada persona del equipo puede conectar Claude al sistema y pedirle cosas con sus mismos permisos. Que vaya a Supabase → Authentication → **OAuth Server**, lo prenda, ponga en *Authorization path* **`/oauth/consent`** (se suma a la Site URL del punto 2) y active **Allow dynamic client registration**. Guardar. Sin esto, el resto del sistema funciona igual; solo Claude no puede iniciar sesión en el conector. Detalle en `guias/conexiones.md`, «Claude por MCP».
+
 ## Paso 5 — El archivo `.env` local
 
 Sirve para que el proyecto también corra en su computadora (para probar cosas antes de que se vean en vivo).
