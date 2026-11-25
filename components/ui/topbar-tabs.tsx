@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType } from "react";
+import { useState, type ComponentType } from "react";
 import Link from "next/link";
 import { HEADER_TABS_CONTAINER, headerTabClass, tabCountLabel } from "@/lib/ui/topbar-tabs";
 
@@ -36,11 +36,21 @@ export function TopbarTabs({
   label: string;
   onSelect?: (key: string) => void;
 }) {
+  // La pestaña elegida se marca en el clic, no cuando responde el servidor (traído de RER-BAIOS #149: una pestaña
+  // quedaba casi 2 s sin ningún cambio). Mismo patrón que `components/agents/detail-tabs.tsx`: cuando el servidor
+  // confirma (o se vuelve atrás con el navegador), manda lo que dice `active`. Se ajusta durante el render.
+  const [clicked, setClicked] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(active);
+  if (confirmed !== active) {
+    setConfirmed(active);
+    setClicked(null);
+  }
+  const shown = clicked ?? active;
   if (tabs.length === 0) return null;
   return (
     <nav aria-label={label} className={HEADER_TABS_CONTAINER}>
       {tabs.map((tab) => {
-        const isActive = tab.key === active;
+        const isActive = tab.key === shown;
         const count = tabCountLabel(tab.count);
         const Icon = tab.icon;
         return (
@@ -49,7 +59,11 @@ export function TopbarTabs({
             href={tab.href}
             scroll={false}
             onClick={(e) => {
-              if (!onSelect || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+              if (!onSelect) {
+                setClicked(tab.key);
+                return;
+              }
               e.preventDefault();
               onSelect(tab.key);
             }}

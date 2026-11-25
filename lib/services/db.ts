@@ -15,6 +15,11 @@ export interface SvcError {
   message: string;
   /** El `DETAIL` de la base (por ejemplo, el id del servicio que ya existe en SV013). */
   detail: string | null;
+  /**
+   * El texto original de la base (solo para logs y avisos internos; nunca se muestra en una pantalla). Sirve para
+   * saber POR QUÉ falló un barrido cuando `message` es el genérico «No se pudo hacer».
+   */
+  technical?: string | null;
 }
 
 export type SvcResult<T> = { ok: true; data: T } | { ok: false; error: SvcError };
@@ -36,7 +41,9 @@ export function svcErrorMessage(error: { code?: string | null; message?: string 
 export async function svcRpc<T>(client: unknown, fn: string, args: Record<string, unknown>): Promise<SvcResult<T>> {
   const { data, error } = await svcSchema(client).rpc(fn, args);
   if (error) {
-    return { ok: false, error: { code: error.code ?? null, message: svcErrorMessage(error), detail: (error as { details?: string }).details ?? null } };
+    const detail = (error as { details?: string }).details ?? null;
+    const technical = typeof error.message === "string" && error.message ? error.message : null;
+    return { ok: false, error: { code: error.code ?? null, message: svcErrorMessage(error), detail, ...(technical ? { technical } : {}) } };
   }
   return { ok: true, data: data as T };
 }

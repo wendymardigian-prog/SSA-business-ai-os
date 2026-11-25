@@ -64,9 +64,14 @@ export interface IntegrationAlertInput {
 const ALERT_NAMESPACE = "6f1b7a1e-0f3a-4c2b-9d5e-8a7c1b2d3e4f";
 
 export function alertEntityId(providerId: string, cause: IntegrationAlertCause): string {
+  return stableAlertUuid(`${providerId}:${cause}`);
+}
+
+/** Un uuid v5 estable para un texto (mismo texto, mismo uuid). Lo usan tambien los fallos del sistema. */
+export function stableAlertUuid(text: string): string {
   const namespace = Buffer.from(ALERT_NAMESPACE.replace(/-/g, ""), "hex");
   const hash = createHash("sha1")
-    .update(Buffer.concat([namespace, Buffer.from(`${providerId}:${cause}`, "utf8")]))
+    .update(Buffer.concat([namespace, Buffer.from(text, "utf8")]))
     .digest();
 
   const bytes = Buffer.from(hash.subarray(0, 16));

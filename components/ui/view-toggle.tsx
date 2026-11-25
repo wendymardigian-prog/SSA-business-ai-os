@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType } from "react";
+import { useState, type ComponentType } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,17 +24,30 @@ export function ViewToggle<T extends string>({
   onChange: (next: T) => void;
   label?: string;
 }) {
+  // La vista elegida se marca en el clic, aunque la pantalla nueva tarde en llegar del servidor (traído de RER-BAIOS
+  // #149). Cuando cambia `value` (llegó, o se volvió atrás), manda lo que dice la pantalla.
+  const [clicked, setClicked] = useState<T | null>(null);
+  const [confirmed, setConfirmed] = useState(value);
+  if (confirmed !== value) {
+    setConfirmed(value);
+    setClicked(null);
+  }
+  const shown = clicked ?? value;
   return (
     <div role="group" aria-label={label} className="flex shrink-0 rounded-lg bg-muted/60 p-0.5">
       {options.map(({ value: option, label: name, icon: Icon }) => (
         <button
           key={option}
           type="button"
-          aria-pressed={value === option}
-          onClick={() => value !== option && onChange(option)}
+          aria-pressed={shown === option}
+          onClick={() => {
+            if (shown === option) return;
+            setClicked(option);
+            onChange(option);
+          }}
           className={cn(
             "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm max-topbar:h-10",
-            value === option ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground",
+            shown === option ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground",
           )}
         >
           <Icon className="h-4 w-4" aria-hidden />

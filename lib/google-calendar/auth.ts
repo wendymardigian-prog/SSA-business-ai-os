@@ -21,6 +21,7 @@ import { googleCalendarAdapter } from "@/lib/social/google-calendar";
 import type { FetchLike } from "@/lib/oauth/types";
 import { createNotificationOnce } from "@/lib/notifications/create";
 import { alertEntityId } from "@/lib/notifications/integration-alerts";
+import { notifyTeamConnectionLost } from "@/lib/notifications/system-alerts";
 import { GoogleCalendarError } from "./errors";
 
 type Db = SupabaseClient<Database>;
@@ -91,6 +92,10 @@ export async function markRevoked(
     metadata: { provider: "google_calendar", cause: "revoked", connection_id: connection.id },
     withinMinutes: 24 * 60,
   });
+  // Fallos del sistema (25/11/2026): copia para Owner y Admin, solo la primera vez que se corta. Nunca lanza.
+  if (connection.status !== "revoked") {
+    await notifyTeamConnectionLost({ supabase, workspaceId: connection.workspace_id, userId: connection.user_id, provider: "google_calendar", connectionId: connection.id });
+  }
 }
 
 /**

@@ -10,7 +10,7 @@
  * UN evento: `preferences.test.ts` falla si aparece un tipo nuevo sin evento.
  *
  * Lo que la persona cambio se guarda en `user_preferences.notification_prefs`
- * ({ evento: { bell, email, whatsapp, slack } }); lo que no cambio usa `defaults`. Slack (A4) arranca apagado.
+ * ({ evento: { bell, email, whatsapp, slack } }); lo que no cambio usa `defaults`. Slack (A4) arranca apagado, salvo en los fallos del sistema.
  * Cambiar un default aca cambia lo que reciben todos los que no lo tocaron.
  */
 
@@ -37,6 +37,7 @@ export const NOTIFICATION_SECTIONS = [
   { key: "formularios", title: "Formularios y reportes" }, // @plantilla-quitar(formularios)
   { key: "ia", title: "Agente IA y gasto" },
   { key: "integraciones", title: "Canales e integraciones" },
+  { key: "sistema", title: "Fallos del sistema" },
   { key: "automatizaciones", title: "Automatizaciones y llamadas" }, // @plantilla-quitar(llamadas)
   // @plantilla-sin(llamadas): { key: "automatizaciones", title: "Automatizaciones" },
 ] as const;
@@ -65,6 +66,11 @@ const ADMINS: NotificationAudience = { kind: "admins" };
 const BELL: ChannelPrefs = { bell: true, email: false, whatsapp: false, slack: false };
 /** Lo critico: campana y email. */
 const BELL_EMAIL: ChannelPrefs = { bell: true, email: true, whatsapp: false, slack: false };
+/**
+ * Fallos del sistema: campana, email y Slack (25/11/2026). Si lo roto es Resend, el email de ese aviso tampoco sale;
+ * por eso van tambien la campana y Slack. WhatsApp, como en todo, apagado de entrada.
+ */
+const SYSTEM_FAILURE_DEFAULTS: ChannelPrefs = { bell: true, email: true, whatsapp: false, slack: true };
 
 export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
   // ── Chat ──────────────────────────────────────────────────────────────
@@ -390,7 +396,8 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     description: "Un guardarrail frenó un mensaje, o falla el refresco contra Zernio.",
     types: ["agent_output_blocked", "refresh_health"],
     audience: ADMINS,
-    defaults: BELL,
+    // Un aviso de que algo se rompio: con email de entrada, como los demas (25/11/2026).
+    defaults: BELL_EMAIL,
   },
   {
     key: "ai_learning",
@@ -426,6 +433,29 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     ],
     audience: ALL,
     defaults: BELL_EMAIL,
+  },
+  // ── Fallos del sistema (25/11/2026) ───────────────────────────────────
+  // Solo Owner y Admin (sin permisos que lo abran a otro rol): `eventVisibleTo` se lo oculta a un Member y
+  // `setNotificationPref` no le deja guardarlo. Los crea `notifySystemFailure` (`system-alerts.ts`).
+  {
+    key: "system_failures",
+    section: "sistema",
+    label: "Algo del sistema dejó de funcionar",
+    description:
+      "Un trabajo automático falló después de sus intentos, una conexión (Slack, Resend, Zernio, Meta, Google) rechaza su clave, no se pudieron traer los anuncios, o se le cortó una conexión a alguien del equipo.",
+    types: [
+      "system_job_failed",
+      "meta_ads_sync_failed",
+      "meta_capi_failed",
+      "slack_connection_error",
+      "email_provider_error",
+      "zernio_key_error",
+      "google_business_token_error",
+      "render_not_configured",
+      "team_connection_lost",
+    ],
+    audience: ADMINS,
+    defaults: SYSTEM_FAILURE_DEFAULTS,
   },
   // ── Automatizaciones y llamadas ───────────────────────────────────────
   {
@@ -497,7 +527,7 @@ export function resolveEventPrefs(stored: StoredPrefs, event: NotificationEvent)
     bell: own.bell ?? event.defaults.bell,
     email: own.email ?? event.defaults.email,
     whatsapp: own.whatsapp ?? event.defaults.whatsapp,
-    // Slack (Servicios A4): apagado por defecto en todos los eventos.
+    // Slack (Servicios A4): apagado por defecto, salvo en los fallos del sistema (25/11/2026).
     slack: own.slack ?? event.defaults.slack ?? false,
   };
 }

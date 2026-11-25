@@ -22,6 +22,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import { sendViaResend } from "@/lib/email/resend-client";
+import { alertResendKeyRejected } from "@/lib/email/provider-alert";
 import { getProvider } from "@/lib/integrations/providers";
 import {
   canSendEmailTo,
@@ -297,6 +298,8 @@ export async function sendTransactionalEmail(
   }
 
   console.error(`[email] envio "${params.kind}" fallido:`, result.error);
+  // Fallos del sistema: un 401/403 es la clave de Resend, no este correo. Avisa a Owner y Admin. Nunca lanza.
+  await alertResendKeyRejected(supabase, params.workspaceId, result.status);
   await record({
     status: "failed",
     attempts: result.attempts,

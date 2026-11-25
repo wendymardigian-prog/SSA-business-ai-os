@@ -18,7 +18,7 @@ describe("calls/ai-generate", () => {
     const out = await aiSdkGenerate({} as never)({ system: "s", prompt: "p", schema, maxOutputTokens: 100 });
     expect(out.object).toEqual({ ok: true });
     const arg = generateObject.mock.calls[0][0];
-    expect(arg.providerOptions).toEqual({ anthropic: { structuredOutputMode: "jsonTool" } });
+    expect(arg.providerOptions).toEqual({ anthropic: { structuredOutputMode: "jsonTool" }, openai: { strictJsonSchema: false } });
     expect(arg.maxOutputTokens).toBe(100);
   });
 
