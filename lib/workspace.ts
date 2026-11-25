@@ -111,7 +111,6 @@ export async function setActiveWorkspaceCookie(workspaceId: string) {
  * MCP (`lib/mcp/auth.ts`): una conexión nueva sin negocio elegido arranca en ese. Recibe el cliente (de servicio):
  * no hay sesión de navegador.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function oldestWorkspaceIdFor(client: { from: (t: "workspace_members") => any }, userId: string): Promise<string | null> {
   const { data } = await client
     .from("workspace_members")

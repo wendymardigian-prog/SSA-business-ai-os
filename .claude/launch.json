@@ -57,6 +57,18 @@
         "3095"
       ],
       "port": 3095
+    },
+    {
+      "name": "ssa-dev-mcp",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3093"
+      ],
+      "port": 3093
     }
   ]
 }
