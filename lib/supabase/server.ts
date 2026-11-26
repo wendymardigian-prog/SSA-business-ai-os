@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { Database } from "@/lib/types/database";
 import { currentIdentity } from "@/lib/request-identity";
+import { retryingFetch } from "@/lib/supabase/fetch-retry";
 
 export async function createClient() {
   // Un pedido del conector MCP: la sesión es el token de la persona, no una cookie (`lib/request-identity.ts`).
@@ -11,7 +12,7 @@ export async function createClient() {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
-        global: { headers: { Authorization: `Bearer ${identity.jwt}` } },
+        global: { headers: { Authorization: `Bearer ${identity.jwt}` }, fetch: retryingFetch },
         cookies: {
           getAll() {
             return [];
@@ -36,6 +37,7 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      global: { fetch: retryingFetch },
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -59,6 +61,7 @@ export async function createServiceClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
+      global: { fetch: retryingFetch },
       cookies: {
         getAll() {
           return [];

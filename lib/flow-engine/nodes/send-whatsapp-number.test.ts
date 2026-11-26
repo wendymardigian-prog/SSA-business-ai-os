@@ -14,7 +14,10 @@ vi.mock("@/lib/evolution-client", async () => {
   return { ...actual, sendText, sendMedia: vi.fn(async () => ({ id: "wamid-media" })), sendWhatsAppAudio: vi.fn(async () => ({ id: "wamid-audio" })) };
 });
 const evolutionConfig = vi.hoisted(() => ({ value: { baseUrl: "https://evo.test", apiKey: "k", instancePrefix: "t" } as { baseUrl: string; apiKey: string; instancePrefix: string } | null }));
-vi.mock("@/lib/evolution-config", () => ({ getEvolutionConfig: vi.fn(async () => evolutionConfig.value) }));
+vi.mock("@/lib/evolution-config", () => ({
+  getEvolutionConfig: vi.fn(async () => evolutionConfig.value),
+  getEvolutionConfigStrict: vi.fn(async () => (evolutionConfig.value ? { kind: "ok", config: evolutionConfig.value } : { kind: "missing" })),
+}));
 
 const { sendWhatsAppNumberNode, resolveWhatsAppTarget } = await import("./send-whatsapp-number");
 const { WHATSAPP_HOURLY_LIMIT } = await import("@/lib/channels/whatsapp-limits");

@@ -15,7 +15,10 @@ vi.mock("@/lib/evolution-client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/evolution-client")>("@/lib/evolution-client");
   return { ...actual, sendText };
 });
-vi.mock("@/lib/evolution-config", () => ({ getEvolutionConfig: vi.fn(async () => ({ baseUrl: "https://evo.test", apiKey: "k", instancePrefix: "t" })) }));
+vi.mock("@/lib/evolution-config", () => {
+  const config = { baseUrl: "https://evo.test", apiKey: "k", instancePrefix: "t" };
+  return { getEvolutionConfig: vi.fn(async () => config), getEvolutionConfigStrict: vi.fn(async () => ({ kind: "ok", config })) };
+});
 vi.mock("@/lib/notifications", () => ({ notifyWorkspaceAdmins: vi.fn(async () => {}) }));
 
 const { sendWhatsAppNumberNode } = await import("@/lib/flow-engine/nodes/send-whatsapp-number");
