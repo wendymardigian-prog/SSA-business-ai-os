@@ -25,7 +25,13 @@ vi.mock("@/lib/evolution-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/evolution-client")>();
   return { ...actual, sendText, sendPoll };
 });
-vi.mock("@/lib/evolution-config", () => ({ getEvolutionConfig }));
+vi.mock("@/lib/evolution-config", () => ({
+  getEvolutionConfig,
+  getEvolutionConfigStrict: async (...a: unknown[]) => {
+    const config = await (getEvolutionConfig as unknown as (...x: unknown[]) => Promise<unknown>)(...a);
+    return config ? { kind: "ok", config } : { kind: "missing" };
+  },
+}));
 vi.mock("@/lib/zernio-client", () => ({ createZernioClient: () => ({ messages: { sendInboxMessage } }) }));
 vi.mock("@/lib/integrations/zernio-key", () => ({ getZernioApiKey: vi.fn(async () => "api-key-1") }));
 

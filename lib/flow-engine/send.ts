@@ -6,7 +6,7 @@ import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { alertZernioKeyRejected } from "@/lib/integrations/zernio-alert";
 import { sendText, sendWhatsAppAudio, sendMedia, sendSticker, EvolutionError, type EvolutionConfig } from "@/lib/evolution-client";
-import { getEvolutionConfig } from "@/lib/evolution-config";
+import { getEvolutionConfigStrict } from "@/lib/evolution-config";
 import { describeSendError, RATE_LIMIT_REACHED, type FriendlyError } from "@/lib/instagram-errors";
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import { sentContentContext } from "@/lib/attribution/content-variables";
@@ -495,7 +495,21 @@ async function sendViaEvolution(
   channel: ChannelRow,
   message: OutboundMessage
 ): Promise<SendOutcome> {
-  const config = await getEvolutionConfig(secrets, channel.workspace_id);
+  const configResult = await getEvolutionConfigStrict(secrets, channel.workspace_id);
+  // No pude LEERLA (un corte con la base o con Vault) no es "no esta configurada": se puede reintentar y la bandeja
+  // ofrece "Reintentar". El 26/11/2026 un corte de conexion se mostro como "WhatsApp no esta configurado".
+  if (configResult.kind === "unavailable") {
+    return {
+      ok: false,
+      failure: {
+        kind: "unknown",
+        message: "Hubo un problema de conexion y el mensaje no salio.",
+        hint: "Probá de nuevo en un momento.",
+        retryable: true,
+      },
+    };
+  }
+  const config = configResult.kind === "ok" ? configResult.config : null;
   if (!config || !channel.evolution_instance) {
     return {
       ok: false,

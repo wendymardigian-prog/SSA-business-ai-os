@@ -16,7 +16,7 @@ vi.mock("@/lib/vault", async (importOriginal) => {
   return { ...actual, readSecret };
 });
 
-import { getEvolutionConfig, getEvolutionWebhookToken } from "./evolution-config";
+import { getEvolutionConfig, getEvolutionConfigStrict, getEvolutionWebhookToken } from "./evolution-config";
 
 const WS = "ws-1";
 const ENV = {
@@ -226,5 +226,54 @@ describe("la regla que no se puede romper", () => {
       .filter((f) => !permitido(f));
 
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("getEvolutionConfigStrict: no leer no es lo mismo que no estar configurado", () => {
+  /** Una base cuya consulta falla (un corte de conexion). */
+  function brokenDb(failure: "error" | "throw") {
+    const chain: Record<string, unknown> = {};
+    chain.select = () => chain;
+    chain.eq = () => chain;
+    chain.maybeSingle = async () => {
+      if (failure === "throw") throw new TypeError("fetch failed");
+      return { data: null, error: { message: "TypeError: fetch failed" } };
+    };
+    return { from: () => chain } as never;
+  }
+
+  it("si la consulta falla es `unavailable`, aunque el entorno tenga datos: no se adivina la fuente", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await getEvolutionConfigStrict(brokenDb("error"), WS)).toEqual({ kind: "unavailable" });
+    expect(await getEvolutionConfigStrict(brokenDb("throw"), WS)).toEqual({ kind: "unavailable" });
+  });
+
+  it("con direccion propia, si Vault no responde es `unavailable` (no cae al entorno)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    readSecret.mockRejectedValue(new Error("No se pudo leer el secret"));
+
+    const result = await getEvolutionConfigStrict(db({ config: { api_url: "https://x.test" } }), WS);
+
+    expect(result).toEqual({ kind: "unavailable" });
+  });
+
+  it("sin direccion en ningun lado es `missing`", async () => {
+    delete process.env.EVOLUTION_API_URL;
+
+    expect(await getEvolutionConfigStrict(db(), WS)).toEqual({ kind: "missing" });
+  });
+
+  it("con direccion propia y sin clave guardada es `missing`", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await getEvolutionConfigStrict(db({ config: { api_url: "https://x.test" } }), WS)).toEqual({ kind: "missing" });
+  });
+
+  it("con todo en orden es `ok` y `getEvolutionConfig` devuelve lo mismo que antes", async () => {
+    const result = await getEvolutionConfigStrict(db(), WS);
+
+    expect(result).toMatchObject({ kind: "ok", config: { baseUrl: "https://evolution-del-entorno.test" } });
+    expect(await getEvolutionConfig(db(), WS)).toEqual((result as { config: unknown }).config);
   });
 });

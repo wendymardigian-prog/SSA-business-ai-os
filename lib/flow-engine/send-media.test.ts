@@ -31,7 +31,19 @@ vi.mock("@/lib/evolution-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/evolution-client")>();
   return { ...actual, sendText, sendWhatsAppAudio, sendMedia };
 });
-vi.mock("@/lib/evolution-config", () => ({ getEvolutionConfig }));
+vi.mock("@/lib/evolution-config", () => ({
+  getEvolutionConfig,
+  getEvolutionConfigStrict: async (...a: unknown[]) => {
+    // Si la lectura falla (un corte de conexion), es "no pude leerla", no "no esta configurada".
+    let config: unknown;
+    try {
+      config = await (getEvolutionConfig as unknown as (...x: unknown[]) => Promise<unknown>)(...a);
+    } catch {
+      return { kind: "unavailable" };
+    }
+    return config ? { kind: "ok", config } : { kind: "missing" };
+  },
+}));
 
 const zernioClient = { messages: { sendInboxMessage, uploadMediaDirect } };
 vi.mock("@/lib/zernio-client", () => ({ createZernioClient: () => zernioClient }));
@@ -116,6 +128,33 @@ describe("texto sin media (no-regresion)", () => {
     const body = (sendInboxMessage.mock.calls[0] as unknown as [{ body: Record<string, unknown> }])[0].body;
     expect(body.attachmentUrl).toBeUndefined();
     expect(body.message).toBe("hola");
+  });
+});
+
+describe("WhatsApp: no poder leer la configuracion no es 'no configurado' (26/11/2026)", () => {
+  it("un corte al leerla devuelve un error REINTENTABLE y no manda nada", async () => {
+    getEvolutionConfig.mockRejectedValue(new Error("fetch failed"));
+    const { memory } = db();
+
+    const outcome = await sendChannelMessage(memory.client, waContext, { text: "hola" });
+
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.failure?.retryable).toBe(true);
+    expect(outcome.failure?.message).not.toMatch(/no esta configurado/i);
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it("sin configuracion de verdad sigue diciendo que hay que conectar el numero, sin reintento", async () => {
+    getEvolutionConfig.mockResolvedValue(null as never);
+    const { memory } = db();
+
+    const outcome = await sendChannelMessage(memory.client, waContext, { text: "hola" });
+
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.failure?.message).toMatch(/no esta configurado/i);
+    expect(outcome.failure?.retryable).toBe(false);
   });
 });
 

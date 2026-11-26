@@ -47,32 +47,54 @@ export function evolutionEnvConfig(): Partial<EvolutionConfig> {
 }
 
 /**
- * La configuracion de Evolution de un workspace.
+ * Lo que dice la lectura de la configuracion de Evolution de un workspace.
+ *
+ * Son TRES cosas distintas y no hay que confundirlas: `missing` es "nadie la cargo" (hay que conectar el numero
+ * desde Canales); `unavailable` es "no pude leerla ahora" (un corte con la base o con Vault: reintentar). El 26/11/2026
+ * un corte de conexion se leyo como `missing` y un mensaje mostro "WhatsApp no esta configurado" sin ofrecer reintentar.
+ */
+export type EvolutionConfigResult =
+  | { kind: "ok"; config: EvolutionConfig }
+  | { kind: "missing" }
+  | { kind: "unavailable" };
+
+/**
+ * La configuracion de Evolution de un workspace, distinguiendo "falta" de "no pude leerla".
  *
  * Dos fuentes, nunca mezcladas: si la integracion esta activa y tiene
  * direccion propia, direccion Y clave del workspace (la clave, de Vault); si
  * no, direccion y clave del entorno. El prefijo si puede venir de cualquiera.
  *
- * Devuelve null si falta la direccion o la clave, igual que antes. Con
- * direccion propia, una falla leyendo Vault tambien es null: caer al entorno
- * ahi seria justo mandar la clave global a esa direccion.
+ * Con direccion propia, una falla leyendo Vault NO cae al entorno (seria mandar la clave global a esa direccion):
+ * es `unavailable`. Una clave que no esta guardada es `missing`.
  */
-export async function getEvolutionConfig(
+export async function getEvolutionConfigStrict(
   supabase: SupabaseClient<Database>,
   workspaceId: string,
-): Promise<EvolutionConfig | null> {
+): Promise<EvolutionConfigResult> {
   // WhatsApp simulado (solo fuera de producción): nunca se lee ni se usa una clave real, y nada sale de la PC.
   const fake = fakeEvolutionConfig();
-  if (fake) return fake;
+  if (fake) return { kind: "ok", config: fake };
   const env = evolutionEnvConfig();
 
-  const { data: row } = await supabase
-    .from("integration_configs")
-    .select("config, is_active")
-    .eq("workspace_id", workspaceId)
-    .eq("type", "channel")
-    .eq("provider", "evolution")
-    .maybeSingle();
+  let row: { config: unknown; is_active: boolean | null } | null;
+  try {
+    const { data, error } = await supabase
+      .from("integration_configs")
+      .select("config, is_active")
+      .eq("workspace_id", workspaceId)
+      .eq("type", "channel")
+      .eq("provider", "evolution")
+      .maybeSingle();
+    if (error) {
+      console.error("[evolution] no pude leer la configuracion:", error.message);
+      return { kind: "unavailable" };
+    }
+    row = data;
+  } catch (err) {
+    console.error("[evolution] no pude leer la configuracion:", err instanceof Error ? err.message : "error desconocido");
+    return { kind: "unavailable" };
+  }
 
   const stored = (row?.is_active ? ((row.config ?? {}) as EvolutionStoredConfig) : {}) ?? {};
 
@@ -82,7 +104,12 @@ export async function getEvolutionConfig(
   let apiKey: string | null;
   if (ownUrl) {
     baseUrl = ownUrl;
-    apiKey = await readSecretSafe(supabase, workspaceId, SECRET_NAMES.evolutionApiKey);
+    try {
+      apiKey = (await readSecret(supabase, workspaceId, SECRET_NAMES.evolutionApiKey)) || null;
+    } catch {
+      // `readSecret` ya dejo el motivo en el log. No es "no hay clave": es que no se pudo leer.
+      return { kind: "unavailable" };
+    }
     if (!apiKey) {
       console.error("[evolution] el workspace tiene direccion propia pero no su clave en Vault");
     }
@@ -93,13 +120,30 @@ export async function getEvolutionConfig(
     apiKey = env.apiKey ?? null;
   }
 
-  if (!baseUrl || !apiKey) return null;
+  if (!baseUrl || !apiKey) return { kind: "missing" };
 
   return {
-    baseUrl,
-    apiKey,
-    instancePrefix: stored.instance_prefix?.trim() || env.instancePrefix || "ssa",
+    kind: "ok",
+    config: {
+      baseUrl,
+      apiKey,
+      instancePrefix: stored.instance_prefix?.trim() || env.instancePrefix || "ssa",
+    },
   };
+}
+
+/**
+ * La configuracion de Evolution de un workspace.
+ *
+ * Devuelve null si falta la direccion o la clave, igual que antes (y tambien si no se pudo leer: quien necesite
+ * distinguir un corte de una falta usa `getEvolutionConfigStrict`).
+ */
+export async function getEvolutionConfig(
+  supabase: SupabaseClient<Database>,
+  workspaceId: string,
+): Promise<EvolutionConfig | null> {
+  const result = await getEvolutionConfigStrict(supabase, workspaceId);
+  return result.kind === "ok" ? result.config : null;
 }
 
 /**
