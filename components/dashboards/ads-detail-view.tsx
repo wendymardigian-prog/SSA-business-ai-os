@@ -35,6 +35,7 @@ import { LinkContentMenu } from "./ads/link-content-menu";
 import type { AdContentLink } from "@/lib/meta/content-ad-summary";
 import type { AdMedia } from "@/lib/meta/ad-transcript";
 import { AdMediaCard } from "@/components/dashboards/ads/ad-media-card";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El detalle de una campaña, un conjunto o un anuncio (F57).
@@ -226,14 +227,15 @@ export function AdsDetailView({
         route={`/dashboard/dashboards/ads/${SEGMENT[level]}/[id]`}
         title={detail.objectName || detail.objectId}
         backHref={
-          <Link
-            href={parentHref}
-            aria-label={`Volver a ${parentLabel}`}
-            title={`Volver a ${parentLabel}`}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-          </Link>
+          <Tip asChild content={`Volver a ${parentLabel}`}>
+            <Link
+              href={parentHref}
+              aria-label={`Volver a ${parentLabel}`}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            </Link>
+          </Tip>
         }
         left={
           <>

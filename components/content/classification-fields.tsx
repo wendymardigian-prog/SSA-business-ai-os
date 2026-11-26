@@ -6,6 +6,7 @@ import { FORMAT_SUGGESTIONS } from "@/lib/content/ideas";
 import { FUNNEL_STAGES, funnelStageInfo } from "@/lib/content/classification";
 import { selectableItems, TAXONOMY_NAME_MAX, type TaxonomyItem } from "@/lib/content/taxonomy";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 import { DialogField, fieldInput } from "./dialog";
 import { NetworkBadge } from "./network-badge";
 
@@ -159,29 +160,30 @@ function TaxonomySelect({
   }
 
   const select = (
-    <select
-      value={creating ? NEW : value}
-      disabled={disabled}
-      title={compact ? hint : undefined}
-      onChange={(e) => {
-        if (e.target.value === NEW) {
-          setCreating(true);
-          return;
-        }
-        setCreating(false);
-        onChange(e.target.value);
-      }}
-      className={compact ? compactInput : fieldInput}
-    >
-      <option value="">{none}</option>
-      {options.map((item) => (
-        <option key={item.id} value={item.id}>
-          {item.name}
-          {item.archivedAt ? " (archivad" + (feminine ? "a)" : "o)") : ""}
-        </option>
-      ))}
-      {canCreate && create && <option value={NEW}>+ Crear {singular}…</option>}
-    </select>
+    <Tip content={compact ? hint : null} className="flex w-full">
+      <select
+        value={creating ? NEW : value}
+        disabled={disabled}
+        onChange={(e) => {
+          if (e.target.value === NEW) {
+            setCreating(true);
+            return;
+          }
+          setCreating(false);
+          onChange(e.target.value);
+        }}
+        className={compact ? compactInput : fieldInput}
+      >
+        <option value="">{none}</option>
+        {options.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.name}
+            {item.archivedAt ? " (archivad" + (feminine ? "a)" : "o)") : ""}
+          </option>
+        ))}
+        {canCreate && create && <option value={NEW}>+ Crear {singular}…</option>}
+      </select>
+    </Tip>
   );
 
   return (
@@ -279,14 +281,15 @@ export function ClassificationFields({
     return (
       <div className="grid grid-cols-2 gap-2 md:grid-cols-6" data-testid="classification-compact">
         <CompactField label="Referencia" className="col-span-2">
-          <input
-            value={value.reference}
-            disabled={disabled}
-            onChange={(e) => onChange({ reference: e.target.value })}
-            placeholder="https://… o de dónde salió"
-            title="Un link o de dónde salió la idea."
-            className={compactInput}
-          />
+          <Tip content="Un link o de dónde salió la idea." className="flex w-full">
+            <input
+              value={value.reference}
+              disabled={disabled}
+              onChange={(e) => onChange({ reference: e.target.value })}
+              placeholder="https://… o de dónde salió"
+              className={compactInput}
+            />
+          </Tip>
         </CompactField>
         <FormatField compact value={value.format} onChange={(format) => onChange({ format })} disabled={disabled} />
         <TaxonomySelect
@@ -303,20 +306,24 @@ export function ClassificationFields({
           onChange={(pillarId) => onChange({ pillarId })}
         />
         <CompactField label="Etapa del embudo">
-          <select
-            value={value.funnelStage}
-            disabled={disabled}
-            title={stage ? `${stage.label}: ${stage.description}` : "En qué momento del camino de compra está quien lo ve."}
-            onChange={(e) => onChange({ funnelStage: e.target.value })}
-            className={compactInput}
+          <Tip
+            content={stage ? `${stage.label}: ${stage.description}` : "En qué momento del camino de compra está quien lo ve."}
+            className="flex w-full"
           >
-            <option value="">Sin etapa</option>
-            {FUNNEL_STAGES.map((s) => (
-              <option key={s.value} value={s.value} title={s.description}>
-                {s.value.toUpperCase()} · {s.label}
-              </option>
-            ))}
-          </select>
+            <select
+              value={value.funnelStage}
+              disabled={disabled}
+              onChange={(e) => onChange({ funnelStage: e.target.value })}
+              className={compactInput}
+            >
+              <option value="">Sin etapa</option>
+              {FUNNEL_STAGES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.value.toUpperCase()} · {s.label}
+                </option>
+              ))}
+            </select>
+          </Tip>
         </CompactField>
         <TaxonomySelect
           compact

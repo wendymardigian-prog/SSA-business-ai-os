@@ -19,6 +19,7 @@ import {
   type HistoryRow,
 } from "@/lib/audit-history";
 import type { AuditActorType } from "@/lib/types/database";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El historial de una entidad (F1). Lo usan varias pantallas: por eso es
@@ -128,10 +129,12 @@ export function Historial({ entityType, entityId, names, timeZone, pageSize }: H
           const lines = describeChanges(entityType, row.changes, names?.users);
           return (
             <li key={row.id} className="flex gap-3">
-              <span title={ACTOR_NOUN[type]} className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                <Icon className="h-3.5 w-3.5" aria-hidden />
-                <span className="sr-only">{ACTOR_NOUN[type]}</span>
-              </span>
+              <Tip asChild content={ACTOR_NOUN[type]}>
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                  <Icon className="h-3.5 w-3.5" aria-hidden />
+                  <span className="sr-only">{ACTOR_NOUN[type]}</span>
+                </span>
+              </Tip>
               <div className="min-w-0 flex-1 text-sm">
                 <p>
                   <span className="font-medium">{actorName(row, names)}</span> {actionText(row.action)}

@@ -5,6 +5,7 @@ import {
 import { callTypeLabel } from "@/lib/calls/list";
 import { humanize } from "@/lib/calls/format";
 import { statusLabel } from "@/lib/calls/status";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Los chips de Llamadas. TODOS salen del mismo mapa de colores
@@ -48,10 +49,12 @@ export function SourceChip({ source }: { source: string }) {
 export function AlertsChip({ open }: { open: boolean }) {
   if (!open) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className={`${callBadgeClass("negative")} gap-1`} title="Tiene alertas sin revisar">
-      <AlertTriangle className="h-3 w-3" aria-hidden />
-      <span className="sr-only">Tiene alertas sin revisar</span>
-    </span>
+    <Tip asChild content="Tiene alertas sin revisar">
+      <span className={`${callBadgeClass("negative")} gap-1`}>
+        <AlertTriangle className="h-3 w-3" aria-hidden />
+        <span className="sr-only">Tiene alertas sin revisar</span>
+      </span>
+    </Tip>
   );
 }
 
@@ -60,11 +63,13 @@ export function ScoreCell({ score, label }: { score: number | null; label?: stri
   if (score === null || score === undefined) return <span className="text-muted-foreground">—</span>;
   const value = Math.max(0, Math.min(100, Math.round(Number(score) || 0)));
   return (
-    <div className="flex items-center gap-2" title={label ? `${label}: ${value}` : undefined}>
-      <span className={`${callBadgeClass(scoreBadgeTone(value))} tabular-nums`}>{value}</span>
-      <div className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-muted sm:block" aria-hidden>
-        <div className={`h-full ${scoreBarClass(value)}`} style={{ width: `${value}%` }} />
+    <Tip asChild content={label ? `${label}: ${value}` : null}>
+      <div className="flex items-center gap-2">
+        <span className={`${callBadgeClass(scoreBadgeTone(value))} tabular-nums`}>{value}</span>
+        <div className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-muted sm:block" aria-hidden>
+          <div className={`h-full ${scoreBarClass(value)}`} style={{ width: `${value}%` }} />
+        </div>
       </div>
-    </div>
+    </Tip>
   );
 }

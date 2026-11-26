@@ -7,6 +7,7 @@ import { ArrowRight, ChevronRight, Loader2, Maximize2, SquarePen, Sparkles, Undo
 import { continueAssistantMessage, loadAssistantPanel, newAssistantConversation, sendAssistantMessage, type AssistantPanelData } from "@/lib/actions/assistant";
 import { MessageBubble } from "./assistant-parts";
 import { useLongPress } from "./use-long-press";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El asistente del equipo: un botón flotante en todas las pantallas del panel y, al
@@ -198,39 +199,45 @@ export function AssistantDock() {
       return (
         <div className="group fixed bottom-28 right-0 z-40 flex items-center">
           {!forcedTab && (
-            <button type="button" onClick={() => setLauncher("bubble")} aria-label="Volver el botón a su lugar" title="Volver el botón a su lugar" className={`${miniButton} -top-6 right-1`}>
-              <Undo2 className="size-3" aria-hidden />
-            </button>
+            <Tip asChild content="Volver el botón a su lugar">
+              <button type="button" onClick={() => setLauncher("bubble")} aria-label="Volver el botón a su lugar" className={`${miniButton} -top-6 right-1`}>
+                <Undo2 className="size-3" aria-hidden />
+              </button>
+            </Tip>
           )}
-          <button
-            type="button"
-            onClick={openFromLauncher}
-            {...longPress.handlers}
-            aria-label="Abrir el asistente"
-            title="Asistente"
-            className="flex h-11 w-2.5 select-none items-center [-webkit-touch-callout:none] justify-center overflow-hidden rounded-l-md bg-primary text-primary-foreground shadow-lg transition-[width] duration-150 group-hover:w-9 focus-visible:w-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge [@media(hover:none)]:w-7"
-          >
-            <Sparkles className="size-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100" aria-hidden />
-          </button>
+          <Tip asChild content="Asistente">
+            <button
+              type="button"
+              onClick={openFromLauncher}
+              {...longPress.handlers}
+              aria-label="Abrir el asistente"
+              className="flex h-11 w-2.5 select-none items-center [-webkit-touch-callout:none] justify-center overflow-hidden rounded-l-md bg-primary text-primary-foreground shadow-lg transition-[width] duration-150 group-hover:w-9 focus-visible:w-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge [@media(hover:none)]:w-7"
+            >
+              <Sparkles className="size-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100" aria-hidden />
+            </button>
+          </Tip>
         </div>
       );
     }
 
     return (
       <div className="group fixed bottom-4 right-4 z-40">
-        <button
-          type="button"
-          onClick={openFromLauncher}
-          {...longPress.handlers}
-          aria-label="Abrir el asistente"
-          title="Asistente"
-          className="flex size-12 select-none [-webkit-touch-callout:none] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-offset-2 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge"
-        >
-          <Sparkles className="size-5" aria-hidden />
-        </button>
-        <button type="button" onClick={() => setLauncher("tab")} aria-label="Achicar el botón del asistente" title="Achicar a una pestañita" className={`${miniButton} -right-1 -top-1`}>
-          <ChevronRight className="size-3" aria-hidden />
-        </button>
+        <Tip asChild content="Asistente">
+          <button
+            type="button"
+            onClick={openFromLauncher}
+            {...longPress.handlers}
+            aria-label="Abrir el asistente"
+            className="flex size-12 select-none [-webkit-touch-callout:none] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-offset-2 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge"
+          >
+            <Sparkles className="size-5" aria-hidden />
+          </button>
+        </Tip>
+        <Tip asChild content="Achicar a una pestañita">
+          <button type="button" onClick={() => setLauncher("tab")} aria-label="Achicar el botón del asistente" className={`${miniButton} -right-1 -top-1`}>
+            <ChevronRight className="size-3" aria-hidden />
+          </button>
+        </Tip>
       </div>
     );
   }
@@ -248,12 +255,16 @@ export function AssistantDock() {
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
         <Sparkles className="size-[18px] text-primary-ink" aria-hidden />
         <h2 className="flex-1 text-[15px] font-semibold">Asistente</h2>
-        <button type="button" onClick={fresh} disabled={pending} aria-label="Nueva conversación" title="Nueva conversación" className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
-          <SquarePen className="size-4" aria-hidden />
-        </button>
-        <Link href={ASSISTANT_FULL_PATH} aria-label="Abrir a pantalla completa" title="Pantalla completa" className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
-          <Maximize2 className="size-4" aria-hidden />
-        </Link>
+        <Tip asChild content="Nueva conversación">
+          <button type="button" onClick={fresh} disabled={pending} aria-label="Nueva conversación" className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
+            <SquarePen className="size-4" aria-hidden />
+          </button>
+        </Tip>
+        <Tip asChild content="Pantalla completa">
+          <Link href={ASSISTANT_FULL_PATH} aria-label="Abrir a pantalla completa" className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
+            <Maximize2 className="size-4" aria-hidden />
+          </Link>
+        </Tip>
         <button type="button" onClick={() => setOpen(false)} aria-label="Cerrar el asistente" className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
           <X className="size-4" aria-hidden />
         </button>

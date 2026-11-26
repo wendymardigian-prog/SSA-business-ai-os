@@ -106,7 +106,7 @@ export function TeamBlock({
                 >
                   <th scope="row" className="px-[18px] py-2.5 text-left font-normal">
                     <span className="flex items-center gap-2.5">
-                      <Avatar initials={row.initials} color={row.color} />
+                      <Avatar initials={row.initials} color={row.color} userId={row.isPerson ? row.author : null} />
                       <span className="min-w-0">
                         <span className="block font-medium">{row.label}</span>
                         <span className="block text-[11.5px] text-muted-foreground">{row.sublabel}</span>

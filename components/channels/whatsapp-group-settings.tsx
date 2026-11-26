@@ -6,6 +6,7 @@ import { importWhatsappGroupMembers, listWhatsappGroups, saveWhatsappGroup } fro
 import { createWhatsappGroup } from "@/lib/actions/whatsapp-group-manage";
 import { GROUP_DESCRIPTION_MAX, GROUP_SUBJECT_MAX } from "@/lib/whatsapp-groups/manage";
 import { groupListSections, type GroupListItem } from "@/lib/whatsapp-groups/settings";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Los grupos de un número de WhatsApp (00280), en su tarjeta de canal.
@@ -104,9 +105,11 @@ export function WhatsappGroupSettings({ channelId }: { channelId: string }) {
       <li key={item.jid} className="space-y-1.5 px-2 py-1.5">
         <div className="flex items-center gap-2">
           {item.kind === "announce" && <Megaphone className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />}
-          <span className="min-w-0 flex-1 truncate font-medium" title={item.subject}>
-            {item.kind === "announce" ? "Avisos" : item.subject}
-          </span>
+          <Tip asChild content={item.subject}>
+            <span className="min-w-0 flex-1 truncate font-medium">
+              {item.kind === "announce" ? "Avisos" : item.subject}
+            </span>
+          </Tip>
           {item.numberIsAdmin && <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">Admin</span>}
           {item.size !== null && <span className="shrink-0 text-muted-foreground">{item.size} miembros</span>}
           {busy && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" aria-label="Guardando" />}

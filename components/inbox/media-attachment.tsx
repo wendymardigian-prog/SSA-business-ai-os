@@ -21,6 +21,7 @@ import {
   renderPlan,
 } from "@/lib/inbox/media-render";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Un adjunto en la burbuja (F12).
@@ -336,15 +337,16 @@ function StickerImage({
       {/* eslint-disable-next-line @next/next/no-img-element -- la URL es una ruta propia que redirige a Storage: next/image no puede optimizar un 302 firmado. */}
       <img src={url ?? undefined} alt={label} loading="lazy" onError={onBroken} className="h-36 w-36 object-contain" />
       {onSave && (
-        <button
-          type="button"
-          onClick={save}
-          disabled={state === "saving" || state === "saved"}
-          title={error ?? undefined}
-          className="mt-0.5 block text-[11px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-70"
-        >
-          {state === "saving" ? "Guardando…" : state === "saved" ? "Guardado en tus stickers" : state === "error" ? "No se pudo guardar · Reintentar" : "Guardar sticker"}
-        </button>
+        <Tip asChild content={error}>
+          <button
+            type="button"
+            onClick={save}
+            disabled={state === "saving" || state === "saved"}
+            className="mt-0.5 block text-[11px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-70"
+          >
+            {state === "saving" ? "Guardando…" : state === "saved" ? "Guardado en tus stickers" : state === "error" ? "No se pudo guardar · Reintentar" : "Guardar sticker"}
+          </button>
+        </Tip>
       )}
     </div>
   );

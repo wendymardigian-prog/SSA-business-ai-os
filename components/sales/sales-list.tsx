@@ -34,6 +34,8 @@ import { viewFilterString, withViewParam, type TableViewItem } from "@/lib/ui/da
 import { nextSort } from "@/lib/ui/data-table/sort";
 import { SALES_SORT_DEFAULT_DIR, type SalesSortKey } from "@/lib/sales/sort";
 import type { OpenPayment } from "@/lib/sales/next-payment";
+import { Tip } from "@/components/ui/tooltip";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 
 export type SalesListRowView = SaleListRow & { contactName: string; vendedorName: string | null };
 
@@ -394,13 +396,25 @@ function buildColumns(moduleColumns: ModuleColumn[]): DataColumn<SalesListRowVie
     },
     next_payment: { sortable: true, render: (r) => (r.nextPayment ? <NextPaymentText payment={r.nextPayment} /> : <span className="text-muted-foreground">—</span>) },
     status: { render: (r) => <StatusChip status={r.status} /> },
-    seller: { render: (r) => r.vendedorName ?? "—" },
-    attribution: { cellClassName: "text-xs text-muted-foreground", render: (r) => <span title={r.attribution}>{r.attribution}</span> },
+    seller: {
+      render: (r) =>
+        r.vendedorId && r.vendedorName ? <PersonAvatar userId={r.vendedorId} name={r.vendedorName} role="Vendedor" size="sm" showName className="max-w-full" /> : "—",
+    },
+    attribution: {
+      cellClassName: "text-xs text-muted-foreground",
+      render: (r) => (
+        <Tip asChild content={r.attribution}>
+          <span>{r.attribution}</span>
+        </Tip>
+      ),
+    },
     origin: {
       render: (r) => (
         <div className="flex items-center gap-1.5">
           <ChannelChip channel={r.origin.channel} />
-          <span className="min-w-0 truncate text-xs" title={r.origin.summary}>{r.origin.channel === "direct" || r.origin.channel === null ? <span className="text-muted-foreground">{r.origin.summary}</span> : r.origin.summary}</span>
+          <Tip asChild content={r.origin.summary}>
+            <span className="min-w-0 truncate text-xs">{r.origin.channel === "direct" || r.origin.channel === null ? <span className="text-muted-foreground">{r.origin.summary}</span> : r.origin.summary}</span>
+          </Tip>
         </div>
       ),
     },
@@ -488,9 +502,9 @@ function CampaignInput({ value, onCommit }: { value: string; onCommit: (v: strin
 function NextPaymentText({ payment }: { payment: OpenPayment }) {
   return (
     <>
-      <span className={payment.overdue ? "font-medium text-red-700 dark:text-red-400" : ""} title={payment.overdue ? "Vencido" : undefined}>
-        {payment.dueDate ? formatDate(payment.dueDate) : "Sin fecha"}
-      </span>
+      <Tip asChild content={payment.overdue ? "Vencido" : null}>
+        <span className={payment.overdue ? "font-medium text-red-700 dark:text-red-400" : ""}>{payment.dueDate ? formatDate(payment.dueDate) : "Sin fecha"}</span>
+      </Tip>
       <span className="text-muted-foreground"> · <span className="tabular-nums">{formatMoney(payment.amount)}</span></span>
     </>
   );

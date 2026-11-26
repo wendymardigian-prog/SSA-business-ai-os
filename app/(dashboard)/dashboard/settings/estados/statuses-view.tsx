@@ -28,6 +28,7 @@ import { DialogField, fieldInput } from "@/components/content/dialog";
 import type { QualificationSettings } from "@/lib/contacts/qualification";
 import { QualificationSettingsSection } from "./qualification-settings";
 import { ClickableTr } from "@/components/ui/clickable-row";
+import { Tip } from "@/components/ui/tooltip";
 
 const ROLE_HINTS: Record<StatusRole, string> = {
   setter: "Lo mueve quien hace el primer contacto (y el agente de IA, si le habilitás la herramienta).",
@@ -231,16 +232,17 @@ function StatusList({ role, list, usage }: { role: StatusRole; list: ContactStat
                           <RotateCcw className="h-3.5 w-3.5" aria-hidden />
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          aria-label={`Archivar ${s.name}`}
-                          title={(usage[s.key] ?? 0) > 0 ? "Los contactos que ya lo tienen lo conservan" : undefined}
-                          disabled={pending}
-                          onClick={() => run(statusItemsWithArchived(list, s.key, true))}
-                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent disabled:opacity-50"
-                        >
-                          <Archive className="h-3.5 w-3.5" aria-hidden />
-                        </button>
+                        <Tip content={(usage[s.key] ?? 0) > 0 ? "Los contactos que ya lo tienen lo conservan" : null}>
+                          <button
+                            type="button"
+                            aria-label={`Archivar ${s.name}`}
+                            disabled={pending}
+                            onClick={() => run(statusItemsWithArchived(list, s.key, true))}
+                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent disabled:opacity-50"
+                          >
+                            <Archive className="h-3.5 w-3.5" aria-hidden />
+                          </button>
+                        </Tip>
                       )}
                     </div>
                   </td>
@@ -293,19 +295,19 @@ function StatusList({ role, list, usage }: { role: StatusRole; list: ContactStat
               {STATUS_COLORS.map((color) => {
                 const selected = draft.color === color;
                 return (
-                  <button
-                    key={color}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    aria-label={STATUS_COLOR_NAMES[color]}
-                    title={STATUS_COLOR_NAMES[color]}
-                    onClick={() => setDraft({ ...draft, color })}
-                    className={`grid h-8 w-8 place-items-center rounded-full ring-offset-2 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "ring-2 ring-foreground" : ""}`}
-                    style={{ backgroundColor: color }}
-                  >
-                    {selected && <Check className="h-4 w-4 text-white" aria-hidden />}
-                  </button>
+                  <Tip key={color} asChild content={STATUS_COLOR_NAMES[color]}>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={STATUS_COLOR_NAMES[color]}
+                      onClick={() => setDraft({ ...draft, color })}
+                      className={`grid h-8 w-8 place-items-center rounded-full ring-offset-2 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "ring-2 ring-foreground" : ""}`}
+                      style={{ backgroundColor: color }}
+                    >
+                      {selected && <Check className="h-4 w-4 text-white" aria-hidden />}
+                    </button>
+                  </Tip>
                 );
               })}
             </div>

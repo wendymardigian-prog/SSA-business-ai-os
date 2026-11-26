@@ -1,6 +1,7 @@
 import { FileText, PenLine, Star, Sunset, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FORM_STATUS_LABELS, FORM_TYPE_LABELS, type FormStatus, type FormType } from "@/lib/forms/fields";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Como se ve cada tipo y cada estado de un formulario (plano formularios-ui). Lo comparten la lista de
@@ -25,15 +26,16 @@ export const FORM_TYPE_TONE: Record<FormType, { tile: string; bar: string }> = {
 export function FormTypeIcon({ type, className, tooltip = false }: { type: FormType; className?: string; tooltip?: boolean }) {
   const Icon = TYPE_ICON[type];
   return (
-    <span
-      className={cn("grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg", FORM_TYPE_TONE[type].tile, className)}
-      title={tooltip ? `Tipo: ${FORM_TYPE_LABELS[type]}` : undefined}
-      aria-label={tooltip ? `Tipo: ${FORM_TYPE_LABELS[type]}` : undefined}
-      aria-hidden={tooltip ? undefined : true}
-      role={tooltip ? "img" : undefined}
-    >
-      <Icon className="h-4 w-4" aria-hidden />
-    </span>
+    <Tip asChild content={tooltip ? `Tipo: ${FORM_TYPE_LABELS[type]}` : undefined}>
+      <span
+        className={cn("grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg", FORM_TYPE_TONE[type].tile, className)}
+        aria-label={tooltip ? `Tipo: ${FORM_TYPE_LABELS[type]}` : undefined}
+        aria-hidden={tooltip ? undefined : true}
+        role={tooltip ? "img" : undefined}
+      >
+        <Icon className="h-4 w-4" aria-hidden />
+      </span>
+    </Tip>
   );
 }
 

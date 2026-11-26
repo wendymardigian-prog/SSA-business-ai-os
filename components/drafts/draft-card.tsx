@@ -21,6 +21,7 @@ import { MediaAttachment } from "@/components/inbox/media-attachment";
 import { AssetKindIcon } from "@/components/response-assets/asset-kind-icon";
 import { assetAttachment } from "@/lib/response-assets/preview";
 import { MessageText } from "@/components/inbox/message-text";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Un borrador del agente y las decisiones sobre el (Bloque 2c). Dos formas:
@@ -337,20 +338,18 @@ function AgentActions({ draft }: { draft: DraftQueueRow }) {
         </li>
       ))}
       {suggestions.map((s, i) => (
-        <li
-          key={`s-${i}`}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-amber-400 px-2 py-0.5 text-[11px] text-amber-800 dark:text-amber-200"
-          title="No se ejecutó: se aplica si enviás este borrador"
-        >
-          {s.type === "escalate" ? (
-            <UserRound className="h-3 w-3" aria-hidden />
-          ) : s.type === "send_asset" ? (
-            <AssetKindIcon kind={s.kind ?? "audio"} className="h-3 w-3" />
-          ) : (
-            <Ban className="h-3 w-3" aria-hidden />
-          )}
-          {describeSuggestion(s)}
-        </li>
+        <Tip key={`s-${i}`} asChild content="No se ejecutó: se aplica si enviás este borrador">
+          <li className="inline-flex items-center gap-1 rounded-full border border-dashed border-amber-400 px-2 py-0.5 text-[11px] text-amber-800 dark:text-amber-200">
+            {s.type === "escalate" ? (
+              <UserRound className="h-3 w-3" aria-hidden />
+            ) : s.type === "send_asset" ? (
+              <AssetKindIcon kind={s.kind ?? "audio"} className="h-3 w-3" />
+            ) : (
+              <Ban className="h-3 w-3" aria-hidden />
+            )}
+            {describeSuggestion(s)}
+          </li>
+        </Tip>
       ))}
     </ul>
   );
@@ -371,24 +370,27 @@ function Btn({
   title?: string;
   className?: string;
 }) {
+  // Un boton deshabilitado no recibe el puntero: el tooltip solo se ve habilitado (el unico con texto es «Enviar», y
+  // deshabilitado esta enviando).
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={cn(
-        className,
-        // 44 px de alto en el telefono y la tableta (se aprueba con el pulgar);
-        // compacto recien donde la cola es una tabla.
-        "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 queue:min-h-0 queue:px-2.5 queue:py-1.5 queue:text-xs",
-        variant === "primary" && "bg-primary text-primary-foreground hover:opacity-90",
-        variant === "secondary" && "border border-input hover:bg-accent",
-        variant === "danger" && "border border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40",
-      )}
-    >
-      {children}
-    </button>
+    <Tip asChild content={disabled ? null : title}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={cn(
+          className,
+          // 44 px de alto en el telefono y la tableta (se aprueba con el pulgar);
+          // compacto recien donde la cola es una tabla.
+          "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 queue:min-h-0 queue:px-2.5 queue:py-1.5 queue:text-xs",
+          variant === "primary" && "bg-primary text-primary-foreground hover:opacity-90",
+          variant === "secondary" && "border border-input hover:bg-accent",
+          variant === "danger" && "border border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40",
+        )}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 

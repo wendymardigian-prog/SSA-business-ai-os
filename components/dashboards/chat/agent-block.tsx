@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { InfoTooltip } from "@/components/ui/tooltip";
+import { InfoTooltip, Tip } from "@/components/ui/tooltip";
 import { EmptyBlock, Panel } from "./block";
 import { Sparkline } from "./sparkline";
 import { comparePoints, formatCount, formatDuration } from "@/lib/dashboards/chat/comparisons";
@@ -129,12 +129,12 @@ export function FirstResponderCard({ data }: { data: FirstResponderBlock }) {
         <div className="flex h-3.5 gap-0.5 overflow-hidden rounded-[5px]" role="img" aria-label="Quién respondió primero">
           {data.slices.map((s) =>
             s.episodes > 0 ? (
-              <span
-                key={s.key}
-                title={`${s.label}: ${s.percent ?? 0} %`}
-                style={{ width: `${s.percent ?? 0}%`, backgroundColor: s.color }}
-                className="h-full first:rounded-l-[5px] last:rounded-r-[5px]"
-              />
+              <Tip key={s.key} asChild content={`${s.label}: ${s.percent ?? 0} %`}>
+                <span
+                  style={{ width: `${s.percent ?? 0}%`, backgroundColor: s.color }}
+                  className="h-full first:rounded-l-[5px] last:rounded-r-[5px]"
+                />
+              </Tip>
             ) : null,
           )}
         </div>
@@ -331,12 +331,12 @@ export function ApprovalCard({
         <div className="flex h-3.5 gap-0.5 overflow-hidden rounded-[5px]" role="img" aria-label="Qué pasó con los borradores">
           {card.outcomes.map((o) =>
             o.count > 0 ? (
-              <span
-                key={o.key}
-                title={`${o.label}: ${o.percent ?? 0} %`}
-                style={{ width: `${o.percent ?? 0}%`, backgroundColor: o.color }}
-                className="h-full first:rounded-l-[5px] last:rounded-r-[5px]"
-              />
+              <Tip key={o.key} asChild content={`${o.label}: ${o.percent ?? 0} %`}>
+                <span
+                  style={{ width: `${o.percent ?? 0}%`, backgroundColor: o.color }}
+                  className="h-full first:rounded-l-[5px] last:rounded-r-[5px]"
+                />
+              </Tip>
             ) : null,
           )}
         </div>

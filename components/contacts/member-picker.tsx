@@ -5,6 +5,7 @@ import { Avatar } from "@/components/ui/filter-menu";
 import { PortalMenu, PortalMenuItem, PortalMenuLabel } from "@/components/ui/portal-menu";
 import { assigneeName, assigneeOptions, type TeamMember } from "@/lib/inbox/assignee";
 import { colorOf, initialsOf } from "@/lib/shared/people";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 
 /**
  * Selector chico de una persona del equipo: el boton muestra SOLO la foto (o la inicial) y la lista que
@@ -54,8 +55,14 @@ export function MemberPicker({
 
   if (!canAssign) {
     return (
-      <span title={description} role="img" aria-label={description} className="inline-flex h-9 shrink-0 items-center px-1">
-        {circle}
+      <span className="inline-flex h-9 shrink-0 items-center px-1">
+        <PersonAvatar
+          userId={value}
+          name={value ? name : null}
+          role={label}
+          size="md"
+          emptyLabel={value ? `${label}: alguien que ya no está en el equipo` : description}
+        />
       </span>
     );
   }

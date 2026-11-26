@@ -4,6 +4,7 @@ import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
 import { MetaMatchControl } from "@/components/attribution/meta-match-control";
 import type { MetaLink } from "@/lib/attribution/meta-link";
 import { EmptyHint, Section } from "./ui";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Atribución del contacto (F88): de dónde vino y cómo volvió.
@@ -133,12 +134,14 @@ function TouchText({ touch }: { touch: TouchView }) {
   return (
     <span>
       <span className="font-medium">{touch.origin}</span>
-      {touch.account && <span className="text-muted-foreground" title="Cuenta por la que entró"> · {touch.account}</span>}
+      {touch.account && <Tip asChild content="Cuenta por la que entró"><span className="text-muted-foreground"> · {touch.account}</span></Tip>}
       {touch.rawMedium && (
-        <span className="text-muted-foreground" title="Este medio no es de la lista: se guardó tal cual llegó">
-          {" "}
-          (sin clasificar)
-        </span>
+        <Tip asChild content="Este medio no es de la lista: se guardó tal cual llegó">
+          <span className="text-muted-foreground">
+            {" "}
+            (sin clasificar)
+          </span>
+        </Tip>
       )}
       {touch.piece && (
         <>

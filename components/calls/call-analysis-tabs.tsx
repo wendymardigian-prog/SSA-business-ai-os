@@ -15,6 +15,7 @@ import { SectionTools } from "@/components/calls/section-tools";
 import { CallUsesCard, type CallUsesData } from "@/components/calls/call-uses";
 import { ChurnCauseCard } from "@/components/calls/churn-cause-card";
 import type { ChurnReason } from "@/lib/calls/churn";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Las pestañas del analisis de una llamada (F13, F14). Solo muestran: lo que
@@ -40,7 +41,11 @@ const yn = (v: boolean | null) => (v === null ? "—" : v ? "Sí" : "No");
 function Ts({ ts, onJump }: { ts: string | null; onJump?: (ts: string) => void }) {
   if (!ts) return null;
   return onJump ? (
-    <button type="button" onClick={() => onJump(ts)} className="ml-1 text-[10px] tabular-nums text-primary-ink hover:underline" title="Ir a ese momento de la transcripción">[{ts}]</button>
+    <Tip asChild content="Ir a ese momento de la transcripción">
+      <button type="button" onClick={() => onJump(ts)} className="ml-1 text-[10px] tabular-nums text-primary-ink hover:underline">
+        [{ts}]
+      </button>
+    </Tip>
   ) : (
     <span className="ml-1 text-[10px] tabular-nums text-muted-foreground">[{ts}]</span>
   );
@@ -49,9 +54,11 @@ function Ts({ ts, onJump }: { ts: string | null; onJump?: (ts: string) => void }
 function CategoryChip({ c, tone = "classification" }: { c: { category: string | null; proposed: boolean }; tone?: CallBadgeTone }) {
   if (!c.category) return null;
   return (
-    <span className={`mb-1 mr-1 ${callBadgeClass(tone)}`} title={c.proposed ? "Propuesta por la IA" : undefined}>
-      {c.proposed && "✨ "}{humanize(c.category)}
-    </span>
+    <Tip asChild content={c.proposed ? "Propuesta por la IA" : null}>
+      <span className={`mb-1 mr-1 ${callBadgeClass(tone)}`}>
+        {c.proposed && "✨ "}{humanize(c.category)}
+      </span>
+    </Tip>
   );
 }
 

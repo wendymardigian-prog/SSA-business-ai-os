@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import type { DesignDoc } from "@/lib/designer/doc/schema";
 import { addCustomVar, removeVarWarning, usedVariableRows, variableUsage } from "@/lib/designer/screens/variables";
 import { variableGroups, type CustomVar } from "@/lib/designer/variables/catalog";
+import { Tip } from "@/components/ui/tooltip";
 
 const CHIP = "inline-block rounded-[0.35em] bg-primary/20 px-1.5 py-0.5 text-xs font-semibold text-primary-ink";
 
@@ -74,9 +75,11 @@ export function VariablesPanel({
           <ul className="flex flex-col gap-1.5">
             {used.map((v) => (
               <li key={v.key} className="flex flex-wrap items-center gap-2 text-[12.5px]">
-                <span className={CHIP} title={`{{${v.key}}}`}>
-                  {v.label}
-                </span>
+                <Tip asChild content={`{{${v.key}}}`}>
+                  <span className={CHIP}>
+                    {v.label}
+                  </span>
+                </Tip>
                 <span className="min-w-0 flex-1 text-xs text-muted-foreground">
                   {v.group}
                   {v.sample ? ` · ej.: ${v.sample}` : ""}
@@ -133,9 +136,11 @@ export function VariablesPanel({
             <p className="mb-1 text-xs text-muted-foreground">{group.label}</p>
             <div className="flex flex-wrap gap-1.5">
               {group.vars.map((v) => (
-                <span key={v.key} className={CHIP} title={`{{${v.key}}}`}>
-                  {v.label}
-                </span>
+                <Tip asChild key={v.key} content={`{{${v.key}}}`}>
+                  <span className={CHIP}>
+                    {v.label}
+                  </span>
+                </Tip>
               ))}
             </div>
           </div>

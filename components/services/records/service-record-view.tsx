@@ -34,6 +34,8 @@ import { SidePanel } from "@/components/tasks/overlay";
 import { EvidenceBox } from "@/components/services/evidence-box";
 import { ServiceProjectsSection } from "./service-projects"; // @plantilla-quitar(proyectos)
 import type { EvidenceEntry, EvidenceRule } from "@/lib/services/evidence";
+import { Tip } from "@/components/ui/tooltip";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 
 export interface ServiceRecordStep {
   id: string;
@@ -249,7 +251,7 @@ export function ServiceRecordHeader({ data, today, members, permissions }: { dat
                 </select>
               </label>
             ) : (
-              members.find((m) => m.id === data.ownerId)?.name ?? "Sin responsable"
+              <PersonAvatar userId={data.ownerId} name={members.find((m) => m.id === data.ownerId)?.name} role="Responsable" emptyLabel="Sin responsable" size="sm" showName className="max-w-full" />
             )}
           </Figure>
         </dl>
@@ -934,21 +936,23 @@ function JourneyColumn({
                               )}
                             </span>
                           </span>
-                          <button
-                            type="button"
-                            disabled={toggle.disabled || pending}
-                            title={toggle.reason ?? undefined}
-                            onClick={() => {
-                              // A4: sin la evidencia que pide, el tilde abre el paso para adjuntarla.
-                              if (!isDone && it.evidenceMissing) return setPanel(it.id);
-                              run(() => (isDone ? uncompleteServiceItem(it.id, data.id) : completeServiceItem(it.id, data.id)));
-                            }}
-                            aria-label={isDone ? `Destildar «${it.name}»` : `Tildar «${it.name}»`}
-                            aria-pressed={isDone}
-                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40 md:h-8 md:w-8"
-                          >
-                            {isDone ? <CheckSquare className="h-4 w-4 text-good" aria-hidden /> : <Square className="h-4 w-4" aria-hidden />}
-                          </button>
+                          {/* Sin `asChild`: el motivo se ve justo cuando el botón está apagado, que no recibe eventos del puntero. */}
+                          <Tip content={toggle.reason ?? null} className="shrink-0">
+                            <button
+                              type="button"
+                              disabled={toggle.disabled || pending}
+                              onClick={() => {
+                                // A4: sin la evidencia que pide, el tilde abre el paso para adjuntarla.
+                                if (!isDone && it.evidenceMissing) return setPanel(it.id);
+                                run(() => (isDone ? uncompleteServiceItem(it.id, data.id) : completeServiceItem(it.id, data.id)));
+                              }}
+                              aria-label={isDone ? `Destildar «${it.name}»` : `Tildar «${it.name}»`}
+                              aria-pressed={isDone}
+                              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40 md:h-8 md:w-8"
+                            >
+                              {isDone ? <CheckSquare className="h-4 w-4 text-good" aria-hidden /> : <Square className="h-4 w-4" aria-hidden />}
+                            </button>
+                          </Tip>
                         </li>
                       );
                     })}

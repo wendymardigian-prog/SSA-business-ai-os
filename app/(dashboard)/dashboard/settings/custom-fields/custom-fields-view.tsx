@@ -21,6 +21,7 @@ import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { ClickableTr } from "@/components/ui/clickable-row";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface FieldRow {
   id: string;
@@ -111,12 +112,9 @@ export function CustomFieldsView({ fields }: { fields: FieldRow[] }) {
                     {CUSTOM_FIELD_TYPE_LABELS[field.type]}
                   </td>
                   <td className="px-4 py-3">
-                    <code
-                      className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-                      title="Con este nombre lo referencian los flows. No cambia si renombrás el campo."
-                    >
-                      {field.slug}
-                    </code>
+                    <Tip asChild content="Con este nombre lo referencian los flows. No cambia si renombrás el campo.">
+                      <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{field.slug}</code>
+                    </Tip>
                   </td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">
                     {field.usedBy === 0

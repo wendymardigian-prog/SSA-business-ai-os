@@ -35,8 +35,7 @@ import { setCustomer, setKnown } from "@/lib/actions/contacts";
 import { MarkBadge } from "@/components/contacts/mark-badge";
 import { ConversationRowMenu } from "@/components/inbox/conversation-row-menu";
 import { DeleteDialog } from "@/components/trash/delete-dialog";
-import { colorOf, initialsOf } from "@/lib/shared/people";
-import { Avatar } from "@/components/ui/filter-menu";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 import { Tip } from "@/components/ui/tooltip";
 import { conversationListPreview, EMPTY_PREVIEW } from "@/lib/inbox/last-message";
 import { listTimeLabel } from "@/lib/inbox/day-label";
@@ -354,14 +353,15 @@ export function ConversationList({
                 lleva al run; nunca nada visible para el lead. Va afuera del
                 boton de la fila porque un link no puede ir adentro de un boton. */}
             {conversation.last_agent_error_at && (
-              <Link
-                href={conversation.last_agent_error_run_id ? `/dashboard/agents/runs/${conversation.last_agent_error_run_id}` : "/dashboard/agents"}
-                title="El agente de IA no pudo responder en esta conversación. Ver el run."
-                aria-label="El agente de IA no pudo responder. Ver el run que falló"
-                className="absolute left-2 top-2 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
-              </Link>
+              <Tip asChild content="El agente de IA no pudo responder en esta conversación. Ver el run.">
+                <Link
+                  href={conversation.last_agent_error_run_id ? `/dashboard/agents/runs/${conversation.last_agent_error_run_id}` : "/dashboard/agents"}
+                  aria-label="El agente de IA no pudo responder. Ver el run que falló"
+                  className="absolute left-2 top-2 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
+                </Link>
+              </Tip>
             )}
             {/* El "⋯" de la fila: marcar conocido o cliente sin abrir el chat. Va
                 afuera del boton de la fila (un boton no puede ir adentro de otro). */}
@@ -436,18 +436,13 @@ export function ConversationList({
                   <span className="flex flex-shrink-0 items-center gap-1.5">
                     {/* El responsable del chat (00255): quien la mira sabe de quien es sin abrirla. */}
                     {conversation.assigned_to && (
-                      <span
-                        role="img"
-                        title={`Responsable: ${assigneeName(members, conversation.assigned_to) ?? "alguien que ya no está en el equipo"}`}
-                        aria-label={`Responsable: ${assigneeName(members, conversation.assigned_to) ?? "alguien que ya no está en el equipo"}`}
-                        className="inline-flex"
-                      >
-                        <Avatar
-                          initials={initialsOf(assigneeName(members, conversation.assigned_to) ?? "?")}
-                          color={colorOf(conversation.assigned_to)}
-                          size="sm"
-                        />
-                      </span>
+                      <PersonAvatar
+                        userId={conversation.assigned_to}
+                        name={assigneeName(members, conversation.assigned_to)}
+                        role="Responsable"
+                        size="sm"
+                        emptyLabel="Responsable: alguien que ya no está en el equipo"
+                      />
                     )}
                     <span className="text-[11px] text-muted-foreground">
                       {mounted ? formatTime(conversation.last_message_at, timeZone) : ""}
@@ -456,12 +451,11 @@ export function ConversationList({
                 </div>
                 {/* Con varias cuentas de la misma red, la cuenta por la que entro. */}
                 {accountToShow(accounts, conversation) && (
-                  <p
-                    className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground"
-                    title={`Cuenta: ${accountToShow(accounts, conversation)}`}
-                  >
-                    {accountToShow(accounts, conversation)}
-                  </p>
+                  <Tip asChild content={`Cuenta: ${accountToShow(accounts, conversation)}`}>
+                    <p className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground">
+                      {accountToShow(accounts, conversation)}
+                    </p>
+                  </Tip>
                 )}
                 <div className="flex items-center justify-between">
                   {/* 00262: el ultimo mensaje de la conversacion, sea del
@@ -473,13 +467,12 @@ export function ConversationList({
                       respondio. Hay un lead esperando a una persona, asi que va
                       en rojo y con el motivo al pasar el mouse. */}
                   {needsHumanBadge(conversation).show && (
-                    <span
-                      className="ml-2 inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
-                      title={needsHumanBadge(conversation).title}
-                    >
-                      <UserRoundSearch className="h-3 w-3" aria-hidden />
-                      {needsHumanBadge(conversation).label}
-                    </span>
+                    <Tip asChild content={needsHumanBadge(conversation).title}>
+                      <span className="ml-2 inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300">
+                        <UserRoundSearch className="h-3 w-3" aria-hidden />
+                        {needsHumanBadge(conversation).label}
+                      </span>
+                    </Tip>
                   )}
                   {/* Bloque 2d: el agente dejo una respuesta para aprobar. Un
                       borrador es una conversacion esperando respuesta: se
@@ -500,14 +493,13 @@ export function ConversationList({
                   {/* 00259: el ultimo mensaje solo cierra la charla. Gris: no
                       es una alerta, explica por que no cuenta como esperando. */}
                   {noReplyBadge(conversation).show && (
-                    <span
-                      className="ml-2 inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-                      title={noReplyBadge(conversation).detail}
-                    >
-                      <CheckCheck className="h-3 w-3" aria-hidden />
-                      <span className="hidden sm:inline">No necesita respuesta</span>
-                      <span className="sr-only sm:hidden">No necesita respuesta</span>
-                    </span>
+                    <Tip asChild content={noReplyBadge(conversation).detail}>
+                      <span className="ml-2 inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        <CheckCheck className="h-3 w-3" aria-hidden />
+                        <span className="hidden sm:inline">No necesita respuesta</span>
+                        <span className="sr-only sm:hidden">No necesita respuesta</span>
+                      </span>
+                    </Tip>
                   )}
                   {conversation.unread_count > 0 && (
                     <span className="ml-2 flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
@@ -589,9 +581,9 @@ function GroupRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <p className="min-w-0 truncate text-sm font-medium" title={display.community ? `${display.community} › ${display.name}` : display.name}>
-            {display.name}
-          </p>
+          <Tip asChild content={display.community ? `${display.community} › ${display.name}` : display.name}>
+            <p className="min-w-0 truncate text-sm font-medium">{display.name}</p>
+          </Tip>
           <span className="flex-shrink-0 text-[11px] text-muted-foreground">{time}</span>
         </div>
         {display.community && (
@@ -601,9 +593,9 @@ function GroupRow({
           </p>
         )}
         {account && (
-          <p className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground" title={`Cuenta: ${account}`}>
-            {account}
-          </p>
+          <Tip asChild content={`Cuenta: ${account}`}>
+            <p className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground">{account}</p>
+          </Tip>
         )}
         <div className="flex items-center justify-between">
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{group.preview?.trim() || EMPTY_PREVIEW}</p>

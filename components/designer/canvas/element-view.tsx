@@ -8,6 +8,7 @@ import { handleStyle, handlesFor, outlineStyle, type HandleId } from "@/lib/desi
 import { parseText } from "@/lib/designer/screens/variables";
 import { CHIP_CLASS } from "./text-dom";
 import { TextEditor, type TextEditorHandle } from "./text-editor";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface ElementViewProps {
   el: DesignElement;
@@ -41,9 +42,11 @@ function TextBody({ el, labelFor, values }: { el: TextElement; labelFor: (key: s
     if (node.kind === "text") return node.text;
     if (values) return values[node.key] ?? labelFor(node.key);
     return (
-      <span key={i} className={CHIP_CLASS} data-var={node.key} data-node={i} title={`{{${node.key}}}`}>
-        {labelFor(node.key)}
-      </span>
+      <Tip asChild key={i} content={`{{${node.key}}}`}>
+        <span className={CHIP_CLASS} data-var={node.key} data-node={i}>
+          {labelFor(node.key)}
+        </span>
+      </Tip>
     );
   });
   const body = nodes.length === 0 ? "​" : content;

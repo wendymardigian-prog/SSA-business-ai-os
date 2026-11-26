@@ -2,6 +2,7 @@
 
 import { ChevronRight } from "lucide-react";
 import type { GroupCount } from "@/lib/forms/response-index";
+import { Tip } from "@/components/ui/tooltip";
 
 const NUMBER = new Intl.NumberFormat("es-AR");
 const percent = (value: number) => `${value.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`;
@@ -40,17 +41,18 @@ export function ResponseGroups({
           {groups.map((g) => (
             <tr key={g.value} className="group cursor-pointer hover:bg-muted/30" onClick={() => onSelect(g)}>
               <td className="max-w-[20rem] px-3 py-2">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelect(g);
-                  }}
-                  className="block max-w-full truncate text-left underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  title={`Ver las respuestas de ${g.label}`}
-                >
-                  {g.label}
-                </button>
+                <Tip asChild content={`Ver las respuestas de ${g.label}`}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelect(g);
+                    }}
+                    className="block max-w-full truncate text-left underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {g.label}
+                  </button>
+                </Tip>
               </td>
               <td className="px-3 py-2 text-right tabular-nums">{NUMBER.format(g.count)}</td>
               <td className="px-3 py-2">

@@ -6,6 +6,7 @@ import { money } from "@/lib/dashboards/ads";
 import { PERIOD_LABELS, type PeriodPreset } from "@/lib/dashboards/period";
 import { loadPieceAdsSummary } from "@/lib/actions/content-ad-link";
 import { summaryTiles, type LinkedAd, type PieceAdsSummary } from "@/lib/meta/content-ad-summary";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La sección «Publicidad» del detalle de una pieza (Tirón 2, A2). El servidor solo la arma cuando la pieza tiene al menos
@@ -104,10 +105,12 @@ export function PieceAdsSection({ pieceId, ads }: { pieceId: string; ads: Linked
               money: (value) => money(value, state.currency, { narrow: true }),
               count: (value) => (value === null ? "—" : COUNT.format(value)),
             }).map((tile) => (
-              <div key={tile.key} className="rounded-lg border border-border px-3 py-2" title={tile.tip}>
-                <dt className="text-[11px] text-muted-foreground">{tile.label}</dt>
-                <dd className="text-sm font-semibold tabular-nums">{tile.value}</dd>
-              </div>
+              <Tip asChild key={tile.key} content={tile.tip}>
+                <div className="rounded-lg border border-border px-3 py-2">
+                  <dt className="text-[11px] text-muted-foreground">{tile.label}</dt>
+                  <dd className="text-sm font-semibold tabular-nums">{tile.value}</dd>
+                </div>
+              </Tip>
             ))}
           </dl>
           {state.summary.notes.map((note) => (

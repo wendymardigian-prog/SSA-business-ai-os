@@ -9,6 +9,7 @@ import { SECTION_LABELS, type AnalysisSection } from "@/lib/calls/scoring";
 import { SECTION_FORMS, blankItem, cleanFormValue, type FieldSpec } from "@/lib/calls/section-forms";
 import { validateSectionValue } from "@/lib/calls/section-edit";
 import type { CategoryGroup } from "@/lib/calls/rubric";
+import { Tip } from "@/components/ui/tooltip";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -63,9 +64,11 @@ export function SectionEditor({
       onClose={onClose}
       footer={
         <>
-          <button type="button" onClick={save} disabled={pending || !!problem} title={problem ?? undefined} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-            {pending ? "Guardando…" : "Guardar"}
-          </button>
+          <Tip content={problem ?? null}>
+            <button type="button" onClick={save} disabled={pending || !!problem} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+              {pending ? "Guardando…" : "Guardar"}
+            </button>
+          </Tip>
           <button type="button" onClick={onClose} disabled={pending} className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">Cancelar</button>
           {problem && <span className="text-xs text-amber-800 dark:text-amber-300">{problem}</span>}
           {error && <span role="alert" className="text-xs text-red-700 dark:text-red-400">{error}</span>}

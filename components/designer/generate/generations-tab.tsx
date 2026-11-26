@@ -41,6 +41,7 @@ import { GENERATIONS_CHANGED } from "./events";
 import { GenerateManyModal } from "./generate-many-modal";
 import { GenerateOneModal } from "./generate-one-modal";
 import { ClickableTr } from "@/components/ui/clickable-row";
+import { Tip } from "@/components/ui/tooltip";
 
 type Row = GenerationListView["rows"][number];
 type Notice = { tone: "ok" | "error"; text: string } | null;
@@ -447,9 +448,11 @@ function ActionButton({ action, row, busy, onAct, primary }: { action: RowAction
   }
   if (action === "copy_link") {
     return (
-      <button type="button" className={smallButton} onClick={() => onAct(action, row)} aria-label={`Copiar el link de ${row.para.name}`} title="Copiar link">
-        <Link2 className="h-3.5 w-3.5" aria-hidden />
-      </button>
+      <Tip asChild content="Copiar link">
+        <button type="button" className={smallButton} onClick={() => onAct(action, row)} aria-label={`Copiar el link de ${row.para.name}`}>
+          <Link2 className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      </Tip>
     );
   }
   return (

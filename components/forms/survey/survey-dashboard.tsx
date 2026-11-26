@@ -7,6 +7,7 @@ import { PERIOD_OPTIONS, type Period } from "@/lib/forms/metrics";
 import { NPS_CATEGORY_LABELS, type NpsCategory } from "@/lib/forms/survey";
 import type { DistributionBar, EvolutionPoint, Granularity, Scale, SurveySummary } from "@/lib/forms/survey-metrics";
 import { formatInZone } from "@/lib/forms/responses-query";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface SurveyComment {
   id: string;
@@ -142,11 +143,13 @@ export function SurveyDashboard({
                 </h2>
                 <div className="mt-3 flex h-36 items-end gap-1" role="img" aria-label={`Cantidad de respuestas por puntaje, de ${bars[0]?.value} a ${bars[bars.length - 1]?.value}`}>
                   {bars.map((bar) => (
-                    <div key={bar.value} className="flex flex-1 flex-col items-center justify-end gap-1" title={`${bar.value}: ${bar.count}`}>
-                      <span className="text-[10px] tabular-nums text-muted-foreground">{bar.count || ""}</span>
-                      <div className={`w-full rounded-t ${bar.category ? CATEGORY_COLOR[bar.category] : "bg-primary"}`} style={{ height: `${(bar.count / maxBar) * 100}px` }} />
-                      <span className="text-[10px] text-muted-foreground">{bar.value}</span>
-                    </div>
+                    <Tip key={bar.value} asChild content={`${bar.value}: ${bar.count}`}>
+                      <div className="flex flex-1 flex-col items-center justify-end gap-1">
+                        <span className="text-[10px] tabular-nums text-muted-foreground">{bar.count || ""}</span>
+                        <div className={`w-full rounded-t ${bar.category ? CATEGORY_COLOR[bar.category] : "bg-primary"}`} style={{ height: `${(bar.count / maxBar) * 100}px` }} />
+                        <span className="text-[10px] text-muted-foreground">{bar.value}</span>
+                      </div>
+                    </Tip>
                   ))}
                 </div>
                 {scale === "nps" && (

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Columns3, GripVertical, Pin, Search } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
+import { Tip } from "@/components/ui/tooltip";
 import type { ColumnId } from "@/lib/dashboards/ads-crm-columns";
 import { menuGroups, moveColumn, moveColumnTo, resetPrefs, toggleColumn, type ColumnLevel, type ColumnPrefs } from "@/lib/dashboards/ads-columns";
 import type { TableView } from "./use-table-view";
@@ -111,15 +112,16 @@ export function ColumnsMenu({
                       <span className="truncate">{column.label}</span>
                     </label>
                     {view?.pinned.includes(column.id) && (
-                      <button
-                        type="button"
-                        onClick={() => view.togglePin(column.id)}
-                        aria-label={`Soltar ${column.label}`}
-                        title="Fijada a la izquierda. Clic para soltarla."
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-primary-ink hover:bg-accent"
-                      >
-                        <Pin className="h-3 w-3" aria-hidden />
-                      </button>
+                      <Tip asChild content="Fijada a la izquierda. Clic para soltarla.">
+                        <button
+                          type="button"
+                          onClick={() => view.togglePin(column.id)}
+                          aria-label={`Soltar ${column.label}`}
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-primary-ink hover:bg-accent"
+                        >
+                          <Pin className="h-3 w-3" aria-hidden />
+                        </button>
+                      </Tip>
                     )}
                     {!query && (
                       <>

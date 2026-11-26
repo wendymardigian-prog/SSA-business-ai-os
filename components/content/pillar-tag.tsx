@@ -1,5 +1,6 @@
 import type { TaxonomyTag } from "@/lib/content/taxonomy";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El pilar de una idea o pieza como lo ven las tarjetas y la lista (F91): un
@@ -9,16 +10,17 @@ import { cn } from "@/lib/utils";
  */
 export function PillarDot({ tag, className }: { tag: TaxonomyTag; className?: string }) {
   return (
-    <span
-      className={cn("ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground", tag.archived && "opacity-70", className)}
-      title={tag.archived ? `${tag.name} (archivado)` : `Pilar: ${tag.name}`}
-    >
+    <Tip asChild content={tag.archived ? `${tag.name} (archivado)` : `Pilar: ${tag.name}`}>
       <span
-        aria-hidden
-        className="inline-block h-2 w-2 rounded-full"
-        style={{ backgroundColor: tag.color ?? "#64748b" }}
-      />
-      {tag.name}
-    </span>
+        className={cn("ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground", tag.archived && "opacity-70", className)}
+      >
+        <span
+          aria-hidden
+          className="inline-block h-2 w-2 rounded-full"
+          style={{ backgroundColor: tag.color ?? "#64748b" }}
+        />
+        {tag.name}
+      </span>
+    </Tip>
   );
 }

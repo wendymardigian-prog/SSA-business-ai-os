@@ -22,6 +22,7 @@ import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { cn } from "@/lib/utils";
 import { ClickableBox } from "@/components/ui/clickable-row";
+import { Tip } from "@/components/ui/tooltip";
 
 export type { ProductRow };
 
@@ -191,29 +192,32 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
                 <label htmlFor={`status-${product.id}`} className="sr-only">
                   Estado de {product.name}
                 </label>
-                <select
-                  id={`status-${product.id}`}
-                  value={product.status}
-                  disabled={pending}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    if (isProductStatus(next)) changeStatus(product.id, next);
-                  }}
-                  title={
+                <Tip
+                  content={
                     product.pieces > 0
                       ? "Deja de ofrecerse al vender y al clasificar, pero las piezas y ventas que lo tienen lo siguen mostrando" // @plantilla-quitar(ventas)
                       // @plantilla-sin(ventas): ? "Deja de ofrecerse al clasificar, pero las piezas que lo tienen lo siguen mostrando"
                       : "Un producto inactivo o discontinuado deja de ofrecerse al vender y al clasificar" // @plantilla-quitar(ventas)
                       // @plantilla-sin(ventas): : "Un producto inactivo o discontinuado deja de ofrecerse al clasificar"
                   }
-                  className={cn(inputClass, "h-8 px-2 text-xs")}
                 >
-                  {PRODUCT_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {PRODUCT_STATUS_LABEL[status]}
-                    </option>
-                  ))}
-                </select>
+                  <select
+                    id={`status-${product.id}`}
+                    value={product.status}
+                    disabled={pending}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (isProductStatus(next)) changeStatus(product.id, next);
+                    }}
+                    className={cn(inputClass, "h-8 px-2 text-xs")}
+                  >
+                    {PRODUCT_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {PRODUCT_STATUS_LABEL[status]}
+                      </option>
+                    ))}
+                  </select>
+                </Tip>
               </ClickableBox>
               </li>
             ))}

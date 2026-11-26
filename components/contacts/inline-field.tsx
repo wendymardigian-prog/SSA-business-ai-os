@@ -9,6 +9,7 @@ import type { ContactFieldKey } from "@/lib/contacts/fields";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Los datos que son un teléfono: se editan con país + número (`PhoneInput`). */
 const PHONE_FIELDS: ReadonlySet<ContactFieldKey> = new Set(["phone", "whatsapp_phone"]);
@@ -291,15 +292,16 @@ export function InlineField({
           {shown}
         </a>
         {canEdit && (
-          <button
-            type="button"
-            onClick={begin}
-            aria-label={`Editar ${label}`}
-            title={`Editar ${label}`}
-            className="shrink-0 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground group-hover:text-muted-foreground"
-          >
-            <Pencil className="h-3.5 w-3.5" aria-hidden />
-          </button>
+          <Tip asChild content={`Editar ${label}`}>
+            <button
+              type="button"
+              onClick={begin}
+              aria-label={`Editar ${label}`}
+              className="shrink-0 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground group-hover:text-muted-foreground"
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </Tip>
         )}
       </span>
     );
@@ -314,25 +316,26 @@ export function InlineField({
   }
 
   return (
-    <button
-      type="button"
-      onClick={begin}
-      aria-label={`Editar ${label}${shownValue ? `: ${shownValue}` : ""}`}
-      title={`Editar ${label}`}
-      className={cn(
-        "group inline-flex min-w-0 max-w-full items-start gap-1.5 rounded-md text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        title ? "-mx-1.5 px-1.5 text-xl font-bold" : name ? "-mx-1.5 px-1.5 py-0.5 text-sm font-semibold" : "-mx-1.5 px-1.5 py-0.5 text-sm",
-        multiline && "whitespace-pre-wrap",
-      )}
-    >
-      <span className="min-w-0 break-words">{shown}</span>
-      <Pencil
+    <Tip asChild content={`Editar ${label}`}>
+      <button
+        type="button"
+        onClick={begin}
+        aria-label={`Editar ${label}${shownValue ? `: ${shownValue}` : ""}`}
         className={cn(
-          "shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground group-focus-visible:text-foreground",
-          title ? "mt-2 h-4 w-4" : "mt-1 h-3.5 w-3.5",
+          "group inline-flex min-w-0 max-w-full items-start gap-1.5 rounded-md text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          title ? "-mx-1.5 px-1.5 text-xl font-bold" : name ? "-mx-1.5 px-1.5 py-0.5 text-sm font-semibold" : "-mx-1.5 px-1.5 py-0.5 text-sm",
+          multiline && "whitespace-pre-wrap",
         )}
-        aria-hidden
-      />
-    </button>
+      >
+        <span className="min-w-0 break-words">{shown}</span>
+        <Pencil
+          className={cn(
+            "shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground group-focus-visible:text-foreground",
+            title ? "mt-2 h-4 w-4" : "mt-1 h-3.5 w-3.5",
+          )}
+          aria-hidden
+        />
+      </button>
+    </Tip>
   );
 }

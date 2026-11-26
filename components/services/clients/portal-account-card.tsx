@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createPreviewPass, inviteToPortal, reactivatePortalAccount, suspendPortalAccount, type InviteOutcome } from "@/lib/actions/portal-admin";
 import type { PortalAccountView } from "@/lib/portal-admin/load";
 import { fieldInput } from "@/components/content/dialog";
+import { Tip } from "@/components/ui/tooltip";
 
 const STATUS_LABEL: Record<PortalAccountView["status"], string> = { invited: "Invitado", active: "Activa", suspended: "Suspendida" };
 
@@ -92,15 +93,16 @@ export function PortalAccountCard({
         </div>
         <div className="flex flex-wrap gap-2">
           {canViewAs && (
-            <button
-              type="button"
-              onClick={() => setConfirmView(true)}
-              disabled={!hasHost || pending}
-              title={hasHost ? undefined : "Configurá la dirección del portal en Ajustes del portal"}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-60"
-            >
-              Ver como estudiante
-            </button>
+            <Tip content={hasHost ? null : "Configurá la dirección del portal en Ajustes del portal"}>
+              <button
+                type="button"
+                onClick={() => setConfirmView(true)}
+                disabled={!hasHost || pending}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-60"
+              >
+                Ver como estudiante
+              </button>
+            </Tip>
           )}
           {canAccounts && account?.status !== "suspended" && (
             <button type="button" onClick={invite} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-60">

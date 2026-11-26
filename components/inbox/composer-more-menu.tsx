@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Library, Loader2, MoreHorizontal, Paperclip, Smile, Sparkles, Sticker } from "lucide-react";
 import type { ComposerMenuAction } from "@/lib/inbox/composer-actions";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El "⋯" del composer: agrupa recursos guardados, adjuntar, emoji, stickers y
@@ -112,26 +113,27 @@ export function ComposerMoreMenu({
         }
       }}
     >
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        aria-label="Más opciones"
-        title="Más opciones"
-        onClick={() => setOpen((value) => !value)}
-        onKeyDown={(event) => {
-          // Flecha arriba en el boton cerrado abre el menu (sale hacia arriba).
-          if (!open && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-        className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground"
-      >
-        <MoreHorizontal className="h-5 w-5" aria-hidden />
-      </button>
+      <Tip asChild content="Más opciones">
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          aria-label="Más opciones"
+          onClick={() => setOpen((value) => !value)}
+          onKeyDown={(event) => {
+            // Flecha arriba en el boton cerrado abre el menu (sale hacia arriba).
+            if (!open && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+              event.preventDefault();
+              setOpen(true);
+            }
+          }}
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground"
+        >
+          <MoreHorizontal className="h-5 w-5" aria-hidden />
+        </button>
+      </Tip>
       {open && (
         <div
           id={menuId}
@@ -142,19 +144,20 @@ export function ComposerMoreMenu({
           {actions.map((action) => {
             const item = labels[action];
             return (
-              <button
-                key={action}
-                type="button"
-                role="menuitem"
-                disabled={item.disabled}
-                title={item.title}
-                onClick={() => choose(action)}
-                className="flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none disabled:opacity-50"
-              >
-                <span className="text-muted-foreground">{item.icon}</span>
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                {item.hint && <kbd className="font-sans text-xs text-muted-foreground">{item.hint}</kbd>}
-              </button>
+              // Sin asChild: una opcion deshabilitada tambien dice por que.
+              <Tip key={action} content={item.title} className="flex w-full">
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={item.disabled}
+                  onClick={() => choose(action)}
+                  className="flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none disabled:opacity-50"
+                >
+                  <span className="text-muted-foreground">{item.icon}</span>
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.hint && <kbd className="font-sans text-xs text-muted-foreground">{item.hint}</kbd>}
+                </button>
+              </Tip>
             );
           })}
         </div>

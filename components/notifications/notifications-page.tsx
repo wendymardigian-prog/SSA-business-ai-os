@@ -24,6 +24,7 @@ import {
   type NotificationIcon,
   type NotificationView,
 } from "@/lib/notifications/page-view";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Notificaciones a pantalla completa (traída de RER-BAIOS, con el estilo de SSA).
@@ -124,17 +125,18 @@ export function NotificationsPage({ workspaceId, view, page, data }: { workspace
         left={pill ? <span className="hidden whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground sm:inline-flex">{pill}</span> : null}
         tabs={<TopbarTabs label="Qué avisos ver" active={view} tabs={tabs} />}
         primary={
-          <button
-            type="button"
-            onClick={markAll}
-            disabled={pending || unread === 0}
-            aria-label="Marcar todas como leídas"
-            title="Marcar todas como leídas"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
-          >
-            <CheckCheck className="h-4 w-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Marcar todas como leídas</span>
-          </button>
+          <Tip content="Marcar todas como leídas">
+            <button
+              type="button"
+              onClick={markAll}
+              disabled={pending || unread === 0}
+              aria-label="Marcar todas como leídas"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
+            >
+              <CheckCheck className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Marcar todas como leídas</span>
+            </button>
+          </Tip>
         }
       />
 
@@ -157,38 +159,43 @@ export function NotificationsPage({ workspaceId, view, page, data }: { workspace
                   const href = linkFor(n.entityType, n.entityId, n.metadata);
                   return (
                     <li key={n.id} className={cn("flex items-center gap-2 pr-2 transition-colors hover:bg-accent/60 md:pr-4", !read && "bg-primary/5")}>
-                      <button
-                        type="button"
-                        onClick={() => open(n)}
-                        className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 text-left md:pl-4"
-                        aria-label={`${n.title}${read ? "" : " (sin leer)"}`}
-                        title={href ? undefined : "Este aviso no lleva a ninguna pantalla"}
-                      >
-                        <span aria-hidden="true" className={cn("h-1.5 w-1.5 shrink-0 rounded-full", read ? "bg-transparent" : "bg-red-500")} />
-                        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", HUES[hue])} aria-hidden="true">
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className={cn("block text-sm sm:truncate", read ? "font-medium text-foreground/80" : "font-semibold")}>{n.title}</span>
-                          {n.body && <span className="block line-clamp-2 text-xs text-muted-foreground sm:line-clamp-1">{n.body}</span>}
-                        </span>
-                        <span className="shrink-0 text-right text-xs leading-5 text-muted-foreground">
-                          {business && <span className="hidden max-w-40 truncate sm:block">{business}</span>}
-                          <span className="block tabular-nums" suppressHydrationWarning title={relativeTime(n.createdAt)}>
-                            {shortAgo(n.createdAt, new Date(), viewerTimezone)}
+                      <Tip asChild content={href ? null : "Este aviso no lleva a ninguna pantalla"}>
+                        <button
+                          type="button"
+                          onClick={() => open(n)}
+                          className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 text-left md:pl-4"
+                          aria-label={`${n.title}${read ? "" : " (sin leer)"}`}
+                        >
+                          <span aria-hidden="true" className={cn("h-1.5 w-1.5 shrink-0 rounded-full", read ? "bg-transparent" : "bg-red-500")} />
+                          <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", HUES[hue])} aria-hidden="true">
+                            <Icon className="h-4 w-4" />
                           </span>
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => markRead(n)}
-                        disabled={read}
-                        aria-label={read ? "Ya está leída" : `Marcar como leída: ${n.title}`}
-                        title={read ? "Ya está leída" : "Marcar como leída"}
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30 md:h-9 md:w-9"
-                      >
-                        <Check className="h-4 w-4" aria-hidden="true" />
-                      </button>
+                          <span className="min-w-0 flex-1">
+                            <span className={cn("block text-sm sm:truncate", read ? "font-medium text-foreground/80" : "font-semibold")}>{n.title}</span>
+                            {n.body && <span className="block line-clamp-2 text-xs text-muted-foreground sm:line-clamp-1">{n.body}</span>}
+                          </span>
+                          <span className="shrink-0 text-right text-xs leading-5 text-muted-foreground">
+                            {business && <span className="hidden max-w-40 truncate sm:block">{business}</span>}
+                            <Tip asChild content={relativeTime(n.createdAt)}>
+                              <span className="block tabular-nums" suppressHydrationWarning>
+                                {shortAgo(n.createdAt, new Date(), viewerTimezone)}
+                              </span>
+                            </Tip>
+                          </span>
+                        </button>
+                      </Tip>
+                      {/* Sin asChild: ya leída, el botón queda apagado y no recibe el puntero. */}
+                      <Tip content={read ? "Ya está leída" : "Marcar como leída"} className="flex shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => markRead(n)}
+                          disabled={read}
+                          aria-label={read ? "Ya está leída" : `Marcar como leída: ${n.title}`}
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30 md:h-9 md:w-9"
+                        >
+                          <Check className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </Tip>
                     </li>
                   );
                 })}

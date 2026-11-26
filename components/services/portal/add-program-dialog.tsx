@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import { addPortalProgram } from "@/lib/actions/portal-admin";
 import { addProgramProblem } from "@/lib/portal-admin/programs";
 import { fieldInput } from "@/components/content/dialog";
+import { Tip } from "@/components/ui/tooltip";
 
 /** «+ Agregar programa» (F35): un producto sin portal y qué variantes tienen acceso (al menos una). */
 export function AddProgramDialog({ products }: { products: Array<{ id: string; name: string; variants: Array<{ id: string; name: string }> }> }) {
@@ -32,16 +33,17 @@ export function AddProgramDialog({ products }: { products: Array<{ id: string; n
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        disabled={products.length === 0}
-        title={products.length === 0 ? "Todos los productos activos ya tienen portal" : undefined}
-        aria-label="Agregar programa"
-        className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
-      >
-        <Plus className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Agregar programa</span>
-      </button>
+      <Tip content={products.length === 0 ? "Todos los productos activos ya tienen portal" : null} className="shrink-0">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          disabled={products.length === 0}
+          aria-label="Agregar programa"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+        >
+          <Plus className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Agregar programa</span>
+        </button>
+      </Tip>
       {open && (
         <div role="dialog" aria-modal="true" aria-label="Agregar programa" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md space-y-3 rounded-xl border border-border bg-background p-4 shadow-xl">

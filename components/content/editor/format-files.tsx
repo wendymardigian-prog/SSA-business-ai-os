@@ -15,6 +15,7 @@ import {
 } from "@/lib/content/network-format";
 import type { NetworkEntry } from "@/lib/content/redistribution";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
 
@@ -198,15 +199,16 @@ function FilesPicker({
                   const full = def.max > 1 && selectedIds.length >= def.max;
                   return (
                     <li key={idOf(entry)}>
-                      <button
-                        type="button"
-                        disabled={full}
-                        onClick={() => setFiles(toggleFile(selectedIds, idOf(entry), def))}
-                        title={full ? `Ya llegaste al máximo: ${def.max}` : undefined}
-                        className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
-                      >
-                        + {info.name} <span className="text-muted-foreground">({info.kindLabel})</span>
-                      </button>
+                      <Tip content={full ? `Ya llegaste al máximo: ${def.max}` : undefined}>
+                        <button
+                          type="button"
+                          disabled={full}
+                          onClick={() => setFiles(toggleFile(selectedIds, idOf(entry), def))}
+                          className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+                        >
+                          + {info.name} <span className="text-muted-foreground">({info.kindLabel})</span>
+                        </button>
+                      </Tip>
                     </li>
                   );
                 })}
@@ -254,15 +256,16 @@ function IconButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
-    >
-      {children}
-    </button>
+    <Tip content={label}>
+      <button
+        type="button"
+        aria-label={label}
+        disabled={disabled}
+        onClick={onClick}
+        className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }

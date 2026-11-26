@@ -27,16 +27,19 @@ describe("ExpandableSearch", () => {
     expect(html).toContain('aria-label="Limpiar la búsqueda"');
   });
 
-  it("el cartel de alcance va atado al campo (aria-describedby) y tambien como title nativo", () => {
+  it("el cartel de alcance va atado al campo (aria-describedby) y se ve con el tooltip del sistema, no con el title nativo", () => {
     const html = search({ value: "ana", hint: "Se busca solo dentro de: Hoy." });
-    expect(html).toContain('role="tooltip"');
     expect(html).toContain("Se busca solo dentro de: Hoy.");
-    expect(html).toMatch(/aria-describedby="[^"]+"/);
-    expect(html).toContain('title="Se busca solo dentro de: Hoy."');
+    const describedBy = /aria-describedby="([^"]+)"/.exec(html)?.[1];
+    expect(describedBy).toBeTruthy();
+    expect(html).toContain(`id="${describedBy}"`);
+    expect(html).not.toContain("title=");
   });
 
-  it("sin cartel no hay tooltip", () => {
-    expect(search({ value: "ana", hint: null })).not.toContain('role="tooltip"');
+  it("sin cartel no hay descripcion", () => {
+    const html = search({ value: "ana", hint: null });
+    expect(html).not.toContain('role="tooltip"');
+    expect(html).not.toContain("aria-describedby");
   });
 });
 
@@ -53,7 +56,7 @@ describe("FilterMenu compacto", () => {
   it("es un boton de solo icono: sin texto, sin chevron, con su nombre accesible", () => {
     const html = menu(0);
     expect(html).toContain('aria-label="Filtros"');
-    expect(html).toContain('title="Filtros"');
+    expect(html).not.toContain("title=");
     expect(html).not.toContain("Filtros:");
   });
 

@@ -15,6 +15,7 @@ import { Popover } from "@/components/ui/popover";
 import { exportStatus, requestExport } from "@/lib/actions/designer/publish";
 import type { ExportMenuProps } from "@/lib/designer/contracts";
 import { PREPARING_NOTICE, PREPARING_NOTICE_MS, exportMenuView, exportProgress, pollDelayMs, type ExportItem } from "@/lib/designer/screens/export-menu";
+import { Tip } from "@/components/ui/tooltip";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const triggerClass =
@@ -89,9 +90,11 @@ export function ExportMenu(props: ExportMenuProps) {
   return (
     <>
       {view.disabledReason ? (
-        <button type="button" disabled title={view.disabledReason} aria-label={`${view.label}: ${view.disabledReason}`} className={triggerClass}>
-          {view.label}
-        </button>
+        <Tip content={view.disabledReason}>
+          <button type="button" disabled aria-label={`${view.label}: ${view.disabledReason}`} className={triggerClass}>
+            {view.label}
+          </button>
+        </Tip>
       ) : (
         <Popover label={view.label} align="end" closeOnSelect panelClassName="w-72 p-2" triggerClassName={triggerClass} trigger={<>{working ? "Preparando…" : view.label} ▾</>}>
           <div className="flex flex-col gap-1">

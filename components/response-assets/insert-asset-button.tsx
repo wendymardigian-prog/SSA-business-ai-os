@@ -9,6 +9,7 @@ import {
   isInsertableKind,
 } from "@/lib/response-assets/insert";
 import { ASSET_KIND_LABEL, isAssetKind } from "@/lib/response-assets/kind";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * "Insertar recurso": mete un texto o un enlace de la banca en el campo de
@@ -166,17 +167,17 @@ export function InsertAssetButton({
             </p>
           )}
           {options?.map((o) => (
-            <button
-              key={o.id}
-              type="button"
-              role="option"
-              aria-selected={false}
-              onClick={() => insert(o.snippet)}
-              className="block w-full truncate rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted"
-              title={o.snippet}
-            >
-              {o.label}
-            </button>
+            <Tip asChild key={o.id} content={o.snippet}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={false}
+                onClick={() => insert(o.snippet)}
+                className="block w-full truncate rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted"
+              >
+                {o.label}
+              </button>
+            </Tip>
           ))}
         </div>
       )}

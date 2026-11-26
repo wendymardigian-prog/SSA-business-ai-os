@@ -27,6 +27,7 @@ import { cardDates, formatCardDate } from "@/lib/content/card-dates";
 import { isAuthorOrAssignee } from "@/lib/content/assignee";
 import type { TaxonomyOptions } from "./classification-fields";
 import { PillarDot } from "./pillar-tag";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El kanban de contenido (F20).
@@ -253,17 +254,21 @@ function IdeaCard({ idea, href }: { idea: BoardIdea; href: string }) {
         {excerpt && <span className="mt-1 block text-xs italic text-muted-foreground [overflow-wrap:anywhere]">“{excerpt}”</span>}
 
         {idea.offer && (
-          <span className="mt-1.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground" title="Producto">
-            {idea.offer.name}
-          </span>
+          <Tip asChild content="Producto">
+            <span className="mt-1.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+              {idea.offer.name}
+            </span>
+          </Tip>
         )}
 
         <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           {idea.authorship && <span>{idea.authorship}</span>}
           {idea.reference && (
-            <span title={idea.reference} aria-label="Tiene una referencia">
-              <LinkIcon className="h-3 w-3" aria-hidden />
-            </span>
+            <Tip asChild content={idea.reference}>
+              <span aria-label="Tiene una referencia">
+                <LinkIcon className="h-3 w-3" aria-hidden />
+              </span>
+            </Tip>
           )}
         </span>
       </Link>
@@ -348,14 +353,15 @@ function PostCard({
           </span>
 
           {singleDate && (
-            <span
-              className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground"
-              data-testid="card-date"
-              title="Cuándo se publica"
-            >
-              <CalendarClock className="h-3 w-3" aria-hidden />
-              {singleDate}
-            </span>
+            <Tip asChild content="Cuándo se publica">
+              <span
+                className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground"
+                data-testid="card-date"
+              >
+                <CalendarClock className="h-3 w-3" aria-hidden />
+                {singleDate}
+              </span>
+            </Tip>
           )}
 
           {editable && post.copyStatus !== "generating" && (
@@ -371,25 +377,27 @@ function PostCard({
             <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
               {post.authorship && <span>{post.authorship}</span>}
               {post.hasDesign && (
-                <span
-                  className="inline-flex items-center text-primary-ink"
-                  title="Tiene un diseño del Diseñador IA"
-                  aria-label="Tiene un diseño del Diseñador IA"
-                  role="img"
-                  data-testid="has-design"
-                >
-                  <Sparkles className="h-3 w-3" aria-hidden />
-                </span>
+                <Tip asChild content="Tiene un diseño del Diseñador IA">
+                  <span
+                    className="inline-flex items-center text-primary-ink"
+                    aria-label="Tiene un diseño del Diseñador IA"
+                    role="img"
+                    data-testid="has-design"
+                  >
+                    <Sparkles className="h-3 w-3" aria-hidden />
+                  </span>
+                </Tip>
               )}
               {post.attributedContacts !== null && (
-                <span
-                  className="inline-flex items-center gap-0.5 tabular-nums"
-                  title={attributionTooltip(post.attributedContacts)}
-                  data-testid="attributed-contacts"
-                >
-                  <Users className="h-3 w-3" aria-hidden />
-                  {post.attributedContacts}
-                </span>
+                <Tip asChild content={attributionTooltip(post.attributedContacts)}>
+                  <span
+                    className="inline-flex items-center gap-0.5 tabular-nums"
+                    data-testid="attributed-contacts"
+                  >
+                    <Users className="h-3 w-3" aria-hidden />
+                    {post.attributedContacts}
+                  </span>
+                </Tip>
               )}
             </span>
             <AssigneeAvatar assignee={post.assignee} />

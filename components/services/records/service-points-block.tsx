@@ -7,6 +7,7 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { adjustPoints, loadPointsDaily, type PointsDaily } from "@/lib/actions/points";
 import { dailyActivityView, historyLabel } from "@/lib/portal-points/daily";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Un color fijo por grupo (F130.4), el mismo en las dos fichas y en la leyenda. */
 export const GROUP_COLORS: Record<string, string> = {
@@ -100,25 +101,25 @@ export function PortalActivityChart({ serviceId, initial }: { serviceId: string;
       <div className="space-y-1">
         <div className="flex h-28 items-end gap-px" role="list" aria-label="Puntos por día">
           {v.bars.map((b, i) => (
-            <button
-              key={b.day}
-              type="button"
-              role="listitem"
-              aria-label={b.text}
-              title={b.text}
-              onMouseEnter={() => setFocus(i)}
-              onMouseLeave={() => setFocus(null)}
-              onFocus={() => setFocus(i)}
-              onBlur={() => setFocus(null)}
-              className={cn(
-                "flex h-full min-w-0 flex-1 flex-col-reverse rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary",
-                !b.active && "bg-[repeating-linear-gradient(135deg,transparent_0_3px,var(--color-muted)_3px_5px)]",
-              )}
-            >
-              {b.segments.map((s) => (
-                <span key={s.group} className={cn("block w-full", GROUP_COLORS[s.group] ?? "bg-slate-400")} style={{ height: `${Math.max(s.share * 100, 2)}%` }} aria-hidden />
-              ))}
-            </button>
+            <Tip key={b.day} asChild content={b.text}>
+              <button
+                type="button"
+                role="listitem"
+                aria-label={b.text}
+                onMouseEnter={() => setFocus(i)}
+                onMouseLeave={() => setFocus(null)}
+                onFocus={() => setFocus(i)}
+                onBlur={() => setFocus(null)}
+                className={cn(
+                  "flex h-full min-w-0 flex-1 flex-col-reverse rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary",
+                  !b.active && "bg-[repeating-linear-gradient(135deg,transparent_0_3px,var(--color-muted)_3px_5px)]",
+                )}
+              >
+                {b.segments.map((s) => (
+                  <span key={s.group} className={cn("block w-full", GROUP_COLORS[s.group] ?? "bg-slate-400")} style={{ height: `${Math.max(s.share * 100, 2)}%` }} aria-hidden />
+                ))}
+              </button>
+            </Tip>
           ))}
         </div>
         <div className="flex gap-px" aria-hidden>

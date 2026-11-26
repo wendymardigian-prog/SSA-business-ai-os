@@ -20,6 +20,7 @@ import {
 } from "@/lib/calls/proposals-view";
 import type { DestinationOption } from "@/lib/calls/proposal-send";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La sección Propuestas del detalle de la reunión (Servicios A4, F143 y F144). Una tarjeta por propuesta pendiente (o
@@ -86,10 +87,12 @@ export function CallProposals({
                     <span className="min-w-0 truncate">
                       <span className="font-medium">{PROPOSAL_TYPE_LABEL[p.type]}</span> · {e.titulo || e.texto?.slice(0, 60) || "—"}
                     </span>
-                    <span className="shrink-0 text-muted-foreground" title={p.discard_note ?? undefined}>
-                      {STATUS_LABEL[p.status]}
-                      {p.status === "discarded" && p.discard_reason ? ` · ${DISCARD_REASON_LABEL[p.discard_reason] ?? p.discard_reason}` : ""}
-                    </span>
+                    <Tip asChild content={p.discard_note ?? null}>
+                      <span className="shrink-0 text-muted-foreground">
+                        {STATUS_LABEL[p.status]}
+                        {p.status === "discarded" && p.discard_reason ? ` · ${DISCARD_REASON_LABEL[p.discard_reason] ?? p.discard_reason}` : ""}
+                      </span>
+                    </Tip>
                   </li>
                 );
               })}

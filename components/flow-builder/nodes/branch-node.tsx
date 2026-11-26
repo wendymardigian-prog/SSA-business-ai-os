@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { pathDisplayLabel } from "@/lib/automations/branch-edit";
 import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "@/lib/flow-engine/branch-paths";
 import type { BranchNodeData } from "@/lib/flow-engine/condition-eval";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * "Condiciones": una salida por camino, en el orden en que se evaluan, y "Si no"
@@ -50,9 +51,11 @@ export function BranchNode({ id, data, selected }: NodeProps) {
       </div>
       <div className="flex border-t border-border pb-1.5 pt-1.5">
         {[...paths.map((p, i) => ({ key: p.id, label: pathDisplayLabel(p, i), tone: "text-indigo-600 dark:text-indigo-300" })), { key: BRANCH_ELSE_HANDLE, label: BRANCH_ELSE_LABEL, tone: "text-muted-foreground" }].map((slot) => (
-          <span key={slot.key} className={cn("min-w-0 flex-1 truncate px-1 text-center text-[10px] font-medium", slot.tone)} title={slot.label}>
-            {slot.label}
-          </span>
+          <Tip key={slot.key} asChild content={slot.label}>
+            <span className={cn("min-w-0 flex-1 truncate px-1 text-center text-[10px] font-medium", slot.tone)}>
+              {slot.label}
+            </span>
+          </Tip>
         ))}
       </div>
       {paths.map((p, i) => (

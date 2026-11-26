@@ -9,6 +9,7 @@ import type { FilterSummaryCatalog } from "@/lib/inbox/filter-summary";
 import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 import { SectionSearch } from "@/components/comunicacion/section-search";
 import { InboxDraftsLink, InboxFilterSummary, InboxFiltersMenu } from "@/components/inbox/inbox-filters";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El encabezado de la lista de la Bandeja: la cantidad, el boton de Filtros, el icono de buscar y los
@@ -56,19 +57,20 @@ export function InboxListHeader({
           {countLabel}
         </h2>
         <InboxFiltersMenu filters={filters} accounts={accounts} tags={tags} members={members} hasGroups={hasGroups} communities={catalog.communities} />
-        <button
-          type="button"
-          onClick={() => setSearchOpen((open) => !open)}
-          aria-label="Buscar conversaciones"
-          aria-expanded={searchOpen}
-          title="Buscar"
-          className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors",
-            searchOpen ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
-          )}
-        >
-          <Search className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        </button>
+        <Tip asChild content="Buscar">
+          <button
+            type="button"
+            onClick={() => setSearchOpen((open) => !open)}
+            aria-label="Buscar conversaciones"
+            aria-expanded={searchOpen}
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors",
+              searchOpen ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
+            )}
+          >
+            <Search className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          </button>
+        </Tip>
         <InboxDraftsLink workspaceId={workspaceId} draftCounts={draftCounts} />
       </div>
 

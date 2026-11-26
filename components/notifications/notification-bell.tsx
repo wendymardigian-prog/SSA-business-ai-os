@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Bell, CheckCheck, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 import {
   listNotifications,
   markNotificationRead,
@@ -169,26 +170,27 @@ export function NotificationBell({ workspaceId, initialUnread, variant = "icon",
   if (isRow) {
     const active = pathname === "/dashboard/notificaciones";
     return (
-      <Link
-        href="/dashboard/notificaciones"
-        aria-current={active ? "page" : undefined}
-        aria-label={bellAriaLabel(unread)}
-        title="Notificaciones"
-        className={cn(
-          "relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors collapsed:justify-center collapsed:gap-0 collapsed:px-0",
-          active
-            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        )}
-      >
-        <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="collapsed:hidden">Notificaciones</span>
-        {unread > 0 && (
-          <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white collapsed:absolute collapsed:right-1 collapsed:top-1 collapsed:ml-0">
-            {bellBadgeText(unread)}
-          </span>
-        )}
-      </Link>
+      <Tip asChild content="Notificaciones">
+        <Link
+          href="/dashboard/notificaciones"
+          aria-current={active ? "page" : undefined}
+          aria-label={bellAriaLabel(unread)}
+          className={cn(
+            "relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors collapsed:justify-center collapsed:gap-0 collapsed:px-0",
+            active
+              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          )}
+        >
+          <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="collapsed:hidden">Notificaciones</span>
+          {unread > 0 && (
+            <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white collapsed:absolute collapsed:right-1 collapsed:top-1 collapsed:ml-0">
+              {bellBadgeText(unread)}
+            </span>
+          )}
+        </Link>
+      </Tip>
     );
   }
 
@@ -199,36 +201,37 @@ export function NotificationBell({ workspaceId, initialUnread, variant = "icon",
         escritorio (ver app/globals.css): en la barra del telefono no hacen
         nada, y por eso se pueden dejar puestas sin condicionarlas.
       */}
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={toggle}
-        title={isRow ? "Notificaciones" : undefined}
-        aria-label={bellAriaLabel(unread)}
-        aria-expanded={open}
-        aria-haspopup="true"
-        className={cn(
-          "relative flex items-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          isRow
-            ? "w-full gap-3 px-3 py-2 text-sm font-medium collapsed:justify-center collapsed:gap-0 collapsed:px-0"
-            : "min-h-11 min-w-11 justify-center p-2 md:min-h-0 md:min-w-0",
-        )}
-      >
-        <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
-        {isRow && <span className="collapsed:hidden">Notificaciones</span>}
-        {unread > 0 && (
-          <span
-            className={cn(
-              "flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white",
-              isRow
-                ? "ml-auto collapsed:absolute collapsed:right-1 collapsed:top-1 collapsed:ml-0"
-                : "absolute -right-0.5 -top-0.5",
-            )}
-          >
-            {bellBadgeText(unread)}
-          </span>
-        )}
-      </button>
+      <Tip asChild content={isRow ? "Notificaciones" : null}>
+        <button
+          ref={buttonRef}
+          type="button"
+          onClick={toggle}
+          aria-label={bellAriaLabel(unread)}
+          aria-expanded={open}
+          aria-haspopup="true"
+          className={cn(
+            "relative flex items-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            isRow
+              ? "w-full gap-3 px-3 py-2 text-sm font-medium collapsed:justify-center collapsed:gap-0 collapsed:px-0"
+              : "min-h-11 min-w-11 justify-center p-2 md:min-h-0 md:min-w-0",
+          )}
+        >
+          <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {isRow && <span className="collapsed:hidden">Notificaciones</span>}
+          {unread > 0 && (
+            <span
+              className={cn(
+                "flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white",
+                isRow
+                  ? "ml-auto collapsed:absolute collapsed:right-1 collapsed:top-1 collapsed:ml-0"
+                  : "absolute -right-0.5 -top-0.5",
+              )}
+            >
+              {bellBadgeText(unread)}
+            </span>
+          )}
+        </button>
+      </Tip>
 
       {open && (
         <div

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { BlockedMark, PersonBadge, PriorityChip, StatusChip } from "./chips";
 import { MemberPicker, MembersMultiPicker, PriorityPicker, ProjectPicker, StatusPicker } from "./pickers";
 import { useTimeFormat } from "./time-format-context";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Lo que las celdas necesitan saber del resto de la pantalla. */
 export interface CellEnv {
@@ -209,17 +210,19 @@ function FollowersDisplay({ ids, names }: { ids: readonly string[]; names: Reado
   const shown = ids.slice(0, 3);
   const title = summarizeNames(ids.map((id) => names.get(id) ?? "Alguien del equipo"));
   return (
-    <span className="flex items-center" title={title}>
-      <span className="flex -space-x-1.5">
-        {shown.map((id) => (
-          <span key={id} className="rounded-full ring-2 ring-background">
-            <Avatar initials={initialsOf(names.get(id) ?? "?")} color={colorOf(id)} userId={id} />
-          </span>
-        ))}
+    <Tip asChild content={title}>
+      <span className="flex items-center">
+        <span className="flex -space-x-1.5">
+          {shown.map((id) => (
+            <span key={id} className="rounded-full ring-2 ring-background">
+              <Avatar initials={initialsOf(names.get(id) ?? "?")} color={colorOf(id)} userId={id} />
+            </span>
+          ))}
+        </span>
+        {ids.length > 3 && <span className="ml-1 text-xs text-muted-foreground">+{ids.length - 3}</span>}
+        <span className="sr-only">{ids.length === 1 ? "1 seguidor" : `${ids.length} seguidores`}: {title}</span>
       </span>
-      {ids.length > 3 && <span className="ml-1 text-xs text-muted-foreground">+{ids.length - 3}</span>}
-      <span className="sr-only">{ids.length === 1 ? "1 seguidor" : `${ids.length} seguidores`}: {title}</span>
-    </span>
+    </Tip>
   );
 }
 
@@ -326,15 +329,16 @@ function DateEditor({
         className="h-7 min-w-0 flex-1 rounded-md border border-primary-edge bg-background px-1 text-sm outline-none"
       />
       {initial && (
-        <button
-          type="button"
-          aria-label="Quitar la fecha"
-          title="Quitar la fecha"
-          onClick={() => finish(undefined, "clear")}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <X className="h-3.5 w-3.5" aria-hidden />
-        </button>
+        <Tip asChild content="Quitar la fecha">
+          <button
+            type="button"
+            aria-label="Quitar la fecha"
+            onClick={() => finish(undefined, "clear")}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </Tip>
       )}
       {value && !showTime && (
         <button type="button" onClick={() => setShowTime(true)} className="h-7 shrink-0 rounded-md px-1.5 text-xs text-primary-ink hover:bg-accent">

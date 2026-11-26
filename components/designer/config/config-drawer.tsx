@@ -20,6 +20,7 @@ import { DATE_FORMAT_LABELS, type CustomVar, type DateFormat } from "@/lib/desig
 import { DOC_TYPES, DOC_TYPE_LABELS, FORMAT_NOT_VERIFIABLE, MAX_DOC_TYPE_LABEL, VERIFY_TOGGLE_LABEL, type DocType } from "@/lib/designer/verification";
 import { cn } from "@/lib/utils";
 import { VersionsList } from "./versions-list";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface TemplateSettingsState {
   verify: boolean;
@@ -282,7 +283,7 @@ export function ConfigDrawer({
               <Section key={id} id={id}>
                 <div className="flex flex-wrap items-center gap-2 text-[13px]">
                   {[brand.colorHex, ...palette].filter((c): c is string => !!c).slice(0, 8).map((c) => (
-                    <span key={c} className="h-[22px] w-[22px] rounded-md border border-border" style={{ background: c }} title={c} />
+                    <Tip asChild key={c} content={c}><span role="img" aria-label={c} className="h-[22px] w-[22px] rounded-md border border-border" style={{ background: c }} /></Tip>
                   ))}
                   <span>{brand.name}</span>
                 </div>

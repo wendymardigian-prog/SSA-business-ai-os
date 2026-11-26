@@ -21,6 +21,7 @@ import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
 import { MetaMatchControl } from "@/components/attribution/meta-match-control";
 import type { MetaLink } from "@/lib/attribution/meta-link";
 import { matchedByText, type ConflictView } from "@/lib/forms/contact-outcome";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface SubmissionView {
   id: string;
@@ -282,9 +283,11 @@ export function SubmissionDetail({
                       {section.items.map((item) => (
                         <div key={item.key} className="min-w-0">
                           <dt className="text-xs text-muted-foreground">{item.label}</dt>
-                          <dd className="truncate" title={item.value}>
-                            {item.value}
-                          </dd>
+                          <Tip asChild content={item.value}>
+                            <dd className="truncate">
+                              {item.value}
+                            </dd>
+                          </Tip>
                         </div>
                       ))}
                     </dl>

@@ -31,6 +31,8 @@ import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
 import { TaskCard, TaskMonthChip, UndatedPanel, taskDayEntry, taskHoverContent } from "./calendar-tasks"; // @plantilla-quitar(tareas)
 import { Avatar } from "@/components/ui/filter-menu";
 import { colorOf, initialsOf } from "@/lib/shared/people";
+import { PersonAvatar } from "@/components/ui/person-avatar";
+import { Tip } from "@/components/ui/tooltip";
 import { StatusChip, statusDotClass } from "./status-chip";
 import { placeGoogleInCalendar, canEditGoogleEvent, type AgendaGoogleBusy, type AgendaGoogleEvent } from "@/lib/google-calendar/agenda";
 import { GoogleCard, GoogleChip, GoogleRefresh } from "./google-layer";
@@ -99,14 +101,10 @@ const MIN_CARD_PX = 26;
 /** Desde este alto la tarjeta tiene lugar para el estado como chip; mas baja, solo un punto de color. */
 const CHIP_CARD_PX = 40;
 
-/** El circulo de quien atiende la reunion: su foto o, si no tiene, sus iniciales. Decorativo: el nombre va en el tooltip. */
+/** El circulo de quien atiende la reunion: su foto o, si no tiene, sus iniciales. El nombre va en el tooltip. */
 function HostAvatar({ item, hostNames }: { item: BookingListItem; hostNames: Record<string, string> }) {
   const name = hostNames[item.hostUserId] ?? item.hostName ?? "";
-  return (
-    <span title={name ? `Anfitrión: ${name}` : "Sin anfitrión"} className="shrink-0">
-      <Avatar initials={initialsOf(name)} color={colorOf(item.hostUserId)} size="sm" userId={item.hostUserId} />
-    </span>
-  );
+  return <PersonAvatar userId={item.hostUserId} name={name} role="Anfitrión" size="sm" emptyLabel="Sin anfitrión" className="shrink-0" />;
 }
 
 export function BookingsCalendar({
@@ -718,23 +716,24 @@ export function BookingsCalendar({
                   return canResize(item) ? (
                     <div key={item.id} className="contents">
                       {card}
-                      <div
-                        data-cal-handle
-                        role="separator"
-                        aria-orientation="horizontal"
-                        tabIndex={0}
-                        aria-label={`Cambiar la duración de ${item.contactName || item.bookerName || "la reunión"}${live !== null ? `: ${durationLabel(live)}` : ""}`}
-                        title={live !== null ? durationLabel(live) : "Arrastrá para cambiar la duración"}
-                        onPointerDown={(e) => resizeStart(item, it.startMinutes, it.endMinutes, e)}
-                        onPointerMove={resizeMove}
-                        onPointerUp={() => resizeEnd(item)}
-                        onPointerCancel={() => setResizing(null)}
-                        onKeyDown={(e) => resizeKey(item, it.startMinutes, it.endMinutes, e)}
-                        style={{ top: top + height - 6, height: 10, ...(lane ? laneStyle(lane) : null) }}
-                        className={`${RESIZE_HANDLE_CLASS} ${lane ? "" : "inset-x-1"} ${live !== null ? "bg-primary/30 [&>span]:opacity-100" : "hover:bg-primary/15"}`}
-                      >
-                        <span aria-hidden className={RESIZE_GRIP_CLASS} />
-                      </div>
+                      <Tip asChild content={live !== null ? durationLabel(live) : "Arrastrá para cambiar la duración"}>
+                        <div
+                          data-cal-handle
+                          role="separator"
+                          aria-orientation="horizontal"
+                          tabIndex={0}
+                          aria-label={`Cambiar la duración de ${item.contactName || item.bookerName || "la reunión"}${live !== null ? `: ${durationLabel(live)}` : ""}`}
+                          onPointerDown={(e) => resizeStart(item, it.startMinutes, it.endMinutes, e)}
+                          onPointerMove={resizeMove}
+                          onPointerUp={() => resizeEnd(item)}
+                          onPointerCancel={() => setResizing(null)}
+                          onKeyDown={(e) => resizeKey(item, it.startMinutes, it.endMinutes, e)}
+                          style={{ top: top + height - 6, height: 10, ...(lane ? laneStyle(lane) : null) }}
+                          className={`${RESIZE_HANDLE_CLASS} ${lane ? "" : "inset-x-1"} ${live !== null ? "bg-primary/30 [&>span]:opacity-100" : "hover:bg-primary/15"}`}
+                        >
+                          <span aria-hidden className={RESIZE_GRIP_CLASS} />
+                        </div>
+                      </Tip>
                     </div>
                   ) : (
                     card
@@ -811,23 +810,24 @@ export function BookingsCalendar({
                       return (
                         <div key={gi.key} className="contents">
                           {card}
-                          <div
-                            data-cal-handle
-                            role="separator"
-                            aria-orientation="horizontal"
-                            tabIndex={0}
-                            aria-label={`Cambiar la duración de ${ev.summary || "el evento"}${live !== null ? `: ${durationLabel(live)}` : ""}`}
-                            title={live !== null ? durationLabel(live) : "Arrastrá para cambiar la duración"}
-                            onPointerDown={(e) => googleResizeStart(ev, gi.startMinutes, gi.endMinutes, e)}
-                            onPointerMove={resizeMove}
-                            onPointerUp={() => googleResizeEnd(ev)}
-                            onPointerCancel={() => setResizing(null)}
-                            onKeyDown={(e) => googleResizeKey(ev, gi.startMinutes, gi.endMinutes, e)}
-                            style={{ top: top + height - 6, height: 10, ...(lane ? laneStyle(lane) : null) }}
-                            className={`${RESIZE_HANDLE_CLASS} ${lane ? "" : "inset-x-1"} ${live !== null ? "bg-primary/30 [&>span]:opacity-100" : "hover:bg-primary/15"}`}
-                          >
-                            <span aria-hidden className={RESIZE_GRIP_CLASS} />
-                          </div>
+                          <Tip asChild content={live !== null ? durationLabel(live) : "Arrastrá para cambiar la duración"}>
+                            <div
+                              data-cal-handle
+                              role="separator"
+                              aria-orientation="horizontal"
+                              tabIndex={0}
+                              aria-label={`Cambiar la duración de ${ev.summary || "el evento"}${live !== null ? `: ${durationLabel(live)}` : ""}`}
+                              onPointerDown={(e) => googleResizeStart(ev, gi.startMinutes, gi.endMinutes, e)}
+                              onPointerMove={resizeMove}
+                              onPointerUp={() => googleResizeEnd(ev)}
+                              onPointerCancel={() => setResizing(null)}
+                              onKeyDown={(e) => googleResizeKey(ev, gi.startMinutes, gi.endMinutes, e)}
+                              style={{ top: top + height - 6, height: 10, ...(lane ? laneStyle(lane) : null) }}
+                              className={`${RESIZE_HANDLE_CLASS} ${lane ? "" : "inset-x-1"} ${live !== null ? "bg-primary/30 [&>span]:opacity-100" : "hover:bg-primary/15"}`}
+                            >
+                              <span aria-hidden className={RESIZE_GRIP_CLASS} />
+                            </div>
+                          </Tip>
                         </div>
                       );
                     })}

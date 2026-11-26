@@ -3,6 +3,7 @@ import { getWorkspace } from "@/lib/workspace";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { formatDuration, formatUnedited, loadDraftMetrics } from "@/lib/agent/drafts/metrics-query";
 import { MetricsScopeToggle } from "./metrics-scope-toggle";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La franja de medicion arriba de la cola (Bloque 2c). Cinco numeros, y los
@@ -68,17 +69,15 @@ export async function MetricsStrip({
       </div>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
         {tiles.map((t) => (
-          <div
-            key={t.label}
-            className={`rounded-xl border p-3 ${t.highlight ? "border-primary-edge/40 bg-primary/5" : "border-border"}`}
-            title={t.hint}
-          >
-            <p className="text-[11px] font-medium text-muted-foreground">{t.label}</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums">{t.value}</p>
-            {/* En el telefono la explicacion queda en el title: con las cinco
-                abiertas, la cola arrancaria dos pantallas mas abajo. */}
-            <p className="mt-0.5 hidden text-[11px] leading-snug text-muted-foreground queue:block">{t.hint}</p>
-          </div>
+          <Tip key={t.label} asChild content={t.hint}>
+            <div className={`rounded-xl border p-3 ${t.highlight ? "border-primary-edge/40 bg-primary/5" : "border-border"}`}>
+              <p className="text-[11px] font-medium text-muted-foreground">{t.label}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">{t.value}</p>
+              {/* En el telefono la explicacion queda en el tooltip (mantener el dedo): con las cinco
+                  abiertas, la cola arrancaria dos pantallas mas abajo. */}
+              <p className="mt-0.5 hidden text-[11px] leading-snug text-muted-foreground queue:block">{t.hint}</p>
+            </div>
+          </Tip>
         ))}
       </div>
 

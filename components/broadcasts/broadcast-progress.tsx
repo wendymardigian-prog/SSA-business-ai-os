@@ -21,6 +21,7 @@ import { canDeleteBroadcast, canEditBroadcastMessage, canReopenBroadcast } from 
 import type { BroadcastChannelKind } from "@/lib/broadcasts/audience";
 import { BroadcastMessageFields } from "./message-fields";
 import { EMAIL_RESULT_FILTERS, emailResultTiles, type EmailResultCounts, type EmailResultFilter } from "@/lib/broadcasts/email-results-view";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Un broadcast que ya salió de borrador: cuánto falta, cuándo termina, y cada
@@ -335,10 +336,12 @@ export function BroadcastProgress({
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             {emailResultTiles(emailResults).map((t) => (
               <div key={t.key}>
-                <dt className="text-xs text-muted-foreground" title={t.hint}>
-                  {t.label}
-                  {t.hint ? " *" : ""}
-                </dt>
+                <Tip asChild content={t.hint}>
+                  <dt className="text-xs text-muted-foreground">
+                    {t.label}
+                    {t.hint ? " *" : ""}
+                  </dt>
+                </Tip>
                 <dd className="text-lg font-semibold tabular-nums">
                   {t.value.toLocaleString("es")} <span className="text-xs font-normal text-muted-foreground">{t.rate}</span>
                 </dd>

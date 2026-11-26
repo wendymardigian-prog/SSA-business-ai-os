@@ -41,6 +41,7 @@ import { miniBarsView } from "@/lib/portal-points/daily";
 import { cn } from "@/lib/utils";
 import { ClientesTabs } from "./clientes-tabs";
 import { NewServiceDialog, type NewServiceOptions } from "./new-service-dialog";
+import { Tip } from "@/components/ui/tooltip";
 
 const PILL: Record<ClientLight, { label: string; cls: string; num: string }> = {
   red: { label: "Rojo", cls: "bg-bad/10 text-bad", num: "bg-bad/15 text-bad" },
@@ -124,9 +125,11 @@ export function ClientsListView({
           {p.label}
         </span>
         {r.pendingReviews > 0 && (
-          <span className={cn("rounded-full px-1.5 text-xs font-semibold tabular-nums", p.num)} title="Entregas por revisar" aria-label={`${r.pendingReviews} entregas por revisar`}>
-            {r.pendingReviews}
-          </span>
+          <Tip asChild content="Entregas por revisar">
+            <span className={cn("rounded-full px-1.5 text-xs font-semibold tabular-nums", p.num)} aria-label={`${r.pendingReviews} entregas por revisar`}>
+              {r.pendingReviews}
+            </span>
+          </Tip>
         )}
       </span>
     );
@@ -161,17 +164,19 @@ export function ClientsListView({
         if (!r.points30 || !r.points30Total) return <span className="text-muted-foreground">—</span>;
         const { heights } = miniBarsView(r.points30);
         return (
-          <span className="flex items-center gap-2" title={`${r.points30Total} puntos en los últimos 30 días`}>
-            <span className="flex h-5 w-[90px] items-end gap-px" aria-hidden>
-              {heights.map((h, i) => (
-                <span key={i} className={cn("flex-1 rounded-[1px]", h > 0 ? "bg-primary" : "bg-muted")} style={{ height: h > 0 ? `${Math.max(h * 100, 12)}%` : "2px" }} />
-              ))}
+          <Tip asChild content={`${r.points30Total} puntos en los últimos 30 días`}>
+            <span className="flex items-center gap-2">
+              <span className="flex h-5 w-[90px] items-end gap-px" aria-hidden>
+                {heights.map((h, i) => (
+                  <span key={i} className={cn("flex-1 rounded-[1px]", h > 0 ? "bg-primary" : "bg-muted")} style={{ height: h > 0 ? `${Math.max(h * 100, 12)}%` : "2px" }} />
+                ))}
+              </span>
+              <span className="tabular-nums text-muted-foreground">
+                <span className="sr-only">Puntos en 30 días: </span>
+                {r.points30Total}
+              </span>
             </span>
-            <span className="tabular-nums text-muted-foreground">
-              <span className="sr-only">Puntos en 30 días: </span>
-              {r.points30Total}
-            </span>
-          </span>
+          </Tip>
         );
       },
       paid: (r) => (r.paidCents === null ? <span className="text-muted-foreground">—</span> : usd(r.paidCents)),

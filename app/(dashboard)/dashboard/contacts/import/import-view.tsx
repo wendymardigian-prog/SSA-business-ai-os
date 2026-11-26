@@ -33,6 +33,7 @@ import { startImport, importBatch, finishImport, previewBatch } from "@/lib/acti
 import { IMPORT_BATCH_SIZE, MAX_IMPORT_ROWS, MAX_IMPORT_BYTES } from "@/lib/csv/limits";
 import { ActionError } from "@/components/contacts/ui";
 import { PageHeader } from "@/components/page-header";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Importacion de CSV en cuatro pasos: archivo, mapeo, opciones y resultado.
@@ -421,9 +422,11 @@ function MapStep({
               <tr className="border-b border-border bg-muted/50 text-left">
                 {headers.map((header, i) => (
                   <th key={`${header}-${i}`} className="min-w-44 px-3 py-2 align-top">
-                    <span className="block truncate text-xs font-medium text-muted-foreground" title={header}>
-                      {header || `(columna ${i + 1})`}
-                    </span>
+                    <Tip asChild content={header}>
+                      <span className="block truncate text-xs font-medium text-muted-foreground">
+                        {header || `(columna ${i + 1})`}
+                      </span>
+                    </Tip>
                     <select
                       value={mapping[i]?.target ?? ""}
                       onChange={(e) => onTarget(i, e.target.value as ImportColumnTarget)}
@@ -605,14 +608,15 @@ function MapStep({
           {previewing && <Loader2 className="h-4 w-4 animate-spin" />}
           Revisar antes de importar
         </button>
-        <button
-          onClick={onRun}
-          disabled={!canRun || previewing}
-          title={canRun ? undefined : "Mapeá al menos una columna"}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-        >
-          Importar {rows.length.toLocaleString("es-AR")} {rows.length === 1 ? "fila" : "filas"}
-        </button>
+        <Tip content={canRun ? null : "Mapeá al menos una columna"}>
+          <button
+            onClick={onRun}
+            disabled={!canRun || previewing}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            Importar {rows.length.toLocaleString("es-AR")} {rows.length === 1 ? "fila" : "filas"}
+          </button>
+        </Tip>
       </div>
     </div>
   );

@@ -24,6 +24,7 @@ import {
 import { gateConditions, type BranchPathStep, type BranchStep, type GateStep } from "@/lib/automations/step-tree";
 import { describeGroup } from "@/lib/flow-engine/condition-eval";
 import { BRANCH_ELSE_LABEL, MAX_PATHS, newPathId } from "@/lib/flow-engine/branch-paths";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Condiciones: una tarjeta con un bloque por camino (en orden) y al final el
@@ -135,16 +136,17 @@ export function BranchCard({ step }: { step: BranchStep }) {
               >
                 <ArrowDown className="h-3.5 w-3.5" />
               </button>
-              <button
-                type="button"
-                disabled={disabled || !canRemovePath(step.paths.length)}
-                aria-label={`Borrar el camino ${name}`}
-                title={canRemovePath(step.paths.length) ? undefined : "Tiene que quedar al menos un camino"}
-                onClick={() => removePathAsking(path, index)}
-                className={cn(iconButton, "hover:text-red-600")}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              <Tip content={canRemovePath(step.paths.length) ? null : "Tiene que quedar al menos un camino"}>
+                <button
+                  type="button"
+                  disabled={disabled || !canRemovePath(step.paths.length)}
+                  aria-label={`Borrar el camino ${name}`}
+                  onClick={() => removePathAsking(path, index)}
+                  className={cn(iconButton, "hover:text-red-600")}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </Tip>
             </div>
 
             <div>

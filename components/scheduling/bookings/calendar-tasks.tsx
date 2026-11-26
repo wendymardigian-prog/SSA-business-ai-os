@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { clampStyle } from "@/lib/calendar/card-lines";
 import type { HoverContent } from "@/lib/calendar/hover-content";
 import type { DayEntry } from "@/lib/calendar/day-agenda";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Una tarea en la lista de «Ver todo» del día. */
 export function taskDayEntry(item: CalendarTaskItem, timeFormat: TimeFormat): DayEntry {
@@ -122,7 +123,9 @@ export function TaskCard({ item, timeFormat, draggable, onOpen, onDragStart, onD
         </span>
         {!compact && <span className="block truncate text-muted-foreground">{STATUS_LABELS[task.status]}</span>}
       </span>
-      <span className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", PRIORITY_DOT[task.priority])} title={`Prioridad ${PRIORITY_LABELS[task.priority].toLowerCase()}`} />
+      <Tip asChild content={`Prioridad ${PRIORITY_LABELS[task.priority].toLowerCase()}`}>
+        <span className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", PRIORITY_DOT[task.priority])} />
+      </Tip>
     </button>
   );
 }

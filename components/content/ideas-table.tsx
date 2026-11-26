@@ -10,6 +10,7 @@ import { DataTable, type DataColumn } from "@/components/ui/data-table/data-tabl
 import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
 import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 import { sortIdeaRows, type IdeaListRow, type IdeaTone } from "@/lib/content/ideas-list";
+import { Tip } from "@/components/ui/tooltip";
 
 export const IDEAS_TABLE_KEY = "content_ideas";
 
@@ -76,9 +77,11 @@ export function IdeasTable({ rows, timeZone }: { rows: IdeaListRow[]; timeZone: 
 
 function IdeaStatusPill({ row }: { row: IdeaListRow }) {
   return (
-    <span className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASS[row.tone]}`} title={row.discardedReason ?? undefined}>
-      {row.statusLabel}
-    </span>
+    <Tip asChild content={row.discardedReason ?? null}>
+      <span className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASS[row.tone]}`}>
+        {row.statusLabel}
+      </span>
+    </Tip>
   );
 }
 

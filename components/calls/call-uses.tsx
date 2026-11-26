@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { BookOpen, Lightbulb, Loader2, NotebookPen } from "lucide-react";
 import { sendCallToKnowledge, summarizeCall } from "@/lib/actions/calls-use";
 import { callBadgeClass } from "@/lib/calls/badges";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Lo que se hizo con la llamada despues de analizarla (F29, F30, F31): el
@@ -48,22 +49,23 @@ function Action({ label, icon, run, disabledReason, pendingLabel }: { label: str
   const [error, setError] = useState<string | null>(null);
   return (
     <span className="inline-flex flex-col items-start gap-1">
-      <button
-        type="button"
-        disabled={pending || !!disabledReason}
-        title={disabledReason ?? undefined}
-        onClick={() => {
-          setError(null);
-          start(async () => {
-            const r = await run();
-            if (!r.ok) return setError(r.error ?? "No se pudo");
-            router.refresh();
-          });
-        }}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent disabled:opacity-50"
-      >
-        {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : icon} {pending ? pendingLabel : label}
-      </button>
+      <Tip content={disabledReason ?? null}>
+        <button
+          type="button"
+          disabled={pending || !!disabledReason}
+          onClick={() => {
+            setError(null);
+            start(async () => {
+              const r = await run();
+              if (!r.ok) return setError(r.error ?? "No se pudo");
+              router.refresh();
+            });
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent disabled:opacity-50"
+        >
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : icon} {pending ? pendingLabel : label}
+        </button>
+      </Tip>
       {error && <span role="alert" className="text-xs text-red-700 dark:text-red-400">{error}</span>}
     </span>
   );

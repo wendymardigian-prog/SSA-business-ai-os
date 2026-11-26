@@ -26,7 +26,6 @@ export function CallsProposalsBadge() {
   return (
     <span
       className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground collapsed:right-1 collapsed:top-1 collapsed:translate-y-0"
-      title={`${label} reunión(es) con propuestas por aprobar`}
       aria-label={`${label} reunión(es) con propuestas por aprobar`}
     >
       {label}

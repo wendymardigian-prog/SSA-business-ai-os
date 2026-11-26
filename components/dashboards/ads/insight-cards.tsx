@@ -7,6 +7,7 @@ import { aggregateActions, deviceSummary, placementSummary, type Rankings } from
 import { rankingTone } from "@/lib/dashboards/ads-view";
 import type { BreakdownRow, LiveResult } from "@/lib/meta/live";
 import { MiniToggle } from "./toggles";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Las tarjetas chicas de la grilla de cuatro: Acciones, Placement,
@@ -70,9 +71,11 @@ export function ActionsCard({ rows }: { rows: AdsRow[] }) {
         <div className="space-y-1.5">
           {actions.map((a) => (
             <div key={a.type} className="flex items-center gap-2 text-xs">
-              <div className="min-w-0 flex-1 truncate text-muted-foreground" title={a.label}>
-                {a.label}
-              </div>
+              <Tip asChild content={a.label}>
+                <div className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {a.label}
+                </div>
+              </Tip>
               <Bar percent={(a.value / max) * 100} className="w-16" />
               <div className="w-12 text-right font-medium text-foreground">{compactCount(a.value)}</div>
             </div>
@@ -111,9 +114,11 @@ export function PlacementCard({ result, currency }: { result: Live<BreakdownRow[
           <div className="space-y-1.5">
             {items.map((p) => (
               <div key={p.name} className="flex items-center gap-2 text-xs">
-                <div className="min-w-0 flex-1 truncate capitalize text-muted-foreground" title={p.name}>
-                  {p.name}
-                </div>
+                <Tip asChild content={p.name}>
+                  <div className="min-w-0 flex-1 truncate capitalize text-muted-foreground">
+                    {p.name}
+                  </div>
+                </Tip>
                 <Bar percent={p.share} />
                 <div className="w-14 text-right font-medium text-foreground">
                   {toggle === "spend" ? money(p.spend, currency, { narrow: true }) : percent(p.ctr)}

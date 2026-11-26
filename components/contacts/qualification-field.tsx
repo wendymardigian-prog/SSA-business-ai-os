@@ -13,6 +13,7 @@ import {
   type QualificationSettings,
 } from "@/lib/contacts/qualification";
 import { ActionError } from "./ui";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El nivel de calificación del lead (00329), editable donde se lee: cinco
@@ -72,20 +73,25 @@ export function QualificationField({
             const def = settings.levels.find((l) => l.level === n);
             const fill = isQualificationLevel(current) && n <= current ? QUALIFICATION_COLORS[current] : null;
             return (
-              <button
+              // Sin asChild: sin permiso los niveles estan deshabilitados y la rubrica se sigue leyendo.
+              <Tip
                 key={n}
-                type="button"
-                role="radio"
-                aria-checked={current === n}
-                aria-label={`${n} · ${def?.name ?? n}`}
-                title={def ? `${n} · ${def.name}${def.description ? `\n${def.description}` : ""}` : String(n)}
-                disabled={pending || !canEdit}
-                onClick={() => save(n)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-                style={fill ? { backgroundColor: fill, borderColor: fill, color: "#fff" } : undefined}
+                content={def ? `${n} · ${def.name}${def.description ? `\n${def.description}` : ""}` : String(n)}
+                panelClassName="whitespace-pre-line"
               >
-                {n}
-              </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={current === n}
+                  aria-label={`${n} · ${def?.name ?? n}`}
+                  disabled={pending || !canEdit}
+                  onClick={() => save(n)}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                  style={fill ? { backgroundColor: fill, borderColor: fill, color: "#fff" } : undefined}
+                >
+                  {n}
+                </button>
+              </Tip>
             );
           })}
         </div>

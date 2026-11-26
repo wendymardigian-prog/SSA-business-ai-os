@@ -48,6 +48,7 @@ import { setNavFavorite } from "@/lib/actions/nav-favorites";
 export type NavFlags = Partial<Record<NavFlag, boolean>>;
 import { activeNavHref } from "@/lib/nav/active";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 import { WorkspaceSwitcher, type WorkspaceItem } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
@@ -154,12 +155,12 @@ export function Sidebar({
         <div className="min-w-0 flex-1 collapsed:hidden">
           <WorkspaceSwitcher current={workspace} workspaces={workspaces} />
         </div>
+        <Tip asChild side={collapsed ? "right" : "bottom"} content={collapsed ? "Expandir el menú" : "Colapsar el menú"}>
         <button
           type="button"
           onClick={toggleCollapsed}
           aria-expanded={!collapsed}
           aria-label={collapsed ? "Expandir el menú" : "Colapsar el menú"}
-          title={collapsed ? "Expandir el menú" : "Colapsar el menú"}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           {/*
@@ -171,6 +172,7 @@ export function Sidebar({
           <PanelLeftClose className="h-4 w-4 collapsed:hidden" aria-hidden="true" />
           <PanelLeftOpen className="hidden h-4 w-4 collapsed:block" aria-hidden="true" />
         </button>
+        </Tip>
       </div>
 
       {/*
@@ -317,17 +319,18 @@ export function NavLinks({
                 )}
               >
                 {target ? (
+                  <Tip asChild side="bottom" align="start" content={`Ir a ${favoriteName ?? "la favorita"}`}>
                   <Link
                     href={target}
                     onClick={() => {
                       setSectionOpen(section.group, true);
                       onNavigate?.();
                     }}
-                    title={`Ir a ${favoriteName ?? "la favorita"}`}
                     className="min-w-0 flex-1 truncate rounded-md px-3 pb-1 pt-0.5 transition-colors hover:text-sidebar-foreground/70"
                   >
                     {section.title}
                   </Link>
+                  </Tip>
                 ) : (
                   <button
                     type="button"
@@ -339,17 +342,18 @@ export function NavLinks({
                     {section.title}
                   </button>
                 )}
+                <Tip asChild content={isOpen ? `Cerrar ${section.title}` : `Abrir ${section.title}`}>
                 <button
                   type="button"
                   onClick={() => setSectionOpen(section.group, !isOpen)}
                   aria-expanded={isOpen}
                   aria-controls={itemsId}
                   aria-label={isOpen ? `Cerrar ${section.title}` : `Abrir ${section.title}`}
-                  title={isOpen ? `Cerrar ${section.title}` : `Abrir ${section.title}`}
                   className="mr-1.5 flex h-6 w-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-sidebar-border/60 hover:text-sidebar-foreground/70"
                 >
                   <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-180")} aria-hidden />
                 </button>
+                </Tip>
               </div>
             )}
             {/*
@@ -381,11 +385,11 @@ export function NavLinks({
                   // del link del item (anidar <a> o <button> en <a> es invalido). Por eso la fila es un
                   // contenedor relativo.
                   <div key={item.name} className="group/nav relative">
+                    <Tip asChild side="right" content={collapsed ? navItemTooltip(item) : null}>
                     <Link
                       href={navItemHref(item, viewer)}
                       onClick={onNavigate}
                       aria-current={isActive ? "page" : undefined}
-                      title={collapsed ? navItemTooltip(item) : undefined}
                       className={cn(
                         "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0",
                         badge && "pr-14 collapsed:pr-0",
@@ -399,6 +403,7 @@ export function NavLinks({
                       <span className="collapsed:hidden">{item.name}</span>
                       <LinkPending className="ml-auto collapsed:hidden" />
                     </Link>
+                    </Tip>
                     {badge && <DraftBadge counts={badge} onNavigate={onNavigate} />}
                     {item.href === "/dashboard/llamadas" && <CallsProposalsBadge />} {/* @plantilla-quitar(servicios) */}
                     {section.collapsible && section.title && (
@@ -461,12 +466,12 @@ function PinButton({
 }) {
   const label = pinned ? `Quitar ${itemName} como favorita de ${sectionTitle}` : `Marcar ${itemName} como favorita de ${sectionTitle}`;
   return (
+    <Tip asChild content={label}>
     <button
       type="button"
       onClick={onToggle}
       aria-pressed={pinned}
       aria-label={label}
-      title={label}
       className={cn(
         "absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md transition-opacity hover:bg-sidebar-border/60 focus-visible:opacity-100 collapsed:hidden",
         pinned
@@ -476,6 +481,7 @@ function PinButton({
     >
       <Pin className={cn("h-3.5 w-3.5", pinned && "fill-current")} aria-hidden />
     </button>
+    </Tip>
   );
 }
 
@@ -488,7 +494,7 @@ function PinButton({
  *
  * Con el menu colapsado no hay lugar para dos numeros al costado del texto,
  * asi que queda uno solo, chico, arriba a la derecha del icono. El texto
- * completo sigue en el title.
+ * completo sigue en el tooltip.
  */
 export function DraftBadge({ counts, onNavigate }: { counts: PendingDraftCounts; onNavigate?: () => void }) {
   const total = counts.total ?? null;
@@ -499,13 +505,13 @@ export function DraftBadge({ counts, onNavigate }: { counts: PendingDraftCounts;
       : `Borradores esperando: ${counts.mine}. Ir a la cola`;
   const corto = counts.mine > 0 ? counts.mine : (total ?? 0);
   return (
+    <Tip asChild side="right" content={title}>
     <Link
       href={draftsQueueHref(counts)}
       onClick={onNavigate}
       // Centrado sobre la fila de Inbox; con el menu colapsado, arriba a la
       // derecha del icono, donde hay lugar para un solo numero.
       className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-full collapsed:right-1 collapsed:top-1 collapsed:translate-y-0"
-      title={title}
       aria-label={title}
     >
       <span className="flex items-center gap-1 collapsed:hidden">
@@ -522,5 +528,6 @@ export function DraftBadge({ counts, onNavigate }: { counts: PendingDraftCounts;
         {corto > 9 ? "9+" : corto}
       </span>
     </Link>
+    </Tip>
   );
 }

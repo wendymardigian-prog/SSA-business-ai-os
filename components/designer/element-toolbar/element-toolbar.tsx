@@ -59,6 +59,7 @@ import { cn } from "@/lib/utils";
 import { useImageUpload } from "@/components/designer/editor/use-image-upload";
 import { useFontPreviews } from "@/components/designer/editor/use-fonts";
 import { ColorPicker } from "./color-picker";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface ElementToolbarProps {
   element: DesignElement;
@@ -89,18 +90,19 @@ export interface ElementToolbarProps {
 /** Un botón de la barra: no le saca el foco al texto que se está escribiendo. */
 function ToolButton({ label, onClick, pressed, disabled, children, className }: { label: string; onClick: () => void; pressed?: boolean; disabled?: boolean; children: ReactNode; className?: string }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      aria-pressed={pressed}
-      disabled={disabled}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      className={cn("grid h-7 min-w-7 shrink-0 place-items-center rounded-md border border-border bg-card px-1.5 text-[13px] hover:bg-accent disabled:opacity-35", pressed && "border-primary-edge bg-primary/15", className)}
-    >
-      {children}
-    </button>
+    <Tip content={label} className="shrink-0">
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={pressed}
+        disabled={disabled}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onClick}
+        className={cn("grid h-7 min-w-7 shrink-0 place-items-center rounded-md border border-border bg-card px-1.5 text-[13px] hover:bg-accent disabled:opacity-35", pressed && "border-primary-edge bg-primary/15", className)}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 
@@ -130,9 +132,11 @@ export function ElementToolbar(props: ElementToolbarProps) {
     switch (id) {
       case "name":
         return (
-          <span key={id} className="max-w-[150px] truncate text-[13px] font-semibold" title={layerName(el, props.labelFor)}>
-            {layerName(el, props.labelFor)}
-          </span>
+          <Tip asChild key={id} content={layerName(el, props.labelFor)}>
+            <span className="max-w-[150px] truncate text-[13px] font-semibold">
+              {layerName(el, props.labelFor)}
+            </span>
+          </Tip>
         );
       case "order":
         return (

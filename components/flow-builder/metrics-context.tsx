@@ -17,6 +17,7 @@ import {
   type MetricPeriod,
   type NodeMetrics,
 } from "@/lib/flows/node-metrics";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Las metricas de cada paso sobre el lienzo (00317). Viven en un contexto y NUNCA en `node.data`: si estuvieran en el
@@ -106,20 +107,21 @@ export function FlowMetricsToggle() {
   if (!state) return null;
   return (
     <div className="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={() => state.setEnabled(!state.enabled)}
-        aria-pressed={state.enabled}
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
-          state.enabled ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border bg-background hover:bg-accent",
-        )}
-        title="Métricas: cuántas personas pasaron por cada paso, cuántas fallaron, los clics y las respuestas"
-        aria-label="Métricas"
-      >
-        {state.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5" />}
-        <span className="hidden 2xl:inline">Métricas</span>
-      </button>
+      <Tip asChild content="Métricas: cuántas personas pasaron por cada paso, cuántas fallaron, los clics y las respuestas">
+        <button
+          type="button"
+          onClick={() => state.setEnabled(!state.enabled)}
+          aria-pressed={state.enabled}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+            state.enabled ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border bg-background hover:bg-accent",
+          )}
+          aria-label="Métricas"
+        >
+          {state.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5" />}
+          <span className="hidden 2xl:inline">Métricas</span>
+        </button>
+      </Tip>
       {state.enabled && (
         <select
           value={state.period}
@@ -189,26 +191,27 @@ export function NodeMetricsBadge({ nodeId, data }: { nodeId: string; data?: Reco
 
   return (
     <div ref={ref} className="nodrag nowheel relative">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(!open);
-        }}
-        aria-expanded={open}
-        className={cn(
-          "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-          !text
-            ? "border-border bg-muted text-muted-foreground"
-            : m && m.failed > 0
-              ? "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
-              : "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100",
-        )}
-        title="Ver las métricas de este paso"
-      >
-        {text ?? "0"}
-        <ChevronDown className="h-3 w-3" aria-hidden />
-      </button>
+      <Tip asChild content="Ver las métricas de este paso">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(!open);
+          }}
+          aria-expanded={open}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+            !text
+              ? "border-border bg-muted text-muted-foreground"
+              : m && m.failed > 0
+                ? "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+                : "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100",
+          )}
+        >
+          {text ?? "0"}
+          <ChevronDown className="h-3 w-3" aria-hidden />
+        </button>
+      </Tip>
       {anchor &&
         createPortal(
         <div

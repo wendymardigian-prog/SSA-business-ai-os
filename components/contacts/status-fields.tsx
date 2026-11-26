@@ -20,6 +20,7 @@ import {
   type StatusRole,
 } from "@/lib/contacts/statuses";
 import { ActionError, formatRelative } from "./ui";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Lo que estos componentes necesitan del contacto (las columnas de la 00245). */
 export interface ContactStatusValues {
@@ -56,15 +57,16 @@ export function LastStatusBadge({
   const list = settings[role];
   const color = statusColor(list, status);
   return (
-    <span
-      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs font-medium"
-      title={`Último estado: ${statusName(list, status)} (${STATUS_ROLE_LABELS[role].toLowerCase()})`}
-    >
-      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
-      <span className="truncate">{statusName(list, status)}</span>
-      <span className="shrink-0 text-muted-foreground">· {STATUS_ROLE_LABELS[role]}</span>
-      {!compact && at && <span className="shrink-0 text-muted-foreground">· {formatRelative(at, timeZone)}</span>}
-    </span>
+    <Tip asChild content={`Último estado: ${statusName(list, status)} (${STATUS_ROLE_LABELS[role].toLowerCase()})`}>
+      <span
+        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs font-medium"
+      >
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
+        <span className="truncate">{statusName(list, status)}</span>
+        <span className="shrink-0 text-muted-foreground">· {STATUS_ROLE_LABELS[role]}</span>
+        {!compact && at && <span className="shrink-0 text-muted-foreground">· {formatRelative(at, timeZone)}</span>}
+      </span>
+    </Tip>
   );
 }
 
@@ -218,10 +220,12 @@ export function StatusFields({
             {current && at && (
               <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/70">
                 {role === "setter" && values.setter_status_by_agent && (
-                  <span className="inline-flex items-center gap-0.5" title="Lo puso el agente de IA">
-                    <Bot className="h-3 w-3" aria-hidden />
-                    Agente IA ·
-                  </span>
+                  <Tip asChild content="Lo puso el agente de IA">
+                    <span className="inline-flex items-center gap-0.5">
+                      <Bot className="h-3 w-3" aria-hidden />
+                      Agente IA ·
+                    </span>
+                  </Tip>
                 )}
                 Desde: {formatRelative(at, timeZone)}
                 {!findStatus(list, current) && " · ese estado ya no existe en la lista"}

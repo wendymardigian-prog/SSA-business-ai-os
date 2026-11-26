@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BadgeCheck, BadgeX, ExternalLink, HeartHandshake, HeartOff, Loader2, MoreVertical, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RowAction } from "@/lib/inbox/row-actions";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El "⋯" de una fila de la lista de chats. Lo que va adentro lo decide
@@ -82,22 +83,23 @@ export function ConversationRowMenu({
         }
       }}
     >
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        aria-label={`Acciones de la conversación con ${contactName}`}
-        title="Acciones"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          open && "bg-accent text-foreground",
-        )}
-      >
-        {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <MoreVertical className="h-4 w-4" aria-hidden />}
-      </button>
+      <Tip asChild content="Acciones">
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          aria-label={`Acciones de la conversación con ${contactName}`}
+          onClick={() => setOpen((v) => !v)}
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            open && "bg-accent text-foreground",
+          )}
+        >
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <MoreVertical className="h-4 w-4" aria-hidden />}
+        </button>
+      </Tip>
       {open && (
         <div
           id={menuId}

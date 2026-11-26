@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { formatRemaining, WINDOW_LEVEL_LABELS, type WindowInfo, type WindowLevel } from "@/lib/agent/drafts/window-state";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El indicador de la ventana de mensajeria de un borrador (Bloque 2c). Cinco
@@ -21,19 +22,20 @@ export function WindowBadge({ info, className }: { info: WindowInfo; className?:
   if (info.level === "none") return null;
   const remaining = formatRemaining(info);
   return (
-    <span
-      className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium", STYLES[info.level], className)}
-      title={WINDOW_LEVEL_LABELS[info.level]}
-    >
-      {info.level === "last_call" && (
-        <span className="relative flex h-2 w-2" aria-hidden>
-          <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 motion-safe:animate-ping" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
-        </span>
-      )}
-      <span>{info.level === "closed" ? "Ventana cerrada" : WINDOW_LEVEL_LABELS[info.level]}</span>
-      {remaining && <span className="opacity-80">· {remaining}</span>}
-    </span>
+    <Tip asChild content={WINDOW_LEVEL_LABELS[info.level]}>
+      <span
+        className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium", STYLES[info.level], className)}
+      >
+        {info.level === "last_call" && (
+          <span className="relative flex h-2 w-2" aria-hidden>
+            <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 motion-safe:animate-ping" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
+          </span>
+        )}
+        <span>{info.level === "closed" ? "Ventana cerrada" : WINDOW_LEVEL_LABELS[info.level]}</span>
+        {remaining && <span className="opacity-80">· {remaining}</span>}
+      </span>
+    </Tip>
   );
 }
 

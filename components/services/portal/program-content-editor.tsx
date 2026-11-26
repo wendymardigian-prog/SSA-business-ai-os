@@ -18,6 +18,7 @@ import { listFathomForLesson, pickFathomForLesson } from "@/lib/actions/live-ses
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { parseTargetValue, staleTargetLabel, targetValueOf, unlockTargetOptions } from "@/lib/program/unlock-targets";
 import type { PickerVariant } from "@/lib/services/service-picker";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface ContentRow extends ProgramRow {
   /** El formulario de una evaluación o actividad (bloque EV), si ya tiene uno. */
@@ -417,9 +418,11 @@ function ItemDrawer({
             <input type="checkbox" checked={required} disabled={disabled} onChange={(e) => setRequired(e.target.checked)} /> Obligatoria
           </label>
           {item.kind === "module" && (
-            <label className="flex items-center gap-2 text-sm" title="En el portal va en la sección Extras, sin número y fuera del avance">
-              <input type="checkbox" checked={extra} disabled={disabled} onChange={(e) => setExtra(e.target.checked)} /> Extra (va en la sección Extras del portal)
-            </label>
+            <Tip asChild content="En el portal va en la sección Extras, sin número y fuera del avance">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={extra} disabled={disabled} onChange={(e) => setExtra(e.target.checked)} /> Extra (va en la sección Extras del portal)
+              </label>
+            </Tip>
           )}
           {item.kind === "lesson" && (
             <label className="flex items-center gap-2 text-sm">

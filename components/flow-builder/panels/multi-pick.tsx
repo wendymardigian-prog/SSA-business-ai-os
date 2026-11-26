@@ -10,6 +10,7 @@ import {
   type ProductScope,
   type ScopeCatalogProduct,
 } from "@/lib/automations/product-scope";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Los selectores de elección múltiple de los filtros de un disparador: chips que se prenden y apagan. Sin elegir
@@ -50,11 +51,13 @@ function SearchBox({ value, onChange, label }: { value: string; onChange: (v: st
 
 function StaleChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
-    <button type="button" onClick={onRemove} className="inline-flex items-center gap-1 rounded-lg border border-destructive/40 px-2.5 py-1 text-xs text-destructive hover:bg-destructive/10" title="Sacar">
-      <AlertTriangle className="h-3 w-3" aria-hidden />
-      {label}
-      <X className="h-3 w-3" aria-hidden />
-    </button>
+    <Tip asChild content="Sacar">
+      <button type="button" onClick={onRemove} className="inline-flex items-center gap-1 rounded-lg border border-destructive/40 px-2.5 py-1 text-xs text-destructive hover:bg-destructive/10">
+        <AlertTriangle className="h-3 w-3" aria-hidden />
+        {label}
+        <X className="h-3 w-3" aria-hidden />
+      </button>
+    </Tip>
   );
 }
 

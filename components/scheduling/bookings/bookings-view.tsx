@@ -66,6 +66,7 @@ import { showsCancelled, statusParams } from "@/lib/scheduling/calendar-show";
 import { CreateChoiceDialog, GoogleCreateDialog, GoogleEventPanel, GoogleImportDialog, GoogleMoveDialog } from "./google-event-panel";
 import { groupOf } from "@/lib/scheduling/booking-status";
 import { TEAM_LAYOUT_STORAGE_KEY, type TeamBusyStatus } from "@/lib/scheduling/team-view";
+import { Tip } from "@/components/ui/tooltip";
 
 /** La pastilla rápida de la lista: los cuatro de siempre, más "Todas" (ahora el default). */
 export type QuickPick = QuickFilter | "all";
@@ -441,14 +442,15 @@ export function BookingsScreen({
               </button>
             )}
             {showConfig && (
-              <Link
-                href={DEFAULT_CONFIG_SECTION.href}
-                aria-label={`Configuración de agenda. Hora de ${timezoneCityLabel(timezone)} (${gmtOffsetLabel(now, timezone)})`}
-                title={`Configuración de agenda · hora de ${timezoneCityLabel(timezone)} (${gmtOffsetLabel(now, timezone)})`}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Settings className="h-4 w-4" />
-              </Link>
+              <Tip asChild content={`Configuración de agenda · hora de ${timezoneCityLabel(timezone)} (${gmtOffsetLabel(now, timezone)})`}>
+                <Link
+                  href={DEFAULT_CONFIG_SECTION.href}
+                  aria-label={`Configuración de agenda. Hora de ${timezoneCityLabel(timezone)} (${gmtOffsetLabel(now, timezone)})`}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <Settings className="h-4 w-4" />
+                </Link>
+              </Tip>
             )}
           </div>
         }

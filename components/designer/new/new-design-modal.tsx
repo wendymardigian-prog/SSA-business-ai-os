@@ -37,6 +37,7 @@ import { HtmlStep } from "@/components/designer/import/html-step";
 import { DesignerDialog, primaryButton, secondaryButton, smallButton, textareaClass } from "@/components/designer/editor/overlays";
 import { useImageUpload } from "@/components/designer/editor/use-image-upload";
 import { HowIllustration } from "./illustrations";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El modal «Nuevo diseño / Nueva plantilla» de tres pasos (F16, §11.3). Toda la lógica (qué se ofrece, cuándo se
@@ -132,10 +133,12 @@ export function NewDesignModal({ initialKind = "design", styles, onClose }: { in
           <button type="button" className={secondaryButton} onClick={() => (state.step === 1 ? onClose() : setState(prevStep))} disabled={creating}>
             {state.step === 1 ? "Cancelar" : "Atrás"}
           </button>
-          <button type="button" className={primaryButton} onClick={submit} disabled={disabled} title={disabled && reason ? reason : undefined}>
-            {creating && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-            {primaryLabel(state)}
-          </button>
+          <Tip content={disabled && reason ? reason : undefined}>
+            <button type="button" className={primaryButton} onClick={submit} disabled={disabled}>
+              {creating && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+              {primaryLabel(state)}
+            </button>
+          </Tip>
         </>
       }
     >

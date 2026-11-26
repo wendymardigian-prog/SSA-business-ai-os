@@ -57,7 +57,7 @@ export function TaskLine({ task, wb, ownerName }: { task: TaskRow; wb: TaskWorkb
           {label.text}
         </button>
       )}
-      <PersonBadge id={task.owner_id} name={ownerName} compact />
+      <PersonBadge id={task.owner_id} name={ownerName} role="Responsable" compact />
       {picker && <StatusPicker anchor={anchor} current={task.status} onPick={(s) => { setPicker(false); setStatus(s); }} onClose={() => setPicker(false)} />}
     </li>
   );

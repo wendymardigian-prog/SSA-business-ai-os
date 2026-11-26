@@ -49,3 +49,65 @@ export function placeTooltip(input: TooltipPlacementInput): TooltipPlacement {
   const above = !fitsBelow && fitsAbove;
   return { left, top: above ? input.anchor.top - gap : below, width, above };
 }
+
+/**
+ * Donde abrir el tooltip de `Tip` (24/11/2026): el panel ya medido, del lado pedido y dentro de la pantalla.
+ *
+ *   - `top` / `bottom`: arriba o abajo del disparador; si de ese lado no entra y del otro si, del otro. Horizontal:
+ *     centrado (o alineado al borde izquierdo con `align: "start"`) y corrido lo justo para no salirse.
+ *   - `right`: al costado, centrado en el alto (el menu lateral plegado); si no entra a la derecha, a la izquierda.
+ *
+ * Devuelve la esquina de arriba a la izquierda del panel en coordenadas de `position: fixed` (sin transform).
+ */
+export type TipSide = "top" | "bottom" | "right";
+
+export interface TipPlacementInput {
+  anchor: { left: number; top: number; right: number; bottom: number };
+  viewport: { width: number; height: number };
+  /** El panel ya dibujado y medido. */
+  panel: { width: number; height: number };
+  side?: TipSide;
+  align?: "start" | "center";
+  margin?: number;
+  gap?: number;
+}
+
+export interface TipPlacement {
+  left: number;
+  top: number;
+  /** El lado en el que quedo (puede ser el contrario del pedido). */
+  side: TipSide | "left";
+}
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, Math.max(min, max)));
+
+export function placeTip(input: TipPlacementInput): TipPlacement {
+  const margin = input.margin ?? 8;
+  const gap = input.gap ?? 8;
+  const { anchor, viewport, panel } = input;
+  const side = input.side ?? "top";
+  const maxLeft = viewport.width - margin - panel.width;
+  const maxTop = viewport.height - margin - panel.height;
+
+  if (side === "right") {
+    const fitsRight = anchor.right + gap + panel.width <= viewport.width - margin;
+    const fitsLeft = anchor.left - gap - panel.width >= margin;
+    const useLeft = !fitsRight && fitsLeft;
+    const left = useLeft ? anchor.left - gap - panel.width : clamp(anchor.right + gap, margin, maxLeft);
+    const top = clamp(anchor.top + (anchor.bottom - anchor.top) / 2 - panel.height / 2, margin, maxTop);
+    return { left, top, side: useLeft ? "left" : "right" };
+  }
+
+  const left =
+    input.align === "start"
+      ? clamp(anchor.left, margin, maxLeft)
+      : clamp(anchor.left + (anchor.right - anchor.left) / 2 - panel.width / 2, margin, maxLeft);
+  const fitsAbove = anchor.top - gap - panel.height >= margin;
+  const fitsBelow = anchor.bottom + gap + panel.height <= viewport.height - margin;
+  const above = side === "top" ? fitsAbove || !fitsBelow : !fitsBelow && fitsAbove;
+  return {
+    left,
+    top: above ? anchor.top - gap - panel.height : anchor.bottom + gap,
+    side: above ? "top" : "bottom",
+  };
+}

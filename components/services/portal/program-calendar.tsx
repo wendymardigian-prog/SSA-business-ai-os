@@ -37,6 +37,7 @@ import {
   type OverviewDate,
 } from "@/lib/program/calendar-view";
 import type { CalendarData, CalendarOccurrence, CalendarSession } from "@/lib/program/load-calendar";
+import { Tip } from "@/components/ui/tooltip";
 
 type View = "lista" | "mes" | "series" | "grilla";
 
@@ -306,7 +307,9 @@ export function ProgramCalendar({
                   </div>
                   <div className="flex h-10 items-end gap-1" aria-label="Asistencia de las últimas fechas">
                     {st.bars.map((b) => (
-                      <span key={b.occursOn} title={`${b.occursOn}: ${pctLabel(b.pct)}`} className="w-4 rounded-t bg-primary/60" style={{ height: `${Math.max(4, b.pct ?? 0)}%` }} />
+                      <Tip key={b.occursOn} asChild content={`${b.occursOn}: ${pctLabel(b.pct)}`}>
+                        <span className="w-4 rounded-t bg-primary/60" style={{ height: `${Math.max(4, b.pct ?? 0)}%` }} />
+                      </Tip>
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">Se mide sobre: {baseText(s)}{lastBase ? ` (${baseCounts(lastBase).base} en la última fecha)` : ""}</p>

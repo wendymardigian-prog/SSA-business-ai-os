@@ -8,6 +8,7 @@ import {
   monthGrid, nextMonth, periodButtonLabel, pickDay, previousMonth, sameCivil, todayIn,
   type CivilDate, type CivilRange,
 } from "@/lib/dashboards/chat/date-range";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El período: los atajos del que llama y un calendario de dos meses.
@@ -121,9 +122,11 @@ export function PeriodPopover<P extends string>({
         <Calendar className="h-4 w-4 shrink-0" aria-hidden />
         {/* Con un tope: "Ultimos 7 + proximos 30 dias" mide 190 px y la barra de
             Agenda no tiene de sobra. El texto completo queda en el tooltip. */}
-        <span className="max-w-[10.5rem] truncate xl:max-w-[14rem]" title={periodButtonLabel(urlCivil ? null : labels[preset], urlCivil)}>
-          {periodButtonLabel(urlCivil ? null : labels[preset], urlCivil)}
-        </span>
+        <Tip asChild content={periodButtonLabel(urlCivil ? null : labels[preset], urlCivil)}>
+          <span className="max-w-[10.5rem] truncate xl:max-w-[14rem]">
+            {periodButtonLabel(urlCivil ? null : labels[preset], urlCivil)}
+          </span>
+        </Tip>
       </button>
 
       {open && (
@@ -330,14 +333,14 @@ function MonthCalendar({
           }
           if (cell.isFuture && !allowFuture) {
             return (
-              <span
-                key={cell.key}
-                aria-disabled
-                title="Todavía no pasó"
-                className="grid h-[34px] cursor-not-allowed place-items-center text-[13px] tabular-nums text-muted-foreground/40"
-              >
-                {cell.date.day}
-              </span>
+              <Tip key={cell.key} asChild content="Todavía no pasó">
+                <span
+                  aria-disabled
+                  className="grid h-[34px] cursor-not-allowed place-items-center text-[13px] tabular-nums text-muted-foreground/40"
+                >
+                  {cell.date.day}
+                </span>
+              </Tip>
             );
           }
           const isStart = sameCivil(cell.date, range?.from ?? null);

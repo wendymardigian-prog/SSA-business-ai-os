@@ -15,6 +15,7 @@ import { mediaPaths } from "@/lib/program/community-text";
 import { CommunityBody } from "@/components/services/portal/community-body";
 import { CommunityComposer, CommunityTitleField, type ComposerPhoto } from "@/components/services/portal/community-composer";
 import { Switch } from "@/components/ui/switch";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface CommunityPost {
   id: string;
@@ -194,38 +195,39 @@ export function ProgramCommunity({
                 </span>
                 <span className="flex-1" />
                 <span className={cn("text-xs", draft.body.length > 10000 ? "text-destructive" : "text-muted-foreground")}>{draft.body.length > 8000 ? `${draft.body.length.toLocaleString("es")} / 10.000` : ""}</span>
-                <button
-                  type="button"
-                  disabled={pending || uploading || !draft.title.trim() || !draft.body.trim() || draft.body.length > 10000 || !live.some((s) => s.key === draft.space)}
-                  title={!draft.title.trim() ? "Escribí el título" : undefined}
-                  onClick={() =>
-                    run(
-                      () =>
-                        communityTeamPost(productId, {
-                          title: draft.title,
-                          notifyEmail: draft.notifyEmail,
-                          body: draft.body,
-                          spaceKey: draft.space,
-                          asBusiness: draft.asBusiness,
-                          media: photos.map((f) => f.path),
-                          communityKeys: targets,
-                        }),
-                      (r) => {
-                        const sent = draft.notifyEmail;
-                        setDraft((d) => ({ ...d, title: "", body: "", notifyEmail: true }));
-                        setPhotos([]);
-                        setComposerKey((k) => k + 1);
-                        if (sent && r.email) {
-                          const n = r.email.recipients;
-                          setNotice(r.email.warning ?? `Publicado. El correo sale a ${n} ${n === 1 ? "estudiante" : "estudiantes"} en los próximos minutos.`);
-                        } else setNotice("Publicado.");
-                      },
-                    )
-                  }
-                  className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
-                >
-                  Publicar
-                </button>
+                <Tip content={!draft.title.trim() ? "Escribí el título" : null}>
+                  <button
+                    type="button"
+                    disabled={pending || uploading || !draft.title.trim() || !draft.body.trim() || draft.body.length > 10000 || !live.some((s) => s.key === draft.space)}
+                    onClick={() =>
+                      run(
+                        () =>
+                          communityTeamPost(productId, {
+                            title: draft.title,
+                            notifyEmail: draft.notifyEmail,
+                            body: draft.body,
+                            spaceKey: draft.space,
+                            asBusiness: draft.asBusiness,
+                            media: photos.map((f) => f.path),
+                            communityKeys: targets,
+                          }),
+                        (r) => {
+                          const sent = draft.notifyEmail;
+                          setDraft((d) => ({ ...d, title: "", body: "", notifyEmail: true }));
+                          setPhotos([]);
+                          setComposerKey((k) => k + 1);
+                          if (sent && r.email) {
+                            const n = r.email.recipients;
+                            setNotice(r.email.warning ?? `Publicado. El correo sale a ${n} ${n === 1 ? "estudiante" : "estudiantes"} en los próximos minutos.`);
+                          } else setNotice("Publicado.");
+                        },
+                      )
+                    }
+                    className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+                  >
+                    Publicar
+                  </button>
+                </Tip>
               </>
             )}
           />

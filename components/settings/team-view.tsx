@@ -27,6 +27,7 @@ import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { memberRowControls, teamSections } from "@/lib/team/view-model";
 import { deliveryChip, inviteEmailHint, inviteEmailSendable, inviteResultMessage, inviteState, type InviteEmailReadiness } from "@/lib/team/invite-state";
 import { buildHistory, openInvites, type HistoryFilter } from "@/lib/team/invite-history";
+import { Tip } from "@/components/ui/tooltip";
 
 interface MemberDetail {
   userId: string;
@@ -322,15 +323,16 @@ export function TeamView({
                           <span className="whitespace-nowrap text-[10px] text-muted-foreground">Desde el {fmtDate(member.joinedAt, timeZone, true)}</span>
 
                           {controls.remove && (
-                            <button
-                              onClick={() => setConfirmRemove({ userId: member.userId, name: member.name })}
-                              disabled={busy === member.userId}
-                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                              title="Quitar del equipo"
-                              aria-label={`Quitar a ${member.name} del equipo`}
-                            >
-                              {busy === member.userId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                            </button>
+                            <Tip asChild content="Quitar del equipo">
+                              <button
+                                onClick={() => setConfirmRemove({ userId: member.userId, name: member.name })}
+                                disabled={busy === member.userId}
+                                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                                aria-label={`Quitar a ${member.name} del equipo`}
+                              >
+                                {busy === member.userId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                              </button>
+                            </Tip>
                           )}
                         </div>
                       </div>
@@ -524,17 +526,17 @@ export function TeamView({
                           {/* En escritorio, íconos con tooltip; en el celular, un menú «⋯» por fila. */}
                           <div className="hidden shrink-0 items-center gap-0.5 sm:flex">
                             {actions.map((a) => (
-                              <button
-                                key={a.id}
-                                type="button"
-                                onClick={a.run}
-                                disabled={working}
-                                title={a.label}
-                                aria-label={a.label}
-                                className={cn("rounded-lg p-1.5 text-muted-foreground transition-colors disabled:opacity-50", a.destructive ? "hover:bg-destructive/10 hover:text-destructive" : "hover:bg-muted hover:text-foreground")}
-                              >
-                                {working && a.id !== "revoke" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <a.icon className="h-3.5 w-3.5" />}
-                              </button>
+                              <Tip key={a.id} asChild content={a.label}>
+                                <button
+                                  type="button"
+                                  onClick={a.run}
+                                  disabled={working}
+                                  aria-label={a.label}
+                                  className={cn("rounded-lg p-1.5 text-muted-foreground transition-colors disabled:opacity-50", a.destructive ? "hover:bg-destructive/10 hover:text-destructive" : "hover:bg-muted hover:text-foreground")}
+                                >
+                                  {working && a.id !== "revoke" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <a.icon className="h-3.5 w-3.5" />}
+                                </button>
+                              </Tip>
                             ))}
                           </div>
                           <details className="relative shrink-0 sm:hidden">

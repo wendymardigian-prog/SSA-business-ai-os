@@ -8,6 +8,7 @@ import { AVAILABLE_SECTIONS, SECTION_LABELS, type PortalSection } from "@/lib/se
 import type { AccessViewRow } from "@/lib/portal-admin/accesses-view";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 type Dialog = { kind: "extra" } | { kind: "extend"; row: AccessViewRow } | { kind: "revoke"; row: AccessViewRow } | null;
 
@@ -113,9 +114,9 @@ export function ServiceAccessesPanel({
                   <td className="px-3 py-2 tabular-nums">{r.from}</td>
                   <td className="px-3 py-2 tabular-nums">{r.until}</td>
                   <td className={cn("px-3 py-2", STATE_TONE[r.state])}>{r.stateLabel}</td>
-                  <td className="px-3 py-2 text-muted-foreground" title={r.reason ?? undefined}>
-                    {r.sourceLabel}
-                  </td>
+                  <Tip asChild content={r.reason ?? null}>
+                    <td className="px-3 py-2 text-muted-foreground">{r.sourceLabel}</td>
+                  </Tip>
                   {canManage && (
                     <td className="px-3 py-2 text-right">
                       <div className="flex justify-end gap-1">

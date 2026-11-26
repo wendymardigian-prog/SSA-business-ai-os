@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { EMAIL_STATUS_LABELS, emailStatusSourceLabel, isEmailStatus, type EmailStatus } from "@/lib/email/subscription";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El estado de email de un contacto (suscripcion a emails, 00270): "Email:
@@ -49,12 +50,13 @@ export function EmailStatusBadge({
 }) {
   const value: EmailStatus = isEmailStatus(status) ? status : "subscribed";
   return (
-    <span
-      title={emailStatusDetail({ status: value, at, source, timeZone })}
-      className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", TONE[value], className)}
-    >
-      {prefix}
-      {EMAIL_STATUS_LABELS[value]}
-    </span>
+    <Tip asChild content={emailStatusDetail({ status: value, at, source, timeZone })}>
+      <span
+        className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", TONE[value], className)}
+      >
+        {prefix}
+        {EMAIL_STATUS_LABELS[value]}
+      </span>
+    </Tip>
   );
 }

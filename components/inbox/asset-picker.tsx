@@ -18,6 +18,7 @@ import { AssetFilterBar } from "@/components/response-assets/asset-filter-bar";
 import { AssetThumb } from "@/components/response-assets/asset-thumb";
 import { AssetPreview } from "@/components/response-assets/asset-preview";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 const MANAGE_HREF = "/dashboard/settings/recursos";
 
@@ -244,42 +245,42 @@ export function AssetPicker({
                   const acceptance = acceptanceFor(asset, provider);
                   const active = index === state.activeIndex;
                   return (
-                    <li
-                      key={asset.id}
-                      ref={active ? activeRef : undefined}
-                      role="option"
-                      aria-selected={active}
-                      aria-disabled={!acceptance.ok || undefined}
-                      title={acceptance.ok ? undefined : acceptance.reason}
-                      // onMouseDown y no onClick: el foco no se va del buscador
-                      // antes de elegir.
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        choose(asset);
-                      }}
-                      onMouseEnter={() => dispatch({ type: "hover", index })}
-                      className={cn(
-                        "flex cursor-pointer items-center gap-2.5 px-3 py-2",
-                        active && "bg-accent",
-                        !acceptance.ok && "cursor-not-allowed opacity-50",
-                      )}
-                    >
-                      <AssetThumb asset={asset} size="sm" />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-sm font-medium">{asset.name}</span>
-                          {asset.shortcut && <code className="flex-shrink-0 rounded bg-muted px-1 text-[11px]">{asset.shortcut}</code>}
-                          {asset.tags.slice(0, 3).map((tag) => (
-                            <span key={tag} className="hidden flex-shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground sm:inline">
-                              #{tag}
-                            </span>
-                          ))}
+                    <Tip key={asset.id} asChild content={acceptance.ok ? undefined : acceptance.reason}>
+                      <li
+                        ref={active ? activeRef : undefined}
+                        role="option"
+                        aria-selected={active}
+                        aria-disabled={!acceptance.ok || undefined}
+                        // onMouseDown y no onClick: el foco no se va del buscador
+                        // antes de elegir.
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          choose(asset);
+                        }}
+                        onMouseEnter={() => dispatch({ type: "hover", index })}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2.5 px-3 py-2",
+                          active && "bg-accent",
+                          !acceptance.ok && "cursor-not-allowed opacity-50",
+                        )}
+                      >
+                        <AssetThumb asset={asset} size="sm" />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-sm font-medium">{asset.name}</span>
+                            {asset.shortcut && <code className="flex-shrink-0 rounded bg-muted px-1 text-[11px]">{asset.shortcut}</code>}
+                            {asset.tags.slice(0, 3).map((tag) => (
+                              <span key={tag} className="hidden flex-shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground sm:inline">
+                                #{tag}
+                              </span>
+                            ))}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {acceptance.ok ? contextLine(asset, 110) : acceptance.reason}
+                          </span>
                         </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {acceptance.ok ? contextLine(asset, 110) : acceptance.reason}
-                        </span>
-                      </span>
-                    </li>
+                      </li>
+                    </Tip>
                   );
                 })}
               </ul>

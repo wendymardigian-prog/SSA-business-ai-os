@@ -8,6 +8,7 @@ import { formatDateTime } from "@/components/contacts/ui";
 import { listOpenCollisions } from "@/lib/sequences/collisions";
 import { AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { Tip } from "@/components/ui/tooltip";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
 import { SectionHeaderSearch } from "@/components/comunicacion/section-search";
 import { NoSearchResults } from "@/components/comunicacion/no-search-results";
@@ -113,13 +114,15 @@ export default async function SequencesPage({ searchParams }: { searchParams: Pr
                           {status.label}
                         </span>
                         {colliding > 0 && (
-                          <span
-                            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-                            title={`${colliding} ${colliding === 1 ? "contacto está" : "contactos están"} también en otra secuencia por el mismo canal`}
+                          <Tip
+                            asChild
+                            content={`${colliding} ${colliding === 1 ? "contacto está" : "contactos están"} también en otra secuencia por el mismo canal`}
                           >
-                            <AlertTriangle className="h-3 w-3" />
-                            {colliding}
-                          </span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                              <AlertTriangle className="h-3 w-3" />
+                              {colliding}
+                            </span>
+                          </Tip>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">

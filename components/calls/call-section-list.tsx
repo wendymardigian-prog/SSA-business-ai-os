@@ -2,6 +2,7 @@ import Link from "next/link";
 import { callBadgeClass, scoreBadgeTone } from "@/lib/calls/badges";
 import { formatCallDate, humanize } from "@/lib/calls/format";
 import type { CallSectionRow } from "@/lib/calls/contact-section";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La lista de llamadas que se muestra en la ficha del contacto y en el detalle
@@ -26,10 +27,14 @@ export function CallSectionList({ rows, timeZone, compact = false }: { rows: Cal
                 <>
                   {c.outcome && <span className={callBadgeClass("info")}>{humanize(c.outcome)}</span>}
                   {!compact && c.closerScore !== null && (
-                    <span className={callBadgeClass(scoreBadgeTone(c.closerScore))} title="Puntaje del closer">Closer {c.closerScore}</span>
+                    <Tip asChild content="Puntaje del closer">
+                      <span className={callBadgeClass(scoreBadgeTone(c.closerScore))}>Closer {c.closerScore}</span>
+                    </Tip>
                   )}
                   {!compact && c.leadScore !== null && (
-                    <span className={callBadgeClass(scoreBadgeTone(c.leadScore))} title="Puntaje del lead">Lead {c.leadScore}</span>
+                    <Tip asChild content="Puntaje del lead">
+                      <span className={callBadgeClass(scoreBadgeTone(c.leadScore))}>Lead {c.leadScore}</span>
+                    </Tip>
                   )}
                 </>
               )}

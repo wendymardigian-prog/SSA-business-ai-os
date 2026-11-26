@@ -28,6 +28,7 @@ import { buildGenerateManyInput, countLine, manyPrimaryLabel, manyReason, params
 import { cn } from "@/lib/utils";
 import { EmailFields } from "./email-fields";
 import { notifyGenerationsChanged } from "./events";
+import { Tip } from "@/components/ui/tooltip";
 
 type Params = Record<string, string | string[]>;
 type Loaded = Awaited<ReturnType<typeof loadGenerateManyContext>> & { ok: true };
@@ -161,10 +162,12 @@ function GenerateManyDialog({ templateId, onClose }: { templateId: string; onClo
           <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>
             Cancelar
           </button>
-          <button type="button" className={primaryButton} onClick={submit} disabled={!!reason || !fresh || busy} title={reason ?? undefined}>
-            {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-            {manyPrimaryLabel(counts, skip)}
-          </button>
+          <Tip content={reason ?? undefined}>
+            <button type="button" className={primaryButton} onClick={submit} disabled={!!reason || !fresh || busy}>
+              {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+              {manyPrimaryLabel(counts, skip)}
+            </button>
+          </Tip>
         </>
       }
     >

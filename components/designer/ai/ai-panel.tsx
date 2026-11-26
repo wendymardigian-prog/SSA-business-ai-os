@@ -47,6 +47,7 @@ import {
   WORKING_LABEL,
   type PendingAttachment,
 } from "@/lib/designer/screens/ai-panel";
+import { Tip } from "@/components/ui/tooltip";
 
 const INTEGRATIONS_HREF = "/dashboard/settings/integrations";
 
@@ -438,10 +439,12 @@ export function AiPanel(props: AiPanelProps) {
                 <Sparkles className="h-3.5 w-3.5" aria-hidden /> Conectá una clave de IA en Configuración
               </Link>
             ) : (
-              <button type="button" onClick={send} disabled={!state.canSend} title={!state.canSend && state.reason ? state.reason : undefined} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Send className="h-3.5 w-3.5" aria-hidden />}
-                Enviar
-              </button>
+              <Tip content={!state.canSend && state.reason ? state.reason : undefined}>
+                <button type="button" onClick={send} disabled={!state.canSend} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Send className="h-3.5 w-3.5" aria-hidden />}
+                  Enviar
+                </button>
+              </Tip>
             )}
           </div>
 

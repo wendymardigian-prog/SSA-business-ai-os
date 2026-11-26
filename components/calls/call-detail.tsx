@@ -28,6 +28,8 @@ import { typeDeciderText } from "@/lib/calls/list";
 import type { DetailTab, DetailView } from "@/lib/calls/detail-view";
 import { useRouter } from "next/navigation";
 import { DeleteButton } from "@/components/trash/delete-dialog";
+import { Tip } from "@/components/ui/tooltip";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 
 /** «Eliminar grabación» chiquito, al lado de las otras acciones (rojo: va a la Papelera). */
 const DELETE_CHIP_CLASS =
@@ -40,6 +42,8 @@ const DELETE_CHIP_CLASS =
  */
 
 export interface CallDetailData extends TabsData {
+  /** Quien la grabo, si es del equipo (su circulo). Sin esto, solo el texto. */
+  closerUserId?: string | null;
   /** `calls.delete`: «Eliminar grabación» (va a la Papelera 30 días). */
   canDelete?: boolean;
   title: string;
@@ -121,9 +125,11 @@ function CallPanelBar({ panel }: { panel: CallPanelNav }) {
       </button>
       {panel.position && <span className="text-xs tabular-nums text-muted-foreground">{panel.position.index + 1} de {panel.position.total}</span>}
       <span className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">Llamada</span>
-      <Link href={panel.openHref} aria-label="Abrir en una página" title="Abrir en una página" className={arrow}>
-        <Maximize2 className="h-4 w-4" aria-hidden />
-      </Link>
+      <Tip asChild content="Abrir en una página">
+        <Link href={panel.openHref} aria-label="Abrir en una página" className={arrow}>
+          <Maximize2 className="h-4 w-4" aria-hidden />
+        </Link>
+      </Tip>
       <button type="button" onClick={panel.onClose} aria-label="Cerrar" className={arrow}>
         <X className="h-4 w-4" aria-hidden />
       </button>
@@ -214,14 +220,22 @@ export function CallDetail({ data, view, canEdit, panel }: { data: CallDetailDat
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span>{formatCallDate(data.recordedAt, timeZone)}</span>
                 <span>{formatDuration(data.durationSeconds)}</span>
-                <span>Grabó: {data.closerName ?? data.recorderEmail ?? "—"}</span>
+                {data.closerUserId && data.closerName ? (
+                  <span className="inline-flex min-w-0 items-center gap-1">
+                    Grabó: <PersonAvatar userId={data.closerUserId} name={data.closerName} role="Grabó" size="sm" showName />
+                  </span>
+                ) : (
+                  <span>Grabó: {data.closerName ?? data.recorderEmail ?? "—"}</span>
+                )}
                 <SourceChip source={data.source} />
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
-                <span title={typeDeciderText({ classification_source: data.classificationSource, classification_rule: data.classificationRule, classification_confidence: data.classificationConfidence }) ?? undefined} className="inline-flex items-center gap-1">
-                  <Tag className="h-3 w-3 text-muted-foreground" aria-hidden />
-                  <TypeChip type={data.callType} label={data.categoryLabel} needsReview={data.needsReview} />
-                </span>
+                <Tip asChild content={typeDeciderText({ classification_source: data.classificationSource, classification_rule: data.classificationRule, classification_confidence: data.classificationConfidence }) ?? null}>
+                  <span className="inline-flex items-center gap-1">
+                    <Tag className="h-3 w-3 text-muted-foreground" aria-hidden />
+                    <TypeChip type={data.callType} label={data.categoryLabel} needsReview={data.needsReview} />
+                  </span>
+                </Tip>
                 <StatusChip status={data.status} />
                 {canEdit && data.status !== "classifying" && data.status !== "analyzing" && (
                   <>

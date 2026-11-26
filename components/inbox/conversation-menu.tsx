@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { BadgeCheck, BadgeX, CheckCheck, Clock, HeartHandshake, HeartOff, ListPlus, MoreHorizontal, RotateCcw } from "lucide-react";
 import { NOTE_TEXT, type HeaderPlan, type MenuAction } from "@/lib/inbox/header-actions";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El menu "⋯" de la cabecera de una conversacion: las acciones que no se usan a
@@ -88,20 +89,21 @@ export function ConversationMenu({
         }
       }}
     >
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        aria-label={plan.hasAlert ? "Más acciones (hay avisos)" : "Más acciones"}
-        title="Más acciones"
-        onClick={() => setOpen((value) => !value)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-      >
-        <MoreHorizontal className="h-4 w-4" aria-hidden />
-        {plan.hasAlert && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-500" aria-hidden />}
-      </button>
+      <Tip asChild content="Más acciones">
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          aria-label={plan.hasAlert ? "Más acciones (hay avisos)" : "Más acciones"}
+          onClick={() => setOpen((value) => !value)}
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <MoreHorizontal className="h-4 w-4" aria-hidden />
+          {plan.hasAlert && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-500" aria-hidden />}
+        </button>
+      </Tip>
       {open && (
         <div className="absolute right-0 top-full z-50 mt-1 w-72 max-w-[calc(100vw-1.5rem)] rounded-xl border border-border bg-popover p-1 shadow-lg">
           {plan.menu.length > 0 && (

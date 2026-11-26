@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateTime, formatRelative } from "@/components/contacts/ui";
 import type { CellTone, CellValue } from "@/lib/contacts/filters/types";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Una celda de la lista de contactos armada con datos (`CellValue`): la
@@ -45,10 +46,12 @@ export function ContactCell({ value, loading, memberLabel }: { value: CellValue 
   switch (value.t) {
     case "text": {
       const body = (
-        <span className="block truncate text-muted-foreground" title={[value.title ?? value.text, value.sub].filter(Boolean).join(" · ")}>
-          {value.text}
-          <Sub>{value.sub}</Sub>
-        </span>
+        <Tip asChild content={[value.title ?? value.text, value.sub].filter(Boolean).join(" · ")}>
+          <span className="block truncate text-muted-foreground">
+            {value.text}
+            <Sub>{value.sub}</Sub>
+          </span>
+        </Tip>
       );
       return value.href ? (
         <Link href={value.href} className="block hover:underline">
@@ -89,6 +92,6 @@ export function ContactCell({ value, loading, memberLabel }: { value: CellValue 
         </span>
       );
     case "list":
-      return <span className="block truncate text-muted-foreground" title={value.items.join(", ")}>{value.items.join(", ")}</span>;
+      return <Tip asChild content={value.items.join(", ")}><span className="block truncate text-muted-foreground">{value.items.join(", ")}</span></Tip>;
   }
 }

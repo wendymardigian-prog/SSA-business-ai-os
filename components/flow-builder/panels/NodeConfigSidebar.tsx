@@ -24,6 +24,7 @@ import { chosenType } from "@/lib/flow-engine/trigger-catalog";
 import { pickerVariables } from "@/lib/flow-engine/variable-catalog";
 import { VariableLabelsProvider } from "./variable-chips";
 import { actionLabel } from "../nodes/action-node";
+import { Tip } from "@/components/ui/tooltip";
 
 interface NodeConfigSidebarProps {
   /** El flujo que se edita (el panel de Condiciones le pide al servidor los campos comparables). */
@@ -295,15 +296,16 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
         <div className="flex items-center gap-1">
           {/* El disparador no se borra: toda automatizacion arranca por uno. Se cambia con "Cambiar disparador". */}
           {nodeType !== "trigger" && (
-            <button
-              type="button"
-              onClick={() => onDelete(node.id)}
-              className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-500"
-              title="Borrar paso"
-              aria-label="Borrar paso"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <Tip asChild content="Borrar paso">
+              <button
+                type="button"
+                onClick={() => onDelete(node.id)}
+                className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-500"
+                aria-label="Borrar paso"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </Tip>
           )}
           <button
             type="button"

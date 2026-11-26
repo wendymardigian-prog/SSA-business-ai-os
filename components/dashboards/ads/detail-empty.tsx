@@ -8,6 +8,7 @@ import type { EmptyDetailPageData } from "@/lib/dashboards/ads-detail-page";
 import { periodQuery } from "@/lib/dashboards/period-filter";
 import { HeaderFilters, RefreshButton } from "./header-controls";
 import { useAdsNavigation } from "./use-ads-navigation";
+import { Tip } from "@/components/ui/tooltip";
 
 const ROUTE: Record<DetailLevel, string> = {
   campaign: "/dashboard/dashboards/ads/campaigns/[id]",
@@ -27,14 +28,15 @@ export function AdsDetailEmpty({ level, adAccountId, period }: { level: DetailLe
       <PageHeader
         route={ROUTE[level]}
         backHref={
-          <Link
-            href={`/dashboard/dashboards/ads?${periodQuery(period, { cuenta: adAccountId })}`}
-            aria-label="Volver a Meta Ads"
-            title="Volver a Meta Ads"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-          </Link>
+          <Tip asChild content="Volver a Meta Ads">
+            <Link
+              href={`/dashboard/dashboards/ads?${periodQuery(period, { cuenta: adAccountId })}`}
+              aria-label="Volver a Meta Ads"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            </Link>
+          </Tip>
         }
         filters={<HeaderFilters accounts={[]} adAccountId={adAccountId} period={period} onChange={navigate} onApplyPeriod={applyPeriod} />}
         right={<RefreshButton refreshing={pending} onRefresh={refresh} />}

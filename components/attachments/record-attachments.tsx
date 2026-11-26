@@ -9,6 +9,7 @@ import { useRef, useState } from "react";
 import { Loader2, Paperclip, X } from "lucide-react";
 import { attachCommentFile, attachNoteFile, recordAttachmentUrl } from "@/lib/actions/record-attachments";
 import { RECORD_ATTACHMENT_ACCEPT, RECORD_ATTACHMENTS_MAX, pickRecordFiles, type RecordAttachmentView } from "@/lib/attachments/record-files";
+import { Tip } from "@/components/ui/tooltip";
 
 export type AttachmentKind = "note" | "comment";
 
@@ -46,16 +47,17 @@ export function AttachmentPicker({ files, onChange, onError, disabled }: { files
           e.target.value = "";
         }}
       />
-      <button
-        type="button"
-        title={`Adjuntar archivos (hasta ${RECORD_ATTACHMENTS_MAX})`}
-        aria-label="Adjuntar archivos"
-        disabled={disabled || files.length >= RECORD_ATTACHMENTS_MAX}
-        onClick={() => ref.current?.click()}
-        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 md:h-8 md:w-8"
-      >
-        <Paperclip className="h-4 w-4" aria-hidden />
-      </button>
+      <Tip content={`Adjuntar archivos (hasta ${RECORD_ATTACHMENTS_MAX})`}>
+        <button
+          type="button"
+          aria-label="Adjuntar archivos"
+          disabled={disabled || files.length >= RECORD_ATTACHMENTS_MAX}
+          onClick={() => ref.current?.click()}
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 md:h-8 md:w-8"
+        >
+          <Paperclip className="h-4 w-4" aria-hidden />
+        </button>
+      </Tip>
     </>
   );
 }

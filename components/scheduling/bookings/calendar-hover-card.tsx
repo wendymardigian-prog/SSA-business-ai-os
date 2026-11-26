@@ -2,22 +2,23 @@
 
 /**
  * La tarjeta que aparece AL INSTANTE al pasar el mouse (o al llegar con Tab) por un bloque del calendario de la Agenda:
- * el nombre completo y los detalles. Una sola por calendario, `position: fixed`, ubicada con `placeTooltip` para que
- * entre en la pantalla. No se abre mientras se arrastra. El contenido lo arman las funciones puras de
+ * el nombre completo y los detalles. Una sola por calendario (no un `Tip` por bloque: puede haber cientos), con el
+ * mismo aspecto y la misma ubicacion que el tooltip del sistema (`TIP_PANEL_CLASS`, `placeTip` con el panel medido). No se abre mientras se arrastra. El contenido lo arman las funciones puras de
  * `lib/calendar/hover-content.ts`.
  */
-import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type MouseEvent } from "react";
-import { placeTooltip, type TooltipPlacement } from "@/lib/ui/tooltip-position";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent } from "react";
+import { placeTip } from "@/lib/ui/tooltip-position";
+import { TIP_PANEL_CLASS } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { HoverContent } from "@/lib/calendar/hover-content";
-
-const WIDTH = 280;
-const HEIGHT_GUESS = 150;
 
 type Anchor = HTMLElement;
 
 export function useCalendarHover(disabled: boolean) {
   const id = useId();
-  const [state, setOpen] = useState<{ content: HoverContent; placement: TooltipPlacement } | null>(null);
+  const [state, setOpen] = useState<{ content: HoverContent; anchor: DOMRect } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const disabledRef = useRef(disabled);
   useEffect(() => {
     disabledRef.current = disabled;
@@ -27,18 +28,28 @@ export function useCalendarHover(disabled: boolean) {
 
   const show = useCallback((el: Anchor, content: HoverContent) => {
     if (disabledRef.current) return;
-    const rect = el.getBoundingClientRect();
-    setOpen({
-      content,
-      placement: placeTooltip({
-        anchor: { left: rect.left, top: rect.top, bottom: rect.bottom },
-        viewport: { width: window.innerWidth, height: window.innerHeight },
-        width: WIDTH,
-        height: HEIGHT_GUESS,
-      }),
-    });
+    setPos(null);
+    setOpen({ content, anchor: el.getBoundingClientRect() });
   }, []);
-  const hide = useCallback(() => setOpen(null), []);
+  const hide = useCallback(() => {
+    setOpen(null);
+    setPos(null);
+  }, []);
+
+  // La tarjeta se dibuja invisible, se mide y recien ahi se ubica (como `Tip`).
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!open || !card) return;
+    const r = open.anchor;
+    const placed = placeTip({
+      anchor: { left: r.left, top: r.top, right: r.right, bottom: r.bottom },
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      panel: { width: card.offsetWidth, height: card.offsetHeight },
+      side: "bottom",
+      align: "start",
+    });
+    setPos({ left: placed.left, top: placed.top });
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -69,13 +80,16 @@ export function useCalendarHover(disabled: boolean) {
 
   const card = (
     <div
+      ref={cardRef}
       id={id}
       role="tooltip"
       hidden={!open}
-      className="pointer-events-none fixed z-[70] rounded-lg border border-border bg-popover p-2.5 text-left text-popover-foreground shadow-lg"
+      className={cn(TIP_PANEL_CLASS, "z-[70] w-[280px] max-w-[calc(100vw-1rem)] p-2.5")}
       style={
         open
-          ? { left: open.placement.left, top: open.placement.top, width: open.placement.width, transform: open.placement.above ? "translateY(-100%)" : undefined }
+          ? pos
+            ? { transform: `translate(${Math.round(pos.left)}px, ${Math.round(pos.top)}px)` }
+            : { visibility: "hidden", transform: "translate(-9999px, -9999px)" }
           : undefined
       }
     >

@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Columns3, GripVertical, Pin, Search } from "lucide-
 import { Popover } from "@/components/ui/popover";
 import { isColumnVisible, isDefaultPrefs, menuSections, moveColumn, moveColumnTo, resetColumns, resetWidths, showAllColumns, toggleColumn, togglePinned } from "@/lib/ui/data-table/prefs";
 import type { TablePrefsState } from "./use-table-prefs";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El menú «Columnas» de TODAS las tablas del sistema: buscador, un tilde por columna, orden (flechas y arrastre), alfiler
@@ -90,16 +91,17 @@ export function ColumnsMenu({ state }: { state: TablePrefsState }) {
                     <span className="truncate">{label}</span>
                   </label>
                   {meta.pinnable !== false && (
-                    <button
-                      type="button"
-                      onClick={() => update((current) => togglePinned(metas, current, key))}
-                      aria-pressed={pinned}
-                      aria-label={pinned ? `Soltar ${label}` : `Fijar ${label} a la izquierda`}
-                      title={pinned ? "Fijada a la izquierda. Clic para soltarla." : "Fijar a la izquierda"}
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-accent ${pinned ? "text-primary-ink" : "text-muted-foreground/50 hover:text-foreground"}`}
-                    >
-                      <Pin className="h-3 w-3" aria-hidden />
-                    </button>
+                    <Tip asChild content={pinned ? "Fijada a la izquierda. Clic para soltarla." : "Fijar a la izquierda"}>
+                      <button
+                        type="button"
+                        onClick={() => update((current) => togglePinned(metas, current, key))}
+                        aria-pressed={pinned}
+                        aria-label={pinned ? `Soltar ${label}` : `Fijar ${label} a la izquierda`}
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-accent ${pinned ? "text-primary-ink" : "text-muted-foreground/50 hover:text-foreground"}`}
+                      >
+                        <Pin className="h-3 w-3" aria-hidden />
+                      </button>
+                    </Tip>
                   )}
                   {!searching && (
                     <>

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { getDocumentSignedUrl } from "@/lib/actions/knowledge";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Descarga el archivo original.
@@ -48,9 +49,9 @@ export function DownloadOriginalButton({
         )}
         Descargar original
       </button>
-      <p className="mt-1 max-w-[16rem] truncate text-xs text-muted-foreground" title={filename}>
-        {filename}
-      </p>
+      <Tip asChild content={filename}>
+        <p className="mt-1 max-w-[16rem] truncate text-xs text-muted-foreground">{filename}</p>
+      </Tip>
       {error && (
         <p role="alert" className="mt-1 text-xs text-red-700 dark:text-red-400">
           {error}

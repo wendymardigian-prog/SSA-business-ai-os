@@ -8,6 +8,7 @@ import { formatConnectedSince, formatLastRefreshed, formatOAuthExpiry } from "@/
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { GoogleServices } from "./google-services";
 import type { IntegrationCardData } from "./types";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La card de una integracion (F2, G2).
@@ -91,9 +92,11 @@ export function IntegrationCard({
       <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{provider.description}</p>
 
       {data.account && (
-        <p className="mt-2 truncate text-xs font-medium" title={data.account}>
-          {data.account}
-        </p>
+        <Tip asChild content={data.account}>
+          <p className="mt-2 truncate text-xs font-medium">
+            {data.account}
+          </p>
+        </Tip>
       )}
 
       {connectedSince && <p className="mt-1 text-[11px] text-muted-foreground">{connectedSince}</p>}

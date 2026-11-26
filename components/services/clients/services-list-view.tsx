@@ -1,6 +1,7 @@
 // @plantilla-quitar(servicios)
 "use client";
 
+import { PersonAvatar } from "@/components/ui/person-avatar";
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -32,12 +33,13 @@ import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
 import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
 import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 import { SERVICES_TABLE_KEY, serviceColumnMetas } from "@/lib/services/screens/services-columns";
+import { Tip } from "@/components/ui/tooltip";
 
 const LIGHT_DOT: Record<string, string> = { red: "bg-bad", yellow: "bg-warn", green: "bg-good", gray: "bg-muted-foreground/40" };
 const GROUP_LABELS: Record<GroupBy, string> = { none: "Sin agrupar", phase: "Fase", light: "Semáforo", owner: "Responsable" };
 
 export function LightDot({ light, label }: { light: string; label: string }) {
-  return <span className={cn("inline-block h-2.5 w-2.5 shrink-0 rounded-full", LIGHT_DOT[light] ?? LIGHT_DOT.gray)} title={label} aria-label={label} role="img" />;
+  return <Tip asChild content={label}><span className={cn("inline-block h-2.5 w-2.5 shrink-0 rounded-full", LIGHT_DOT[light] ?? LIGHT_DOT.gray)} aria-label={label} role="img" /></Tip>;
 }
 
 /**
@@ -105,7 +107,7 @@ export function ServicesListView({
         );
       },
       product: (s) => view(s).product,
-      owner: (s) => view(s).owner,
+      owner: (s) => <PersonAvatar userId={s.ownerId} name={s.ownerName} role="Responsable" emptyLabel="Sin responsable" size="sm" showName />,
       light: (s) => {
         const r = view(s);
         return (
@@ -195,8 +197,11 @@ export function ServicesListView({
                               {r.reviewChip && <span className="ml-auto shrink-0 rounded-full bg-warn/15 px-1.5 text-[11px] font-medium text-warn">{s.pendingReviews}</span>}
                             </span>
                             <span className="mt-1 block truncate text-xs text-muted-foreground">{r.product}</span>
-                            <span className="mt-1 block text-xs text-muted-foreground">
-                              {r.day} · {r.progress}
+                            <span className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                              <span className="min-w-0 flex-1 truncate">
+                                {r.day} · {r.progress}
+                              </span>
+                              <PersonAvatar userId={s.ownerId} name={s.ownerName} role="Responsable" emptyLabel="Sin responsable" size="sm" />
                             </span>
                           </Link>
                         </li>

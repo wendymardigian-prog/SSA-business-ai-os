@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { validateProfileRubric, type ProfileShape } from "@/lib/calls/profiles";
 import { activeWeight, uniqueKey, type Criterion, type Rubric } from "@/lib/calls/rubric";
 import { inputClass } from "@/components/agents/fields";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La rubrica de un analizador (F19): criterios de quien atendio y, en el formato de ventas, del
@@ -71,9 +72,11 @@ function Column({ side, title, list, readOnly, onChange }: { side: "closer" | "l
                   className={cn(inputClass, "min-w-0 flex-1 py-1.5")}
                 />
                 {c.subtracts && (
-                  <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800 dark:bg-red-950/60 dark:text-red-300" title="Si pasa, resta estos puntos de la nota">
-                    Resta
-                  </span>
+                  <Tip asChild content="Si pasa, resta estos puntos de la nota">
+                    <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800 dark:bg-red-950/60 dark:text-red-300">
+                      Resta
+                    </span>
+                  </Tip>
                 )}
                 <input
                   aria-label={c.subtracts ? `Puntos que resta ${c.nombre}` : `Peso de ${c.nombre}`}

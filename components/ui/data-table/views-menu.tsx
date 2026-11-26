@@ -7,6 +7,7 @@ import { Popover } from "@/components/ui/popover";
 import { deleteTableView, saveTableView, setTableViewDefault } from "@/lib/actions/table-views";
 import { buildViewConfig, canManageView, VISIBILITY_LABELS, viewFilterString, viewHref, visibilityLine, VIEW_VISIBILITIES, type TableViewItem, type ViewVisibility } from "@/lib/ui/data-table/views";
 import { clearTableDraft, type TablePrefsState } from "./use-table-prefs";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El menú de vistas de una tabla: elegir una vista guardada (columnas y filtros), guardar la actual, y administrarlas.
@@ -55,7 +56,7 @@ export function ViewsMenu(props: ViewsMenuProps) {
           <Bookmark className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
           <span className="hidden truncate md:inline">{active ? active.name : "Vistas"}</span>
           <span className="sr-only md:hidden">Vistas</span>
-          {dirty && <span aria-hidden className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-background bg-primary" title="Hay cambios sin guardar" />}
+          {dirty && <Tip asChild content="Hay cambios sin guardar"><span aria-hidden className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-background bg-primary" /></Tip>}
         </>
       }
       panelClassName="w-[min(22rem,calc(100vw-2rem))] max-h-[75vh] overflow-y-auto"
@@ -180,17 +181,18 @@ function ViewsList({
                     </span>
                   </span>
                 </button>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => toggleDefault(view)}
-                  aria-pressed={isDefault}
-                  aria-label={isDefault ? `Quitar «${view.name}» como mi predeterminada` : `Dejar «${view.name}» como mi predeterminada`}
-                  title={isDefault ? "Es tu vista predeterminada. Clic para quitarla." : "Dejarla como tu vista predeterminada"}
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-accent ${isDefault ? "text-amber-500" : "text-muted-foreground/50 hover:text-foreground"}`}
-                >
-                  <Star className={`h-3.5 w-3.5 ${isDefault ? "fill-current" : ""}`} aria-hidden />
-                </button>
+                <Tip asChild content={isDefault ? "Es tu vista predeterminada. Clic para quitarla." : "Dejarla como tu vista predeterminada"}>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => toggleDefault(view)}
+                    aria-pressed={isDefault}
+                    aria-label={isDefault ? `Quitar «${view.name}» como mi predeterminada` : `Dejar «${view.name}» como mi predeterminada`}
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-accent ${isDefault ? "text-amber-500" : "text-muted-foreground/50 hover:text-foreground"}`}
+                  >
+                    <Star className={`h-3.5 w-3.5 ${isDefault ? "fill-current" : ""}`} aria-hidden />
+                  </button>
+                </Tip>
                 {manageable &&
                   (confirmDelete === view.id ? (
                     <span className="flex shrink-0 items-center gap-1 pr-1 text-[11px]">
@@ -203,12 +205,16 @@ function ViewsList({
                     </span>
                   ) : (
                     <>
-                      <button type="button" onClick={() => onEdit(view)} aria-label={`Editar «${view.name}»`} title="Editar" className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:bg-accent hover:text-foreground">
-                        <Pencil className="h-3.5 w-3.5" aria-hidden />
-                      </button>
-                      <button type="button" onClick={() => setConfirmDelete(view.id)} aria-label={`Borrar «${view.name}»`} title="Borrar" className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:bg-accent hover:text-red-600">
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                      </button>
+                      <Tip asChild content="Editar">
+                        <button type="button" onClick={() => onEdit(view)} aria-label={`Editar «${view.name}»`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:bg-accent hover:text-foreground">
+                          <Pencil className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                      </Tip>
+                      <Tip asChild content="Borrar">
+                        <button type="button" onClick={() => setConfirmDelete(view.id)} aria-label={`Borrar «${view.name}»`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:bg-accent hover:text-red-600">
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                      </Tip>
                     </>
                   ))}
               </li>

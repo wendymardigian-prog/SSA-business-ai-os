@@ -27,6 +27,8 @@ import type { TablePrefsState } from "@/components/ui/data-table/use-table-prefs
 import { NeedsOutcomeChip, SlotReleasedChip, StatusChip } from "./status-chip";
 import { StatusMenu } from "./status-menu";
 import { MeetJoinLink } from "./meet-join-link";
+import { PersonAvatar } from "@/components/ui/person-avatar";
+import { Tip } from "@/components/ui/tooltip";
 
 const NO_NAMES = { campaign: null, adset: null, ad: null };
 
@@ -86,15 +88,25 @@ export function BookingsList({
         render: (item) => (
           <span className="flex items-center gap-2">
             <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: item.eventColor ?? "var(--muted-foreground)" }} />
-            <span className="min-w-0 flex-1 truncate" title={item.title}>
-              {item.title}
-            </span>
+            <Tip asChild content={item.title}>
+              <span className="min-w-0 flex-1 truncate">{item.title}</span>
+            </Tip>
             <MeetJoinLink meetUrl={item.meetUrl} status={item.status} />
           </span>
         ),
       },
-      category: { cellClassName: "text-muted-foreground", render: (item) => <span title={categoryText(item)}>{categoryText(item)}</span> },
-      host: { cellClassName: "text-muted-foreground", render: (item) => hostNames[item.hostUserId] ?? "—" },
+      category: {
+        cellClassName: "text-muted-foreground",
+        render: (item) => (
+          <Tip asChild content={categoryText(item)}>
+            <span>{categoryText(item)}</span>
+          </Tip>
+        ),
+      },
+      host: {
+        cellClassName: "text-muted-foreground",
+        render: (item) => <PersonAvatar userId={item.hostUserId} name={hostNames[item.hostUserId] ?? item.hostName} role="Anfitrión" size="sm" showName emptyLabel="Sin anfitrión" className="max-w-full" />,
+      },
       status: {
         render: (item) => (
           <span className="flex flex-wrap items-center gap-1.5">

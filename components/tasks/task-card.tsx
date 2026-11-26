@@ -1,5 +1,6 @@
 "use client";
 
+import { Tip } from "@/components/ui/tooltip";
 import { useRef, useState, type DragEvent } from "react";
 import { GripVertical, Lock, MoreHorizontal, Repeat, Users } from "lucide-react";
 import { dueLabel, formatSource, repeatOf, type SourceContext } from "@/lib/tasks/format";
@@ -98,16 +99,20 @@ export function TaskCard({ view, today, canEdit, busy, source, variant, onOpen, 
         {view.priority !== "normal" && <PriorityChip priority={view.priority} />}
         {view.project && <span className="max-w-[10rem] truncate rounded-md bg-muted px-1.5 py-0.5">{view.project}</span>}
         {view.blocked && (
-          <span title={`Bloqueada por ${view.blockedCount} ${view.blockedCount === 1 ? "tarea" : "tareas"} sin completar`} className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
-            <Lock className="h-3.5 w-3.5" aria-hidden />
-            <span className="sr-only">Bloqueada por {view.blockedCount} {view.blockedCount === 1 ? "tarea" : "tareas"} sin completar</span>
-          </span>
+          <Tip asChild content={`Bloqueada por ${view.blockedCount} ${view.blockedCount === 1 ? "tarea" : "tareas"} sin completar`}>
+            <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
+              <Lock className="h-3.5 w-3.5" aria-hidden />
+              <span className="sr-only">Bloqueada por {view.blockedCount} {view.blockedCount === 1 ? "tarea" : "tareas"} sin completar</span>
+            </span>
+          </Tip>
         )}
         {view.followerCount > 0 && (
-          <span className="inline-flex items-center gap-1 text-muted-foreground" title={`${view.followerCount} ${view.followerCount === 1 ? "seguidor" : "seguidores"}`}>
-            <Users className="h-3.5 w-3.5" aria-hidden />
-            {view.followerCount}
-          </span>
+          <Tip asChild content={`${view.followerCount} ${view.followerCount === 1 ? "seguidor" : "seguidores"}`}>
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <Users className="h-3.5 w-3.5" aria-hidden />
+              {view.followerCount}
+            </span>
+          </Tip>
         )}
         {origin.label !== "Manual" && <span className="text-muted-foreground">{origin.label}</span>}
         <span className="ml-auto">

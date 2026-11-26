@@ -16,6 +16,7 @@ import type { RoleCallArea } from "./call-area-access";
 import { RoleEditor } from "./role-editor";
 import type { RoleChannelAccount } from "./channel-access-section";
 import { NewRoleDialog } from "./new-role-dialog";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La pantalla de roles (F71, B3).
@@ -145,26 +146,28 @@ export function RolesView({
                         <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden />
                       </button>
                       {canManage && (
-                        <button
-                          type="button"
-                          onClick={() => setCreating(true)}
-                          title="Duplicar este rol"
-                          aria-label={`Duplicar el rol ${role.name}`}
-                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                        >
-                          <Copy className="h-3.5 w-3.5" aria-hidden />
-                        </button>
+                        <Tip asChild content="Duplicar este rol">
+                          <button
+                            type="button"
+                            onClick={() => setCreating(true)}
+                            aria-label={`Duplicar el rol ${role.name}`}
+                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            <Copy className="h-3.5 w-3.5" aria-hidden />
+                          </button>
+                        </Tip>
                       )}
                       {editable && (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmingDelete(role)}
-                          title="Borrar el rol"
-                          aria-label={`Borrar el rol ${role.name}`}
-                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                        </button>
+                        <Tip asChild content="Borrar el rol">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingDelete(role)}
+                            aria-label={`Borrar el rol ${role.name}`}
+                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                          </button>
+                        </Tip>
                       )}
                     </div>
                   </div>

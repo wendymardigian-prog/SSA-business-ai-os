@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Hand, Loader2 } from "lucide-react";
 import { Avatar, FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 import { colorOf, initialsOf } from "@/lib/shared/people";
+import { PersonAvatar } from "@/components/ui/person-avatar";
+import { Tip } from "@/components/ui/tooltip";
 import { assigneeControl, assigneeName, assigneeOptions, type TeamMember } from "@/lib/inbox/assignee";
 import { setConversationAssignee } from "@/lib/actions/conversation-assign";
 
@@ -74,16 +76,19 @@ export function ConversationAssignee({
   if (control.kind === "take") {
     return (
       <span className="inline-flex items-center">
-        <button
-          type="button"
-          onClick={() => change(currentUserId)}
-          disabled={pending}
-          title="Asignarme esta conversación"
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-        >
-          {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Hand className="h-4 w-4" aria-hidden />}
-          <span className="hidden @xl:inline">Tomar</span>
-        </button>
+        {/* Sin asChild: el boton se deshabilita mientras guarda y un boton deshabilitado no recibe el puntero. */}
+        <Tip content="Asignarme esta conversación">
+          <button
+            type="button"
+            onClick={() => change(currentUserId)}
+            disabled={pending}
+            aria-label="Asignarme esta conversación"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Hand className="h-4 w-4" aria-hidden />}
+            <span className="hidden @xl:inline">Tomar</span>
+          </button>
+        </Tip>
         {error && <ErrorNote text={error} />}
       </span>
     );
@@ -91,8 +96,14 @@ export function ConversationAssignee({
 
   if (control.kind === "readonly") {
     return (
-      <span title={label} role="img" aria-label={label} className="inline-flex h-9 items-center px-1">
-        {circle}
+      <span className="inline-flex h-9 items-center px-1">
+        <PersonAvatar
+          userId={shown}
+          name={shown ? name : null}
+          role="Responsable"
+          size="md"
+          emptyLabel={shown ? "Responsable: alguien que ya no está en el equipo" : "Sin responsable"}
+        />
       </span>
     );
   }
@@ -120,8 +131,10 @@ export function ConversationAssignee({
 /** El error, a la vista: una palabra en rojo y el detalle completo para el lector de pantalla y el tooltip. */
 function ErrorNote({ text }: { text: string }) {
   return (
-    <span role="alert" title={text} className="max-w-[9rem] truncate text-[11px] font-medium text-red-600 dark:text-red-400">
-      {text}
-    </span>
+    <Tip asChild content={text}>
+      <span role="alert" className="max-w-[9rem] truncate text-[11px] font-medium text-red-600 dark:text-red-400">
+        {text}
+      </span>
+    </Tip>
   );
 }

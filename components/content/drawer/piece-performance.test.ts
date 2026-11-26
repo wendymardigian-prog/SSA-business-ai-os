@@ -166,7 +166,9 @@ describe("PiecePerformanceSection (F102)", () => {
     const markup = html([ig, yt]);
 
     expect(markup).toContain("2 publicaciones");
-    expect(markup).toContain("es contexto, no un ranking");
+    // «Es contexto, no un ranking» va en el tooltip del sistema (`Tip`), que se dibuja recién al pasar el mouse: ya no
+    // es un `title=` en el HTML.
+    expect(markup).not.toContain('title="Suma de lo crudo');
   });
 
   it("la tabla se desliza sola en pantallas angostas, sin ensanchar la pagina", () => {

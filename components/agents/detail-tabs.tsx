@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { headerTabClass } from "@/components/ui/header-tabs";
 import { LinkPending } from "@/components/ui/link-pending";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Las pestañas del detalle de un agente y de una tarea de IA. Van en la barra
@@ -16,7 +17,7 @@ import { LinkPending } from "@/components/ui/link-pending";
  * despues, con su esqueleto (el `<Suspense key={tab}>` de cada pagina).
  *
  * Una pestaña con `unavailable` se ve apagada y no es un link (la razon va en
- * el `title`).
+ * el tooltip).
  */
 export function DetailTabs({
   tabs,
@@ -42,14 +43,14 @@ export function DetailTabs({
     <nav aria-label={label} className="flex shrink-0 items-center rounded-lg bg-muted/60 p-0.5">
       {tabs.map((t) =>
         t.unavailable ? (
-          <span
-            key={t.key}
-            title={t.unavailable}
-            aria-disabled="true"
-            className={cn(headerTabClass(false), "cursor-not-allowed text-muted-foreground/50 hover:text-muted-foreground/50")}
-          >
-            {t.label} <span className="text-[10px]">· próximamente</span>
-          </span>
+          <Tip key={t.key} asChild content={t.unavailable}>
+            <span
+              aria-disabled="true"
+              className={cn(headerTabClass(false), "cursor-not-allowed text-muted-foreground/50 hover:text-muted-foreground/50")}
+            >
+              {t.label} <span className="text-[10px]">· próximamente</span>
+            </span>
+          </Tip>
         ) : (
           <Link
             key={t.key}

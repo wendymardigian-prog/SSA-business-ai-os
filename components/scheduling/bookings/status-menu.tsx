@@ -16,6 +16,7 @@ import type { BookingStatus } from "@/lib/scheduling/types";
 import { BOOKING_STATUSES, evaluateTransition, groupOf, TRANSITION_REASON_TEXT } from "@/lib/scheduling/booking-status";
 import { PortalMenu, PortalMenuItem, PortalMenuSeparator } from "@/components/ui/portal-menu";
 import { NeedsOutcomeChip, StatusChip, statusDotClass } from "./status-chip";
+import { Tip } from "@/components/ui/tooltip";
 
 export function StatusMenu({
   status,
@@ -41,7 +42,11 @@ export function StatusMenu({
   const chip = (withChevron: boolean) => (variant === "needs_outcome" ? <NeedsOutcomeChip withChevron={withChevron} /> : <StatusChip status={status} withChevron={withChevron} />);
 
   if (!canChange || groupOf(status) === "cancelled") {
-    return <span title={groupOf(status) === "cancelled" ? "Una cancelación es final" : undefined}>{chip(false)}</span>;
+    return (
+      <Tip asChild content={groupOf(status) === "cancelled" ? "Una cancelación es final" : null}>
+        <span>{chip(false)}</span>
+      </Tip>
+    );
   }
 
   return (

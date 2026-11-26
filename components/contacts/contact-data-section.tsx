@@ -2,6 +2,7 @@ import type { ContactFieldKey } from "@/lib/contacts/fields";
 import { CONTACT_DATA_GROUPS, contactFieldHref } from "@/lib/contacts/data-groups";
 import { InlineField } from "./inline-field";
 import { Section } from "./ui";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * "Datos de contacto": todo lo que antes estaba detras del boton "Editar", a la
@@ -68,9 +69,11 @@ export function ContactDataSection({
               {group.id === "redes" && whatsappLid && (
                 <div className="min-w-0">
                   <dt className="mb-0.5 text-xs text-muted-foreground">WhatsApp (sin número)</dt>
-                  <dd className="min-w-0 truncate text-sm" title="WhatsApp no compartió el número de esta persona: este es su id, y por acá se le responde.">
-                    ID {whatsappLid.replace("@lid", "")}
-                  </dd>
+                  <Tip asChild content="WhatsApp no compartió el número de esta persona: este es su id, y por acá se le responde.">
+                    <dd className="min-w-0 truncate text-sm">
+                      ID {whatsappLid.replace("@lid", "")}
+                    </dd>
+                  </Tip>
                 </div>
               )}
             </dl>

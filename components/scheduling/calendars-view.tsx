@@ -18,6 +18,7 @@ import {
   setCalendarShowInAgenda,
   setDefaultDestinationCalendar,
 } from "@/lib/actions/scheduling/calendars";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface AccountView {
   id: string;
@@ -80,15 +81,16 @@ export function CalendarsView({
       route="/dashboard/agenda/configuracion/calendarios"
       right={
         canUse ? (
-          <a
-            href={hasProfile ? connectHref : undefined}
-            aria-disabled={!hasProfile}
-            title={hasProfile ? undefined : "Primero completá tu perfil en Ajustes"}
-            className={`inline-flex h-9 items-center whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground ${hasProfile ? "" : "pointer-events-none opacity-50"}`}
-          >
-            <span className="sm:hidden">+ Conectar</span>
-            <span className="hidden sm:inline">+ Conectar cuenta de Google</span>
-          </a>
+          <Tip content={hasProfile ? null : "Primero completá tu perfil en Ajustes"}>
+            <a
+              href={hasProfile ? connectHref : undefined}
+              aria-disabled={!hasProfile}
+              className={`inline-flex h-9 items-center whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground ${hasProfile ? "" : "pointer-events-none opacity-50"}`}
+            >
+              <span className="sm:hidden">+ Conectar</span>
+              <span className="hidden sm:inline">+ Conectar cuenta de Google</span>
+            </a>
+          </Tip>
         ) : undefined
       }
     >

@@ -57,13 +57,17 @@ export function KpiRow({ items }: { items: KpiItem[] }) {
                 </span>
               </Tip>
             </div>
-            <p className="truncate text-base font-bold leading-none text-foreground sm:text-xl" title={item.value}>
-              {item.value}
-            </p>
-            <div className="mt-1.5 flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-1">
-              <p className="max-w-full truncate text-[10px] text-muted-foreground" title={item.sub}>
-                {item.sub}
+            <Tip asChild content={item.value}>
+              <p className="truncate text-base font-bold leading-none text-foreground sm:text-xl">
+                {item.value}
               </p>
+            </Tip>
+            <div className="mt-1.5 flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-1">
+              <Tip asChild content={item.sub}>
+                <p className="max-w-full truncate text-[10px] text-muted-foreground">
+                  {item.sub}
+                </p>
+              </Tip>
               {item.delta && (
                 <span className={`shrink-0 text-[10px] font-medium ${DELTA_TONE[item.delta.tone]}`}>
                   {item.delta.percent >= 0 ? "▲" : "▼"}

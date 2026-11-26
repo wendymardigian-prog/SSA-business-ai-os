@@ -34,9 +34,8 @@ describe("GroupMessageBubble: quién votó", () => {
     const html = render(poll([{ name: "Sí", count: 1, voters: [{ name: "Ana", contactId: "c1" }] }, { name: "No", count: 0, voters: [] }], 1));
     expect(html).toContain("Ver quién votó");
     expect(html).toContain('aria-expanded="false"');
-    // Cerrado no muestra la lista, pero el cartelito al pasar el mouse sigue.
+    // Cerrado no muestra la lista (los nombres quedan en el tooltip, que se dibuja al pasar el mouse).
     expect(html).not.toContain("/dashboard/contacts/c1");
-    expect(html).toContain('title="Ana"');
   });
 
   it("sin votos no lo ofrece", () => {

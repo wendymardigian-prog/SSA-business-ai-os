@@ -16,6 +16,7 @@ import { BROADCAST_STATUS, TONE_CLASS } from "@/lib/broadcasts/status";
 import { canDeleteBroadcast, STATUS_FILTERS } from "@/lib/broadcasts/list";
 import { createBroadcast, deleteBroadcastAction } from "@/lib/actions/broadcasts";
 import { useInboxUrl } from "@/components/inbox/use-inbox-url";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface BroadcastListItem {
   id: string;
@@ -196,16 +197,17 @@ export function BroadcastsView({
                   </Link>
                   <div className="flex w-12 shrink-0 justify-center pr-2 md:mr-4">
                     {deletable && (
-                      <button
-                        type="button"
-                        onClick={() => remove(b)}
-                        disabled={pending}
-                        aria-label={`Eliminar ${b.name}`}
-                        title="Eliminar (no salió ningún mensaje)"
-                        className="rounded-lg p-2 text-muted-foreground hover:bg-red-50 hover:text-red-700 disabled:opacity-50 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                      >
-                        {deletingId === b.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}
-                      </button>
+                      <Tip content="Eliminar (no salió ningún mensaje)">
+                        <button
+                          type="button"
+                          onClick={() => remove(b)}
+                          disabled={pending}
+                          aria-label={`Eliminar ${b.name}`}
+                          className="rounded-lg p-2 text-muted-foreground hover:bg-red-50 hover:text-red-700 disabled:opacity-50 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                        >
+                          {deletingId === b.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}
+                        </button>
+                      </Tip>
                     )}
                   </div>
                 </li>

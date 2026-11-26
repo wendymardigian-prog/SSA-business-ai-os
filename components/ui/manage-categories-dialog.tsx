@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Loader2, Pencil, Trash2, X } from "lucide-react";
 import { ContentDialog } from "@/components/content/dialog";
 import { categoryKey, MAX_CATEGORY_LENGTH, normalizeCategory } from "@/lib/categories";
+import { Tip } from "@/components/ui/tooltip";
 
 export type CategoryChange = { kind: "rename"; from: string; to: string } | { kind: "delete"; name: string };
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -156,35 +157,37 @@ export function ManageCategoriesDialog({
                     <span className="truncate">{item.name}</span>
                   </span>
                   <span className="flex-1 text-xs text-muted-foreground">{count(item.count)}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setError(null);
-                      setDeleting(null);
-                      setEditing(item.name);
-                      setDraft(item.name);
-                    }}
-                    disabled={busy}
-                    aria-label={`Renombrar ${item.name}`}
-                    title="Renombrar"
-                    className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setError(null);
-                      setEditing(null);
-                      setDeleting(item.name);
-                    }}
-                    disabled={busy}
-                    aria-label={`Quitar ${item.name}`}
-                    title="Quitar"
-                    className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <Tip asChild content="Renombrar">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError(null);
+                        setDeleting(null);
+                        setEditing(item.name);
+                        setDraft(item.name);
+                      }}
+                      disabled={busy}
+                      aria-label={`Renombrar ${item.name}`}
+                      className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </Tip>
+                  <Tip asChild content="Quitar">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError(null);
+                        setEditing(null);
+                        setDeleting(item.name);
+                      }}
+                      disabled={busy}
+                      aria-label={`Quitar ${item.name}`}
+                      className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </Tip>
                 </div>
               )}
             </li>

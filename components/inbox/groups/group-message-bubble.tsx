@@ -10,6 +10,7 @@ import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { CreateGroupAutomationDialog } from "./create-group-automation-dialog";
 import { PollAnswerTagsDialog } from "./poll-answer-tags-dialog";
 import { MessageText } from "@/components/inbox/message-text";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Un mensaje del hilo de un grupo: quién lo escribió (con link a su ficha si es contacto), los adjuntos, el texto,
@@ -62,36 +63,38 @@ export function GroupMessageBubble({ message, canCreateAutomation }: { message: 
             {message.poll.options.map((option) => {
               const percent = message.poll!.totalVoters > 0 ? Math.round((option.count / message.poll!.totalVoters) * 100) : 0;
               return (
-                <div key={option.name} title={option.voters.map((v) => v.name).join(", ")}>
-                  <div className="flex items-baseline justify-between gap-2 text-xs">
-                    <span>{option.name}</span>
-                    <span className="tabular-nums">{option.count}</span>
+                <Tip asChild key={option.name} content={option.voters.map((v) => v.name).join(", ")}>
+                  <div>
+                    <div className="flex items-baseline justify-between gap-2 text-xs">
+                      <span>{option.name}</span>
+                      <span className="tabular-nums">{option.count}</span>
+                    </div>
+                    <div className={cn("h-1.5 overflow-hidden rounded-full", message.outbound ? "bg-primary-foreground/25" : "bg-background")}>
+                      <div className={cn("h-full rounded-full", message.outbound ? "bg-primary-foreground" : "bg-primary")} style={{ width: `${percent}%` }} />
+                    </div>
+                    {showVoters && (
+                      <p className={cn("mt-1 text-[11px] leading-snug", message.outbound ? "text-primary-foreground/90" : "text-muted-foreground")}>
+                        {option.voters.length === 0
+                          ? "Nadie"
+                          : option.voters.map((voter, i) => (
+                              <span key={`${voter.name}-${i}`}>
+                                {i > 0 && ", "}
+                                {voter.contactId ? (
+                                  <Link
+                                    href={`/dashboard/contacts/${voter.contactId}`}
+                                    className={cn("underline underline-offset-2", message.outbound ? "text-primary-foreground" : "text-primary-ink")}
+                                  >
+                                    {voter.name}
+                                  </Link>
+                                ) : (
+                                  voter.name
+                                )}
+                              </span>
+                            ))}
+                      </p>
+                    )}
                   </div>
-                  <div className={cn("h-1.5 overflow-hidden rounded-full", message.outbound ? "bg-primary-foreground/25" : "bg-background")}>
-                    <div className={cn("h-full rounded-full", message.outbound ? "bg-primary-foreground" : "bg-primary")} style={{ width: `${percent}%` }} />
-                  </div>
-                  {showVoters && (
-                    <p className={cn("mt-1 text-[11px] leading-snug", message.outbound ? "text-primary-foreground/90" : "text-muted-foreground")}>
-                      {option.voters.length === 0
-                        ? "Nadie"
-                        : option.voters.map((voter, i) => (
-                            <span key={`${voter.name}-${i}`}>
-                              {i > 0 && ", "}
-                              {voter.contactId ? (
-                                <Link
-                                  href={`/dashboard/contacts/${voter.contactId}`}
-                                  className={cn("underline underline-offset-2", message.outbound ? "text-primary-foreground" : "text-primary-ink")}
-                                >
-                                  {voter.name}
-                                </Link>
-                              ) : (
-                                voter.name
-                              )}
-                            </span>
-                          ))}
-                    </p>
-                  )}
-                </div>
+                </Tip>
               );
             })}
             {(message.poll.totalVoters > 0 || (canCreateAutomation && !message.failed)) && (
@@ -153,15 +156,16 @@ export function GroupMessageBubble({ message, canCreateAutomation }: { message: 
           </span>
         )}
         {offerAutomation && (
-          <button
-            type="button"
-            onClick={() => setDialogOpen(true)}
-            aria-label="Crear automatización con este mensaje"
-            title="Crear automatización"
-            className="rounded p-0.5 opacity-100 hover:bg-muted md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
-          >
-            <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-          </button>
+          <Tip asChild content="Crear automatización">
+            <button
+              type="button"
+              onClick={() => setDialogOpen(true)}
+              aria-label="Crear automatización con este mensaje"
+              className="rounded p-0.5 opacity-100 hover:bg-muted md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </Tip>
         )}
       </div>
 

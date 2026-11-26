@@ -1,6 +1,7 @@
 import type { GroupRow } from "@/lib/dashboards/content";
 import { sumTotals } from "@/lib/dashboards/content";
 import { ClickableTr } from "@/components/ui/clickable-row";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La tabla de rendimiento agrupado (F105): por pieza, oferta, pilar, etapa del
@@ -68,15 +69,16 @@ export function GroupTable({
             >
               <th scope="row" className="p-2 text-left font-normal">
                 {onSelect ? (
-                  <button
-                    type="button"
-                    onClick={() => onSelect(row)}
-                    aria-pressed={selectedKey === row.key}
-                    title={`Filtrar el dashboard por ${row.label}`}
-                    className={`text-left hover:underline ${row.unassigned ? "text-muted-foreground" : ""}`}
-                  >
-                    {row.label}
-                  </button>
+                  <Tip asChild content={`Filtrar el dashboard por ${row.label}`}>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(row)}
+                      aria-pressed={selectedKey === row.key}
+                      className={`text-left hover:underline ${row.unassigned ? "text-muted-foreground" : ""}`}
+                    >
+                      {row.label}
+                    </button>
+                  </Tip>
                 ) : (
                   <span className={row.unassigned ? "text-muted-foreground" : undefined}>{row.label}</span>
                 )}
@@ -96,18 +98,20 @@ export function GroupTable({
             <th scope="row" className="p-2 text-left font-medium">Total</th>
             <td className="p-2 text-right tabular-nums">{fmt(totals.posts)}</td>
             <td className="p-2 text-right text-muted-foreground">—</td>
-            <td
-              className="p-2 text-right tabular-nums"
-              title="Suma de lo crudo de cada publicación: es contexto, no un ranking."
-            >
-              {fmt(totals.reach)}
-            </td>
-            <td
-              className="p-2 text-right tabular-nums"
-              title="Suma de lo crudo de cada publicación: es contexto, no un ranking."
-            >
-              {fmt(totals.interactions)}
-            </td>
+            <Tip asChild content="Suma de lo crudo de cada publicación: es contexto, no un ranking.">
+              <td
+                className="p-2 text-right tabular-nums"
+              >
+                {fmt(totals.reach)}
+              </td>
+            </Tip>
+            <Tip asChild content="Suma de lo crudo de cada publicación: es contexto, no un ranking.">
+              <td
+                className="p-2 text-right tabular-nums"
+              >
+                {fmt(totals.interactions)}
+              </td>
+            </Tip>
             <td className="p-2 text-right text-muted-foreground">—</td>
             <td className="p-2 text-right text-muted-foreground">—</td>
             <td className="p-2 text-right tabular-nums">{fmt(totals.leads)}</td>

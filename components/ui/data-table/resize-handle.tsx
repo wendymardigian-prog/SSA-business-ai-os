@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { clampWidth, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from "@/lib/ui/data-table/prefs";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El borde del encabezado que se arrastra para cambiar el ancho de una columna. Es el mismo en todas las tablas del
@@ -34,41 +35,42 @@ export function ResizeHandle({
   }
 
   return (
-    <span
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={`Ajustar el ancho de ${label}`}
-      aria-valuenow={width}
-      aria-valuemin={MIN_COLUMN_WIDTH}
-      aria-valuemax={MAX_COLUMN_WIDTH}
-      tabIndex={0}
-      title="Arrastrá para ajustar el ancho. Doble clic: ancho normal."
-      onClick={(event) => event.stopPropagation()}
-      onDoubleClick={onReset}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        event.currentTarget.setPointerCapture(event.pointerId);
-        drag.current = { x: event.clientX, width };
-      }}
-      onPointerMove={(event) => {
-        const start = drag.current;
-        if (start) onLive(clampWidth(start.width + event.clientX - start.x));
-      }}
-      onPointerUp={(event) => end(event, true)}
-      onPointerCancel={(event) => end(event, false)}
-      onKeyDown={(event) => {
-        const step = event.shiftKey ? 48 : 16;
-        if (event.key === "ArrowRight") onCommit(clampWidth(width + step));
-        else if (event.key === "ArrowLeft") onCommit(clampWidth(width - step));
-        else if (event.key === "Home") onReset();
-        else return;
-        event.preventDefault();
-      }}
-      className="group/resize absolute inset-y-0 -right-1 z-20 flex w-2 cursor-col-resize touch-none select-none justify-center focus-visible:outline-none"
-    >
-      <span className="h-full w-px bg-transparent group-hover/resize:bg-primary-edge group-focus-visible/resize:bg-primary-edge group-active/resize:w-0.5 group-active/resize:bg-primary-edge" />
-    </span>
+    <Tip asChild content="Arrastrá para ajustar el ancho. Doble clic: ancho normal.">
+      <span
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={`Ajustar el ancho de ${label}`}
+        aria-valuenow={width}
+        aria-valuemin={MIN_COLUMN_WIDTH}
+        aria-valuemax={MAX_COLUMN_WIDTH}
+        tabIndex={0}
+        onClick={(event) => event.stopPropagation()}
+        onDoubleClick={onReset}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          drag.current = { x: event.clientX, width };
+        }}
+        onPointerMove={(event) => {
+          const start = drag.current;
+          if (start) onLive(clampWidth(start.width + event.clientX - start.x));
+        }}
+        onPointerUp={(event) => end(event, true)}
+        onPointerCancel={(event) => end(event, false)}
+        onKeyDown={(event) => {
+          const step = event.shiftKey ? 48 : 16;
+          if (event.key === "ArrowRight") onCommit(clampWidth(width + step));
+          else if (event.key === "ArrowLeft") onCommit(clampWidth(width - step));
+          else if (event.key === "Home") onReset();
+          else return;
+          event.preventDefault();
+        }}
+        className="group/resize absolute inset-y-0 -right-1 z-20 flex w-2 cursor-col-resize touch-none select-none justify-center focus-visible:outline-none"
+      >
+        <span className="h-full w-px bg-transparent group-hover/resize:bg-primary-edge group-focus-visible/resize:bg-primary-edge group-active/resize:w-0.5 group-active/resize:bg-primary-edge" />
+      </span>
+    </Tip>
   );
 }

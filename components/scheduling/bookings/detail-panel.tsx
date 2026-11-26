@@ -432,34 +432,35 @@ export function BookingDetailPanel({
             <p className="truncate text-xs text-muted-foreground">{booking.title}</p>
           </div>
           <div className="relative">
-            <button
-              type="button"
-              disabled={!canManage || group === "cancelled"}
-              title={group === "cancelled" ? "Una cancelación es final" : undefined}
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-expanded={menuOpen}
-              className="rounded-lg border border-border px-2 py-1 disabled:opacity-60"
-            >
-              <StatusChip status={booking.status} />
-            </button>
+            <Tip content={group === "cancelled" ? "Una cancelación es final" : null}>
+              <button
+                type="button"
+                disabled={!canManage || group === "cancelled"}
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-expanded={menuOpen}
+                className="rounded-lg border border-border px-2 py-1 disabled:opacity-60"
+              >
+                <StatusChip status={booking.status} />
+              </button>
+            </Tip>
             {menuOpen && (
               <div className="absolute right-0 z-10 mt-1 w-64 rounded-lg border border-border bg-popover p-1 shadow-lg">
                 {BOOKING_STATUSES.map((def) => {
                   const verdict = evaluateTransition(booking.status, def.key, { start_at: booking.startAt }, now);
                   const disabled = !verdict.ok;
                   return (
-                    <button
-                      key={def.key}
-                      type="button"
-                      disabled={disabled}
-                      title={disabled && verdict.reason ? TRANSITION_REASON_TEXT[verdict.reason] : undefined}
-                      onClick={() => setStatus(def.key)}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent"
-                    >
-                      <span aria-hidden className={`h-2 w-2 rounded-full ${statusDotClass(def.key)}`} />
-                      {def.label}
-                      {def.key === booking.status && <span className="ml-auto text-xs text-muted-foreground">actual</span>}
-                    </button>
+                    <Tip key={def.key} className="flex w-full" side="right" content={disabled && verdict.reason ? TRANSITION_REASON_TEXT[verdict.reason] : null}>
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setStatus(def.key)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent"
+                      >
+                        <span aria-hidden className={`h-2 w-2 rounded-full ${statusDotClass(def.key)}`} />
+                        {def.label}
+                        {def.key === booking.status && <span className="ml-auto text-xs text-muted-foreground">actual</span>}
+                      </button>
+                    </Tip>
                   );
                 })}
               </div>
@@ -879,9 +880,9 @@ export function BookingDetailPanel({
                       {section.items.map((item) => (
                         <div key={item.key} className="contents">
                           <dt className="text-muted-foreground">{item.label}</dt>
-                          <dd className="min-w-0 truncate" title={item.value}>
-                            {item.value}
-                          </dd>
+                          <Tip asChild content={item.value}>
+                            <dd className="min-w-0 truncate">{item.value}</dd>
+                          </Tip>
                         </div>
                       ))}
                     </dl>

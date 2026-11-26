@@ -43,6 +43,7 @@ import {
 import type { KnowledgeStatus } from "@/lib/types/database";
 import { PageHeader } from "@/components/page-header";
 import { ClickableBox } from "@/components/ui/clickable-row";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface KnowledgeDocument {
   id: string;
@@ -657,18 +658,19 @@ function IconButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      aria-label={label}
-      className={`rounded-lg p-2 transition-colors hover:bg-accent disabled:opacity-40 ${
-        destructive ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
-      }`}
-    >
-      {children}
-    </button>
+    <Tip asChild content={label}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        className={`rounded-lg p-2 transition-colors hover:bg-accent disabled:opacity-40 ${
+          destructive ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+        }`}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 

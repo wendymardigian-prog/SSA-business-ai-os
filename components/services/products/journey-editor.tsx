@@ -30,7 +30,7 @@ import {
   updatePhase,
 } from "@/lib/services/screens/journey-editor";
 import { ActionError } from "@/components/contacts/ui";
-import { InfoTooltip } from "@/components/ui/tooltip";
+import { InfoTooltip, Tip } from "@/components/ui/tooltip";
 import { SidePanel } from "@/components/tasks/overlay";
 import type { NamedOption } from "./service-settings-panel";
 import { groupBySlot, type PathWorkflow } from "@/lib/services/screens/workflow-chips";
@@ -220,19 +220,20 @@ export function JourneyEditor({
                   <button type="button" className={iconBtn} aria-label={`Bajar «${it.name}»`} onClick={() => change(nudgeItem(t, it.key, 1))}>
                     <ArrowDown className="h-3.5 w-3.5" aria-hidden />
                   </button>
-                  <button
-                    type="button"
-                    className={iconBtn}
-                    aria-label={`Duplicar «${it.name}»`}
-                    title="Duplicar el paso"
-                    onClick={() => {
-                      const r = duplicateItem(t, it.key);
-                      change(r.template);
-                      setCopies((c) => ({ ...c, ...r.keyMap }));
-                    }}
-                  >
-                    <Copy className="h-3.5 w-3.5" aria-hidden />
-                  </button>
+                  <Tip asChild content="Duplicar el paso">
+                    <button
+                      type="button"
+                      className={iconBtn}
+                      aria-label={`Duplicar «${it.name}»`}
+                      onClick={() => {
+                        const r = duplicateItem(t, it.key);
+                        change(r.template);
+                        setCopies((c) => ({ ...c, ...r.keyMap }));
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  </Tip>
                   <div className="basis-full">
                     <WorkflowSlot variantId={variantId} slot={`item:${it.key}`} title={`Al completar «${it.name}»`} workflows={slots.get(`item:${it.key}`) ?? []} canEdit={canEditFlows} compact />
                     <WorkflowSlot
@@ -376,9 +377,11 @@ function PhaseHeader({
         <button type="button" className={iconBtn} disabled={index === total - 1} aria-label={`Bajar la fase «${phase.name}»`} onClick={() => onMove(1)}>
           <ArrowDown className="h-4 w-4" aria-hidden />
         </button>
-        <button type="button" className={iconBtn} aria-label={`Duplicar la fase «${phase.name}»`} title="Duplicar la fase" onClick={onDuplicate}>
-          <Copy className="h-4 w-4" aria-hidden />
-        </button>
+        <Tip asChild content="Duplicar la fase">
+          <button type="button" className={iconBtn} aria-label={`Duplicar la fase «${phase.name}»`} onClick={onDuplicate}>
+            <Copy className="h-4 w-4" aria-hidden />
+          </button>
+        </Tip>
         <button type="button" className={iconBtn} aria-label={`Borrar la fase «${phase.name}»`} onClick={onRemove}>
           <Trash2 className="h-4 w-4" aria-hidden />
         </button>

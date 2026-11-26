@@ -11,6 +11,7 @@ import { getSection, SECTION_LABELS, type AnalysisSection } from "@/lib/calls/sc
 import { describeSectionValue } from "@/lib/calls/section-forms";
 import { AiCorrectionModal } from "@/components/calls/ai-correction-modal";
 import { SectionEditor, type CategorySuggestions } from "@/components/calls/section-editor";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface CallObjection {
   id: string;
@@ -78,9 +79,9 @@ export function SectionTools({ section }: { section: AnalysisSection }) {
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-1">
         {edited && (
-          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-950/60 dark:text-sky-300" title="Una persona corrigió esta sección. Quién y cuándo, en Técnico → Historial.">
-            Editado
-          </span>
+          <Tip asChild content="Una persona corrigió esta sección. Quién y cuándo, en Técnico → Historial.">
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-950/60 dark:text-sky-300">Editado</span>
+          </Tip>
         )}
         {state.canEdit && (
           <>

@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PeriodPopover } from "@/components/dashboards/chat/filters/period-popover";
 import { PERIOD_LABELS, PERIOD_PRESETS, isPeriodPreset, type PeriodPreset } from "@/lib/dashboards/period";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El período del Resumen de Finanzas. Mismo selector que los dashboards (`PeriodPopover`, mismos parámetros
@@ -40,9 +41,9 @@ export function FinancePeriodControls({ timezone }: { timezone: string }) {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="hidden text-xs text-muted-foreground lg:inline" title="Los días se cortan en la zona horaria del negocio">
-        {timezone}
-      </span>
+      <Tip asChild content="Los días se cortan en la zona horaria del negocio">
+        <span className="hidden text-xs text-muted-foreground lg:inline">{timezone}</span>
+      </Tip>
       <PeriodPopover preset={preset} presets={PERIOD_PRESETS} labels={PERIOD_LABELS} from={custom ? from : null} to={custom ? to : null} timezone={timezone} onApply={onApply} />
       {pending && (
         <span className="text-xs text-muted-foreground" role="status">

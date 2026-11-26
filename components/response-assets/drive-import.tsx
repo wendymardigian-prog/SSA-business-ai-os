@@ -9,6 +9,7 @@ import { pickDriveFiles } from "@/lib/google-drive/picker";
 import { planDriveItem, type PickedDriveFile } from "@/lib/google-drive/import-plan";
 import { formatBytes } from "@/lib/response-assets/files";
 import { ASSET_KIND_LABEL } from "@/lib/response-assets/kind";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Lo mismo que acepta el servidor por tanda (lib/actions/drive-import.ts). */
 const MAX_ITEMS = 20;
@@ -178,10 +179,12 @@ function ReviewDialog({
           return (
             <li key={row.file.id} className="rounded-lg border border-border p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-xs text-muted-foreground" title={row.file.name}>
-                  {row.file.name}
-                  {row.file.sizeBytes ? ` · ${formatBytes(row.file.sizeBytes)}` : ""}
-                </p>
+                <Tip asChild content={row.file.name}>
+                  <p className="min-w-0 truncate text-xs text-muted-foreground">
+                    {row.file.name}
+                    {row.file.sizeBytes ? ` · ${formatBytes(row.file.sizeBytes)}` : ""}
+                  </p>
+                </Tip>
                 {imported ? (
                   <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Importado</span>
                 ) : (

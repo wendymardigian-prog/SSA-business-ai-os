@@ -32,6 +32,7 @@ import {
   type SocialAccountOption,
 } from "@/lib/social/account-select";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La pagina Social (F54).
@@ -237,41 +238,43 @@ export function SocialView({
         right={
           <div className="flex items-center gap-2">
             {connected && (
-              <Link
-                href={`/dashboard/dashboards/content?red=${platform}`}
-                aria-label="Analíticas"
-                title="Analíticas"
-                className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-border px-2 text-xs sm:h-8 sm:px-2.5"
-              >
-                <BarChart3 className="h-3.5 w-3.5" aria-hidden />
-                <span className="hidden sm:inline">Analíticas</span>
-              </Link>
+              <Tip asChild content="Analíticas">
+                <Link
+                  href={`/dashboard/dashboards/content?red=${platform}`}
+                  aria-label="Analíticas"
+                  className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-border px-2 text-xs sm:h-8 sm:px-2.5"
+                >
+                  <BarChart3 className="h-3.5 w-3.5" aria-hidden />
+                  <span className="hidden sm:inline">Analíticas</span>
+                </Link>
+              </Tip>
             )}
 
             {canRefresh && (
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() =>
-                  start(async () => {
-                    const result = await refreshMetricsNow(platform);
-                    // Los avisos de la sincronizacion de cuentas (una cuenta que no se pudo guardar) van tambien.
-                    setNotice(
-                      [result.ok ? "Se esta actualizando. Recarga en un minuto." : result.error, ...(result.warnings ?? [])].join(" "),
-                    );
-                  })
-                }
-                aria-label="Actualizar"
-                title="Actualizar métricas"
-                className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-border px-2 text-xs disabled:opacity-60 sm:h-8 sm:px-2.5"
-              >
-                {pending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                ) : (
-                  <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                )}
-                <span className="hidden sm:inline">Actualizar</span>
-              </button>
+              <Tip asChild content="Actualizar métricas">
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() =>
+                    start(async () => {
+                      const result = await refreshMetricsNow(platform);
+                      // Los avisos de la sincronizacion de cuentas (una cuenta que no se pudo guardar) van tambien.
+                      setNotice(
+                        [result.ok ? "Se esta actualizando. Recarga en un minuto." : result.error, ...(result.warnings ?? [])].join(" "),
+                      );
+                    })
+                  }
+                  aria-label="Actualizar"
+                  className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-border px-2 text-xs disabled:opacity-60 sm:h-8 sm:px-2.5"
+                >
+                  {pending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                  <span className="hidden sm:inline">Actualizar</span>
+                </button>
+              </Tip>
             )}
           </div>
         }

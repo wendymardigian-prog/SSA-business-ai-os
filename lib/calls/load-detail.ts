@@ -135,6 +135,7 @@ export async function loadCallDetail(ctx: PermissionContext, id: string): Promis
     shareUrl: call.share_url,
     recorderEmail: call.recorded_by_email,
     closerName: closer?.name ?? null,
+    closerUserId: closer?.userId ?? null,
     contact: contact ? { id: contact.id, name: contact.display_name || contact.email || "Sin nombre" } : null,
     booking: booking ? { id: booking.id, startAt: booking.start_at } : null,
     lines,

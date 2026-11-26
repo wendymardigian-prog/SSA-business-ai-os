@@ -16,6 +16,7 @@ import {
 } from "@/lib/actions/whatsapp-group-manage";
 import { GROUP_DESCRIPTION_MAX, GROUP_SUBJECT_MAX, type ManagedParticipant } from "@/lib/whatsapp-groups/manage";
 import type { SelectedGroup } from "@/lib/whatsapp-groups/thread";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * «Configurar grupo» (00344): nombre, descripción, foto, permisos, link de invitación, miembros y salir. Lo ve quien
@@ -378,10 +379,12 @@ export function GroupManagePanel({ group, onClose }: { group: SelectedGroup; onC
             <ul className="divide-y divide-border rounded-md border border-border text-xs">
               {participants.map((p) => (
                 <li key={p.key} className="flex items-center gap-2 px-2 py-1.5">
-                  <span className="min-w-0 flex-1 truncate" title={p.phone ?? undefined}>
-                    {p.label}
-                    {p.isNumber && <span className="text-muted-foreground"> (este número)</span>}
-                  </span>
+                  <Tip asChild content={p.phone ?? undefined}>
+                    <span className="min-w-0 flex-1 truncate">
+                      {p.label}
+                      {p.isNumber && <span className="text-muted-foreground"> (este número)</span>}
+                    </span>
+                  </Tip>
                   {p.admin && <Crown className="h-3 w-3 shrink-0 text-amber-600" aria-label="Admin" />}
                   {!p.isNumber && !notAdmin && (
                     <span className="flex shrink-0 gap-1">

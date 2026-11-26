@@ -10,6 +10,7 @@ import { CalendarDays, CheckSquare, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { filterDayEntries, type DayEntry } from "@/lib/calendar/day-agenda";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 function EntryIcon({ kind }: { kind: DayEntry["kind"] }) {
   if (kind === "booking") return <CalendarDays className="h-4 w-4 shrink-0 text-primary-ink" aria-hidden />;
@@ -60,14 +61,18 @@ export function DayAgendaModal({
           <div className="min-w-0 flex-1">
             <p className="font-semibold">{title}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm">
-              <span className="flex items-center gap-2" title={tasksAvailable ? undefined : "Prendé las tareas en «Qué mostrar»"}>
-                <Switch checked={showTasks && tasksAvailable} disabled={!tasksAvailable} size="sm" label="Mostrar tareas" onChange={setShowTasks} />
-                <span className={cn(!tasksAvailable && "text-muted-foreground")}>Mostrar tareas</span>
-              </span>
-              <span className="flex items-center gap-2" title={googleAvailable ? undefined : "Prendé los eventos de Google en «Qué mostrar»"}>
-                <Switch checked={showGoogle && googleAvailable} disabled={!googleAvailable} size="sm" label="Mostrar eventos de Google" onChange={setShowGoogle} />
-                <span className={cn(!googleAvailable && "text-muted-foreground")}>Mostrar eventos de Google</span>
-              </span>
+              <Tip asChild content={tasksAvailable ? null : "Prendé las tareas en «Qué mostrar»"}>
+                <span className="flex items-center gap-2">
+                  <Switch checked={showTasks && tasksAvailable} disabled={!tasksAvailable} size="sm" label="Mostrar tareas" onChange={setShowTasks} />
+                  <span className={cn(!tasksAvailable && "text-muted-foreground")}>Mostrar tareas</span>
+                </span>
+              </Tip>
+              <Tip asChild content={googleAvailable ? null : "Prendé los eventos de Google en «Qué mostrar»"}>
+                <span className="flex items-center gap-2">
+                  <Switch checked={showGoogle && googleAvailable} disabled={!googleAvailable} size="sm" label="Mostrar eventos de Google" onChange={setShowGoogle} />
+                  <span className={cn(!googleAvailable && "text-muted-foreground")}>Mostrar eventos de Google</span>
+                </span>
+              </Tip>
             </div>
           </div>
           <button type="button" onClick={onClose} aria-label="Cerrar" className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted">

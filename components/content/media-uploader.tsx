@@ -9,6 +9,7 @@ import { RESUMABLE_THRESHOLD_BYTES, liveMedia, type MediaEntry } from "@/lib/con
 import { describeFile, idOf } from "@/lib/content/media-library";
 import { probeMediaFile } from "@/lib/content/media-probe";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La biblioteca de archivos de una pieza (F92) y la subida (F18).
@@ -169,14 +170,16 @@ export function MediaUploader({
     const usedBy = usage[idOf(item)] ?? [];
     return (
       <li key={idOf(item)} className="rounded-lg border border-border p-3">
-        <p className="truncate text-sm font-medium" title={info.name}>
-          {typeof page === "number" && (
-            <span className="mr-1.5 inline-grid h-4 min-w-4 place-items-center rounded bg-muted px-1 text-[10px] font-semibold text-muted-foreground" aria-label={`Página ${page}`}>
-              {page}
-            </span>
-          )}
-          {info.name}
-        </p>
+        <Tip asChild content={info.name}>
+          <p className="truncate text-sm font-medium">
+            {typeof page === "number" && (
+              <span className="mr-1.5 inline-grid h-4 min-w-4 place-items-center rounded bg-muted px-1 text-[10px] font-semibold text-muted-foreground" aria-label={`Página ${page}`}>
+                {page}
+              </span>
+            )}
+            {info.name}
+          </p>
+        </Tip>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           {[info.kindLabel, info.size, info.ratio].filter(Boolean).join(" · ")}
         </p>

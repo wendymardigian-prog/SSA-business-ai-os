@@ -16,6 +16,7 @@ import { EmptyState, FilterSelect, Pagination, formatUsd, useUrlFilters } from "
 import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
 import { RunDetail, RunStatusBadge } from "./run-detail";
 import { ClickableTr } from "@/components/ui/clickable-row";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La pantalla global de Corridas (R1-R4): los once filtros de siempre mas
@@ -239,9 +240,9 @@ export function RunsScreen({
                         <td className="whitespace-nowrap px-3 py-2">
                           <RunStatusBadge status={run.status} />
                         </td>
-                        <td className="max-w-[220px] truncate px-3 py-2 text-muted-foreground" title={typeof motivo === "string" ? motivo : undefined}>
-                          {motivo}
-                        </td>
+                        <Tip asChild content={typeof motivo === "string" ? motivo : null}>
+                          <td className="max-w-[220px] truncate px-3 py-2 text-muted-foreground">{motivo}</td>
+                        </Tip>
                         <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{run.stepCount}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{run.latencyMs !== null ? `${(run.latencyMs / 1000).toFixed(1)} s` : "—"}</td>
                         {showCost && <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{totalTokens ?? "—"}</td>}

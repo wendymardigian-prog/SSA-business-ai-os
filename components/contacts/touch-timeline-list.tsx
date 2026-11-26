@@ -8,6 +8,7 @@ import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
 import { MetaMatchControl } from "@/components/attribution/meta-match-control";
 import type { TimelineItem } from "@/lib/contacts/touch-timeline";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La linea de tiempo de toques de un contacto (Extra I, F45).
@@ -73,7 +74,7 @@ function TouchRow({ item, timeZone, adHref, canLinkMeta }: { item: TimelineItem;
 
       <p className="mt-1.5 break-words text-sm">
         <span className="font-medium">{view.origin}</span>
-        {view.account && <span className="text-muted-foreground" title="Cuenta por la que entró"> · {view.account}</span>}
+        {view.account && <Tip asChild content="Cuenta por la que entró"><span className="text-muted-foreground"> · {view.account}</span></Tip>}
         {view.piece && (
           <>
             <span className="text-muted-foreground"> · </span>

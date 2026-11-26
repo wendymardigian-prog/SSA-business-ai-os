@@ -8,7 +8,7 @@
  * base): acá solo se arma el JSON.
  */
 import { Plus, Trash2 } from "lucide-react";
-import { InfoTooltip } from "@/components/ui/tooltip";
+import { InfoTooltip, Tip } from "@/components/ui/tooltip";
 import type { JourneyItem } from "@/lib/services/journey-template";
 import { WEEKDAY_NAMES, WEEKDAY_SHORT } from "@/lib/services/repetition";
 import type { NamedOption } from "./service-settings-panel";
@@ -157,17 +157,17 @@ function WeekdayPicker({ value, onChange }: { value: number[]; onChange: (days: 
           const day = i + 1;
           const on = value.includes(day);
           return (
-            <button
-              key={day}
-              type="button"
-              aria-pressed={on}
-              aria-label={name}
-              title={name}
-              onClick={() => onChange(on ? value.filter((d) => d !== day) : [...value, day].sort((a, b) => a - b))}
-              className={`h-10 w-10 rounded-full border text-xs font-medium md:h-8 md:w-8 ${on ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border text-muted-foreground hover:bg-accent"}`}
-            >
-              {WEEKDAY_SHORT[i]}
-            </button>
+            <Tip key={day} asChild content={name}>
+              <button
+                type="button"
+                aria-pressed={on}
+                aria-label={name}
+                onClick={() => onChange(on ? value.filter((d) => d !== day) : [...value, day].sort((a, b) => a - b))}
+                className={`h-10 w-10 rounded-full border text-xs font-medium md:h-8 md:w-8 ${on ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border text-muted-foreground hover:bg-accent"}`}
+              >
+                {WEEKDAY_SHORT[i]}
+              </button>
+            </Tip>
           );
         })}
       </div>

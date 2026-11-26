@@ -48,6 +48,8 @@ import { CallPortalMenu } from "@/components/services/portal/call-portal-menu"; 
 import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
 import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
 import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
+import { Tip } from "@/components/ui/tooltip";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 
 /**
  * La lista de llamadas (F12). Que se ve lo decide la base (RLS) y los filtros
@@ -60,6 +62,8 @@ export interface CallListRow {
   recordedAt: string;
   durationSeconds: number | null;
   closerName: string | null;
+  /** Quien la grabo, si es del equipo (su circulo). Sin esto, solo el texto. */
+  closerUserId?: string | null;
   contactId: string | null;
   contactName: string | null;
   callType: string | null;
@@ -289,7 +293,10 @@ export function CallsList(props: Props) {
       participantes: { render: (r) => <CallPeople participants={r.participants} /> },
       fecha: { render: (r) => formatCallDate(r.recordedAt, timeZone) },
       duracion: { render: (r) => formatDuration(r.durationSeconds) },
-      grabo: { render: (r) => r.closerName ?? "—" },
+      grabo: {
+        render: (r) =>
+          r.closerUserId && r.closerName ? <PersonAvatar userId={r.closerUserId} name={r.closerName} role="Grabó" size="sm" showName className="max-w-full" /> : (r.closerName ?? "—"),
+      },
       tipo: {
         render: (r) => (
           <RowType row={r} groups={props.categoryGroups} canEdit={canEdit && r.status !== "classifying" && r.status !== "analyzing"} />
@@ -645,7 +652,15 @@ export function CallsList(props: Props) {
                           </div>
                           <AlertsChip open={r.hasOpenAlerts} />
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{formatCallDate(r.recordedAt, timeZone)} · {formatDuration(r.durationSeconds)}{r.closerName ? ` · ${r.closerName}` : ""}</p>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+                          {formatCallDate(r.recordedAt, timeZone)} · {formatDuration(r.durationSeconds)}
+                          {r.closerName ? (
+                            <>
+                              {" · "}
+                              {r.closerUserId ? <PersonAvatar userId={r.closerUserId} name={r.closerName} role="Grabó" size="sm" showName /> : r.closerName}
+                            </>
+                          ) : null}
+                        </p>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <TypeChip type={r.callType} label={r.categoryLabel} needsReview={r.status === "needs_review"} />
                           {servicesOn && (r.serviceLink === "review" || r.serviceLabel) && <ServiceCell link={r.serviceLink ?? null} label={r.serviceLabel ?? null} />}
@@ -728,15 +743,17 @@ function RowType({ row, groups, canEdit }: { row: CallListRow; groups: CategoryG
     return <TypeSelect callId={row.id} current={row.categoryId} groups={groups} compact autoFocus onDone={() => setEditing(false)} label={`Cambiar el área y el tipo de ${row.title}`} />;
   }
   return (
-    <span className="inline-flex flex-wrap items-center gap-1" title={typeDeciderText({ classification_source: row.classificationSource, classification_rule: row.classificationRule, classification_confidence: row.classificationConfidence }) ?? undefined}>
-      <TypeChip type={row.callType} label={row.categoryLabel} needsReview={row.status === "needs_review"} />
-      {row.manual && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Cargada a mano</span>}
-      {canEdit && (
-        <button type="button" onClick={() => setEditing(true)} aria-label={`Cambiar el área y el tipo de ${row.title}`} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
-          <Pencil className="h-3 w-3" aria-hidden />
-        </button>
-      )}
-    </span>
+    <Tip asChild content={typeDeciderText({ classification_source: row.classificationSource, classification_rule: row.classificationRule, classification_confidence: row.classificationConfidence }) ?? null}>
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <TypeChip type={row.callType} label={row.categoryLabel} needsReview={row.status === "needs_review"} />
+        {row.manual && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Cargada a mano</span>}
+        {canEdit && (
+          <button type="button" onClick={() => setEditing(true)} aria-label={`Cambiar el área y el tipo de ${row.title}`} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <Pencil className="h-3 w-3" aria-hidden />
+          </button>
+        )}
+      </span>
+    </Tip>
   );
 }
 
@@ -845,5 +862,9 @@ function ServiceCell({ link, label }: { link: string | null; label: string | nul
     return <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-300">Por revisar</span>;
   }
   if (!label) return <span className="text-muted-foreground">—</span>;
-  return <span className="block truncate text-xs" title={label}>{label}</span>;
+  return (
+    <Tip asChild content={label}>
+      <span className="block truncate text-xs">{label}</span>
+    </Tip>
+  );
 }

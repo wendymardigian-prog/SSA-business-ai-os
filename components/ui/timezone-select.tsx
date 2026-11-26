@@ -3,6 +3,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { listTimeZones, timezoneOptions } from "@/lib/timezone";
 import { gmtOffsetLabel } from "@/lib/scheduling/booker/format";
+import { Tip } from "@/components/ui/tooltip";
 
 const subscribe = () => () => {};
 
@@ -45,12 +46,14 @@ export function TimezoneSelect({
   }, [inBrowser, value, showOffset]);
 
   return (
-    <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel} title={title} className={className}>
-      {options.map(({ tz, label }) => (
-        <option key={tz} value={tz}>
-          {label}
-        </option>
-      ))}
-    </select>
+    <Tip asChild content={title}>
+      <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel ?? title} className={className}>
+        {options.map(({ tz, label }) => (
+          <option key={tz} value={tz}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </Tip>
   );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CornerDownRight } from "lucide-react";
 import type { OriginChipView } from "@/lib/inbox/origin-chip";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El chip "Vino de…" debajo de un mensaje entrante (Extra I, F44).
@@ -21,17 +22,18 @@ export function OriginChip({ chip }: { chip: OriginChipView }) {
   return (
     <div className="mt-1 flex min-w-0">
       {chip.href ? (
-        <Link
-          href={chip.href}
-          title={chip.text}
-          className={`${className} transition-colors hover:border-primary-edge/50 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring`}
-        >
-          {content}
-        </Link>
+        <Tip asChild content={chip.text}>
+          <Link
+            href={chip.href}
+            className={`${className} transition-colors hover:border-primary-edge/50 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring`}
+          >
+            {content}
+          </Link>
+        </Tip>
       ) : (
-        <span title={chip.text} className={className}>
-          {content}
-        </span>
+        <Tip asChild content={chip.text}>
+          <span className={className}>{content}</span>
+        </Tip>
       )}
     </div>
   );
