@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Popover } from "@/components/ui/popover";
 import { colorChoices, isColor, normalizeHexInput } from "@/lib/designer/color";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El selector de colores (F12): los de la marca, los usados en el diseño y uno libre (selector del navegador + campo
@@ -33,18 +34,19 @@ export function ColorPicker({
   const current = value && isColor(value) ? value.slice(0, 7) : null;
 
   const Swatch = ({ color }: { color: string }) => (
-    <button
-      type="button"
-      aria-label={`Color ${color}`}
-      title={color}
-      aria-pressed={current?.toLowerCase() === color.slice(0, 7).toLowerCase()}
-      onClick={() => {
-        onChange(color);
-        setHex(color);
-      }}
-      className={cn("h-6 w-6 rounded-full border border-border", current?.toLowerCase() === color.slice(0, 7).toLowerCase() && "ring-2 ring-primary-edge ring-offset-1 ring-offset-popover")}
-      style={{ background: color }}
-    />
+    <Tip asChild content={color}>
+      <button
+        type="button"
+        aria-label={`Color ${color}`}
+        aria-pressed={current?.toLowerCase() === color.slice(0, 7).toLowerCase()}
+        onClick={() => {
+          onChange(color);
+          setHex(color);
+        }}
+        className={cn("h-6 w-6 rounded-full border border-border", current?.toLowerCase() === color.slice(0, 7).toLowerCase() && "ring-2 ring-primary-edge ring-offset-1 ring-offset-popover")}
+        style={{ background: color }}
+      />
+    </Tip>
   );
 
   return (

@@ -18,6 +18,7 @@ import {
 } from "@/lib/dashboards/explorer";
 import { sumByBucket, lastByBucket, type AccountDailyRow, type PostDailyRow, type PublishedPost } from "@/lib/dashboards/content";
 import { isoToDateInput } from "@/lib/dates";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El explorador de tendencias (F49).
@@ -217,32 +218,35 @@ export function TrendExplorer({
           </select>
         </label>
 
-        <label
-          className="flex items-center gap-1 text-xs"
-          title={stackDecision.reason}
-        >
-          <input
-            type="checkbox"
-            checked={config.barMode === "stacked"}
-            disabled={!stackDecision.allowed}
-            onChange={(e) =>
-              setConfig((c) => ({ ...c, barMode: e.target.checked ? "stacked" : "grouped" }))
-            }
-            className="h-3.5 w-3.5"
-          />
-          Apilar barras
-        </label>
+        <Tip asChild content={stackDecision.reason}>
+          <label
+            className="flex items-center gap-1 text-xs"
+          >
+            <input
+              type="checkbox"
+              checked={config.barMode === "stacked"}
+              disabled={!stackDecision.allowed}
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, barMode: e.target.checked ? "stacked" : "grouped" }))
+              }
+              className="h-3.5 w-3.5"
+            />
+            Apilar barras
+          </label>
+        </Tip>
 
-        <label className="flex items-center gap-1 text-xs" title={markDecision.reason}>
-          <input
-            type="checkbox"
-            checked={config.markPosts}
-            disabled={!markDecision.allowed}
-            onChange={(e) => setConfig((c) => ({ ...c, markPosts: e.target.checked }))}
-            className="h-3.5 w-3.5"
-          />
-          Marcar publicaciones
-        </label>
+        <Tip asChild content={markDecision.reason}>
+          <label className="flex items-center gap-1 text-xs">
+            <input
+              type="checkbox"
+              checked={config.markPosts}
+              disabled={!markDecision.allowed}
+              onChange={(e) => setConfig((c) => ({ ...c, markPosts: e.target.checked }))}
+              className="h-3.5 w-3.5"
+            />
+            Marcar publicaciones
+          </label>
+        </Tip>
       </div>
 
       <div className="mb-2 flex flex-wrap gap-1.5">

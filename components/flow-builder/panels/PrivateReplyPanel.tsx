@@ -11,7 +11,7 @@ import {
 import { VariableChips } from "./variable-chips";
 import { AttributionBlock, type AttributionPanelContext } from "./SendMessagePanel";
 
-const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
 
 /** El panel de «Responder por privado»: el texto y hasta tres botones que abren un link. */
@@ -72,7 +72,7 @@ export function PrivateReplyPanel({
                     type="button"
                     onClick={() => setButtons(buttons.filter((_, i) => i !== index))}
                     aria-label={`Quitar el botón ${index + 1}`}
-                    className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
+                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-muted-foreground"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>

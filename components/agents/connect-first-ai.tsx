@@ -22,7 +22,7 @@ export function ConnectFirstAi({ canConnect }: { canConnect: boolean }) {
   return (
     <section aria-labelledby="connect-first-ai-title" className="mx-auto max-w-3xl rounded-xl border border-dashed border-border p-6 md:p-8">
       <div className="text-center">
-        <Sparkles className="mx-auto h-9 w-9 text-muted-foreground/50" aria-hidden />
+        <Sparkles className="mx-auto h-9 w-9 text-muted-foreground" aria-hidden />
         <h2 id="connect-first-ai-title" className="mt-3 text-lg font-semibold">
           Conectá tu primera IA para empezar
         </h2>

@@ -187,7 +187,7 @@ function PageButton({ disabled, onClick, label, children }: { disabled: boolean;
 export function EmptyState({ icon, title, text, filtered, onClear }: { icon: ReactNode; title: string; text: string; filtered: boolean; onClear: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-      <div className="text-muted-foreground/40">{icon}</div>
+      <div className="text-muted-foreground">{icon}</div>
       <p className="mt-3 text-sm font-medium">{filtered ? "Nada coincide con estos filtros" : title}</p>
       <p className="mt-1 max-w-md text-xs text-muted-foreground">{filtered ? "Probá con otro período o quitá algún filtro." : text}</p>
       {filtered && (

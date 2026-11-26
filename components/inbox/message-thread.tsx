@@ -89,6 +89,7 @@ import { MessageLinkCard } from "./link-preview-card";
 import { useStickToBottom } from "./use-stick-to-bottom";
 import { useNarrow } from "./use-narrow";
 import { fitTextareaToRows } from "@/components/ui/auto-textarea";
+import { Tip } from "@/components/ui/tooltip";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"] & {
   /** El chip "Vino de…" que arma el servidor para este mensaje (Extra I, F44). Casi todos no lo traen. */
@@ -230,12 +231,12 @@ function MessageBubble({
           {/* El asunto va arriba del cuerpo, como en cualquier cliente de
               correo: sin el, una respuesta larga empieza sin contexto. */}
           {message.email_subject && (
-            <p className="mb-1 text-xs font-semibold opacity-80">{message.email_subject}</p>
+            <p className="mb-1 text-xs font-semibold">{message.email_subject}</p>
           )}
           {/* Recepcion por dominio (conexion de Resend, R4): a cual de nuestras direcciones escribio la persona.
               La respuesta sale desde esa misma. */}
           {isInbound && inboundToLabel(message.email_to, null) && (
-            <p className="mb-1 text-[11px] opacity-70">para: {inboundToLabel(message.email_to, null)}</p>
+            <p className="mb-1 text-[11px]">para: {inboundToLabel(message.email_to, null)}</p>
           )}
           {/* El adjunto va ARRIBA del texto, como en WhatsApp: el texto suele
               ser el pie de la foto, no lo principal. */}
@@ -267,36 +268,40 @@ function MessageBubble({
           )}
           <span>{formatMessageTime(message.created_at, timeZone)}</span>
           {replyTime && (
-            <span
-              title={
+            <Tip
+              asChild
+              content={
                 replyTime.human
                   ? "Tiempo de respuesta: desde el primer mensaje del contacto sin responder hasta esta respuesta."
                   : "Tiempo de respuesta de una respuesta automática (agente, automatización u otra herramienta). No cuenta en el tiempo de respuesta del equipo."
               }
             >
-              · respondido en {formatReplyTime(replyTime.seconds)}
-              {!replyTime.human && " (automática)"}
-            </span>
+              <span>
+                · respondido en {formatReplyTime(replyTime.seconds)}
+                {!replyTime.human && " (automática)"}
+              </span>
+            </Tip>
           )}
           {!isInbound && message.status === "delivered" && <span>Entregado</span>}
           {!deleted && canReact && reactionCap && onReact && (
             <ReactButton capability={reactionCap} mine={myReactionEmoji} busy={reacting} onReact={onReact} />
           )}
           {!deleted && canDelete && onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={deleting}
-              aria-label="Eliminar este mensaje para todos"
-              title="Eliminar para todos"
-              className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-60",
-                // Como el boton de reaccionar: con mouse aparece al pasar por el mensaje; en tactil se ve siempre.
-                "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100",
-              )}
-            >
-              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Trash2 className="h-3.5 w-3.5" aria-hidden />}
-            </button>
+            <Tip asChild content="Eliminar para todos">
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={deleting}
+                aria-label="Eliminar este mensaje para todos"
+                className={cn(
+                  "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-60",
+                  // Como el boton de reaccionar: con mouse aparece al pasar por el mensaje; en tactil se ve siempre.
+                  "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100",
+                )}
+              >
+                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Trash2 className="h-3.5 w-3.5" aria-hidden />}
+              </button>
+            </Tip>
           )}
         </div>
         {isInbound && message.origin_chip && <OriginChip chip={message.origin_chip} />}
@@ -346,12 +351,12 @@ function DeletedMessageBody({ view, message }: { view: DeletedBubbleView; messag
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="mt-1 text-[11px] font-medium text-foreground/80 underline underline-offset-2 hover:text-foreground"
+            className="mt-1 text-[11px] font-medium text-foreground underline underline-offset-2 hover:text-foreground"
           >
             {open ? "Ocultar lo que decía" : "Ver lo que decía"}
           </button>
           {open && (
-            <div className="mt-2 border-t border-border pt-2 text-foreground/80">
+            <div className="mt-2 border-t border-border pt-2 text-foreground">
               <MessageAttachments message={message} />
               {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
               {!message.text && message.transcript && <p className="whitespace-pre-wrap break-words">{message.transcript}</p>}
@@ -1339,11 +1344,11 @@ export function MessageThread({
   if (!conversation) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-background text-center">
-        <MessageSquare className="h-12 w-12 text-muted-foreground/30" />
+        <MessageSquare className="h-12 w-12 text-muted-foreground" />
         <h3 className="mt-4 text-sm font-medium text-muted-foreground">
           Elegí una conversación
         </h3>
-        <p className="mt-1 text-xs text-muted-foreground/70">
+        <p className="mt-1 text-xs text-muted-foreground">
           Abrí una de la lista para ver el hilo de mensajes
         </p>
       </div>
@@ -1490,12 +1495,9 @@ export function MessageThread({
             {/* F18: quien esta por escribir tiene que verlo antes de escribir,
                 no despues de apretar enviar. */}
             {conversation.contacts?.do_not_contact && (
-              <span
-                className="mt-0.5 block text-[11px] font-semibold text-red-600 dark:text-red-400"
-                title={conversation.contacts.do_not_contact_reason ?? undefined}
-              >
-                No contactar
-              </span>
+              <Tip asChild content={conversation.contacts.do_not_contact_reason ?? null}>
+                <span className="mt-0.5 block text-[11px] font-semibold text-red-600 dark:text-red-400">No contactar</span>
+              </Tip>
             )}
             {/* Conocido (00256) y Cliente (00268): quien lo abrio igual sabe que no es un lead. */}
             {(conversation.contacts?.is_known || conversation.contacts?.is_customer) && (
@@ -1521,20 +1523,21 @@ export function MessageThread({
             en el menu "⋯": ver `planHeaderActions`. */}
         <div className="flex flex-shrink-0 items-center gap-1.5">
           {onOpenContact && (
-            <button
-              type="button"
-              onClick={onOpenContact}
-              aria-label="Ver datos del contacto"
-              title="Datos del contacto"
-              className={cn(
-                "h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent",
-                contactButtonClassName,
-                // Angosto: se abre tocando el nombre; el boton aparte no entra.
-                "@max-md:hidden",
-              )}
-            >
-              <UserRound className="h-4 w-4" aria-hidden />
-            </button>
+            <Tip asChild content="Datos del contacto">
+              <button
+                type="button"
+                onClick={onOpenContact}
+                aria-label="Ver datos del contacto"
+                className={cn(
+                  "h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent",
+                  contactButtonClassName,
+                  // Angosto: se abre tocando el nombre; el boton aparte no entra.
+                  "@max-md:hidden",
+                )}
+              >
+                <UserRound className="h-4 w-4" aria-hidden />
+              </button>
+            </Tip>
           )}
           <span
             className={cn(
@@ -1551,14 +1554,15 @@ export function MessageThread({
           {/* F11: el aviso completo va en la barra de abajo; acá alcanza un
               pill, para que se vea sin desplazar el hilo. */}
           {needsHumanBadge(conversation).show && (
-            <span
-              className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
-              title={needsHumanBadge(conversation).title}
-              aria-label={needsHumanBadge(conversation).title}
-            >
-              <UserRoundSearch className="h-3 w-3" aria-hidden />
-              <span className="hidden @xl:inline">Necesita humano</span>
-            </span>
+            <Tip asChild content={needsHumanBadge(conversation).title}>
+              <span
+                className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                aria-label={needsHumanBadge(conversation).title}
+              >
+                <UserRoundSearch className="h-3 w-3" aria-hidden />
+                <span className="hidden @xl:inline">Necesita humano</span>
+              </span>
+            </Tip>
           )}
           {currentUserId && (
             <ConversationAssignee
@@ -1576,23 +1580,24 @@ export function MessageThread({
             pausedUntil={conversation.agent_paused_until}
             info={agentInfo}
           />
-          <button
-            type="button"
-            onClick={() => updateConversationStatus(headerPlan.primary === "close" ? "closed" : "open")}
-            disabled={!!statusUpdating}
-            title={headerPlan.primary === "close" ? "Cerrar conversación" : "Reabrir conversación"}
-            aria-label={headerPlan.primary === "close" ? "Cerrar conversación" : "Reabrir conversación"}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-          >
-            {statusUpdating === (headerPlan.primary === "close" ? "closed" : "open") ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : headerPlan.primary === "close" ? (
-              <CheckCircle className="h-4 w-4" aria-hidden />
-            ) : (
-              <RotateCcw className="h-4 w-4" aria-hidden />
-            )}
-            <span className="hidden @2xl:inline">{headerPlan.primary === "close" ? "Cerrar" : "Reabrir"}</span>
-          </button>
+          <Tip asChild content={headerPlan.primary === "close" ? "Cerrar conversación" : "Reabrir conversación"}>
+            <button
+              type="button"
+              onClick={() => updateConversationStatus(headerPlan.primary === "close" ? "closed" : "open")}
+              disabled={!!statusUpdating}
+              aria-label={headerPlan.primary === "close" ? "Cerrar conversación" : "Reabrir conversación"}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              {statusUpdating === (headerPlan.primary === "close" ? "closed" : "open") ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : headerPlan.primary === "close" ? (
+                <CheckCircle className="h-4 w-4" aria-hidden />
+              ) : (
+                <RotateCcw className="h-4 w-4" aria-hidden />
+              )}
+              <span className="hidden @2xl:inline">{headerPlan.primary === "close" ? "Cerrar" : "Reabrir"}</span>
+            </button>
+          </Tip>
           <ConversationMenu
             plan={headerPlan}
             statusLabel={STATUS_LABELS[conversation.status] ?? conversation.status}
@@ -1781,7 +1786,7 @@ export function MessageThread({
                     }}
                     placeholder="Agregá un texto (opcional)"
                     rows={1}
-                    className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
               ) : (
@@ -1810,7 +1815,7 @@ export function MessageThread({
                     }}
                     placeholder={narrowThread ? "Escribí un mensaje" : "Escribí un mensaje o / para un recurso guardado"}
                     rows={1}
-                    className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
               )}
@@ -1859,34 +1864,37 @@ export function MessageThread({
                 )}
               </div>
               {composerPlan.primary === "mic" ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMediaError(null);
-                    setRecording(true);
-                  }}
-                  aria-label="Grabar audio"
-                  title="Grabar audio"
-                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-                >
-                  <Mic className="h-5 w-5" aria-hidden />
-                </button>
+                <Tip asChild content="Grabar audio">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMediaError(null);
+                      setRecording(true);
+                    }}
+                    aria-label="Grabar audio"
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <Mic className="h-5 w-5" aria-hidden />
+                  </button>
+                </Tip>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleSendClick}
-                  disabled={(!input.trim() && !attachedFile) || sending}
-                  aria-label="Enviar mensaje"
-                  title="Enviar"
-                  className={cn(
-                    "flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg transition-colors",
-                    (input.trim() || attachedFile) && !sending
-                      ? "bg-primary text-primary-foreground hover:opacity-90"
-                      : "bg-muted text-muted-foreground"
-                  )}
-                >
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
-                </button>
+                // Sin asChild: deshabilitado mientras no hay nada que mandar.
+                <Tip content="Enviar" className="shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleSendClick}
+                    disabled={(!input.trim() && !attachedFile) || sending}
+                    aria-label="Enviar mensaje"
+                    className={cn(
+                      "flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg transition-colors",
+                      (input.trim() || attachedFile) && !sending
+                        ? "bg-primary text-primary-foreground hover:opacity-90"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
+                  </button>
+                </Tip>
               )}
             </div>
           )}

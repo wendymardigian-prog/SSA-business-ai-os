@@ -29,6 +29,8 @@ import { loadContactsKanbanColumn } from "@/lib/actions/contacts-kanban";
 import { appendCards, axisLabel, columnOf, evaluateContactDrop, moveCard, type KanbanAxis, type KanbanCard, type KanbanColumn } from "@/lib/contacts/kanban";
 import { NONE } from "@/lib/contacts/list-query";
 import { interestLabel, type InterestCatalog } from "@/lib/contacts/interest";
+import { PersonAvatar } from "@/components/ui/person-avatar";
+import { Tip } from "@/components/ui/tooltip";
 
 export function ContactsKanban({
   columns: fromServer,
@@ -120,24 +122,24 @@ export function ContactsKanban({
           const dot = (
             <span
               aria-hidden
-              className={cn("h-2 w-2 shrink-0 rounded-full", !column.color && "border border-muted-foreground/50")}
+              className={cn("h-2 w-2 shrink-0 rounded-full", !column.color && "border border-disabled-foreground/50")}
               style={column.color ? { backgroundColor: column.color } : undefined}
             />
           );
           if (collapsed.has(column.key)) {
             return (
-              <button
-                key={column.key}
-                type="button"
-                onClick={() => toggle(column.key)}
-                title={`Mostrar ${column.name}`}
-                className="flex w-11 shrink-0 flex-col items-center gap-2 rounded-xl border border-border bg-muted/40 py-3 text-xs text-muted-foreground hover:bg-muted"
-              >
-                {dot}
-                <span className="whitespace-nowrap [writing-mode:vertical-rl]">{column.name}</span>
-                <span className="tabular-nums">{column.total}</span>
-                <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-              </button>
+              <Tip key={column.key} asChild content={`Mostrar ${column.name}`}>
+                <button
+                  type="button"
+                  onClick={() => toggle(column.key)}
+                  className="flex w-11 shrink-0 flex-col items-center gap-2 rounded-xl border border-border bg-muted/40 py-3 text-xs text-muted-foreground hover:bg-muted"
+                >
+                  {dot}
+                  <span className="whitespace-nowrap [writing-mode:vertical-rl]">{column.name}</span>
+                  <span className="tabular-nums">{column.total}</span>
+                  <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              </Tip>
             );
           }
           const droppable = canEdit && !column.archived;
@@ -286,12 +288,13 @@ function ContactKanbanCard({
       {(card.email || card.phone) && <span className="truncate text-xs text-muted-foreground">{card.email ?? card.phone}</span>}
       {product && <span className="truncate text-xs text-muted-foreground">Interés: {product}</span>}
       {(setter || vendedor) && (
-        <span className="truncate text-xs text-muted-foreground">
-          {[setter && `Setter: ${setter}`, vendedor && `Vendedor: ${vendedor}`].filter(Boolean).join(" · ")}
+        <span className="flex items-center gap-1">
+          {setter && <PersonAvatar userId={card.setterId} name={setter} role="Setter" size="sm" />}
+          {vendedor && <PersonAvatar userId={card.vendedorId} name={vendedor} role="Vendedor" size="sm" />}
         </span>
       )}
       <span className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground/80">{formatRelative(card.lastInteractionAt, timeZone)}</span>
+        <span className="text-[11px] text-muted-foreground">{formatRelative(card.lastInteractionAt, timeZone)}</span>
         {canEdit && targets.length > 1 && (
           <label className="opacity-100 transition-opacity focus-within:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
             <span className="sr-only">Mover a {name}: cambiar {axisLabel(axis)}</span>

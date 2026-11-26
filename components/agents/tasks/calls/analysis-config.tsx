@@ -100,7 +100,7 @@ export function AnalysisConfig({ data }: { data: Data }) {
 }
 
 const STATE_CLASS = {
-  none: "bg-muted text-muted-foreground",
+  none: "bg-muted text-disabled-foreground",
   manual: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300",
   auto: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
 } as const;

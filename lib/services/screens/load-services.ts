@@ -160,6 +160,7 @@ export async function loadServicesPage(supabase: Db, workspaceId: string, f: Ser
         contactName: names.get(r.contact_id) ?? "Sin nombre",
         productName: r.product_snapshot?.product_name ?? "",
         variantName: r.product_snapshot?.variant_name ?? "",
+        ownerId: r.owner_user_id,
         ownerName: r.owner_user_id ? memberNames.get(r.owner_user_id) ?? "Ya no está en el equipo" : null,
         status: r.status,
         light: toLight(r.light),

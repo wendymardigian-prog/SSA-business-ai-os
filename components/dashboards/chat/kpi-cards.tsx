@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { InfoTooltip } from "@/components/ui/tooltip";
+import { InfoTooltip, Tip } from "@/components/ui/tooltip";
 import { comparePercent, formatCount, formatDuration, type Comparison } from "@/lib/dashboards/chat/comparisons";
 import type { CardsBlock } from "@/lib/dashboards/chat/loaders";
 import { AWAITING_PARAM } from "@/lib/inbox/awaiting";
@@ -96,21 +96,23 @@ export function KpiCards({
           Ver en Inbox
         </Link>
         {waitingNow.windowClosed > 0 && (
-          <Link
-            href={`/dashboard/inbox?${AWAITING_PARAM}=vencida`}
-            className="mt-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-            title="El contacto escribió hace más de 24 h y nadie le respondió. Desde el sistema ya no se puede: se responde desde la app de la red."
-          >
-            + {formatCount(waitingNow.windowClosed)} con la ventana vencida
-          </Link>
+          <Tip asChild content="El contacto escribió hace más de 24 h y nadie le respondió. Desde el sistema ya no se puede: se responde desde la app de la red.">
+            <Link
+              href={`/dashboard/inbox?${AWAITING_PARAM}=vencida`}
+              className="mt-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              + {formatCount(waitingNow.windowClosed)} con la ventana vencida
+            </Link>
+          </Tip>
         )}
         {waitingNow.noReplyNeeded > 0 && (
-          <p
-            className="text-xs text-muted-foreground"
-            title="El último mensaje solo cierra la charla (un gracias, un ok, un emoji) o alguien lo marcó así. No cuentan arriba."
-          >
-            {formatCount(waitingNow.noReplyNeeded)} no necesitan respuesta
-          </p>
+          <Tip asChild content="El último mensaje solo cierra la charla (un gracias, un ok, un emoji) o alguien lo marcó así. No cuentan arriba.">
+            <p
+              className="text-xs text-muted-foreground"
+            >
+              {formatCount(waitingNow.noReplyNeeded)} no necesitan respuesta
+            </p>
+          </Tip>
         )}
       </div>
     </div>

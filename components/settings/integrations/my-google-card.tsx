@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CONNECTION_STATUS_TEXT, type CalendarConnectionStatus } from "@/lib/scheduling/bookable";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * «Mis conexiones» → Google Calendar (F18). Resume las cuentas de la propia persona y manda a la
@@ -29,14 +30,15 @@ export function MyGoogleCard({
             Administrar calendarios
           </Link>
           {canUse && (
-            <a
-              href={hasProfile ? connectHref : undefined}
-              aria-disabled={!hasProfile}
-              title={hasProfile ? undefined : "Primero completá tu perfil en Agenda → Ajustes"}
-              className={`rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground ${hasProfile ? "" : "pointer-events-none opacity-50"}`}
-            >
-              Conectar cuenta de Google
-            </a>
+            <Tip content={hasProfile ? null : "Primero completá tu perfil en Agenda → Ajustes"}>
+              <a
+                href={hasProfile ? connectHref : undefined}
+                aria-disabled={!hasProfile}
+                className={`rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground ${hasProfile ? "" : "pointer-events-none opacity-50"}`}
+              >
+                Conectar cuenta de Google
+              </a>
+            </Tip>
           )}
         </div>
       </div>

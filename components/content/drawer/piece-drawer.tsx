@@ -94,6 +94,7 @@ import { SaveIndicator } from "./save-indicator";
 import { AssigneeSelect } from "./assignee-select";
 import { StatusSelect } from "./status-select";
 import { useToast } from "./toast";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El drawer de la pieza (F96, F97): reemplaza al editor (F24) y al detalle (F36).
@@ -745,20 +746,21 @@ export function PieceDrawer({
           )}
           {/* «⋯»: vincular la pieza con un anuncio de Meta (A2). Solo lo ve quien puede editar piezas y ver anuncios. */}
           {data.canLinkAds && <LinkAdMenu pieceId={post.id} pieceTitle={draft.title || post.title} ads={data.ads} />}
-          <button
-            type="button"
-            onClick={() => void flush().then(() => setView("history"))}
-            aria-label={`Historial de versiones (${versions.length})`}
-            title="Historial de versiones"
-            className="relative rounded-lg p-1.5 text-muted-foreground hover:bg-accent"
-          >
-            <History className="h-4 w-4" aria-hidden />
-            {versions.length > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-medium leading-4 text-primary-foreground">
-                {versions.length}
-              </span>
-            )}
-          </button>
+          <Tip asChild content="Historial de versiones">
+            <button
+              type="button"
+              onClick={() => void flush().then(() => setView("history"))}
+              aria-label={`Historial de versiones (${versions.length})`}
+              className="relative rounded-lg p-1.5 text-muted-foreground hover:bg-accent"
+            >
+              <History className="h-4 w-4" aria-hidden />
+              {versions.length > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-medium leading-4 text-primary-foreground">
+                  {versions.length}
+                </span>
+              )}
+            </button>
+          </Tip>
           <CloseButton onClick={() => void close()} />
         </>
       }
@@ -768,24 +770,24 @@ export function PieceDrawer({
           <span className="flex-1" />
           {data.canDelete && <DeleteButton entity="content_post" id={post.id} variant="icon" onDeleted={afterDelete} />}
           {buttons.map((button) => (
-            <button
-              key={button.action}
-              type="button"
-              disabled={pending || Boolean(button.disabledReason)}
-              title={button.disabledReason}
-              onClick={() => onAction(button.action)}
-              className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium disabled:opacity-50 ${
-                button.tone === "primary"
-                  ? "bg-primary text-primary-foreground"
-                  : button.tone === "danger"
-                    ? "border border-border text-muted-foreground"
-                    : "border border-border"
-              }`}
-            >
-              {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
-              {button.action === "generate_copy" && !pending && <Sparkles className="h-4 w-4" aria-hidden />}
-              {button.label}
-            </button>
+            <Tip key={button.action} content={button.disabledReason}>
+              <button
+                type="button"
+                disabled={pending || Boolean(button.disabledReason)}
+                onClick={() => onAction(button.action)}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium disabled:opacity-50 ${
+                  button.tone === "primary"
+                    ? "bg-primary text-primary-foreground"
+                    : button.tone === "danger"
+                      ? "border border-border text-muted-foreground"
+                      : "border border-border"
+                }`}
+              >
+                {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+                {button.action === "generate_copy" && !pending && <Sparkles className="h-4 w-4" aria-hidden />}
+                {button.label}
+              </button>
+            </Tip>
           ))}
         </>
       }
@@ -912,18 +914,18 @@ export function PieceDrawer({
                 <span className="flex flex-wrap items-center gap-1.5 text-[11px]">
                   <span className="text-muted-foreground">Palabras clave detectadas:</span>
                   {detectedKeywords.map(({ word, live }) => (
-                    <span
-                      key={word}
-                      className={
-                        live
-                          ? "rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-400"
-                          : "rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300"
-                      }
-                      title={live ? "Dispara una automatización activa" : "Ninguna automatización responde a esta palabra"}
-                    >
-                      {live ? "⚡ " : "⚠ "}
-                      {word}
-                    </span>
+                    <Tip asChild key={word} content={live ? "Dispara una automatización activa" : "Ninguna automatización responde a esta palabra"}>
+                      <span
+                        className={
+                          live
+                            ? "rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-400"
+                            : "rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300"
+                        }
+                      >
+                        {live ? "⚡ " : "⚠ "}
+                        {word}
+                      </span>
+                    </Tip>
                   ))}
                 </span>
               )}

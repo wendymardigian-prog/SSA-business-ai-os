@@ -36,7 +36,7 @@ export function canWritePost(params: { role: string; isAuthor: boolean }): boole
  * que usa el kanban (F17): nada nuevo, solo se reusan.
  */
 export const STATUS_COLOR: Record<ContentPostStatus, string> = {
-  draft: "var(--muted-foreground)",
+  draft: "var(--disabled-foreground)",
   in_production: "var(--zn)",
   in_review: "var(--c-auto)",
   approved: "var(--primary-ink)",

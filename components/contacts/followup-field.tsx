@@ -98,7 +98,7 @@ export function FollowupField({
       </div>
 
       {value && !error && (
-        <p className="mt-1.5 text-xs text-muted-foreground/70">
+        <p className="mt-1.5 text-xs text-muted-foreground">
           Agendado para el {formatDateOnly(value, timeZone)}
         </p>
       )}

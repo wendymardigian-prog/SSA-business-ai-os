@@ -13,6 +13,7 @@ import { PROFILE_SHAPE_LABELS, validateProfileRubric, type CallAnalysisProfile, 
 import { cn } from "@/lib/utils";
 import { PromptTestPanel } from "./prompt-test-panel";
 import { RubricEditor } from "./rubric-editor";
+import { Tip } from "@/components/ui/tooltip";
 
 type Data = Extract<CallConfigData, { task: "call_analysis" }>;
 
@@ -248,9 +249,11 @@ export function ProfileEditor({ data, target, profile, onClose }: { data: Data; 
 
       {!readOnly && (
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" onClick={save} disabled={pending || problems.length > 0} title={problems[0]} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-            {pending ? "Guardando…" : "Guardar"}
-          </button>
+          <Tip content={problems[0]}>
+            <button type="button" onClick={save} disabled={pending || problems.length > 0} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+              {pending ? "Guardando…" : "Guardar"}
+            </button>
+          </Tip>
           <button type="button" onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Cerrar</button>
           {profile && <button type="button" disabled={pending} onClick={archive} className="rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent disabled:opacity-50">Quitar el analizador</button>}
           {problems.length > 0 && <span className="text-xs text-amber-800 dark:text-amber-300">No se puede guardar: {problems[0]}</span>}

@@ -85,7 +85,7 @@ export function ContactFiltersPanel({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar un filtro…"
-            className="h-8 w-full rounded-lg border border-input bg-background pl-7 pr-2 text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-ring"
+            className="h-8 w-full rounded-lg border border-input bg-background pl-7 pr-2 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </label>
 

@@ -11,10 +11,11 @@ import type { SaveStatus } from "@/lib/designer/screens/save";
 import { cn } from "@/lib/utils";
 import { inputClass, primaryButton, secondaryButton } from "./overlays";
 import { useUrlParam } from "./use-url-param";
+import { Tip } from "@/components/ui/tooltip";
 
 const STATUS_TONE: Record<EditorActions["status"]["tone"], string> = {
   ok: "bg-good/15 text-good",
-  off: "bg-muted text-muted-foreground",
+  off: "bg-muted text-disabled-foreground",
   pur: "bg-primary/15 text-primary-ink",
   warn: "bg-warn/15 text-warn",
   bad: "bg-bad/15 text-bad",
@@ -110,9 +111,11 @@ export function TopBar({
       {actions.exportMenu.visible && slots.exportMenu}
       {actions.publish.visible && slots.publish}
       {actions.automate.visible && (
-        <button type="button" onClick={onAutomate} className={secondaryButton} aria-label="Automatizar" title="Automatizar">
-          <Zap className="h-4 w-4" aria-hidden /> <span className={compact ? "hidden 2xl:inline" : undefined}>Automatizar</span>
-        </button>
+        <Tip asChild content="Automatizar">
+          <button type="button" onClick={onAutomate} className={secondaryButton} aria-label="Automatizar">
+            <Zap className="h-4 w-4" aria-hidden /> <span className={compact ? "hidden 2xl:inline" : undefined}>Automatizar</span>
+          </button>
+        </Tip>
       )}
       {actions.generateMany.visible && (
         <button type="button" onClick={onGenerateMany} className={secondaryButton}>
@@ -162,12 +165,16 @@ export function TopBar({
         <div className="flex-1 max-sm:hidden" />
         {!readOnly && (
           <div className="hidden items-center gap-1 sm:flex">
-            <button type="button" onClick={onUndo} disabled={!canUndo} aria-label="Deshacer (⌘ Z)" title="Deshacer (⌘ Z)" className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-35">
-              <Undo2 className="h-4 w-4" aria-hidden />
-            </button>
-            <button type="button" onClick={onRedo} disabled={!canRedo} aria-label="Rehacer (⌘ ⇧ Z)" title="Rehacer (⌘ ⇧ Z)" className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-35">
-              <Redo2 className="h-4 w-4" aria-hidden />
-            </button>
+            <Tip content="Deshacer (⌘ Z)">
+              <button type="button" onClick={onUndo} disabled={!canUndo} aria-label="Deshacer (⌘ Z)" className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-35">
+                <Undo2 className="h-4 w-4" aria-hidden />
+              </button>
+            </Tip>
+            <Tip content="Rehacer (⌘ ⇧ Z)">
+              <button type="button" onClick={onRedo} disabled={!canRedo} aria-label="Rehacer (⌘ ⇧ Z)" className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-35">
+                <Redo2 className="h-4 w-4" aria-hidden />
+              </button>
+            </Tip>
             <Popover label="Atajos de teclado" trigger={<HelpCircle className="h-4 w-4" aria-hidden />} panelClassName="w-64 p-3" triggerClassName="hidden h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent 2xl:grid">
               <ul className="flex flex-col gap-1.5 text-xs">
                 {SHORTCUTS.map((s) => (
@@ -182,9 +189,11 @@ export function TopBar({
         )}
         <div className="hidden items-center gap-2 lg:flex">{rightButtons(true)}</div>
         {actions.config.visible && (
-          <button type="button" onClick={onConfig} aria-label="Configuración" title="Configuración" className={cn(secondaryButton, "w-9 px-0")}>
-            <Settings className="h-4 w-4" aria-hidden />
-          </button>
+          <Tip asChild content="Configuración">
+            <button type="button" onClick={onConfig} aria-label="Configuración" className={cn(secondaryButton, "w-9 px-0")}>
+              <Settings className="h-4 w-4" aria-hidden />
+            </button>
+          </Tip>
         )}
         <button type="button" onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen} aria-label="Más acciones" className={cn(secondaryButton, "w-9 px-0 lg:hidden")}>
           <MoreHorizontal className="h-4 w-4" aria-hidden />

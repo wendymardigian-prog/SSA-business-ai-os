@@ -54,7 +54,8 @@ describe("Alcance y Frec. en la tabla Meta vs CRM", () => {
     prefs = { ...prefs, visible: [...prefs.visible, "reach", "frequency"] };
     const html = render();
     expect(html).toContain("Alcance");
-    expect(html).toContain("Preguntándole a Meta");
+    // «Preguntándole a Meta» es el tooltip del sistema: solo se dibuja al pasar el mouse, no en el HTML inicial.
+    expect(html).toContain('aria-label="Cargando"');
     expect(html).not.toContain("49.545");
     expect(html).not.toContain("≈");
   });

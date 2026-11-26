@@ -10,6 +10,7 @@ import { canAddPage, pageLabel, pageMenuActions, type PageMenuAction } from "@/l
 import { qaBadge, type QaBadge } from "@/lib/designer/screens/thumbs";
 import type { CustomVar } from "@/lib/designer/variables/catalog";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /** La miniatura de UNA página, en vivo; se vuelve a dibujar solo cuando esa página cambia (con una pequeña demora al arrastrar). */
 const StripThumb = memo(function StripThumb({ page, format, assetUrls, uploadedFonts, customVars, label, qa }: { page: DesignPage; format: DesignDoc["format"]; assetUrls: Readonly<Record<string, string>>; uploadedFonts: readonly UploadedFont[]; customVars: readonly CustomVar[]; label: string; qa: QaBadge | null }) {
@@ -89,9 +90,11 @@ export function PageStrip({
               <Popover label={`Acciones de la página ${index + 1}`} trigger={<MoreHorizontal className="h-3.5 w-3.5" aria-hidden />} panelClassName="w-48 p-1" triggerClassName="grid h-5 w-5 place-items-center rounded bg-card/90 text-foreground shadow hover:bg-accent" closeOnSelect>
                 <div className="flex flex-col text-sm">
                   {pageMenuActions(doc, index).map((action) => (
-                    <button key={action.id} type="button" disabled={!action.enabled} title={action.reason ?? undefined} onClick={() => onMenu(action.id, index)} className={cn("rounded-md px-2.5 py-1.5 text-left hover:bg-accent disabled:opacity-40", action.id === "delete" && "text-bad")}>
-                      {action.label}
-                    </button>
+                    <Tip key={action.id} content={action.reason ?? undefined} className="flex flex-col">
+                      <button type="button" disabled={!action.enabled} onClick={() => onMenu(action.id, index)} className={cn("rounded-md px-2.5 py-1.5 text-left hover:bg-accent disabled:opacity-40", action.id === "delete" && "text-bad")}>
+                        {action.label}
+                      </button>
+                    </Tip>
                   ))}
                 </div>
               </Popover>
@@ -100,9 +103,11 @@ export function PageStrip({
         </div>
       ))}
       {!readOnly && canAddPage(doc) && (
-        <button type="button" onClick={onAdd} aria-label="Agregar una página" title="Agregar una página" className="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-lg border border-dashed border-border text-muted-foreground hover:bg-accent">
-          <Plus className="h-5 w-5" aria-hidden />
-        </button>
+        <Tip asChild content="Agregar una página">
+          <button type="button" onClick={onAdd} aria-label="Agregar una página" className="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-lg border border-dashed border-border text-muted-foreground hover:bg-accent">
+            <Plus className="h-5 w-5" aria-hidden />
+          </button>
+        </Tip>
       )}
     </nav>
   );

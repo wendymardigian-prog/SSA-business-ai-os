@@ -68,17 +68,17 @@ export function FolderBar({
     <div className="mb-4">
       <div className="flex items-center gap-2 overflow-x-auto pb-1" role="group" aria-label="Carpetas">
         <button type="button" className={chip(selected === FOLDER_ALL)} aria-pressed={selected === FOLDER_ALL} onClick={() => onSelect(FOLDER_ALL)}>
-          Todas <span className="opacity-70">{totalCount}</span>
+          Todas <span>{totalCount}</span>
         </button>
         {folders.map((f) => (
           <button key={f.id} type="button" className={chip(selected === f.id)} aria-pressed={selected === f.id} onClick={() => onSelect(f.id)}>
             <Folder className="h-3.5 w-3.5" aria-hidden="true" />
-            {f.name} <span className="opacity-70">{f.count}</span>
+            {f.name} <span>{f.count}</span>
           </button>
         ))}
         {folders.length > 0 && (
           <button type="button" className={chip(selected === FOLDER_NONE)} aria-pressed={selected === FOLDER_NONE} onClick={() => onSelect(FOLDER_NONE)}>
-            Sin carpeta <span className="opacity-70">{looseCount}</span>
+            Sin carpeta <span>{looseCount}</span>
           </button>
         )}
         {canEdit && (

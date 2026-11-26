@@ -26,12 +26,14 @@ describe("el estado de email en la ficha", () => {
     expect(out).not.toContain("Volver a suscribir");
   });
 
-  it("dado de baja: el detalle (desde cuando y por que) va en el title, y el boton es 'Volver a suscribir'", () => {
+  it("dado de baja: el detalle (desde cuando y por que) va en el tooltip, y el boton es 'Volver a suscribir'", () => {
     const out = control({ status: "unsubscribed", at: "2026-03-03T12:00:00Z", source: "one_click", timeZone: "America/Argentina/Buenos_Aires" });
     expect(out).toContain("Email: Dado de baja");
     expect(out).toContain("Volver a suscribir");
-    expect(out).toContain("desde el 3 de marzo de 2026");
-    expect(out).toContain("un clic");
+    // El tooltip del sistema (`Tip`) se dibuja al pasar el mouse: su texto es `emailStatusDetail`.
+    const detail = emailStatusDetail({ status: "unsubscribed", at: "2026-03-03T12:00:00Z", source: "one_click", timeZone: "America/Argentina/Buenos_Aires" });
+    expect(detail).toContain("desde el 3 de marzo de 2026");
+    expect(detail).toContain("un clic");
   });
 
   it("rebota / marcó spam se nombran asi", () => {

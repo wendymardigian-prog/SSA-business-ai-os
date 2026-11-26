@@ -12,6 +12,7 @@ import { MAX_PATHS, pathsOf, validateBranchData } from "@/lib/flow-engine/branch
 import { BRANCH_ELSE_LABEL } from "@/lib/flow-engine/branch-paths";
 import { upstreamOf } from "@/lib/flow-engine/condition-catalog";
 import type { BranchNodeData, BranchPath } from "@/lib/flow-engine/condition-eval";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Configuracion del nodo "Condiciones" en el canvas: los caminos en el orden en
@@ -21,7 +22,7 @@ import type { BranchNodeData, BranchPath } from "@/lib/flow-engine/condition-eva
  */
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
+  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
 
 export function BranchPanel({
   flowId,
@@ -111,16 +112,17 @@ export function BranchPanel({
               >
                 <ArrowDown className="h-3.5 w-3.5" />
               </button>
-              <button
-                type="button"
-                onClick={() => askRemove(path)}
-                disabled={!canRemovePath(paths.length)}
-                aria-label={`Borrar el camino ${pathDisplayLabel(path, index)}`}
-                title={canRemovePath(paths.length) ? undefined : "Tiene que quedar al menos un camino"}
-                className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:opacity-30 dark:hover:bg-red-950"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              <Tip content={canRemovePath(paths.length) ? undefined : "Tiene que quedar al menos un camino"}>
+                <button
+                  type="button"
+                  onClick={() => askRemove(path)}
+                  disabled={!canRemovePath(paths.length)}
+                  aria-label={`Borrar el camino ${pathDisplayLabel(path, index)}`}
+                  className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:opacity-30 dark:hover:bg-red-950"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </Tip>
             </div>
             {inputs || error ? (
               <PathConditions path={path} groups={groups} onChange={(next) => setPaths(patchPath(paths, path.id, next))} />

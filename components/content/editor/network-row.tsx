@@ -39,6 +39,7 @@ import { networkStateOf, type NetworkPublication } from "@/lib/content/network-s
 import type { ContentPostStatus } from "@/lib/types/database";
 import { useState } from "react";
 import { PUBLISHER_LABELS as ACCOUNT_PUBLISHER_LABELS } from "@/lib/social/accounts-schema";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La fila de una red en el editor (C8).
@@ -76,7 +77,7 @@ const BORDER_BY_STATE: Record<string, string> = {
 };
 
 const PILL_BY_STATE: Record<string, string> = {
-  none: "bg-muted text-muted-foreground",
+  none: "bg-muted text-disabled-foreground",
   tent: "border border-dashed border-border text-muted-foreground",
   sched: "bg-blue-600 text-white",
   pub: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
@@ -224,9 +225,11 @@ export function NetworkRow(props: NetworkRowProps) {
             )}
             {cta.keyword && <Mark>⚡ {cta.keyword}</Mark>}
             {validation.errors.length > 0 && (
-              <span className="text-red-600 dark:text-red-400" title="Hay errores">
-                ●
-              </span>
+              <Tip asChild content="Hay errores">
+                <span role="img" aria-label="Hay errores" className="text-red-600 dark:text-red-400">
+                  ●
+                </span>
+              </Tip>
             )}
             {!network.caption && !ownMedia && !cta.keyword && <span>{summary.uses}</span>}
           </span>
@@ -514,38 +517,40 @@ function PublishModeBlock({
     <div className="space-y-2 border-t border-border pt-3">
       <p className="text-xs font-medium">Cómo se publica en {platform}</p>
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          role="radio"
-          aria-checked={card.mode === "self"}
-          disabled={pending || Boolean(card.selfDisabledReason)}
-          title={card.selfDisabledReason ?? undefined}
-          onClick={() => onSetAuto(false)}
-          className={`flex-1 rounded-lg border px-3 py-2 text-left text-xs disabled:opacity-50 ${
-            card.mode === "self" ? "border-primary-edge bg-primary/5" : "border-border"
-          }`}
-        >
-          <b className="block">La subo yo</b>
-          <span className="text-muted-foreground">
-            La fecha queda tentativa: entra al calendario, pero el sistema no publica nada.
-          </span>
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={card.mode === "system"}
-          disabled={pending || Boolean(systemReason) || (card.mode !== "system" && !canSchedule)}
-          title={systemReason ?? (!canSchedule ? "Revisá los avisos del formato primero." : undefined)}
-          onClick={() => onSetAuto(true)}
-          className={`flex-1 rounded-lg border px-3 py-2 text-left text-xs disabled:opacity-50 ${
-            card.mode === "system" ? "border-primary-edge bg-primary/5" : "border-border"
-          }`}
-        >
-          <b className="block">El sistema la publica</b>
-          <span className={systemReason && filesMissing ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}>
-            {systemReason ?? "A la fecha de arriba se publica sola. Queda en cola."}
-          </span>
-        </button>
+        <Tip content={card.selfDisabledReason ?? undefined} className="flex flex-1">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={card.mode === "self"}
+            disabled={pending || Boolean(card.selfDisabledReason)}
+            onClick={() => onSetAuto(false)}
+            className={`flex-1 rounded-lg border px-3 py-2 text-left text-xs disabled:opacity-50 ${
+              card.mode === "self" ? "border-primary-edge bg-primary/5" : "border-border"
+            }`}
+          >
+            <b className="block">La subo yo</b>
+            <span className="text-muted-foreground">
+              La fecha queda tentativa: entra al calendario, pero el sistema no publica nada.
+            </span>
+          </button>
+        </Tip>
+        <Tip content={systemReason ?? (!canSchedule ? "Revisá los avisos del formato primero." : undefined)} className="flex flex-1">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={card.mode === "system"}
+            disabled={pending || Boolean(systemReason) || (card.mode !== "system" && !canSchedule)}
+            onClick={() => onSetAuto(true)}
+            className={`flex-1 rounded-lg border px-3 py-2 text-left text-xs disabled:opacity-50 ${
+              card.mode === "system" ? "border-primary-edge bg-primary/5" : "border-border"
+            }`}
+          >
+            <b className="block">El sistema la publica</b>
+            <span className={systemReason && filesMissing ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}>
+              {systemReason ?? "A la fecha de arriba se publica sola. Queda en cola."}
+            </span>
+          </button>
+        </Tip>
       </div>
 
       {state.id === "pub" ? (

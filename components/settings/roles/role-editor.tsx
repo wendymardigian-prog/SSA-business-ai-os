@@ -20,6 +20,7 @@ import { assertCanGrant, type GrantActor } from "@/lib/team/grant";
 import type { ChannelsConfig } from "@/lib/auth/channel-permissions";
 import { CallAreaAccess, type RoleCallArea } from "./call-area-access";
 import { ChannelAccessSection, type RoleChannelAccount } from "./channel-access-section";
+import { Tip } from "@/components/ui/tooltip";
 
 const NAME_DEBOUNCE_MS = 700;
 
@@ -364,23 +365,23 @@ export function RoleEditor({
                   const blocked = !readOnly && !checked && !canGive(perm.key);
                   const ownerOnly = perm.ownerOnly === true;
                   return (
-                    <label
-                      key={perm.key}
-                      title={blocked ? (ownerOnly ? "Solo el Owner" : "No podés dar permisos que no tenés") : perm.description || undefined}
-                      className={cn("flex items-start gap-2 text-xs", (blocked || readOnly) && "opacity-70")}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={readOnly || blocked || (ownerOnly && !readOnly)}
-                        onChange={(e) => toggleKey(perm.key, e.target.checked)}
-                        className="mt-0.5"
-                      />
-                      <span>
-                        {perm.label}
-                        {ownerOnly && <span className="ml-1 text-[10px] text-muted-foreground">(solo el Owner)</span>}
-                      </span>
-                    </label>
+                    <Tip key={perm.key} asChild content={blocked ? (ownerOnly ? "Solo el Owner" : "No podés dar permisos que no tenés") : perm.description || null}>
+                      <label
+                        className={cn("flex items-start gap-2 text-xs", (blocked || readOnly) && "opacity-70")}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={readOnly || blocked || (ownerOnly && !readOnly)}
+                          onChange={(e) => toggleKey(perm.key, e.target.checked)}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          {perm.label}
+                          {ownerOnly && <span className="ml-1 text-[10px] text-muted-foreground">(solo el Owner)</span>}
+                        </span>
+                      </label>
+                    </Tip>
                   );
                 })}
               </div>

@@ -266,7 +266,7 @@ export function ResponsesTable({
 function EmptyState({ active, formId }: { active: number; formId: string }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-      <Inbox className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+      <Inbox className="h-10 w-10 text-muted-foreground" aria-hidden />
       <p className="mt-3 text-sm font-medium">{active > 0 ? "Nada coincide con estos filtros" : "Todavía no hay respuestas"}</p>
       <p className="mt-1 text-xs text-muted-foreground">
         {active > 0 ? (

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { generateAutomationWebhookSecret, getAutomationWebhookSecretInfo, saveAutomationWebhookSecret } from "@/lib/actions/automation-webhook-secret";
 import { WEBHOOK_ID_HEADER, WEBHOOK_SECRET_MIN_LENGTH, WEBHOOK_SIGNATURE_HEADER, WEBHOOK_TIMESTAMP_HEADER, webhookSecretProblem } from "@/lib/automations/webhook-signature-constants";
 
-const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const buttonClass = "h-8 rounded-lg border border-border px-2.5 text-xs text-foreground hover:bg-accent disabled:opacity-50";
 
 /**

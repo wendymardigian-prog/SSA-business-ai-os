@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { ariaSort, type TableSort } from "@/lib/ui/data-table/sort";
 import { ResizeHandle } from "./resize-handle";
 import type { TablePrefsState } from "./use-table-prefs";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * LA tabla del sistema. Toda tabla con columnas nueva se arma con esto (ver docs/tablas.md): da, sin que la pantalla
@@ -157,35 +158,35 @@ export function DataTable<Row>({
               </th>
             )}
             {shown.map((column, index) => (
-              <th
-                key={column.key}
-                scope="col"
-                title={column.hint}
-                aria-sort={onSortChange && column.sortable ? ariaSort(sort, column.key) : undefined}
-                style={stickyStyle(index)}
-                className={`whitespace-nowrap px-3 py-2 font-medium ${HEADER_BG} ${column.align === "right" ? "text-right" : ""} ${index < pinned.length ? `sticky z-[2] ${index === pinned.length - 1 ? PIN_EDGE : ""}` : "relative"}`}
-              >
-                {onSortChange && column.sortable ? (
-                  <SortButton column={column} sort={sort} onClick={() => onSortChange(column.key)} />
-                ) : (
-                  <span className="block truncate">{column.label}</span>
-                )}
-                {column.resizable !== false && (
-                  <ResizeHandle
-                    label={column.label || "la columna"}
-                    width={widths[index]}
-                    onLive={(px) => setLive(px === null ? null : { key: column.key, width: px })}
-                    onCommit={(px) => {
-                      setLive(null);
-                      state.update((current) => setColumnWidth(columns, current, column.key, px));
-                    }}
-                    onReset={() => {
-                      setLive(null);
-                      state.update((current) => resetColumnWidth(current, column.key));
-                    }}
-                  />
-                )}
-              </th>
+              <Tip key={column.key} asChild content={column.hint}>
+                <th
+                  scope="col"
+                  aria-sort={onSortChange && column.sortable ? ariaSort(sort, column.key) : undefined}
+                  style={stickyStyle(index)}
+                  className={`whitespace-nowrap px-3 py-2 font-medium ${HEADER_BG} ${column.align === "right" ? "text-right" : ""} ${index < pinned.length ? `sticky z-[2] ${index === pinned.length - 1 ? PIN_EDGE : ""}` : "relative"}`}
+                >
+                  {onSortChange && column.sortable ? (
+                    <SortButton column={column} sort={sort} onClick={() => onSortChange(column.key)} />
+                  ) : (
+                    <span className="block truncate">{column.label}</span>
+                  )}
+                  {column.resizable !== false && (
+                    <ResizeHandle
+                      label={column.label || "la columna"}
+                      width={widths[index]}
+                      onLive={(px) => setLive(px === null ? null : { key: column.key, width: px })}
+                      onCommit={(px) => {
+                        setLive(null);
+                        state.update((current) => setColumnWidth(columns, current, column.key, px));
+                      }}
+                      onReset={() => {
+                        setLive(null);
+                        state.update((current) => resetColumnWidth(current, column.key));
+                      }}
+                    />
+                  )}
+                </th>
+              </Tip>
             ))}
           </tr>
         </thead>
@@ -262,16 +263,19 @@ function SelectBox<Row>({ row, id, selection }: { row: Row; id: string; selectio
   const selectable = !selection.isSelectable || selection.isSelectable(row);
   const reason = selectable ? null : (selection.disabledReason?.(row) ?? null);
   return (
-    <span title={reason ?? undefined}>
-      <input
-        type="checkbox"
-        className="h-4 w-4 cursor-pointer align-middle disabled:cursor-not-allowed"
-        checked={selection.selected.has(id)}
-        disabled={!selectable}
-        onChange={() => selection.onChange(toggleRow(selection.selected, id))}
-        aria-label={reason ? `No se puede elegir: ${reason}` : (selection.rowLabel?.(row) ?? "Elegir la fila")}
-      />
-    </span>
+    // Sin `asChild`: el motivo explica por qué la casilla está apagada, y una casilla apagada no recibe eventos.
+    <Tip content={reason}>
+      <span>
+        <input
+          type="checkbox"
+          className="h-4 w-4 cursor-pointer align-middle disabled:cursor-not-allowed"
+          checked={selection.selected.has(id)}
+          disabled={!selectable}
+          onChange={() => selection.onChange(toggleRow(selection.selected, id))}
+          aria-label={reason ? `No se puede elegir: ${reason}` : (selection.rowLabel?.(row) ?? "Elegir la fila")}
+        />
+      </span>
+    </Tip>
   );
 }
 

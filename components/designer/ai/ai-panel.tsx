@@ -47,6 +47,7 @@ import {
   WORKING_LABEL,
   type PendingAttachment,
 } from "@/lib/designer/screens/ai-panel";
+import { Tip } from "@/components/ui/tooltip";
 
 const INTEGRATIONS_HREF = "/dashboard/settings/integrations";
 
@@ -65,7 +66,7 @@ function Dots() {
   return (
     <span className="inline-flex gap-1" aria-hidden>
       {[0, 150, 300].map((delay) => (
-        <i key={delay} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: `${delay}ms` }} />
+        <i key={delay} className="h-1.5 w-1.5 animate-bounce rounded-full bg-disabled-foreground" style={{ animationDelay: `${delay}ms` }} />
       ))}
     </span>
   );
@@ -328,7 +329,7 @@ export function AiPanel(props: AiPanelProps) {
           const tone = bubble.kind === "user" ? "self-end bg-primary text-primary-foreground" : bubble.kind === "error" ? "self-start border border-destructive/40 bg-destructive/10 text-destructive" : "self-start border border-border bg-card";
           return (
             <div key={bubble.id} className={`${base} ${tone}`}>
-              {bubble.scopeLabel && <span className="mb-0.5 block text-[11px] opacity-80">{bubble.scopeLabel}</span>}
+              {bubble.scopeLabel && <span className="mb-0.5 block text-[11px]">{bubble.scopeLabel}</span>}
               {bubble.text}
               {bubble.attachmentNames.length > 0 && (
                 <span className="mt-1.5 flex flex-wrap gap-1.5">
@@ -425,7 +426,7 @@ export function AiPanel(props: AiPanelProps) {
             rows={3}
             maxLength={4000}
             placeholder={COMPOSER_PLACEHOLDER}
-            className="min-h-16 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            className="min-h-16 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
 
           <div className="flex items-center justify-between gap-2">
@@ -438,10 +439,12 @@ export function AiPanel(props: AiPanelProps) {
                 <Sparkles className="h-3.5 w-3.5" aria-hidden /> Conectá una clave de IA en Configuración
               </Link>
             ) : (
-              <button type="button" onClick={send} disabled={!state.canSend} title={!state.canSend && state.reason ? state.reason : undefined} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Send className="h-3.5 w-3.5" aria-hidden />}
-                Enviar
-              </button>
+              <Tip content={!state.canSend && state.reason ? state.reason : undefined}>
+                <button type="button" onClick={send} disabled={!state.canSend} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Send className="h-3.5 w-3.5" aria-hidden />}
+                  Enviar
+                </button>
+              </Tip>
             )}
           </div>
 
@@ -454,7 +457,7 @@ export function AiPanel(props: AiPanelProps) {
           {!waiting && (
             <div className="flex flex-wrap gap-1.5">
               {suggestions.map((suggestion) => (
-                <button key={suggestion} type="button" onClick={() => setText(suggestion)} className="rounded-full border border-dashed border-border px-2.5 py-0.5 text-[11.5px] text-muted-foreground hover:border-muted-foreground hover:text-foreground">
+                <button key={suggestion} type="button" onClick={() => setText(suggestion)} className="rounded-full border border-dashed border-border px-2.5 py-0.5 text-[11.5px] text-muted-foreground hover:border-disabled-foreground hover:text-foreground">
                   {suggestion}
                 </button>
               ))}

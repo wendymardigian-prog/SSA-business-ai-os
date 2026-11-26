@@ -4,6 +4,7 @@ import {
   qualificationName,
   type QualificationSettings,
 } from "@/lib/contacts/qualification";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El nivel de calificación como insignia: cinco puntos (los primeros llenos con
@@ -24,14 +25,15 @@ export function QualificationBadge({
   const name = qualificationName(settings, level);
   const color = QUALIFICATION_COLORS[level];
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs font-medium"
-      title={`Calificación: ${level} de 5 · ${name}`}
-    >
-      <QualificationDots level={level} color={color} />
-      {!compact && <span className="truncate">{name}</span>}
-      <span className="sr-only">{`Calificación ${level} de 5`}</span>
-    </span>
+    <Tip asChild content={`Calificación: ${level} de 5 · ${name}`}>
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs font-medium"
+      >
+        <QualificationDots level={level} color={color} />
+        {!compact && <span className="truncate">{name}</span>}
+        <span className="sr-only">{`Calificación ${level} de 5`}</span>
+      </span>
+    </Tip>
   );
 }
 
@@ -42,7 +44,7 @@ export function QualificationDots({ level, color }: { level: number; color: stri
         <span
           key={n}
           className="h-1.5 w-1.5 rounded-full"
-          style={n <= level ? { backgroundColor: color } : { backgroundColor: "var(--muted-foreground)", opacity: 0.25 }}
+          style={n <= level ? { backgroundColor: color } : { backgroundColor: "var(--disabled-foreground)", opacity: 0.25 }}
         />
       ))}
     </span>

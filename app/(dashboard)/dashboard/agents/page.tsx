@@ -198,7 +198,7 @@ export default async function AgentsPage({
               depende de que haya uno que CONVERSE, no de que haya alguno. */}
           {!hasChatAgent && (
             <div className={`mx-auto max-w-lg rounded-xl border border-dashed border-border p-8 text-center ${agents.length > 0 ? "mt-4" : ""}`}>
-              <Bot className="mx-auto h-9 w-9 text-muted-foreground/50" aria-hidden />
+              <Bot className="mx-auto h-9 w-9 text-muted-foreground" aria-hidden />
               <h3 className="mt-3 text-base font-semibold">Todavía no hay un agente de chat</h3>
               <p className="mt-2 text-sm text-muted-foreground">
                 El agente de chat responde a tus leads por Instagram y WhatsApp. Se crea apagado y sin canales, con un prompt inicial, el modelo de tu IA y límites seguros. Lo encendés cuando lo hayas revisado.

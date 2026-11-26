@@ -37,7 +37,7 @@ import { LiveThumb } from "./live-thumb";
 
 const BADGE_TONE: Record<BadgeTone, string> = {
   ok: "bg-good/15 text-good",
-  off: "bg-muted text-muted-foreground",
+  off: "bg-muted text-disabled-foreground",
   pur: "bg-primary/15 text-primary-ink",
   warn: "bg-warn/15 text-warn",
 };
@@ -176,7 +176,7 @@ export function DesignsList({
 
           {!loadError && cards.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border px-4 py-16 text-center">
-              <Sparkles className="mb-4 h-12 w-12 text-muted-foreground/50" aria-hidden />
+              <Sparkles className="mb-4 h-12 w-12 text-muted-foreground" aria-hidden />
               <p className="text-lg font-medium text-foreground">{empty.title}</p>
               <p className="mb-4 mt-1 max-w-md text-sm text-muted-foreground">{empty.text}</p>
               {filtered ? (
@@ -235,7 +235,7 @@ function DesignCard({ item, view, data }: { item: ListItem; view: ReturnType<typ
       aria-label={`Abrir ${view.name}`}
       className={cn(
         "group flex h-full min-w-0 flex-col overflow-hidden rounded-[14px] border border-border bg-card text-left transition-all",
-        "hover:-translate-y-px hover:border-muted-foreground/50 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-edge",
+        "hover:-translate-y-px hover:border-disabled-foreground/50 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-edge",
         view.archived && "opacity-60",
       )}
     >

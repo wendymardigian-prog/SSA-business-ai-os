@@ -44,6 +44,7 @@ import { ActionError } from "@/components/contacts/ui";
 import { cn } from "@/lib/utils";
 import { AssetKindIcon } from "./asset-kind-icon";
 import { TranscriptBlock } from "./asset-preview";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Alta y edicion de un recurso de la banca (F6).
@@ -486,18 +487,18 @@ export function AssetFormDialog({
             <p className="text-xs font-medium text-muted-foreground">Variables disponibles</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {TEMPLATE_VARIABLES.map((variable) => (
-                <button
-                  key={variable.key}
-                  type="button"
-                  onClick={() => setContent(`${content}{{${variable.key}}}`)}
-                  title={`${variable.label} — clic para agregarla al final`}
-                  className="rounded-md border border-border bg-background px-2 py-1 text-xs transition-colors hover:bg-accent"
-                >
-                  {`{{${variable.key}}}`}
-                </button>
+                <Tip asChild key={variable.key} content={`${variable.label} — clic para agregarla al final`}>
+                  <button
+                    type="button"
+                    onClick={() => setContent(`${content}{{${variable.key}}}`)}
+                    className="rounded-md border border-border bg-background px-2 py-1 text-xs transition-colors hover:bg-accent"
+                  >
+                    {`{{${variable.key}}}`}
+                  </button>
+                </Tip>
               ))}
             </div>
-            <p className="mt-2 text-xs text-muted-foreground/70">Si el contacto no tiene ese dato cargado, la variable queda vacía.</p>
+            <p className="mt-2 text-xs text-muted-foreground">Si el contacto no tiene ese dato cargado, la variable queda vacía.</p>
           </div>
           {content.trim() && (
             <div>
@@ -707,7 +708,7 @@ function Field({
           {error}
         </p>
       ) : (
-        hint && <p className="mt-1 text-xs text-muted-foreground/80">{hint}</p>
+        hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
       )}
     </div>
   );

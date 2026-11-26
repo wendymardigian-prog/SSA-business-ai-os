@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { TagChip } from "@/components/contacts/ui";
 import { fitCount } from "@/lib/ui/fit-chips";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Las etiquetas de un contacto en UNA línea (la tabla de Contactos): las que entran según el ancho de la columna y al
@@ -51,13 +52,14 @@ export function TagChipsFit({ tags }: { tags: readonly Tag[] }) {
         <TagChip key={tag.id} name={tag.name} color={tag.color} className="min-w-0" />
       ))}
       {hidden.length > 0 && (
-        <span
-          title={hiddenNames}
-          aria-label={`y ${hidden.length} ${hidden.length === 1 ? "etiqueta" : "etiquetas"} más: ${hiddenNames}`}
-          className="inline-flex shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-        >
-          +{hidden.length}
-        </span>
+        <Tip asChild content={hiddenNames}>
+          <span
+            aria-label={`y ${hidden.length} ${hidden.length === 1 ? "etiqueta" : "etiquetas"} más: ${hiddenNames}`}
+            className="inline-flex shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+          >
+            +{hidden.length}
+          </span>
+        </Tip>
       )}
       {/* Fila invisible para medir: todos los chips y el «+N» más ancho posible. */}
       <span ref={measureRef} aria-hidden className="pointer-events-none invisible absolute left-0 top-0 flex gap-1 whitespace-nowrap">

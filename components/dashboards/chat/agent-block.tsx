@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { InfoTooltip } from "@/components/ui/tooltip";
+import { InfoTooltip, Tip } from "@/components/ui/tooltip";
 import { EmptyBlock, Panel } from "./block";
 import { Sparkline } from "./sparkline";
 import { comparePoints, formatCount, formatDuration } from "@/lib/dashboards/chat/comparisons";
@@ -69,7 +69,7 @@ export function AgentRates({ data }: { data: AgentData }) {
 export function AgentHidden({ notice, onClear }: { notice: string; onClear: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-[14px] border border-border bg-card p-[18px] text-sm text-muted-foreground">
-      <Bot className="h-4 w-4 shrink-0 text-muted-foreground/70" aria-hidden />
+      <Bot className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
       <span className="min-w-[220px] flex-1">{notice}</span>
       <button
         type="button"
@@ -129,12 +129,12 @@ export function FirstResponderCard({ data }: { data: FirstResponderBlock }) {
         <div className="flex h-3.5 gap-0.5 overflow-hidden rounded-[5px]" role="img" aria-label="Quién respondió primero">
           {data.slices.map((s) =>
             s.episodes > 0 ? (
-              <span
-                key={s.key}
-                title={`${s.label}: ${s.percent ?? 0} %`}
-                style={{ width: `${s.percent ?? 0}%`, backgroundColor: s.color }}
-                className="h-full first:rounded-l-[5px] last:rounded-r-[5px]"
-              />
+              <Tip key={s.key} asChild content={`${s.label}: ${s.percent ?? 0} %`}>
+                <span
+                  style={{ width: `${s.percent ?? 0}%`, backgroundColor: s.color }}
+                  className="h-full first:rounded-l-[5px] last:rounded-r-[5px]"
+                />
+              </Tip>
             ) : null,
           )}
         </div>
@@ -331,12 +331,12 @@ export function ApprovalCard({
         <div className="flex h-3.5 gap-0.5 overflow-hidden rounded-[5px]" role="img" aria-label="Qué pasó con los borradores">
           {card.outcomes.map((o) =>
             o.count > 0 ? (
-              <span
-                key={o.key}
-                title={`${o.label}: ${o.percent ?? 0} %`}
-                style={{ width: `${o.percent ?? 0}%`, backgroundColor: o.color }}
-                className="h-full first:rounded-l-[5px] last:rounded-r-[5px]"
-              />
+              <Tip key={o.key} asChild content={`${o.label}: ${o.percent ?? 0} %`}>
+                <span
+                  style={{ width: `${o.percent ?? 0}%`, backgroundColor: o.color }}
+                  className="h-full first:rounded-l-[5px] last:rounded-r-[5px]"
+                />
+              </Tip>
             ) : null,
           )}
         </div>
@@ -377,7 +377,7 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
     <div className="bg-card px-[18px] py-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn("mt-0.5 text-xl font-semibold tabular-nums", tone === "warn" && "text-warn", tone === "bad" && "text-bad")}>{value}</p>
-      <p className="text-[11.5px] text-muted-foreground/80">{hint}</p>
+      <p className="text-[11.5px] text-muted-foreground">{hint}</p>
     </div>
   );
 }

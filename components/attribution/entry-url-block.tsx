@@ -36,7 +36,7 @@ export function EntryUrlBlock({ url, className }: { url: string; className?: str
           {state === "copied" ? "Copiada" : state === "error" ? "No se pudo copiar" : "Copiar"}
         </button>
       </div>
-      <code className="mt-1.5 block break-all font-mono text-[11.5px] leading-relaxed text-foreground/90">{url}</code>
+      <code className="mt-1.5 block break-all font-mono text-[11.5px] leading-relaxed text-foreground">{url}</code>
     </div>
   );
 }

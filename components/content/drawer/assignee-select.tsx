@@ -1,6 +1,7 @@
 "use client";
 
 import { AssigneeAvatar } from "../assignee-avatar";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El responsable de la pieza, en el drawer: el circulo de la persona y un
@@ -28,23 +29,25 @@ export function AssigneeSelect({
   const options = value && !known ? [...team, { id: value, name: "Alguien que ya no está en el equipo" }] : team;
 
   return (
-    <label className="inline-flex items-center gap-1.5" title={disabled ? disabledReason : undefined}>
-      <span className="text-[11px] font-medium text-muted-foreground">Responsable</span>
-      <AssigneeAvatar assignee={known} size="md" />
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label="Responsable de la pieza"
-        className="h-8 max-w-[11rem] rounded-md border border-border bg-background px-2 text-xs disabled:opacity-70"
-      >
-        <option value="">Sin responsable</option>
-        {options.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.name}
-          </option>
-        ))}
-      </select>
-    </label>
+    <Tip asChild content={disabled ? disabledReason : undefined}>
+      <label className="inline-flex items-center gap-1.5">
+        <span className="text-[11px] font-medium text-muted-foreground">Responsable</span>
+        <AssigneeAvatar assignee={known} size="md" />
+        <select
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label="Responsable de la pieza"
+          className="h-8 max-w-[11rem] rounded-md border border-border bg-background px-2 text-xs disabled:opacity-70"
+        >
+          <option value="">Sin responsable</option>
+          {options.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </Tip>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { Tip } from "@/components/ui/tooltip";
 import { CalendarDays, Timer, X } from "lucide-react";
 import { formatDayLong } from "@/lib/tasks/format";
 import { formatDuration } from "@/lib/calendar/time";
@@ -166,7 +167,7 @@ export function DatePill({
       <span
         className={cn(
           "relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] transition-colors focus-within:border-primary-edge",
-          !disabled && "hover:border-muted-foreground/60",
+          !disabled && "hover:border-disabled-foreground/60",
           disabled && "opacity-80",
           !value && "text-muted-foreground",
           overdue && "text-red-600 dark:text-red-400",
@@ -192,15 +193,16 @@ export function DatePill({
         />
       </span>
       {value && !disabled && (
-        <button
-          type="button"
-          onClick={() => void onSave(null)}
-          aria-label="Quitar la fecha"
-          title="Quitar la fecha"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <X className="h-3.5 w-3.5" aria-hidden />
-        </button>
+        <Tip asChild content="Quitar la fecha">
+          <button
+            type="button"
+            onClick={() => void onSave(null)}
+            aria-label="Quitar la fecha"
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </Tip>
       )}
     </span>
   );
@@ -225,21 +227,24 @@ export function DurationSelect({
 }) {
   const list = value !== null && !options.includes(value) ? [...options, value].sort((a, b) => a - b) : options;
   return (
-    <span title={title} className={cn("relative inline-flex h-8 items-center rounded-lg border border-input bg-background text-[13px] transition-colors focus-within:border-primary-edge", !disabled && "hover:border-muted-foreground/60", disabled && "opacity-60")}>
-      <Timer className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-      <select
-        value={value === null ? "" : String(value)}
-        disabled={disabled}
-        aria-label={label}
-        onChange={(e) => void onChange(e.target.value === "" ? null : Number(e.target.value))}
-        className={cn("h-full cursor-pointer appearance-none rounded-lg bg-transparent pl-8 pr-3 outline-none disabled:cursor-default", value === null && "text-muted-foreground")}
-      >
-        <option value="">Duración</option>
-        {list.map((m) => (
-          <option key={m} value={m}>{formatDuration(m)}</option>
-        ))}
-      </select>
-    </span>
+    // Sin `asChild`: el texto suele explicar por qué está apagada, y un select apagado no recibe eventos del puntero.
+    <Tip content={title}>
+      <span className={cn("relative inline-flex h-8 items-center rounded-lg border border-input bg-background text-[13px] transition-colors focus-within:border-primary-edge", !disabled && "hover:border-disabled-foreground/60", disabled && "opacity-60")}>
+        <Timer className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+        <select
+          value={value === null ? "" : String(value)}
+          disabled={disabled}
+          aria-label={label}
+          onChange={(e) => void onChange(e.target.value === "" ? null : Number(e.target.value))}
+          className={cn("h-full cursor-pointer appearance-none rounded-lg bg-transparent pl-8 pr-3 outline-none disabled:cursor-default", value === null && "text-muted-foreground")}
+        >
+          <option value="">Duración</option>
+          {list.map((m) => (
+            <option key={m} value={m}>{formatDuration(m)}</option>
+          ))}
+        </select>
+      </span>
+    </Tip>
   );
 }
 

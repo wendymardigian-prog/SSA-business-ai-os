@@ -19,6 +19,7 @@ import { setContactStatus } from "@/lib/actions/contact-status";
 import { setContactQualification } from "@/lib/actions/contact-qualification";
 import { ClickableTr } from "@/components/ui/clickable-row";
 import { InlineSelect, type InlineSelectResult } from "@/components/ui/inline-select";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 import { loadContactColumnCells } from "@/lib/actions/contacts-columns";
 import { createBroadcast } from "@/lib/actions/broadcasts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -70,6 +71,7 @@ import {
   type ContactSort,
 } from "@/lib/contacts/sort";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Lista de contactos.
@@ -324,7 +326,7 @@ export function ContactsView({
             {/* Que la lista pase de 171 a 72 sin decir por que parece que se
                 perdieron contactos. */}
             {!filters.anon && anonymousCount > 0 && (
-              <span className="text-muted-foreground/70">
+              <span className="text-muted-foreground">
                 {" · "}
                 {anonymousCount} sin datos {anonymousCount === 1 ? "oculto" : "ocultos"}
               </span>
@@ -611,9 +613,9 @@ function TableCell({
           {/* La fila entera abre la ficha (docs/tablas.md): el nombre es texto. */}
           {/* Un renglón: el nombre se corta con «…» y las marcas quedan al lado. */}
           <span className="flex min-w-0 items-center gap-2">
-            <span className="min-w-0 truncate text-sm font-medium" title={contact.displayName ?? undefined}>
-              {contact.displayName ?? "Sin nombre"}
-            </span>
+            <Tip asChild content={contact.displayName ?? null}>
+              <span className="min-w-0 truncate text-sm font-medium">{contact.displayName ?? "Sin nombre"}</span>
+            </Tip>
             <span className="flex shrink-0 items-center gap-1.5">
               <TemperatureBadge value={contact.temperature} />
               {contact.doNotContact && <DoNotContactBadge />}
@@ -671,20 +673,29 @@ function TableCell({
     }
     case "contact":
       return (
-        <span className="block truncate text-sm text-muted-foreground" title={[contact.email, contact.phone].filter(Boolean).join(" · ") || undefined}>
-          {[contact.email, contact.phone].filter(Boolean).join(" · ") || "—"}
-        </span>
+        <Tip asChild content={[contact.email, contact.phone].filter(Boolean).join(" · ") || null}>
+          <span className="block truncate text-sm text-muted-foreground">
+            {[contact.email, contact.phone].filter(Boolean).join(" · ") || "—"}
+          </span>
+        </Tip>
       );
     case "setter":
     case "vendedor": {
       const field = col.key === "setter" ? "setter_id" : "vendedor_id";
       const current = col.key === "setter" ? contact.setterId : contact.vendedorId;
+      const currentName = current ? memberLabel.get(current) : undefined;
       return (
         <span className={muted}>
           <InlineSelect
             label={col.key === "setter" ? "Cambiar el setter" : "Cambiar el vendedor"}
             value={current ?? "none"}
-            display={current ? (memberLabel.get(current) ?? "—") : "—"}
+            display={
+              current && currentName ? (
+                <PersonAvatar userId={current} name={currentName} role={col.key === "setter" ? "Setter" : "Vendedor"} size="sm" showName />
+              ) : (
+                "—"
+              )
+            }
             canEdit={canAssign}
             options={[...members.map((m) => ({ value: m.userId, label: m.label })), { value: "none", label: "Sin asignar", separatorBefore: true }]}
             onSelect={async (v) => toInlineResult(await assignContact(contact.id, { [field]: v === "none" ? null : v }))}
@@ -765,7 +776,7 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <Users className="h-10 w-10 text-muted-foreground/40" />
+      <Users className="h-10 w-10 text-muted-foreground" />
       {filtered ? (
         <>
           <p className="mt-3 text-sm font-medium text-muted-foreground">
@@ -783,7 +794,7 @@ function EmptyState({
           <p className="mt-3 text-sm font-medium text-muted-foreground">
             Todavía no hay contactos
           </p>
-          <p className="mt-1 max-w-sm text-xs text-muted-foreground/70">
+          <p className="mt-1 max-w-sm text-xs text-muted-foreground">
             Se crean solos cuando alguien escribe por un canal conectado. También
             los podés cargar a mano.
           </p>

@@ -7,6 +7,7 @@ import { createTask } from "@/lib/actions/tasks";
 import { suggestedTitle } from "@/lib/tasks/suggest";
 import { TASK_LIMITS } from "@/lib/tasks/types";
 import { FloatingPanel } from "@/components/shared/floating";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * «Crear tarea» en la bandeja (F20): sobre la conversacion abierta, con el contacto y la conversacion ya vinculados y un
@@ -34,18 +35,19 @@ export function CreateTaskButton({
   return (
     <>
       {!controlled && (
-        <button
-          ref={ownAnchor}
-          type="button"
-          onClick={() => setOwnOpen((v) => !v)}
-          title="Crear tarea"
-          aria-label="Crear tarea sobre esta conversación"
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <ListPlus className="h-3.5 w-3.5" />
-        </button>
+        <Tip asChild content="Crear tarea">
+          <button
+            ref={ownAnchor}
+            type="button"
+            onClick={() => setOwnOpen((v) => !v)}
+            aria-label="Crear tarea sobre esta conversación"
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <ListPlus className="h-3.5 w-3.5" />
+          </button>
+        </Tip>
       )}
       {open && (
         <FloatingPanel anchor={anchor} onClose={() => setOpen(false)} label="Crear tarea" width={300} className="p-3">

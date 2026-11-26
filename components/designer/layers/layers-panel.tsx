@@ -8,6 +8,7 @@ import { SHORTCUTS } from "@/lib/designer/screens/keyboard";
 import type { HtmlTextTarget } from "@/lib/designer/screens/selection";
 import { bringForward, layerRows, moveToRow, renameLayer, sendBackward, toggleHidden, toggleLocked } from "@/lib/designer/screens/layers";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 const TYPE_ICON = { text: Type, image: ImageIcon, shape: Shapes, html: Code } as const;
 
@@ -94,25 +95,26 @@ export function LayersPanel({
               }}
               className={cn("flex items-center gap-1 border-b border-border bg-card px-1.5 py-1 text-[12.5px] last:border-b-0", selected && "bg-primary/10", dragId === row.id && "opacity-50", overRow === displayIndex && dragId !== row.id && "shadow-[inset_0_2px_0_var(--primary-edge)]")}
             >
-              {!readOnly && <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground/60" aria-hidden />}
+              {!readOnly && <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" aria-hidden />}
               {html && (
-                <button
-                  type="button"
-                  aria-label={open ? "Cerrar la lista de textos" : "Ver los textos"}
-                  aria-expanded={open}
-                  title={open ? "Cerrar la lista de textos" : "Ver los textos"}
-                  onClick={() =>
-                    setCollapsed((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(row.id)) next.delete(row.id);
-                      else next.add(row.id);
-                      return next;
-                    })
-                  }
-                  className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-                >
-                  {open ? <ChevronDown className="h-3.5 w-3.5" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
-                </button>
+                <Tip asChild content={open ? "Cerrar la lista de textos" : "Ver los textos"}>
+                  <button
+                    type="button"
+                    aria-label={open ? "Cerrar la lista de textos" : "Ver los textos"}
+                    aria-expanded={open}
+                    onClick={() =>
+                      setCollapsed((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(row.id)) next.delete(row.id);
+                        else next.add(row.id);
+                        return next;
+                      })
+                    }
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    {open ? <ChevronDown className="h-3.5 w-3.5" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
+                  </button>
+                </Tip>
               )}
               <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
               {renaming === row.id ? (
@@ -133,16 +135,17 @@ export function LayersPanel({
                   }}
                 />
               ) : (
-                <button
-                  type="button"
-                  className={cn("min-w-0 flex-1 truncate rounded px-1 py-1 text-left", row.hidden && "text-muted-foreground line-through")}
-                  aria-pressed={selected}
-                  onClick={(event) => onSelect(row.id, event.shiftKey)}
-                  onDoubleClick={() => !readOnly && setRenaming(row.id)}
-                  title={readOnly ? row.name : `${row.name} · doble clic para renombrar`}
-                >
-                  {row.name}
-                </button>
+                <Tip asChild content={readOnly ? row.name : `${row.name} · doble clic para renombrar`}>
+                  <button
+                    type="button"
+                    className={cn("min-w-0 flex-1 truncate rounded px-1 py-1 text-left", row.hidden && "text-muted-foreground line-through")}
+                    aria-pressed={selected}
+                    onClick={(event) => onSelect(row.id, event.shiftKey)}
+                    onDoubleClick={() => !readOnly && setRenaming(row.id)}
+                  >
+                    {row.name}
+                  </button>
+                </Tip>
               )}
               {!readOnly && (
                 <>
@@ -192,9 +195,11 @@ export function LayersPanel({
 
 function IconButton({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick} className="grid h-6 w-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30">
-      {children}
-    </button>
+    <Tip content={label} className="shrink-0">
+      <button type="button" aria-label={label} disabled={disabled} onClick={onClick} className="grid h-6 w-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30">
+        {children}
+      </button>
+    </Tip>
   );
 }
 
@@ -208,16 +213,17 @@ function HtmlTexts({ el, selectedTx, labelFor, readOnly, onSelect, onEdit }: { e
         {rows.map((row) => (
           <li key={row.tx} className={cn("flex items-center gap-1.5 py-0.5 pl-9 pr-2 text-[12.5px]", selectedTx === row.tx && "bg-primary/10")}>
             <Type className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
-            <button
-              type="button"
-              aria-pressed={selectedTx === row.tx}
-              className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left"
-              onClick={() => onSelect(row.tx)}
-              onDoubleClick={() => !readOnly && onEdit(row.tx)}
-              title={readOnly ? row.name : `${row.name} · doble clic para editar`}
-            >
-              {row.name}
-            </button>
+            <Tip asChild content={readOnly ? row.name : `${row.name} · doble clic para editar`}>
+              <button
+                type="button"
+                aria-pressed={selectedTx === row.tx}
+                className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left"
+                onClick={() => onSelect(row.tx)}
+                onDoubleClick={() => !readOnly && onEdit(row.tx)}
+              >
+                {row.name}
+              </button>
+            </Tip>
           </li>
         ))}
       </ul>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Settings } from "lucide-react";
 import { ContentDialog } from "./dialog";
 import { PillarsManager, type PillarRow } from "./pillars-manager";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El boton de ajustes (⚙️) de la pagina de Contenido: abre los ajustes del
@@ -18,16 +19,17 @@ export function ContentSettingsButton({ pillars }: { pillars: PillarRow[] }) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Ajustes del contenido"
-        aria-haspopup="dialog"
-        title="Ajustes del contenido"
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      >
-        <Settings className="h-4 w-4" aria-hidden />
-      </button>
+      <Tip asChild content="Ajustes del contenido">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Ajustes del contenido"
+          aria-haspopup="dialog"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Settings className="h-4 w-4" aria-hidden />
+        </button>
+      </Tip>
       {open && (
         <ContentDialog
           title="Ajustes del contenido"

@@ -5,6 +5,7 @@ import type { DesignDoc } from "@/lib/designer/doc/schema";
 import type { UploadedFont } from "@/lib/designer/fonts";
 import type { CustomVar } from "@/lib/designer/variables/catalog";
 import { thumbHtml, thumbSize, type QaBadge, type ThumbBox } from "@/lib/designer/screens/thumbs";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La miniatura en vivo de una página (F48): el MISMO `renderPageHTML` que usa el lienzo y el link público,
@@ -62,7 +63,7 @@ export function LiveThumb({
   return (
     <div className="relative shrink-0">
       {thumb}
-      <span role="img" aria-label={qa.label} title={qa.label} className="absolute -right-1 -top-1 z-10 h-2.5 w-2.5 rounded-full border border-card bg-warn" />
+      <Tip asChild content={qa.label}><span role="img" aria-label={qa.label} className="absolute -right-1 -top-1 z-10 h-2.5 w-2.5 rounded-full border border-card bg-warn" /></Tip>
     </div>
   );
 }

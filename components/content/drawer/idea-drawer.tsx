@@ -19,6 +19,7 @@ import { DialogField, fieldInput } from "../dialog";
 import { DeleteButton } from "@/components/trash/delete-dialog";
 import { Drawer } from "./drawer";
 import { useToast } from "./toast";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El drawer de una idea, con galeria (F95).
@@ -292,22 +293,22 @@ export function IdeaDrawer({
             {actions
               .filter((a) => a.action !== "discard")
               .map((a) => (
-                <button
-                  key={a.action}
-                  type="button"
-                  disabled={busy !== null || Boolean(a.disabledReason)}
-                  title={a.disabledReason ?? (a.action === "approve_and_generate" ? aiReason : undefined)}
-                  onClick={() => void act(a.action)}
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50",
-                    a.action === "approve_and_generate"
-                      ? "bg-primary text-primary-foreground"
-                      : "border border-border hover:bg-accent",
-                  )}
-                >
-                  {a.action === "approve_and_generate" ? "✦ " : ""}
-                  {a.label}
-                </button>
+                <Tip key={a.action} content={a.disabledReason ?? (a.action === "approve_and_generate" ? aiReason : undefined)}>
+                  <button
+                    type="button"
+                    disabled={busy !== null || Boolean(a.disabledReason)}
+                    onClick={() => void act(a.action)}
+                    className={cn(
+                      "rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50",
+                      a.action === "approve_and_generate"
+                        ? "bg-primary text-primary-foreground"
+                        : "border border-border hover:bg-accent",
+                    )}
+                  >
+                    {a.action === "approve_and_generate" ? "✦ " : ""}
+                    {a.label}
+                  </button>
+                </Tip>
               ))}
           </>
         ) : (

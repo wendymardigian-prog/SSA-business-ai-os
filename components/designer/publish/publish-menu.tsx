@@ -20,6 +20,7 @@ import { publishDesign, setPublicOptions, unpublishDesign, voidDesign } from "@/
 import type { PublishMenuProps } from "@/lib/designer/contracts";
 import { publishMenuView, voidReasonProblem } from "@/lib/designer/screens/publish-menu";
 import { MAX_VOID_REASON } from "@/lib/designer/publishing-limits";
+import { Tip } from "@/components/ui/tooltip";
 
 type Notice = { tone: "ok" | "error"; text: string } | null;
 type Busy = null | "publish" | "unpublish" | "options" | "void";
@@ -191,14 +192,15 @@ export function PublishMenu(props: PublishMenuProps) {
               <button type="button" onClick={() => setMode("menu")} className="h-9 rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent">
                 Cancelar
               </button>
-              <button
-                type="submit"
-                disabled={!!reasonProblem || busy === "void"}
-                title={reasonProblem ?? undefined}
-                className="h-9 rounded-lg bg-red-600 px-3 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {busy === "void" ? "Anulando…" : view.verification.voidTitle}
-              </button>
+              <Tip content={reasonProblem ?? undefined}>
+                <button
+                  type="submit"
+                  disabled={!!reasonProblem || busy === "void"}
+                  className="h-9 rounded-lg bg-red-600 px-3 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busy === "void" ? "Anulando…" : view.verification.voidTitle}
+                </button>
+              </Tip>
             </div>
             {notice?.tone === "error" && (
               <p role="alert" className="text-xs text-red-600">

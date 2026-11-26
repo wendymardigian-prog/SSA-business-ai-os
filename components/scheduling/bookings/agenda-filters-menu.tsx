@@ -77,7 +77,7 @@ export function AgendaFiltersMenu({
           <div className="space-y-2">
             {statusGroupsForFilter().map((g) => (
               <div key={g.group}>
-                <p className="mb-1 text-[11px] text-muted-foreground/70">{g.label}</p>
+                <p className="mb-1 text-[11px] text-muted-foreground">{g.label}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {g.statuses.map((s) => (
                     <Chip key={s} active={filters.statuses.includes(s)} onClick={() => toggle("estado", s)}>
@@ -92,7 +92,7 @@ export function AgendaFiltersMenu({
 
         <FilterGroup label="Área y tipo">
           {categories.length === 0 ? (
-            <p className="text-xs text-muted-foreground/70">Todavía no hay áreas.</p>
+            <p className="text-xs text-muted-foreground">Todavía no hay áreas.</p>
           ) : (
             <div className="space-y-2">
               {categoryTree(categories).map(({ area, types }) => (
@@ -150,7 +150,7 @@ export function AgendaFiltersMenu({
             <div className="space-y-2">
               {utmOptions.sources.length > 0 && (
                 <div>
-                  <p className="mb-1 text-[11px] text-muted-foreground/70">Fuente</p>
+                  <p className="mb-1 text-[11px] text-muted-foreground">Fuente</p>
                   <div className="flex flex-wrap gap-1.5">
                     {utmOptions.sources.map((v) => (
                       <Chip key={v} active={filters.utmSources.includes(v)} onClick={() => toggle("utm_source", v)}>
@@ -162,7 +162,7 @@ export function AgendaFiltersMenu({
               )}
               {utmOptions.mediums.length > 0 && (
                 <div>
-                  <p className="mb-1 text-[11px] text-muted-foreground/70">Medio</p>
+                  <p className="mb-1 text-[11px] text-muted-foreground">Medio</p>
                   <div className="flex flex-wrap gap-1.5">
                     {utmOptions.mediums.map((v) => (
                       <Chip key={v} active={filters.utmMediums.includes(v)} onClick={() => toggle("utm_medium", v)}>
@@ -174,7 +174,7 @@ export function AgendaFiltersMenu({
               )}
               {utmOptions.campaigns.length > 0 && (
                 <div>
-                  <p className="mb-1 text-[11px] text-muted-foreground/70">Campaña</p>
+                  <p className="mb-1 text-[11px] text-muted-foreground">Campaña</p>
                   <div className="flex flex-wrap gap-1.5">
                     {utmOptions.campaigns.map((v) => (
                       <Chip key={v} active={filters.utmCampaigns.includes(v)} onClick={() => toggle("utm_campaign", v)}>

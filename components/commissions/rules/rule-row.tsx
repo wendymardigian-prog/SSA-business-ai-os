@@ -7,6 +7,7 @@ import { NO_PERSON_WARNING, SHADOWED_WARNING } from "@/lib/commissions/rules-ui-
 import type { RuleView } from "@/lib/commissions/rules-view";
 import { cn } from "@/lib/utils";
 import { STATE_CLASSES, btnIcon, btnSmall } from "./ui";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Una regla en la lista: su lugar, su nombre, la frase en palabras, su estado y los avisos. Para quien administra
@@ -68,26 +69,27 @@ export function RuleRow({
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:gap-3">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           {canManage && (
-            <span
-              draggable
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              aria-hidden
-              title="Arrastrá para cambiar el orden"
-              className="mt-0.5 hidden h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-accent active:cursor-grabbing [@media(pointer:fine)]:flex"
-            >
-              <GripVertical className="h-4 w-4" />
-            </span>
+            <Tip asChild content="Arrastrá para cambiar el orden">
+              <span
+                draggable
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                aria-hidden
+                className="mt-0.5 hidden h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-accent active:cursor-grabbing [@media(pointer:fine)]:flex"
+              >
+                <GripVertical className="h-4 w-4" />
+              </span>
+            </Tip>
           )}
-          <span className="mt-0.5 inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium tabular-nums" title={`Lugar ${index + 1} de ${total}`}>
-            {index + 1}
-          </span>
+          <Tip asChild content={`Lugar ${index + 1} de ${total}`}>
+            <span className="mt-0.5 inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium tabular-nums">{index + 1}</span>
+          </Tip>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className={cn("min-w-0 break-words text-sm font-medium", quiet && "text-muted-foreground")}>{view.name || "Regla sin nombre"}</h3>
               <span className={cn("inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", STATE_CLASSES[view.state])}>{state.label}</span>
             </div>
-            <p className={cn("mt-0.5 break-words text-sm", quiet ? "text-muted-foreground/80" : "text-muted-foreground")}>{view.description}</p>
+            <p className={cn("mt-0.5 break-words text-sm", quiet ? "text-muted-foreground" : "text-muted-foreground")}>{view.description}</p>
             {missingPerson && (
               <p role="status" className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300">
                 <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -116,18 +118,24 @@ export function RuleRow({
             <button type="button" onClick={onEdit} disabled={busy} className={btnSmall}>
               <Pencil className="h-3.5 w-3.5" aria-hidden /> Editar<span className="sr-only"> {view.name}</span>
             </button>
-            <button type="button" onClick={onDuplicate} disabled={busy} className={btnSmall} title="Duplicar">
-              <Copy className="h-3.5 w-3.5" aria-hidden /> <span className="hidden sm:inline">Duplicar</span><span className="sr-only sm:hidden">Duplicar</span><span className="sr-only"> {view.name}</span>
-            </button>
-            <button type="button" onClick={onToggle} disabled={busy} className={btnSmall} title={paused ? "Reactivar" : "Pausar"}>
-              {paused ? <Play className="h-3.5 w-3.5" aria-hidden /> : <Pause className="h-3.5 w-3.5" aria-hidden />}
-              <span className="hidden sm:inline">{paused ? "Reactivar" : "Pausar"}</span>
-              <span className="sr-only sm:hidden">{paused ? "Reactivar" : "Pausar"}</span>
-              <span className="sr-only"> {view.name}</span>
-            </button>
-            <button type="button" onClick={onArchive} disabled={busy} className={btnSmall} title="Archivar">
-              <Archive className="h-3.5 w-3.5" aria-hidden /> <span className="hidden sm:inline">Archivar</span><span className="sr-only sm:hidden">Archivar</span><span className="sr-only"> {view.name}</span>
-            </button>
+            <Tip content="Duplicar">
+              <button type="button" onClick={onDuplicate} disabled={busy} className={btnSmall}>
+                <Copy className="h-3.5 w-3.5" aria-hidden /> <span className="hidden sm:inline">Duplicar</span><span className="sr-only sm:hidden">Duplicar</span><span className="sr-only"> {view.name}</span>
+              </button>
+            </Tip>
+            <Tip content={paused ? "Reactivar" : "Pausar"}>
+              <button type="button" onClick={onToggle} disabled={busy} className={btnSmall}>
+                {paused ? <Play className="h-3.5 w-3.5" aria-hidden /> : <Pause className="h-3.5 w-3.5" aria-hidden />}
+                <span className="hidden sm:inline">{paused ? "Reactivar" : "Pausar"}</span>
+                <span className="sr-only sm:hidden">{paused ? "Reactivar" : "Pausar"}</span>
+                <span className="sr-only"> {view.name}</span>
+              </button>
+            </Tip>
+            <Tip content="Archivar">
+              <button type="button" onClick={onArchive} disabled={busy} className={btnSmall}>
+                <Archive className="h-3.5 w-3.5" aria-hidden /> <span className="hidden sm:inline">Archivar</span><span className="sr-only sm:hidden">Archivar</span><span className="sr-only"> {view.name}</span>
+              </button>
+            </Tip>
           </div>
         )}
       </div>

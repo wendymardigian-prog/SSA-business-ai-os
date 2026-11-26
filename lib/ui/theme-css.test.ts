@@ -43,6 +43,28 @@ describe("tema y desplegables", () => {
   });
 });
 
+describe("textos en blanco o negro; el gris solo para lo desactivado", () => {
+  const value = (body: string, token: string) => new RegExp(`\\n\\s*${token}:\\s*([^;]+);`).exec(body)?.[1]?.trim();
+
+  it("en cada tema el texto secundario es igual al principal y el gris vive en --disabled-foreground", () => {
+    for (const selector of [":root", ".dark"]) {
+      const body = block(selector);
+      expect(value(body, "--muted-foreground"), selector).toBe(value(body, "--foreground"));
+      expect(value(body, "--disabled-foreground"), selector).toBeTruthy();
+      expect(value(body, "--disabled-foreground"), selector).not.toBe(value(body, "--foreground"));
+    }
+  });
+
+  it("los cuatro bloques de tema declaran el gris de desactivado y @theme lo expone como clase", () => {
+    expect(css.match(/\n\s*--disabled-foreground:/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+    expect(css).toContain("--color-disabled-foreground: var(--disabled-foreground);");
+  });
+
+  it("las opciones que no se pueden elegir siguen en gris", () => {
+    expect(css).toMatch(/option:disabled\s*\{\s*color:\s*var\(--disabled-foreground\);/);
+  });
+});
+
 describe("barra de carga del panel", () => {
   it("atenúa el contenido viejo pero no la barra de la pantalla, fuera de @layer", () => {
     const rule = "main[data-nav-pending] > * > :not([data-topbar]):not(:has([data-topbar])) {";

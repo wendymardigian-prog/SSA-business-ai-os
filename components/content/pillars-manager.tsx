@@ -15,6 +15,7 @@ import { ActionError } from "@/components/contacts/ui";
 import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface PillarRow {
   id: string;
@@ -189,22 +190,25 @@ export function PillarsManager({ pillars }: { pillars: PillarRow[] }) {
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                   )}
-                  <button
-                    type="button"
-                    aria-label={`${row.archived ? "Restaurar" : "Archivar"} ${row.name}`}
-                    title={
+                  <Tip
+                    content={
                       row.archived
                         ? "Vuelve a aparecer en los selectores"
                         : row.pieces > 0
                           ? "Deja de ofrecerse, pero las piezas que lo tienen lo siguen mostrando"
                           : "Deja de ofrecerse en los selectores"
                     }
-                    disabled={pending}
-                    onClick={() => run(() => (row.archived ? restorePillar({ id: row.id }) : archivePillar({ id: row.id })))}
-                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
                   >
-                    {row.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
-                  </button>
+                    <button
+                      type="button"
+                      aria-label={`${row.archived ? "Restaurar" : "Archivar"} ${row.name}`}
+                      disabled={pending}
+                      onClick={() => run(() => (row.archived ? restorePillar({ id: row.id }) : archivePillar({ id: row.id })))}
+                      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+                    >
+                      {row.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                    </button>
+                  </Tip>
                 </>
               )}
             </li>

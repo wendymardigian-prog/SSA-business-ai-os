@@ -6,6 +6,7 @@ import { ASSET_KINDS, ASSET_KIND_PLURAL, type AssetKind } from "@/lib/response-a
 import { toggleTag, type AssetFilters, type KindFilter, type TagCount } from "@/lib/response-assets/list";
 import { cn } from "@/lib/utils";
 import { AssetKindIcon } from "./asset-kind-icon";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Buscador + chips de tipo + chips de etiqueta. Uno solo para la pantalla de
@@ -138,27 +139,28 @@ function KindChip({
 }) {
   const disabled = Boolean(disabledReason);
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      // aria-disabled y no `disabled`: un boton deshabilitado no recibe el foco
-      // ni muestra el `title`, y el motivo es justamente lo que importa.
-      aria-disabled={disabled || undefined}
-      title={disabledReason}
-      onClick={disabled ? undefined : onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border font-medium transition-colors",
-        className,
-        disabled
-          ? "cursor-not-allowed border-dashed border-border text-muted-foreground/50"
-          : active
-            ? "border-primary-edge bg-primary/10 text-foreground"
-            : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {kind && <AssetKindIcon kind={kind} className="h-3.5 w-3.5" />}
-      {label}
-      <span className={cn("tabular-nums", count === 0 ? "opacity-40" : "opacity-70")}>{count}</span>
-    </button>
+    <Tip asChild content={disabledReason}>
+      <button
+        type="button"
+        aria-pressed={active}
+        // aria-disabled y no `disabled`: un boton deshabilitado no recibe el foco
+        // ni muestra el tooltip, y el motivo es justamente lo que importa.
+        aria-disabled={disabled || undefined}
+        onClick={disabled ? undefined : onClick}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md border font-medium transition-colors",
+          className,
+          disabled
+            ? "cursor-not-allowed border-dashed border-border text-muted-foreground"
+            : active
+              ? "border-primary-edge bg-primary/10 text-foreground"
+              : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+      >
+        {kind && <AssetKindIcon kind={kind} className="h-3.5 w-3.5" />}
+        {label}
+        <span className={cn("tabular-nums", count === 0 ? "opacity-40" : undefined)}>{count}</span>
+      </button>
+    </Tip>
   );
 }

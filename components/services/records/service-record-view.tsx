@@ -34,6 +34,8 @@ import { SidePanel } from "@/components/tasks/overlay";
 import { EvidenceBox } from "@/components/services/evidence-box";
 import { ServiceProjectsSection } from "./service-projects"; // @plantilla-quitar(proyectos)
 import type { EvidenceEntry, EvidenceRule } from "@/lib/services/evidence";
+import { Tip } from "@/components/ui/tooltip";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 
 export interface ServiceRecordStep {
   id: string;
@@ -101,7 +103,7 @@ const fmtShort = (d: string | null) => (d ? civilShort.format(new Date(`${d}T12:
 const usd = (cents: number) => `US$${(cents / 100).toLocaleString("es-AR", { maximumFractionDigits: cents % 100 ? 2 : 0 })}`;
 
 const TONE_TEXT: Record<RecordTone, string> = { good: "text-good", warn: "text-warn", bad: "text-bad", neutral: "text-muted-foreground" };
-const TONE_DOT: Record<RecordTone, string> = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted-foreground/40" };
+const TONE_DOT: Record<RecordTone, string> = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-disabled-foreground/40" };
 const LIGHT_BAND: Record<string, string> = { red: "border-bad/50 bg-bad/5", yellow: "border-warn/50 bg-warn/5", green: "border-good/40 bg-good/5", gray: "border-border bg-muted/30" };
 
 function useRecordNav() {
@@ -249,7 +251,7 @@ export function ServiceRecordHeader({ data, today, members, permissions }: { dat
                 </select>
               </label>
             ) : (
-              members.find((m) => m.id === data.ownerId)?.name ?? "Sin responsable"
+              <PersonAvatar userId={data.ownerId} name={members.find((m) => m.id === data.ownerId)?.name} role="Responsable" emptyLabel="Sin responsable" size="sm" showName className="max-w-full" />
             )}
           </Figure>
         </dl>
@@ -798,7 +800,7 @@ function ClassroomBlock({
                     {m.lessons.length === 0 && <li className="text-xs text-muted-foreground">Sin clases todavía.</li>}
                     {m.lessons.map((l) => (
                       <li key={l.id} className="flex items-center gap-2 text-sm">
-                        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", l.done ? "bg-good" : l.state.kind === "to_fix" ? "bg-warn" : "bg-muted-foreground/40")} aria-hidden />
+                        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", l.done ? "bg-good" : l.state.kind === "to_fix" ? "bg-warn" : "bg-disabled-foreground/40")} aria-hidden />
                         <span className={cn("min-w-0 flex-1 truncate", !l.done && "text-muted-foreground")}>{l.title}</span>
                         <span className="shrink-0 text-xs text-muted-foreground">
                           {LESSON_LABEL[l.state.kind]}
@@ -934,21 +936,23 @@ function JourneyColumn({
                               )}
                             </span>
                           </span>
-                          <button
-                            type="button"
-                            disabled={toggle.disabled || pending}
-                            title={toggle.reason ?? undefined}
-                            onClick={() => {
-                              // A4: sin la evidencia que pide, el tilde abre el paso para adjuntarla.
-                              if (!isDone && it.evidenceMissing) return setPanel(it.id);
-                              run(() => (isDone ? uncompleteServiceItem(it.id, data.id) : completeServiceItem(it.id, data.id)));
-                            }}
-                            aria-label={isDone ? `Destildar «${it.name}»` : `Tildar «${it.name}»`}
-                            aria-pressed={isDone}
-                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40 md:h-8 md:w-8"
-                          >
-                            {isDone ? <CheckSquare className="h-4 w-4 text-good" aria-hidden /> : <Square className="h-4 w-4" aria-hidden />}
-                          </button>
+                          {/* Sin `asChild`: el motivo se ve justo cuando el botón está apagado, que no recibe eventos del puntero. */}
+                          <Tip content={toggle.reason ?? null} className="shrink-0">
+                            <button
+                              type="button"
+                              disabled={toggle.disabled || pending}
+                              onClick={() => {
+                                // A4: sin la evidencia que pide, el tilde abre el paso para adjuntarla.
+                                if (!isDone && it.evidenceMissing) return setPanel(it.id);
+                                run(() => (isDone ? uncompleteServiceItem(it.id, data.id) : completeServiceItem(it.id, data.id)));
+                              }}
+                              aria-label={isDone ? `Destildar «${it.name}»` : `Tildar «${it.name}»`}
+                              aria-pressed={isDone}
+                              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40 md:h-8 md:w-8"
+                            >
+                              {isDone ? <CheckSquare className="h-4 w-4 text-good" aria-hidden /> : <Square className="h-4 w-4" aria-hidden />}
+                            </button>
+                          </Tip>
                         </li>
                       );
                     })}

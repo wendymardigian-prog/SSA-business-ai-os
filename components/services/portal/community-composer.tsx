@@ -11,6 +11,7 @@ import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 import { communityUploadPhoto } from "@/lib/actions/community";
 import { COMMUNITY_TITLE_MAX, communityFromEditorDoc, communityToEditorDoc, communityVideos, looksLikeMarkdown, MAX_COMMUNITY_PHOTOS } from "@/lib/program/community-text";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Lo guardado es Markdown acotado; un Markdown pegado como texto se abre con su formato. */
 const COMMUNITY_FORMAT: RichTextFormat = {
@@ -111,17 +112,18 @@ export function CommunityComposer({
         minHeight={140}
         disabled={disabled}
         extraToolbar={() => (
-          <button
-            type="button"
-            aria-label="Agregar fotos"
-            title="Agregar fotos"
-            disabled={disabled || photos.length >= MAX_COMMUNITY_PHOTOS}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => fileRef.current?.click()}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-          >
-            <ImagePlus className="h-4 w-4" />
-          </button>
+          <Tip asChild content="Agregar fotos">
+            <button
+              type="button"
+              aria-label="Agregar fotos"
+              disabled={disabled || photos.length >= MAX_COMMUNITY_PHOTOS}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => fileRef.current?.click()}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              <ImagePlus className="h-4 w-4" />
+            </button>
+          </Tip>
         )}
       />
       <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(e) => upload(e.target.files)} />

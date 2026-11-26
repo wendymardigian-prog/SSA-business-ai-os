@@ -13,6 +13,7 @@ import {
 } from "@/lib/finance/category-totals";
 import { formatUsd } from "@/lib/finance/format";
 import { ClickableTr } from "@/components/ui/clickable-row";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Las categorías de gasto (Ajustes > General > Finanzas): agrupadas por grupo, con cuántos gastos tiene cada una y
@@ -116,7 +117,7 @@ export function FinanceCategoriesCard({
                           <span className="flex min-w-0 items-center gap-2">
                             <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: c.color }} aria-hidden />
                             <span className="min-w-0 truncate font-medium">{c.name}</span>
-                            {c.system && <span title="La usan los gastos automáticos" className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Del sistema</span>}
+                            {c.system && <Tip asChild content="La usan los gastos automáticos"><span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Del sistema</span></Tip>}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">{u.count}</td>
@@ -189,19 +190,19 @@ export function FinanceCategoriesCard({
               {CATEGORY_COLORS.map((color) => {
                 const selected = draft.color.toLowerCase() === color;
                 return (
-                  <button
-                    key={color}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    aria-label={CATEGORY_COLOR_NAMES[color]}
-                    title={CATEGORY_COLOR_NAMES[color]}
-                    onClick={() => setDraft({ ...draft, color })}
-                    className={`grid h-8 w-8 place-items-center rounded-full ring-offset-2 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "ring-2 ring-foreground" : ""}`}
-                    style={{ backgroundColor: color }}
-                  >
-                    {selected && <Check className="h-4 w-4 text-white" aria-hidden />}
-                  </button>
+                  <Tip key={color} asChild content={CATEGORY_COLOR_NAMES[color]}>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={CATEGORY_COLOR_NAMES[color]}
+                      onClick={() => setDraft({ ...draft, color })}
+                      className={`grid h-8 w-8 place-items-center rounded-full ring-offset-2 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "ring-2 ring-foreground" : ""}`}
+                      style={{ backgroundColor: color }}
+                    >
+                      {selected && <Check className="h-4 w-4 text-white" aria-hidden />}
+                    </button>
+                  </Tip>
                 );
               })}
             </div>

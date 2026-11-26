@@ -22,6 +22,7 @@ import { ATTRIBUTION_TYPE_LABELS, FINANCING_TYPE_LABELS, PAYMENT_TYPE_LABELS, pa
 import { PaymentPlan } from "@/components/sales/payment-plan";
 import type { TablePayment } from "@/lib/sales/payment-table";
 import type { PaymentMethodDef } from "@/lib/sales/payment-methods";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 
 export interface SaleDetailData {
   sale: {
@@ -197,8 +198,8 @@ export function SaleDetail({ data, wizard, contracts, commissions, services, aff
               <Row label="Inicio del servicio" value={formatDate(sale.service_starts_at)} />
               <Row label="Financiamiento" value={FINANCING_TYPE_LABELS[sale.financing_type as FinancingType] ?? sale.financing_type} />
               <Row label="Descuento" value={Number(sale.discount_amount) > 0 ? `${formatMoney(sale.discount_amount)}${sale.discount_reason ? ` · ${sale.discount_reason}` : ""}` : "Sin descuento"} />
-              <Row label="Setter" value={sale.setter_id ? data.names[sale.setter_id] ?? "—" : "Sin asignar"} />
-              <Row label="Vendedor" value={sale.vendedor_id ? data.names[sale.vendedor_id] ?? "—" : "Sin asignar"} />
+              <Row label="Setter" value={<TeamPerson userId={sale.setter_id} name={sale.setter_id ? data.names[sale.setter_id] : null} role="Setter" />} />
+              <Row label="Vendedor" value={<TeamPerson userId={sale.vendedor_id} name={sale.vendedor_id ? data.names[sale.vendedor_id] : null} role="Vendedor" />} />
               {affiliate && (
                 <div className="flex items-start gap-2">
                   <dt className="w-28 shrink-0 text-muted-foreground sm:w-40">Afiliado</dt>
@@ -293,7 +294,14 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: str
   );
 }
 
-function Row({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
+/** Setter o vendedor: su circulo y su nombre; sin persona, «Sin asignar»; con un id sin nombre, «—». */
+function TeamPerson({ userId, name, role }: { userId: string | null | undefined; name: string | null | undefined; role: string }) {
+  if (!userId) return <>Sin asignar</>;
+  if (!name) return <>—</>;
+  return <PersonAvatar userId={userId} name={name} role={role} size="sm" showName className="max-w-full align-middle" />;
+}
+
+function Row({ label, value, wide }: { label: string; value: React.ReactNode; wide?: boolean }) {
   return (
     <div className={`flex items-start gap-2 ${wide ? "sm:col-span-2" : ""}`}>
       <dt className="w-28 shrink-0 text-muted-foreground sm:w-40">{label}</dt>

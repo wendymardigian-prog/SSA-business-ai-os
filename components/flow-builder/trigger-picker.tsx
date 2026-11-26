@@ -130,7 +130,7 @@ export function TriggerPicker({ open, currentKey, onPick, onClose, title = "¿C�
               }}
               placeholder="Buscar: reunión, etiqueta, pago, formulario…" // @plantilla-quitar(ventas,formularios)
               // @plantilla-sin(ventas,formularios): placeholder="Buscar: reunión, etiqueta, mensaje, comentario…"
-              className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
+              className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-disabled-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
             />
           </label>
         </div>

@@ -26,7 +26,7 @@ export default async function MiReporteDelDiaPage() {
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         {items.length === 0 ? (
           <div className="mx-auto flex max-w-md flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border py-16 text-center">
-            <ClipboardList className="h-10 w-10 text-muted-foreground/50" aria-hidden />
+            <ClipboardList className="h-10 w-10 text-muted-foreground" aria-hidden />
             <p className="font-medium text-muted-foreground">No tenés reportes de fin de día para completar</p>
             <p className="max-w-sm text-sm text-muted-foreground">Cuando se publique un reporte para tu rol o para vos, lo vas a ver acá.</p>
           </div>

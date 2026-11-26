@@ -26,6 +26,7 @@ import { TaskChecklist } from "./task-checklist";
 import { CommentThread } from "@/components/team-comments/comment-thread";
 import { TaskServiceBlock } from "@/components/services/task-service-block"; // @plantilla-quitar(servicios)
 import { TaskRepeatSection, TaskSeriesFixButton, seriesFixItemOf } from "./task-repeat-section"; // @plantilla-quitar(servicios)
+import { Tip } from "@/components/ui/tooltip";
 
 export interface TaskDrawerProps {
   /** `view`: una tarea que existe. `create`: el formulario completo de una tarea nueva. */
@@ -376,7 +377,7 @@ function PickerButton({ refEl, onClick, children, label, disabled, pill = false,
     const look = cn("inline-flex h-8 max-w-full items-center gap-1.5 rounded-lg border px-2.5 text-[13px]", tone ? `${tone} border-transparent` : "border-input bg-background");
     if (disabled) return <span className={cn(look, "opacity-80")}>{children}</span>;
     return (
-      <button ref={refEl} type="button" onClick={onClick} aria-label={label} className={cn(look, "transition-colors hover:border-muted-foreground/60 focus-visible:border-primary-edge focus-visible:outline-none")}>
+      <button ref={refEl} type="button" onClick={onClick} aria-label={label} className={cn(look, "transition-colors hover:border-disabled-foreground/60 focus-visible:border-primary-edge focus-visible:outline-none")}>
         {children}
       </button>
     );
@@ -391,20 +392,22 @@ function PickerButton({ refEl, onClick, children, label, disabled, pill = false,
 
 /** Un icono de la cabecera (seguidores, historial). `badge` es un numerito en la esquina. */
 function HeaderIconButton({ refEl, children, label, title, onClick, disabled, active, pressed, badge }: { refEl?: RefObject<HTMLButtonElement | null>; children: ReactNode; label: string; title: string; onClick?: () => void; disabled?: boolean; active?: boolean; pressed?: boolean; badge?: number | null }) {
+  // Sin `asChild`: sin permiso para editar el botón queda apagado y igual tiene que decir quiénes siguen la tarea.
   return (
-    <button
-      ref={refEl}
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      aria-pressed={pressed}
-      title={title}
-      className={cn("relative grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-accent hover:text-foreground disabled:cursor-default disabled:hover:bg-transparent", active ? "text-primary-ink" : "text-muted-foreground", pressed && "bg-accent")}
-    >
-      {children}
-      {badge ? <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">{badge}</span> : null}
-    </button>
+    <Tip content={title} className="shrink-0">
+      <button
+        ref={refEl}
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        aria-pressed={pressed}
+        className={cn("relative grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-accent hover:text-foreground disabled:cursor-default disabled:hover:bg-transparent", active ? "text-primary-ink" : "text-muted-foreground", pressed && "bg-accent")}
+      >
+        {children}
+        {badge ? <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">{badge}</span> : null}
+      </button>
+    </Tip>
   );
 }
 
@@ -462,9 +465,11 @@ function DependenciesSection({
                     <span className="min-w-0 flex-1 truncate text-muted-foreground">Una tarea que no podés ver</span>
                   )}
                   {canEdit && (
-                    <button type="button" disabled={busy} aria-label="Quitar este bloqueante" title="Quitar este bloqueante" onClick={() => void onChange(task.blocked_by.filter((x) => x.task_id !== b.task_id).map((x) => x.task_id))} className="grid h-6 w-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50">
-                      <X className="h-3.5 w-3.5" aria-hidden />
-                    </button>
+                    <Tip asChild content="Quitar este bloqueante">
+                      <button type="button" disabled={busy} aria-label="Quitar este bloqueante" onClick={() => void onChange(task.blocked_by.filter((x) => x.task_id !== b.task_id).map((x) => x.task_id))} className="grid h-6 w-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50">
+                        <X className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                    </Tip>
                   )}
                 </li>
               );

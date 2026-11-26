@@ -11,6 +11,7 @@ import { googleTitle, type GooglePlaced } from "@/lib/google-calendar/agenda";
 import { formatSlotLabel } from "@/lib/scheduling/booker/format";
 import { cn } from "@/lib/utils";
 import { clampStyle } from "@/lib/calendar/card-lines";
+import { Tip } from "@/components/ui/tooltip";
 
 /** El logo de Google Calendar como un cuadradito de color: sin marca ajena dibujada. */
 function GoogleDot({ color }: { color: string | null }) {
@@ -21,16 +22,17 @@ function GoogleDot({ color }: { color: string | null }) {
 export function GoogleRefresh({ refreshing, onRefresh, note }: { refreshing: boolean; onRefresh: () => void; note: string | null }) {
   return (
     <span className="flex items-center gap-1.5">
-      <button
-        type="button"
-        onClick={onRefresh}
-        disabled={refreshing}
-        aria-label="Actualizar los eventos de Google"
-        title="Actualizar los eventos de Google"
-        className="grid h-8 w-8 place-items-center rounded-md border border-border hover:bg-muted disabled:opacity-50"
-      >
-        <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
-      </button>
+      <Tip asChild content="Actualizar los eventos de Google">
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          aria-label="Actualizar los eventos de Google"
+          className="grid h-8 w-8 place-items-center rounded-md border border-border hover:bg-muted disabled:opacity-50"
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
+        </button>
+      </Tip>
       {note && <span className="hidden text-[11px] text-muted-foreground lg:inline">{note}</span>}
     </span>
   );
@@ -64,16 +66,17 @@ export function GoogleToggle({
         <GoogleDot color={null} /> Google
       </button>
       {on && (
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={refreshing}
-          aria-label="Actualizar los eventos de Google"
-          title="Actualizar los eventos de Google"
-          className="grid h-7 w-7 place-items-center rounded-md border border-border hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
-        </button>
+        <Tip content="Actualizar los eventos de Google">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            aria-label="Actualizar los eventos de Google"
+            className="grid h-7 w-7 place-items-center rounded-md border border-border hover:bg-muted disabled:opacity-50"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
+          </button>
+        </Tip>
       )}
       {on && note && <span className="hidden text-[11px] text-muted-foreground lg:inline">{note}</span>}
     </div>

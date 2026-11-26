@@ -11,6 +11,7 @@ import { FORMS_LIST_QUERY_KEY } from "@/components/forms/list/forms-list";
 import { publishForm } from "@/lib/actions/forms/forms";
 import { editorBarView, type BarForm, type EditorRoute, type EditorSection, type SaveState } from "@/lib/forms/editor-bar";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La barra superior del editor de un formulario y de sus pantallas hermanas (plano formularios-ui, F7): ← Volver,
@@ -89,15 +90,16 @@ export function EditorBar({
   const name_ = (
     <span className="flex min-w-0 items-center gap-1.5 [flex-shrink:3]">
       <FormTypeIcon type={form.type} tooltip />
-      <input
-        value={name ?? form.name}
-        onChange={(e) => onNameChange?.(e.target.value)}
-        readOnly={!view.nameEditable}
-        maxLength={120}
-        aria-label="Nombre interno"
-        title="Nombre interno · solo lo ve tu equipo"
-        className="hidden h-8 w-[220px] min-w-[60px] max-w-full truncate rounded-lg border border-transparent bg-transparent px-2 text-[14.5px] font-semibold text-foreground hover:border-border focus:border-primary-edge focus:bg-card focus:outline-none read-only:cursor-default read-only:hover:border-transparent topbar:block"
-      />
+      <Tip asChild content="Nombre interno · solo lo ve tu equipo">
+        <input
+          value={name ?? form.name}
+          onChange={(e) => onNameChange?.(e.target.value)}
+          readOnly={!view.nameEditable}
+          maxLength={120}
+          aria-label="Nombre interno"
+          className="hidden h-8 w-[220px] min-w-[60px] max-w-full truncate rounded-lg border border-transparent bg-transparent px-2 text-[14.5px] font-semibold text-foreground hover:border-border focus:border-primary-edge focus:bg-card focus:outline-none read-only:cursor-default read-only:hover:border-transparent topbar:block"
+        />
+      </Tip>
     </span>
   );
 
@@ -149,7 +151,7 @@ export function EditorBar({
     <span
       role="status"
       aria-live="polite"
-      className={cn("inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px]", view.save.retry !== "none" ? "text-destructive" : view.save.state === "saved" ? "text-muted-foreground/80" : "text-muted-foreground")}
+      className={cn("inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px]", view.save.retry !== "none" ? "text-destructive" : view.save.state === "saved" ? "text-muted-foreground" : "text-muted-foreground")}
     >
       {view.save.state === "saving" || view.save.state === "pending" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : view.save.state === "saved" ? <Check className="h-3.5 w-3.5" aria-hidden /> : null}
       {/* Abajo de 1360 px el guardado queda solo con su icono (el texto sigue para el lector de pantalla). */}
@@ -171,43 +173,49 @@ export function EditorBar({
     <>
       <FormStatusPill status={view.status.tone} className={compact ? "max-[1099px]:hidden" : undefined} />
       {view.unpublishedBadge && compact && (
-        <span role="img" aria-label="Cambios sin publicar" title="Cambios sin publicar" className="h-2 w-2 shrink-0 rounded-full bg-warn min-[1600px]:hidden" />
+        <Tip asChild content="Cambios sin publicar">
+          <span role="img" aria-label="Cambios sin publicar" className="h-2 w-2 shrink-0 rounded-full bg-warn min-[1600px]:hidden" />
+        </Tip>
       )}
       {view.unpublishedBadge && (
-        <span
-          title="Lo que editaste todavía no está en línea"
-          className={cn("whitespace-nowrap rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-semibold text-warn", compact && "max-[1599px]:hidden")}
-        >
-          Cambios sin publicar
-        </span>
+        <Tip asChild content="Lo que editaste todavía no está en línea">
+          <span
+            className={cn("whitespace-nowrap rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-semibold text-warn", compact && "max-[1599px]:hidden")}
+          >
+            Cambios sin publicar
+          </span>
+        </Tip>
       )}
       {saveBlock}
     </>
   );
 
   const metrics = (
-    <Link
-      href={view.metrics.href}
-      title="Métricas"
-      aria-current={view.metrics.active ? "page" : undefined}
-      className={cn(
-        "inline-flex h-8 max-topbar:h-10 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors",
-        view.metrics.active ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-input bg-background hover:border-muted-foreground/60",
-      )}
-    >
-      <BarChart3 className="h-4 w-4" aria-hidden />
-      {/* Abajo de 1500 px, Metricas queda solo con su icono (con tooltip). */}
-      <span className="max-[1499px]:sr-only">Métricas</span>
-    </Link>
+    <Tip asChild content="Métricas">
+      <Link
+        href={view.metrics.href}
+        aria-current={view.metrics.active ? "page" : undefined}
+        className={cn(
+          "inline-flex h-8 max-topbar:h-10 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors",
+          view.metrics.active ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-input bg-background hover:border-disabled-foreground/60",
+        )}
+      >
+        <BarChart3 className="h-4 w-4" aria-hidden />
+        {/* Abajo de 1500 px, Metricas queda solo con su icono (con tooltip). */}
+        <span className="max-[1499px]:sr-only">Métricas</span>
+      </Link>
+    </Tip>
   );
 
   const publish = view.publish;
   const publishButton =
     publish.kind === "none" ? null : publish.kind === "published" ? (
-      <span title="Lo que ves es lo que está en línea" className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-input px-2.5 text-[13px] font-medium text-good">
-        <Check className="h-4 w-4" aria-hidden />
-        Publicado
-      </span>
+      <Tip asChild content="Lo que ves es lo que está en línea">
+        <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-input px-2.5 text-[13px] font-medium text-good">
+          <Check className="h-4 w-4" aria-hidden />
+          Publicado
+        </span>
+      </Tip>
     ) : (
       <button
         type="button"
@@ -221,16 +229,17 @@ export function EditorBar({
     );
 
   const previewButton = view.showPreview && onPreview && (
-    <button
-      type="button"
-      onClick={onPreview}
-      title="Vista previa"
-      className="inline-flex h-8 max-topbar:h-10 shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] font-medium hover:border-muted-foreground/60"
-    >
-      <Eye className="h-4 w-4" aria-hidden />
-      <span className="hidden min-[1320px]:inline">Vista previa</span>
-      <span className="sr-only min-[1320px]:hidden">Vista previa</span>
-    </button>
+    <Tip asChild content="Vista previa">
+      <button
+        type="button"
+        onClick={onPreview}
+        className="inline-flex h-8 max-topbar:h-10 shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] font-medium hover:border-disabled-foreground/60"
+      >
+        <Eye className="h-4 w-4" aria-hidden />
+        <span className="hidden min-[1320px]:inline">Vista previa</span>
+        <span className="sr-only min-[1320px]:hidden">Vista previa</span>
+      </button>
+    </Tip>
   );
 
   return (
@@ -256,9 +265,11 @@ export function EditorBar({
             {previewButton}
             {publishButton}
             {error && (
-              <span role="alert" title={error} className="hidden max-w-[220px] truncate text-xs text-destructive topbar:inline">
-                {error}
-              </span>
+              <Tip asChild content={error}>
+                <span role="alert" className="hidden max-w-[220px] truncate text-xs text-destructive topbar:inline">
+                  {error}
+                </span>
+              </Tip>
             )}
           </div>
         }

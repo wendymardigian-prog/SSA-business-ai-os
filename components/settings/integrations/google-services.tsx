@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { GoogleServicesSummary } from "./types";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Lo que la card de Google dice de cada servicio (G4, 00374). El mismo cliente
@@ -56,18 +57,19 @@ export function GoogleServices({
         </div>
       </Row>
       <Row label="Google Drive">
-        <span
-          className={`truncate text-xs ${
-            !drive
-              ? "text-muted-foreground"
-              : drive.status !== "active"
-                ? "text-amber-600 dark:text-amber-400"
-                : "text-emerald-600 dark:text-emerald-400"
-          }`}
-          title={drive?.label}
-        >
-          {!drive ? "Sin conectar" : drive.status !== "active" ? "Necesita atención" : drive.label}
-        </span>
+        <Tip asChild content={drive?.label}>
+          <span
+            className={`truncate text-xs ${
+              !drive
+                ? "text-muted-foreground"
+                : drive.status !== "active"
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-emerald-600 dark:text-emerald-400"
+            }`}
+          >
+            {!drive ? "Sin conectar" : drive.status !== "active" ? "Necesita atención" : drive.label}
+          </span>
+        </Tip>
       </Row>
     </div>
   );

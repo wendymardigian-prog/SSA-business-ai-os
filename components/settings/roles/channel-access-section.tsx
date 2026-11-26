@@ -16,6 +16,7 @@ import {
 } from "@/lib/auth/channel-permissions";
 import { platformLabel } from "@/lib/platforms";
 import type { GrantActor } from "@/lib/team/grant";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Una cuenta conectada, como la muestra la pantalla de roles. */
 export interface RoleChannelAccount {
@@ -205,20 +206,21 @@ function ModeOption({
   onSelect: () => void;
 }) {
   return (
-    <label
-      title={disabled && !checked ? "No podés dar permisos que no tenés" : undefined}
-      className={cn(
-        "flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-xs",
-        checked ? "border-primary-edge bg-primary/5" : "border-border",
-        disabled && !checked && "cursor-not-allowed opacity-60",
-      )}
-    >
-      <input type="radio" checked={checked} disabled={disabled && !checked} onChange={onSelect} className="mt-0.5" />
-      <span>
-        <span className="block font-medium">{title}</span>
-        <span className="block text-[11px] text-muted-foreground">{hint}</span>
-      </span>
-    </label>
+    <Tip asChild content={disabled && !checked ? "No podés dar permisos que no tenés" : null}>
+      <label
+        className={cn(
+          "flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-xs",
+          checked ? "border-primary-edge bg-primary/5" : "border-border",
+          disabled && !checked && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <input type="radio" checked={checked} disabled={disabled && !checked} onChange={onSelect} className="mt-0.5" />
+        <span>
+          <span className="block font-medium">{title}</span>
+          <span className="block text-[11px] text-muted-foreground">{hint}</span>
+        </span>
+      </label>
+    </Tip>
   );
 }
 

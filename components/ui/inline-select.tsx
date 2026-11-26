@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { PortalMenu, PortalMenuItem, PortalMenuSeparator } from "@/components/ui/portal-menu";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Un valor de una tabla que se cambia ahí mismo con un desplegable (estado, responsable, activo/archivado…). Mismo
@@ -116,9 +117,11 @@ export function InlineSelect<V extends string>({
         ))}
       </PortalMenu>
       {error && (
-        <span role="alert" className="truncate text-xs text-red-700 dark:text-red-400" title={error}>
-          {error}
-        </span>
+        <Tip asChild content={error}>
+          <span role="alert" className="truncate text-xs text-red-700 dark:text-red-400">
+            {error}
+          </span>
+        </Tip>
       )}
     </span>
   );

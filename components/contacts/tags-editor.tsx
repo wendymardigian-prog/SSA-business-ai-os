@@ -141,7 +141,7 @@ export function TagsEditor({
               ))}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground/70">
+            <p className="text-xs text-muted-foreground">
               {allTags.length === 0
                 ? "El workspace todavía no tiene tags. El que crees queda disponible para todos."
                 : "Este contacto ya tiene todos los tags del workspace."}

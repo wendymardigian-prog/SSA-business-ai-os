@@ -41,6 +41,7 @@ import { miniBarsView } from "@/lib/portal-points/daily";
 import { cn } from "@/lib/utils";
 import { ClientesTabs } from "./clientes-tabs";
 import { NewServiceDialog, type NewServiceOptions } from "./new-service-dialog";
+import { Tip } from "@/components/ui/tooltip";
 
 const PILL: Record<ClientLight, { label: string; cls: string; num: string }> = {
   red: { label: "Rojo", cls: "bg-bad/10 text-bad", num: "bg-bad/15 text-bad" },
@@ -50,7 +51,7 @@ const PILL: Record<ClientLight, { label: string; cls: string; num: string }> = {
   pending: { label: "Por confirmar", cls: "bg-primary/10 text-primary-ink", num: "bg-primary/15 text-primary-ink" },
   none: { label: "Sin activos", cls: "bg-muted text-muted-foreground", num: "bg-muted text-muted-foreground" },
 };
-const DOT: Record<ClientLight, string> = { red: "bg-bad", yellow: "bg-warn", green: "bg-good", gray: "bg-muted-foreground/40", pending: "bg-primary", none: "bg-muted-foreground/30" };
+const DOT: Record<ClientLight, string> = { red: "bg-bad", yellow: "bg-warn", green: "bg-good", gray: "bg-disabled-foreground/40", pending: "bg-primary", none: "bg-disabled-foreground/30" };
 const SORT_LABELS: Record<ClientSort, string> = { light: "Semáforo", name: "Nombre", active: "Servicios activos", progress: "Avance", login: "Último ingreso", points: "Puntos (30 días)", paid: "Total cobrado" };
 
 const usd = (cents: number) => `US$${(cents / 100).toLocaleString("es-AR", { maximumFractionDigits: cents % 100 ? 2 : 0 })}`;
@@ -124,9 +125,11 @@ export function ClientsListView({
           {p.label}
         </span>
         {r.pendingReviews > 0 && (
-          <span className={cn("rounded-full px-1.5 text-xs font-semibold tabular-nums", p.num)} title="Entregas por revisar" aria-label={`${r.pendingReviews} entregas por revisar`}>
-            {r.pendingReviews}
-          </span>
+          <Tip asChild content="Entregas por revisar">
+            <span className={cn("rounded-full px-1.5 text-xs font-semibold tabular-nums", p.num)} aria-label={`${r.pendingReviews} entregas por revisar`}>
+              {r.pendingReviews}
+            </span>
+          </Tip>
         )}
       </span>
     );
@@ -161,17 +164,19 @@ export function ClientsListView({
         if (!r.points30 || !r.points30Total) return <span className="text-muted-foreground">—</span>;
         const { heights } = miniBarsView(r.points30);
         return (
-          <span className="flex items-center gap-2" title={`${r.points30Total} puntos en los últimos 30 días`}>
-            <span className="flex h-5 w-[90px] items-end gap-px" aria-hidden>
-              {heights.map((h, i) => (
-                <span key={i} className={cn("flex-1 rounded-[1px]", h > 0 ? "bg-primary" : "bg-muted")} style={{ height: h > 0 ? `${Math.max(h * 100, 12)}%` : "2px" }} />
-              ))}
+          <Tip asChild content={`${r.points30Total} puntos en los últimos 30 días`}>
+            <span className="flex items-center gap-2">
+              <span className="flex h-5 w-[90px] items-end gap-px" aria-hidden>
+                {heights.map((h, i) => (
+                  <span key={i} className={cn("flex-1 rounded-[1px]", h > 0 ? "bg-primary" : "bg-muted")} style={{ height: h > 0 ? `${Math.max(h * 100, 12)}%` : "2px" }} />
+                ))}
+              </span>
+              <span className="tabular-nums text-muted-foreground">
+                <span className="sr-only">Puntos en 30 días: </span>
+                {r.points30Total}
+              </span>
             </span>
-            <span className="tabular-nums text-muted-foreground">
-              <span className="sr-only">Puntos en 30 días: </span>
-              {r.points30Total}
-            </span>
-          </span>
+          </Tip>
         );
       },
       paid: (r) => (r.paidCents === null ? <span className="text-muted-foreground">—</span> : usd(r.paidCents)),

@@ -25,7 +25,7 @@ import { VariableChips } from "./variable-chips";
  */
 
 const fieldClass =
-  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
 
 type TemplateOption = { id: string; name: string; format: string; docNoun: string | null };
@@ -210,7 +210,7 @@ export function DesignGeneratePanel({
             </option>
           ))}
         </select>
-        <p className="mt-1.5 text-[11px] text-muted-foreground/70">Con «No generar y avisarme», el camino termina con «Falta: …» y se avisa en la campana. Nunca sale una pieza con un dato vacío sin que lo elijas.</p>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">Con «No generar y avisarme», el camino termina con «Falta: …» y se avisa en la campana. Nunca sale una pieza con un dato vacío sin que lo elijas.</p>
       </div>
 
       <label className="flex items-start gap-2 text-sm text-foreground">

@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { EmailFields } from "./email-fields";
 import { notifyGenerationsChanged } from "./events";
 import { PiecePreview } from "./piece-preview";
+import { Tip } from "@/components/ui/tooltip";
 
 export function GenerateOneModal({ templateId, open, onClose }: GenerateModalProps) {
   if (!open) return null;
@@ -172,10 +173,12 @@ function GenerateOneDialog({ templateId, onClose }: { templateId: string; onClos
           <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>
             Cancelar
           </button>
-          <button type="button" className={primaryButton} onClick={submit} disabled={!!reason || busy} title={reason ?? undefined}>
-            {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-            {busy ? busyLabel(template.issueLabel) : template.issueLabel}
-          </button>
+          <Tip content={reason ?? undefined}>
+            <button type="button" className={primaryButton} onClick={submit} disabled={!!reason || busy}>
+              {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+              {busy ? busyLabel(template.issueLabel) : template.issueLabel}
+            </button>
+          </Tip>
         </>
       }
     >

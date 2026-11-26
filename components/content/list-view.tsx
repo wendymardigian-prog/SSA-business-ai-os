@@ -14,6 +14,7 @@ import { attributionTooltip } from "@/lib/content/board";
 import { NetworkBadges } from "./network-badge";
 import { PillarDot } from "./pillar-tag";
 import { showPaidIndicator } from "@/lib/meta/content-ad-summary";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La vista lista (F21): la misma informacion que el tablero, pero ordenable y
@@ -114,12 +115,13 @@ export function ContentList({
                     )}
                     {row.pillar && <PillarDot tag={row.pillar} />}
                     {showPaidIndicator(showPaid, row.paid) && (
-                      <span
-                        className="ml-2 rounded-full border border-primary-edge/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary-ink"
-                        title="Tiene al menos un anuncio de Meta vinculado"
-                      >
-                        Pautada
-                      </span>
+                      <Tip asChild content="Tiene al menos un anuncio de Meta vinculado">
+                        <span
+                          className="ml-2 rounded-full border border-primary-edge/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary-ink"
+                        >
+                          Pautada
+                        </span>
+                      </Tip>
                     )}
                   </td>
                   <td className="py-2 pr-3 text-xs text-muted-foreground">
@@ -156,13 +158,14 @@ export function ContentList({
                     {row.attributedContacts === null || row.attributedContacts === undefined ? (
                       <span className="text-muted-foreground">—</span>
                     ) : (
-                      <span
-                        className="inline-flex items-center gap-1 tabular-nums"
-                        title={attributionTooltip(row.attributedContacts)}
-                      >
-                        <Users className="h-3 w-3 text-muted-foreground" aria-hidden />
-                        {row.attributedContacts}
-                      </span>
+                      <Tip asChild content={attributionTooltip(row.attributedContacts)}>
+                        <span
+                          className="inline-flex items-center gap-1 tabular-nums"
+                        >
+                          <Users className="h-3 w-3 text-muted-foreground" aria-hidden />
+                          {row.attributedContacts}
+                        </span>
+                      </Tip>
                     )}
                   </td>
                   <td className="hidden py-2 text-xs text-muted-foreground md:table-cell">

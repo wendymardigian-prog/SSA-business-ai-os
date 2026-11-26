@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { platformLabel } from "@/lib/platforms";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La insignia de una red (C17).
@@ -37,13 +38,14 @@ export function NetworkBadge({
 
   if (variant === "dot") {
     return (
-      <span
-        className={cn("inline-flex items-center", className)}
-        title={label}
-        aria-label={label}
-      >
-        <PlatformIcon platform={platform} size={iconSize} />
-      </span>
+      <Tip asChild content={label}>
+        <span
+          className={cn("inline-flex items-center", className)}
+          aria-label={label}
+        >
+          <PlatformIcon platform={platform} size={iconSize} />
+        </span>
+      </Tip>
     );
   }
 

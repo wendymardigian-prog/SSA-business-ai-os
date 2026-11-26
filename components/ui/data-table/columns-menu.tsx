@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Columns3, GripVertical, Pin, Search } from "lucide-
 import { Popover } from "@/components/ui/popover";
 import { isColumnVisible, isDefaultPrefs, menuSections, moveColumn, moveColumnTo, resetColumns, resetWidths, showAllColumns, toggleColumn, togglePinned } from "@/lib/ui/data-table/prefs";
 import type { TablePrefsState } from "./use-table-prefs";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El menú «Columnas» de TODAS las tablas del sistema: buscador, un tilde por columna, orden (flechas y arrastre), alfiler
@@ -24,7 +25,7 @@ export function ColumnsMenu({ state }: { state: TablePrefsState }) {
   return (
     <Popover
       label="Columnas"
-      triggerClassName={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[13px] font-medium transition-colors ${customized ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60"}`}
+      triggerClassName={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[13px] font-medium transition-colors ${customized ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-disabled-foreground/60"}`}
       trigger={
         <>
           <Columns3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
@@ -44,7 +45,7 @@ export function ColumnsMenu({ state }: { state: TablePrefsState }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar una columna…"
-          className="h-8 w-full rounded-lg border border-border bg-background pl-7 pr-2 text-xs placeholder:text-muted-foreground/70 focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
+          className="h-8 w-full rounded-lg border border-border bg-background pl-7 pr-2 text-xs placeholder:text-disabled-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
         />
       </label>
 
@@ -78,7 +79,7 @@ export function ColumnsMenu({ state }: { state: TablePrefsState }) {
                   onDragEnd={() => setDragging(null)}
                   className={`flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-accent/50 ${dragging === key ? "opacity-50" : ""}`}
                 >
-                  {!searching && <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground/60" aria-hidden />}
+                  {!searching && <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" aria-hidden />}
                   <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-xs">
                     <input
                       type="checkbox"
@@ -90,16 +91,17 @@ export function ColumnsMenu({ state }: { state: TablePrefsState }) {
                     <span className="truncate">{label}</span>
                   </label>
                   {meta.pinnable !== false && (
-                    <button
-                      type="button"
-                      onClick={() => update((current) => togglePinned(metas, current, key))}
-                      aria-pressed={pinned}
-                      aria-label={pinned ? `Soltar ${label}` : `Fijar ${label} a la izquierda`}
-                      title={pinned ? "Fijada a la izquierda. Clic para soltarla." : "Fijar a la izquierda"}
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-accent ${pinned ? "text-primary-ink" : "text-muted-foreground/50 hover:text-foreground"}`}
-                    >
-                      <Pin className="h-3 w-3" aria-hidden />
-                    </button>
+                    <Tip asChild content={pinned ? "Fijada a la izquierda. Clic para soltarla." : "Fijar a la izquierda"}>
+                      <button
+                        type="button"
+                        onClick={() => update((current) => togglePinned(metas, current, key))}
+                        aria-pressed={pinned}
+                        aria-label={pinned ? `Soltar ${label}` : `Fijar ${label} a la izquierda`}
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-accent ${pinned ? "text-primary-ink" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        <Pin className="h-3 w-3" aria-hidden />
+                      </button>
+                    </Tip>
                   )}
                   {!searching && (
                     <>

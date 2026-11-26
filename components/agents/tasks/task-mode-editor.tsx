@@ -10,6 +10,7 @@ import type { BackgroundSettings, BackgroundTask, TaskFrequency, TaskMode } from
 import { FREQUENCY_LABELS, MODE_LABELS, formatSpend, lastRunLabel } from "@/lib/background/screen";
 import type { TaskRunInfo } from "@/lib/background/screen";
 import { BusinessTimeNote } from "@/components/ui/business-time-note";
+import { Tip } from "@/components/ui/tooltip";
 
 const MODES: TaskMode[] = ["now", "batch", "off"];
 
@@ -78,21 +79,21 @@ export function TaskModeEditor({
         {MODES.map((m) => {
           const disabled = (m === "off" && !canTurnOff) || (m === "batch" && !canBatch);
           return (
-            <button
-              key={m}
-              type="button"
-              aria-pressed={mode === m}
-              disabled={disabled}
-              title={disabled ? "El agente necesita los documentos indexados" : undefined}
-              onClick={() => touch(setMode)(m)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                mode === m ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-                disabled && "cursor-not-allowed opacity-40",
-              )}
-            >
-              {MODE_LABELS[m]}
-            </button>
+            <Tip key={m} content={disabled ? "El agente necesita los documentos indexados" : undefined}>
+              <button
+                type="button"
+                aria-pressed={mode === m}
+                disabled={disabled}
+                onClick={() => touch(setMode)(m)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  mode === m ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+                  disabled && "cursor-not-allowed opacity-40",
+                )}
+              >
+                {MODE_LABELS[m]}
+              </button>
+            </Tip>
           );
         })}
       </div>

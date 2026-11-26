@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import type { ColumnDef } from "@/lib/attribution/columns";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Copia el valor completo de una celda recortada, como la URL de entrada. No abre la fila en la que está. */
 function CopyCellButton({ value, label }: { value: string; label: string }) {
@@ -37,22 +38,28 @@ export function ColumnCellContent<Row>({ def, row }: { def: ColumnDef<Row>; row:
   if (!value) return <span className="text-muted-foreground">—</span>;
   if (def.link && isHttpsLink(value)) {
     return (
-      <a href={value} target="_blank" rel="noopener noreferrer" title={value} className="block truncate text-primary-ink underline-offset-2 hover:underline">
-        {value}
-      </a>
+      <Tip asChild content={value}>
+        <a href={value} target="_blank" rel="noopener noreferrer" className="block truncate text-primary-ink underline-offset-2 hover:underline">
+          {value}
+        </a>
+      </Tip>
     );
   }
   if (def.copyable) {
     return (
-      <div className="flex items-center gap-1" title={value}>
-        <span className="min-w-0 flex-1 truncate">{value}</span>
+      <div className="flex items-center gap-1">
+        <Tip asChild content={value}>
+          <span className="min-w-0 flex-1 truncate">{value}</span>
+        </Tip>
         <CopyCellButton value={value} label={def.label} />
       </div>
     );
   }
   return (
-    <div className="truncate" title={value}>
-      {value}
-    </div>
+    <Tip asChild content={value}>
+      <div className="truncate">
+        {value}
+      </div>
+    </Tip>
   );
 }

@@ -30,9 +30,10 @@ import {
 } from "@/lib/flows/list";
 import type { FlowStatus } from "@/lib/types/database";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 const STATUS_CLASSES: Record<FlowStatus, string> = {
-  draft: "bg-muted text-muted-foreground",
+  draft: "bg-muted text-disabled-foreground",
   published: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
   archived: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
 };
@@ -161,28 +162,30 @@ export function FlowsList({
           canEdit || canManageQueue ? (
             <div className="flex items-center gap-2">
               {canManageQueue && (
-                <Link
-                  href="/dashboard/flows/cola"
-                  aria-label="Cola de mensajes"
-                  title="Cola de mensajes de WhatsApp"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-                >
-                  <ListOrdered className="h-4 w-4" />
-                  <span className="hidden 2xl:inline">Cola</span>
-                </Link>
+                <Tip asChild content="Cola de mensajes de WhatsApp">
+                  <Link
+                    href="/dashboard/flows/cola"
+                    aria-label="Cola de mensajes"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <ListOrdered className="h-4 w-4" />
+                    <span className="hidden 2xl:inline">Cola</span>
+                  </Link>
+                </Tip>
               )}
               {canEdit && (
                 <>
                   <ImportFlowButton compact />
-                  <Link
-                    href="/dashboard/flows/templates"
-                    aria-label="Plantillas"
-                    title="Plantillas"
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    <span className="hidden 2xl:inline">Plantillas</span>
-                  </Link>
+                  <Tip asChild content="Plantillas">
+                    <Link
+                      href="/dashboard/flows/templates"
+                      aria-label="Plantillas"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      <span className="hidden 2xl:inline">Plantillas</span>
+                    </Link>
+                  </Tip>
                   <CreateFlowButton />
                 </>
               )}
@@ -299,23 +302,23 @@ export function FlowsList({
                     {flow.description ? (
                       <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{flow.description}</p>
                     ) : (
-                      canEdit && <p className="mt-3 text-xs italic text-muted-foreground/70">Sin descripción</p>
+                      canEdit && <p className="mt-3 text-xs italic text-muted-foreground">Sin descripción</p>
                     )}
                     {flow.categories.length > 0 && (
                       <div className="relative z-10 mt-3 flex flex-wrap gap-1.5">
                         {flow.categories.map((c) => (
-                          <button
-                            key={c}
-                            type="button"
-                            onClick={() => toggleCategory(c)}
-                            className={cn(
-                              "rounded-full px-2 py-0.5 text-[11px] font-medium",
-                              selectedKeys.has(categoryKey(c)) ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary-ink hover:bg-primary/20",
-                            )}
-                            title={`Filtrar por «${c}»`}
-                          >
-                            {c}
-                          </button>
+                          <Tip key={c} asChild content={`Filtrar por «${c}»`}>
+                            <button
+                              type="button"
+                              onClick={() => toggleCategory(c)}
+                              className={cn(
+                                "rounded-full px-2 py-0.5 text-[11px] font-medium",
+                                selectedKeys.has(categoryKey(c)) ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary-ink hover:bg-primary/20",
+                              )}
+                            >
+                              {c}
+                            </button>
+                          </Tip>
                         ))}
                       </div>
                     )}

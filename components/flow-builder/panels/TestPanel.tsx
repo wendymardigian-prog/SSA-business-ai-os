@@ -344,7 +344,7 @@ export function TestPanel({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Escribí un mensaje de prueba…"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-disabled-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
             onKeyDown={(e) => {
               if (e.key === "Enter") runTest();
             }}
@@ -359,7 +359,7 @@ export function TestPanel({
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="vip, cliente"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-disabled-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
           />
         </div>
         <button
@@ -375,11 +375,11 @@ export function TestPanel({
       <div className="flex-1 overflow-y-auto p-4">
         {!result ? (
           <div className="py-8 text-center">
-            <Play className="mx-auto h-8 w-8 text-muted-foreground/50" />
+            <Play className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
               Probá la automatización para ver el camino que sigue
             </p>
-            <p className="mt-1 text-xs text-muted-foreground/70">
+            <p className="mt-1 text-xs text-muted-foreground">
               La prueba recorre los pasos sin mandar ningún mensaje de
               verdad.
             </p>

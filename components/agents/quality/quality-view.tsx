@@ -88,7 +88,7 @@ export function QualityView({
 
       {weeks.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-8 text-center">
-          <BarChart3 className="mx-auto h-8 w-8 text-muted-foreground/50" aria-hidden />
+          <BarChart3 className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden />
           <p className="mt-3 text-sm font-medium">Sin decisiones en este período</p>
           <p className="mt-1 text-sm text-muted-foreground">El panel se llena con cada propuesta o borrador que se aprueba, se edita o se rechaza.</p>
         </div>

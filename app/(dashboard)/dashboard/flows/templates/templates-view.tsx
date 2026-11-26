@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
+import { Tip } from "@/components/ui/tooltip";
 
 // --- Template types ---
 
@@ -351,14 +352,16 @@ export function TemplatesView({ workspaceId }: { workspaceId: string }) {
           </Link>
         }
         right={
-          <button
-            disabled
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-dashed border-border px-3 text-sm font-medium text-muted-foreground opacity-60"
-            title="Próximamente"
-          >
-            <BookmarkPlus className="h-4 w-4" />
-            <span className="hidden lg:inline">Guardar la automatización actual como plantilla</span>
-          </button>
+          <Tip content="Próximamente">
+            <button
+              disabled
+              aria-label="Guardar la automatización actual como plantilla"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-dashed border-border px-3 text-sm font-medium text-muted-foreground opacity-60"
+            >
+              <BookmarkPlus className="h-4 w-4" />
+              <span className="hidden lg:inline">Guardar la automatización actual como plantilla</span>
+            </button>
+          </Tip>
         }
       />
 

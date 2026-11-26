@@ -123,6 +123,7 @@ export default async function LlamadasPage({
       recordedAt: r.recorded_at as string,
       durationSeconds: (r.duration_seconds as number | null) ?? null,
       closerName: r.recorded_by_user_id ? memberName.get(r.recorded_by_user_id as string) ?? (r.recorded_by_email as string | null) : (r.recorded_by_email as string | null),
+      closerUserId: r.recorded_by_user_id && memberName.has(r.recorded_by_user_id as string) ? (r.recorded_by_user_id as string) : null,
       contactId: (r.contact_id as string | null) ?? null,
       contactName,
       callType: legacyCallTypeFor(readCategorySnapshot(r.category_snapshot), categories, r.no_show === true),

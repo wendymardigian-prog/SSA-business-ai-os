@@ -275,7 +275,7 @@ export function FormsList({
 
           {rows.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border py-16 text-center">
-              <ClipboardList className="mb-4 h-12 w-12 text-muted-foreground/50" aria-hidden />
+              <ClipboardList className="mb-4 h-12 w-12 text-muted-foreground" aria-hidden />
               <p className="text-lg font-medium text-foreground">Todavía no hay formularios</p>
               <p className="mb-4 mt-1 max-w-md text-sm text-muted-foreground">
                 Creá el primero para captar leads, medir satisfacción, firmar contratos o recibir el reporte de fin de día del equipo.
@@ -331,7 +331,7 @@ export function FormsList({
                       +
                     </span>
                     Nuevo formulario
-                    <small className="text-xs font-normal text-muted-foreground/80">Personalizado, encuesta, contrato o fin de día</small>
+                    <small className="text-xs font-normal text-muted-foreground">Personalizado, encuesta, contrato o fin de día</small>
                   </button>
                 </li>
               )}
@@ -392,7 +392,7 @@ export function FormsList({
 }
 
 function StatusDot({ status }: { status: string }) {
-  const tone = status === "published" ? "bg-good" : status === "paused" ? "bg-warn" : status === "all" ? "bg-muted-foreground/50" : "bg-muted-foreground";
+  const tone = status === "published" ? "bg-good" : status === "paused" ? "bg-warn" : status === "all" ? "bg-disabled-foreground/50" : "bg-disabled-foreground";
   return <span className={cn("h-2 w-2 shrink-0 rounded-full", tone)} aria-hidden />;
 }
 
@@ -408,7 +408,7 @@ function FormCard({ view, categories, menu }: { view: FormCardView; categories: 
         aria-label={`Abrir ${view.name}`}
         className={cn(
           "flex h-full min-w-0 flex-col gap-2 rounded-[14px] border border-border bg-card px-4 pb-3 pt-3.5 text-left transition-all",
-          "hover:-translate-y-px hover:border-muted-foreground/50 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-edge",
+          "hover:-translate-y-px hover:border-disabled-foreground/50 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-edge",
           view.archived && "opacity-60",
         )}
       >
@@ -418,7 +418,7 @@ function FormCard({ view, categories, menu }: { view: FormCardView; categories: 
           <FormStatusPill status={view.status} className="ml-auto" />
         </div>
         <div className="text-[15px] font-semibold leading-snug [overflow-wrap:anywhere] [text-wrap:balance]">{view.name}</div>
-        <div className="truncate text-xs text-muted-foreground/80">
+        <div className="truncate text-xs text-muted-foreground">
           {view.publicLine.kind === "different" ? (
             <>
               {view.publicLine.prefix}
@@ -451,9 +451,9 @@ function FormCard({ view, categories, menu }: { view: FormCardView; categories: 
             )}
           </>
         ) : (
-          <div className="py-1.5 text-[12.5px] text-muted-foreground/80">{view.stats.text}</div>
+          <div className="py-1.5 text-[12.5px] text-muted-foreground">{view.stats.text}</div>
         )}
-        <div className="mt-auto flex justify-between gap-2.5 border-t border-border/70 pt-2 text-[11.5px] text-muted-foreground/80">
+        <div className="mt-auto flex justify-between gap-2.5 border-t border-border/70 pt-2 text-[11.5px] text-muted-foreground">
           <span>{view.footerLeft}</span>
           <span className="shrink-0">{view.footerRight}</span>
         </div>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState, type RefObject } from 
 import { EmojiPicker } from "frimousse";
 import { Smile } from "lucide-react";
 import { insertAtCursor } from "@/lib/response-assets/insert";
+import { Tip } from "@/components/ui/tooltip";
 
 type TextTarget = HTMLTextAreaElement | HTMLInputElement;
 
@@ -121,24 +122,27 @@ export function EmojiButton({
 
   return (
     <div ref={rootRef} className={hideTrigger ? "pointer-events-none absolute inset-0 [&>*]:pointer-events-auto" : "relative"}>
-      {!hideTrigger && <button
-        ref={buttonRef}
-        type="button"
-        disabled={disabled}
-        aria-label={label}
-        title={label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => setOpen(!open)}
-        className={
-          className ||
-          "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-        }
-      >
-        <Smile className="h-5 w-5" aria-hidden />
-      </button>}
+      {!hideTrigger && (
+        <Tip asChild content={label}>
+          <button
+            ref={buttonRef}
+            type="button"
+            disabled={disabled}
+            aria-label={label}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            aria-controls={open ? id : undefined}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setOpen(!open)}
+            className={
+              className ||
+              "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+            }
+          >
+            <Smile className="h-5 w-5" aria-hidden />
+          </button>
+        </Tip>
+      )}
       {open && (
         <>
           <div className="fixed inset-0 z-40 bg-black/40 sm:hidden" aria-hidden onClick={() => setOpen(false)} />

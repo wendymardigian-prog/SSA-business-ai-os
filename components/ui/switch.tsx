@@ -34,7 +34,7 @@ export function Switch({
       className={cn(
         "relative inline-flex flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         size === "sm" ? "h-4 w-7" : "h-5 w-9",
-        checked ? "bg-emerald-600" : "bg-muted-foreground/30",
+        checked ? "bg-emerald-600" : "bg-disabled-foreground/30",
         disabled && "cursor-not-allowed opacity-50",
       )}
     >

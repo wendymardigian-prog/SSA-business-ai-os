@@ -28,6 +28,7 @@ import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
 import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
 import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 import { EXPENSES_TABLE_KEY, EXPENSE_COLUMN_METAS } from "@/lib/finance/expense-columns";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Finanzas > Gastos. Todo el estado vive en la URL (`serializeExpenseFilters`): copiar el link muestra lo mismo en
@@ -373,25 +374,31 @@ function ConceptCell({ r }: { r: ExpenseListRow }) {
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       {Icon && (
-        <span title={expenseOriginLabel(r.origin)} className="shrink-0 text-muted-foreground">
-          <Icon className="h-3.5 w-3.5" aria-hidden />
-          <span className="sr-only">{expenseOriginLabel(r.origin)}. </span>
-        </span>
+        <Tip asChild content={expenseOriginLabel(r.origin)}>
+          <span className="shrink-0 text-muted-foreground">
+            <Icon className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">{expenseOriginLabel(r.origin)}. </span>
+          </span>
+        </Tip>
       )}
       <Link href={`/dashboard/finanzas/gastos/${r.id}`} className={`min-w-0 truncate font-medium underline-offset-2 hover:underline ${r.status === "anulado" ? "text-muted-foreground line-through" : ""}`}>
         {r.concept}
       </Link>
       {r.receipt_path && (
-        <span title="Tiene comprobante" className="shrink-0 text-muted-foreground">
-          <Paperclip className="h-3.5 w-3.5" aria-hidden />
-          <span className="sr-only">Tiene comprobante</span>
-        </span>
+        <Tip asChild content="Tiene comprobante">
+          <span className="shrink-0 text-muted-foreground">
+            <Paperclip className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">Tiene comprobante</span>
+          </span>
+        </Tip>
       )}
       {drift && (
-        <span title={drift} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/12 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-          <AlertTriangle className="h-3 w-3" aria-hidden /> Diferencia
-          <span className="sr-only">: {drift}</span>
-        </span>
+        <Tip asChild content={drift}>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/12 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+            <AlertTriangle className="h-3 w-3" aria-hidden /> Diferencia
+            <span className="sr-only">: {drift}</span>
+          </span>
+        </Tip>
       )}
     </span>
   );

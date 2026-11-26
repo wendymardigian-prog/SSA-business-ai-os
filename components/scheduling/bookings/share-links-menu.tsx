@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Share2, ExternalLink, ChevronDown } from "lucide-react";
 import { CopyLinkButton } from "./copy-link-button";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface ShareableEvent {
   id: string;
@@ -32,20 +33,21 @@ export function ShareLinksMenu({ events }: { events: ShareableEvent[] }) {
 
   return (
     <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Compartir los links de los eventos"
-        title="Compartir los links de los eventos"
-        className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-2.5 text-sm hover:bg-muted xl:px-3"
-      >
-        <Share2 className="h-4 w-4" aria-hidden />
-        {/* Con poco ancho queda solo el icono: la barra de Agenda tiene siete controles. */}
-        <span className="hidden xl:inline">Compartir</span>
-        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-      </button>
+      <Tip asChild content="Compartir los links de los eventos">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label="Compartir los links de los eventos"
+          className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-2.5 text-sm hover:bg-muted xl:px-3"
+        >
+          <Share2 className="h-4 w-4" aria-hidden />
+          {/* Con poco ancho queda solo el icono: la barra de Agenda tiene siete controles. */}
+          <span className="hidden xl:inline">Compartir</span>
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+        </button>
+      </Tip>
 
       {open && (
         <div
@@ -67,16 +69,17 @@ export function ShareLinksMenu({ events }: { events: ShareableEvent[] }) {
                   </div>
                   <div className="flex flex-shrink-0 items-center gap-1">
                     <CopyLinkButton url={e.url} label="Copiar" />
-                    <a
-                      href={e.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label={`Abrir ${e.title}`}
-                      title="Abrir"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                    </a>
+                    <Tip asChild content="Abrir">
+                      <a
+                        href={e.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Abrir ${e.title}`}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                      </a>
+                    </Tip>
                   </div>
                 </li>
               ))}

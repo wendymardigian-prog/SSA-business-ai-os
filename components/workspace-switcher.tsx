@@ -63,7 +63,7 @@ export function WorkspaceSwitcher({
         </span>
         <ChevronDown
           className={cn(
-            "h-3.5 w-3.5 text-sidebar-foreground/50 transition-transform",
+            "h-3.5 w-3.5 text-sidebar-foreground transition-transform",
             open && "rotate-180"
           )}
         />

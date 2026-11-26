@@ -115,7 +115,7 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
           data={rawData as MetaEventStepData}
           patch={(next) => onChange({ ...rawData, ...next })}
           bookingToggle="hint"
-          inputClassName="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+          inputClassName="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
       );
     // Etapa 4 (F46) + Tirón 2, D4: el email, ahora también a la dirección de una variable.
@@ -186,7 +186,7 @@ function TagConfig({ data, onChange, availableVariables }: ActionSubPanelProps) 
           value={data.tagName || ""}
           onChange={(e) => onChange({ ...data, tagName: e.target.value })}
           placeholder="Por ejemplo: interesado"
-          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
           {isAdd
@@ -286,9 +286,9 @@ function SetFieldConfig({ data, onChange, availableVariables }: ActionSubPanelPr
           value={data.value || ""}
           onChange={(e) => onChange({ ...data, value: e.target.value })}
           placeholder="Valor o {{variable}}"
-          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
-        <p className="mt-1.5 text-[11px] text-muted-foreground/60">
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
           {(selected && VALUE_HINTS[selected.type]) ?? "Un texto o una {{variable}}."} Vacío borra el valor; uno que no
           corresponde al tipo no se guarda.
         </p>
@@ -358,7 +358,7 @@ function HttpRequestConfig({ data, onChange, availableVariables }: ActionSubPane
             value={data.url || ""}
             onChange={(e) => onChange({ ...data, url: e.target.value })}
             placeholder="https://api.ejemplo.com/webhook"
-            className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+            className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
         <VariableChips variables={availableVariables} onInsert={(token) => onChange({ ...data, url: `${data.url ?? ""}${token}` })} hint="Tocá una variable para sumarla a la dirección." />
@@ -387,20 +387,20 @@ function HttpRequestConfig({ data, onChange, availableVariables }: ActionSubPane
               value={key}
               onChange={(e) => updateHeaderKey(key, e.target.value)}
               placeholder="Nombre"
-              className="flex-1 rounded border border-border bg-card px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+              className="flex-1 rounded border border-border bg-card px-2 py-1.5 text-xs text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <input
               type="text"
               value={value}
               onChange={(e) => updateHeaderValue(key, e.target.value)}
               placeholder="Valor (acepta {{variables}})"
-              className="flex-1 rounded border border-border bg-card px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+              className="flex-1 rounded border border-border bg-card px-2 py-1.5 text-xs text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <button
               type="button"
               onClick={() => removeHeader(key)}
               aria-label="Quitar el encabezado"
-              className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
+              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-muted-foreground"
             >
               <X className="h-3 w-3" />
             </button>
@@ -419,7 +419,7 @@ function HttpRequestConfig({ data, onChange, availableVariables }: ActionSubPane
             onChange={(e) => onChange({ ...data, body: e.target.value })}
             placeholder='{"key": "{{variable}}"}'
             rows={4}
-            className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+            className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
           <VariableChips variables={availableVariables} onInsert={(token) => onChange({ ...data, body: `${data.body ?? ""}${token}` })} hint="Tocá una variable para sumarla al cuerpo." />
         </div>
@@ -438,7 +438,7 @@ function HttpRequestConfig({ data, onChange, availableVariables }: ActionSubPane
           value={data.responseVariable || ""}
           onChange={(e) => onChange({ ...data, responseVariable: e.target.value })}
           placeholder="por ejemplo: respuesta_api"
-          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
           Opcional. Los pasos siguientes la leen como {"{{respuesta_api.campo}}"}; además quedan {"{{respuesta_api_status}}"} (el código) y {"{{respuesta_api_ok}}"} («true» si salió bien).
@@ -544,7 +544,7 @@ function PauseAgentConfig({ data, onChange }: ActionSubPanelProps) {
             onChange({ ...data, minutes: e.target.value === "" ? null : Math.max(1, Number(e.target.value)) })
           }
           placeholder="Hasta que se reanude"
-          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
           Vacío: queda pausado hasta que una automatización lo reanude. Con minutos: se reanuda solo al vencer.
@@ -586,7 +586,7 @@ function HumanTakeoverConfig({ data, onChange }: ActionSubPanelProps) {
           onChange={(e) => onChange({ ...data, message: e.target.value })}
           placeholder="Contexto para quien la tome…"
           rows={3}
-          className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+          className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
           Queda en el aviso que recibe el equipo. No se le manda al contacto.
@@ -711,7 +711,7 @@ function ABSplitConfig({ data, onChange }: ActionSubPanelProps) {
                 onChange={(e) =>
                   updatePath(index, { ...path, weight: parseInt(e.target.value) })
                 }
-                className="flex-1 accent-muted-foreground"
+                className="flex-1 accent-disabled-foreground"
               />
               <span className="w-10 text-right text-xs font-semibold text-foreground">
                 {path.weight}%
@@ -721,7 +721,7 @@ function ABSplitConfig({ data, onChange }: ActionSubPanelProps) {
                   type="button"
                   onClick={() => removePath(index)}
                   aria-label="Quitar el camino"
-                  className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
+                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-muted-foreground"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -735,7 +735,7 @@ function ABSplitConfig({ data, onChange }: ActionSubPanelProps) {
         <button
           type="button"
           onClick={addPath}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-muted-foreground hover:text-muted-foreground"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-disabled-foreground hover:text-muted-foreground"
         >
           <Plus className="h-3.5 w-3.5" />
           Agregar camino
@@ -805,7 +805,7 @@ function SmartDelayConfig({ data, onChange }: ActionSubPanelProps) {
 
 // @plantilla-desde(ventas)
 /* ───────── Ventas (F37) ───────── */
-const salesInput = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+const salesInput = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 
 function MarkPaymentPaidConfig({ data, onChange }: ActionSubPanelProps) {
   return (

@@ -167,7 +167,7 @@ export function TopbarMoreMenu({ actions, label = "Más acciones" }: { actions: 
       label={label}
       align="end"
       width={240}
-      triggerClassName="h-8 w-8 shrink-0 justify-center rounded-lg border border-input bg-background hover:border-muted-foreground/60 topbar:h-8 max-topbar:h-10 max-topbar:w-10"
+      triggerClassName="h-8 w-8 shrink-0 justify-center rounded-lg border border-input bg-background hover:border-disabled-foreground/60 topbar:h-8 max-topbar:h-10 max-topbar:w-10"
       trigger={<MoreHorizontal className="h-4 w-4" aria-hidden />}
     >
       {actions.map((a) => (

@@ -36,6 +36,7 @@ import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La pantalla de la banca de recursos (F5): filtros por tipo y por etiqueta
@@ -380,7 +381,7 @@ function AssetListRow({
             ))}
           </div>
           <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{contextLine(asset, 160)}</p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground/80">
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <AssetKindIcon kind={asset.kind} className="h-3 w-3" />
               {ASSET_KIND_LABEL[asset.kind]}
@@ -477,28 +478,30 @@ function AgentSwitch({
   onToggle: () => void;
 }) {
   return (
-    <span className="flex items-center gap-1.5 pr-1" title={reason}>
-      <span className="hidden text-[11px] text-muted-foreground md:inline">Asistente</span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label="Que el asistente lo pueda usar"
-        onClick={onToggle}
-        disabled={disabled}
-        className={cn(
-          "relative h-5 w-9 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40",
-          enabled ? "bg-primary" : "bg-muted-foreground/30",
-        )}
-      >
-        <span
+    <Tip asChild content={reason ?? null}>
+      <span className="flex items-center gap-1.5 pr-1">
+        <span className="hidden text-[11px] text-muted-foreground md:inline">Asistente</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label="Que el asistente lo pueda usar"
+          onClick={onToggle}
+          disabled={disabled}
           className={cn(
-            "absolute top-0.5 h-4 w-4 rounded-full bg-background shadow transition-transform",
-            enabled ? "translate-x-4" : "translate-x-0.5",
+            "relative h-5 w-9 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+            enabled ? "bg-primary" : "bg-disabled-foreground/30",
           )}
-        />
-      </button>
-    </span>
+        >
+          <span
+            className={cn(
+              "absolute top-0.5 h-4 w-4 rounded-full bg-background shadow transition-transform",
+              enabled ? "translate-x-4" : "translate-x-0.5",
+            )}
+          />
+        </button>
+      </span>
+    </Tip>
   );
 }
 
@@ -514,17 +517,18 @@ function IconButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={cn(
-        "rounded-lg p-2 text-muted-foreground transition-colors",
-        danger ? "hover:bg-destructive/10 hover:text-destructive" : "hover:bg-accent hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
+    <Tip asChild content={label}>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className={cn(
+          "rounded-lg p-2 text-muted-foreground transition-colors",
+          danger ? "hover:bg-destructive/10 hover:text-destructive" : "hover:bg-accent hover:text-foreground",
+        )}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }

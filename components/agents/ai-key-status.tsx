@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 const DOT: Record<AiKeyState, string> = {
   connected: "bg-emerald-500",
-  not_connected: "bg-muted-foreground/40",
+  not_connected: "bg-disabled-foreground/40",
   error: "bg-red-500",
 };
 

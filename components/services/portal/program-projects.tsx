@@ -13,6 +13,7 @@ import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
 import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
 import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 import { serviceHref } from "@/lib/services/screens/record-url";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface PaymentRow {
   id: string;
@@ -326,7 +327,7 @@ function Fame({ productId, fame, fameSettings, rev: initialRev, period, can, bas
                 <span className="flex-1">{f.name}</span>
                 <span className="text-xs text-muted-foreground">{f.projects_won ? `${f.projects_won} proyecto${f.projects_won === 1 ? "" : "s"}` : ""}</span>
                 <span className="tabular-nums">{formatCents(f.amount_cents)}</span>
-                {!f.show_amount ? <span className="text-xs text-muted-foreground" title="El estudiante eligió no mostrar el monto en el portal">oculto en el portal</span> : null}
+                {!f.show_amount ? <Tip asChild content="El estudiante eligió no mostrar el monto en el portal"><span className="text-xs text-muted-foreground">oculto en el portal</span></Tip> : null}
               </li>
             ))}
           </ol>

@@ -6,7 +6,7 @@ import { listGroupsForFlowEditor } from "@/lib/actions/whatsapp-group-flow-edito
 import type { EditorGroup } from "@/lib/whatsapp-groups/editor-types";
 import { editorGroupSections } from "@/lib/whatsapp-groups/editor-groups";
 
-const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 
 /**
  * Elegir un grupo de WhatsApp activado en un paso de automatización (00344): los grupos de cada comunidad juntos,

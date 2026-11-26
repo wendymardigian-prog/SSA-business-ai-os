@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { formatRemaining, WINDOW_LEVEL_LABELS, type WindowInfo, type WindowLevel } from "@/lib/agent/drafts/window-state";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El indicador de la ventana de mensajeria de un borrador (Bloque 2c). Cinco
@@ -10,7 +11,7 @@ import { formatRemaining, WINDOW_LEVEL_LABELS, type WindowInfo, type WindowLevel
  */
 
 const STYLES: Record<Exclude<WindowLevel, "none">, string> = {
-  relaxed: "border-border bg-muted text-muted-foreground",
+  relaxed: "border-border bg-muted text-disabled-foreground",
   warning: "border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-900 dark:bg-yellow-950/40 dark:text-yellow-200",
   urgent: "border-orange-300 bg-orange-100 text-orange-800 dark:border-orange-900 dark:bg-orange-950/50 dark:text-orange-200",
   last_call: "border-red-300 bg-red-100 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300",
@@ -21,19 +22,20 @@ export function WindowBadge({ info, className }: { info: WindowInfo; className?:
   if (info.level === "none") return null;
   const remaining = formatRemaining(info);
   return (
-    <span
-      className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium", STYLES[info.level], className)}
-      title={WINDOW_LEVEL_LABELS[info.level]}
-    >
-      {info.level === "last_call" && (
-        <span className="relative flex h-2 w-2" aria-hidden>
-          <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 motion-safe:animate-ping" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
-        </span>
-      )}
-      <span>{info.level === "closed" ? "Ventana cerrada" : WINDOW_LEVEL_LABELS[info.level]}</span>
-      {remaining && <span className="opacity-80">· {remaining}</span>}
-    </span>
+    <Tip asChild content={WINDOW_LEVEL_LABELS[info.level]}>
+      <span
+        className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium", STYLES[info.level], className)}
+      >
+        {info.level === "last_call" && (
+          <span className="relative flex h-2 w-2" aria-hidden>
+            <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 motion-safe:animate-ping" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
+          </span>
+        )}
+        <span>{info.level === "closed" ? "Ventana cerrada" : WINDOW_LEVEL_LABELS[info.level]}</span>
+        {remaining && <span>· {remaining}</span>}
+      </span>
+    </Tip>
   );
 }
 

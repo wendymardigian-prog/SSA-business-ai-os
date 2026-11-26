@@ -8,6 +8,7 @@ import { StatusChip } from "@/components/sales/sales-list";
 import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
 import type { WizardConfig } from "@/components/sales/wizard/types";
 import { formatMoney } from "@/lib/shared/format";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface ContactSaleRow {
   id: string;
@@ -56,7 +57,7 @@ export function ContactSalesSection({
           </button>
         </div>
       )}
-      {paymentHealth && <p className="mb-2 rounded-lg bg-muted/40 px-3 py-2 text-xs" title="Salud de pago">Salud de pago: {paymentHealth}</p>}
+      {paymentHealth && <Tip asChild content="Salud de pago"><p className="mb-2 rounded-lg bg-muted/40 px-3 py-2 text-xs">Salud de pago: {paymentHealth}</p></Tip>}
       {sales.length === 0 ? (
         <p className="text-sm text-muted-foreground">Este contacto todavía no tiene ventas.</p>
       ) : (

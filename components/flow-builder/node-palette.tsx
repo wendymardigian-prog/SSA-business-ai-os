@@ -45,6 +45,7 @@ import { isContactFreeNodeType } from "@/lib/flow-engine/contact-free";
 import { requirementsOfType } from "@/lib/flow-engine/node-requirements";
 // @plantilla-desde(servicios)
 import { PaletteBlockedNote, useFlowModules, useMissingFor } from "./capabilities-context";
+import { Tip } from "@/components/ui/tooltip";
 // @plantilla-hasta(servicios)
 // @plantilla-sin(servicios): import { PaletteBlockedNote, useMissingFor } from "./capabilities-context";
 
@@ -536,32 +537,33 @@ function PaletteEntry({ item, locked, onAdd }: { item: PaletteItem; locked: bool
   const missing = useMissingFor(requirementsOfType(item.actionType ?? item.nodeType));
   const blocked = missing.length > 0;
   return (
-    <div
-      role="button"
-      tabIndex={locked ? -1 : 0}
-      aria-disabled={locked}
-      draggable={!locked}
-      onDragStart={(e) => (locked ? e.preventDefault() : onDragStart(e, item))}
-      onClick={() => !locked && onAdd?.(item)}
-      onKeyDown={(e) => {
-        if (!locked && (e.key === "Enter" || e.key === " ")) {
-          e.preventDefault();
-          onAdd?.(item);
+    <Tip asChild content={item.description}>
+      <div
+        role="button"
+        tabIndex={locked ? -1 : 0}
+        aria-disabled={locked}
+        draggable={!locked}
+        onDragStart={(e) => (locked ? e.preventDefault() : onDragStart(e, item))}
+        onClick={() => !locked && onAdd?.(item)}
+        onKeyDown={(e) => {
+          if (!locked && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            onAdd?.(item);
+          }
+        }}
+        className={
+          locked
+            ? "cursor-not-allowed rounded-lg border border-border bg-background px-3 py-2 text-sm opacity-50"
+            : "cursor-grab rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-primary-edge active:cursor-grabbing"
         }
-      }}
-      title={item.description}
-      className={
-        locked
-          ? "cursor-not-allowed rounded-lg border border-border bg-background px-3 py-2 text-sm opacity-50"
-          : "cursor-grab rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-primary-edge active:cursor-grabbing"
-      }
-    >
-      <div className={blocked ? "flex items-center gap-2.5 opacity-70" : "flex items-center gap-2.5"}>
-        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="text-xs font-medium">{item.label}</span>
+      >
+        <div className={blocked ? "flex items-center gap-2.5 opacity-70" : "flex items-center gap-2.5"}>
+          <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="text-xs font-medium">{item.label}</span>
+        </div>
+        <PaletteBlockedNote missing={missing} />
       </div>
-      <PaletteBlockedNote missing={missing} />
-    </div>
+    </Tip>
   );
 }
 
@@ -613,7 +615,7 @@ export function NodePalette({ memberFlow = false, locked = false, onAdd }: { mem
             disabled={locked}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar (atajo: /)"
-            className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge disabled:opacity-50"
+            className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-foreground placeholder:text-disabled-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge disabled:opacity-50"
           />
         </label>
         {locked && (

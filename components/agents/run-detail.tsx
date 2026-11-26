@@ -41,8 +41,8 @@ const STATUS_TONE: Record<string, string> = {
   completed: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
   escalated: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
   blocked_guardrail: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
-  skipped: "bg-muted text-muted-foreground",
-  skipped_automation: "bg-muted text-muted-foreground",
+  skipped: "bg-muted text-disabled-foreground",
+  skipped_automation: "bg-muted text-disabled-foreground",
   running: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300",
   error: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300",
 };

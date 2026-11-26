@@ -97,11 +97,11 @@ export function VersionHistoryPanel({
           </div>
         ) : versions.length === 0 ? (
           <div className="py-8 text-center">
-            <History className="mx-auto h-8 w-8 text-muted-foreground/50" />
+            <History className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
               Todavía no hay versiones
             </p>
-            <p className="mt-1 text-xs text-muted-foreground/70">
+            <p className="mt-1 text-xs text-muted-foreground">
               Publicá la automatización para crear la primera versión.
             </p>
           </div>
@@ -139,7 +139,7 @@ export function VersionHistoryPanel({
                 <p className="mt-1 text-xs text-muted-foreground">
                   {v.name}
                 </p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
                   {formatDate(v.created_at)}
                   {v.published_by_name ? ` · ${v.published_by_name}` : ""}
                 </p>

@@ -36,7 +36,7 @@ export function InertControl({ field }: { field: FormField }) {
       return (
         <div aria-hidden className="flex gap-1">
           {[0, 1, 2, 3, 4].map((i) => (
-            <Star key={i} className="h-5 w-5 text-muted-foreground/50" />
+            <Star key={i} className="h-5 w-5 text-muted-foreground" />
           ))}
         </div>
       );

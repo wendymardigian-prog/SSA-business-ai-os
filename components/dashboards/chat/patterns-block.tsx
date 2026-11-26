@@ -10,6 +10,7 @@ import { formatCount } from "@/lib/dashboards/chat/comparisons";
 import { alsoLabel, type PatternCategory, type PatternVariant, type RepliesPanel } from "@/lib/dashboards/chat/patterns";
 import { AUTHOR_GROUP_COLORS, AUTHOR_GROUP_LABELS, type AuthorGroup } from "@/lib/dashboards/chat/types";
 import { createCategoryAndMoveAction, mergeCategoryAction, moveTextAction, renameCategoryAction } from "@/lib/actions/patterns";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Patrones de mensajes: lo que mas se envia y que le responden (F22).
@@ -314,15 +315,16 @@ function VariantRow({
       <span className="flex items-center gap-2">
         {variant.isButton && <span className="rounded-[5px] border border-border bg-muted px-1.5 text-[10px] text-muted-foreground">botón</span>}
         {variant.confidence !== null && (
-          <span
-            title={variant.source === "human" ? "Lo corrigió una persona" : "Confianza del modelo (orientativa)"}
-            className={cn(
-              "rounded-[5px] bg-muted px-1.5 text-[11.5px] font-semibold tabular-nums text-muted-foreground",
-              variant.lowConfidence && "bg-warn/15 text-warn",
-            )}
-          >
-            {Math.round(variant.confidence * 100)} %
-          </span>
+          <Tip asChild content={variant.source === "human" ? "Lo corrigió una persona" : "Confianza del modelo (orientativa)"}>
+            <span
+              className={cn(
+                "rounded-[5px] bg-muted px-1.5 text-[11.5px] font-semibold tabular-nums text-muted-foreground",
+                variant.lowConfidence && "bg-warn/15 text-warn",
+              )}
+            >
+              {Math.round(variant.confidence * 100)} %
+            </span>
+          </Tip>
         )}
         {isAdmin && (
           <label>
@@ -483,5 +485,5 @@ export function QualityLineRow({
 }
 
 function Dot() {
-  return <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground/60" aria-hidden />;
+  return <span className="h-[3px] w-[3px] rounded-full bg-disabled-foreground/60" aria-hidden />;
 }

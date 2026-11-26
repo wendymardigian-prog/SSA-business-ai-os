@@ -10,6 +10,7 @@ import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { setViewerTimezone } from "@/lib/actions/user-preferences";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 import { UserAvatar } from "@/components/account/user-avatar";
 import { accountTabHref } from "@/lib/account/tabs";
 
@@ -135,29 +136,32 @@ export function ProfileMenu({
 
   return (
     <div ref={dropdownRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        aria-haspopup="true"
-        title={collapsed ? principal : undefined}
-        className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-sidebar-accent md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0"
-      >
-        <UserAvatar src={user.avatarUrl} initials={inicialesDe(nombre, user.email)} size={32} className="text-xs" />
-        <span className="min-w-0 flex-1 collapsed:hidden">
-          <span className="block truncate text-sm font-medium text-sidebar-foreground">{principal}</span>
-          {secundario && (
-            <span className="block truncate text-xs text-sidebar-foreground/60">{secundario}</span>
-          )}
-        </span>
-        <ChevronUp
-          aria-hidden="true"
-          className={cn(
-            "h-3.5 w-3.5 shrink-0 text-sidebar-foreground/50 transition-transform collapsed:hidden",
-            open && "rotate-180",
-          )}
-        />
-      </button>
+      {/* Con el desplegable abierto no hay tooltip: taparía el menú. */}
+      <Tip asChild content={collapsed && !open ? principal : null} side="right">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          aria-haspopup="true"
+          aria-label={collapsed ? principal : undefined}
+          className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-sidebar-accent md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0"
+        >
+          <UserAvatar src={user.avatarUrl} initials={inicialesDe(nombre, user.email)} size={32} className="text-xs" />
+          <span className="min-w-0 flex-1 collapsed:hidden">
+            <span className="block truncate text-sm font-medium text-sidebar-foreground">{principal}</span>
+            {secundario && (
+              <span className="block truncate text-xs text-sidebar-foreground">{secundario}</span>
+            )}
+          </span>
+          <ChevronUp
+            aria-hidden="true"
+            className={cn(
+              "h-3.5 w-3.5 shrink-0 text-sidebar-foreground transition-transform collapsed:hidden",
+              open && "rotate-180",
+            )}
+          />
+        </button>
+      </Tip>
 
       {open && (
         // bottom-full: el boton esta pegado al pie, asi que el desplegable sube.

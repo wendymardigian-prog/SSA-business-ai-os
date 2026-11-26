@@ -74,7 +74,7 @@ export function OptOutSettings({ phrases: initial }: { phrases: string[] }) {
           }}
           placeholder="Agregar una frase..."
           aria-label="Nueva frase de no contactar"
-          className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <button
           onClick={add}
@@ -105,7 +105,7 @@ export function OptOutSettings({ phrases: initial }: { phrases: string[] }) {
           ))}
         </div>
       ) : (
-        <p className="mt-3 text-xs text-muted-foreground/70">
+        <p className="mt-3 text-xs text-muted-foreground">
           Sin frases: ningún contacto se va a marcar solo. La marca manual desde la ficha
           sigue funcionando.
         </p>
@@ -175,7 +175,7 @@ function PhraseTester({ phrases }: { phrases: string[] }) {
           }}
           placeholder="mi hermana trabaja con ustedes"
           aria-label="Mensaje de prueba"
-          className="flex-1 rounded-lg border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="flex-1 rounded-lg border border-input bg-background px-3 py-1.5 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <button
           onClick={run}

@@ -33,6 +33,7 @@ import { useInboxUrl } from "@/components/inbox/use-inbox-url";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
 import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Los filtros de la Bandeja (F16). Viven en el encabezado de la lista (`InboxListHeader`):
@@ -201,7 +202,7 @@ export function InboxFiltersMenu({
 
         <FilterGroup label="Tags">
           {tags.length === 0 ? (
-            <p className="text-xs text-muted-foreground/70">Todavía no hay tags.</p>
+            <p className="text-xs text-muted-foreground">Todavía no hay tags.</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {tags.map((tag) => (
@@ -360,18 +361,21 @@ export function InboxFilterSummary({
   return (
     <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-muted/30 pl-3 pr-1">
       <span className="text-xs font-medium text-muted-foreground">Filtrando:</span>
-      <span className="min-w-0 flex-1 truncate text-xs" title={text}>
-        {text}
-      </span>
-      <button
-        type="button"
-        onClick={clearAll}
-        aria-label="Limpiar filtros"
-        title="Limpiar filtros"
-        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-      >
-        <X className="h-3.5 w-3.5" aria-hidden />
-      </button>
+      <Tip asChild content={text}>
+        <span className="min-w-0 flex-1 truncate text-xs">
+          {text}
+        </span>
+      </Tip>
+      <Tip asChild content="Limpiar filtros">
+        <button
+          type="button"
+          onClick={clearAll}
+          aria-label="Limpiar filtros"
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      </Tip>
     </div>
   );
 }
@@ -392,15 +396,16 @@ export function InboxDraftsLink({
   const waitingDrafts = visibleDraftCount(drafts);
   if (waitingDrafts === 0) return null;
   return (
-    <Link
-      href={draftsQueueHref(drafts)}
-      aria-label={`Borradores: ${waitingDrafts} esperando`}
-      title="Borradores esperando"
-      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-lg border border-dashed border-amber-400 px-1.5 text-xs font-medium tabular-nums text-amber-800 transition-colors hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30"
-    >
-      <FileText className="h-3.5 w-3.5" aria-hidden />
-      {waitingDrafts}
-    </Link>
+    <Tip asChild content="Borradores esperando">
+      <Link
+        href={draftsQueueHref(drafts)}
+        aria-label={`Borradores: ${waitingDrafts} esperando`}
+        className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-lg border border-dashed border-amber-400 px-1.5 text-xs font-medium tabular-nums text-amber-800 transition-colors hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30"
+      >
+        <FileText className="h-3.5 w-3.5" aria-hidden />
+        {waitingDrafts}
+      </Link>
+    </Tip>
   );
 }
 

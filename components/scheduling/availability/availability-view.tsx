@@ -33,6 +33,7 @@ import {
   toggleEventSchedule,
 } from "@/lib/actions/scheduling/schedules";
 import { deleteOutOfOffice } from "@/lib/actions/scheduling/out-of-office";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Configuracion de agenda > Disponibilidad (F10 a F14), de arriba abajo:
@@ -469,7 +470,7 @@ function ScheduleEditorCard({
                       })}
                     />
                     <span>{e.title}</span>
-                    {e.implicitDefault && <span className="text-xs text-muted-foreground" title="Usa el horario por defecto">por defecto</span>}
+                    {e.implicitDefault && <Tip asChild content="Usa el horario por defecto"><span className="text-xs text-muted-foreground">por defecto</span></Tip>}
                   </li>
                 ))}
               </ul>

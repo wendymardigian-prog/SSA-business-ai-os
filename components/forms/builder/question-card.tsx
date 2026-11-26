@@ -6,6 +6,7 @@ import { FIELD_TYPE_LABELS, type FormField } from "@/lib/forms/fields";
 import { cn } from "@/lib/utils";
 import { FIELD_ICONS } from "./field-icons";
 import { InertControl } from "./inert-control";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Lo que la tarjeta puede pedirle al lienzo. El lienzo lo arma una sola vez, asi la tarjeta no se redibuja de mas. */
 export interface CardActions {
@@ -64,18 +65,19 @@ function QuestionCardImpl({ field, index, count, selected, disabled, conditionCh
 
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         {!disabled && (
-          <span
-            draggable
-            role="img"
-            aria-label={`Arrastrar ${name}`}
-            title="Arrastrá para cambiar el orden"
-            onDragStart={(e) => actions.dragStart(field.id, e)}
-            onDragEnd={actions.dragEnd}
-            onClick={(e) => e.stopPropagation()}
-            className="cursor-grab rounded p-0.5 hover:bg-accent active:cursor-grabbing"
-          >
-            <GripVertical className="h-4 w-4" aria-hidden />
-          </span>
+          <Tip asChild content="Arrastrá para cambiar el orden">
+            <span
+              draggable
+              role="img"
+              aria-label={`Arrastrar ${name}`}
+              onDragStart={(e) => actions.dragStart(field.id, e)}
+              onDragEnd={actions.dragEnd}
+              onClick={(e) => e.stopPropagation()}
+              className="cursor-grab rounded p-0.5 hover:bg-accent active:cursor-grabbing"
+            >
+              <GripVertical className="h-4 w-4" aria-hidden />
+            </span>
+          </Tip>
         )}
         <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
         <span className="shrink-0">{FIELD_TYPE_LABELS[field.type]}</span>

@@ -221,7 +221,7 @@ function CommentBubble({
     return (
       <div className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
         <span>{item.body}</span>
-        <span className="ml-2 opacity-80">{when}</span>
+        <span className="ml-2">{when}</span>
       </div>
     );
   }

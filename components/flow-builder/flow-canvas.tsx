@@ -63,6 +63,7 @@ import { TestPanel } from "./panels/TestPanel";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { isNoContactTriggerType } from "@/lib/flow-engine/contact-free";
 import { newNodeAttribution, type AttributionDefaults } from "@/lib/attribution/panel-view";
+import { Tip } from "@/components/ui/tooltip";
 
 type Flow = Database["public"]["Tables"]["flows"]["Row"];
 
@@ -570,19 +571,22 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS, 
             {STATUS_LABELS[flow.status] ?? flow.status}
           </span>
           {hasDraft && (
-            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200" title="Lo que corre es la última versión publicada. Publicá para que los cambios empiecen a correr.">
-              Cambios sin publicar
-            </span>
+            <Tip asChild content="Lo que corre es la última versión publicada. Publicá para que los cambios empiecen a correr.">
+              <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+                Cambios sin publicar
+              </span>
+            </Tip>
           )}
-          <button
-            type="button"
-            onClick={() => setDetailsOpen(true)}
-            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            title="Nombre, descripción y categorías"
-          >
-            <Info className="h-3.5 w-3.5" />
-            Detalles
-          </button>
+          <Tip asChild content="Nombre, descripción y categorías">
+            <button
+              type="button"
+              onClick={() => setDetailsOpen(true)}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              <Info className="h-3.5 w-3.5" />
+              Detalles
+            </button>
+          </Tip>
         </div>
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
           {saveError && (
@@ -605,57 +609,60 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS, 
               Guardado {lastSaved.toLocaleTimeString("es-AR", { timeZone })}
             </span>
           )}
-          <button
-            title="Probar"
-            aria-label="Probar"
-            onClick={() => {
-              setTestPanelOpen(!testPanelOpen);
-              if (!testPanelOpen) {
-                setChangesOpen(false);
-                setVersionPanelOpen(false);
-                setSelectedNodeId(null);
-              }
-            }}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
-              testPanelOpen
-                ? "border-primary-edge bg-primary/10 text-primary-ink"
-                : "border-border bg-background hover:bg-accent"
-            )}
-          >
-            <Play className="h-3.5 w-3.5" />
-            <span className="hidden 2xl:inline">Probar</span>
-          </button>
-          <button
-            title="Versiones"
-            aria-label="Versiones"
-            onClick={() => {
-              setVersionPanelOpen(!versionPanelOpen);
-              if (!versionPanelOpen) {
-                setChangesOpen(false);
-                setTestPanelOpen(false);
-                setSelectedNodeId(null);
-              }
-            }}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
-              versionPanelOpen
-                ? "border-primary-edge bg-primary/10 text-primary-ink"
-                : "border-border bg-background hover:bg-accent"
-            )}
-          >
-            <History className="h-3.5 w-3.5" />
-            <span className="hidden 2xl:inline">Versiones</span>
-          </button>
-          <button
-            title="Ejecuciones"
-            aria-label="Ejecuciones"
-            onClick={() => unsaved.guard(() => router.push(`/dashboard/flows/${flow.id}/ejecuciones`))}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors"
-          >
-            <Activity className="h-3.5 w-3.5" />
-            <span className="hidden 2xl:inline">Ejecuciones</span>
-          </button>
+          <Tip asChild content="Probar">
+            <button
+              aria-label="Probar"
+              onClick={() => {
+                setTestPanelOpen(!testPanelOpen);
+                if (!testPanelOpen) {
+                  setChangesOpen(false);
+                  setVersionPanelOpen(false);
+                  setSelectedNodeId(null);
+                }
+              }}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                testPanelOpen
+                  ? "border-primary-edge bg-primary/10 text-primary-ink"
+                  : "border-border bg-background hover:bg-accent"
+              )}
+            >
+              <Play className="h-3.5 w-3.5" />
+              <span className="hidden 2xl:inline">Probar</span>
+            </button>
+          </Tip>
+          <Tip asChild content="Versiones">
+            <button
+              aria-label="Versiones"
+              onClick={() => {
+                setVersionPanelOpen(!versionPanelOpen);
+                if (!versionPanelOpen) {
+                  setChangesOpen(false);
+                  setTestPanelOpen(false);
+                  setSelectedNodeId(null);
+                }
+              }}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                versionPanelOpen
+                  ? "border-primary-edge bg-primary/10 text-primary-ink"
+                  : "border-border bg-background hover:bg-accent"
+              )}
+            >
+              <History className="h-3.5 w-3.5" />
+              <span className="hidden 2xl:inline">Versiones</span>
+            </button>
+          </Tip>
+          <Tip asChild content="Ejecuciones">
+            <button
+              aria-label="Ejecuciones"
+              onClick={() => unsaved.guard(() => router.push(`/dashboard/flows/${flow.id}/ejecuciones`))}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors"
+            >
+              <Activity className="h-3.5 w-3.5" />
+              <span className="hidden 2xl:inline">Ejecuciones</span>
+            </button>
+          </Tip>
           <FlowMetricsToggle />
           <button
             onClick={handleSave}
@@ -670,34 +677,36 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS, 
             {flow.status === "published" ? "Guardar borrador" : "Guardar"}
           </button>
           {hasDraft && (
-            <button
-              onClick={() => {
-                setChangesOpen(!changesOpen);
-                if (!changesOpen) {
-                  setVersionPanelOpen(false);
-                  setTestPanelOpen(false);
-                  setSelectedNodeId(null);
-                }
-              }}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
-                changesOpen ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border bg-background hover:bg-accent",
-              )}
-              title="Qué cambió respecto de lo que está corriendo"
-            >
-              <GitCompare className="h-3.5 w-3.5" />
-              Ver cambios
-            </button>
+            <Tip asChild content="Qué cambió respecto de lo que está corriendo">
+              <button
+                onClick={() => {
+                  setChangesOpen(!changesOpen);
+                  if (!changesOpen) {
+                    setVersionPanelOpen(false);
+                    setTestPanelOpen(false);
+                    setSelectedNodeId(null);
+                  }
+                }}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                  changesOpen ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border bg-background hover:bg-accent",
+                )}
+              >
+                <GitCompare className="h-3.5 w-3.5" />
+                Ver cambios
+              </button>
+            </Tip>
           )}
           {hasDraft && (
-            <button
-              onClick={() => setConfirmDiscard(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors"
-              title="Volver a la versión que está corriendo"
-            >
-              <Undo2 className="h-3.5 w-3.5" />
-              Descartar cambios
-            </button>
+            <Tip asChild content="Volver a la versión que está corriendo">
+              <button
+                onClick={() => setConfirmDiscard(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors"
+              >
+                <Undo2 className="h-3.5 w-3.5" />
+                Descartar cambios
+              </button>
+            </Tip>
           )}
           <button
             onClick={handlePublish}
@@ -711,19 +720,20 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS, 
             )}
             {flow.status === "published" ? "Publicar cambios" : "Publicar"}
           </button>
-          <button
-            onClick={() => setConfirmDelete(true)}
-            disabled={deleting}
-            className="rounded-lg p-2 text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-            title="Borrar automatización"
-            aria-label="Borrar automatización"
-          >
-            {deleting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-          </button>
+          <Tip asChild content="Borrar automatización">
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleting}
+              className="rounded-lg p-2 text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              aria-label="Borrar automatización"
+            >
+              {deleting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+            </button>
+          </Tip>
           <ConfirmDialog {...unsaved.confirmProps} />
           {publishDialogOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="publish-title">

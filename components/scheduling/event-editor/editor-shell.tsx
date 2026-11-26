@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 import type { ChecklistItem, EditorSection } from "@/lib/scheduling/event-validation";
 import { EDITOR_SECTIONS } from "@/lib/scheduling/editor-sections";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El editor de un evento (F18): navegacion lateral de 7 secciones, la barra
@@ -87,25 +88,27 @@ export function EditorShell({
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-sm font-semibold">Listo para activar</h2>
               <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px]">Inactivo</span>
-              <button type="button" onClick={onActivate} disabled={!canActivate} title={canActivate ? undefined : checklist.find((i) => i.required && !i.ok)?.reason ?? undefined} className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50">
-                Activar evento
-              </button>
+              <Tip className="ml-auto" content={canActivate ? null : checklist.find((i) => i.required && !i.ok)?.reason ?? null}>
+                <button type="button" onClick={onActivate} disabled={!canActivate} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50">
+                  Activar evento
+                </button>
+              </Tip>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {checklist.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => go(item.section)}
-                  title={item.reason ?? undefined}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
-                    item.ok ? "border-emerald-400 text-emerald-800 dark:text-emerald-300" : item.required ? "border-amber-400" : "border-border text-muted-foreground",
-                  )}
-                >
-                  {item.ok ? <Check className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
-                  {item.label}
-                </button>
+                <Tip key={item.key} asChild content={item.reason ?? null}>
+                  <button
+                    type="button"
+                    onClick={() => go(item.section)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
+                      item.ok ? "border-emerald-400 text-emerald-800 dark:text-emerald-300" : item.required ? "border-amber-400" : "border-border text-muted-foreground",
+                    )}
+                  >
+                    {item.ok ? <Check className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
+                    {item.label}
+                  </button>
+                </Tip>
               ))}
             </div>
           </section>

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { buildCalendar, summarize, type CalendarCard, type CalendarPiece } from "@/lib/content/calendar";
 import { NetworkBadges } from "./network-badge";
+import { Tip } from "@/components/ui/tooltip";
 import { movePieceToDay } from "@/lib/actions/content-calendar";
 import { drawerHref } from "@/lib/content/drawer-url";
 import { timeZoneLabel } from "@/lib/dates";
@@ -127,10 +128,10 @@ export function ContentCalendar({
           {summary.pieces} {summary.pieces === 1 ? "pieza nueva" : "piezas nuevas"} ·{" "}
           {summary.publications} {summary.publications === 1 ? "publicacion" : "publicaciones"}
           {summary.redistributions > 0 && ` · ${summary.redistributions} ↻`}
-          <span className="ml-1 opacity-70">
+          <span className="ml-1">
             (contando {countMode === "pieces" ? "piezas" : "publicaciones"})
           </span>
-          <span className="ml-1 opacity-70">· tu hora ({timeZoneLabel(timeZone)})</span>
+          <span className="ml-1">· tu hora ({timeZoneLabel(timeZone)})</span>
         </p>
       </div>
 
@@ -256,26 +257,27 @@ function DayCard({
   onDragStart?: () => void;
 }) {
   return (
-    <Link
-      href={href}
-      scroll={false}
-      data-card-id={`piece-${card.pieceId}`}
-      draggable={draggable}
-      onDragStart={onDragStart}
-      className={`block rounded-md border px-1.5 py-1 text-[11px] leading-tight ${TONES[card.tone]}`}
-      title={card.title}
-    >
-      <span className="flex items-start gap-1">
-        <span className="font-medium tabular-nums opacity-80">{card.time}</span>
-        <span className="line-clamp-2 font-medium">
-          {card.redistribution && "↻ "}
-          {card.title}
+    <Tip asChild content={card.title}>
+      <Link
+        href={href}
+        scroll={false}
+        data-card-id={`piece-${card.pieceId}`}
+        draggable={draggable}
+        onDragStart={onDragStart}
+        className={`block rounded-md border px-1.5 py-1 text-[11px] leading-tight ${TONES[card.tone]}`}
+      >
+        <span className="flex items-start gap-1">
+          <span className="font-medium tabular-nums">{card.time}</span>
+          <span className="line-clamp-2 font-medium">
+            {card.redistribution && "↻ "}
+            {card.title}
+          </span>
         </span>
-      </span>
-      <span className="mt-0.5 flex items-center gap-1 opacity-90">
-        <NetworkBadges platforms={card.networks.map((n) => n.platform)} />
-      </span>
-    </Link>
+        <span className="mt-0.5 flex items-center gap-1">
+          <NetworkBadges platforms={card.networks.map((n) => n.platform)} />
+        </span>
+      </Link>
+    </Tip>
   );
 }
 

@@ -5,6 +5,7 @@ import { Notice } from "@/components/agents/fields";
 import { FilterSelect, useUrlFilters } from "@/components/agents/filters";
 import { formatPercent, PERIOD_OPTIONS, summarize, type DailyRow, type Period } from "@/lib/forms/metrics";
 import type { MetricasDelFormulario } from "@/lib/forms/field-metrics";
+import { Tip } from "@/components/ui/tooltip";
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -95,17 +96,19 @@ export function MetricsView({
               </h2>
               <div className="mt-3 flex h-40 items-end gap-0.5 overflow-x-auto" role="img" aria-label={`Vistas y envíos por día, del ${period.from} al ${period.to}`}>
                 {rows.map((r) => (
-                  <div key={r.day} className="flex min-w-[10px] flex-1 flex-col items-center justify-end gap-0.5" title={`${shortDay(r.day)}: ${r.views} vistas, ${r.submissions} envíos`}>
-                    <div className="flex w-full items-end justify-center gap-px">
-                      <div className="w-1/2 rounded-t bg-muted-foreground/30" style={{ height: `${(r.views / max) * 120}px` }} />
-                      <div className="w-1/2 rounded-t bg-primary" style={{ height: `${(r.submissions / max) * 120}px` }} />
+                  <Tip key={r.day} asChild content={`${shortDay(r.day)}: ${r.views} vistas, ${r.submissions} envíos`}>
+                    <div className="flex min-w-[10px] flex-1 flex-col items-center justify-end gap-0.5">
+                      <div className="flex w-full items-end justify-center gap-px">
+                        <div className="w-1/2 rounded-t bg-disabled-foreground/30" style={{ height: `${(r.views / max) * 120}px` }} />
+                        <div className="w-1/2 rounded-t bg-primary" style={{ height: `${(r.submissions / max) * 120}px` }} />
+                      </div>
+                      {rows.length <= 14 && <span className="text-[9px] text-muted-foreground">{shortDay(r.day)}</span>}
                     </div>
-                    {rows.length <= 14 && <span className="text-[9px] text-muted-foreground">{shortDay(r.day)}</span>}
-                  </div>
+                  </Tip>
                 ))}
               </div>
               <p className="mt-2 flex items-center gap-4 text-[11px] text-muted-foreground">
-                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-muted-foreground/30" /> Vistas</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-disabled-foreground/30" /> Vistas</span>
                 <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-primary" /> Envíos</span>
               </p>
               <details className="mt-3">

@@ -15,6 +15,7 @@ import {
 } from "@/lib/actions/calls-link";
 import { MATCH_LABELS, type BookingSuggestion } from "@/lib/calls/booking-suggestions";
 import { formatCallDate } from "@/lib/calls/format";
+import { Tip } from "@/components/ui/tooltip";
 
 const chip = "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs";
 
@@ -60,9 +61,11 @@ export function ContactLink({ callId, contact, canEdit }: { callId: string; cont
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       {contact && (
-        <Link href={`/dashboard/contacts/${contact.id}`} className={`${chip} hover:bg-muted`} title="Abrir la ficha del contacto">
-          <Link2 className="h-3 w-3" aria-hidden /> Contacto: {contact.name} <ExternalLink className="h-3 w-3" aria-hidden />
-        </Link>
+        <Tip asChild content="Abrir la ficha del contacto">
+          <Link href={`/dashboard/contacts/${contact.id}`} className={`${chip} hover:bg-muted`}>
+            <Link2 className="h-3 w-3" aria-hidden /> Contacto: {contact.name} <ExternalLink className="h-3 w-3" aria-hidden />
+          </Link>
+        </Tip>
       )}
       {canEdit && (
         <Popover label={contact ? "Cambiar el contacto de la llamada" : "Vincular un contacto a la llamada"} trigger={trigger} align="start" panelClassName="w-80" triggerClassName={contact ? "rounded-md px-1 text-muted-foreground underline underline-offset-2 hover:text-foreground" : ""}>
@@ -131,9 +134,11 @@ export function BookingLink({ callId, booking, canEdit }: { callId: string; book
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       {booking && (
-        <Link href={`/dashboard/agenda?agenda=${booking.id}`} className={`${chip} hover:bg-muted`} title="Abrir la agenda">
-          <CalendarDays className="h-3 w-3" aria-hidden /> Agenda: {formatCallDate(booking.startAt, timeZone, "long")} <ExternalLink className="h-3 w-3" aria-hidden />
-        </Link>
+        <Tip asChild content="Abrir la agenda">
+          <Link href={`/dashboard/agenda?agenda=${booking.id}`} className={`${chip} hover:bg-muted`}>
+            <CalendarDays className="h-3 w-3" aria-hidden /> Agenda: {formatCallDate(booking.startAt, timeZone, "long")} <ExternalLink className="h-3 w-3" aria-hidden />
+          </Link>
+        </Tip>
       )}
       {canEdit && (
         <span onClick={() => void load()} onFocus={() => void load()}>

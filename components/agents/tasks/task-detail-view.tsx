@@ -91,7 +91,7 @@ export function TaskDetailView({
             <p className="mt-1 text-xs text-muted-foreground">
               {mode ? MODE_LABELS[mode] : controlLabel(task)}
               {" · "}
-              <Suspense fallback={<span className="text-muted-foreground/60">Última corrida: …</span>}>
+              <Suspense fallback={<span className="text-muted-foreground">Última corrida: …</span>}>
                 <LastRunLine mode={mode} lastRun={lastRun} />
               </Suspense>
             </p>

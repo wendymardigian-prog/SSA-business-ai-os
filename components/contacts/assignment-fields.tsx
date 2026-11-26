@@ -105,7 +105,7 @@ export function AssignmentFields({
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-muted-foreground/70">{hint}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
         </div>
       ))}
 

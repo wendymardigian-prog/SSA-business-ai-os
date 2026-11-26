@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Loader2, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Un buscador que ocupa un icono (32 px) hasta que se lo necesita.
@@ -13,8 +14,8 @@ import { cn } from "@/lib/utils";
  * abierto: no se puede esconder lo que esta filtrando la lista.
  *
  * `hint` es un cartel que explica el alcance de la busqueda (por ejemplo, que
- * solo mira dentro del periodo elegido). Aparece al apoyar el mouse o tener el
- * foco, y esta atado al campo con `aria-describedby`.
+ * solo mira dentro del periodo elegido). Es el tooltip del sistema (`Tip`, abajo del campo): aparece al apoyar el
+ * mouse o tener el foco, no lo corta el scroll de la franja del telefono, y esta atado al campo con `aria-describedby`.
  *
  * Es controlado desde afuera: `value` es lo APLICADO (lo que esta en la URL) y
  * `onCommit` avisa cuando cambia. El texto a medio escribir vive aca.
@@ -36,7 +37,7 @@ export function ExpandableSearch({
   label: string;
   placeholder?: string;
   hint?: string | null;
-  /** De que lado del campo se alinea el cartel: "right" cuando el buscador esta al borde derecho de la barra y se saldria de la pantalla. */
+  /** De que lado del campo se alinea el cartel: "right" cuando el buscador esta al borde derecho de la barra (el tooltip va centrado y nunca se sale de la pantalla). */
   hintAlign?: "left" | "right";
   pending?: boolean;
   inputClassName?: string;
@@ -66,53 +67,54 @@ export function ExpandableSearch({
 
   if (!open) {
     return (
-      <button
-        type="button"
-        aria-label={label}
-        title={label}
-        aria-expanded={false}
-        onClick={() => setOpen(true)}
-        className="flex h-8 w-8 shrink-0 max-topbar:h-10 max-topbar:w-10 items-center justify-center rounded-lg border border-input bg-background text-muted-foreground transition-colors hover:border-muted-foreground/60 hover:text-foreground"
-      >
-        <Search className="h-3.5 w-3.5" aria-hidden />
-      </button>
+      <Tip asChild content={label}>
+        <button
+          type="button"
+          aria-label={label}
+          aria-expanded={false}
+          onClick={() => setOpen(true)}
+          className="flex h-8 w-8 shrink-0 max-topbar:h-10 max-topbar:w-10 items-center justify-center rounded-lg border border-input bg-background text-muted-foreground transition-colors hover:border-disabled-foreground/60 hover:text-foreground"
+        >
+          <Search className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      </Tip>
     );
   }
 
   return (
     <div role="search" className="group relative shrink-0">
       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
-      <input
-        ref={inputRef}
-        type="text"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit(draft);
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            // Primero descarta lo escrito; si no habia nada pendiente, cierra.
-            if (draft !== value) setDraft(value);
-            else if (value === "") setOpen(false);
-          }
-        }}
-        onBlur={() => {
-          if (draft.trim() !== value) commit(draft);
-          else if (draft.trim() === "") setOpen(false);
-        }}
-        placeholder={placeholder ?? label}
-        aria-label={label}
-        aria-describedby={hint ? hintId : undefined}
-        // Respaldo nativo: en la franja del telefono el cartel queda cortado por el scroll.
-        title={hint ?? undefined}
-        className={cn(
-          "h-8 w-44 rounded-lg max-topbar:h-10 border border-input bg-background pl-8 pr-8 text-[13px] placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none focus:ring-2 focus:ring-ring sm:w-56",
-          value !== "" && "border-primary-edge",
-          inputClassName,
-        )}
-      />
+      <Tip asChild content={hint} side="bottom" align={hintAlign === "right" ? "center" : "start"}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit(draft);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              // Primero descarta lo escrito; si no habia nada pendiente, cierra.
+              if (draft !== value) setDraft(value);
+              else if (value === "") setOpen(false);
+            }
+          }}
+          onBlur={() => {
+            if (draft.trim() !== value) commit(draft);
+            else if (draft.trim() === "") setOpen(false);
+          }}
+          placeholder={placeholder ?? label}
+          aria-label={label}
+          aria-describedby={hint ? hintId : undefined}
+          className={cn(
+            "h-8 w-44 rounded-lg max-topbar:h-10 border border-input bg-background pl-8 pr-8 text-[13px] placeholder:text-disabled-foreground focus:border-primary-edge focus:outline-none focus:ring-2 focus:ring-ring sm:w-56",
+            value !== "" && "border-primary-edge",
+            inputClassName,
+          )}
+        />
+      </Tip>
       <span className="absolute right-1.5 top-1/2 -translate-y-1/2">
         {pending ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />
@@ -134,16 +136,9 @@ export function ExpandableSearch({
         )}
       </span>
       {hint && (
-        <p
-          id={hintId}
-          role="tooltip"
-          className={cn(
-            "pointer-events-none absolute top-full z-50 mt-1.5 hidden w-max max-w-[260px] rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] leading-snug text-muted-foreground shadow-md group-focus-within:block group-hover:block",
-            hintAlign === "right" ? "right-0" : "left-0",
-          )}
-        >
+        <span id={hintId} className="sr-only">
           {hint}
-        </p>
+        </span>
       )}
     </div>
   );

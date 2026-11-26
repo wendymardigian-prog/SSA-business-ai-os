@@ -22,6 +22,7 @@ import {
 import { suggestSaleTouch } from "@/lib/sales/suggest-touch";
 import { channelOfTouch, NO_NAMES, touchTitle, type TouchNames } from "@/lib/attribution/touch-label";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * "Atribución": de dónde vino la venta (plano F11). Una línea con el último
@@ -227,9 +228,9 @@ export function AttributionField({
                         className={cn("flex w-full flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2 text-left text-xs hover:bg-accent/50", selected && "bg-primary/10")}
                       >
                         <ChannelChip channel={channelOfTouch(t)} />
-                        <span className="min-w-0 flex-1 truncate font-medium" title={touchTitle(t, names)}>
-                          {touchTitle(t, names)}
-                        </span>
+                        <Tip asChild content={touchTitle(t, names)}>
+                          <span className="min-w-0 flex-1 truncate font-medium">{touchTitle(t, names)}</span>
+                        </Tip>
                         <span className="text-muted-foreground">{relativeDays(t.occurred_at, now, timeZone)}</span>
                         <span className="w-full text-[11px] text-muted-foreground">
                           {[sourceLabel(t.source), mediumLabel(t.medium)].filter(Boolean).join(" / ") || "Sin datos"}

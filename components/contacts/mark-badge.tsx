@@ -1,6 +1,7 @@
 import { BadgeCheck, HeartHandshake, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MARK_SHORT, type ContactMark } from "@/lib/inbox/marks";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Como se ve cada marca del contacto, en UN lugar: el icono y el color de
@@ -41,17 +42,18 @@ export function MarkBadge({
 }) {
   const { icon: Icon, chip } = MARK_STYLE[mark];
   return (
-    <span
-      title={title ?? MARK_SHORT[mark]}
-      className={cn(
-        "inline-flex flex-shrink-0 items-center gap-1 rounded-full border font-semibold",
-        iconOnly ? "p-0.5" : size === "xs" ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-xs",
-        chip,
-      )}
-    >
-      <Icon className={size === "xs" ? "h-3 w-3" : "h-3.5 w-3.5"} aria-hidden />
-      {iconOnly ? <span className="sr-only">{MARK_SHORT[mark]}</span> : MARK_SHORT[mark]}
-      {title && title !== MARK_SHORT[mark] && <span className="sr-only">: {title}</span>}
-    </span>
+    <Tip asChild content={title ?? MARK_SHORT[mark]}>
+      <span
+        className={cn(
+          "inline-flex flex-shrink-0 items-center gap-1 rounded-full border font-semibold",
+          iconOnly ? "p-0.5" : size === "xs" ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-xs",
+          chip,
+        )}
+      >
+        <Icon className={size === "xs" ? "h-3 w-3" : "h-3.5 w-3.5"} aria-hidden />
+        {iconOnly ? <span className="sr-only">{MARK_SHORT[mark]}</span> : MARK_SHORT[mark]}
+        {title && title !== MARK_SHORT[mark] && <span className="sr-only">: {title}</span>}
+      </span>
+    </Tip>
   );
 }

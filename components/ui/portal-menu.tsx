@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffe
 import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Un menu desplegable que se dibuja fuera de donde esta el boton.
@@ -70,7 +71,7 @@ export function PortalMenu({
   /** Las opciones: `PortalMenuItem`, `PortalMenuLabel`, `PortalMenuSeparator`. */
   children: ReactNode;
   disabled?: boolean;
-  /** El tooltip nativo del boton (por ejemplo, por que esta deshabilitado). */
+  /** El tooltip del boton (`Tip`; por ejemplo, por que esta deshabilitado). */
   title?: string;
   align?: "start" | "end";
   width?: number;
@@ -155,33 +156,45 @@ export function PortalMenu({
     }
   }
 
+  const triggerButton = (
+    <button
+      ref={buttonRef}
+      type="button"
+      aria-label={label}
+      aria-haspopup="menu"
+      aria-expanded={open}
+      aria-controls={open ? id : undefined}
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        toggle();
+      }}
+      onKeyDown={(event) => {
+        // Enter o espacio abren el menu; que la fila de atras no se entere. Esc si pasa: cierra el detalle de atras.
+        if (event.key !== "Escape") event.stopPropagation();
+        if (event.key === "ArrowDown" && !open) {
+          event.preventDefault();
+          toggle();
+        }
+      }}
+      className={cn("inline-flex items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default", triggerClassName)}
+    >
+      {trigger}
+    </button>
+  );
+
   return (
     <>
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        disabled={disabled}
-        title={title}
-        onClick={(event) => {
-          event.stopPropagation();
-          toggle();
-        }}
-        onKeyDown={(event) => {
-          // Enter o espacio abren el menu; que la fila de atras no se entere. Esc si pasa: cierra el detalle de atras.
-          if (event.key !== "Escape") event.stopPropagation();
-          if (event.key === "ArrowDown" && !open) {
-            event.preventDefault();
-            toggle();
-          }
-        }}
-        className={cn("inline-flex items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default", triggerClassName)}
-      >
-        {trigger}
-      </button>
+      {disabled && title ? (
+        // Apagado, el boton no recibe el puntero: el tooltip va en un envoltorio.
+        <Tip content={title} className={cn("inline-flex max-w-full", /(^|\s)w-full(\s|$)/.test(triggerClassName ?? "") && "w-full")}>
+          {triggerButton}
+        </Tip>
+      ) : (
+        <Tip asChild content={title}>
+          {triggerButton}
+        </Tip>
+      )}
       {open &&
         placement &&
         createPortal(
@@ -222,13 +235,12 @@ export function PortalMenuItem({
   className?: string;
 }) {
   const close = useContext(CloseContext);
-  return (
+  const item = (
     <button
       type="button"
       role="menuitem"
       aria-current={selected ? "true" : undefined}
       disabled={disabled}
-      title={title}
       onClick={() => {
         close?.();
         onSelect();
@@ -242,6 +254,17 @@ export function PortalMenuItem({
       <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
       {selected && <Check className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
     </button>
+  );
+  if (!title) return item;
+  // Apagada, la opcion no recibe el puntero: el tooltip (el motivo) va en un envoltorio.
+  return disabled ? (
+    <Tip content={title} className="flex w-full">
+      {item}
+    </Tip>
+  ) : (
+    <Tip asChild content={title}>
+      {item}
+    </Tip>
   );
 }
 

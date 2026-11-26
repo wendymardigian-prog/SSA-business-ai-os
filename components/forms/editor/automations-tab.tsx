@@ -10,6 +10,7 @@ import { createEodFlowFromTemplate, createFormFlow, createFormFlowFromTemplate, 
 import { EOD_FLOW_TEMPLATES, type EodTemplateKey } from "@/lib/eod/automation/templates";
 import { templateQuestions, templatesForType, type FormTemplateKey } from "@/lib/forms/automation/templates";
 import type { EditorExtras, EditorForm } from "./types";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La pestaña Automatizaciones (F21): los flujos de este formulario, un botón para
@@ -110,9 +111,11 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
                   <Link href={`/dashboard/formularios/${form.id}/automatizaciones/${flow.id}`} className="block truncate text-sm font-medium hover:underline">
                     {flow.name}
                   </Link>
-                  <p className="truncate text-xs text-muted-foreground" title={flow.describe}>
-                    {flow.summary}
-                  </p>
+                  <Tip asChild content={flow.describe}>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {flow.summary}
+                    </p>
+                  </Tip>
                 </div>
                 <span className="text-xs text-muted-foreground">{flow.enabled ? "Encendida" : "Apagada"}</span>
                 <Switch checked={flow.enabled} disabled={!canEdit || pending} label={`${flow.enabled ? "Apagar" : "Encender"} ${flow.name}`} onChange={(next) => toggle(flow.id, next)} />

@@ -5,6 +5,7 @@ import { Loader2, Star, Sticker, Trash2, Upload } from "lucide-react";
 import { deleteSticker, listStickers, setStickerFavorite } from "@/lib/actions/stickers";
 import { defaultStickerTab, stickersForTab, type StickerTab, type StickerWithUrl } from "@/lib/stickers/format";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 const TABS: { key: StickerTab; label: string }[] = [
   { key: "favorites", label: "Favoritos" },
@@ -147,18 +148,22 @@ export function StickerPicker({
 
   return (
     <div ref={rootRef} className={hideTrigger ? "pointer-events-none absolute inset-0 [&>*]:pointer-events-auto" : "relative"}>
-      {!hideTrigger && <button
-        type="button"
-        onClick={toggle}
-        disabled={disabled}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label="Stickers"
-        title={disabled ? disabledReason ?? "Stickers" : "Stickers"}
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-      >
-        <Sticker className="h-4 w-4" aria-hidden />
-      </button>}
+      {!hideTrigger && (
+        // Sin asChild: deshabilitado tambien dice por que (un boton deshabilitado no recibe el puntero).
+        <Tip content={disabled ? disabledReason ?? "Stickers" : "Stickers"}>
+          <button
+            type="button"
+            onClick={toggle}
+            disabled={disabled}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            aria-label="Stickers"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+          >
+            <Sticker className="h-4 w-4" aria-hidden />
+          </button>
+        </Tip>
+      )}
 
       {open && (
         <div

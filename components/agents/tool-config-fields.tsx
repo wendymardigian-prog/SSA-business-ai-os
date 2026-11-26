@@ -175,7 +175,7 @@ function ConfigField({
                 )}
               >
                 {o.label}
-                {o.hint && <span className={cn("ml-1", on ? "opacity-80" : "text-muted-foreground")}>· {o.hint}</span>}
+                {o.hint && <span className={cn("ml-1", on ? undefined : "text-muted-foreground")}>· {o.hint}</span>}
               </button>
             );
           })}

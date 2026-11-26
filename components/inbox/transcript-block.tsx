@@ -49,10 +49,10 @@ export function TranscriptBlock({
 
   return (
     <div className="mt-1.5 border-l-2 border-current/25 pl-2.5 text-xs">
-      {view.state === "ready" && <p className="whitespace-pre-wrap opacity-90">{view.text}</p>}
+      {view.state === "ready" && <p className="whitespace-pre-wrap">{view.text}</p>}
 
       {view.state === "pending" && (
-        <p className="flex items-center gap-1.5 opacity-70">
+        <p className="flex items-center gap-1.5">
           <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
           Transcribiendo…
         </p>

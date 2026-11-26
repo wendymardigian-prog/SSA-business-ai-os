@@ -22,6 +22,7 @@ import { emptyQueueLane, pauseQueueLane, resumeQueueLane, setBulkPaused } from "
 import { displayStatus, REASON_LABELS, type QueueTone, type StatusTabKey } from "@/lib/send-queue/automation/labels";
 import { PRIORITY_LABELS } from "@/lib/send-queue/automation/settings";
 import { barTone, busiestWarning, queueTimingText, type LaneCard, type QueueRow, type QueueScreen } from "@/lib/send-queue/automation/screen";
+import { Tip } from "@/components/ui/tooltip";
 
 const ROUTE = "/dashboard/flows/cola";
 const SHOW_REASON = new Set<string>(["failed", "expired", "overdue", "discarded"]);
@@ -30,14 +31,14 @@ const PILL_CLASS: Record<QueueTone, string> = {
   green: "bg-green-600/15 text-green-800 dark:text-green-300",
   yellow: "bg-yellow-400/20 text-yellow-900 dark:bg-yellow-400/15 dark:text-yellow-300",
   red: "bg-red-600/15 text-red-800 dark:text-red-300",
-  neutral: "bg-foreground/10 text-foreground/90",
+  neutral: "bg-foreground/10 text-foreground",
 };
 
 const BAR_CLASS: Record<QueueTone, string> = {
   green: "bg-green-600",
   yellow: "bg-yellow-500",
   red: "bg-red-600",
-  neutral: "bg-muted-foreground/40",
+  neutral: "bg-disabled-foreground/40",
 };
 
 const META: ColumnMeta[] = [
@@ -124,9 +125,9 @@ export function QueueView({ screen, tab, channelId, viewerTimeZone }: { screen: 
             <div className="min-w-0">
               <Pill label={s.label} tone={s.tone} />
               {why && (
-                <p className="mt-0.5 truncate text-[11px] text-muted-foreground" title={why}>
-                  {why}
-                </p>
+                <Tip asChild content={why}>
+                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{why}</p>
+                </Tip>
               )}
             </div>
           );
@@ -281,9 +282,9 @@ function LaneCardView({ card }: { card: LaneCard }) {
         {card.paceText} · {card.windowText}
       </p>
       <div className="mt-auto flex items-center gap-2">
-        <p className="line-clamp-2 min-w-0 flex-1 text-xs text-muted-foreground" title={card.note ?? undefined}>
-          {card.note ?? ""}
-        </p>
+        <Tip asChild content={card.note ?? null}>
+          <p className="line-clamp-2 min-w-0 flex-1 text-xs text-muted-foreground">{card.note ?? ""}</p>
+        </Tip>
         {pending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Guardando" />}
         {card.paused ? (
           <button
@@ -295,16 +296,17 @@ function LaneCardView({ card }: { card: LaneCard }) {
             <Play className="h-3.5 w-3.5" aria-hidden /> Reanudar
           </button>
         ) : (
-          <button
-            type="button"
-            disabled={pending}
-            onClick={pause}
-            aria-label={`Pausar ${card.name}`}
-            title="Pausar"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-60"
-          >
-            <Pause className="h-4 w-4" aria-hidden />
-          </button>
+          <Tip asChild content="Pausar">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={pause}
+              aria-label={`Pausar ${card.name}`}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-60"
+            >
+              <Pause className="h-4 w-4" aria-hidden />
+            </button>
+          </Tip>
         )}
         <div className="relative">
           <button

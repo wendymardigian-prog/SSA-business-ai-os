@@ -3,6 +3,7 @@ import { INDEX_BASE_MIN, INDEX_HIGH, INDEX_LOW, INDEX_WINDOW_DAYS } from "@/lib/
 import type { PerformanceRow, PiecePerformance } from "@/lib/dashboards/piece-performance";
 import { platformLabel } from "@/lib/platforms";
 import { NetworkBadge } from "../network-badge";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Como le fue a la pieza, red por red (F102).
@@ -35,13 +36,14 @@ function IndexCell({ index }: { index: PerformanceRow["index"] }) {
   if (index.status === "ok" && index.tone) {
     const tone = TONE[index.tone];
     return (
-      <span
-        className={tone.className}
-        title={`Rindió ${index.label} lo normal para su red y formato (${index.comparables} publicaciones comparables)`}
-      >
-        {tone.glyph}
-        {index.label}
-      </span>
+      <Tip asChild content={`Rindió ${index.label} lo normal para su red y formato (${index.comparables} publicaciones comparables)`}>
+        <span
+          className={tone.className}
+        >
+          {tone.glyph}
+          {index.label}
+        </span>
+      </Tip>
     );
   }
 
@@ -53,9 +55,11 @@ function IndexCell({ index }: { index: PerformanceRow["index"] }) {
         : "No hay dato para calcularlo.";
 
   return (
-    <span className="text-muted-foreground" title={reason}>
-      {index.label}
-    </span>
+    <Tip asChild content={reason}>
+      <span className="text-muted-foreground">
+        {index.label}
+      </span>
+    </Tip>
   );
 }
 
@@ -134,18 +138,20 @@ export function PiecePerformanceSection({
                 {total.publications} {total.publications === 1 ? "publicación" : "publicaciones"}
               </td>
               <td className="px-2 py-1.5 text-right text-muted-foreground">—</td>
-              <td
-                className="px-2 py-1.5 text-right tabular-nums"
-                title="Suma de lo crudo de cada red: es contexto, no un ranking."
-              >
-                {fmt(total.reach)}
-              </td>
-              <td
-                className="px-2 py-1.5 text-right tabular-nums"
-                title="Suma de lo crudo de cada red: es contexto, no un ranking."
-              >
-                {fmt(total.interactions)}
-              </td>
+              <Tip asChild content="Suma de lo crudo de cada red: es contexto, no un ranking.">
+                <td
+                  className="px-2 py-1.5 text-right tabular-nums"
+                >
+                  {fmt(total.reach)}
+                </td>
+              </Tip>
+              <Tip asChild content="Suma de lo crudo de cada red: es contexto, no un ranking.">
+                <td
+                  className="px-2 py-1.5 text-right tabular-nums"
+                >
+                  {fmt(total.interactions)}
+                </td>
+              </Tip>
               <td className="px-2 py-1.5 text-right tabular-nums">
                 {total.engagementD7 === null ? "—" : `${total.engagementD7.toString().replace(".", ",")}%`}
               </td>
@@ -167,12 +173,13 @@ export function PiecePerformanceSection({
                   </span>
                 )}
               </td>
-              <td
-                className="px-2 py-1.5 text-right tabular-nums"
-                title="Cada persona cuenta una vez, aunque haya comentado más de una publicación."
-              >
-                {fmt(total.leads)}
-              </td>
+              <Tip asChild content="Cada persona cuenta una vez, aunque haya comentado más de una publicación.">
+                <td
+                  className="px-2 py-1.5 text-right tabular-nums"
+                >
+                  {fmt(total.leads)}
+                </td>
+              </Tip>
             </tr>
           </tfoot>
         </table>

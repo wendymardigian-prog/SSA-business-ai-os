@@ -13,6 +13,7 @@ import { EVENT_STATUS_LABELS, SYSTEM_ONLY_WARNING } from "@/lib/scheduling/event
 import type { EventTypeStatus } from "@/lib/types/database";
 import { deleteEventType, duplicateEventType, setEventStatus } from "@/lib/actions/scheduling/event-types";
 import { withRef } from "@/lib/affiliates/url"; // @plantilla-quitar(ventas)
+import { Tip } from "@/components/ui/tooltip";
 
 export interface EventCard {
   id: string;
@@ -106,10 +107,12 @@ export function EventsView({
       route="/dashboard/agenda/configuracion/eventos"
       right={
         canCreate ? (
-          <button type="button" disabled={!hasProfile} title={hasProfile ? undefined : "Primero completá tu perfil en Ajustes"} onClick={() => setShowNew(true)} className="inline-flex h-9 items-center whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50">
-            <span className="sm:hidden">+ Evento</span>
-            <span className="hidden sm:inline">+ Nuevo evento</span>
-          </button>
+          <Tip content={hasProfile ? null : "Primero completá tu perfil en Ajustes"}>
+            <button type="button" disabled={!hasProfile} onClick={() => setShowNew(true)} className="inline-flex h-9 items-center whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50">
+              <span className="sm:hidden">+ Evento</span>
+              <span className="hidden sm:inline">+ Nuevo evento</span>
+            </button>
+          </Tip>
         ) : undefined
       }
       filters={
@@ -197,11 +200,13 @@ export function EventsView({
                         {e.ownerLabel} · <span className={e.status === "active" ? "text-emerald-600" : ""}>{EVENT_STATUS_LABELS[e.status]}</span>
                       </p>
                       {e.systemOnly && (
-                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400" title={SYSTEM_ONLY_WARNING}>
-                          Solo en el sistema: sin calendario de Google
-                        </p>
+                        <Tip asChild content={SYSTEM_ONLY_WARNING}>
+                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">Solo en el sistema: sin calendario de Google</p>
+                        </Tip>
                       )}
-                      <p className="mt-2 truncate rounded-lg bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground" title={linkOf(e)}>{linkOf(e)}</p>
+                      <Tip asChild content={linkOf(e)}>
+                        <p className="mt-2 truncate rounded-lg bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground">{linkOf(e)}</p>
+                      </Tip>
                       <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
                         <button type="button" onClick={() => { navigator.clipboard?.writeText(linkOf(e)); flash("Link copiado"); }} className="rounded-lg border border-border px-2 py-1 hover:bg-muted">Copiar link</button>
                         {myRefCode && (

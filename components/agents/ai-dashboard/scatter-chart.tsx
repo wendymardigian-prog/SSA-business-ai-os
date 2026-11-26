@@ -82,7 +82,7 @@ export function ScatterChart({
         {ticks.map((v) => (
           <g key={v}>
             <line x1={L} x2={plotRight} y1={yOfCost(v)} y2={yOfCost(v)} stroke="var(--grid)" strokeWidth={1} />
-            <text x={L - 8} y={yOfCost(v) + 4} textAnchor="end" className="fill-muted-foreground text-[11px]">
+            <text x={L - 8} y={yOfCost(v) + 4} textAnchor="end" className="fill-disabled-foreground text-[11px]">
               {formatUsd(v)}
             </text>
           </g>
@@ -90,12 +90,12 @@ export function ScatterChart({
 
         <line x1={L} x2={plotRight} y1={laneTop} y2={laneTop} stroke="var(--grid)" strokeWidth={1} strokeDasharray="2 3" />
         <rect x={L} y={laneTop} width={plotRight - L} height={LANE_H} fill="var(--muted)" opacity={0.3} />
-        <text x={L - 8} y={(laneTop + laneBottom) / 2 + 4} textAnchor="end" className="fill-muted-foreground text-[10px]">
+        <text x={L - 8} y={(laneTop + laneBottom) / 2 + 4} textAnchor="end" className="fill-disabled-foreground text-[10px]">
           Sin precio
         </text>
 
         {dateTicks.map((ms, i) => (
-          <text key={i} x={xOf(ms)} y={dateY} textAnchor={i === 0 ? "start" : i === dateTicks.length - 1 ? "end" : "middle"} className="fill-muted-foreground text-[11px]">
+          <text key={i} x={xOf(ms)} y={dateY} textAnchor={i === 0 ? "start" : i === dateTicks.length - 1 ? "end" : "middle"} className="fill-disabled-foreground text-[11px]">
             {formatCivilShort(civilDate(new Date(ms), timeZone))}
           </text>
         ))}

@@ -25,6 +25,8 @@ export interface ServiceListItem {
   contactName: string;
   productName: string;
   variantName: string;
+  /** El id del responsable: para su circulo con foto (`PersonAvatar`). */
+  ownerId?: string | null;
   ownerName: string | null;
   status: ServiceStatus;
   light: Light | null;

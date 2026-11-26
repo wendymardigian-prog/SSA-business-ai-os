@@ -150,7 +150,7 @@ export function AssistantFullScreen({ initial, roleName }: { initial: AssistantP
         }
         right={
           <div className="flex items-center gap-2">
-            {roleName && <span className="hidden rounded-md bg-muted px-3 py-1 text-xs text-foreground/80 md:inline">Actúa con tu rol: {roleName}</span>}
+            {roleName && <span className="hidden rounded-md bg-muted px-3 py-1 text-xs text-foreground md:inline">Actúa con tu rol: {roleName}</span>}
             <button type="button" onClick={() => void fresh()} disabled={streaming} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">
               <Plus className="size-4" aria-hidden /> <span className="hidden sm:inline">Nueva conversación</span>
               <span className="sr-only sm:hidden">Nueva conversación</span>
@@ -210,7 +210,7 @@ export function AssistantFullScreen({ initial, roleName }: { initial: AssistantP
                 maxLength={4000}
                 disabled={!data.available || streaming || running}
                 placeholder={data.available ? "Pedile algo: «¿qué reuniones tengo esta semana?»" : "El asistente no está disponible"}
-                className="field-sizing-content max-h-40 min-h-8 flex-1 resize-none bg-transparent py-1.5 text-sm leading-5 placeholder:text-muted-foreground focus-visible:outline-none disabled:opacity-60"
+                className="field-sizing-content max-h-40 min-h-8 flex-1 resize-none bg-transparent py-1.5 text-sm leading-5 placeholder:text-disabled-foreground focus-visible:outline-none disabled:opacity-60"
               />
               <button type="submit" disabled={streaming || running || !text.trim() || !data.available} aria-label="Enviar" className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-50">
                 {streaming ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <ArrowRight className="size-4" aria-hidden />}

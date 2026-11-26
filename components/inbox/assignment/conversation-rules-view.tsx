@@ -22,6 +22,7 @@ import {
 import { ActionError } from "@/components/contacts/ui";
 import { PlatformIcon } from "@/components/platform-icon";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface RuleAccount {
   id: string;
@@ -170,16 +171,17 @@ export function ConversationRulesView({ rules, accounts, members }: { rules: Con
 
 function IconButton({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
-    >
-      {children}
-    </button>
+    <Tip content={label}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 

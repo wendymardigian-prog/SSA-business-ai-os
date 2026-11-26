@@ -134,7 +134,7 @@ export function BottomSheet({ title, label, onClose, children, tabs }: { title: 
     <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:hidden" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={panel} role="dialog" aria-modal="true" aria-label={label} className="flex max-h-[85dvh] w-full flex-col rounded-t-2xl border border-border bg-background shadow-xl">
         <header className="relative flex items-center gap-2 border-b border-border px-4 py-2.5 pt-4">
-          <div aria-hidden className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-muted-foreground/30" />
+          <div aria-hidden className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-disabled-foreground/30" />
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
           <CloseButton onClose={onClose} />
         </header>
@@ -145,8 +145,8 @@ export function BottomSheet({ title, label, onClose, children, tabs }: { title: 
   );
 }
 
-export const inputClass = "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none";
-export const textareaClass = "w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none";
+export const inputClass = "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm placeholder:text-disabled-foreground focus:border-primary-edge focus:outline-none";
+export const textareaClass = "w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed placeholder:text-disabled-foreground focus:border-primary-edge focus:outline-none";
 export const primaryButton = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
 export const secondaryButton = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50";
 export const smallButton = "inline-flex h-7 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-border bg-card px-2.5 text-xs font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50";

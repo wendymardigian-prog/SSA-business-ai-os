@@ -12,7 +12,8 @@ describe("components/designer/list: el punto ámbar de la miniatura (F36)", () =
     const qa = qaBadge({ issues: [{ kind: "contrast", page: 0 }] }, 0);
     const withDot = renderToString(createElement(LiveThumb, { doc, box: { width: 100, height: 100 }, label: "Pieza", qa }));
     expect(withDot).toContain('aria-label="Revisión automática: hay algo para mirar"');
-    expect(withDot).toContain('title="Revisión automática: hay algo para mirar"');
+    // El texto también va en el tooltip del sistema (`Tip`, se dibuja al pasar el mouse), no en un `title=`.
+    expect(withDot).not.toContain('title="Revisión automática');
     expect(withDot).toContain("bg-warn");
 
     const plain = renderToString(createElement(LiveThumb, { doc, box: { width: 100, height: 100 }, label: "Pieza" }));

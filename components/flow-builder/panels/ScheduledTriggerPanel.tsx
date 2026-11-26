@@ -145,7 +145,7 @@ export function ScheduledTriggerPanel({ data, onChange }: { data: Record<string,
         )}
       </div>
 
-      <p className="text-[11px] text-muted-foreground/80">
+      <p className="text-[11px] text-muted-foreground">
         Corre sin contacto: sirve para mandar una encuesta a un grupo de WhatsApp, avisar al equipo o mandar un email a una dirección fija. Se agenda al publicar; si cambiás la fecha, publicá de nuevo. Quedan disponibles {"{{schedule.date}}"}, {"{{schedule.weekday}}"} y {"{{schedule.time}}"}. Si el sistema no pudo correrla a tiempo, la corre hasta {MAX_LATE_MINUTES / 60} horas tarde; después saltea esa vez.
       </p>
     </div>

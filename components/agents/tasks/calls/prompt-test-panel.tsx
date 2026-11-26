@@ -8,6 +8,7 @@ import { MAX_TEST_CALLS, type TestCallResult } from "@/lib/calls/prompt-test";
 import { Notice, Section } from "@/components/agents/fields";
 import type { TestableCall } from "@/lib/calls/config-data";
 import type { ProfileShape } from "@/lib/calls/profiles";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * "Probar antes de guardar" (F26): corre el analizador del editor sobre 1 a 5 grabaciones de ese
@@ -86,16 +87,17 @@ export function PromptTestPanel({
             </ul>
           </fieldset>
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={run}
-              disabled={disabled || pending || selected.length === 0}
-              title={disabled ? disabledReason : undefined}
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
-            >
-              {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <FlaskConical className="h-4 w-4" aria-hidden />}
-              {pending ? "Probando…" : "Probar"}
-            </button>
+            <Tip content={disabled ? disabledReason : undefined}>
+              <button
+                type="button"
+                onClick={run}
+                disabled={disabled || pending || selected.length === 0}
+                className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+              >
+                {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <FlaskConical className="h-4 w-4" aria-hidden />}
+                {pending ? "Probando…" : "Probar"}
+              </button>
+            </Tip>
             {disabled && disabledReason && <span className="text-xs text-muted-foreground">{disabledReason}</span>}
           </div>
         </>

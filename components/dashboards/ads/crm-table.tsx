@@ -74,7 +74,7 @@ const TONE_CLASS = {
 } as const;
 
 const TD = "px-2 py-2 text-right text-foreground whitespace-nowrap";
-const NUMBER_BUTTON = "cursor-pointer rounded px-1 underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const NUMBER_BUTTON = "cursor-pointer rounded px-1 underline decoration-dotted decoration-disabled-foreground/60 underline-offset-4 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 /** El borde de la ultima columna fija: se nota donde termina lo que queda quieto. */
 const PIN_EDGE = "shadow-[6px_0_6px_-6px_rgba(0,0,0,0.35)]";
 
@@ -232,7 +232,7 @@ function HeaderButton({ label, tip, sortDir, onOpen }: { label: string; tip?: Re
       type="button"
       aria-haspopup="menu"
       onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect())}
-      className={`inline-flex items-center gap-1 rounded uppercase tracking-wider underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sortDir ? "text-foreground" : ""}`}
+      className={`inline-flex items-center gap-1 rounded uppercase tracking-wider underline decoration-dotted decoration-disabled-foreground/40 underline-offset-4 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sortDir ? "text-foreground" : ""}`}
     >
       {label}
       {sortDir && <Arrow className="h-3 w-3" aria-hidden />}
@@ -254,20 +254,28 @@ function FirstCell({ row, level }: { row: CrmRow; level: CrmLevel }) {
       {level === "ad" && (
         // La miniatura es una URL firmada de Storage con vencimiento: next/image no la puede optimizar. Carga lazy.
         row.thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- URL firmada de Storage con vencimiento.
-          <img src={row.thumbnailUrl} alt="" title={row.creativeTitle ?? undefined} loading="lazy" className="h-9 w-9 shrink-0 rounded-md border border-border object-cover" />
+          <Tip asChild content={row.creativeTitle}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- URL firmada de Storage con vencimiento. */}
+            <img src={row.thumbnailUrl} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded-md border border-border object-cover" />
+          </Tip>
         ) : (
-          <span className="h-9 w-9 shrink-0 rounded-md border border-dashed border-border" aria-hidden title={row.creativeTitle ?? "Sin miniatura todavía"} />
+          <Tip asChild content={row.creativeTitle ?? "Sin miniatura todavía"}>
+            <span className="h-9 w-9 shrink-0 rounded-md border border-dashed border-border" aria-hidden />
+          </Tip>
         )
       )}
       <div className="min-w-0">
-        <p className="max-w-[170px] truncate font-medium text-foreground sm:max-w-[240px]" title={row.name ?? row.objectId}>
-          {row.name || row.objectId}
-        </p>
-        {trail.length > 0 && (
-          <p className="max-w-[170px] truncate text-[11px] text-muted-foreground sm:max-w-[240px]" title={trail.join(" · ")}>
-            {trail.join(" · ")}
+        <Tip asChild content={row.name ?? row.objectId}>
+          <p className="max-w-[170px] truncate font-medium text-foreground sm:max-w-[240px]">
+            {row.name || row.objectId}
           </p>
+        </Tip>
+        {trail.length > 0 && (
+          <Tip asChild content={trail.join(" · ")}>
+            <p className="max-w-[170px] truncate text-[11px] text-muted-foreground sm:max-w-[240px]">
+              {trail.join(" · ")}
+            </p>
+          </Tip>
         )}
       </div>
     </div>
@@ -276,7 +284,11 @@ function FirstCell({ row, level }: { row: CrmRow; level: CrmLevel }) {
 
 function StatusCell({ row }: { row: CrmRow }) {
   if (row.effectiveStatus) return <span className="text-xs"><StatusDot status={row.effectiveStatus} /></span>;
-  return <span className="text-xs text-muted-foreground" title="El estado llega al sincronizar el catálogo de Meta">Sin estado</span>;
+  return (
+    <Tip asChild content="El estado llega al sincronizar el catálogo de Meta">
+      <span className="text-xs text-muted-foreground">Sin estado</span>
+    </Tip>
+  );
 }
 
 /** Una celda segun su tipo: numero (con su boton si se puede abrir), texto, estado o enlace. `tone` la pinta de verde o rojo. */
@@ -298,8 +310,16 @@ function Cell({
   tone?: { tone: "good" | "bad"; note: string } | null;
 }) {
   // Mientras Meta responde no se muestra la suma: un numero que despues cambia se lee como el dato real.
-  if (reachPending && isReachColumn(column.id) && row.reach !== null) return <span aria-label="Cargando" title="Preguntándole a Meta">…</span>;
-  if (isReachColumn(column.id) && row.reachIsSum) return <span title={REACH_SUM_NOTE}>{formatCell(column, row, currency)}</span>;
+  if (reachPending && isReachColumn(column.id) && row.reach !== null) return (
+      <Tip asChild content="Preguntándole a Meta">
+        <span aria-label="Cargando">…</span>
+      </Tip>
+    );
+  if (isReachColumn(column.id) && row.reachIsSum) return (
+      <Tip asChild content={REACH_SUM_NOTE}>
+        <span>{formatCell(column, row, currency)}</span>
+      </Tip>
+    );
   if (column.kind === "status") return row.objectId === "total" ? <span>—</span> : <StatusCell row={row} />;
   if (column.kind === "link") {
     const href = column.href?.(row);
@@ -315,16 +335,20 @@ function Cell({
   const title = tone?.note ?? titleNote;
   if (column.kind !== "text" && canOpenCell(column.cell, column.value(row)) && onOpen) {
     return (
-      <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(); }} title={title} aria-label={`${column.label}: ${text}. Ver el detalle`} className={`${NUMBER_BUTTON} ${toneClass}`}>
-        {text}
-      </button>
+      <Tip asChild content={title}>
+        <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(); }} aria-label={`${column.label}: ${text}. Ver el detalle`} className={`${NUMBER_BUTTON} ${toneClass}`}>
+          {text}
+        </button>
+      </Tip>
     );
   }
   return (
-    <span title={title} className={toneClass}>
-      {text}
-      {tone && <span className="sr-only"> ({tone.note})</span>}
-    </span>
+    <Tip asChild content={title}>
+      <span className={toneClass}>
+        {text}
+        {tone && <span className="sr-only"> ({tone.note})</span>}
+      </span>
+    </Tip>
   );
 }
 
@@ -456,7 +480,7 @@ export function CrmLevelBody({
     <>
       <p className="mb-1 font-semibold text-foreground">{column.tip.title}</p>
       <p className="text-muted-foreground">{column.tip.body}</p>
-      <p className="mt-1 text-[11px] text-muted-foreground/80">Clic para ordenar o fijar la columna.</p>
+      <p className="mt-1 text-[11px] text-muted-foreground">Clic para ordenar o fijar la columna.</p>
     </>
   );
   const ariaSort = (key: SortKey) => (sort?.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined);
@@ -633,22 +657,23 @@ export function CrmLevelBody({
 /** Exportar lo que se ve (con sus filtros y su orden). Solo con `crm.canExport`. */
 export function ExportCsvButton({ state, compact = false }: { state: CrmTableState; compact?: boolean }) {
   return (
-    <button
-      type="button"
-      onClick={state.exportCsv}
-      disabled={state.shown.length === 0}
-      title={compact ? "Exportar CSV" : undefined}
-      aria-label={compact ? "Exportar CSV" : undefined}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background text-xs transition-colors hover:bg-accent disabled:opacity-50 ${compact ? "w-8 justify-center" : "px-2.5"}`}
-    >
-      <Download className="h-3.5 w-3.5" aria-hidden />
-      {!compact && (
-        <>
-          <span className="hidden sm:inline">Exportar CSV</span>
-          <span className="sr-only sm:hidden">Exportar CSV</span>
-        </>
-      )}
-    </button>
+    <Tip content={compact ? "Exportar CSV" : null}>
+      <button
+        type="button"
+        onClick={state.exportCsv}
+        disabled={state.shown.length === 0}
+        aria-label={compact ? "Exportar CSV" : undefined}
+        className={`inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background text-xs transition-colors hover:bg-accent disabled:opacity-50 ${compact ? "w-8 justify-center" : "px-2.5"}`}
+      >
+        <Download className="h-3.5 w-3.5" aria-hidden />
+        {!compact && (
+          <>
+            <span className="hidden sm:inline">Exportar CSV</span>
+            <span className="sr-only sm:hidden">Exportar CSV</span>
+          </>
+        )}
+      </button>
+    </Tip>
   );
 }
 

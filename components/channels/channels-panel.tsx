@@ -35,6 +35,7 @@ import {
 } from "@/lib/platforms";
 import { getDmLink } from "@/lib/contacts/links";
 import { importStatusView } from "@/lib/channels/import-status";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Cada cuanto se vuelve a mirar una importacion en curso. */
 const IMPORT_POLL_MS = 10_000;
@@ -415,11 +416,11 @@ export function ChannelsPanel({
         )}
         {visibleChannels.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <Plug className="h-10 w-10 text-muted-foreground/40" />
+            <Plug className="h-10 w-10 text-muted-foreground" />
             <p className="mt-3 text-sm font-medium text-muted-foreground">
               {provider === "evolution" ? "Todavía no hay un número de WhatsApp conectado" : "Todavía no hay canales"}
             </p>
-            <p className="mt-1 max-w-xs text-center text-xs text-muted-foreground/70">
+            <p className="mt-1 max-w-xs text-center text-xs text-muted-foreground">
               {provider === "evolution"
                 ? "Vinculá tu WhatsApp escaneando un código QR desde el teléfono."
                 : "Conectá una cuenta de redes sociales para empezar a armar flows y automatizar conversaciones."}
@@ -489,39 +490,49 @@ export function ChannelsPanel({
                     </div>
 
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleToggleActive(channel)}
-                        disabled={togglingId === channel.id}
-                        className={cn(
-                          "rounded-lg p-2 transition-colors",
-                          channel.is_active
-                            ? "text-green-600 hover:bg-green-100"
-                            : "text-muted-foreground hover:bg-muted"
-                        )}
-                        title={
+                      <Tip
+                        content={
                           channel.is_active
                             ? "El canal está activo. Click para desactivarlo."
                             : "El canal está inactivo. Click para activarlo."
                         }
                       >
-                        {channel.is_active ? (
-                          <Power className="h-4 w-4" />
-                        ) : (
-                          <PowerOff className="h-4 w-4" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setChannelToDelete(channel)}
-                        disabled={deletingId === channel.id}
-                        className="rounded-lg p-2 text-muted-foreground hover:bg-red-100 hover:text-red-600 transition-colors"
-                        title="Eliminar canal"
-                      >
-                        {deletingId === channel.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </button>
+                        <button
+                          onClick={() => handleToggleActive(channel)}
+                          disabled={togglingId === channel.id}
+                          aria-label={
+                            channel.is_active
+                              ? "El canal está activo. Click para desactivarlo."
+                              : "El canal está inactivo. Click para activarlo."
+                          }
+                          className={cn(
+                            "rounded-lg p-2 transition-colors",
+                            channel.is_active
+                              ? "text-green-600 hover:bg-green-100"
+                              : "text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          {channel.is_active ? (
+                            <Power className="h-4 w-4" />
+                          ) : (
+                            <PowerOff className="h-4 w-4" />
+                          )}
+                        </button>
+                      </Tip>
+                      <Tip content="Eliminar canal">
+                        <button
+                          onClick={() => setChannelToDelete(channel)}
+                          disabled={deletingId === channel.id}
+                          aria-label="Eliminar canal"
+                          className="rounded-lg p-2 text-muted-foreground hover:bg-red-100 hover:text-red-600 transition-colors"
+                        >
+                          {deletingId === channel.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      </Tip>
                     </div>
                   </div>
 
@@ -600,7 +611,7 @@ export function ChannelsPanel({
                           "h-1.5 w-1.5 rounded-full",
                           channel.is_active
                             ? "bg-green-500"
-                            : "bg-muted-foreground"
+                            : "bg-disabled-foreground"
                         )}
                       />
                       {channel.is_active ? "Activo" : "Inactivo"}
@@ -658,35 +669,38 @@ export function ChannelsPanel({
                     if (!dm.url) return null;
                     return (
                       <div className="mt-3 flex items-center gap-1.5">
-                        <a
-                          href={dm.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="min-w-0 flex-1 truncate rounded-md bg-muted px-2.5 py-1 text-[11px] font-mono text-primary-ink hover:underline"
-                          title={dm.url}
-                        >
-                          {dm.label}
-                        </a>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(dm.url!);
-                            setCopiedId(channel.id);
-                            setTimeout(() => setCopiedId(null), 2000);
-                          }}
-                          className={cn(
-                            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors",
-                            copiedId === channel.id
-                              ? "border-green-200 bg-green-50 text-green-600"
-                              : "border-border bg-card text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
-                          )}
-                          title={copiedId === channel.id ? "¡Copiado!" : "Copiar link de DM"}
-                        >
-                          {copiedId === channel.id ? (
-                            <Check className="h-3 w-3" />
-                          ) : (
-                            <Copy className="h-3 w-3" />
-                          )}
-                        </button>
+                        <Tip asChild content={dm.url}>
+                          <a
+                            href={dm.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="min-w-0 flex-1 truncate rounded-md bg-muted px-2.5 py-1 text-[11px] font-mono text-primary-ink hover:underline"
+                          >
+                            {dm.label}
+                          </a>
+                        </Tip>
+                        <Tip asChild content={copiedId === channel.id ? "¡Copiado!" : "Copiar link de DM"}>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(dm.url!);
+                              setCopiedId(channel.id);
+                              setTimeout(() => setCopiedId(null), 2000);
+                            }}
+                            aria-label={copiedId === channel.id ? "¡Copiado!" : "Copiar link de DM"}
+                            className={cn(
+                              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors",
+                              copiedId === channel.id
+                                ? "border-green-200 bg-green-50 text-green-600"
+                                : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-muted-foreground"
+                            )}
+                          >
+                            {copiedId === channel.id ? (
+                              <Check className="h-3 w-3" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </button>
+                        </Tip>
                       </div>
                     );
                   })()}

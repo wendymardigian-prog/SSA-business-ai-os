@@ -7,6 +7,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { resolveCollision } from "@/lib/actions/sequences";
 import { ActionError } from "@/components/contacts/ui";
 import type { SequenceCollisionResolution } from "@/lib/types/database";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface CollisionRow {
   enrollmentId: string;
@@ -126,18 +127,18 @@ export function CollisionAlert({
                 {canResolve ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {DECISIONS.map((decision) => (
-                      <button
-                        key={decision.key}
-                        onClick={() => decide(collision.enrollmentId, decision.key)}
-                        disabled={busy === collision.enrollmentId}
-                        title={decision.hint}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
-                      >
-                        {busy === collision.enrollmentId && (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        )}
-                        {decision.label}
-                      </button>
+                      <Tip key={decision.key} content={decision.hint}>
+                        <button
+                          onClick={() => decide(collision.enrollmentId, decision.key)}
+                          disabled={busy === collision.enrollmentId}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+                        >
+                          {busy === collision.enrollmentId && (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          )}
+                          {decision.label}
+                        </button>
+                      </Tip>
                     ))}
                   </div>
                 ) : (

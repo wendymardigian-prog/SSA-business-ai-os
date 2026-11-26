@@ -41,6 +41,7 @@ import { platformLabel } from "@/lib/platforms";
 import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import type { Database, LeadTemperature, Platform } from "@/lib/types/database";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El panel del contacto en la bandeja (Bloque 2c, §8).
@@ -197,14 +198,15 @@ export function ContactPanel({
         <h3 className="text-sm font-semibold">Datos del contacto</h3>
         <div className="flex items-center gap-1">
           {details && (
-            <Link
-              href={`/dashboard/contacts/${details.contact.id}`}
-              title="Abrir la ficha completa"
-              aria-label="Abrir la ficha completa"
-              className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            >
-              <ExternalLink className="h-4 w-4" />
-            </Link>
+            <Tip asChild content="Abrir la ficha completa">
+              <Link
+                href={`/dashboard/contacts/${details.contact.id}`}
+                aria-label="Abrir la ficha completa"
+                className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Link>
+            </Tip>
           )}
           <button
             onClick={onClose}
@@ -218,7 +220,7 @@ export function ContactPanel({
 
       {loading ? (
         <div className="flex flex-1 items-center justify-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-disabled-foreground border-t-transparent" />
         </div>
       ) : details ? (
         // @plantilla-desde(tareas)
@@ -391,15 +393,16 @@ function Identity({ details, canEdit, onSaved }: { details: ContactDetails; canE
         <TemperatureBadge value={c.lead_temperature} />
         {/* `is_subscribed` es solo de las difusiones por chat: "Suscripto/Dado de baja" se confundia con la baja de
             los emails (que es el estado de email, abajo). */}
-        <span
-          title="Recibe difusiones por chat"
-          className={cn(
-            "rounded-full px-2.5 py-0.5 text-[10px] font-medium",
-            c.is_subscribed ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground",
-          )}
-        >
-          {c.is_subscribed ? "Difusiones: sí" : "Sin difusiones"}
-        </span>
+        <Tip asChild content="Recibe difusiones por chat">
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-0.5 text-[10px] font-medium",
+              c.is_subscribed ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {c.is_subscribed ? "Difusiones: sí" : "Sin difusiones"}
+          </span>
+        </Tip>
         {(c.email || c.secondary_email) && c.email_status && c.email_status !== "subscribed" && (
           <EmailStatusBadge status={c.email_status} at={c.email_status_at} source={c.email_status_source} className="px-2.5 text-[10px]" />
         )}
@@ -506,12 +509,11 @@ function BasicData({
         {whatsappLid && (
           <div className="grid grid-cols-[76px_1fr] items-start gap-2">
             <dt className="pt-1 text-xs text-muted-foreground">WhatsApp ID</dt>
-            <dd
-              className="min-w-0 truncate pt-1 text-sm"
-              title="WhatsApp no compartió el número de esta persona: este es su id, y por acá se le responde."
-            >
-              {whatsappLid.replace("@lid", "")} <span className="text-xs text-muted-foreground">(sin número)</span>
-            </dd>
+            <Tip asChild content="WhatsApp no compartió el número de esta persona: este es su id, y por acá se le responde.">
+              <dd className="min-w-0 truncate pt-1 text-sm">
+                {whatsappLid.replace("@lid", "")} <span className="text-xs text-muted-foreground">(sin número)</span>
+              </dd>
+            </Tip>
           </div>
         )}
       </dl>
@@ -588,9 +590,9 @@ function Channels({
                   <span className="truncate">{label}</span>
                 )}
                 {ourAccount && (
-                  <span className="truncate text-[11px] text-muted-foreground" title={`Habla con la cuenta ${ourAccount}`}>
-                    · vía {ourAccount}
-                  </span>
+                  <Tip asChild content={`Habla con la cuenta ${ourAccount}`}>
+                    <span className="truncate text-[11px] text-muted-foreground">· vía {ourAccount}</span>
+                  </Tip>
                 )}
               </li>
             );
@@ -638,13 +640,17 @@ function Activity({ contact }: { contact: Contact }) {
         {attribution.first && (
           <>
             <dt className="text-muted-foreground">{attribution.last ? "Origen" : "Origen (único toque)"}</dt>
-            <dd className="min-w-0 break-words" title={attribution.first.text}>{attribution.first.text}</dd>
+            <Tip asChild content={attribution.first.text}>
+              <dd className="min-w-0 break-words">{attribution.first.text}</dd>
+            </Tip>
           </>
         )}
         {attribution.last && (
           <>
             <dt className="text-muted-foreground">Último toque</dt>
-            <dd className="min-w-0 break-words" title={attribution.last.text}>{attribution.last.text}</dd>
+            <Tip asChild content={attribution.last.text}>
+              <dd className="min-w-0 break-words">{attribution.last.text}</dd>
+            </Tip>
           </>
         )}
       </dl>

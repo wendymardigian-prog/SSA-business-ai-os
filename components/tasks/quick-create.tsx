@@ -41,7 +41,7 @@ export function QuickCreate({ project, onCreate }: { project: string | null; onC
           }
         }}
         placeholder={project ? `Nueva tarea en ${project}` : "Nueva tarea"}
-        className="h-8 min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground focus:placeholder:text-muted-foreground/60"
+        className="h-8 min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-disabled-foreground focus:placeholder:text-disabled-foreground"
       />
     </label>
   );

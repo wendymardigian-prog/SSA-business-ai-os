@@ -7,6 +7,7 @@ import { Bold, Heading1, Heading2, Heading3, Italic, Link2, List, ListOrdered, U
 import { EmojiButton } from "@/components/ui/emoji-picker";
 import { VariableMenu, variableName, type VariableOption } from "./variable-menu";
 import { bodyToEditorHtml, editorHtmlToBody, normalizeLink } from "@/lib/editor/email-body";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Editor de texto con formato para el cuerpo de un email (y, mas adelante, el
@@ -199,21 +200,22 @@ function ToolButton({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      aria-pressed={active ?? false}
-      disabled={disabled}
-      // mouseDown no pierde la seleccion del editor.
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={onClick}
-      className={`flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 ${
-        active ? "bg-accent text-foreground" : ""
-      }`}
-    >
-      {children}
-    </button>
+    <Tip asChild content={label}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={active ?? false}
+        disabled={disabled}
+        // mouseDown no pierde la seleccion del editor.
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={onClick}
+        className={`flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 ${
+          active ? "bg-accent text-foreground" : ""
+        }`}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 

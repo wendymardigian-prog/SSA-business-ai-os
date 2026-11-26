@@ -10,6 +10,7 @@ import { ActionError, formatDateTime } from "@/components/contacts/ui";
 import { enrollmentStatusStyle, isEmailPause, isResumable, pauseGroup, pauseReasonLabel, type PauseGroup } from "@/lib/sequences/labels";
 import type { SequenceEnrollmentStatus } from "@/lib/types/database";
 import { ClickableBox } from "@/components/ui/clickable-row";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface EnrollmentRow {
   id: string;
@@ -89,11 +90,11 @@ export function EnrollmentList({
 
         {enrollments.length === 0 ? (
           <div className="mt-6 rounded-lg border border-dashed border-border p-8 text-center">
-            <Users className="mx-auto h-8 w-8 text-muted-foreground/40" />
+            <Users className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
               Todavía no hay nadie inscripto
             </p>
-            <p className="mt-1 text-xs text-muted-foreground/70">
+            <p className="mt-1 text-xs text-muted-foreground">
               {canManage
                 ? "Podés inscribir a alguien desde acá, desde su ficha, o dejar que lo haga un flow con el nodo «Inscribir en secuencia»."
                 : "Los contactos entran desde un flow o los inscribe un Owner o Admin."}
@@ -149,36 +150,38 @@ export function EnrollmentList({
                   </span>
 
                   {canManage && isResumable(enrollment.status, enrollment.pausedReason) && (
-                    <button
-                      onClick={() => run(enrollment.id, () => resumeEnrollment(enrollment.id))}
-                      disabled={working}
-                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
-                      title="Reanudar la inscripción"
-                      aria-label={`Reanudar la inscripción de ${enrollment.contactName}`}
-                    >
-                      {working ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Play className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                  )}
-
-                  {canManage &&
-                    (enrollment.status === "active" || enrollment.status === "paused") && (
+                    <Tip content="Reanudar la inscripción">
                       <button
-                        onClick={() => run(enrollment.id, () => cancelEnrollment(enrollment.id))}
+                        onClick={() => run(enrollment.id, () => resumeEnrollment(enrollment.id))}
                         disabled={working}
-                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                        title="Sacar de la secuencia"
-                        aria-label={`Sacar a ${enrollment.contactName} de la secuencia`}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
+                        aria-label={`Reanudar la inscripción de ${enrollment.contactName}`}
                       >
                         {working ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <XCircle className="h-3.5 w-3.5" />
+                          <Play className="h-3.5 w-3.5" />
                         )}
                       </button>
+                    </Tip>
+                  )}
+
+                  {canManage &&
+                    (enrollment.status === "active" || enrollment.status === "paused") && (
+                      <Tip content="Sacar de la secuencia">
+                        <button
+                          onClick={() => run(enrollment.id, () => cancelEnrollment(enrollment.id))}
+                          disabled={working}
+                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                          aria-label={`Sacar a ${enrollment.contactName} de la secuencia`}
+                        >
+                          {working ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </Tip>
                     )}
                 </ClickableBox>
               );

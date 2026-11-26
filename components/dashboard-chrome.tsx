@@ -13,6 +13,7 @@ import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
 import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 import type { Database } from "@/lib/types/database";
+import { Tip } from "@/components/ui/tooltip";
 
 type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
 
@@ -141,7 +142,7 @@ export function MobileMenuButton({ chrome }: { chrome: DashboardChrome }) {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Cerrar el menú"
-                className="flex h-11 w-11 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent"
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent"
               >
                 <X className="h-5 w-5" aria-hidden />
               </button>
@@ -173,22 +174,23 @@ export function MobileChromeActions({ chrome }: { chrome: DashboardChrome }) {
   return (
     <div className="flex items-center gap-1 md:hidden">
       {waiting > 0 && (
-        <Link
-          href={draftsQueueHref(drafts)}
-          aria-label={`${waiting} ${waiting === 1 ? "borrador esperando" : "borradores esperando"}. Ir a la cola`}
-          title="Borradores esperando"
-          className="relative flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        >
-          {/* Un globo de chat con el numero arriba, como la campana: un numero
-              suelto en la barra no decia de que era. */}
-          <MessageSquare className="h-4 w-4 shrink-0" aria-hidden />
-          <span
-            aria-hidden
-            className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground"
+        <Tip asChild content="Borradores esperando">
+          <Link
+            href={draftsQueueHref(drafts)}
+            aria-label={`${waiting} ${waiting === 1 ? "borrador esperando" : "borradores esperando"}. Ir a la cola`}
+            className="relative flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           >
-            {waiting > 99 ? "99+" : waiting}
-          </span>
-        </Link>
+            {/* Un globo de chat con el numero arriba, como la campana: un numero
+                suelto en la barra no decia de que era. */}
+            <MessageSquare className="h-4 w-4 shrink-0" aria-hidden />
+            <span
+              aria-hidden
+              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground"
+            >
+              {waiting > 99 ? "99+" : waiting}
+            </span>
+          </Link>
+        </Tip>
       )}
       <NotificationBell workspaceId={chrome.workspace.id} initialUnread={chrome.unreadNotifications} />
     </div>

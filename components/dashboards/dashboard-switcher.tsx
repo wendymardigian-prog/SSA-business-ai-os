@@ -120,7 +120,7 @@ export function DashboardSwitcher({
         aria-expanded={open}
         onClick={() => (open ? close(false) : openAt(Math.max(0, options.findIndex((o) => o.key === current?.key))))}
         onKeyDown={onButtonKeyDown}
-        className="flex h-8 max-w-[45vw] items-center gap-2 rounded-lg border border-input bg-background px-3 text-[13px] font-medium transition-colors hover:border-muted-foreground/60 sm:max-w-none"
+        className="flex h-8 max-w-[45vw] items-center gap-2 rounded-lg border border-input bg-background px-3 text-[13px] font-medium transition-colors hover:border-disabled-foreground/60 sm:max-w-none"
       >
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: current?.color ?? "var(--primary)" }} aria-hidden />
         <span className="truncate">{label}</span>

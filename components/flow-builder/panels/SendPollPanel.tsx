@@ -7,7 +7,7 @@ import type { SendPollData } from "@/lib/flow-engine/nodes/send-poll";
 import { POLL_MAX_OPTIONS } from "@/lib/whatsapp-groups/poll";
 import { WhatsappDeliveryFields } from "./whatsapp-delivery-fields";
 
-const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
 
 /**

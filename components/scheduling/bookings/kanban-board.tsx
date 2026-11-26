@@ -24,6 +24,7 @@ import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/form
 import { SlotReleasedChip, statusDotClass } from "./status-chip";
 import { StatusMenu } from "./status-menu";
 import { MeetJoinLink } from "./meet-join-link";
+import { Tip } from "@/components/ui/tooltip";
 
 export function BookingsKanban({
   items,
@@ -90,18 +91,18 @@ export function BookingsKanban({
           const def = statusDef(status);
           if (collapsed.has(status)) {
             return (
-              <button
-                key={status}
-                type="button"
-                onClick={() => toggle(status)}
-                title={`Mostrar ${def.label}`}
-                className="flex w-11 shrink-0 flex-col items-center gap-2 rounded-xl border border-border bg-muted/40 py-3 text-xs text-muted-foreground hover:bg-muted"
-              >
-                <span aria-hidden className={`h-2 w-2 rounded-full ${statusDotClass(status)}`} />
-                <span className="[writing-mode:vertical-rl] whitespace-nowrap">{def.label}</span>
-                <span className="tabular-nums">{bookings.length}</span>
-                <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-              </button>
+              <Tip key={status} asChild content={`Mostrar ${def.label}`}>
+                <button
+                  type="button"
+                  onClick={() => toggle(status)}
+                  className="flex w-11 shrink-0 flex-col items-center gap-2 rounded-xl border border-border bg-muted/40 py-3 text-xs text-muted-foreground hover:bg-muted"
+                >
+                  <span aria-hidden className={`h-2 w-2 rounded-full ${statusDotClass(status)}`} />
+                  <span className="[writing-mode:vertical-rl] whitespace-nowrap">{def.label}</span>
+                  <span className="tabular-nums">{bookings.length}</span>
+                  <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              </Tip>
             );
           }
           return (

@@ -65,7 +65,7 @@ export function Sparkline({
       aria-hidden={label ? undefined : true}
     >
       {goal != null && (
-        <line x1={0} x2={W} y1={y(goal)} y2={y(goal)} stroke="currentColor" strokeDasharray="3 3" strokeWidth={1} className="text-muted-foreground/60" />
+        <line x1={0} x2={W} y1={y(goal)} y2={y(goal)} stroke="currentColor" strokeDasharray="3 3" strokeWidth={1} className="text-muted-foreground" />
       )}
       {segments.map((points, i) => (
         <polyline key={i} points={points.join(" ")} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />

@@ -320,7 +320,7 @@ export function SectionHeading({
   return (
     <div className="mt-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
       <h2 className="text-[13px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">{title}</h2>
-      {subtitle && <p className="text-xs text-muted-foreground/80">{subtitle}</p>}
+      {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
       {action && <div className="ml-auto">{action}</div>}
     </div>
   );

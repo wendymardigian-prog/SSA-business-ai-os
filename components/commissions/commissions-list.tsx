@@ -33,6 +33,8 @@ import { ColumnsMenu } from "@/components/ui/data-table/columns-menu";
 import { DataTable, type DataColumn } from "@/components/ui/data-table/data-table";
 import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 import { COMMISSIONS_TABLE_KEY, commissionColumnMetas } from "@/lib/commissions/columns";
+import { Tip } from "@/components/ui/tooltip";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 
 /**
  * Finanzas > Comisiones (F59, F60, F63, F64). Todo el estado de la lista vive en la URL (`serializeCommissionFilters`):
@@ -111,14 +113,21 @@ export function CommissionsList({ data, extras, mine, canViewExpenses, canViewSa
   const columns = useMemo<DataColumn<CommissionListRow>[]>(() => {
     const render: Record<string, Pick<DataColumn<CommissionListRow>, "render" | "align" | "cellClassName">> = {
       paid_on: { render: (r) => formatCivilDate(r.paidOn) },
-      person: { render: (r) => personOf(r, own) ?? <span className="text-red-600 dark:text-red-400">Sin persona</span> },
+      person: { render: (r) => <PersonCell r={r} own={own} /> },
       role: { render: (r) => <RoleChip name={roleOf(r)} /> },
       sale: { render: (r) => <SaleCell r={r} /> },
       payment: { render: (r) => extras[r.id]?.payment ?? "—" },
       base: { align: "right", render: (r) => (r.baseCents === null ? "—" : formatUsd(r.baseCents)) },
       calc: { render: (r) => extras[r.id]?.calc ?? "—" },
       amount: { align: "right", render: (r) => <AmountText r={r} /> },
-      rule: { cellClassName: "text-muted-foreground", render: (r) => <span title={r.ruleName ?? undefined}>{r.ruleName ?? "—"}</span> },
+      rule: {
+        cellClassName: "text-muted-foreground",
+        render: (r) => (
+          <Tip asChild content={r.ruleName}>
+            <span>{r.ruleName ?? "—"}</span>
+          </Tip>
+        ),
+      },
       status: {
         render: (r) => (
           <>
@@ -520,6 +529,14 @@ function GroupTotals({ group }: { group: PageGroup }) {
 }
 
 const personOf = (r: CommissionListRow, own: boolean) => (own ? null : r.userName ?? (r.userId ? "Una persona" : null));
+
+/** Quien cobra: su circulo y su nombre si es del equipo; si no, el texto de siempre. */
+function PersonCell({ r, own }: { r: CommissionListRow; own: boolean }) {
+  const person = personOf(r, own);
+  if (!person) return <span className="text-red-600 dark:text-red-400">Sin persona</span>;
+  if (r.userId && r.userName) return <PersonAvatar userId={r.userId} name={r.userName} size="sm" showName className="max-w-full" />;
+  return <>{person}</>;
+}
 const roleOf = (r: CommissionListRow) => (r.kind === "adjustment" && !r.roleName ? "Ajuste" : r.roleName);
 
 function AmountText({ r }: { r: CommissionListRow }) {
@@ -553,15 +570,17 @@ function PickBox({ r, selection, onToggle }: { r: CommissionListRow; selection: 
   const reason = notSelectableMessage(r.notSelectable);
   const selectable = isSelectableRow(r);
   return (
-    <span title={reason ?? undefined}>
-      <input
-        type="checkbox"
-        checked={selection.has(r.id)}
-        disabled={!selectable}
-        onChange={onToggle}
-        aria-label={selectable ? `Elegir la comisión de ${formatUsd(r.amountCents)}` : `No se puede elegir: ${reason}`}
-      />
-    </span>
+    <Tip asChild content={reason}>
+      <span>
+        <input
+          type="checkbox"
+          checked={selection.has(r.id)}
+          disabled={!selectable}
+          onChange={onToggle}
+          aria-label={selectable ? `Elegir la comisión de ${formatUsd(r.amountCents)}` : `No se puede elegir: ${reason}`}
+        />
+      </span>
+    </Tip>
   );
 }
 
@@ -577,14 +596,17 @@ interface RowShared {
 function CommissionCard({ r, extras, own, selection, selectionEnabled, canViewExpenses, onToggle, href }: RowShared & { r: CommissionListRow; onToggle: () => void; href: string }) {
   const voided = r.status.key === "anulada";
   const extra = extras[r.id];
-  const person = personOf(r, own);
   return (
     <li className={`rounded-xl border border-border p-3 ${voided ? "bg-zinc-500/5" : ""}`}>
       <div className="flex items-start gap-2">
         {selectionEnabled && <div className="pt-0.5"><PickBox r={r} selection={selection} onToggle={onToggle} /></div>}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            {!own && <span className="truncate text-sm font-medium">{person ?? <span className="text-red-600 dark:text-red-400">Sin persona</span>}</span>}
+            {!own && (
+              <span className="min-w-0 truncate text-sm font-medium">
+                <PersonCell r={r} own={own} />
+              </span>
+            )}
             <RoleChip name={roleOf(r)} />
           </div>
           <div className="mt-1 text-sm"><SaleCell r={r} /></div>

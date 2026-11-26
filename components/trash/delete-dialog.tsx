@@ -7,6 +7,7 @@ import { SaleModal } from "@/components/shared/sale-modal";
 import { deleteToTrash, previewTrashDelete, restoreFromTrash } from "@/lib/actions/trash";
 import { TRASH_ENTITIES, TRASH_RETENTION_DAYS, type TrashEntity } from "@/lib/trash/entities";
 import type { TrashPreview } from "@/lib/trash/types";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * «Eliminar» de cualquier registro (docs/papelera.md). Primero pregunta a la base qué se va con él, qué lo frena
@@ -213,19 +214,20 @@ export function DeleteButton({
         : "inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-500/40 px-3 text-sm text-red-700 hover:bg-red-500/10 dark:text-red-400";
   return (
     <>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(true);
-        }}
-        className={className ?? base}
-        aria-label={variant === "icon" ? `${label} ${TRASH_ENTITIES[entity].singular}` : undefined}
-        title={variant === "icon" ? label : undefined}
-      >
-        <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
-        {variant !== "icon" && <span>{label}</span>}
-      </button>
+      <Tip asChild content={variant === "icon" ? label : null}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(true);
+          }}
+          className={className ?? base}
+          aria-label={variant === "icon" ? `${label} ${TRASH_ENTITIES[entity].singular}` : undefined}
+        >
+          <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
+          {variant !== "icon" && <span>{label}</span>}
+        </button>
+      </Tip>
       {open && <DeleteDialog entity={entity} id={id} onClose={() => setOpen(false)} onDeleted={onDeleted} redirectTo={redirectTo} />}
     </>
   );

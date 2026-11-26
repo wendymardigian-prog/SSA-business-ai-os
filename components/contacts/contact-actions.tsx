@@ -9,6 +9,7 @@ import { setDoNotContact, softDeleteContact } from "@/lib/actions/contacts";
 import { encodeMergeParam } from "@/lib/contacts/merge";
 import { ActionError } from "./ui";
 import { MergeContactDialog } from "./merge-contact-dialog";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Las acciones de la ficha: marcar o sacar "no contactar" y eliminar.
@@ -64,26 +65,27 @@ export function ContactActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <button
-        onClick={toggleDoNotContact}
-        disabled={pending || (doNotContact && !isAdmin)}
-        title={doNotContact && !isAdmin ? "Solo Owner y Admin pueden sacar esta marca" : undefined}
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-          doNotContact
-            ? "border-input hover:bg-accent"
-            : "border-red-500/40 text-red-600 hover:bg-red-500/10 dark:text-red-400",
-        )}
-      >
-        {pending ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : doNotContact ? (
-          <RotateCcw className="h-3.5 w-3.5" />
-        ) : (
-          <Ban className="h-3.5 w-3.5" />
-        )}
-        {doNotContact ? "Sacar marca de no contactar" : "Marcar como no contactar"}
-      </button>
+      <Tip content={doNotContact && !isAdmin ? "Solo Owner y Admin pueden sacar esta marca" : undefined}>
+        <button
+          onClick={toggleDoNotContact}
+          disabled={pending || (doNotContact && !isAdmin)}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            doNotContact
+              ? "border-input hover:bg-accent"
+              : "border-red-500/40 text-red-600 hover:bg-red-500/10 dark:text-red-400",
+          )}
+        >
+          {pending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : doNotContact ? (
+            <RotateCcw className="h-3.5 w-3.5" />
+          ) : (
+            <Ban className="h-3.5 w-3.5" />
+          )}
+          {doNotContact ? "Sacar marca de no contactar" : "Marcar como no contactar"}
+        </button>
+      </Tip>
 
       {canMerge && (
         <button

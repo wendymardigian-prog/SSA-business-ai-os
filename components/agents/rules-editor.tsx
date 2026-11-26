@@ -10,6 +10,7 @@ import { defaultRulesTemplate } from "@/lib/agent/rules/template";
 import { saveResponseRulesAction, setResponseRulesDefaultAction, simulateResponseRulesAction } from "@/lib/actions/agents";
 import type { SimulationResult } from "@/lib/agent/rules/simulate";
 import { Notice } from "./fields";
+import { Tip } from "@/components/ui/tooltip";
 
 const ACTION_LABEL: Record<RuleAction, string> = {
   send: "Enviar directo",
@@ -206,9 +207,11 @@ export function RulesEditor({
         <button type="button" onClick={simulate} disabled={pending} className="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50">
           <Play className="h-4 w-4" /> Simular
         </button>
-        <button type="button" onClick={save} disabled={pending || !simulatedForCurrent} className="flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50" title={!simulatedForCurrent ? "Simulá los cambios antes de guardar" : undefined}>
-          <Save className="h-4 w-4" /> Guardar
-        </button>
+        <Tip content={!simulatedForCurrent ? "Simulá los cambios antes de guardar" : undefined}>
+          <button type="button" onClick={save} disabled={pending || !simulatedForCurrent} className="flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50">
+            <Save className="h-4 w-4" /> Guardar
+          </button>
+        </Tip>
         {!simulatedForCurrent && <span className="text-xs text-muted-foreground">Simulá antes de guardar.</span>}
       </div>
     </div>

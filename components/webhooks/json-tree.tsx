@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { DEFAULT_MAX_LEAVES, leafTypeOf } from "@/lib/webhooks/payload-tree";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Un arbol JSON plegable (webhooks entrantes). Lo usan el historial, el ejemplo del endpoint y,
@@ -117,9 +118,11 @@ function TreeNode({
   return (
     <li className="group flex items-start gap-1 break-all">
       {onPick ? (
-        <button type="button" onClick={() => onPick(full, text)} className="rounded px-1 text-left hover:bg-accent" title={`Usar ${full}`}>
-          {body}
-        </button>
+        <Tip asChild content={`Usar ${full}`}>
+          <button type="button" onClick={() => onPick(full, text)} className="rounded px-1 text-left hover:bg-accent">
+            {body}
+          </button>
+        </Tip>
       ) : (
         <span className="px-1">{body}</span>
       )}

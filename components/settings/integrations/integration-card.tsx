@@ -8,6 +8,7 @@ import { formatConnectedSince, formatLastRefreshed, formatOAuthExpiry } from "@/
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { GoogleServices } from "./google-services";
 import type { IntegrationCardData } from "./types";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * La card de una integracion (F2, G2).
@@ -23,7 +24,7 @@ const STATUS_STYLES: Record<IntegrationStatus, string> = {
   connected: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   attention: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   error: "bg-red-500/10 text-red-600 dark:text-red-400",
-  not_connected: "bg-muted text-muted-foreground",
+  not_connected: "bg-muted text-disabled-foreground",
 };
 
 function StatusBadge({ status }: { status: IntegrationStatus }) {
@@ -91,9 +92,11 @@ export function IntegrationCard({
       <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{provider.description}</p>
 
       {data.account && (
-        <p className="mt-2 truncate text-xs font-medium" title={data.account}>
-          {data.account}
-        </p>
+        <Tip asChild content={data.account}>
+          <p className="mt-2 truncate text-xs font-medium">
+            {data.account}
+          </p>
+        </Tip>
       )}
 
       {connectedSince && <p className="mt-1 text-[11px] text-muted-foreground">{connectedSince}</p>}

@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { FlowRunSheet } from "./flow-run-sheet";
 import type { RunAudit } from "@/lib/flows/run-audit";
 import { ClickableTr } from "@/components/ui/clickable-row";
+import { Tip } from "@/components/ui/tooltip";
 
 export function RunStateBadge({ run }: { run: FlowRunRow }) {
   const state = deriveRunState(run);
@@ -112,15 +113,16 @@ export function FlowRunsScreen({
           />
           <DateFilter preset={filters.fecha} from={filters.desde} to={filters.hasta} setParam={setParam} />
           {filters.pasoFallido && (
-            <button
-              type="button"
-              onClick={() => setParam("paso_fallido", "")}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm text-red-900 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-200"
-              title="Sacar este filtro"
-            >
-              Solo donde falló un paso
-              <span aria-hidden>×</span>
-            </button>
+            <Tip asChild content="Sacar este filtro">
+              <button
+                type="button"
+                onClick={() => setParam("paso_fallido", "")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm text-red-900 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-200"
+              >
+                Solo donde falló un paso
+                <span aria-hidden>×</span>
+              </button>
+            </Tip>
           )}
         </FilterBar>
         <button

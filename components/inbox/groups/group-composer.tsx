@@ -11,6 +11,7 @@ import { requestGroupUpload, sendGroupMessage, sendGroupPoll } from "@/lib/actio
 import { POLL_MAX_OPTIONS } from "@/lib/whatsapp-groups/poll";
 import { ManualQuotaNotice } from "@/components/inbox/manual-quota-notice";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Escribir en un grupo: texto, emoji, una foto / video / archivo (con el texto como pie) o una encuesta. Enter manda;
@@ -97,9 +98,11 @@ export function GroupComposer({
         <button type="button" onClick={() => fileRef.current?.click()} aria-label="Adjuntar un archivo" className="rounded-lg p-2 text-muted-foreground hover:bg-muted">
           <Paperclip className="h-4 w-4" aria-hidden />
         </button>
-        <button type="button" onClick={() => setPollOpen(true)} aria-label="Mandar una encuesta" title="Encuesta" className="rounded-lg p-2 text-muted-foreground hover:bg-muted">
-          <BarChart3 className="h-4 w-4" aria-hidden />
-        </button>
+        <Tip asChild content="Encuesta">
+          <button type="button" onClick={() => setPollOpen(true)} aria-label="Mandar una encuesta" className="rounded-lg p-2 text-muted-foreground hover:bg-muted">
+            <BarChart3 className="h-4 w-4" aria-hidden />
+          </button>
+        </Tip>
         <EmojiButton onPick={insertEmoji} focusRef={textareaRef} className="p-2" />
         {/* Crece de a un renglón hasta 3; pasado eso hace scroll adentro. */}
         <AutoTextarea

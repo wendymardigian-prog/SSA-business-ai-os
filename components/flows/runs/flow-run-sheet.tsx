@@ -79,7 +79,7 @@ export function FlowRunSheet({
         {(endReason || run.error_message) && (
           <div role="status" className={cn("rounded-lg border px-3 py-2 text-sm", run.error_message ? "border-red-300/60 bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200" : "border-border bg-muted/40 text-muted-foreground")}>
             {endReason && <p>{endReason}</p>}
-            {run.error_message && <p className={cn("break-words", endReason && "mt-1 text-xs opacity-90")}>{run.error_message}</p>}
+            {run.error_message && <p className={cn("break-words", endReason && "mt-1 text-xs")}>{run.error_message}</p>}
           </div>
         )}
 

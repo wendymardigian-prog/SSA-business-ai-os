@@ -73,7 +73,7 @@ export function SectionSearch({
             onClose();
           }
         }}
-        className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-8 text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring [&::-webkit-search-cancel-button]:hidden"
+        className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-8 text-[13px] placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring [&::-webkit-search-cancel-button]:hidden"
       />
       {(onClose || draft || value) && (
         <button

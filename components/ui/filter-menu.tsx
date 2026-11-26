@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMemberAvatar } from "@/components/account/member-avatars";
 import { isFormField, menuKeyAction, MENU_ITEM_SELECTOR } from "@/lib/ui/menu-keys";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El envoltorio de los filtros de la barra: un boton y un menu propio.
@@ -137,50 +138,51 @@ export function FilterMenu({
 
   return (
     <div className="relative">
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        aria-label={compact ? (badge > 0 ? `${label}, ${badge} ${badge === 1 ? "activo" : "activos"}` : label) : undefined}
-        title={compact ? label : undefined}
-        onClick={() => (open ? close(false) : setOpen(true))}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-            e.preventDefault();
-            setOpen(true);
-          }
-        }}
-        className={cn(
-          "flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border text-[13px] font-medium transition-colors max-topbar:h-10",
-          compact ? "relative w-8 justify-center max-topbar:w-10" : "gap-2 px-2.5",
-          active ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
-        )}
-      >
-        {icon}
-        {compact ? (
-          badge > 0 && (
-            <span
-              aria-hidden
-              className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground"
-            >
-              {badge}
-            </span>
-          )
-        ) : plain ? (
-          <>
-            <span>{label}</span>
-            {value}
-          </>
-        ) : (
-          <>
-            <span className="hidden font-normal text-muted-foreground md:inline">{label}:</span>
-            <span>{value}</span>
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-          </>
-        )}
-      </button>
+      <Tip asChild content={compact ? label : null}>
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? id : undefined}
+          aria-label={compact ? (badge > 0 ? `${label}, ${badge} ${badge === 1 ? "activo" : "activos"}` : label) : undefined}
+          onClick={() => (open ? close(false) : setOpen(true))}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              setOpen(true);
+            }
+          }}
+          className={cn(
+            "flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border text-[13px] font-medium transition-colors max-topbar:h-10",
+            compact ? "relative w-8 justify-center max-topbar:w-10" : "gap-2 px-2.5",
+            active ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-disabled-foreground/60",
+          )}
+        >
+          {icon}
+          {compact ? (
+            badge > 0 && (
+              <span
+                aria-hidden
+                className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground"
+              >
+                {badge}
+              </span>
+            )
+          ) : plain ? (
+            <>
+              <span>{label}</span>
+              {value}
+            </>
+          ) : (
+            <>
+              <span className="hidden font-normal text-muted-foreground md:inline">{label}:</span>
+              <span>{value}</span>
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+            </>
+          )}
+        </button>
+      </Tip>
 
       {open && (
         <div

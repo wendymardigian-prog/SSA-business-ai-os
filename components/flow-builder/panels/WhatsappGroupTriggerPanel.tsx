@@ -236,7 +236,7 @@ export function WhatsappGroupTriggerPanel({ triggerType, data, onChange }: { tri
               }}
               placeholder="Lunes, Martes"
               aria-label="Opciones que disparan"
-              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60"
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground"
             />
           )}
           {options.length > 0 && knownOptions.length === 0 && (
@@ -258,7 +258,7 @@ export function WhatsappGroupTriggerPanel({ triggerType, data, onChange }: { tri
         </fieldset>
       )}
 
-      <p className="text-[11px] text-muted-foreground/80">
+      <p className="text-[11px] text-muted-foreground">
         Corre sobre el contacto y, si el flujo manda mensajes, le escribe por privado desde el mismo número del grupo.{" "}
         {triggerType === "whatsapp_group_joined" ? "Una vez por persona y grupo. " : ""}
         Variables: {"{{group.name}}"}

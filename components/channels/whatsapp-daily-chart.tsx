@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { loadWhatsappDailyMessages } from "@/lib/actions/whatsapp-stats";
 import { SENT_KINDS, dailyTotals, niceMax, projectedTotal, type DailyPoint } from "@/lib/whatsapp-stats/daily";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Mensajes por día de un número de WhatsApp (00348/00349), en la sección Historial de su tarjeta: los últimos 30 días y
@@ -73,17 +74,21 @@ export function WhatsappDailyChart({ channelId }: { channelId: string }) {
 
           <ul className="flex flex-wrap gap-x-3 gap-y-1" aria-label="Quién los mandó">
             {SENT_KINDS.map((kind) => (
-              <li key={kind.key} className="flex items-center gap-1.5" title={kind.hint}>
-                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: kind.color }} aria-hidden />
-                <span className="text-foreground">{kind.label}</span>
-                <span className="tabular-nums text-muted-foreground">{totals.byKind[kind.key]}</span>
-              </li>
+              <Tip asChild key={kind.key} content={kind.hint}>
+                <li className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: kind.color }} aria-hidden />
+                  <span className="text-foreground">{kind.label}</span>
+                  <span className="tabular-nums text-muted-foreground">{totals.byKind[kind.key]}</span>
+                </li>
+              </Tip>
             ))}
-            <li className="flex items-center gap-1.5" title="Broadcasts en cola, pasos de secuencias y automatizaciones programadas a grupos">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-sm border border-dashed" style={{ borderColor: "var(--wa-projected)" }} aria-hidden />
-              <span className="text-foreground">Programado</span>
-              <span className="tabular-nums text-muted-foreground">{totals.projected}</span>
-            </li>
+            <Tip asChild content="Broadcasts en cola, pasos de secuencias y automatizaciones programadas a grupos">
+              <li className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-sm border border-dashed" style={{ borderColor: "var(--wa-projected)" }} aria-hidden />
+                <span className="text-foreground">Programado</span>
+                <span className="tabular-nums text-muted-foreground">{totals.projected}</span>
+              </li>
+            </Tip>
           </ul>
 
           <p className="pt-1 font-semibold text-foreground">

@@ -37,6 +37,7 @@ import { HtmlStep } from "@/components/designer/import/html-step";
 import { DesignerDialog, primaryButton, secondaryButton, smallButton, textareaClass } from "@/components/designer/editor/overlays";
 import { useImageUpload } from "@/components/designer/editor/use-image-upload";
 import { HowIllustration } from "./illustrations";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * El modal «Nuevo diseño / Nueva plantilla» de tres pasos (F16, §11.3). Toda la lógica (qué se ofrece, cuándo se
@@ -132,10 +133,12 @@ export function NewDesignModal({ initialKind = "design", styles, onClose }: { in
           <button type="button" className={secondaryButton} onClick={() => (state.step === 1 ? onClose() : setState(prevStep))} disabled={creating}>
             {state.step === 1 ? "Cancelar" : "Atrás"}
           </button>
-          <button type="button" className={primaryButton} onClick={submit} disabled={disabled} title={disabled && reason ? reason : undefined}>
-            {creating && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-            {primaryLabel(state)}
-          </button>
+          <Tip content={disabled && reason ? reason : undefined}>
+            <button type="button" className={primaryButton} onClick={submit} disabled={disabled}>
+              {creating && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+              {primaryLabel(state)}
+            </button>
+          </Tip>
         </>
       }
     >
@@ -150,7 +153,7 @@ export function NewDesignModal({ initialKind = "design", styles, onClose }: { in
               onClick={() => setState((s) => setKind(s, option.key))}
               className={cn(
                 "flex flex-col items-start gap-1.5 rounded-xl border p-3.5 text-left transition-colors",
-                state.kind === option.key ? "border-primary-edge bg-primary/10" : "border-border hover:border-muted-foreground/50",
+                state.kind === option.key ? "border-primary-edge bg-primary/10" : "border-border hover:border-disabled-foreground/50",
               )}
             >
               {option.key === "design" ? <Sparkles className="h-[18px] w-[18px]" aria-hidden /> : <FileText className="h-[18px] w-[18px]" aria-hidden />}
@@ -172,7 +175,7 @@ export function NewDesignModal({ initialKind = "design", styles, onClose }: { in
               onClick={() => setState((s) => setHow(s, option.key))}
               className={cn(
                 "flex flex-col gap-1.5 rounded-[14px] border p-3 pb-3.5 text-left transition-all hover:-translate-y-px",
-                state.how === option.key ? "border-primary-edge bg-primary/10" : "border-border hover:border-muted-foreground/50",
+                state.how === option.key ? "border-primary-edge bg-primary/10" : "border-border hover:border-disabled-foreground/50",
               )}
             >
               <HowIllustration how={option.key} />
@@ -219,7 +222,7 @@ export function NewDesignModal({ initialKind = "design", styles, onClose }: { in
                   role="radio"
                   aria-checked={state.format === key}
                   onClick={() => setState((s) => setFormat(s, key))}
-                  className={cn("flex flex-col items-center gap-2 rounded-xl border px-2.5 py-3 text-center", state.format === key ? "border-primary-edge bg-primary/10" : "border-border hover:border-muted-foreground/50")}
+                  className={cn("flex flex-col items-center gap-2 rounded-xl border px-2.5 py-3 text-center", state.format === key ? "border-primary-edge bg-primary/10" : "border-border hover:border-disabled-foreground/50")}
                 >
                   <span
                     aria-hidden
@@ -248,7 +251,7 @@ export function NewDesignModal({ initialKind = "design", styles, onClose }: { in
                         role="radio"
                         aria-checked={active}
                         onClick={() => setState((s) => ({ ...s, style: style.key === "auto" ? null : style.key }))}
-                        className={cn("flex flex-col gap-1 rounded-[10px] border px-2.5 py-2 text-left", active ? "border-primary-edge bg-primary/10" : "border-border hover:border-muted-foreground/50")}
+                        className={cn("flex flex-col gap-1 rounded-[10px] border px-2.5 py-2 text-left", active ? "border-primary-edge bg-primary/10" : "border-border hover:border-disabled-foreground/50")}
                       >
                         <span className="flex" aria-hidden>
                           {[style.palette.bg, style.palette.text, style.palette.accent].map((color, i) => (

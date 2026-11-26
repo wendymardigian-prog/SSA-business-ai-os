@@ -11,8 +11,9 @@ import { suggestMapRows } from "@/lib/webhooks/mapping";
 import { DEFAULT_UPSERT_CONFIG, parseUpsertContactConfig, type MapRow, type MapSource, type Transform, type UpsertContactConfig } from "@/lib/webhooks/upsert-config";
 import type { UpsertEditorContext, UpsertPreview } from "@/lib/webhooks/action-types";
 import { parseWebhookTriggerConfig } from "@/lib/webhooks/trigger-config";
+import { Tip } from "@/components/ui/tooltip";
 
-const inputClass = "w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
+const inputClass = "w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground placeholder:text-disabled-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
 const labelClass = "mb-1 block text-xs font-semibold text-foreground";
 
 const TRANSFORMS: Array<{ value: Transform | ""; label: string }> = [
@@ -97,7 +98,9 @@ export function UpsertContactPanel({ data, nodes, onChange }: { data: Record<str
 
   const pickButton = (slot: number | "tags" | `attr:${number}`) =>
     sample ? (
-      <button type="button" onClick={() => setPicking(picking === slot ? null : slot)} className="shrink-0 rounded-lg border border-border px-2 text-xs hover:bg-accent" aria-label="Elegir del ejemplo" title="Elegir del ejemplo">Elegir</button>
+      <Tip asChild content="Elegir del ejemplo">
+        <button type="button" onClick={() => setPicking(picking === slot ? null : slot)} className="shrink-0 rounded-lg border border-border px-2 text-xs hover:bg-accent" aria-label="Elegir del ejemplo">Elegir</button>
+      </Tip>
     ) : null;
 
   if (loadError) return <p role="alert" className="text-sm text-red-600">{loadError}</p>;

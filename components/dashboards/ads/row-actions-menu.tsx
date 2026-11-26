@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Una opcion del menu de una fila: cambia lo que muestra la pantalla o lleva a otra. */
 export interface RowAction {
@@ -56,9 +57,11 @@ export function RowActionsMenu({ label, actions, x, y, onClose }: { label: strin
       onClick={(event) => event.stopPropagation()}
       className="fixed z-50 space-y-0.5 rounded-lg border border-border bg-popover p-1 shadow-lg"
     >
-      <p className="truncate px-2.5 py-1 text-[11px] text-muted-foreground" title={label}>
-        {label}
-      </p>
+      <Tip asChild content={label}>
+        <p className="truncate px-2.5 py-1 text-[11px] text-muted-foreground">
+          {label}
+        </p>
+      </Tip>
       {actions.map((action) =>
         action.href ? (
           <Link key={action.label} role="menuitem" href={action.href} onClick={onClose} className={`block ${itemClass}`}>

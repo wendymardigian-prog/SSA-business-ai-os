@@ -9,6 +9,7 @@ import { analyzeCall, changeCallType, regenerateCall, setCallNoShow } from "@/li
 import type { CategoryGroup } from "@/lib/calls/catalog";
 import { REGENERATE_CONTEXT_MAX, REGENERATE_CONTEXT_MIN, REGENERATE_REASONS, REGENERATE_REASON_LABELS, type RegenerateReason } from "@/lib/calls/edit-rules";
 import type { BannerAction } from "@/lib/calls/detail-view";
+import { Tip } from "@/components/ui/tooltip";
 
 /**
  * Los botones de la ficha que mueven el estado de una llamada (F18, F22, F25):
@@ -108,22 +109,23 @@ export function AnalyzeButton({ callId, label, disabledReason }: { callId: strin
   const [error, setError] = useState<string | null>(null);
   return (
     <span className="inline-flex flex-col items-start gap-1">
-      <button
-        type="button"
-        disabled={pending || !!disabledReason}
-        title={disabledReason ?? undefined}
-        onClick={() => {
-          setError(null);
-          start(async () => {
-            const result = await analyzeCall({ callId });
-            if (!result.ok) return setError(result.error);
-            router.refresh();
-          });
-        }}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-      >
-        {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} {label}
-      </button>
+      <Tip content={disabledReason ?? null}>
+        <button
+          type="button"
+          disabled={pending || !!disabledReason}
+          onClick={() => {
+            setError(null);
+            start(async () => {
+              const result = await analyzeCall({ callId });
+              if (!result.ok) return setError(result.error);
+              router.refresh();
+            });
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+        >
+          {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} {label}
+        </button>
+      </Tip>
       {disabledReason && <span className="text-xs text-muted-foreground">{disabledReason}</span>}
       {error && <span role="alert" className="text-xs text-red-700 dark:text-red-400">{error}</span>}
     </span>

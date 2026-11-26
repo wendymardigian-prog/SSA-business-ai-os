@@ -1,5 +1,7 @@
+import { PersonAvatar } from "@/components/ui/person-avatar";
 import { AlertTriangle, CheckCircle2, Circle, CircleDashed, CircleDot, Flag, Lock } from "lucide-react";
 import { Avatar } from "@/components/ui/filter-menu";
+import { Tip } from "@/components/ui/tooltip";
 import { colorOf, initialsOf } from "@/lib/shared/people";
 import { PRIORITY_LABELS, STATUS_LABELS, type TaskPriority, type TaskStatus } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
@@ -42,22 +44,31 @@ export function PriorityChip({ priority, className }: { priority: TaskPriority; 
 }
 
 /** Una persona: avatar y nombre. Sin persona, «Sin responsable» en gris. */
-export function PersonBadge({ id, name, empty = "Sin responsable", compact = false }: { id: string | null; name: string | null; empty?: string; compact?: boolean }) {
-  if (!id) {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-        <CircleDashed className="h-4 w-4" aria-hidden />
-        {!compact && <span className="text-sm">{empty}</span>}
-      </span>
-    );
-  }
-  const label = name ?? "Alguien del equipo";
+export function PersonBadge({
+  id,
+  name,
+  role,
+  empty = "Sin responsable",
+  compact = false,
+}: {
+  id: string | null;
+  name: string | null;
+  /** Lo que es esa persona en la tarea: el tooltip dice «Responsable: Ana López». */
+  role?: string;
+  empty?: string;
+  compact?: boolean;
+}) {
+  // El circulo del equipo (foto de Mi cuenta o iniciales, con su tooltip); sin persona, el circulo punteado.
+  const label = id ? (name ?? "Alguien del equipo") : null;
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5">
-      <Avatar initials={initialsOf(label)} color={colorOf(id)} userId={id} />
-      {!compact && <span className="truncate text-sm">{label}</span>}
-      {compact && <span className="sr-only">{label}</span>}
-    </span>
+    <PersonAvatar
+      userId={id}
+      name={label}
+      role={role}
+      emptyLabel={empty}
+      showName={!compact}
+      nameClassName="text-sm"
+    />
   );
 }
 
@@ -65,11 +76,13 @@ export function BlockedMark({ count, className }: { count: number; className?: s
   if (count <= 0) return null;
   const text = count === 1 ? "Bloqueada por 1 tarea sin completar" : `Bloqueada por ${count} tareas sin completar`;
   return (
-    <span title={text} className={cn("inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300", className)}>
-      <Lock className="h-3.5 w-3.5" aria-hidden />
-      <span className="sr-only">{text}</span>
-      {count > 1 && <span aria-hidden>{count}</span>}
-    </span>
+    <Tip asChild content={text}>
+      <span className={cn("inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300", className)}>
+        <Lock className="h-3.5 w-3.5" aria-hidden />
+        <span className="sr-only">{text}</span>
+        {count > 1 && <span aria-hidden>{count}</span>}
+      </span>
+    </Tip>
   );
 }
 

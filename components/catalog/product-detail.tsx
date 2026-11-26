@@ -22,6 +22,7 @@ import { VariantDialog, emptyVariantForm, type VariantFormValues } from "./varia
 import { VariantPriceTab } from "./variant-price-tab";
 import { ClickableBox } from "@/components/ui/clickable-row";
 import { InlineSelect } from "@/components/ui/inline-select";
+import { Tip } from "@/components/ui/tooltip";
 
 type VariantTab = "precio" | "historial";
 
@@ -135,15 +136,16 @@ export function ProductDetail({
               maxLength={TAXONOMY_NAME_MAX}
               className="h-10 min-w-0 flex-1 rounded-lg sm:max-w-xs border border-transparent bg-transparent px-2 text-lg font-semibold hover:border-border focus:border-primary-edge focus:outline-none"
             />
-            <button
-              type="button"
-              onClick={() => setEditingDescription(true)}
-              title="Editar descripción"
-              aria-label="Editar la descripción"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <Pencil className="h-4 w-4" aria-hidden />
-            </button>
+            <Tip asChild content="Editar descripción">
+              <button
+                type="button"
+                onClick={() => setEditingDescription(true)}
+                aria-label="Editar la descripción"
+                className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <Pencil className="h-4 w-4" aria-hidden />
+              </button>
+            </Tip>
             {dirty && (
               <button
                 type="button"

@@ -87,7 +87,7 @@ export function FunnelCard({
                   </>
                 }
               >
-                <span tabIndex={0} className="w-20 shrink-0 cursor-help text-right text-xs text-muted-foreground underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-24">
+                <span tabIndex={0} className="w-20 shrink-0 cursor-help text-right text-xs text-muted-foreground underline decoration-dotted decoration-disabled-foreground/40 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-24">
                   {step.label}
                 </span>
                 <div className="flex flex-1 justify-center">

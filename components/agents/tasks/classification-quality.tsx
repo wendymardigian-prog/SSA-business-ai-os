@@ -142,7 +142,7 @@ function Indicator({
         {tooltip && <InfoTooltip text={tooltip} label={`Qué significa ${label}`} />}
       </p>
       <p className={cn("mt-0.5 text-xl font-semibold tabular-nums", tone === "warn" && "text-warn")}>{value}</p>
-      <p className="text-[11.5px] text-muted-foreground/80">{hint}</p>
+      <p className="text-[11.5px] text-muted-foreground">{hint}</p>
     </div>
   );
 }
