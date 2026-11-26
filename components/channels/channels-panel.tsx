@@ -416,11 +416,11 @@ export function ChannelsPanel({
         )}
         {visibleChannels.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <Plug className="h-10 w-10 text-muted-foreground/40" />
+            <Plug className="h-10 w-10 text-muted-foreground" />
             <p className="mt-3 text-sm font-medium text-muted-foreground">
               {provider === "evolution" ? "Todavía no hay un número de WhatsApp conectado" : "Todavía no hay canales"}
             </p>
-            <p className="mt-1 max-w-xs text-center text-xs text-muted-foreground/70">
+            <p className="mt-1 max-w-xs text-center text-xs text-muted-foreground">
               {provider === "evolution"
                 ? "Vinculá tu WhatsApp escaneando un código QR desde el teléfono."
                 : "Conectá una cuenta de redes sociales para empezar a armar flows y automatizar conversaciones."}
@@ -611,7 +611,7 @@ export function ChannelsPanel({
                           "h-1.5 w-1.5 rounded-full",
                           channel.is_active
                             ? "bg-green-500"
-                            : "bg-muted-foreground"
+                            : "bg-disabled-foreground"
                         )}
                       />
                       {channel.is_active ? "Activo" : "Inactivo"}
@@ -691,7 +691,7 @@ export function ChannelsPanel({
                               "flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors",
                               copiedId === channel.id
                                 ? "border-green-200 bg-green-50 text-green-600"
-                                : "border-border bg-card text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
+                                : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-muted-foreground"
                             )}
                           >
                             {copiedId === channel.id ? (

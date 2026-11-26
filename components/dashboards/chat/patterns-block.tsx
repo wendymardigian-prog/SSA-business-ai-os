@@ -485,5 +485,5 @@ export function QualityLineRow({
 }
 
 function Dot() {
-  return <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground/60" aria-hidden />;
+  return <span className="h-[3px] w-[3px] rounded-full bg-disabled-foreground/60" aria-hidden />;
 }

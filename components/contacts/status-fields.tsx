@@ -218,7 +218,7 @@ export function StatusFields({
               )}
             </div>
             {current && at && (
-              <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/70">
+              <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                 {role === "setter" && values.setter_status_by_agent && (
                   <Tip asChild content="Lo puso el agente de IA">
                     <span className="inline-flex items-center gap-0.5">
@@ -232,7 +232,7 @@ export function StatusFields({
               </p>
             )}
             {options.length === 0 && (
-              <p className="mt-1 text-xs text-muted-foreground/70">No hay estados activos: se configuran en Ajustes → Estados.</p>
+              <p className="mt-1 text-xs text-muted-foreground">No hay estados activos: se configuran en Ajustes → Estados.</p>
             )}
           </div>
         );

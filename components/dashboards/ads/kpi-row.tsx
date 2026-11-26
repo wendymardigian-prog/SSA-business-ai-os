@@ -51,7 +51,7 @@ export function KpiRow({ items }: { items: KpiItem[] }) {
               >
                 <span
                   tabIndex={item.tip ? 0 : undefined}
-                  className={`truncate text-[9px] font-medium uppercase leading-none tracking-normal text-muted-foreground sm:text-[10px] sm:tracking-wider ${item.tip ? "cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring" : ""}`}
+                  className={`truncate text-[9px] font-medium uppercase leading-none tracking-normal text-muted-foreground sm:text-[10px] sm:tracking-wider ${item.tip ? "cursor-help underline decoration-dotted decoration-disabled-foreground/40 underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring" : ""}`}
                 >
                   {item.label}
                 </span>

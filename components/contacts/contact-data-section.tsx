@@ -40,7 +40,7 @@ export function ContactDataSection({
           <div key={group.id}>
             {/* El resumen del agente es un solo campo: su titulo ya es el del grupo. */}
             {group.id !== "agente" && (
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/80">{group.title}</h3>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</h3>
             )}
             <dl className={group.id === "agente" ? "" : "grid gap-x-8 gap-y-3 sm:grid-cols-2"}>
               {group.fields.map((field) => {

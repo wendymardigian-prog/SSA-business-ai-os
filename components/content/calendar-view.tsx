@@ -128,10 +128,10 @@ export function ContentCalendar({
           {summary.pieces} {summary.pieces === 1 ? "pieza nueva" : "piezas nuevas"} ·{" "}
           {summary.publications} {summary.publications === 1 ? "publicacion" : "publicaciones"}
           {summary.redistributions > 0 && ` · ${summary.redistributions} ↻`}
-          <span className="ml-1 opacity-70">
+          <span className="ml-1">
             (contando {countMode === "pieces" ? "piezas" : "publicaciones"})
           </span>
-          <span className="ml-1 opacity-70">· tu hora ({timeZoneLabel(timeZone)})</span>
+          <span className="ml-1">· tu hora ({timeZoneLabel(timeZone)})</span>
         </p>
       </div>
 
@@ -267,13 +267,13 @@ function DayCard({
         className={`block rounded-md border px-1.5 py-1 text-[11px] leading-tight ${TONES[card.tone]}`}
       >
         <span className="flex items-start gap-1">
-          <span className="font-medium tabular-nums opacity-80">{card.time}</span>
+          <span className="font-medium tabular-nums">{card.time}</span>
           <span className="line-clamp-2 font-medium">
             {card.redistribution && "↻ "}
             {card.title}
           </span>
         </span>
-        <span className="mt-0.5 flex items-center gap-1 opacity-90">
+        <span className="mt-0.5 flex items-center gap-1">
           <NetworkBadges platforms={card.networks.map((n) => n.platform)} />
         </span>
       </Link>

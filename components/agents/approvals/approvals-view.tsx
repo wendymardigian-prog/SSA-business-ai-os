@@ -24,7 +24,7 @@ export function ApprovalsView({ pending, decided, timeZone }: { pending: Proposa
         </h2>
         {pending.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-8 text-center">
-            <Inbox className="mx-auto h-8 w-8 text-muted-foreground/50" aria-hidden />
+            <Inbox className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden />
             <p className="mt-3 text-sm font-medium">No hay nada para aprobar</p>
             <p className="mt-1 text-sm text-muted-foreground">Cuando un agente proponga una acción, aparecerá aquí. Nada se aplica sin que una persona lo apruebe.</p>
           </div>

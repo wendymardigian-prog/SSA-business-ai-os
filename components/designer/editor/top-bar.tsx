@@ -15,7 +15,7 @@ import { Tip } from "@/components/ui/tooltip";
 
 const STATUS_TONE: Record<EditorActions["status"]["tone"], string> = {
   ok: "bg-good/15 text-good",
-  off: "bg-muted text-muted-foreground",
+  off: "bg-muted text-disabled-foreground",
   pur: "bg-primary/15 text-primary-ink",
   warn: "bg-warn/15 text-warn",
   bad: "bg-bad/15 text-bad",

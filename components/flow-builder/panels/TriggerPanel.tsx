@@ -250,7 +250,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
                   <button
                     type="button"
                     onClick={() => removeKeyword(index)}
-                    className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
+                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-muted-foreground"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -272,7 +272,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
                 }
               }}
               placeholder="Escribí una palabra o frase…"
-              className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
             <select
               value={newMatchType}
@@ -438,9 +438,9 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
               value={data.value ?? ""}
               onChange={(e) => onChange({ ...data, value: e.target.value })}
               placeholder={selectedEvent.valuePlaceholder || "Cualquiera"}
-              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
-            <p className="mt-1 text-[11px] text-muted-foreground/60">
+            <p className="mt-1 text-[11px] text-muted-foreground">
               Dejalo vacío para que dispare con cualquier valor.
             </p>
           </div>
@@ -467,7 +467,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-[11px] text-muted-foreground/60">
+              <p className="mt-1 text-[11px] text-muted-foreground">
                 Si la reunión se mueve, el aviso se reprograma solo.
               </p>
             </div>
@@ -498,7 +498,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
                 );
               })}
             </div>
-            <p className="mt-1 text-[11px] text-muted-foreground/60">Sin elegir ninguno, vale para todos.</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">Sin elegir ninguno, vale para todos.</p>
           </div>
 
           {(triggerType === "booking_cancelled" || triggerType === "booking_rescheduled") && (
@@ -598,7 +598,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
             </div>
           )}
           <CloserPick value={Array.isArray(data.closer_ids) ? (data.closer_ids as string[]) : []} onChange={(closer_ids) => onChange({ ...data, closer_ids: closer_ids.length ? closer_ids : undefined })} />
-          <p className="text-[11px] text-muted-foreground/60">
+          <p className="text-[11px] text-muted-foreground">
             Sin elegir nada, vale para cualquier llamada. Solo dispara si la llamada tiene contacto. Las variables {"{{call.title}}"}, {"{{call.date}}"}, {"{{call.outcome}}"}, {"{{call.next_step}}"}, {"{{call.closer_name}}"}, {"{{call.closer_score}}"} y {"{{call.lead_score}}"} quedan disponibles para los mensajes.
           </p>
         </div>
@@ -681,7 +681,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
             </select>
           </div>
           <InactivityChannelPick value={typeof data.channelId === "string" ? data.channelId : ""} onChange={(channelId) => onChange({ ...data, channelId: channelId || undefined })} />
-          <p className="mt-1.5 text-[11px] text-muted-foreground/60">
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
             Se cuenta desde la ultima vez que el lead interactuo. Dispara una
             sola vez por conversacion y por ventana, aunque el chequeo corra
             cada quince minutos.
@@ -705,7 +705,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
             value={typeof data.subjectContains === "string" ? data.subjectContains : ""}
             onChange={(e) => onChange({ ...data, subjectContains: e.target.value })}
             placeholder="Por ejemplo: presupuesto"
-            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">Vacío: corre con cualquier correo que entre. No distingue mayúsculas.</p>
         </div>
@@ -744,7 +744,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
             value={typeof data.replyText === "string" ? data.replyText : ""}
             onChange={(e) => onChange({ ...data, replyText: e.target.value })}
             placeholder="¡Te escribimos por privado! 💬"
-            className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
             Se contesta debajo del comentario, a la vista de todos, después del mensaje privado. Si el privado no sale (por ejemplo, otra app ya le contestó), no se publica.
@@ -783,7 +783,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
             value={data.payload || ""}
             onChange={(e) => onChange({ ...data, payload: e.target.value })}
             placeholder="Por ejemplo: QUIERO_INFO"
-            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
             El valor que tiene que traer {triggerType === "postback" ? "el botón que toca el lead" : "la respuesta rápida que toca el lead"}. Solo Instagram: en WhatsApp las opciones llegan como lista numerada.
@@ -874,7 +874,7 @@ function QualificationChangedPicker({ value, onChange }: { value: string; onChan
               </option>
             ))}
           </select>
-          <p className="mt-1 text-[11px] text-muted-foreground/60">
+          <p className="mt-1 text-[11px] text-muted-foreground">
             {kind === "gte"
               ? "Dispara una vez al cruzar ese nivel: si ya estaba arriba y sigue subiendo, no vuelve a disparar."
               : "Los nombres de cada nivel se eligen en Ajustes → Estados."}
@@ -952,7 +952,7 @@ function StatusChangedPicker({ flowId, value, onChange }: { flowId?: string; val
             ))}
             {status && !options.some((st) => st.key === status) && <option value={status}>{status} (ya no existe)</option>}
           </select>
-          {settings === null && <p className="mt-1 text-[11px] text-muted-foreground/60">Cargando estados…</p>}
+          {settings === null && <p className="mt-1 text-[11px] text-muted-foreground">Cargando estados…</p>}
         </div>
       )}
     </div>

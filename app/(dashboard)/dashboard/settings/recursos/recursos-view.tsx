@@ -381,7 +381,7 @@ function AssetListRow({
             ))}
           </div>
           <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{contextLine(asset, 160)}</p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground/80">
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <AssetKindIcon kind={asset.kind} className="h-3 w-3" />
               {ASSET_KIND_LABEL[asset.kind]}
@@ -490,7 +490,7 @@ function AgentSwitch({
           disabled={disabled}
           className={cn(
             "relative h-5 w-9 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40",
-            enabled ? "bg-primary" : "bg-muted-foreground/30",
+            enabled ? "bg-primary" : "bg-disabled-foreground/30",
           )}
         >
           <span

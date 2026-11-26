@@ -377,7 +377,7 @@ function PickerButton({ refEl, onClick, children, label, disabled, pill = false,
     const look = cn("inline-flex h-8 max-w-full items-center gap-1.5 rounded-lg border px-2.5 text-[13px]", tone ? `${tone} border-transparent` : "border-input bg-background");
     if (disabled) return <span className={cn(look, "opacity-80")}>{children}</span>;
     return (
-      <button ref={refEl} type="button" onClick={onClick} aria-label={label} className={cn(look, "transition-colors hover:border-muted-foreground/60 focus-visible:border-primary-edge focus-visible:outline-none")}>
+      <button ref={refEl} type="button" onClick={onClick} aria-label={label} className={cn(look, "transition-colors hover:border-disabled-foreground/60 focus-visible:border-primary-edge focus-visible:outline-none")}>
         {children}
       </button>
     );

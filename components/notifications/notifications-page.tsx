@@ -48,7 +48,7 @@ const HUES: Record<NotificationHue, string> = {
   blue: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
   yellow: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   green: "bg-green-500/15 text-green-700 dark:text-green-400",
-  neutral: "bg-muted text-muted-foreground",
+  neutral: "bg-muted text-disabled-foreground",
 };
 
 export function NotificationsPage({ workspaceId, view, page, data }: { workspaceId: string; view: NotificationView; page: number; data: NotificationsPageData }) {
@@ -145,7 +145,7 @@ export function NotificationsPage({ workspaceId, view, page, data }: { workspace
           <section aria-label={NOTIFICATION_VIEW_LABELS[view]} className="overflow-hidden rounded-xl border border-border bg-card">
             {data.items.length === 0 ? (
               <div className="px-4 py-16 text-center">
-                <Bell className="mx-auto h-8 w-8 text-muted-foreground/40" aria-hidden="true" />
+                <Bell className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
                 <p className="mt-3 text-sm font-medium">{empty.title}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{empty.body}</p>
               </div>
@@ -171,7 +171,7 @@ export function NotificationsPage({ workspaceId, view, page, data }: { workspace
                             <Icon className="h-4 w-4" />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className={cn("block text-sm sm:truncate", read ? "font-medium text-foreground/80" : "font-semibold")}>{n.title}</span>
+                            <span className={cn("block text-sm sm:truncate", read ? "font-medium text-foreground" : "font-semibold")}>{n.title}</span>
                             {n.body && <span className="block line-clamp-2 text-xs text-muted-foreground sm:line-clamp-1">{n.body}</span>}
                           </span>
                           <span className="shrink-0 text-right text-xs leading-5 text-muted-foreground">

@@ -46,7 +46,7 @@ export function PendingBreakdown({ amount, payments, formatDate }: { amount: num
     >
       <button
         type="button"
-        className="cursor-help rounded tabular-nums underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="cursor-help rounded tabular-nums underline decoration-dotted decoration-disabled-foreground/60 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {formatMoney(amount)}
       </button>

@@ -156,7 +156,7 @@ export function FilterMenu({
           className={cn(
             "flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border text-[13px] font-medium transition-colors max-topbar:h-10",
             compact ? "relative w-8 justify-center max-topbar:w-10" : "gap-2 px-2.5",
-            active ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
+            active ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-disabled-foreground/60",
           )}
         >
           {icon}

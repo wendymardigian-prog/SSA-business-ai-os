@@ -17,10 +17,10 @@ import { cn } from "@/lib/utils";
 const STATE_CLASS: Record<MeetingState, string> = {
   scheduled: "bg-sky-500/15 text-sky-800 dark:text-sky-300",
   missing_recording: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
-  no_show: "bg-muted text-muted-foreground",
+  no_show: "bg-muted text-disabled-foreground",
   recorded: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
   analyzed: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
-  cancelled: "bg-muted text-muted-foreground line-through",
+  cancelled: "bg-muted text-disabled-foreground line-through",
 };
 
 function hrefOf(r: MeetingRow): string {

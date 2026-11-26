@@ -231,12 +231,12 @@ function MessageBubble({
           {/* El asunto va arriba del cuerpo, como en cualquier cliente de
               correo: sin el, una respuesta larga empieza sin contexto. */}
           {message.email_subject && (
-            <p className="mb-1 text-xs font-semibold opacity-80">{message.email_subject}</p>
+            <p className="mb-1 text-xs font-semibold">{message.email_subject}</p>
           )}
           {/* Recepcion por dominio (conexion de Resend, R4): a cual de nuestras direcciones escribio la persona.
               La respuesta sale desde esa misma. */}
           {isInbound && inboundToLabel(message.email_to, null) && (
-            <p className="mb-1 text-[11px] opacity-70">para: {inboundToLabel(message.email_to, null)}</p>
+            <p className="mb-1 text-[11px]">para: {inboundToLabel(message.email_to, null)}</p>
           )}
           {/* El adjunto va ARRIBA del texto, como en WhatsApp: el texto suele
               ser el pie de la foto, no lo principal. */}
@@ -351,12 +351,12 @@ function DeletedMessageBody({ view, message }: { view: DeletedBubbleView; messag
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="mt-1 text-[11px] font-medium text-foreground/80 underline underline-offset-2 hover:text-foreground"
+            className="mt-1 text-[11px] font-medium text-foreground underline underline-offset-2 hover:text-foreground"
           >
             {open ? "Ocultar lo que decía" : "Ver lo que decía"}
           </button>
           {open && (
-            <div className="mt-2 border-t border-border pt-2 text-foreground/80">
+            <div className="mt-2 border-t border-border pt-2 text-foreground">
               <MessageAttachments message={message} />
               {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
               {!message.text && message.transcript && <p className="whitespace-pre-wrap break-words">{message.transcript}</p>}
@@ -1344,11 +1344,11 @@ export function MessageThread({
   if (!conversation) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-background text-center">
-        <MessageSquare className="h-12 w-12 text-muted-foreground/30" />
+        <MessageSquare className="h-12 w-12 text-muted-foreground" />
         <h3 className="mt-4 text-sm font-medium text-muted-foreground">
           Elegí una conversación
         </h3>
-        <p className="mt-1 text-xs text-muted-foreground/70">
+        <p className="mt-1 text-xs text-muted-foreground">
           Abrí una de la lista para ver el hilo de mensajes
         </p>
       </div>
@@ -1786,7 +1786,7 @@ export function MessageThread({
                     }}
                     placeholder="Agregá un texto (opcional)"
                     rows={1}
-                    className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
               ) : (
@@ -1815,7 +1815,7 @@ export function MessageThread({
                     }}
                     placeholder={narrowThread ? "Escribí un mensaje" : "Escribí un mensaje o / para un recurso guardado"}
                     rows={1}
-                    className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
               )}

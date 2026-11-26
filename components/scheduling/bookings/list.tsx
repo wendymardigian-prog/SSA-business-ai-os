@@ -87,7 +87,7 @@ export function BookingsList({
       event: {
         render: (item) => (
           <span className="flex items-center gap-2">
-            <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: item.eventColor ?? "var(--muted-foreground)" }} />
+            <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: item.eventColor ?? "var(--disabled-foreground)" }} />
             <Tip asChild content={item.title}>
               <span className="min-w-0 flex-1 truncate">{item.title}</span>
             </Tip>

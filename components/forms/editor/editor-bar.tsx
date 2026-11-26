@@ -151,7 +151,7 @@ export function EditorBar({
     <span
       role="status"
       aria-live="polite"
-      className={cn("inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px]", view.save.retry !== "none" ? "text-destructive" : view.save.state === "saved" ? "text-muted-foreground/80" : "text-muted-foreground")}
+      className={cn("inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px]", view.save.retry !== "none" ? "text-destructive" : view.save.state === "saved" ? "text-muted-foreground" : "text-muted-foreground")}
     >
       {view.save.state === "saving" || view.save.state === "pending" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : view.save.state === "saved" ? <Check className="h-3.5 w-3.5" aria-hidden /> : null}
       {/* Abajo de 1360 px el guardado queda solo con su icono (el texto sigue para el lector de pantalla). */}
@@ -197,7 +197,7 @@ export function EditorBar({
         aria-current={view.metrics.active ? "page" : undefined}
         className={cn(
           "inline-flex h-8 max-topbar:h-10 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors",
-          view.metrics.active ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-input bg-background hover:border-muted-foreground/60",
+          view.metrics.active ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-input bg-background hover:border-disabled-foreground/60",
         )}
       >
         <BarChart3 className="h-4 w-4" aria-hidden />
@@ -233,7 +233,7 @@ export function EditorBar({
       <button
         type="button"
         onClick={onPreview}
-        className="inline-flex h-8 max-topbar:h-10 shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] font-medium hover:border-muted-foreground/60"
+        className="inline-flex h-8 max-topbar:h-10 shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] font-medium hover:border-disabled-foreground/60"
       >
         <Eye className="h-4 w-4" aria-hidden />
         <span className="hidden min-[1320px]:inline">Vista previa</span>

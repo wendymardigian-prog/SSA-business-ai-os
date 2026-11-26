@@ -24,7 +24,7 @@ const STATUS_STYLES: Record<IntegrationStatus, string> = {
   connected: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   attention: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   error: "bg-red-500/10 text-red-600 dark:text-red-400",
-  not_connected: "bg-muted text-muted-foreground",
+  not_connected: "bg-muted text-disabled-foreground",
 };
 
 function StatusBadge({ status }: { status: IntegrationStatus }) {

@@ -7,9 +7,9 @@ import type { InviteToGroupData } from "@/lib/flow-engine/nodes/invite-to-group"
 import { GroupSelect } from "./group-select";
 import { WhatsappDeliveryFields } from "./whatsapp-delivery-fields";
 
-const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
-const hintClass = "mt-1.5 text-[11px] leading-snug text-muted-foreground/70";
+const hintClass = "mt-1.5 text-[11px] leading-snug text-muted-foreground";
 
 /**
  * «Enviar al grupo» (00344): a qué grupo (también los de una comunidad), un texto y/o un recurso de la banca. Con

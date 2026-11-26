@@ -146,7 +146,7 @@ function ProposalParams({ input, variant = "dock" }: { input: unknown; variant?:
       <dl className="mt-3 grid grid-cols-[minmax(0,100px)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px]">
         {entries.map(([k, v]) => (
           <div key={k} className="contents">
-            <dt className="truncate text-foreground/60 first-letter:uppercase">{k.replace(/_/g, " ")}</dt>
+            <dt className="truncate text-foreground first-letter:uppercase">{k.replace(/_/g, " ")}</dt>
             <dd className="min-w-0 whitespace-pre-wrap break-words font-mono text-foreground">{typeof v === "string" ? v : JSON.stringify(v)}</dd>
           </div>
         ))}
@@ -194,7 +194,7 @@ export function ProposalCard({ step, onDecided, variant = "dock" }: { step: Pane
         // Reloj en cuadrado, «Esperando tu aprobación» (o cómo terminó) e insignia «Escritura»; la acción, debajo.
         <>
           <div className="flex items-center gap-2.5">
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full text-foreground/80 ring-1 ring-inset ring-border">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full text-foreground ring-1 ring-inset ring-border">
               <Clock className="size-3.5" aria-hidden />
             </span>
             <p className={`min-w-0 flex-1 text-sm font-semibold ${phase === "pending" ? "text-foreground" : state.cls}`}>{phase === "pending" ? "Esperando tu aprobación" : state.text}</p>
@@ -215,7 +215,7 @@ export function ProposalCard({ step, onDecided, variant = "dock" }: { step: Pane
           <button type="button" disabled={pending} onClick={() => decide(() => approveProposal(step.proposal_id!))} className={`inline-flex h-9 items-center gap-1 rounded-md bg-primary text-primary-foreground disabled:opacity-50 ${full ? "px-4 text-sm font-semibold" : "px-3.5 text-[13px] font-medium"}`}>
             {!full && <Check className="size-3.5" aria-hidden />} Aprobar
           </button>
-          <button type="button" disabled={pending} onClick={() => setRejecting(true)} className={full ? "h-9 rounded-md px-3 text-sm text-foreground/70 hover:text-foreground disabled:opacity-50" : "h-9 rounded-md border border-border px-3.5 text-[13px] hover:bg-muted disabled:opacity-50"}>
+          <button type="button" disabled={pending} onClick={() => setRejecting(true)} className={full ? "h-9 rounded-md px-3 text-sm text-foreground hover:text-foreground disabled:opacity-50" : "h-9 rounded-md border border-border px-3.5 text-[13px] hover:bg-muted disabled:opacity-50"}>
             Descartar
           </button>
         </div>

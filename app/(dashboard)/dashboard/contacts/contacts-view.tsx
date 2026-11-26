@@ -326,7 +326,7 @@ export function ContactsView({
             {/* Que la lista pase de 171 a 72 sin decir por que parece que se
                 perdieron contactos. */}
             {!filters.anon && anonymousCount > 0 && (
-              <span className="text-muted-foreground/70">
+              <span className="text-muted-foreground">
                 {" · "}
                 {anonymousCount} sin datos {anonymousCount === 1 ? "oculto" : "ocultos"}
               </span>
@@ -776,7 +776,7 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <Users className="h-10 w-10 text-muted-foreground/40" />
+      <Users className="h-10 w-10 text-muted-foreground" />
       {filtered ? (
         <>
           <p className="mt-3 text-sm font-medium text-muted-foreground">
@@ -794,7 +794,7 @@ function EmptyState({
           <p className="mt-3 text-sm font-medium text-muted-foreground">
             Todavía no hay contactos
           </p>
-          <p className="mt-1 max-w-sm text-xs text-muted-foreground/70">
+          <p className="mt-1 max-w-sm text-xs text-muted-foreground">
             Se crean solos cuando alguien escribe por un canal conectado. También
             los podés cargar a mano.
           </p>

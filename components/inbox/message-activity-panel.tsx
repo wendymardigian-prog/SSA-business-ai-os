@@ -24,7 +24,7 @@ const DOT: Record<ActivityTone, string> = {
   info: "bg-sky-500",
   warning: "bg-amber-500",
   error: "bg-red-500",
-  neutral: "bg-muted-foreground/50",
+  neutral: "bg-disabled-foreground/50",
 };
 
 const OUTCOME_TEXT: Record<ActivityEntry["outcome"], string> = {

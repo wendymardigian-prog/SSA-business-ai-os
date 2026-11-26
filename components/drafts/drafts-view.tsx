@@ -173,7 +173,7 @@ export function DraftsView({
       {queue.rows.length === 0 ? (
         noDraftsAnywhere ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-            <FileText className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+            <FileText className="h-10 w-10 text-muted-foreground" aria-hidden />
             <p className="mt-3 text-sm font-medium">Ningún canal deja borradores todavía</p>
             <p className="mt-1 max-w-md text-xs text-muted-foreground">
               Cuando un canal está en modo borrador, el agente redacta las respuestas y las deja acá para que alguien las apruebe antes de que salgan.
@@ -239,7 +239,7 @@ function MineEmpty({ counts, onSeeAll }: { counts?: PendingDraftCounts; onSeeAll
   const hint = emptyQueueHint(counts);
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-      <Inbox className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+      <Inbox className="h-10 w-10 text-muted-foreground" aria-hidden />
       <p className="mt-3 text-sm font-medium">No hay borradores esperando</p>
       <p className="mt-1 max-w-md text-xs text-muted-foreground">{hint.text}</p>
       <button

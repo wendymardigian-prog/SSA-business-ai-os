@@ -50,7 +50,7 @@ export function ViewsMenu(props: ViewsMenuProps) {
   return (
     <Popover
       label="Vistas"
-      triggerClassName={`relative flex h-8 max-w-[11rem] max-topbar:h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-medium transition-colors ${active ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60"}`}
+      triggerClassName={`relative flex h-8 max-w-[11rem] max-topbar:h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-medium transition-colors ${active ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-disabled-foreground/60"}`}
       trigger={
         <>
           <Bookmark className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
@@ -188,7 +188,7 @@ function ViewsList({
                     onClick={() => toggleDefault(view)}
                     aria-pressed={isDefault}
                     aria-label={isDefault ? `Quitar «${view.name}» como mi predeterminada` : `Dejar «${view.name}» como mi predeterminada`}
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-accent ${isDefault ? "text-amber-500" : "text-muted-foreground/50 hover:text-foreground"}`}
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-accent ${isDefault ? "text-amber-500" : "text-muted-foreground hover:text-foreground"}`}
                   >
                     <Star className={`h-3.5 w-3.5 ${isDefault ? "fill-current" : ""}`} aria-hidden />
                   </button>
@@ -206,12 +206,12 @@ function ViewsList({
                   ) : (
                     <>
                       <Tip asChild content="Editar">
-                        <button type="button" onClick={() => onEdit(view)} aria-label={`Editar «${view.name}»`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:bg-accent hover:text-foreground">
+                        <button type="button" onClick={() => onEdit(view)} aria-label={`Editar «${view.name}»`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground">
                           <Pencil className="h-3.5 w-3.5" aria-hidden />
                         </button>
                       </Tip>
                       <Tip asChild content="Borrar">
-                        <button type="button" onClick={() => setConfirmDelete(view.id)} aria-label={`Borrar «${view.name}»`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:bg-accent hover:text-red-600">
+                        <button type="button" onClick={() => setConfirmDelete(view.id)} aria-label={`Borrar «${view.name}»`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-red-600">
                           <Trash2 className="h-3.5 w-3.5" aria-hidden />
                         </button>
                       </Tip>

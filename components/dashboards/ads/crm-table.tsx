@@ -74,7 +74,7 @@ const TONE_CLASS = {
 } as const;
 
 const TD = "px-2 py-2 text-right text-foreground whitespace-nowrap";
-const NUMBER_BUTTON = "cursor-pointer rounded px-1 underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const NUMBER_BUTTON = "cursor-pointer rounded px-1 underline decoration-dotted decoration-disabled-foreground/60 underline-offset-4 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 /** El borde de la ultima columna fija: se nota donde termina lo que queda quieto. */
 const PIN_EDGE = "shadow-[6px_0_6px_-6px_rgba(0,0,0,0.35)]";
 
@@ -232,7 +232,7 @@ function HeaderButton({ label, tip, sortDir, onOpen }: { label: string; tip?: Re
       type="button"
       aria-haspopup="menu"
       onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect())}
-      className={`inline-flex items-center gap-1 rounded uppercase tracking-wider underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sortDir ? "text-foreground" : ""}`}
+      className={`inline-flex items-center gap-1 rounded uppercase tracking-wider underline decoration-dotted decoration-disabled-foreground/40 underline-offset-4 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sortDir ? "text-foreground" : ""}`}
     >
       {label}
       {sortDir && <Arrow className="h-3 w-3" aria-hidden />}
@@ -480,7 +480,7 @@ export function CrmLevelBody({
     <>
       <p className="mb-1 font-semibold text-foreground">{column.tip.title}</p>
       <p className="text-muted-foreground">{column.tip.body}</p>
-      <p className="mt-1 text-[11px] text-muted-foreground/80">Clic para ordenar o fijar la columna.</p>
+      <p className="mt-1 text-[11px] text-muted-foreground">Clic para ordenar o fijar la columna.</p>
     </>
   );
   const ariaSort = (key: SortKey) => (sort?.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined);

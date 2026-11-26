@@ -20,13 +20,13 @@ export function EmailMessageBody({ message }: { message: { text?: string | null;
             type="button"
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex items-center gap-1 rounded text-xs font-medium opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-1 rounded text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
             {open ? "Ocultar mensaje citado" : "Ver mensaje citado"}
           </button>
           {open && (
-            <p className="mt-2 whitespace-pre-wrap break-words border-l-2 border-border pl-3 text-xs opacity-70">
+            <p className="mt-2 whitespace-pre-wrap break-words border-l-2 border-border pl-3 text-xs">
               <MessageText text={readableQuote(quoted)} />
             </p>
           )}

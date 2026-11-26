@@ -32,7 +32,6 @@ import {
   EMPTY_FILTERS,
   UNCLASSIFIED_AREA, callFiltersToParams,
   countActiveCallFilters,
-  isNonSaleRow,
   parseSavedViews,
   savedViewsKey,
   typeDeciderText,
@@ -628,7 +627,6 @@ export function CallsList(props: Props) {
                   caption="Llamadas"
                   rowHref={(r) => `/dashboard/llamadas/${r.id}`}
                   onRowClick={(r) => openDetail(r.id)}
-                  rowClassName={(r) => (isNonSaleRow({ call_type: r.callType, analysis_status: r.status }) ? "opacity-60" : undefined)}
                   selection={canSelect ? { selected: new Set(selectedOnPage), onChange: (next) => setSelected([...next]), rowLabel: (r) => `Elegir ${r.title}` } : undefined}
                 />
 

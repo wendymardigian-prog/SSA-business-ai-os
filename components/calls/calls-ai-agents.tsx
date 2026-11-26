@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 const TONE: Record<CallsAiAgent["tone"], string> = {
   on: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
   manual: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300",
-  off: "bg-muted text-muted-foreground",
+  off: "bg-muted text-disabled-foreground",
 };
 
 export function CallsAiAgentsButton({ agents }: { agents: CallsAiAgent[] }) {

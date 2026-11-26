@@ -89,7 +89,7 @@ export function RuleRow({
               <h3 className={cn("min-w-0 break-words text-sm font-medium", quiet && "text-muted-foreground")}>{view.name || "Regla sin nombre"}</h3>
               <span className={cn("inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", STATE_CLASSES[view.state])}>{state.label}</span>
             </div>
-            <p className={cn("mt-0.5 break-words text-sm", quiet ? "text-muted-foreground/80" : "text-muted-foreground")}>{view.description}</p>
+            <p className={cn("mt-0.5 break-words text-sm", quiet ? "text-muted-foreground" : "text-muted-foreground")}>{view.description}</p>
             {missingPerson && (
               <p role="status" className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300">
                 <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />

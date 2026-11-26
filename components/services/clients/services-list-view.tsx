@@ -35,7 +35,7 @@ import { useTablePrefs } from "@/components/ui/data-table/use-table-prefs";
 import { SERVICES_TABLE_KEY, serviceColumnMetas } from "@/lib/services/screens/services-columns";
 import { Tip } from "@/components/ui/tooltip";
 
-const LIGHT_DOT: Record<string, string> = { red: "bg-bad", yellow: "bg-warn", green: "bg-good", gray: "bg-muted-foreground/40" };
+const LIGHT_DOT: Record<string, string> = { red: "bg-bad", yellow: "bg-warn", green: "bg-good", gray: "bg-disabled-foreground/40" };
 const GROUP_LABELS: Record<GroupBy, string> = { none: "Sin agrupar", phase: "Fase", light: "Semáforo", owner: "Responsable" };
 
 export function LightDot({ light, label }: { light: string; label: string }) {

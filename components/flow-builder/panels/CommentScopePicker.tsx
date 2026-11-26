@@ -214,7 +214,7 @@ export function CommentScopePicker({
                 onChange={(e) => setManual(e.target.value)}
                 placeholder="Pegar el id de una publicación"
                 aria-label="Id de una publicación"
-                className="flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground placeholder:text-disabled-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
               <button
                 type="button"

@@ -174,7 +174,7 @@ export function ChatDashboardShell({
             )}
             {filters.author && <Chip label={`Respondido por ${authorName}`} onClear={() => setFilter({ author: null })} />}
             <span className="ml-auto flex items-center gap-2">
-              <Suspense key={loadKey} fallback={<span className="text-muted-foreground/80">Actualizando…</span>}>
+              <Suspense key={loadKey} fallback={<span className="text-muted-foreground">Actualizando…</span>}>
                 <UpdatedAgo promise={blocks.cards} pending={pending} />
               </Suspense>
               <RefreshButton />
@@ -421,10 +421,10 @@ function UpdatedAgo({ promise, pending }: { promise: Promise<BlockResult<CardsBl
     };
   }, [loadedAt]);
 
-  if (pending) return <span className="text-muted-foreground/80">Actualizando…</span>;
+  if (pending) return <span className="text-muted-foreground">Actualizando…</span>;
   // Si fallaron las cifras no se dice "Actualizado": no seria cierto.
   if (!result.ok) return null;
-  return <span className="text-muted-foreground/80">{text}</span>;
+  return <span className="text-muted-foreground">{text}</span>;
 }
 
 /** Vuelve a pedir todo, sin esperar a que venza lo guardado. */

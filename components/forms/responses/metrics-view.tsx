@@ -99,7 +99,7 @@ export function MetricsView({
                   <Tip key={r.day} asChild content={`${shortDay(r.day)}: ${r.views} vistas, ${r.submissions} envíos`}>
                     <div className="flex min-w-[10px] flex-1 flex-col items-center justify-end gap-0.5">
                       <div className="flex w-full items-end justify-center gap-px">
-                        <div className="w-1/2 rounded-t bg-muted-foreground/30" style={{ height: `${(r.views / max) * 120}px` }} />
+                        <div className="w-1/2 rounded-t bg-disabled-foreground/30" style={{ height: `${(r.views / max) * 120}px` }} />
                         <div className="w-1/2 rounded-t bg-primary" style={{ height: `${(r.submissions / max) * 120}px` }} />
                       </div>
                       {rows.length <= 14 && <span className="text-[9px] text-muted-foreground">{shortDay(r.day)}</span>}
@@ -108,7 +108,7 @@ export function MetricsView({
                 ))}
               </div>
               <p className="mt-2 flex items-center gap-4 text-[11px] text-muted-foreground">
-                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-muted-foreground/30" /> Vistas</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-disabled-foreground/30" /> Vistas</span>
                 <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-primary" /> Envíos</span>
               </p>
               <details className="mt-3">

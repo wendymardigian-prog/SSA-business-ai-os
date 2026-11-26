@@ -42,7 +42,7 @@ import { Tip } from "@/components/ui/tooltip";
 
 const itemClass = "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 const STATE_TONE: Record<string, string> = {
-  none: "bg-muted text-muted-foreground",
+  none: "bg-muted text-disabled-foreground",
   tent: "bg-warn/15 text-warn",
   sched: "bg-primary/15 text-primary-ink",
   pub: "bg-good/15 text-good",

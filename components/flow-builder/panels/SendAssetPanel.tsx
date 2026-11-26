@@ -23,7 +23,7 @@ interface SendAssetData {
 }
 
 const fieldClass =
-  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 
 export function SendAssetPanel({
   data,
@@ -62,13 +62,13 @@ export function SendAssetPanel({
             placeholder="Si lo dejás vacío, va el texto que ya tiene el recurso"
             className={`${fieldClass} resize-y`}
           />
-          <p className="mt-1.5 text-[11px] text-muted-foreground/70">
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
             Podés usar {"{{contact.display_name}}"}, {"{{contact.email}}"}, {"{{contact.phone}}"} y {"{{workspace.name}}"}.
           </p>
         </div>
       )}
 
-      <p className="text-[11px] leading-snug text-muted-foreground/70">
+      <p className="text-[11px] leading-snug text-muted-foreground">
         Si el canal de la conversación no acepta este tipo de recurso (por ejemplo, Instagram no manda archivos y el
         email solo manda texto y enlaces), el paso se saltea y el flow sigue.
       </p>

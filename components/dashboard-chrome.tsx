@@ -142,7 +142,7 @@ export function MobileMenuButton({ chrome }: { chrome: DashboardChrome }) {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Cerrar el menú"
-                className="flex h-11 w-11 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent"
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent"
               >
                 <X className="h-5 w-5" aria-hidden />
               </button>
@@ -178,7 +178,7 @@ export function MobileChromeActions({ chrome }: { chrome: DashboardChrome }) {
           <Link
             href={draftsQueueHref(drafts)}
             aria-label={`${waiting} ${waiting === 1 ? "borrador esperando" : "borradores esperando"}. Ir a la cola`}
-            className="relative flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className="relative flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           >
             {/* Un globo de chat con el numero arriba, como la campana: un numero
                 suelto en la barra no decia de que era. */}

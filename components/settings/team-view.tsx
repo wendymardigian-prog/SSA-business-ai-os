@@ -381,7 +381,7 @@ export function TeamView({
                         }}
                         placeholder="colega@ejemplo.com"
                         required
-                        className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                       />
                       <select
                         aria-label="Rol con el que entra"

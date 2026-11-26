@@ -122,7 +122,7 @@ export function ContactsKanban({
           const dot = (
             <span
               aria-hidden
-              className={cn("h-2 w-2 shrink-0 rounded-full", !column.color && "border border-muted-foreground/50")}
+              className={cn("h-2 w-2 shrink-0 rounded-full", !column.color && "border border-disabled-foreground/50")}
               style={column.color ? { backgroundColor: column.color } : undefined}
             />
           );
@@ -294,7 +294,7 @@ function ContactKanbanCard({
         </span>
       )}
       <span className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground/80">{formatRelative(card.lastInteractionAt, timeZone)}</span>
+        <span className="text-[11px] text-muted-foreground">{formatRelative(card.lastInteractionAt, timeZone)}</span>
         {canEdit && targets.length > 1 && (
           <label className="opacity-100 transition-opacity focus-within:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
             <span className="sr-only">Mover a {name}: cambiar {axisLabel(axis)}</span>

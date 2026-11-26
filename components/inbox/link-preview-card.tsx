@@ -30,9 +30,9 @@ function PreviewBody({ href, preview, compact = false }: { href: string; preview
         </span>
       )}
       <span className="block min-w-0 space-y-0.5 px-3 py-2">
-        <span className="block truncate text-[11px] opacity-70">{preview.siteName}</span>
+        <span className="block truncate text-[11px]">{preview.siteName}</span>
         <span className={cn("text-sm font-medium", compact ? "block truncate" : "line-clamp-2")}>{preview.title}</span>
-        {preview.description && <span className={cn("text-xs opacity-80", compact ? "block truncate" : "line-clamp-2")}>{preview.description}</span>}
+        {preview.description && <span className={cn("text-xs", compact ? "block truncate" : "line-clamp-2")}>{preview.description}</span>}
       </span>
     </a>
   );

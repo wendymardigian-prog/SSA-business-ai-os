@@ -363,7 +363,7 @@ export function InboxView({
               conversaciones de Zernio" solo confunde. */}
           {opening ? (
             <div className="flex h-full items-center justify-center">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-disabled-foreground border-t-transparent" />
             </div>
           ) : selectedGroup ? (
             <GroupThreadPanel
@@ -375,11 +375,11 @@ export function InboxView({
             />
           ) : conversations.length === 0 && groups.length === 0 && !hasFilters ? (
             <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-              <MessageSquare className="h-10 w-10 text-muted-foreground/40" />
+              <MessageSquare className="h-10 w-10 text-muted-foreground" />
               <p className="mt-3 text-sm font-medium text-muted-foreground">
                 Todavía no hay conversaciones
               </p>
-              <p className="mt-1 max-w-xs text-xs text-muted-foreground/70">
+              <p className="mt-1 max-w-xs text-xs text-muted-foreground">
                 Si ya tenés conversaciones en Zernio, traelas para verlas acá.
               </p>
               <button
@@ -411,7 +411,7 @@ export function InboxView({
             />
           ) : loadingMessages && selected ? (
             <div className="flex h-full items-center justify-center">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-disabled-foreground border-t-transparent" />
             </div>
           ) : (
             <MessageThread

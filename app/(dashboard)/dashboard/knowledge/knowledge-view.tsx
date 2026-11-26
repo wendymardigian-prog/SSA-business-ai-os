@@ -482,7 +482,7 @@ export function KnowledgeView({ documents: allDocuments, folders: rawFolders = [
 function EmptyState({ onPick }: { onPick: () => void }) {
   return (
     <div className="mt-12 rounded-xl border border-dashed border-border p-12 text-center">
-      <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/40" aria-hidden="true" />
+      <BookOpen className="mx-auto h-10 w-10 text-muted-foreground" aria-hidden="true" />
       <h2 className="mt-4 text-lg font-semibold">Todavia no hay documentos</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
         Subi lo que tu equipo responde todos los dias: precios, politica de reembolsos, preguntas

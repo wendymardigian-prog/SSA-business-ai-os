@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import { Tip } from "@/components/ui/tooltip";
 
 const STATUS_CLASSES: Record<FlowStatus, string> = {
-  draft: "bg-muted text-muted-foreground",
+  draft: "bg-muted text-disabled-foreground",
   published: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
   archived: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
 };
@@ -302,7 +302,7 @@ export function FlowsList({
                     {flow.description ? (
                       <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{flow.description}</p>
                     ) : (
-                      canEdit && <p className="mt-3 text-xs italic text-muted-foreground/70">Sin descripción</p>
+                      canEdit && <p className="mt-3 text-xs italic text-muted-foreground">Sin descripción</p>
                     )}
                     {flow.categories.length > 0 && (
                       <div className="relative z-10 mt-3 flex flex-wrap gap-1.5">

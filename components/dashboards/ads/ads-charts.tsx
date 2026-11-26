@@ -38,7 +38,7 @@ import {
 import { GENDER_COLOR, GENDER_LABEL, type Gender, type HourPoint, type Series } from "@/lib/dashboards/ads-view";
 import { axisValue, compact, tooltipValue, METRIC_LABELS, type ChartMetric } from "./formatters";
 
-export const TICK = { fontSize: 11, fill: "var(--muted-foreground)" } as const;
+export const TICK = { fontSize: 11, fill: "var(--disabled-foreground)" } as const;
 
 export const TOOLTIP_STYLE = {
   background: "var(--card)",

@@ -11,7 +11,7 @@ import { Tip } from "@/components/ui/tooltip";
  */
 
 const STYLES: Record<Exclude<WindowLevel, "none">, string> = {
-  relaxed: "border-border bg-muted text-muted-foreground",
+  relaxed: "border-border bg-muted text-disabled-foreground",
   warning: "border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-900 dark:bg-yellow-950/40 dark:text-yellow-200",
   urgent: "border-orange-300 bg-orange-100 text-orange-800 dark:border-orange-900 dark:bg-orange-950/50 dark:text-orange-200",
   last_call: "border-red-300 bg-red-100 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300",
@@ -33,7 +33,7 @@ export function WindowBadge({ info, className }: { info: WindowInfo; className?:
           </span>
         )}
         <span>{info.level === "closed" ? "Ventana cerrada" : WINDOW_LEVEL_LABELS[info.level]}</span>
-        {remaining && <span className="opacity-80">· {remaining}</span>}
+        {remaining && <span>· {remaining}</span>}
       </span>
     </Tip>
   );

@@ -121,7 +121,7 @@ function TouchRow({ item, timeZone, adHref, canLinkMeta }: { item: TimelineItem;
           </button>
           {open && (
             <div id={detailId} className="mt-1.5 space-y-2">
-              {view.matchNote && <p className="text-[11px] text-muted-foreground/80">{view.matchNote}</p>}
+              {view.matchNote && <p className="text-[11px] text-muted-foreground">{view.matchNote}</p>}
               <MetaMatchControl link={item.link} target={{ touchId: item.id }} canManage={canLinkMeta} actionsOnly />
               {view.details.length > 0 && (
                 <dl className="space-y-1 text-xs">

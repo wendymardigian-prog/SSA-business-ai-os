@@ -116,7 +116,7 @@ export function PeriodPopover<P extends string>({
         onClick={toggle}
         className={cn(
           "flex h-8 max-topbar:h-10 items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-[13px] font-medium transition-colors",
-          urlCivil ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
+          urlCivil ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-disabled-foreground/60",
         )}
       >
         <Calendar className="h-4 w-4 shrink-0" aria-hidden />
@@ -326,7 +326,7 @@ function MonthCalendar({
         {cells.map((cell) => {
           if (!cell.inMonth) {
             return (
-              <span key={cell.key} className="grid h-[34px] place-items-center text-[13px] tabular-nums text-muted-foreground/45">
+              <span key={cell.key} className="grid h-[34px] place-items-center text-[13px] tabular-nums text-muted-foreground">
                 {cell.date.day}
               </span>
             );
@@ -336,7 +336,7 @@ function MonthCalendar({
               <Tip key={cell.key} asChild content="Todavía no pasó">
                 <span
                   aria-disabled
-                  className="grid h-[34px] cursor-not-allowed place-items-center text-[13px] tabular-nums text-muted-foreground/40"
+                  className="grid h-[34px] cursor-not-allowed place-items-center text-[13px] tabular-nums text-muted-foreground"
                 >
                   {cell.date.day}
                 </span>
@@ -364,7 +364,7 @@ function MonthCalendar({
                 isEnd && !isStart && "rounded-r-lg bg-primary text-primary-foreground",
                 isStart && isEnd && "rounded-lg bg-primary text-primary-foreground",
                 !inside && !isStart && !isEnd && "rounded-lg hover:bg-accent",
-                cell.isToday && !isStart && !isEnd && "rounded-lg ring-1 ring-inset ring-muted-foreground",
+                cell.isToday && !isStart && !isEnd && "rounded-lg ring-1 ring-inset ring-disabled-foreground",
               )}
             >
               {cell.date.day}

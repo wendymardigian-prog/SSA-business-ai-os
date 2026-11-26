@@ -97,7 +97,7 @@ export function BrandSettings({ initial }: { initial: BrandSettingsInitial }) {
   }
 
   const inputClass =
-    "mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";
+    "mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring";
 
   return (
     <section>
@@ -179,7 +179,7 @@ export function BrandSettings({ initial }: { initial: BrandSettingsInitial }) {
               value={color}
               placeholder={installationColor() ?? "#111827"}
               onChange={(e) => setColor(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           {preview.colorHex && (

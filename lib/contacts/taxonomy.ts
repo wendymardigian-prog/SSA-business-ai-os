@@ -236,7 +236,7 @@ export const CHANNEL_COLORS: Record<TouchChannelKey, string> = {
   organic: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
   paid: "bg-sky-500/12 text-sky-700 dark:text-sky-300",
   referral: "bg-violet-500/12 text-violet-700 dark:text-violet-300",
-  direct: "bg-muted text-muted-foreground",
+  direct: "bg-muted text-disabled-foreground",
 };
 
 export function isChannel(value: string | null | undefined): value is TouchChannelKey {

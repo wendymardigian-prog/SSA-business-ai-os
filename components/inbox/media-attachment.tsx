@@ -218,7 +218,7 @@ export function MediaAttachment({
           <FileText className="h-4 w-4 flex-shrink-0" aria-hidden />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-xs font-medium">{plan.filename}</span>
-            <span className="block text-[11px] opacity-70">
+            <span className="block text-[11px]">
               {[extensionLabel(item), size].filter(Boolean).join(" · ") || plan.label}
             </span>
           </span>
@@ -234,7 +234,7 @@ function Note({ tone, children }: { tone: "muted" | "danger"; children: React.Re
     <p
       className={cn(
         "mt-1.5 flex flex-wrap items-center gap-1.5 text-xs",
-        tone === "danger" ? "text-red-700 dark:text-red-300" : "opacity-70",
+        tone === "danger" ? "text-red-700 dark:text-red-300" : undefined,
       )}
     >
       {children}
@@ -267,7 +267,7 @@ function PlayCard({
         <Play className="h-3.5 w-3.5" aria-hidden />
       </span>
       <span className="min-w-0 flex-1 truncate text-xs font-medium">{label}</span>
-      {detail && <span className="flex-shrink-0 text-[11px] opacity-70">{detail}</span>}
+      {detail && <span className="flex-shrink-0 text-[11px]">{detail}</span>}
     </button>
   );
 }
@@ -287,7 +287,7 @@ function Footer({
   if (!label && !size && !downloadUrl) return null;
 
   return (
-    <p className="mt-1 flex items-center gap-2 text-[11px] opacity-70">
+    <p className="mt-1 flex items-center gap-2 text-[11px]">
       {label && <span className="rounded bg-current/10 px-1 font-medium">{label}</span>}
       {size && <span>{size}</span>}
       {downloadUrl && (

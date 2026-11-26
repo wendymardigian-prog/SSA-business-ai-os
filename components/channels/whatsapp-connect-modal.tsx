@@ -212,7 +212,7 @@ export function WhatsAppConnectModal({
             </div>
           ) : expired ? (
             <div className="flex flex-col items-center gap-3 text-center">
-              <Smartphone className="h-10 w-10 text-muted-foreground/40" />
+              <Smartphone className="h-10 w-10 text-muted-foreground" />
               <p className="text-sm font-medium">El código venció</p>
               <p className="text-xs text-muted-foreground">
                 WhatsApp dejó de generar códigos para este número. Pedí uno nuevo y escanealo.
@@ -247,7 +247,7 @@ export function WhatsAppConnectModal({
             </>
           ) : (
             <div className="flex flex-col items-center gap-3 text-center">
-              <Smartphone className="h-10 w-10 text-muted-foreground/40" />
+              <Smartphone className="h-10 w-10 text-muted-foreground" />
               <p className="text-xs text-muted-foreground">
                 Generando el codigo...
               </p>
@@ -265,7 +265,7 @@ export function WhatsAppConnectModal({
         )}
 
         {!connected && (
-          <p className="mt-3 text-center text-[10px] text-muted-foreground/70">
+          <p className="mt-3 text-center text-[10px] text-muted-foreground">
             El codigo se renueva solo cada pocos segundos. Deja esta ventana abierta.
           </p>
         )}

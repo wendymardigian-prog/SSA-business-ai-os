@@ -615,7 +615,7 @@ export function NodePalette({ memberFlow = false, locked = false, onAdd }: { mem
             disabled={locked}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar (atajo: /)"
-            className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge disabled:opacity-50"
+            className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-foreground placeholder:text-disabled-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge disabled:opacity-50"
           />
         </label>
         {locked && (

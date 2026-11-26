@@ -263,7 +263,7 @@ export function SequenceEditor({ sequence, canEdit, aiProviders }: SequenceEdito
         {steps.length === 0 && (
           <div className="mt-4 rounded-lg border border-dashed border-border p-8 text-center">
             <p className="text-sm text-muted-foreground">Todavía no hay pasos</p>
-            <p className="mt-1 text-xs text-muted-foreground/70">
+            <p className="mt-1 text-xs text-muted-foreground">
               Empezá con un mensaje, o con una espera si querés dejar pasar un rato.
             </p>
           </div>
@@ -424,7 +424,7 @@ function StepCard({
             onChange={(emailCategory) => onChange({ emailCategory })}
             selectClassName="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-default disabled:opacity-70"
           />
-          <p className="mt-1 text-xs text-muted-foreground/80">Solo cuenta si la secuencia sale por email.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Solo cuenta si la secuencia sale por email.</p>
         </div>
       )}
     </div>

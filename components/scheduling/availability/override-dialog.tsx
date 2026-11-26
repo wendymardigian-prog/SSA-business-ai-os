@@ -118,7 +118,7 @@ export function OverrideDialog({
                     else next.add(day.date);
                     setDays(next);
                   }}
-                  className={`h-8 rounded-lg text-sm tabular-nums ${!day.isCurrentMonth ? "opacity-20" : past ? "text-muted-foreground/50" : selected ? "bg-primary text-primary-foreground" : works ? "font-medium hover:bg-muted" : "text-muted-foreground hover:bg-muted"}`}
+                  className={`h-8 rounded-lg text-sm tabular-nums ${!day.isCurrentMonth ? "opacity-20" : past ? "text-muted-foreground" : selected ? "bg-primary text-primary-foreground" : works ? "font-medium hover:bg-muted" : "text-muted-foreground hover:bg-muted"}`}
                 >
                   {day.dayOfMonth}
                 </button>
@@ -135,7 +135,7 @@ export function OverrideDialog({
               ["hours", "Horario distinto", "Reemplaza el horario semanal de ese día"],
             ].map(([key, title, sub]) => (
               <button key={key} type="button" role="radio" aria-checked={mode === key} onClick={() => setMode(key as "off" | "hours")} className={`flex w-full items-start gap-2 rounded-lg border p-2 text-left ${mode === key ? "border-primary-edge bg-primary/10" : "border-border"}`}>
-                <span className={`mt-1 h-3 w-3 shrink-0 rounded-full border ${mode === key ? "border-primary-edge bg-primary" : "border-muted-foreground"}`} />
+                <span className={`mt-1 h-3 w-3 shrink-0 rounded-full border ${mode === key ? "border-primary-edge bg-primary" : "border-disabled-foreground"}`} />
                 <span>
                   <span className="block text-sm font-medium">{title}</span>
                   <span className="block text-xs text-muted-foreground">{sub}</span>

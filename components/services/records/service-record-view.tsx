@@ -103,7 +103,7 @@ const fmtShort = (d: string | null) => (d ? civilShort.format(new Date(`${d}T12:
 const usd = (cents: number) => `US$${(cents / 100).toLocaleString("es-AR", { maximumFractionDigits: cents % 100 ? 2 : 0 })}`;
 
 const TONE_TEXT: Record<RecordTone, string> = { good: "text-good", warn: "text-warn", bad: "text-bad", neutral: "text-muted-foreground" };
-const TONE_DOT: Record<RecordTone, string> = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted-foreground/40" };
+const TONE_DOT: Record<RecordTone, string> = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-disabled-foreground/40" };
 const LIGHT_BAND: Record<string, string> = { red: "border-bad/50 bg-bad/5", yellow: "border-warn/50 bg-warn/5", green: "border-good/40 bg-good/5", gray: "border-border bg-muted/30" };
 
 function useRecordNav() {
@@ -800,7 +800,7 @@ function ClassroomBlock({
                     {m.lessons.length === 0 && <li className="text-xs text-muted-foreground">Sin clases todavía.</li>}
                     {m.lessons.map((l) => (
                       <li key={l.id} className="flex items-center gap-2 text-sm">
-                        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", l.done ? "bg-good" : l.state.kind === "to_fix" ? "bg-warn" : "bg-muted-foreground/40")} aria-hidden />
+                        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", l.done ? "bg-good" : l.state.kind === "to_fix" ? "bg-warn" : "bg-disabled-foreground/40")} aria-hidden />
                         <span className={cn("min-w-0 flex-1 truncate", !l.done && "text-muted-foreground")}>{l.title}</span>
                         <span className="shrink-0 text-xs text-muted-foreground">
                           {LESSON_LABEL[l.state.kind]}

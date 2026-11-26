@@ -378,7 +378,7 @@ export function BookManualDialog({
                             onClick={() => chooseEvent(e)}
                             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-accent"
                           >
-                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: e.color ?? "var(--muted-foreground)" }} aria-hidden />
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: e.color ?? "var(--disabled-foreground)" }} aria-hidden />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate font-medium">{e.title}</span>
                               <span className="block truncate text-xs text-muted-foreground">

@@ -111,7 +111,7 @@ export function ConditionPanel({ data: rawData, onChange, onConvert }: Condition
           >
             Convertir a Condiciones
           </button>
-          <p className="mt-1 text-[11px] opacity-80">Se conservan las condiciones y a dónde llevaba cada salida: «Sí» pasa a ser el camino «Si» y «No», el «Si no».</p>
+          <p className="mt-1 text-[11px]">Se conservan las condiciones y a dónde llevaba cada salida: «Sí» pasa a ser el camino «Si» y «No», el «Si no».</p>
         </div>
       )}
 
@@ -178,7 +178,7 @@ export function ConditionPanel({ data: rawData, onChange, onConvert }: Condition
                   <button
                     type="button"
                     onClick={() => removeCondition(index)}
-                    className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
+                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-muted-foreground"
                     aria-label={`Quitar la condición ${index + 1}`}
                   >
                     <X className="h-3 w-3" />
@@ -213,7 +213,7 @@ export function ConditionPanel({ data: rawData, onChange, onConvert }: Condition
                         value={argument}
                         onChange={(e) => setArgument(e.target.value)}
                         placeholder={option.argumentPlaceholder}
-                        className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm placeholder:text-muted-foreground/60 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm placeholder:text-disabled-foreground focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                       />
                     </>
                   )}
@@ -283,7 +283,7 @@ export function ConditionPanel({ data: rawData, onChange, onConvert }: Condition
                             updateCondition(index, { ...condition, value: e.target.value })
                           }
                           placeholder="Valor"
-                          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm placeholder:text-muted-foreground/60 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm placeholder:text-disabled-foreground focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                         />
                       )}
                     </>

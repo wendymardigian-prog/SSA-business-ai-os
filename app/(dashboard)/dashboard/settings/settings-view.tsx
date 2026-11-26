@@ -169,7 +169,7 @@ export function SettingsView({
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
 
@@ -268,7 +268,7 @@ export function SettingsView({
                       }
                     }}
                     placeholder="Agregar una palabra clave..."
-                    className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                   <button
                     onClick={addKeyword}
@@ -297,7 +297,7 @@ export function SettingsView({
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-3 text-xs text-muted-foreground/70">
+                  <p className="mt-3 text-xs text-muted-foreground">
                     {SETTINGS_EMPTY_STATES.generalKeywords}
                   </p>
                 )}

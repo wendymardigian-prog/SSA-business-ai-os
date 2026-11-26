@@ -29,7 +29,7 @@ export type { ProductRow };
 const STATUS_BADGE: Record<ProductStatus, string> = {
   active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
   inactive: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
-  discontinued: "bg-muted text-muted-foreground",
+  discontinued: "bg-muted text-disabled-foreground",
 };
 
 const NOTICE_KEY = "ssa:productos-aviso-contenido";

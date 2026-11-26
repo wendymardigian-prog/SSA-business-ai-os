@@ -13,7 +13,7 @@ export function AgentCard({ agent, availability, detail }: { agent: AgentConfig;
   const BADGE_STYLE = {
     ok: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
     warn: "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300",
-    off: "bg-muted text-muted-foreground",
+    off: "bg-muted text-disabled-foreground",
   } as const;
   return (
     <Link

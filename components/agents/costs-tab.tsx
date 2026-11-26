@@ -33,7 +33,7 @@ export function CostsTab({ data }: { data: AgentScreenData }) {
 
       {t.runs === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-          <Coins className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+          <Coins className="h-10 w-10 text-muted-foreground" aria-hidden />
           <p className="mt-3 text-sm font-medium">Sin gasto de IA en {rangeLabel.toLowerCase()}</p>
           <p className="mt-1 max-w-md text-xs text-muted-foreground">
             Acá se suma cada llamada a IA del sistema: los turnos del agente, el nodo de IA de los flows, los pasos de secuencias, la indexación de documentos y los

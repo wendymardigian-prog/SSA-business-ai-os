@@ -202,7 +202,7 @@ export function InboxFiltersMenu({
 
         <FilterGroup label="Tags">
           {tags.length === 0 ? (
-            <p className="text-xs text-muted-foreground/70">Todavía no hay tags.</p>
+            <p className="text-xs text-muted-foreground">Todavía no hay tags.</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {tags.map((tag) => (

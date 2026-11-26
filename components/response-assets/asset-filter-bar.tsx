@@ -151,7 +151,7 @@ function KindChip({
           "inline-flex items-center gap-1.5 rounded-md border font-medium transition-colors",
           className,
           disabled
-            ? "cursor-not-allowed border-dashed border-border text-muted-foreground/50"
+            ? "cursor-not-allowed border-dashed border-border text-muted-foreground"
             : active
               ? "border-primary-edge bg-primary/10 text-foreground"
               : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",

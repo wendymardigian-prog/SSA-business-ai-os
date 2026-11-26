@@ -167,7 +167,7 @@ export function DatePill({
       <span
         className={cn(
           "relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] transition-colors focus-within:border-primary-edge",
-          !disabled && "hover:border-muted-foreground/60",
+          !disabled && "hover:border-disabled-foreground/60",
           disabled && "opacity-80",
           !value && "text-muted-foreground",
           overdue && "text-red-600 dark:text-red-400",
@@ -229,7 +229,7 @@ export function DurationSelect({
   return (
     // Sin `asChild`: el texto suele explicar por qué está apagada, y un select apagado no recibe eventos del puntero.
     <Tip content={title}>
-      <span className={cn("relative inline-flex h-8 items-center rounded-lg border border-input bg-background text-[13px] transition-colors focus-within:border-primary-edge", !disabled && "hover:border-muted-foreground/60", disabled && "opacity-60")}>
+      <span className={cn("relative inline-flex h-8 items-center rounded-lg border border-input bg-background text-[13px] transition-colors focus-within:border-primary-edge", !disabled && "hover:border-disabled-foreground/60", disabled && "opacity-60")}>
         <Timer className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
         <select
           value={value === null ? "" : String(value)}

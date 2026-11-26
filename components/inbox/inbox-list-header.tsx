@@ -65,7 +65,7 @@ export function InboxListHeader({
             aria-expanded={searchOpen}
             className={cn(
               "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors",
-              searchOpen ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
+              searchOpen ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-disabled-foreground/60",
             )}
           >
             <Search className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />

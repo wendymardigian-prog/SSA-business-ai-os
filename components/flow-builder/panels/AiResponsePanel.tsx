@@ -126,7 +126,7 @@ export function AiResponsePanel({ data: rawData, onChange, availableVariables }:
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-[11px] text-muted-foreground/60">
+            <p className="mt-1 text-[11px] text-muted-foreground">
               Se usa tu propia cuenta: el consumo se factura ahi.
             </p>
           </>
@@ -143,9 +143,9 @@ export function AiResponsePanel({ data: rawData, onChange, availableVariables }:
           onChange={(e) => onChange({ ...data, systemPrompt: e.target.value })}
           placeholder="Sos el asistente de este negocio. Respondé breve y claro…"
           rows={8}
-          className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
-        <p className="mt-1 text-[11px] text-muted-foreground/60">
+        <p className="mt-1 text-[11px] text-muted-foreground">
           Cómo tiene que comportarse y responder la IA. Podés usar variables: por ejemplo, el nombre del contacto o lo {/* @plantilla-quitar(formularios) */}
           que respondió en un formulario. {/* @plantilla-quitar(formularios) */}
           {/* @plantilla-sin(formularios): Cómo tiene que comportarse y responder la IA. Podés usar variables: por ejemplo, el nombre del contacto o el día */}
@@ -169,7 +169,7 @@ export function AiResponsePanel({ data: rawData, onChange, availableVariables }:
           onChange={(e) => onChange({ ...data, temperature: parseFloat(e.target.value) })}
           className="w-full"
         />
-        <div className="mt-1 flex justify-between text-[11px] text-muted-foreground/60">
+        <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
           <span>Precisa</span>
           <span>Creativa</span>
         </div>
@@ -188,7 +188,7 @@ export function AiResponsePanel({ data: rawData, onChange, availableVariables }:
           max={4096}
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
-        <p className="mt-1 text-[11px] text-muted-foreground/60">
+        <p className="mt-1 text-[11px] text-muted-foreground">
           En tokens. 500 alcanza para un par de párrafos.
         </p>
       </div>
@@ -206,7 +206,7 @@ export function AiResponsePanel({ data: rawData, onChange, availableVariables }:
           max={50}
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
-        <p className="mt-1 text-[11px] text-muted-foreground/60">
+        <p className="mt-1 text-[11px] text-muted-foreground">
           Cuántos mensajes anteriores de la conversación se le pasan a la IA. Sin conversación (un flujo de agenda o de formulario), ninguno. {/* @plantilla-quitar(formularios) */}
           {/* @plantilla-sin(formularios): Cuántos mensajes anteriores de la conversación se le pasan a la IA. Sin conversación (un flujo de agenda), ninguno. */}
         </p>
@@ -223,7 +223,7 @@ export function AiResponsePanel({ data: rawData, onChange, availableVariables }:
           />
           Enviar la respuesta automáticamente
         </label>
-        <p className="mt-1 text-[11px] text-muted-foreground/60">
+        <p className="mt-1 text-[11px] text-muted-foreground">
           La respuesta siempre queda disponible para los pasos siguientes como{" "}
           {"{{ai_response}}"}. Desactivalo si preferís mandarla vos con un paso
           Enviar mensaje.

@@ -498,7 +498,7 @@ export function AssetFormDialog({
                 </Tip>
               ))}
             </div>
-            <p className="mt-2 text-xs text-muted-foreground/70">Si el contacto no tiene ese dato cargado, la variable queda vacía.</p>
+            <p className="mt-2 text-xs text-muted-foreground">Si el contacto no tiene ese dato cargado, la variable queda vacía.</p>
           </div>
           {content.trim() && (
             <div>
@@ -708,7 +708,7 @@ function Field({
           {error}
         </p>
       ) : (
-        hint && <p className="mt-1 text-xs text-muted-foreground/80">{hint}</p>
+        hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
       )}
     </div>
   );

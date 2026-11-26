@@ -28,7 +28,7 @@ export function VariableMenu({
   if (variables.length === 0) return null;
   if (disabled) {
     return (
-      <span className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground opacity-50">
+      <span className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs text-disabled-foreground">
         <Braces className="h-3.5 w-3.5" aria-hidden /> Variable
       </span>
     );

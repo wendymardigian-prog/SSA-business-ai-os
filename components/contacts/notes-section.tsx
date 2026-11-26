@@ -92,13 +92,13 @@ export function NotesSection({
         rows={6}
         placeholder="Lo que anotes acá lo ve todo el equipo que trabaje este contacto."
         aria-label="Notas del contacto"
-        className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
       />
 
       {error && <div className="mt-2"><ActionError message={error} /></div>}
 
       {dirty && !error && (
-        <p className="mt-1 text-xs text-muted-foreground/70">
+        <p className="mt-1 text-xs text-muted-foreground">
           Sin guardar. Ctrl+Enter para guardar.
         </p>
       )}

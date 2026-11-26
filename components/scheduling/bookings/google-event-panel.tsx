@@ -609,7 +609,7 @@ export function CreateChoiceDialog({
         {onGoogle && (
           <button type="button" onClick={onGoogle} className={cn(option, "bg-muted/40 text-muted-foreground")}>
             <GoogleCalendarLogo className="mt-0.5 opacity-60 grayscale-[40%]" />
-            <span className="opacity-80">
+            <span>
               <span className="block text-sm font-medium">Evento de Google</span>
               <span className="block text-xs">Solo en tu Google Calendar, no en el sistema: para bloquear tiempo o anotar algo.</span>
             </span>

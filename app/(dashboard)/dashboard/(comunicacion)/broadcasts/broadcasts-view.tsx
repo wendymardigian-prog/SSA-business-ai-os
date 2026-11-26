@@ -151,7 +151,7 @@ export function BroadcastsView({
       <div className="flex-1 overflow-auto">
         {totalAll === 0 && items.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
-            <Radio className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+            <Radio className="h-10 w-10 text-muted-foreground" aria-hidden />
             <p className="mt-3 text-sm font-medium">Todavía no hay broadcasts</p>
             <p className="mt-1 max-w-sm text-xs text-muted-foreground">
               Elegí a quiénes con los mismos filtros de Contactos, el canal (WhatsApp o email) y el mensaje. Por WhatsApp salen de a poco, para no

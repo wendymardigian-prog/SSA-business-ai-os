@@ -118,7 +118,7 @@ export function TrendChart({
         {ticks.map((v) => (
           <g key={v}>
             <line x1={L} x2={W} y1={y(v)} y2={y(v)} stroke="var(--grid)" strokeWidth={1} />
-            <text x={L - 8} y={y(v) + 4} textAnchor="end" className="fill-muted-foreground text-[11px]">
+            <text x={L - 8} y={y(v) + 4} textAnchor="end" className="fill-disabled-foreground text-[11px]">
               {axisFmt(v)}
             </text>
           </g>
@@ -127,7 +127,7 @@ export function TrendChart({
         {/* Fechas */}
         {points.map((p, i) =>
           i % every === 0 ? (
-            <text key={p.bucket} x={L + cw * i + cw / 2} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px]">
+            <text key={p.bucket} x={L + cw * i + cw / 2} y={H - 6} textAnchor="middle" className="fill-disabled-foreground text-[11px]">
               {p.bucket}
             </text>
           ) : null,

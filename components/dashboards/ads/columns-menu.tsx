@@ -68,7 +68,7 @@ export function ColumnsMenu({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar una columna…"
-          className="h-8 w-full rounded-lg border border-border bg-background pl-7 pr-2 text-xs placeholder:text-muted-foreground/70 focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
+          className="h-8 w-full rounded-lg border border-border bg-background pl-7 pr-2 text-xs placeholder:text-disabled-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
         />
       </label>
 
@@ -79,7 +79,7 @@ export function ColumnsMenu({
           <legend className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</legend>
           {sections.map((section) => (
             <div key={section.subgroup ?? "main"} className="space-y-0.5">
-              {section.label && <p className="pl-1 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80">{section.label}</p>}
+              {section.label && <p className="pl-1 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{section.label}</p>}
               <ul className="space-y-0.5">
                 {section.columns.map((column, index) => (
                   <li
@@ -101,7 +101,7 @@ export function ColumnsMenu({
                     onDragEnd={() => setDragging(null)}
                     className={`flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-accent/50 ${dragging === column.id ? "opacity-50" : ""}`}
                   >
-                    {!query && <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground/60" aria-hidden />}
+                    {!query && <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" aria-hidden />}
                     <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-xs">
                       <input
                         type="checkbox"

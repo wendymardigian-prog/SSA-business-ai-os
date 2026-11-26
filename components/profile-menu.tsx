@@ -150,13 +150,13 @@ export function ProfileMenu({
           <span className="min-w-0 flex-1 collapsed:hidden">
             <span className="block truncate text-sm font-medium text-sidebar-foreground">{principal}</span>
             {secundario && (
-              <span className="block truncate text-xs text-sidebar-foreground/60">{secundario}</span>
+              <span className="block truncate text-xs text-sidebar-foreground">{secundario}</span>
             )}
           </span>
           <ChevronUp
             aria-hidden="true"
             className={cn(
-              "h-3.5 w-3.5 shrink-0 text-sidebar-foreground/50 transition-transform collapsed:hidden",
+              "h-3.5 w-3.5 shrink-0 text-sidebar-foreground transition-transform collapsed:hidden",
               open && "rotate-180",
             )}
           />

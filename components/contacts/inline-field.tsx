@@ -269,7 +269,7 @@ export function InlineField({
             {error}
           </p>
         ) : (
-          hint && <p className="mt-1 text-xs text-muted-foreground/70">{hint}</p>
+          hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
         )}
       </div>
     );
@@ -281,7 +281,7 @@ export function InlineField({
       {shownValue}
     </>
   ) : (
-    <span className="text-muted-foreground/60 italic">{canEdit ? placeholder : "—"}</span>
+    <span className="text-muted-foreground italic">{canEdit ? placeholder : "—"}</span>
   );
 
   // Un valor que es un link: el texto lleva al perfil y se edita con el lapiz.
@@ -297,7 +297,7 @@ export function InlineField({
               type="button"
               onClick={begin}
               aria-label={`Editar ${label}`}
-              className="shrink-0 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground group-hover:text-muted-foreground"
+              className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground group-hover:text-muted-foreground"
             >
               <Pencil className="h-3.5 w-3.5" aria-hidden />
             </button>
@@ -330,7 +330,7 @@ export function InlineField({
         <span className="min-w-0 break-words">{shown}</span>
         <Pencil
           className={cn(
-            "shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground group-focus-visible:text-foreground",
+            "shrink-0 text-muted-foreground transition-colors group-hover:text-foreground group-focus-visible:text-foreground",
             title ? "mt-2 h-4 w-4" : "mt-1 h-3.5 w-3.5",
           )}
           aria-hidden

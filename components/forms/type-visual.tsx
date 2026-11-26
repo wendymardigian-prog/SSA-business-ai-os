@@ -41,9 +41,9 @@ export function FormTypeIcon({ type, className, tooltip = false }: { type: FormT
 
 const STATUS_TONE: Record<FormStatus, string> = {
   published: "bg-good/15 text-good",
-  draft: "bg-muted text-muted-foreground",
+  draft: "bg-muted text-disabled-foreground",
   paused: "bg-warn/15 text-warn",
-  archived: "bg-muted text-muted-foreground/70",
+  archived: "bg-muted text-disabled-foreground",
 };
 
 /** El chip de estado: un punto y el nombre ("Publicado", "Borrador", "Pausado", "Archivado"). */

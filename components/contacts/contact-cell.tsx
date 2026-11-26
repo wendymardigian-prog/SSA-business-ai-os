@@ -20,7 +20,7 @@ const TONES: Record<CellTone, string> = {
   red: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
   amber: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
   blue: "bg-sky-100 text-sky-800 dark:bg-sky-950/40 dark:text-sky-300",
-  muted: "bg-muted text-muted-foreground",
+  muted: "bg-muted text-disabled-foreground",
 };
 
 const usd = new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
@@ -36,12 +36,12 @@ function formatDay(iso: string, timeZone: string): string {
 /** La aclaración va en el MISMO renglón («valor · aclaración»): cada fila de la tabla mide un renglón. */
 function Sub({ children }: { children?: string }) {
   if (!children) return null;
-  return <span className="text-xs text-muted-foreground/80"> · {children}</span>;
+  return <span className="text-xs text-muted-foreground"> · {children}</span>;
 }
 
 export function ContactCell({ value, loading, memberLabel }: { value: CellValue | undefined; loading?: boolean; memberLabel: Map<string, string> }) {
   const timeZone = useViewerTimezone();
-  if (loading) return <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/60" aria-label="Cargando" />;
+  if (loading) return <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Cargando" />;
   if (!value) return <span className="text-muted-foreground">—</span>;
   switch (value.t) {
     case "text": {

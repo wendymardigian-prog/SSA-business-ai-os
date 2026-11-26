@@ -26,12 +26,12 @@ function Ai() {
 function Img() {
   return (
     <svg viewBox="0 0 140 90" className={SVG} aria-hidden>
-      <rect x="18" y="10" width="104" height="70" rx="6" className="fill-card stroke-muted-foreground/60" strokeWidth="3" />
+      <rect x="18" y="10" width="104" height="70" rx="6" className="fill-card stroke-disabled-foreground/60" strokeWidth="3" />
       <rect x="25" y="17" width="90" height="56" rx="3" className="fill-none stroke-border" />
-      <rect x="45" y="24" width="50" height="6" rx="2" className="fill-muted-foreground/50" />
+      <rect x="45" y="24" width="50" height="6" rx="2" className="fill-disabled-foreground/50" />
       <rect x="36" y="38" width="68" height="12" rx="4" className="fill-primary/15 stroke-primary" strokeDasharray="3 2" />
       <rect x="44" y="42" width="52" height="4" rx="2" className="fill-primary" />
-      <circle cx="70" cy="64" r="6" className="fill-muted-foreground/40" />
+      <circle cx="70" cy="64" r="6" className="fill-disabled-foreground/40" />
       <g transform="translate(104,58)">
         <circle r="11" className="fill-primary" />
         <path d="M-5 0h10M0-5v10" className="stroke-primary-foreground" strokeWidth="2.2" strokeLinecap="round" />
@@ -62,17 +62,17 @@ function Html() {
 function Blank() {
   return (
     <svg viewBox="0 0 140 90" className={SVG} aria-hidden>
-      <rect x="40" y="8" width="60" height="76" rx="6" className="fill-card stroke-muted-foreground" strokeDasharray="5 4" />
+      <rect x="40" y="8" width="60" height="76" rx="6" className="fill-card stroke-disabled-foreground" strokeDasharray="5 4" />
       <g transform="translate(70,46)">
         <circle r="13" className="fill-primary/15" />
         <path d="M-6 0h12M0-6v12" className="stroke-primary" strokeWidth="2.4" strokeLinecap="round" />
       </g>
       <rect x="14" y="62" width="20" height="16" rx="3" className="fill-muted stroke-border" />
-      <text x="24" y="74" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-muted-foreground">
+      <text x="24" y="74" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-disabled-foreground">
         T
       </text>
       <rect x="106" y="16" width="22" height="16" rx="3" className="fill-muted stroke-border" />
-      <path d="M110 28l4-5 3 3 3-4 4 6" className="stroke-muted-foreground" fill="none" />
+      <path d="M110 28l4-5 3 3 3-4 4 6" className="stroke-disabled-foreground" fill="none" />
     </svg>
   );
 }

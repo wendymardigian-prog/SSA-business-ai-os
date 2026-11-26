@@ -310,14 +310,14 @@ const TONE_CLASSES: Record<HistoryTone, string> = {
   cyan: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   pink: "bg-pink-500/10 text-pink-600 dark:text-pink-400",
-  slate: "bg-muted text-muted-foreground",
+  slate: "bg-muted text-disabled-foreground",
 };
 
 const DELIVERY_CLASSES: Record<DeliveryTone, string> = {
   good: "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400",
   bad: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400",
   warn: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  neutral: "border-border bg-muted text-muted-foreground",
+  neutral: "border-border bg-muted text-disabled-foreground",
 };
 
 function HistoryCard({

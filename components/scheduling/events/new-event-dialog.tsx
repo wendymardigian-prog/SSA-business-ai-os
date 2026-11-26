@@ -163,7 +163,7 @@ export function NewEventDialog({
               ["manual", "Ubicación manual", "Una dirección o una instrucción (\"te mando el link por WhatsApp\")"],
             ] as const).map(([key, label, sub]) => (
               <button key={key} type="button" role="radio" aria-checked={locationType === key} onClick={() => setLocationType(key)} className={`flex w-full items-start gap-2 rounded-lg border p-2 text-left ${locationType === key ? "border-primary-edge bg-primary/10" : "border-border"}`}>
-                <span className={`mt-1 h-3 w-3 shrink-0 rounded-full border ${locationType === key ? "border-primary-edge bg-primary" : "border-muted-foreground"}`} />
+                <span className={`mt-1 h-3 w-3 shrink-0 rounded-full border ${locationType === key ? "border-primary-edge bg-primary" : "border-disabled-foreground"}`} />
                 <span>
                   <span className="block text-sm font-medium">{label}</span>
                   <span className="block text-xs text-muted-foreground">{sub}</span>

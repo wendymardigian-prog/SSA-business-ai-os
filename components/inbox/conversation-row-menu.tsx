@@ -93,7 +93,7 @@ export function ConversationRowMenu({
           aria-label={`Acciones de la conversación con ${contactName}`}
           onClick={() => setOpen((v) => !v)}
           className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             open && "bg-accent text-foreground",
           )}
         >

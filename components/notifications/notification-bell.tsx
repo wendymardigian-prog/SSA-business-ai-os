@@ -179,7 +179,7 @@ export function NotificationBell({ workspaceId, initialUnread, variant = "icon",
             "relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors collapsed:justify-center collapsed:gap-0 collapsed:px-0",
             active
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
-              : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
         >
           <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -210,7 +210,7 @@ export function NotificationBell({ workspaceId, initialUnread, variant = "icon",
           aria-expanded={open}
           aria-haspopup="true"
           className={cn(
-            "relative flex items-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            "relative flex items-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             isRow
               ? "w-full gap-3 px-3 py-2 text-sm font-medium collapsed:justify-center collapsed:gap-0 collapsed:px-0"
               : "min-h-11 min-w-11 justify-center p-2 md:min-h-0 md:min-w-0",
@@ -267,7 +267,7 @@ export function NotificationBell({ workspaceId, initialUnread, variant = "icon",
               </div>
             ) : !items || items.length === 0 ? (
               <div className="px-4 py-10 text-center">
-                <Bell className="mx-auto h-8 w-8 text-muted-foreground/30" aria-hidden="true" />
+                <Bell className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
                 <p className="mt-3 text-sm font-medium">Todo tranquilo</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Te avisamos aca cuando una conversacion necesite una persona o se caiga un canal.

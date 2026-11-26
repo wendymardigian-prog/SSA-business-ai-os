@@ -261,7 +261,7 @@ export function BroadcastProgress({
         <div className="flex h-3 overflow-hidden rounded-full bg-muted" aria-hidden>
           <div className="bg-green-500" style={{ width: pct(counts.sent) }} />
           <div className="bg-red-500" style={{ width: pct(counts.failed) }} />
-          <div className="bg-muted-foreground/40" style={{ width: pct(counts.skipped + counts.cancelled) }} />
+          <div className="bg-disabled-foreground/40" style={{ width: pct(counts.skipped + counts.cancelled) }} />
         </div>
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
           <Count label="Enviados" value={counts.sent} />
@@ -299,7 +299,7 @@ export function BroadcastProgress({
               emailPreheader={msgPreheader}
               onEmailPreheaderChange={setMsgPreheader}
               variableList={variableList}
-              inputClass="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-ring"
+              inputClass="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-disabled-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
             {messageError && (
               <p role="alert" className="text-sm text-red-700 dark:text-red-400">

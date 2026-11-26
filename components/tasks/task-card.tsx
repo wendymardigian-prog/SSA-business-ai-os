@@ -67,7 +67,7 @@ export function TaskCard({ view, today, canEdit, busy, source, variant, onOpen, 
       )}
     >
       <div className="flex items-start gap-2">
-        {variant === "board" && canEdit && <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />}
+        {variant === "board" && canEdit && <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
         <button
           type="button"
           onClick={() => onOpen(root.current)}

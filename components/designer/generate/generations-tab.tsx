@@ -56,7 +56,7 @@ const TONE: Record<StateTone, string> = {
   ok: "bg-good/15 text-good",
   bad: "bg-bad/15 text-bad",
   act: "bg-primary/15 text-primary-ink",
-  off: "bg-muted text-muted-foreground",
+  off: "bg-muted text-disabled-foreground",
 };
 
 const ACTION_LABELS: Record<RowAction, string> = {

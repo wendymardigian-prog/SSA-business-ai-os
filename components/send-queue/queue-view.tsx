@@ -31,14 +31,14 @@ const PILL_CLASS: Record<QueueTone, string> = {
   green: "bg-green-600/15 text-green-800 dark:text-green-300",
   yellow: "bg-yellow-400/20 text-yellow-900 dark:bg-yellow-400/15 dark:text-yellow-300",
   red: "bg-red-600/15 text-red-800 dark:text-red-300",
-  neutral: "bg-foreground/10 text-foreground/90",
+  neutral: "bg-foreground/10 text-foreground",
 };
 
 const BAR_CLASS: Record<QueueTone, string> = {
   green: "bg-green-600",
   yellow: "bg-yellow-500",
   red: "bg-red-600",
-  neutral: "bg-muted-foreground/40",
+  neutral: "bg-disabled-foreground/40",
 };
 
 const META: ColumnMeta[] = [

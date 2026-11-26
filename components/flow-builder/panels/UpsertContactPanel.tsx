@@ -13,7 +13,7 @@ import type { UpsertEditorContext, UpsertPreview } from "@/lib/webhooks/action-t
 import { parseWebhookTriggerConfig } from "@/lib/webhooks/trigger-config";
 import { Tip } from "@/components/ui/tooltip";
 
-const inputClass = "w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
+const inputClass = "w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground placeholder:text-disabled-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
 const labelClass = "mb-1 block text-xs font-semibold text-foreground";
 
 const TRANSFORMS: Array<{ value: Transform | ""; label: string }> = [

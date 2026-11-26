@@ -46,7 +46,7 @@ export function DetailTabs({
           <Tip key={t.key} asChild content={t.unavailable}>
             <span
               aria-disabled="true"
-              className={cn(headerTabClass(false), "cursor-not-allowed text-muted-foreground/50 hover:text-muted-foreground/50")}
+              className={cn(headerTabClass(false), "cursor-not-allowed text-muted-foreground hover:text-muted-foreground")}
             >
               {t.label} <span className="text-[10px]">· próximamente</span>
             </span>

@@ -22,7 +22,7 @@ import { Tip } from "@/components/ui/tooltip";
  */
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
+  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
 
 export function BranchPanel({
   flowId,

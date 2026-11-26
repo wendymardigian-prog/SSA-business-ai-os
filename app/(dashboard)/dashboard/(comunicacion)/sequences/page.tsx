@@ -70,7 +70,7 @@ export default async function SequencesPage({ searchParams }: { searchParams: Pr
       <div className="flex-1 overflow-auto px-8 py-6">
         {!sequences || sequences.length === 0 ? (
           <div className="mt-12 rounded-xl border border-dashed border-border p-12 text-center">
-            <ListOrdered className="mx-auto h-10 w-10 text-muted-foreground/40" />
+            <ListOrdered className="mx-auto h-10 w-10 text-muted-foreground" />
             <h2 className="mt-4 text-lg font-semibold">Todavía no hay secuencias</h2>
             <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
               {canEdit

@@ -130,7 +130,7 @@ export function FormTriggerPanel({ triggerType, data, onChange }: { triggerType:
             ))}
           </div>
         )}
-        <p className="mt-1 text-[11px] text-muted-foreground/60">Sin elegir ninguno, vale para cualquiera.</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">Sin elegir ninguno, vale para cualquiera.</p>
       </div>
 
       {triggerType === "survey_answered" && (
@@ -208,7 +208,7 @@ export function FormTriggerPanel({ triggerType, data, onChange }: { triggerType:
                 sources={sources}
                 emptyHint="Sin condiciones: vale para cualquier respuesta."
               />
-              {selectedForms.length > 1 && <p className="text-[11px] text-muted-foreground/60">Con varios formularios, solo se ofrecen los campos que se llaman igual y son del mismo tipo en todos.</p>}
+              {selectedForms.length > 1 && <p className="text-[11px] text-muted-foreground">Con varios formularios, solo se ofrecen los campos que se llaman igual y son del mismo tipo en todos.</p>}
             </>
           )}
         </fieldset>

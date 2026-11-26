@@ -95,7 +95,7 @@ export function LayersPanel({
               }}
               className={cn("flex items-center gap-1 border-b border-border bg-card px-1.5 py-1 text-[12.5px] last:border-b-0", selected && "bg-primary/10", dragId === row.id && "opacity-50", overRow === displayIndex && dragId !== row.id && "shadow-[inset_0_2px_0_var(--primary-edge)]")}
             >
-              {!readOnly && <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground/60" aria-hidden />}
+              {!readOnly && <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" aria-hidden />}
               {html && (
                 <Tip asChild content={open ? "Cerrar la lista de textos" : "Ver los textos"}>
                   <button

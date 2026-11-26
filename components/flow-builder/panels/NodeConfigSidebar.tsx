@@ -178,7 +178,7 @@ const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: s
     label: "Acción",
     icon: Cog,
     color: "bg-slate-500",
-    borderColor: "border-muted-foreground",
+    borderColor: "border-disabled-foreground",
   },
 };
 
@@ -300,7 +300,7 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
               <button
                 type="button"
                 onClick={() => onDelete(node.id)}
-                className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-500"
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-500"
                 aria-label="Borrar paso"
               >
                 <Trash2 className="h-4 w-4" />
@@ -311,7 +311,7 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-muted-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -328,7 +328,7 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
           value={(node.data as Record<string, unknown>).label as string || ""}
           onChange={(e) => handleLabelChange(e.target.value)}
           placeholder={config.label}
-          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
 

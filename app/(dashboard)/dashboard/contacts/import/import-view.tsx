@@ -336,7 +336,7 @@ export function ImportView({
 function UploadStep({ onFile }: { onFile: (f: File | undefined) => void }) {
   return (
     <label className="flex max-w-2xl cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border px-6 py-16 text-center transition-colors hover:bg-accent/40">
-      <Upload className="h-8 w-8 text-muted-foreground/60" />
+      <Upload className="h-8 w-8 text-muted-foreground" />
       <span className="text-sm font-medium">Elegí un archivo CSV</span>
       <span className="max-w-sm text-xs text-muted-foreground">
         Hasta {MAX_IMPORT_BYTES / 1024 / 1024} MB y {MAX_IMPORT_ROWS.toLocaleString("es-AR")} filas.
@@ -476,7 +476,7 @@ function MapStep({
             </tbody>
           </table>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground/70">
+        <p className="mt-2 text-xs text-muted-foreground">
           Vista previa de las primeras {Math.min(PREVIEW_ROWS, rows.length)} filas.
         </p>
       </section>
@@ -653,7 +653,7 @@ function DoneStep({ result, fileName }: { result: Resultado; fileName: string })
       <Summary result={result} />
 
       {result.details.length > 0 && (
-        <p className="text-xs text-muted-foreground/70">
+        <p className="text-xs text-muted-foreground">
           Los números de fila son los de {fileName}, contando la fila de encabezados. Corregilas ahí y volvé a subir solo esas.
         </p>
       )}

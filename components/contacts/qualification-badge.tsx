@@ -44,7 +44,7 @@ export function QualificationDots({ level, color }: { level: number; color: stri
         <span
           key={n}
           className="h-1.5 w-1.5 rounded-full"
-          style={n <= level ? { backgroundColor: color } : { backgroundColor: "var(--muted-foreground)", opacity: 0.25 }}
+          style={n <= level ? { backgroundColor: color } : { backgroundColor: "var(--disabled-foreground)", opacity: 0.25 }}
         />
       ))}
     </span>

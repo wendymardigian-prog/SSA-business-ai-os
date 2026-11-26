@@ -37,7 +37,7 @@ export function TaskTriggerPanel({ triggerType, data, onChange }: { triggerType:
             set("projects", e.target.value.split(",").map((p) => normalizeProjectKey(p)).filter((p): p is string => !!p));
           }}
           placeholder="Lanzamiento Q4, Operaciones"
-          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <p className="mt-1 text-[11px] text-muted-foreground">Separados por coma. Mayúsculas y acentos no cuentan.</p>
       </div>
@@ -52,7 +52,7 @@ export function TaskTriggerPanel({ triggerType, data, onChange }: { triggerType:
           ))}
         </div>
       </fieldset>
-      <p className="text-[11px] text-muted-foreground/70">
+      <p className="text-[11px] text-muted-foreground">
         Sin elegir nada, vale para cualquier tarea.
         {triggerType === "task_overdue" ? " Se dispara una sola vez por vencimiento, y solo si la tarea tiene responsable o seguidores." : " Se dispara cada vez que se completa, también si se reabrió y se volvió a completar."}
         {" "}Las variables {"{{task.title}}"}, {"{{task.project}}"}, {"{{task.due_date}}"}, {"{{task.owner}}"} y {"{{task.url}}"} quedan disponibles. Si la tarea no tiene contacto, el flujo corre sin contacto: los pasos que necesitan uno se saltean.

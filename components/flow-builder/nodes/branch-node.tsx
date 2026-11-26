@@ -73,7 +73,7 @@ export function BranchNode({ id, data, selected }: NodeProps) {
         position={Position.Bottom}
         id={BRANCH_ELSE_HANDLE}
         style={{ left: `${((paths.length + 0.5) / slots) * 100}%` }}
-        className="!h-3 !w-3 !border-2 !border-muted-foreground !bg-white"
+        className="!h-3 !w-3 !border-2 !border-disabled-foreground !bg-white"
       />
     </div>
   );

@@ -5,7 +5,7 @@ import { loadTeamMemberOptions } from "@/lib/actions/flow-node-options";
 import { BOOKING_STATUSES } from "@/lib/scheduling/booking-status";
 import { VariableChips } from "./variable-chips";
 
-const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
 
 type PanelProps = { data: Record<string, unknown>; onChange: (data: Record<string, unknown>) => void; availableVariables?: string[] };

@@ -82,7 +82,7 @@ function TouchCard({ title, hint, touch, link, canLinkMeta }: { title: string; h
   return (
     <div className="rounded-lg border border-border p-3">
       <p className="text-xs font-semibold">{title}</p>
-      <p className="mb-2 text-xs text-muted-foreground/70">{hint}</p>
+      <p className="mb-2 text-xs text-muted-foreground">{hint}</p>
       <p className="text-sm">
         <TouchText touch={touch} />
       </p>
@@ -111,7 +111,7 @@ function TouchDetail({ touch }: { touch: TouchView }) {
           <p className="min-w-0 break-words text-xs text-muted-foreground">{touch.adLine}</p>
         </div>
       )}
-      {touch.matchNote && <p className="text-[11px] text-muted-foreground/80">{touch.matchNote}</p>}
+      {touch.matchNote && <p className="text-[11px] text-muted-foreground">{touch.matchNote}</p>}
       {touch.details.length > 0 && (
         <details className="text-xs">
           <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">Ver detalle</summary>

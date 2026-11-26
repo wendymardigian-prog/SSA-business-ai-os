@@ -244,14 +244,14 @@ function FieldDialog({
               ))}
             </select>
             {typeLocked && (
-              <p className="mt-1 text-xs text-muted-foreground/70">
+              <p className="mt-1 text-xs text-muted-foreground">
                 No se puede cambiar: ya hay {field?.usedBy} contacto(s) con un valor cargado.
               </p>
             )}
           </div>
 
           {field && (
-            <p className="text-xs text-muted-foreground/70">
+            <p className="text-xs text-muted-foreground">
               El identificador <code className="rounded bg-muted px-1">{field.slug}</code> no
               cambia al renombrar, porque es con el que los flows encuentran el campo.
             </p>

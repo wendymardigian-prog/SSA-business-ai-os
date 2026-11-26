@@ -7,7 +7,7 @@ import type { ServiceActionData, ServiceActionType } from "@/lib/flow-engine/nod
 import { ServiceKeySelect, ServiceVariantSelect } from "./service-key-select";
 import { useServicePicker } from "./use-service-picker";
 
-const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
 const hintClass = "mt-1 text-[11px] text-muted-foreground";
 

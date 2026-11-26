@@ -69,7 +69,7 @@ export function AgentRates({ data }: { data: AgentData }) {
 export function AgentHidden({ notice, onClear }: { notice: string; onClear: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-[14px] border border-border bg-card p-[18px] text-sm text-muted-foreground">
-      <Bot className="h-4 w-4 shrink-0 text-muted-foreground/70" aria-hidden />
+      <Bot className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
       <span className="min-w-[220px] flex-1">{notice}</span>
       <button
         type="button"
@@ -377,7 +377,7 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
     <div className="bg-card px-[18px] py-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn("mt-0.5 text-xl font-semibold tabular-nums", tone === "warn" && "text-warn", tone === "bad" && "text-bad")}>{value}</p>
-      <p className="text-[11.5px] text-muted-foreground/80">{hint}</p>
+      <p className="text-[11.5px] text-muted-foreground">{hint}</p>
     </div>
   );
 }

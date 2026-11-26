@@ -643,7 +643,7 @@ export default async function ContactDetailPage({
                               {conv.platform} · {conv.status === "open" ? "abierta" : conv.status}
                               {conv.assigned_to && ` · ${labels.get(conv.assigned_to) ?? "asignada"}`}
                             </p>
-                            <p className="text-[10px] text-muted-foreground/60">
+                            <p className="text-[10px] text-muted-foreground">
                               {formatRelative(conv.last_message_at, viewerTimezone)}
                             </p>
                           </div>

@@ -90,11 +90,11 @@ export function EnrollmentList({
 
         {enrollments.length === 0 ? (
           <div className="mt-6 rounded-lg border border-dashed border-border p-8 text-center">
-            <Users className="mx-auto h-8 w-8 text-muted-foreground/40" />
+            <Users className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
               Todavía no hay nadie inscripto
             </p>
-            <p className="mt-1 text-xs text-muted-foreground/70">
+            <p className="mt-1 text-xs text-muted-foreground">
               {canManage
                 ? "Podés inscribir a alguien desde acá, desde su ficha, o dejar que lo haga un flow con el nodo «Inscribir en secuencia»."
                 : "Los contactos entran desde un flow o los inscribe un Owner o Admin."}

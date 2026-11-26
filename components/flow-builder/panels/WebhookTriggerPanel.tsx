@@ -13,7 +13,7 @@ import type { PickerEndpoint } from "@/lib/webhooks/action-types";
 import { parseWebhookTriggerConfig } from "@/lib/webhooks/trigger-config";
 import { ONCE_PER_CONTACT_HELP, ONCE_PER_CONTACT_LABEL, oncePerContactHint } from "@/lib/webhooks/once-per-contact";
 
-const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
+const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-disabled-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
 
 /**
  * El panel del disparador «Webhook recibido» (F9, F11): elegir o crear el endpoint, copiar su URL,

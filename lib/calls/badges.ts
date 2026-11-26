@@ -13,7 +13,7 @@ export type CallBadgeTone = "neutral" | "info" | "classification" | "positive" |
 export const CALL_BADGE_BASE = "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap";
 
 export const CALL_BADGE_TONES: Record<CallBadgeTone, string> = {
-  neutral: "border-border bg-muted text-muted-foreground",
+  neutral: "border-border bg-muted text-disabled-foreground",
   info: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
   classification: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
   positive: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
@@ -94,5 +94,5 @@ export function scoreBarClass(score: number | null | undefined): string {
   const tone = scoreBadgeTone(score);
   if (tone === "positive") return "bg-emerald-500";
   if (tone === "review") return "bg-amber-500";
-  return "bg-muted-foreground/50";
+  return "bg-disabled-foreground/50";
 }

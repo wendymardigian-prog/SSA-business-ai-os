@@ -75,7 +75,7 @@ export function AssetPreview({
 
       {asset.description && asset.kind !== "text" && (
         <p className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground/80">Para qué sirve: </span>
+          <span className="font-medium text-foreground">Para qué sirve: </span>
           {asset.description}
         </p>
       )}

@@ -77,7 +77,7 @@ const BORDER_BY_STATE: Record<string, string> = {
 };
 
 const PILL_BY_STATE: Record<string, string> = {
-  none: "bg-muted text-muted-foreground",
+  none: "bg-muted text-disabled-foreground",
   tent: "border border-dashed border-border text-muted-foreground",
   sched: "bg-blue-600 text-white",
   pub: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",

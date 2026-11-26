@@ -74,7 +74,7 @@ export function MemberPicker({
       align="end"
       width={260}
       disabled={pending}
-      triggerClassName="h-9 w-9 shrink-0 justify-center rounded-lg border border-input bg-background transition-colors hover:border-muted-foreground/60"
+      triggerClassName="h-9 w-9 shrink-0 justify-center rounded-lg border border-input bg-background transition-colors hover:border-disabled-foreground/60"
       trigger={pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : circle}
     >
       <PortalMenuLabel>{groupLabel ?? label}</PortalMenuLabel>

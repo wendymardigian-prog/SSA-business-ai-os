@@ -51,7 +51,7 @@ const PILL: Record<ClientLight, { label: string; cls: string; num: string }> = {
   pending: { label: "Por confirmar", cls: "bg-primary/10 text-primary-ink", num: "bg-primary/15 text-primary-ink" },
   none: { label: "Sin activos", cls: "bg-muted text-muted-foreground", num: "bg-muted text-muted-foreground" },
 };
-const DOT: Record<ClientLight, string> = { red: "bg-bad", yellow: "bg-warn", green: "bg-good", gray: "bg-muted-foreground/40", pending: "bg-primary", none: "bg-muted-foreground/30" };
+const DOT: Record<ClientLight, string> = { red: "bg-bad", yellow: "bg-warn", green: "bg-good", gray: "bg-disabled-foreground/40", pending: "bg-primary", none: "bg-disabled-foreground/30" };
 const SORT_LABELS: Record<ClientSort, string> = { light: "Semáforo", name: "Nombre", active: "Servicios activos", progress: "Avance", login: "Último ingreso", points: "Puntos (30 días)", paid: "Total cobrado" };
 
 const usd = (cents: number) => `US$${(cents / 100).toLocaleString("es-AR", { maximumFractionDigits: cents % 100 ? 2 : 0 })}`;

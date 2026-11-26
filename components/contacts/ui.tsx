@@ -39,7 +39,7 @@ export function Section({
 /** Empty state chico, para las secciones de la ficha. */
 export function EmptyHint({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground/70">
+    <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
       {children}
     </p>
   );

@@ -312,20 +312,20 @@ export function ConversationList({
             <NoGroupsYet canManageGroups={canManageGroups} />
           ) : (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-            <MessageSquare className="h-8 w-8 text-muted-foreground/50" />
+            <MessageSquare className="h-8 w-8 text-muted-foreground" />
             {hasFilters ? (
               <>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Ninguna conversación coincide con los filtros
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground/70">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Probá quitando alguno para ver más.
                 </p>
               </>
             ) : (
               <>
                 <p className="mt-2 text-sm text-muted-foreground">Todavía no hay conversaciones</p>
-                <p className="mt-1 text-xs text-muted-foreground/70">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Cuando alguien escriba por un canal conectado, va a aparecer acá.
                 </p>
               </>

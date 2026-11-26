@@ -192,7 +192,7 @@ export function BranchCard({ step }: { step: BranchStep }) {
         <Plus className="h-4 w-4" aria-hidden /> {canAddPath(step.paths.length) ? "Camino" : `Máximo ${MAX_PATHS} caminos`}
       </button>
 
-      <section aria-label={BRANCH_ELSE_LABEL} className="space-y-2 border-l-4 border-muted-foreground/40 pl-3">
+      <section aria-label={BRANCH_ELSE_LABEL} className="space-y-2 border-l-4 border-disabled-foreground/40 pl-3">
         <div>
           <p className="text-sm font-semibold">{BRANCH_ELSE_LABEL}</p>
           <p className="text-xs text-muted-foreground">Si no se cumple ninguna de las anteriores. Siempre está al final y no se borra.</p>
