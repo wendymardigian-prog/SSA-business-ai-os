@@ -1,27 +1,17 @@
 "use client";
 // @plantilla-quitar(servicios)
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { ListChecks, NotebookPen, Plus } from "lucide-react";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { SidePanel } from "@/components/tasks/overlay";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 import { useUrlIntent } from "@/components/ui/use-url-intent";
-import {
-  archiveLiveSession,
-  loadSessionSheet,
-  markAttendance,
-  removeAttendance,
-  saveLiveDate,
-  saveLiveSession,
-  searchStudentsForAttendance,
-  suggestRecordings,
-  type SessionSheet,
-} from "@/lib/actions/live-sessions";
+import { archiveLiveSession, saveLiveSession } from "@/lib/actions/live-sessions";
 import { WEEKDAY_LABELS, liveSessionIssues, liveSessionSummary, type LiveSessionInput } from "@/lib/program/live-sessions";
 import {
   attendanceCell,
@@ -38,6 +28,10 @@ import {
 } from "@/lib/program/calendar-view";
 import type { CalendarData, CalendarOccurrence, CalendarSession } from "@/lib/program/load-calendar";
 import { Tip } from "@/components/ui/tooltip";
+import { Tabs } from "@/components/ui/tabs";
+import { ClickableBox } from "@/components/ui/clickable-row";
+import { ClassDrawer, type ClassOccurrence } from "@/components/services/portal/class-drawer";
+import { withClassRef, withListTab, type ClassRef, type ListTab } from "@/lib/program/class-drawer";
 
 type View = "lista" | "mes" | "series" | "grilla";
 
@@ -56,6 +50,9 @@ export function ProgramCalendar({
   seriesFilter,
   canManage,
   canAttendance,
+  canSeeTasks,
+  initialListTab,
+  initialClass,
   defaultTimezone,
 }: {
   productId: string;
@@ -65,11 +62,19 @@ export function ProgramCalendar({
   seriesFilter: string | null;
   canManage: boolean;
   canAttendance: boolean;
+  /** `tasks.view`: la sección «Tareas» del drawer de una clase. */
+  canSeeTasks: boolean;
+  initialListTab: ListTab;
+  /** La clase de la URL (`?sesion=&fecha=`), abierta al entrar. */
+  initialClass: ClassRef | null;
   defaultTimezone: string;
 }) {
   const tz = useViewerTimezone();
-  const [form, setForm] = useState<{ session: CalendarSession | null; date?: string; occurrence?: CalendarOccurrence } | null>(null);
-  const [sheet, setSheet] = useState<OverviewDate | null>(null);
+  const [form, setForm] = useState<{ session: CalendarSession | null; date?: string } | null>(null);
+  const [openClass, setOpenClass] = useState<ClassRef | null>(initialClass);
+  const [listTab, setListTab] = useState<ListTab>(initialListTab);
+  // Las notas guardadas desde el drawer (reabrir la clase las muestra sin pedir la página de nuevo).
+  const [savedNotes, setSavedNotes] = useState<Record<string, string>>({});
   const active = data.sessions.filter((s) => !s.archived_at);
   const byId = useMemo(() => new Map(data.sessions.map((s) => [s.id, s])), [data.sessions]);
   const color = (id: string) => COLORS[Math.max(0, active.findIndex((s) => s.id === id)) % COLORS.length];
@@ -87,12 +92,29 @@ export function ProgramCalendar({
     return baseLabel(b, { phase: phaseName(b.phase_key), variant: variantName(b.variant_id) });
   };
 
-  const openOccurrence = (o: { live_session_id: string; occurs_on: string; starts_at: string; status: string }) => {
-    const s = byId.get(o.live_session_id);
-    if (!s) return;
-    const past = data.past.find((p) => p.live_session_id === o.live_session_id && p.occurs_on === o.occurs_on);
-    if (Date.parse(o.starts_at) <= Date.now() && past) setSheet(past);
-    else if (canManage) setForm({ session: s, occurrence: o as CalendarOccurrence });
+  // La clase abierta vive en la URL (`?sesion=&fecha=`), sin pedirle la página al servidor.
+  const openOccurrence = (o: { live_session_id: string; occurs_on: string }) => {
+    if (!byId.get(o.live_session_id)) return;
+    const ref = { sessionId: o.live_session_id, occursOn: o.occurs_on };
+    setOpenClass(ref);
+    window.history.pushState(null, "", `?${withClassRef(window.location.search.slice(1), ref)}`);
+  };
+  const closeClass = () => {
+    setOpenClass(null);
+    window.history.replaceState(null, "", `?${withClassRef(window.location.search.slice(1), null)}`);
+  };
+  const changeTab = (t: ListTab) => {
+    setListTab(t);
+    window.history.replaceState(null, "", `?${withListTab(window.location.search.slice(1), t)}`);
+  };
+  const onNoteSaved = useCallback((key: string, html: string) => setSavedNotes((n) => ({ ...n, [key]: html })), []);
+
+  // Dónde está la clase abierta: en las pasadas, las próximas, las del mes o la que se pidió aparte (`data.focus`).
+  const findClass = (ref: ClassRef): { occurrence: ClassOccurrence | null; past: OverviewDate | null } => {
+    const same = (o: { live_session_id: string; occurs_on: string }) => o.live_session_id === ref.sessionId && o.occurs_on === ref.occursOn;
+    const past = data.past.find(same) ?? data.focus?.past ?? null;
+    const occurrence = past ?? data.upcoming.find(same) ?? data.month.find(same) ?? data.focus?.occurrence ?? null;
+    return { occurrence, past };
   };
 
   // Lista | Mes | Recurrentes, el mes y «+ Sesión» viven en la barra superior (Servicios A2): «+ Sesión» llega como
@@ -116,37 +138,72 @@ export function ProgramCalendar({
       ) : (
         <GridView />
       )}
+      {openClass && byId.get(openClass.sessionId) && (() => {
+        const s = byId.get(openClass.sessionId) as CalendarSession;
+        const found = findClass(openClass);
+        if (!found.occurrence) return null;
+        const key = dateKey(openClass.sessionId, openClass.occursOn);
+        return (
+          <ClassDrawer
+            key={key}
+            productId={productId}
+            session={s}
+            occurrence={found.occurrence}
+            past={found.past}
+            recording={data.recordings[key] ?? null}
+            note={savedNotes[key] ?? data.notes[key] ?? null}
+            data={data}
+            baseText={baseText(s)}
+            canManage={canManage}
+            canAttendance={canAttendance}
+            canSeeTasks={canSeeTasks}
+            onClose={closeClass}
+            onEditSession={() => setForm({ session: s })}
+            onNoteSaved={(html) => onNoteSaved(key, html)}
+          />
+        );
+      })()}
       {form && (
         <SessionDrawer
           productId={productId}
           session={form.session}
           date={form.date}
-          occurrence={form.occurrence}
           data={data}
           defaultTimezone={defaultTimezone}
           canManage={canManage}
           onClose={() => setForm(null)}
         />
       )}
-      {sheet && byId.get(sheet.live_session_id) && (
-        <SessionSheetPanel
-          productId={productId}
-          date={sheet}
-          session={byId.get(sheet.live_session_id) as CalendarSession}
-          recording={data.recordings[dateKey(sheet.live_session_id, sheet.occurs_on)] ?? null}
-          canManage={canManage}
-          canAttendance={canAttendance}
-          hhmm={hhmm}
-          when={when}
-          onClose={() => setSheet(null)}
-        />
-      )}
     </div>
   );
 
   function ListView() {
-    const upcoming = data.upcoming.slice(0, 30);
+    // Por fecha y hora: la base las devuelve agrupadas por sesión (todos los lunes, después todos los viernes).
+    const upcoming = [...data.upcoming].sort((x, y) => x.starts_at.localeCompare(y.starts_at)).slice(0, 30);
     const past = [...data.past].reverse().slice(0, 40);
+    // Lo que lleva una clase, chiquito al final de la fila: notas y tareas abiertas.
+    const marks = (sessionId: string, occursOn: string) => {
+      const k = dateKey(sessionId, occursOn);
+      const hasNote = !!(savedNotes[k] ?? data.notes[k]);
+      const tasks = data.openTasks[k] ?? 0;
+      return (
+        <>
+          {hasNote && (
+            <Tip content="Tiene notas internas">
+              <NotebookPen className="h-3.5 w-3.5 text-muted-foreground" aria-label="Tiene notas internas" />
+            </Tip>
+          )}
+          {tasks > 0 && (
+            <Tip content={tasks === 1 ? "1 tarea abierta" : `${tasks} tareas abiertas`}>
+              <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground" aria-label={tasks === 1 ? "1 tarea abierta" : `${tasks} tareas abiertas`}>
+                <ListChecks className="h-3.5 w-3.5" aria-hidden /> {tasks}
+              </span>
+            </Tip>
+          )}
+        </>
+      );
+    };
+    const rowClass = "flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm transition-colors hover:bg-accent";
     return (
       <div className="space-y-6">
         <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -162,58 +219,66 @@ export function ProgramCalendar({
             </div>
           ))}
         </dl>
-        <section className="space-y-2" aria-labelledby="proximas">
-          <h3 id="proximas" className="text-sm font-semibold">Próximas</h3>
-          {upcoming.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay sesiones en los próximos 60 días.</p>
-          ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {upcoming.map((o) => {
-                const s = byId.get(o.live_session_id);
-                if (!s) return null;
-                return (
-                  <li key={dateKey(o.live_session_id, o.occurs_on)} className={cn("flex flex-wrap items-center gap-3 px-3 py-2 text-sm", o.status === "cancelled" && "text-muted-foreground line-through")}>
-                    <span className="w-44 shrink-0">{when(o.starts_at)}</span>
-                    <button type="button" onClick={() => openOccurrence(o)} className="font-medium hover:underline" disabled={!canManage}>
-                      {s.title}
-                    </button>
-                    {o.status === "moved" && <span className="rounded bg-accent px-1.5 text-xs">Movida</span>}
-                    <span className="text-xs text-muted-foreground">Se mide sobre: {baseText(s)}</span>
-                    <span className="flex-1" />
-                    {s.meeting_url && o.status !== "cancelled" && (
-                      <a href={s.meeting_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-ink hover:underline">
-                        Link de la clase
-                      </a>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-        <section className="space-y-2" aria-labelledby="pasadas">
-          <h3 id="pasadas" className="text-sm font-semibold">Pasadas</h3>
-          {past.length === 0 ? (
+        <Tabs
+          label="Clases"
+          value={listTab}
+          onChange={changeTab}
+          tabs={[
+            { value: "proximas", label: `Próximas (${upcoming.length})` },
+            { value: "pasadas", label: `Pasadas (${past.length})` },
+          ]}
+        >
+          {listTab === "proximas" ? (
+            upcoming.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay sesiones en los próximos 60 días.</p>
+            ) : (
+              <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                {upcoming.map((o) => {
+                  const s = byId.get(o.live_session_id);
+                  if (!s) return null;
+                  return (
+                    <li key={dateKey(o.live_session_id, o.occurs_on)}>
+                      <ClickableBox onOpen={() => openOccurrence(o)} aria-label={`Abrir ${s.title} del ${when(o.starts_at)}`} className={cn(rowClass, o.status === "cancelled" && "text-muted-foreground")}>
+                        <span className={cn("w-40 shrink-0 tabular-nums", o.status === "cancelled" && "line-through")}>{when(o.starts_at)}</span>
+                        <span className={cn("font-medium", o.status === "cancelled" && "line-through")}>{s.title}</span>
+                        {o.status === "moved" && <span className="rounded bg-accent px-1.5 text-xs">Movida</span>}
+                        {o.status === "cancelled" && <span className="rounded bg-destructive/10 px-1.5 text-xs text-destructive">Cancelada</span>}
+                        <span className="hidden text-xs text-muted-foreground lg:inline">Se mide sobre: {baseText(s)}</span>
+                        <span className="flex-1" />
+                        {marks(o.live_session_id, o.occurs_on)}
+                        {s.meeting_url && o.status !== "cancelled" && (
+                          <a href={s.meeting_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-ink hover:underline">
+                            Link de la clase
+                          </a>
+                        )}
+                      </ClickableBox>
+                    </li>
+                  );
+                })}
+              </ul>
+            )
+          ) : past.length === 0 ? (
             <p className="text-sm text-muted-foreground">Todavía no pasó ninguna sesión.</p>
           ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border">
+            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
               {past.map((d) => {
                 const s = byId.get(d.live_session_id);
                 if (!s) return null;
                 return (
                   <li key={dateKey(d.live_session_id, d.occurs_on)}>
-                    <button type="button" onClick={() => setSheet(d)} className="flex w-full flex-wrap items-center gap-3 px-3 py-2 text-left text-sm hover:bg-accent">
-                      <span className="w-44 shrink-0">{when(d.starts_at)}</span>
+                    <ClickableBox onOpen={() => openOccurrence(d)} aria-label={`Abrir ${s.title} del ${when(d.starts_at)}`} className={rowClass}>
+                      <span className="w-40 shrink-0 tabular-nums">{when(d.starts_at)}</span>
                       <span className="font-medium">{s.title}</span>
                       <span className="flex-1" />
+                      {marks(d.live_session_id, d.occurs_on)}
                       <span className="text-xs text-muted-foreground">{sessionRowView(d, recordings.get(dateKey(d.live_session_id, d.occurs_on)))}</span>
-                    </button>
+                    </ClickableBox>
                   </li>
                 );
               })}
             </ul>
           )}
-        </section>
+        </Tabs>
       </div>
     );
   }
@@ -349,7 +414,7 @@ export function ProgramCalendar({
                   <th className="px-2 py-1 font-medium">%</th>
                   {dates.map((d) => (
                     <th key={dateKey(d.live_session_id, d.occurs_on)} className="whitespace-nowrap px-2 py-1 font-medium">
-                      <button type="button" onClick={() => setSheet(d)} className="hover:underline">{fmt(d.starts_at, { day: "numeric", month: "short" })}</button>
+                      <button type="button" onClick={() => openOccurrence(d)} className="hover:underline">{fmt(d.starts_at, { day: "numeric", month: "short" })}</button>
                     </th>
                   ))}
                 </tr>
@@ -404,7 +469,6 @@ function SessionDrawer({
   productId,
   session,
   date,
-  occurrence,
   data,
   defaultTimezone,
   canManage,
@@ -413,7 +477,6 @@ function SessionDrawer({
   productId: string;
   session: CalendarSession | null;
   date?: string;
-  occurrence?: CalendarOccurrence;
   data: CalendarData;
   defaultTimezone: string;
   canManage: boolean;
@@ -446,11 +509,6 @@ function SessionDrawer({
         }
       : { title: "", kind: "single", weekdays: dow ? [dow] : [], everyWeeks: 1, startsOn: date ?? "", singleLocal: date ? `${date}T19:00` : "", startTime: "19:00", durationMinutes: 60, timezone: defaultTimezone, variantIds: null, trackClicks: true, clickCountsAsAttendance: false, attendanceBase: { type: "active" } },
   );
-  const [moveTo, setMoveTo] = useState("");
-  // R7 (00402): esta fecha, abierta también a otras variantes (las que la sesión no incluye).
-  const dateKey = session && occurrence ? `${session.id}|${occurrence.occurs_on}` : "";
-  const [extra, setExtra] = useState<string[]>(() => data.extras?.[dateKey] ?? []);
-  const outside = session?.variant_ids?.length ? data.variants.filter((x) => !session.variant_ids!.includes(x.id)) : [];
   const set = (patch: Partial<LiveSessionInput>) => setV((x) => ({ ...x, ...patch }));
   const issues = liveSessionIssues(v);
   const run = (fn: () => Promise<{ ok: boolean; error?: { message: string } }>) =>
@@ -482,51 +540,6 @@ function SessionDrawer({
       }
     >
       <div className="space-y-4 p-4">
-        {occurrence && session && (
-          <section className="space-y-2 rounded-lg border border-border p-3" aria-label="Esta fecha">
-            <p className="text-sm font-medium">Esta fecha: {occurrence.occurs_on}{occurrence.status === "cancelled" ? " (cancelada)" : occurrence.status === "moved" ? " (movida)" : ""}</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <input type="datetime-local" value={moveTo} onChange={(e) => setMoveTo(e.target.value)} className={cn(fieldInput, "w-auto")} aria-label="Fecha y hora nuevas" />
-              <button type="button" disabled={pending || !moveTo} onClick={() => run(() => saveLiveDate(productId, session.id, occurrence.occurs_on, { status: "moved", movedToLocal: moveTo }))} className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent disabled:opacity-50">
-                Mover
-              </button>
-              {occurrence.status === "normal" ? (
-                <button type="button" disabled={pending} onClick={() => run(() => saveLiveDate(productId, session.id, occurrence.occurs_on, { status: "cancelled" }))} className="rounded-md border border-border px-2 py-1 text-sm text-destructive hover:bg-accent">
-                  Cancelar esta fecha
-                </button>
-              ) : (
-                <button type="button" disabled={pending} onClick={() => run(() => saveLiveDate(productId, session.id, occurrence.occurs_on, { status: "normal" }))} className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent">
-                  Volver a la fecha original
-                </button>
-              )}
-            </div>
-            <p className="text-[11px] text-muted-foreground">La hora nueva va en la zona de la sesión ({session.timezone}). Una clase movida conserva su asistencia en la fecha original.</p>
-            {outside.length > 0 && (
-              <div className="space-y-1.5 border-t border-border pt-2">
-                <p className="text-xs font-medium">También la ven (solo esta fecha)</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {outside.map((x) => (
-                    <label key={x.id} className="flex items-center gap-1.5 text-sm">
-                      <input type="checkbox" checked={extra.includes(x.id)} disabled={!canManage || pending} onChange={(e) => setExtra(e.target.checked ? [...extra, x.id] : extra.filter((id) => id !== x.id))} />
-                      {x.name}
-                    </label>
-                  ))}
-                </div>
-                {canManage && (
-                  <button
-                    type="button"
-                    disabled={pending || [...extra].sort().join() === [...(data.extras?.[dateKey] ?? [])].sort().join()}
-                    onClick={() => run(() => saveLiveDate(productId, session.id, occurrence.occurs_on, { extraVariantIds: extra }))}
-                    className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent disabled:opacity-50"
-                  >
-                    Guardar quién ve esta fecha
-                  </button>
-                )}
-                <p className="text-[11px] text-muted-foreground">Por ejemplo, la clase del mes de Lite: esas variantes ven esta fecha (y su grabación), no las demás de la serie.</p>
-              </div>
-            )}
-          </section>
-        )}
         <DialogField label="Nombre">
           <input value={v.title} onChange={(e) => set({ title: e.target.value })} className={fieldInput} maxLength={120} />
         </DialogField>
@@ -636,178 +649,6 @@ function SessionDrawer({
         <DialogField label="Palabra clave (opcional)">
           <input value={v.keyword ?? ""} onChange={(e) => set({ keyword: e.target.value })} className={fieldInput} maxLength={60} />
         </DialogField>
-      </div>
-    </SidePanel>
-  );
-}
-
-function SessionSheetPanel({
-  productId,
-  date,
-  session,
-  recording,
-  canManage,
-  canAttendance,
-  hhmm,
-  when,
-  onClose,
-}: {
-  productId: string;
-  date: OverviewDate;
-  session: CalendarSession;
-  recording: { recording_url: string | null; recording_call_id: string | null; recording_active: boolean; recording_source: string | null } | null;
-  canManage: boolean;
-  canAttendance: boolean;
-  hhmm: (iso: string) => string;
-  when: (iso: string) => string;
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [sheet, setSheet] = useState<SessionSheet | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [link, setLink] = useState(recording?.recording_url ?? "");
-  const [suggest, setSuggest] = useState<Array<{ id: string; title: string; recorded_at: string }> | null>(null);
-  const [q, setQ] = useState("");
-  const [found, setFound] = useState<Array<{ contactId: string; name: string; email: string | null; inBase: boolean }>>([]);
-
-  const reload = () =>
-    loadSessionSheet(session.id, date.occurs_on).then((r) => {
-      if (r.ok) setSheet(r.data);
-      else setError(r.error.message);
-    });
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.id, date.occurs_on]);
-  useEffect(() => {
-    if (q.trim().length < 2) return;
-    const t = setTimeout(() => {
-      void searchStudentsForAttendance(session.id, date.occurs_on, q).then((r) => r.ok && setFound(r.data));
-    }, 250);
-    return () => clearTimeout(t);
-  }, [q, session.id, date.occurs_on]);
-
-  const act = (fn: () => Promise<{ ok: boolean; error?: { message: string } }>) =>
-    start(async () => {
-      setError(null);
-      const r = await fn();
-      if (!r.ok) return setError(r.error?.message ?? "No se pudo hacer");
-      await reload();
-      router.refresh();
-    });
-
-  const current: OverviewDate = sheet ? { ...date, base: sheet.base, attended: sheet.attended, clicks: sheet.clicks } : date;
-  const rows = [...new Set([...current.base, ...current.attended.map((a) => a.contact_id)])];
-  const name = (id: string) => sheet?.contacts[id]?.name ?? "…";
-
-  return (
-    <SidePanel label={`${session.title} del ${date.occurs_on}`} onClose={onClose} header={<div><h2 className="text-base font-semibold">{session.title}</h2><p className="text-xs text-muted-foreground">{when(date.starts_at)} · {sessionRowView(current, recording)}</p></div>}>
-      <div className="space-y-5 p-4">
-        {error && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
-        <section className="space-y-2" aria-labelledby="grabacion">
-          <h3 id="grabacion" className="text-sm font-semibold">Grabación</h3>
-          {recording?.recording_call_id && <p className="text-sm">Vinculada a una grabación de Fathom.</p>}
-          {canManage && (
-            <>
-              <div className="flex flex-wrap gap-2">
-                <input type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="Pegá un link de Drive, YouTube, Vimeo o Loom" className={cn(fieldInput, "flex-1")} />
-                <button type="button" disabled={pending} onClick={() => act(() => saveLiveDate(productId, session.id, date.occurs_on, { recordingUrl: link, recordingCallId: recording?.recording_call_id ?? null }))} className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent">
-                  Guardar link
-                </button>
-                <button type="button" disabled={pending} onClick={() => void suggestRecordings(date.starts_at).then((r) => setSuggest(r.ok ? r.data : []))} className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent">
-                  Vincular un Fathom
-                </button>
-              </div>
-              {suggest && (
-                suggest.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No hay grabaciones de ese día y hora.</p>
-                ) : (
-                  <ul className="divide-y divide-border rounded-lg border border-border text-sm">
-                    {suggest.map((s) => (
-                      <li key={s.id} className="flex items-center gap-2 px-3 py-1.5">
-                        <span className="flex-1">{s.title} · {hhmm(s.recorded_at)}</span>
-                        <button type="button" disabled={pending} onClick={() => act(() => saveLiveDate(productId, session.id, date.occurs_on, { recordingCallId: s.id, recordingUrl: link || null }))} className="text-xs text-primary-ink hover:underline">Vincular</button>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              )}
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={recording?.recording_active ?? true} disabled={pending} onChange={(e) => act(() => saveLiveDate(productId, session.id, date.occurs_on, { recordingActive: e.target.checked }))} />
-                Activa en el portal
-              </label>
-            </>
-          )}
-        </section>
-        <section className="space-y-2" aria-labelledby="asistencia">
-          <h3 id="asistencia" className="text-sm font-semibold">Asistencia</h3>
-          {!sheet ? (
-            <p className="text-sm text-muted-foreground">Cargando…</p>
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nadie tenía acceso a esta fecha.</p>
-          ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border text-sm">
-              {rows.map((c) => {
-                const cell = attendanceCell(current, c, hhmm);
-                const a = current.attended.find((x) => x.contact_id === c);
-                return (
-                  <li key={c} className="flex flex-wrap items-center gap-2 px-3 py-1.5">
-                    <span className="flex-1">{name(c)}</span>
-                    {a?.added_manually && <span className="rounded bg-accent px-1.5 text-xs">Agregado a mano</span>}
-                    {cell.state === "no_access" && !a && <span className="text-xs text-muted-foreground">Sin acceso ese día</span>}
-                    <span className={cn("text-xs", cell.state === "absent" && "text-muted-foreground", cell.state === "clicked" && "text-warn")}>{cell.state === "no_access" ? "" : cell.label}</span>
-                    {canAttendance && !a && (
-                      <button type="button" disabled={pending} onClick={() => act(() => markAttendance(productId, session.id, date.occurs_on, c))} className="text-xs text-primary-ink hover:underline">Marcar asistió</button>
-                    )}
-                    {canAttendance && a && (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        onClick={() => {
-                          const reason = prompt("¿Por qué se quita la asistencia?");
-                          if (reason && reason.trim()) act(() => removeAttendance(productId, a.id, reason));
-                        }}
-                        className="text-xs text-destructive hover:underline"
-                      >
-                        Quitar
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {canAttendance && (
-            <div className="space-y-1">
-              <DialogField label="Agregar un estudiante que asistió">
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscá por nombre o email" className={fieldInput} />
-              </DialogField>
-              {q.trim().length >= 2 && (
-                <ul className="divide-y divide-border rounded-lg border border-border text-sm">
-                  {found.length === 0 && <li className="px-3 py-1.5 text-xs text-muted-foreground">Sin resultados</li>}
-                  {found.map((f) => (
-                    <li key={f.contactId}>
-                      <button
-                        type="button"
-                        disabled={pending}
-                        onClick={() => {
-                          setQ("");
-                          setFound([]);
-                          act(() => markAttendance(productId, session.id, date.occurs_on, f.contactId));
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-accent"
-                      >
-                        <span className="flex-1">{f.name}{f.email ? <span className="text-xs text-muted-foreground"> · {f.email}</span> : null}</span>
-                        <span className="text-xs text-muted-foreground">{f.inBase ? "Cuenta para el promedio" : "Fuera de la base"}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </section>
       </div>
     </SidePanel>
   );

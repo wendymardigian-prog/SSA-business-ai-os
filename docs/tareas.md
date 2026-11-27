@@ -156,6 +156,16 @@ con `<Historial entityType="task">`; la ficha del contacto, en su historial.
 - **Agrupar por vencimiento**: vencidas, hoy, mañana, próximos 7 días, más adelante, sin fecha y completadas.
 - **Comentarios** del equipo con @menciones en el panel (`?panel=comentarios` los trae a la vista).
 
+## Tareas de una clase del portal (27/11/2026, 00537)
+
+Una tarea puede ser de UNA clase en vivo del portal: `tasks.live_session_id` (sin clave foránea, como `service_id`) y
+`tasks.live_session_on` (la fecha ORIGINAL de la clase; mover la clase no la cambia). Van las dos o ninguna (CHECK). Se
+crean desde el drawer de la clase (Portal → programa → Calendario) con «Agregar tarea»; el responsable por defecto es
+quien la crea. Las escribe el servidor (`createTaskCore` comprueba que la sesión sea del negocio y la persona la vea).
+El drawer de la tarea muestra «Clase» con un link que pasa por `/dashboard/portal/clase` y abre el calendario con esa
+clase. Con una tarea abierta encima del drawer de la clase, Esc cierra solo la de arriba (`overlay.tsx` lleva la pila
+de capas).
+
 ## Todas las tareas, archivos en los comentarios y las vueltas (25/11/2026, traído de RER)
 
 - **La pantalla lee todas las tareas** (RER #145): `loadAllTasks` (`lib/tasks/load-all.ts`) pide páginas de 1.000 en

@@ -561,6 +561,8 @@ export const PAGES_WITHOUT_HEADER: Record<string, string> = {
     "La ficha del cliente es un modal encima de Clientes (Servicios A2, ?cliente=): el link viejo solo redirige; nunca se dibuja.",
   "/dashboard/clientes/s/[serviceId]":
     "La ficha del servicio es un modal encima de Clientes (Servicios A2, ?servicio=): el link viejo solo redirige; nunca se dibuja.",
+  "/dashboard/portal/clase":
+    "El link «Clase» de una tarea: busca el programa de la sesión y redirige a su calendario con la clase abierta; nunca se dibuja.",
   // @plantilla-hasta(servicios)
   "/dashboard/growth":
     "Growth paso a llamarse Comentarios: solo redirige a /dashboard/comentarios; nunca se dibuja.",

@@ -13,6 +13,16 @@ import { saveLessonTranscriptCore } from "@/lib/program/transcript-store";
 import { videoMeta } from "@/lib/program/video-meta";
 import { normalizeVideoUrl } from "@/lib/program/video-url";
 import { sanitizeSearch } from "@/lib/url-params";
+import { sanitizeEmailHtml } from "@/lib/email/html";
+import { CLASS_NOTE_MAX, noteToStore } from "@/lib/program/class-drawer";
+import { TASK_COLUMNS } from "@/lib/tasks/core";
+import type { ContactTasksPayload } from "@/lib/tasks/contact-section";
+import { fail as taskFail, success as taskSuccess, type TaskActionResult } from "@/lib/tasks/result";
+import type { TaskRow } from "@/lib/tasks/types";
+import { loadTimeFormat } from "@/lib/tasks/time-format";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
+import { todayInputValue } from "@/lib/dates";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 /**
  * El Calendario del programa (bloque CA, F58-F65). Las sesiones y sus fechas piden `live_sessions.manage`; marcar y
@@ -329,4 +339,61 @@ export async function pickFathomForLesson(productId: string, itemId: string, cal
   if (vtt) await saveLessonTranscriptCore(ctx, productId, itemId, vtt, "vtt").catch((e) => console.error("[fathom-clase] transcripcion", e instanceof Error ? e.message : "error"));
   refresh(productId);
   return { ok: true, data: { videoUrl: call.share_url ?? "", warning: call.share_url ? null : "Esta grabación todavía no tiene link compartido. En Fathom, compartila como «Cualquiera con el link» para que el estudiante la pueda ver." } };
+}
+
+// ── El drawer de una clase: notas internas y tareas ────────────────────────────────────────────────────────────────
+
+/**
+ * Las notas internas de UNA clase (`live_session_dates.note`): HTML del editor, limpio en el servidor con la misma lista
+ * blanca que los emails. Nunca llegan al portal: ninguna función del portal lee esa columna. Pide `live_sessions.manage`
+ * (la base lo vuelve a pedir en `live_date_save`). Guardar las notas no toca la grabación ni el estado de la fecha.
+ */
+export async function saveClassNote(productId: string, sessionId: string, occursOn: string, html: string): Promise<SvcResult<null>> {
+  const ctx = await getPermissionAction("live_sessions.manage");
+  if (!ctx || !UUID.test(sessionId) || !DATE.test(occursOn) || typeof html !== "string") return NOT_ALLOWED;
+  const clean = noteToStore(sanitizeEmailHtml(html));
+  if (clean && clean.length > CLASS_NOTE_MAX) return fail("Las notas son demasiado largas");
+  const res = await svcRpc<null>(ctx.supabase, "live_date_save", { p_live_session_id: sessionId, p_occurs_on: occursOn, p: { note: clean ?? "" } });
+  // Sin `refresh`: el drawer ya tiene lo que se escribió; volver a pedir la página en cada guardado borraría el foco.
+  if (res.ok) revalidatePath(`/dashboard/portal/${productId}`);
+  return res;
+}
+
+/**
+ * Las tareas de UNA clase y lo que necesita la sección «Tareas» del drawer. Se leen con la sesión (la RLS de tareas
+ * decide cuáles ve); sin `tasks.view` responde `forbidden` y la sección no se muestra.
+ */
+export async function listClassTasks(sessionId: string, occursOn: string): Promise<TaskActionResult<ContactTasksPayload>> {
+  try {
+    const ctx = await getPermissionAction("tasks.view");
+    if (!ctx) return taskFail("forbidden", "No tenés permiso para ver tareas.");
+    if (!UUID.test(sessionId) || !DATE.test(occursOn)) return taskFail("validation", "Los datos no son válidos.");
+    const { data, error } = await ctx.supabase
+      .from("tasks")
+      .select(TASK_COLUMNS)
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("live_session_id" as never, sessionId as never)
+      .eq("live_session_on" as never, occursOn as never)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) {
+      console.error("[calendario] no pude leer las tareas de la clase:", error.message);
+      return taskFail("server", "No pude cargar las tareas.");
+    }
+    const members = await getWorkspaceMembers(ctx.workspace.id);
+    return taskSuccess({
+      tasks: (data ?? []) as unknown as TaskRow[],
+      members: members.map((m) => ({ id: m.userId, name: m.name })),
+      today: todayInputValue(new Date(), await resolveViewerTimezone(ctx.workspace.timezone)),
+      timeZone: ctx.workspace.timezone || "UTC",
+      timeFormat: await loadTimeFormat(ctx.supabase, ctx.workspace.id, ctx.user.id),
+      currentUserId: ctx.user.id,
+      canEdit: ctx.can("tasks.edit"),
+      canDelete: ctx.can("tasks.delete"),
+    });
+  } catch (error) {
+    console.error("[calendario] listClassTasks:", error instanceof Error ? error.message : String(error));
+    return taskFail("server", "No pude cargar las tareas.");
+  }
 }

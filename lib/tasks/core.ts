@@ -54,7 +54,7 @@ async function notify(ctx: TaskCtx, build: () => TaskNotice[]): Promise<void> {
 }
 
 export const TASK_COLUMNS =
-  "id, workspace_id, title, description, status, priority, start_date, due_date, due_time, duration_minutes, completed_at, owner_id, follower_ids, project, project_key, blocked_by, contact_id, conversation_id, source, source_ref, service_id, call_id, checklist, position, created_by, created_at, updated_at, deleted_at";
+  "id, workspace_id, title, description, status, priority, start_date, due_date, due_time, duration_minutes, completed_at, owner_id, follower_ids, project, project_key, blocked_by, contact_id, conversation_id, source, source_ref, service_id, call_id, live_session_id, live_session_on, checklist, position, created_by, created_at, updated_at, deleted_at";
 
 /** Lo que de una tarea se audita cuando cambia. */
 const AUDITED_FIELDS = [
@@ -144,6 +144,16 @@ async function checkServiceLinks(ctx: TaskCtx, contactId: string | null, service
   return null;
 }
 
+/**
+ * Calendario del programa (00537): la clase tiene que ser una sesión en vivo de este negocio que la persona ve (la RLS
+ * de `live_sessions`). Se lee con la sesión: quien no ve el calendario no vincula una clase.
+ */
+async function checkLiveSessionLink(ctx: TaskCtx, liveSessionId: string | null | undefined): Promise<string | null> {
+  if (!liveSessionId) return null;
+  const { data } = await (ctx.supabase as unknown as { schema: (s: string) => Db }).schema("app_servicio").from("live_sessions" as never).select("id").eq("id", liveSessionId).eq("workspace_id", ctx.workspaceId).maybeSingle();
+  return data ? null : "No encontramos esa clase.";
+}
+
 /** Escribe lo que la sesión no puede (00368: servicio y reunión), después de que la sesión escribió lo suyo. */
 async function writeServerColumns(ctx: TaskCtx, taskId: string, patch: Record<string, unknown>): Promise<TaskRow | null> {
   if (Object.keys(patch).length === 0) return null;
@@ -179,7 +189,10 @@ export async function createTaskCore(ctx: TaskCtx, raw: unknown): Promise<TaskAc
 
   const peopleError = await checkPeople(ctx, ownerId, followers);
   if (peopleError) return fail("validation", peopleError);
-  const linkError = (await checkLinks(ctx, input.contact_id, input.conversation_id)) ?? (await checkServiceLinks(ctx, input.contact_id ?? null, input.service_id, input.call_id));
+  const linkError =
+    (await checkLinks(ctx, input.contact_id, input.conversation_id)) ??
+    (await checkServiceLinks(ctx, input.contact_id ?? null, input.service_id, input.call_id)) ??
+    (await checkLiveSessionLink(ctx, input.live_session_id));
   if (linkError) return fail("validation", linkError);
 
   const row = {
@@ -210,6 +223,7 @@ export async function createTaskCore(ctx: TaskCtx, raw: unknown): Promise<TaskAc
   const serverCols: Record<string, unknown> = {};
   if (input.service_id) serverCols.service_id = input.service_id;
   if (input.call_id) serverCols.call_id = input.call_id;
+  if (input.live_session_id && input.live_session_on) Object.assign(serverCols, { live_session_id: input.live_session_id, live_session_on: input.live_session_on });
   task = (await writeServerColumns(ctx, task.id, serverCols)) ?? task;
 
   await logAudit({
