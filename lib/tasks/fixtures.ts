@@ -20,6 +20,8 @@ export function makeTask(over: Partial<TaskRow> = {}): TaskRow {
     project_key: null,
     service_id: null,
     call_id: null,
+    live_session_id: null,
+    live_session_on: null,
     checklist: [],
     blocked_by: [],
     contact_id: null,

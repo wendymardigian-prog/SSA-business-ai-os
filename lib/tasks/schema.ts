@@ -80,9 +80,15 @@ export const createTaskSchema = z
     // Servicios A4 (F152): el servicio (del mismo contacto) y la reunión. Los valida y escribe el servidor.
     service_id: uuid.nullable().optional(),
     call_id: uuid.nullable().optional(),
+    // Calendario del programa (00537): la clase en vivo (sesión + su fecha original). Las valida y escribe el servidor.
+    live_session_id: uuid.nullable().optional(),
+    live_session_on: dateOnly.nullable().optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
+    if (!v.live_session_id !== !v.live_session_on) {
+      ctx.addIssue({ code: "custom", path: ["live_session_id"], message: "La clase no es válida." });
+    }
     if (v.start_date && v.due_date && v.start_date > v.due_date) {
       ctx.addIssue({ code: "custom", path: ["start_date"], message: "La fecha de inicio no puede ser posterior al vencimiento." });
     }

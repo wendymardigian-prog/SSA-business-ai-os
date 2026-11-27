@@ -29,7 +29,7 @@ import { useTaskActions, type TaskActions } from "./use-task-actions";
  * con la sesion de la persona: la RLS decide que ve.
  */
 
-export type CreateDefaults = DraftDefaults & { contact_id?: string | null; conversation_id?: string | null };
+export type CreateDefaults = DraftDefaults & { contact_id?: string | null; conversation_id?: string | null; live_session_id?: string | null; live_session_on?: string | null };
 
 export interface TaskWorkbenchApi {
   tasks: TaskRow[];

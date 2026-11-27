@@ -34,6 +34,7 @@ import { intentHref } from "@/lib/ui/url-intent";
 import { communityQuickOptions, communityQuickValue } from "@/lib/program/community";
 import { COMMUNITY_MEDIA_BUCKET, mediaPaths } from "@/lib/program/community-text";
 import { shiftMonth } from "@/lib/program/calendar-view";
+import { listTabFrom, parseClassRef } from "@/lib/program/class-drawer";
 // @plantilla-desde(proyectos)
 import { ProgramProjects, type FameRow, type FameSettings, type IdeaRow, type PaymentRow, type ProjectRow, type ProjectsView } from "@/components/services/portal/program-projects";
 // @plantilla-hasta(proyectos)
@@ -60,7 +61,7 @@ const PROGRAM_TABS = [
  * F106) y Puntos (F129, se ve con `portal.points` o `portal.view`), como pestañas en la barra superior. Los ajustes del programa (secciones, términos, variantes) son el
  * engranaje de la barra (`/dashboard/portal/<id>/ajustes`); el link viejo `?tab=ajustes` lleva ahí.
  */
-export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string; filtro?: string; espacio?: string; clase?: string; periodo?: string; comunidad?: string }> }) {
+export default async function PortalProgramPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<{ tab?: string; vista?: string; mes?: string; serie?: string; filtro?: string; espacio?: string; clase?: string; periodo?: string; comunidad?: string; sesion?: string; fecha?: string; lista?: string }> }) {
   const [{ productId }, sp] = await Promise.all([params, searchParams]);
   if (!UUID.test(productId)) notFound();
   if (sp.tab === "ajustes") redirect(`/dashboard/portal/${productId}/ajustes`);
@@ -152,7 +153,8 @@ export default async function PortalProgramPage({ params, searchParams }: { para
   async function calendarTab() {
     const view = sp.vista === "mes" || sp.vista === "series" || sp.vista === "grilla" ? sp.vista : "lista";
     const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.mes ?? "") ? (sp.mes as string) : new Date().toISOString().slice(0, 7);
-    const data = await loadCalendar(ctx, productId, month, vs.map((v) => ({ id: v.id, name: v.name })));
+    const classRef = parseClassRef(sp.sesion, sp.fecha);
+    const data = await loadCalendar(ctx, productId, month, vs.map((v) => ({ id: v.id, name: v.name })), classRef);
     const tzRaw = (workspace as { timezone?: string | null }).timezone;
     return (
       <ProgramCalendar
@@ -163,6 +165,9 @@ export default async function PortalProgramPage({ params, searchParams }: { para
         seriesFilter={sp.serie && UUID.test(sp.serie) ? sp.serie : null}
         canManage={ctx.can("live_sessions.manage")}
         canAttendance={ctx.can("attendance.manage")}
+        canSeeTasks={ctx.can("tasks.view")}
+        initialListTab={listTabFrom(sp.lista)}
+        initialClass={classRef}
         defaultTimezone={tzRaw || "UTC"}
       />
     );

@@ -27,6 +27,7 @@ import { CommentThread } from "@/components/team-comments/comment-thread";
 import { TaskServiceBlock } from "@/components/services/task-service-block"; // @plantilla-quitar(servicios)
 import { TaskRepeatSection, TaskSeriesFixButton, seriesFixItemOf } from "./task-repeat-section"; // @plantilla-quitar(servicios)
 import { Tip } from "@/components/ui/tooltip";
+import { classHref } from "@/lib/program/class-drawer"; // @plantilla-quitar(servicios)
 
 export interface TaskDrawerProps {
   /** `view`: una tarea que existe. `create`: el formulario completo de una tarea nueva. */
@@ -47,7 +48,7 @@ export interface TaskDrawerProps {
   contactName: string | null;
   source: SourceContext;
   /** Al crear: valores iniciales (por ejemplo, el contacto desde el que se crea). */
-  defaults?: DraftDefaults & { contact_id?: string | null; conversation_id?: string | null };
+  defaults?: DraftDefaults & { contact_id?: string | null; conversation_id?: string | null; live_session_id?: string | null; live_session_on?: string | null };
   currentUserId: string;
   historyNames: Record<string, string>;
   onClose: () => void;
@@ -137,6 +138,7 @@ function DrawerBody(props: TaskDrawerProps) {
       project: draft.project,
       contact_id: defaults?.contact_id ?? null,
       conversation_id: defaults?.conversation_id ?? null,
+      ...(defaults?.live_session_id && defaults.live_session_on ? { live_session_id: defaults.live_session_id, live_session_on: defaults.live_session_on } : {}),
     });
     setSaving(false);
     if (created) onCreated(created);
@@ -297,6 +299,15 @@ function DrawerBody(props: TaskDrawerProps) {
                   <Link href={`/dashboard/llamadas/${task.call_id}`} className="text-primary-ink hover:underline">Abrir</Link>
                 </Meta>
               )}
+              {/* @plantilla-desde(servicios) */}
+              {task.live_session_id && task.live_session_on && (
+                <Meta label="Clase">
+                  <Link href={classHref({ sessionId: task.live_session_id, occursOn: task.live_session_on })} className="text-primary-ink hover:underline">
+                    {new Intl.DateTimeFormat("es", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${task.live_session_on}T12:00:00Z`))}
+                  </Link>
+                </Meta>
+              )}
+              {/* @plantilla-hasta(servicios) */}
               <Meta label="Creada por">
                 {(() => {
                   const info = formatSource(task, source);
@@ -320,6 +331,15 @@ function DrawerBody(props: TaskDrawerProps) {
             <Meta label="Contacto"><span>{contactName ?? "Este contacto"}</span></Meta>
           </div>
         )}
+        {/* @plantilla-desde(servicios) */}
+        {creating && defaults?.live_session_on && (
+          <div className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border px-4 py-3 text-sm" aria-label="Vínculos">
+            <Meta label="Clase">
+              <span>{new Intl.DateTimeFormat("es", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${defaults.live_session_on}T12:00:00Z`))}</span>
+            </Meta>
+          </div>
+        )}
+        {/* @plantilla-hasta(servicios) */}
         {creating && (
           <p className="px-4 py-3 text-xs text-muted-foreground">Las dependencias y el historial aparecen cuando la tarea está creada.</p>
         )}

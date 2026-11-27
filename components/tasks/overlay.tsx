@@ -14,6 +14,12 @@ import { cn } from "@/lib/utils";
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/**
+ * Las capas abiertas, de abajo hacia arriba. Con una encima de otra (la tarea de una clase sobre el drawer de la clase),
+ * Esc y Tab los maneja solo la de arriba: si no, Esc cerraría las dos a la vez.
+ */
+const layers: HTMLElement[] = [];
+
 function useLayer(onClose: () => void, returnFocus?: MutableRefObject<HTMLElement | null>) {
   const panel = useRef<HTMLElement>(null);
   // Siempre la ultima `onClose`, sin volver a enganchar el teclado en cada render.
@@ -25,8 +31,10 @@ function useLayer(onClose: () => void, returnFocus?: MutableRefObject<HTMLElemen
   useEffect(() => {
     const node = panel.current;
     node?.focus();
+    if (node) layers.push(node);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (node && layers[layers.length - 1] !== node) return;
       if (event.key === "Escape" && !event.defaultPrevented) {
         event.preventDefault();
         closeRef.current();
@@ -56,6 +64,10 @@ function useLayer(onClose: () => void, returnFocus?: MutableRefObject<HTMLElemen
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKeyDown);
+      if (node) {
+        const at = layers.lastIndexOf(node);
+        if (at !== -1) layers.splice(at, 1);
+      }
       document.body.style.overflow = overflow;
     };
   }, []);

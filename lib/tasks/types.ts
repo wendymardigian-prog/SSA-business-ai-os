@@ -49,6 +49,9 @@ export type TaskRow = {
   /** Servicios A4 (00368, F152): el servicio y la reunión de la tarea. Los escribe solo el servidor. */
   service_id: string | null;
   call_id: string | null;
+  /** Calendario del programa (00537): la clase en vivo (sesión + fecha original), o null. */
+  live_session_id: string | null;
+  live_session_on: string | null;
   /** [{ id, text, done, done_by?, done_at? }] hasta 30 (F153). No impide completar. */
   checklist: unknown;
   position: number;
