@@ -130,7 +130,8 @@ function ClassPanel({
   const started = Date.parse(occurrence.starts_at) <= now;
   const show = classSections({ started, status: occurrence.status, canManage, canSeeTasks: tasksStatus !== "hidden" });
   const fmt = (iso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("es", { timeZone: tz, ...o }).format(new Date(iso));
-  const day = fmt(occurrence.starts_at, { weekday: "long", day: "numeric", month: "long" });
+  const dayRaw = fmt(occurrence.starts_at, { weekday: "long", day: "numeric", month: "long" });
+  const day = dayRaw.charAt(0).toUpperCase() + dayRaw.slice(1);
   const hours = `${fmt(occurrence.starts_at, { hour: "2-digit", minute: "2-digit" })} – ${fmt(occurrence.ends_at, { hour: "2-digit", minute: "2-digit" })}`;
   const host = data.team.find((t) => t.id === session.host_user_id) ?? null;
   const key = `${session.id}|${occurrence.occurs_on}`;
@@ -154,7 +155,7 @@ function ClassPanel({
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold leading-snug">{session.title}</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              <span className="capitalize">{day}</span> · {hours}
+              {day} · {hours}
             </p>
             {occurrence.status !== "normal" && (
               <span className={cn("mt-1 inline-block rounded px-1.5 py-0.5 text-[11px] font-medium", occurrence.status === "cancelled" ? "bg-destructive/10 text-destructive" : "bg-accent")}>

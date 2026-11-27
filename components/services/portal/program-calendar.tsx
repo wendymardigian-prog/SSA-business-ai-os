@@ -178,7 +178,8 @@ export function ProgramCalendar({
   );
 
   function ListView() {
-    const upcoming = data.upcoming.slice(0, 30);
+    // Por fecha y hora: la base las devuelve agrupadas por sesión (todos los lunes, después todos los viernes).
+    const upcoming = [...data.upcoming].sort((x, y) => x.starts_at.localeCompare(y.starts_at)).slice(0, 30);
     const past = [...data.past].reverse().slice(0, 40);
     // Lo que lleva una clase, chiquito al final de la fila: notas y tareas abiertas.
     const marks = (sessionId: string, occursOn: string) => {
