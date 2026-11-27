@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { EMPTY_INBOX_FILTERS, parseListType, type InboxFilters } from "./filters";
-import { groupsCanMatch, groupsForPage, mergeInboxRows } from "./unified-list";
+import { groupsCanMatch, groupsForLoaded, mergeInboxRows } from "./unified-list";
 
 const f = (over: Partial<InboxFilters>): InboxFilters => ({ ...EMPTY_INBOX_FILTERS, ...over });
 const at = (hour: number) => `2026-11-06T${String(hour).padStart(2, "0")}:00:00+00:00`;
@@ -60,39 +60,23 @@ describe("groupsCanMatch", () => {
   });
 });
 
-describe("groupsForPage", () => {
+describe("groupsForLoaded", () => {
   const groups = [group("muy-nuevo", at(23)), group("medio", at(15)), group("viejo", at(5)), group("sin-mensajes", null)];
-  // Tres paginas: arrancan a las 20, a las 12 y a las 8 hs.
-  const pages = [
-    { page: 1, newestOnPage: at(20), newestOnNextPage: at(12) },
-    { page: 2, newestOnPage: at(12), newestOnNextPage: at(8) },
-    { page: 3, newestOnPage: at(8), newestOnNextPage: undefined },
-  ];
 
-  it("cada grupo sale en una sola pagina, tambien los que caen entre dos", () => {
-    const seen = pages.flatMap((bounds) => groupsForPage(groups, bounds).map((g) => g.id));
-    expect(seen.sort()).toEqual(["medio", "muy-nuevo", "sin-mensajes", "viejo"]);
+  it("con mas para cargar, solo los que no son mas viejos que la ultima conversacion cargada", () => {
+    expect(groupsForLoaded(groups, at(12), true).map((g) => g.id)).toEqual(["muy-nuevo", "medio"]);
   });
 
-  it("la primera se lleva lo mas nuevo que todo; la ultima, lo mas viejo y lo que no tiene mensajes", () => {
-    expect(groupsForPage(groups, pages[0]).map((g) => g.id)).toEqual(["muy-nuevo", "medio"]);
-    expect(groupsForPage(groups, pages[1]).map((g) => g.id)).toEqual([]);
-    expect(groupsForPage(groups, pages[2]).map((g) => g.id)).toEqual(["viejo", "sin-mensajes"]);
+  it("un grupo a la misma hora que la ultima cargada ya se muestra", () => {
+    expect(groupsForLoaded([group("empate", at(12))], at(12), true).map((g) => g.id)).toEqual(["empate"]);
   });
 
-  it("un grupo a la misma hora que la primera de la pagina siguiente va en la siguiente", () => {
-    const tie = [group("empate", at(12))];
-    expect(groupsForPage(tie, pages[0])).toEqual([]);
-    expect(groupsForPage(tie, pages[1])).toEqual(tie);
+  it("sin nada mas para cargar, todos, tambien los que no tienen mensajes", () => {
+    expect(groupsForLoaded(groups, at(12), false)).toEqual(groups);
   });
 
-  it("sin conversaciones, todos en la primera y ninguno en otra", () => {
-    expect(groupsForPage(groups, { page: 1, newestOnPage: undefined, newestOnNextPage: undefined })).toEqual(groups);
-    expect(groupsForPage(groups, { page: 2, newestOnPage: undefined, newestOnNextPage: undefined })).toEqual([]);
-  });
-
-  it("una sola pagina: todos", () => {
-    expect(groupsForPage(groups, { page: 1, newestOnPage: at(9), newestOnNextPage: undefined })).toEqual(groups);
+  it("sin conversaciones cargadas, todos", () => {
+    expect(groupsForLoaded(groups, undefined, false)).toEqual(groups);
   });
 });
 

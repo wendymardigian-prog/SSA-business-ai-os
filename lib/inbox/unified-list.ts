@@ -2,10 +2,8 @@
  * Chats y grupos de WhatsApp en una sola lista. PURO.
  *
  * Son dos tablas (un grupo no es una conversacion con un lead, 00280), asi que la base no los pagina juntos. Las
- * conversaciones se siguen paginando como siempre y cada grupo cae en LA pagina que le toca por la fecha de su ultimo
- * mensaje: con las paginas ordenadas de mas nuevo a mas viejo, le toca a la pagina N si es mas viejo que el primero de
- * esa pagina y mas nuevo que el primero de la siguiente. Asi cada grupo sale una sola vez y en su lugar. Los grupos
- * son pocos (se activan a mano) y no cuentan para el tamaño de la pagina.
+ * conversaciones se cargan de a tandas al bajar (scroll infinito) y los grupos llegan todos de una vez (son pocos: se
+ * activan a mano); cada grupo aparece cuando lo cargado llega a la fecha de su ultimo mensaje, en su lugar.
  */
 
 import type { InboxFilters } from "@/lib/inbox/filters";
@@ -51,26 +49,19 @@ export function communityOptions(rows: ReadonlyArray<{ parent_group_jid: string 
     .sort((a, b) => a.subject.localeCompare(b.subject, "es", { sensitivity: "base" }));
 }
 
-export interface PageBounds {
-  page: number;
-  /** El ultimo mensaje de la primera conversacion de esta pagina. `undefined` si la pagina no tiene ninguna. */
-  newestOnPage: string | null | undefined;
-  /** El de la primera conversacion de la pagina siguiente. `undefined` si esta es la ultima. */
-  newestOnNextPage: string | null | undefined;
-}
-
-/** Los grupos que van en esta pagina. */
-export function groupsForPage<G extends { lastMessageAt: string | null }>(groups: G[], bounds: PageBounds): G[] {
-  // Sin conversaciones en la pagina: en la primera van todos (no hay con que intercalarlos); en otra, ninguno.
-  if (bounds.newestOnPage === undefined) return bounds.page === 1 ? groups : [];
-  const upper = bounds.page === 1 ? Number.POSITIVE_INFINITY : timeOf(bounds.newestOnPage);
-  const hasNextPage = bounds.newestOnNextPage !== undefined;
-  return groups.filter((g) => {
-    const time = timeOf(g.lastMessageAt);
-    if (time > upper) return false;
-    // Un grupo sin mensajes va en la ultima pagina, abajo de todo.
-    return hasNextPage ? time > timeOf(bounds.newestOnNextPage) : true;
-  });
+/**
+ * Los grupos que se muestran con lo cargado hasta ahora (scroll infinito): los que tienen un mensaje igual o mas
+ * nuevo que la conversacion mas vieja cargada. Los mas viejos aparecen al bajar; cuando ya no queda nada para
+ * cargar, van todos (tambien los que no tienen mensajes, abajo de todo).
+ */
+export function groupsForLoaded<G extends { lastMessageAt: string | null }>(
+  groups: G[],
+  oldestLoaded: string | null | undefined,
+  hasMore: boolean,
+): G[] {
+  if (!hasMore || oldestLoaded === undefined) return groups;
+  const limit = timeOf(oldestLoaded);
+  return groups.filter((g) => timeOf(g.lastMessageAt) >= limit);
 }
 
 export type InboxListItem<C, G> = { kind: "conversation"; row: C } | { kind: "group"; row: G };
