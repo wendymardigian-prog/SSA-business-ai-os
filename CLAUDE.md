@@ -1759,6 +1759,19 @@ Todo lo que filtra la lista vive arriba de ella (`components/inbox/inbox-list-he
 - **El buscador se despliega desde el icono** y arranca abierto solo si la URL trae `?q=`. La `×` (o Esc) borra lo buscado y lo cierra. `SectionSearch` con `onClose` es ese modo; Broadcasts, Secuencias y Growth lo siguen usando en la barra de arriba.
 - **Limpiar filtros conserva lo abierto** (`?c=` y `?g=`).
 
+## Scroll infinito y tiempo real por id (27/11/2026, sin migración)
+
+- **La lista no tiene páginas**: se carga de a 30 con un CURSOR (`lib/inbox/list-cursor.ts`), con el orden `last_message_at DESC NULLS LAST, created_at DESC, id DESC`. El cursor solo acepta fechas y un uuid (`parseCursor`), porque va adentro de un `.or()` de PostgREST. Compara en microsegundos y entiende la fecha de Realtime. Un `?page=` viejo se ignora.
+- **Una sola consulta**: `lib/inbox/list-load.ts` (`loadInboxChunk`, `loadInboxRowsByIds`) más los filtros de `lib/inbox/list-params.ts`. La usan la página, «cargar más» y el tiempo real (`lib/actions/inbox-list.ts`). Un filtro nuevo va ahí y lo ven las tres. `buildQuery` devuelve la consulta envuelta (`{ query }`): un `await` directo la ejecutaría antes de ordenarla.
+- **El tiempo real ya no recarga la página** (`components/inbox/use-inbox-list.ts`):
+  - una fila a la vista que sigue cumpliendo el filtro se actualiza en el acto;
+  - lo demás se junta 800 ms y se pregunta por id, en un solo pedido;
+  - lo que cae más abajo de lo cargado no se pregunta;
+  - un chat que nunca escribió se pregunta como mucho una vez por minuto.
+  - `router.refresh()` queda solo para un fallo de esa pregunta, una reconexión o volver después de más de un minuto en segundo plano.
+- **Un `router.refresh()` no borra lo bajado** (`mergeFreshFirstChunk`, `lib/inbox/list-merge.ts`). El total se cuenta al cargar y lo ajusta el tiempo real (aproximado a propósito).
+- **Los grupos llegan todos** y se muestran a medida que lo cargado llega a su fecha (`groupsForLoaded`).
+
 # Mensajes borrados para todos (00356, 8/11/2026)
 
 Un mensaje de WhatsApp borrado «para todos» (por el contacto, el teléfono del negocio, la API o el botón de la bandeja) se ve como «Mensaje eliminado» y el equipo puede ver lo que decía. Detalle en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md) («Mensajes borrados para todos»).

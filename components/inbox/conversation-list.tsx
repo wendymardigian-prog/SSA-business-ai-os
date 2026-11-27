@@ -1,30 +1,28 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageSquare, Ban, CheckCheck, ChevronLeft, ChevronRight, FileText, Megaphone, UserRoundSearch, Users, UsersRound, X } from "lucide-react";
+import { MessageSquare, Ban, CheckCheck, FileText, Loader2, Megaphone, UserRoundSearch, Users, UsersRound, X } from "lucide-react";
 import { groupDisplayName } from "@/lib/whatsapp-groups/settings";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { noReplyBadge } from "@/lib/inbox/awaiting";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { UnidentifiedNotice } from "@/components/inbox/inbox-filters";
 import { InboxListHeader } from "@/components/inbox/inbox-list-header";
 import {
-  matchesInboxRow,
-  needsServerToFilter,
   showsOnlyGroups,
   countActiveFilters,
   type InboxFilters,
 } from "@/lib/inbox/filters";
 import type { DateRange } from "@/lib/dates";
-import type { Database } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
 import type { FilterSummaryCatalog } from "@/lib/inbox/filter-summary";
-import { mergeInboxRows } from "@/lib/inbox/unified-list";
+import { groupsForLoaded, mergeInboxRows } from "@/lib/inbox/unified-list";
+import type { ListCursor } from "@/lib/inbox/list-cursor";
+import { useInboxList } from "@/components/inbox/use-inbox-list";
 import type { GroupListRow } from "@/lib/whatsapp-groups/thread";
 import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
 import { assigneeName } from "@/lib/inbox/assignee";
@@ -44,8 +42,8 @@ import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 
 type Conversation = ConversationRow;
 
-/** Cuanto se espera antes de volver a preguntarle al servidor (ver abajo). */
-const REFRESH_DEBOUNCE_MS = 800;
+/** Un solo arreglo vacio: un `[]` nuevo en cada render cambiaria la tanda inicial y la lista se re-sembraria sin parar. */
+const NO_IDS: string[] = [];
 
 function formatTime(dateStr: string | null, timeZone: string): string {
   if (!dateStr) return "";
@@ -61,12 +59,12 @@ export function ConversationList({
   onSelect,
   filters,
   dateRange,
-  total,
-  page,
-  pageSize,
-  onPageChange,
+  total: initialTotal,
+  listQuery,
+  initialCursor = null,
+  initialHasMore = false,
   draftCounts,
-  draftConversationIds = [],
+  draftConversationIds = NO_IDS,
   accounts,
   members = [],
   currentUserId = "",
@@ -90,13 +88,16 @@ export function ConversationList({
   onSelect: (conversation: Conversation) => void;
   filters: InboxFilters;
   dateRange: DateRange;
+  /** Cuantos chats cumplen los filtros al cargar la pagina; despues lo ajusta el tiempo real. */
   total: number;
-  page: number;
-  pageSize: number;
-  onPageChange: (page: number) => void;
+  /** La parte de la URL con los filtros (`listQueryOf`): viaja al pedir mas chats o los que cambiaron en vivo. */
+  listQuery: string;
+  /** Donde arranca la segunda tanda (scroll infinito). */
+  initialCursor?: ListCursor | null;
+  initialHasMore?: boolean;
   /** Borradores esperando: la pestana "Borradores (N)" (Bloque 2d). */
   draftCounts?: PendingDraftCounts;
-  /** Conversaciones de la pagina con un borrador vivo del agente. */
+  /** Conversaciones de la primera tanda con un borrador vivo del agente. */
   draftConversationIds?: string[];
   /** Las cuentas por canal: la lista dice de cual es cada conversacion cuando una red tiene varias. */
   accounts?: InboxAccountsInfo;
@@ -114,9 +115,9 @@ export function ConversationList({
   hasGroups?: boolean;
   /** Chats que la lista oculta por defecto (00296). */
   unidentifiedCount?: number;
-  /** Los grupos que van en esta pagina, intercalados con los chats por fecha. */
+  /** Todos los grupos que cumplen los filtros: se intercalan con los chats por fecha a medida que se baja. */
   groups?: GroupListRow[];
-  /** Cuantos grupos cumplen los filtros, en todas las paginas. */
+  /** Cuantos grupos cumplen los filtros. */
   groupsTotal?: number;
   selectedGroupId?: string | null;
   onSelectGroup?: (groupId: string) => void;
@@ -126,7 +127,21 @@ export function ConversationList({
   tags?: { id: string; name: string; color: string | null }[];
 }) {
   const router = useRouter();
-  const [conversations, setConversations] = useState(initialConversations);
+  // De a tandas al bajar y al dia en vivo (components/inbox/use-inbox-list.ts).
+  const initial = useMemo(
+    () => ({ rows: initialConversations, cursor: initialCursor, hasMore: initialHasMore, total: initialTotal, draftConversationIds }),
+    [initialConversations, initialCursor, initialHasMore, initialTotal, draftConversationIds],
+  );
+  const {
+    rows: conversations,
+    hasMore,
+    total,
+    drafts,
+    setRows: setConversations,
+    loadMore,
+    loadingMore,
+    loadError,
+  } = useInboxList({ initial, listQuery, filters, dateRange, workspaceId });
   // El "⋯" de una fila: que fila esta guardando y el ultimo error.
   const [rowPending, setRowPending] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -169,95 +184,28 @@ export function ConversationList({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // Scroll infinito: cuando el final de la lista se acerca a la vista, la tanda siguiente.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    setConversations(initialConversations);
-  }, [initialConversations]);
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore || loadError) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) void loadMore();
+      },
+      { root: scrollRef.current, rootMargin: "400px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // `loadingMore`: al terminar una tanda se vuelve a observar, y si el final sigue a la vista (una tanda que el
+    // filtro «IA» dejo vacia, por ejemplo) se pide la siguiente.
+  }, [hasMore, loadError, loadMore, loadingMore, conversations.length]);
 
-  /**
-   * Realtime, ahora que los filtros y la paginacion los resuelve el servidor.
-   *
-   * Antes esto agregaba cualquier conversacion nueva del workspace al principio
-   * de la lista sin mirar el filtro, y nunca sacaba una que dejara de
-   * cumplirlo. Con filtros de verdad eso se vuelve visible enseguida.
-   *
-   * La regla ahora es: si el cambio es sobre una fila que ya esta en pantalla y
-   * sigue entrando en lo que se esta mirando, se actualiza en el acto (es lo
-   * que hace que un mensaje nuevo mueva la conversacion arriba al instante).
-   * Cualquier otra cosa — una fila que entra, una que sale, o filtros que
-   * dependen de datos que la fila no trae — se le vuelve a preguntar al
-   * servidor, que es el unico que sabe la respuesta con la paginacion puesta.
-   *
-   * El refresh va con un respiro de por medio: una rafaga de mensajes dispara
-   * un evento por cada uno y no hace falta rehacer la consulta cinco veces.
-   */
-  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    // Solo grupos: ninguna conversacion entra en la lista, y cada una que se mueve pediria la pagina entera.
-    if (filters.listType === "grupos") return;
-    const supabase = createClient();
-    const serverOnly = needsServerToFilter(filters);
-
-    const scheduleRefresh = () => {
-      if (refreshTimer.current) clearTimeout(refreshTimer.current);
-      refreshTimer.current = setTimeout(() => router.refresh(), REFRESH_DEBOUNCE_MS);
-    };
-
-    const channel = supabase
-      .channel("conversations-updates")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "conversations",
-          filter: `workspace_id=eq.${workspaceId}`,
-        },
-        (payload) => {
-          if (payload.eventType !== "UPDATE") {
-            scheduleRefresh();
-            return;
-          }
-
-          const updated = payload.new as Database["public"]["Tables"]["conversations"]["Row"];
-
-          setConversations((prev) => {
-            const current = prev.find((c) => c.id === updated.id);
-            if (!current) {
-              // No estaba en pantalla: puede que ahora corresponda mostrarla.
-              scheduleRefresh();
-              return prev;
-            }
-
-            const merged = { ...current, ...updated };
-
-            if (serverOnly || !matchesInboxRow(merged, filters, dateRange)) {
-              scheduleRefresh();
-              return prev;
-            }
-
-            return prev
-              .map((c) => (c.id === updated.id ? merged : c))
-              .sort((a, b) => {
-                const aTime = a.last_message_at ?? a.created_at;
-                const bTime = b.last_message_at ?? b.created_at;
-                return new Date(bTime).getTime() - new Date(aTime).getTime();
-              });
-          });
-        },
-      )
-      .subscribe();
-
-    return () => {
-      if (refreshTimer.current) clearTimeout(refreshTimer.current);
-      supabase.removeChannel(channel);
-    };
-  }, [workspaceId, filters, dateRange, router]);
-
-  const withDraft = new Set(draftConversationIds);
-  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  const withDraft = drafts;
   const hasFilters = countActiveFilters(filters) > 0;
-  const items = mergeInboxRows(conversations, groups);
+  const lastLoaded = conversations.length > 0 ? conversations[conversations.length - 1].last_message_at : undefined;
+  const items = mergeInboxRows(conversations, groupsForLoaded(groups, lastLoaded, hasMore));
   const shownTotal = total + groupsTotal;
   const countLabel =
     showsOnlyGroups(filters)
@@ -304,8 +252,8 @@ export function ConversationList({
       {!filters.onlyUnidentified && !showsOnlyGroups(filters) && <UnidentifiedNotice count={unidentifiedCount} />}
 
       {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto">
-        {items.length === 0 ? (
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        {items.length === 0 && !hasMore ? (
           /* Dos vacios distintos: "todavia no pasó nada" y "tu filtro no
              encontró nada" piden cosas opuestas de quien mira la pantalla. */
           filters.listType === "grupos" && !hasGroups ? (
@@ -513,31 +461,32 @@ export function ConversationList({
             );
           })
         )}
-      </div>
-
-      {lastPage > 1 && (
-        <div className="flex items-center justify-between border-t border-border px-4 py-2">
-          <span className="text-xs text-muted-foreground">
-            Página {page} de {lastPage}
-          </span>
-          <div className="flex gap-1">
-            <PageButton
-              disabled={page <= 1}
-              onClick={() => onPageChange(page - 1)}
-              label="Anterior"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </PageButton>
-            <PageButton
-              disabled={page >= lastPage}
-              onClick={() => onPageChange(page + 1)}
-              label="Siguiente"
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </PageButton>
+        {/* Scroll infinito: al acercarse este final se pide la tanda siguiente. */}
+        {(hasMore || loadError) && (
+          <div ref={sentinelRef} className="flex justify-center px-4 py-4">
+            {loadError ? (
+              <div role="alert" className="flex flex-col items-center gap-2 text-center text-xs text-muted-foreground">
+                <span>{loadError}</span>
+                <button
+                  type="button"
+                  onClick={() => void loadMore()}
+                  className="rounded-lg border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent"
+                >
+                  Reintentar
+                </button>
+              </div>
+            ) : (
+              <span className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+                {loadingMore && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+                {loadingMore ? "Cargando más chats…" : ""}
+              </span>
+            )}
           </div>
-        </div>
-      )}
+        )}
+        {!hasMore && !loadError && conversations.length > 0 && (
+          <p className="px-4 py-4 text-center text-xs text-muted-foreground">No hay más chats</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -628,28 +577,5 @@ function NoGroupsYet({ canManageGroups }: { canManageGroups: boolean }) {
         .
       </p>
     </div>
-  );
-}
-
-function PageButton({
-  disabled,
-  onClick,
-  label,
-  children,
-}: {
-  disabled: boolean;
-  onClick: () => void;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40 disabled:hover:bg-transparent"
-    >
-      {children}
-    </button>
   );
 }
