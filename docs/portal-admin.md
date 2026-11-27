@@ -98,6 +98,14 @@ sin contestar).
   de la reunión no lo lee la sesión (permiso por columnas). La asistencia se mide sobre su base (todos con acceso,
   empezaron hace N días, una fase o una variante); quien asiste fuera de la base queda registrado sin sumar ni restar.
   «Agregar al portal» desde Grabaciones guarda una grabación como clase o como grabación de una fecha.
+- **Calendario, la lista y el drawer de una clase (27/11/2026, 00537)**: debajo de las métricas, pestañas **Próximas** y
+  **Pasadas** (`?lista=pasadas`); cada fila se cliquea entera y abre el drawer de ESA clase (`?sesion=<id>&fecha=<fecha
+  original>`, `lib/program/class-drawer.ts`), igual para próximas y pasadas: «Entrar», menú «⋯» (mover, cancelar, quién
+  ve esta fecha, editar la sesión), **notas internas** con formato (`live_session_dates.note`, HTML limpio con
+  `sanitizeEmailHtml`, se guardan solas; ninguna función del portal lee esa columna) y **tareas de la clase**
+  (`tasks.live_session_id` + `live_session_on`, las escribe el servidor). En una pasada, además, grabación (link a
+  Grabaciones si es de Fathom) y asistencia. El formulario de toda la serie quedó solo en «Editar sesión» y «+ Sesión».
+  Guardar notas: gana el último que guarda.
 - **Comunidad**: posts y comentarios (un nivel), reacciones y reportes. Un comentario en una clase es un post del
   espacio reservado «clases». Lo borrado se oculta y se purga a los 30 días.
   **Autor del equipo (00505)**: un post o comentario del equipo se ve en el portal con el nombre de quien lo escribió

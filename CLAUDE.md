@@ -2796,3 +2796,14 @@ Todos los tooltips son `Tip` (`components/ui/tooltip.tsx`): instantáneo, con el
 - **`--muted-foreground` es igual a `--foreground`** en los cuatro bloques de tema: `text-muted-foreground` se ve negro en claro y blanco en oscuro. El gris de antes es **`--disabled-foreground`** (`text-disabled-foreground`, `border-disabled-foreground`…), solo para lo apagado: placeholders, `option:disabled`, chips de estado neutros («Borrador», «Archivado», «Inactivo»), bordes, rellenos y trazos. `lib/ui/theme-css.test.ts` lo cuida.
 - **Nada de transparencias en el texto** (`text-muted-foreground/60`, `text-foreground/50`, `text-sidebar-foreground/70`) ni `opacity-NN` sobre un texto normal. Un `opacity-*` queda solo para marcar un estado (desactivado, cargando, archivado, inactivo, arrastrando, fuera de mes, liberado, en cero), íconos y animaciones.
 - El color de la marca como letra sigue siendo `text-primary-ink`; como borde, `border-primary-edge`.
+
+# Calendario del programa: pestañas y el drawer de una clase (27/11/2026)
+
+Portal → programa → Calendario (Lista): pestañas **Próximas / Pasadas** y un **drawer por clase** (próximas y pasadas) con «Entrar», menú «⋯» (mover, cancelar, quién ve, editar la sesión), **notas internas** y **tareas de la clase**; en una pasada, además, grabación y asistencia. Detalle en [docs/portal-admin.md](docs/portal-admin.md) y [docs/tareas.md](docs/tareas.md).
+
+- **Las notas son `live_session_dates.note`** (ya existía): HTML limpio con `sanitizeEmailHtml` (`saveClassNote`). **Ninguna función del portal lee esa columna, y ninguna nueva debe hacerlo.**
+- **Tareas de una clase: `tasks.live_session_id` + `live_session_on`** (fecha original, los dos o ninguno). Las escribe el servidor; `TASK_COLUMNS` las lee, así que **la 00537 va ANTES de desplegar el código** (sin ella, Tareas entera falla al leer).
+- La clase abierta vive en `?sesion=&fecha=` (`lib/program/class-drawer.ts`); `?clase=` ya era de Comunidad. El link de una tarea pasa por `/dashboard/portal/clase`.
+- **Paneles apilados** (`components/tasks/overlay.tsx`): Esc y Tab los maneja solo la capa de arriba.
+
+`00537_tasks_live_session` (aditiva). **La próxima libre es la `00538`** (confirmar con `list_migrations` y las ramas locales).
