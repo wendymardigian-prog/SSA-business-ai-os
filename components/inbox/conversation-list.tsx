@@ -42,6 +42,9 @@ import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 
 type Conversation = ConversationRow;
 
+/** Un solo arreglo vacio: un `[]` nuevo en cada render cambiaria la tanda inicial y la lista se re-sembraria sin parar. */
+const NO_IDS: string[] = [];
+
 function formatTime(dateStr: string | null, timeZone: string): string {
   if (!dateStr) return "";
   // Por dia de calendario (lib/inbox/day-label.ts): un mensaje de ayer a la
@@ -61,7 +64,7 @@ export function ConversationList({
   initialCursor = null,
   initialHasMore = false,
   draftCounts,
-  draftConversationIds = [],
+  draftConversationIds = NO_IDS,
   accounts,
   members = [],
   currentUserId = "",
@@ -195,7 +198,9 @@ export function ConversationList({
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, loadError, loadMore, conversations.length]);
+    // `loadingMore`: al terminar una tanda se vuelve a observar, y si el final sigue a la vista (una tanda que el
+    // filtro «IA» dejo vacia, por ejemplo) se pide la siguiente.
+  }, [hasMore, loadError, loadMore, loadingMore, conversations.length]);
 
   const withDraft = drafts;
   const hasFilters = countActiveFilters(filters) > 0;

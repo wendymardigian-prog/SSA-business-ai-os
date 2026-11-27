@@ -27,6 +27,9 @@ import type { ChannelAgentInfo } from "@/lib/agent/public";
 import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 
 type Conversation = ConversationRow;
+
+/** Estable entre renders: la lista re-siembra sus chats cuando cambia lo que recibe. */
+const NO_DRAFT_IDS: string[] = [];
 type Message = Database["public"]["Tables"]["messages"]["Row"];
 
 export function InboxView({
@@ -58,7 +61,7 @@ export function InboxView({
   currentUserId,
   isAdmin,
   draftCounts,
-  draftConversationIds = [],
+  draftConversationIds = NO_DRAFT_IDS,
   hasGroups = false,
   unidentifiedCount = 0,
   groups = [],
