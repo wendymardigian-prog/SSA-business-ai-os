@@ -2,36 +2,14 @@ import { getWorkspace } from "@/lib/workspace";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { isAdminRole } from "@/lib/auth/roles";
 import { platformLabel, type Platform } from "@/lib/platforms";
-import { firstParam, listParam, pickEnum, pickIds, pickPage, sanitizeSearch } from "@/lib/url-params";
-import { contactSearchFilter } from "@/lib/contacts/search";
-import { contactIdsByWhatsappLid } from "@/lib/contacts/search-lid";
-import { resolveDateRange, DATE_PRESETS, type DatePreset } from "@/lib/dates";
+import { firstParam } from "@/lib/url-params";
+import { resolveDateRange } from "@/lib/dates";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
-import {
-  INBOX_STATUS_VALUES,
-  DEFAULT_INBOX_STATUS,
-  ASSIGNMENT_ANY,
-  ASSIGNMENT_UNASSIGNED,
-  ASSIGNMENT_AI,
-  ASSIGNMENT_MINE,
-  HIDE_KNOWN_PARAM,
-  HIDE_KNOWN_VALUE,
-  HIDE_CUSTOMERS_PARAM,
-  LEGACY_VIEW_PARAM,
-  LIST_TYPE_PARAM,
-  COMMUNITY_PARAM,
-  parseCommunityParam,
-  UNIDENTIFIED_PARAM,
-  SILENT_OUTREACH_FIELD,
-  parseListType,
-  statusForQuery,
-  type InboxFilters,
-  type InboxStatus,
-} from "@/lib/inbox/filters";
-import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
-import { AWAITING_PARAM, awaitingQueryBounds, parseAwaitingFilter } from "@/lib/inbox/awaiting";
+import { SILENT_OUTREACH_FIELD, statusForQuery } from "@/lib/inbox/filters";
+import { inboxListContext, listQueryOf, parseInboxListParams } from "@/lib/inbox/list-params";
+import { loadDraftConversationIds, loadInboxChunk, toRows, type InboxChunk } from "@/lib/inbox/list-load";
 import { InboxView } from "./inbox-view";
-import { communityOptions, groupsCanMatch, groupsForPage } from "@/lib/inbox/unified-list";
+import { communityOptions, groupsCanMatch } from "@/lib/inbox/unified-list";
 import { loadInboxGroups, loadSelectedGroup } from "@/lib/whatsapp-groups/inbox-data";
 import type { InboxAsset } from "@/components/inbox/message-thread";
 import { toBankAsset } from "@/lib/response-assets/list";
@@ -42,7 +20,6 @@ import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type Pub
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import type { ConversationRow } from "@/lib/inbox/types";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
-import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
 import { PageHeader } from "@/components/page-header";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
 
@@ -64,8 +41,6 @@ import { SectionTabs } from "@/components/comunicacion/section-tabs";
  * La conversacion abierta tambien va en la URL (?c=). Ademas de sobrevivir a un
  * refresh, es lo que permite saltar desde la ficha del contacto directo al hilo.
  */
-
-const PAGE_SIZE = 30;
 
 export default async function InboxPage({
   searchParams,
@@ -131,130 +106,26 @@ export default async function InboxPage({
   const accounts = buildAccounts(visibleChannelRows);
   const accountInfo = accountsInfo(accounts);
 
-  const search = sanitizeSearch(firstParam(params.q));
-  const status = pickEnum<InboxStatus, InboxStatus>(
-    params.estado,
-    INBOX_STATUS_VALUES,
-    DEFAULT_INBOX_STATUS,
-  );
-  const platforms = listParam(params.canal).filter((p) =>
-    (platformOptions as string[]).includes(p),
-  );
-  // `?cuenta=` solo vale con ids de cuentas que esta persona ve: uno inventado o ajeno se ignora.
-  const channelIds = pickIds(params.cuenta, accounts.map((a) => a.id));
-  const tagIds = pickIds(params.tag, tags.map((t) => t.id));
-  const assignment = resolveAssignment(firstParam(params.asignado), members.map((m) => m.userId));
-  const datePreset = pickEnum<DatePreset>(params.fecha, DATE_PRESETS);
-  const dateFrom = firstParam(params.desde);
-  const dateTo = firstParam(params.hasta);
-  const agentError = firstParam(params["error-agente"]) === "1";
-  // F11: las que el agente derivó porque no pudo entender lo que llegó.
-  const needsHuman = firstParam(params[NEEDS_HUMAN_PARAM]) === "1";
-  // 00259: esperando respuesta (se puede responder / ventana vencida), el mismo
-  // criterio que la tarjeta del dashboard de Chat.
-  const awaiting = parseAwaitingFilter(firstParam(params[AWAITING_PARAM]));
-  // Conocidos (00256): esconderlos de la lista.
-  const hideKnown = firstParam(params[HIDE_KNOWN_PARAM]) === HIDE_KNOWN_VALUE;
-  // Clientes (00268), igual.
-  const hideCustomers = firstParam(params[HIDE_CUSTOMERS_PARAM]) === HIDE_KNOWN_VALUE;
-  // 00296: las que le escribio el negocio y la persona nunca respondio. Se ocultan por defecto.
-  const onlyUnidentified = firstParam(params[UNIDENTIFIED_PARAM]) === "1";
-  // Chats, grupos o los dos. `?vista=grupos` es el link viejo de cuando los grupos eran otra pantalla.
-  const listType = parseListType(firstParam(params[LIST_TYPE_PARAM]), firstParam(params[LEGACY_VIEW_PARAM]));
-  // Solo los grupos de una comunidad (00344): una comunidad no tiene chats, asi que es como "solo grupos".
-  const communityJid = parseCommunityParam(firstParam(params[COMMUNITY_PARAM]));
-  const onlyGroups = listType === "grupos" || !!communityJid;
-  // Los grupos no se paginan: solos, entran todos en la primera.
-  const page = onlyGroups ? 1 : pickPage(params.page);
+  // Los filtros de la URL, validados contra lo que existe (lib/inbox/list-params.ts): la misma
+  // lectura que usan «cargar mas» y el tiempo real (lib/actions/inbox-list.ts).
+  const listCtx = inboxListContext({
+    channels: channelsRes.data ?? [],
+    tagIds: tags.map((t) => t.id),
+    memberIds: members.map((m) => m.userId),
+    permissions: access.permissions,
+  });
+  const { filters, onlyGroups } = parseInboxListParams(params, listCtx);
+  const listQuery = listQueryOf(params);
   const selectedId = firstParam(params.c);
   const selectedGroupId = firstParam(params.g);
 
   const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
-  const range = resolveDateRange(datePreset, dateFrom, dateTo, new Date(), viewerTimezone);
-
-  // El inner join con alias recorta que conversaciones vuelven sin perder los
-  // datos del contacto de las que vuelven. Es el mismo mecanismo que usa la
-  // lista de contactos para filtrar por tag.
-  let select =
-    "*, contacts!inner(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at, is_known, known_marked_by, is_customer, customer_marked_by, customer_source)";
-  if (tagIds.length > 0) select += ", tag_match:contacts!inner(contact_tags!inner(tag_id))";
-
-  let query = supabase
-    .from("conversations")
-    .select(select, { count: "exact" })
-    .eq("workspace_id", workspace.id)
-    .is("deleted_at", null);
-
-  const statusValue = statusForQuery(status);
-  if (statusValue) query = query.eq("status", statusValue);
-  if (channelRestriction) {
-    // Una lista vacia es "no ve ninguna cuenta": un id que no existe no trae nada.
-    query = query.in("channel_id", channelRestriction.length > 0 ? channelRestriction : ["00000000-0000-0000-0000-000000000000"]);
-  }
-  if (platforms.length > 0) query = query.in("platform", platforms as Platform[]);
-  if (channelIds.length > 0) query = query.in("channel_id", channelIds);
-  if (tagIds.length > 0) query = query.in("tag_match.contact_tags.tag_id", tagIds);
-  if (range.from) query = query.gte("last_message_at", range.from);
-  if (range.to) query = query.lte("last_message_at", range.to);
-  // Fase 3: las conversaciones donde el agente fallo (indice parcial 00059).
-  if (agentError) query = query.not("last_agent_error_at", "is", null);
-  // Índice parcial de la 00103.
-  if (needsHuman) query = query.eq("needs_human", true);
-  if (awaiting) {
-    // Lo mismo que chat_waiting_now_v2 (00259): el lead espera hace mas de una
-    // hora, nadie marco que no necesita respuesta, ninguna etiqueta apago al
-    // agente y el contacto no esta en "no contactar". El estado "abierta" lo
-    // pone el filtro de estado, que arranca en abiertas.
-    const { waitingBefore, nowIso } = awaitingQueryBounds();
-    query = query
-      .not("awaiting_last_inbound_at", "is", null)
-      .lt("awaiting_last_inbound_at", waitingBefore)
-      .is("no_reply_needed_at", null)
-      .is("agent_disabled_by_tag_id", null)
-      .not("contacts.do_not_contact", "is", true);
-    query =
-      awaiting === "responder"
-        ? query.or(`reply_window_until.is.null,reply_window_until.gt.${nowIso}`)
-        : query.lte("reply_window_until", nowIso);
-  }
-  if (hideKnown) query = query.eq("contacts.is_known", false);
-  if (hideCustomers) query = query.eq("contacts.is_customer", false);
-  query = query.filter(SILENT_OUTREACH_FIELD, "eq", onlyUnidentified);
-
-  if (search) {
-    // Sobre el contacto (la tabla embebida): nombre, emails, telefonos, los @ y el
-    // id de WhatsApp de quien escribio sin numero. La misma regla que Contactos
-    // (lib/contacts/search.ts). El preview del mensaje no entra: PostgREST no
-    // combina en un OR la tabla propia con la embebida.
-    const lidContactIds = await contactIdsByWhatsappLid(supabase, workspace.id, search);
-    const filter = contactSearchFilter(search, lidContactIds);
-    if (filter) query = query.or(filter, { referencedTable: "contacts" });
-  }
-
-  if (assignment === ASSIGNMENT_UNASSIGNED) {
-    // "Sin asignar" es sin nadie por ninguna de las tres vias, no solo sin
-    // agente: un lead con vendedor ya tiene dueño.
-    query = query
-      .is("assigned_to", null)
-      .is("contacts.setter_id", null)
-      .is("contacts.vendedor_id", null);
-  } else if (assignment === ASSIGNMENT_AI) {
-    // No hay un usuario "IA" al que mirar: son las conversaciones sin humano
-    // encima donde algo salio de un flow. Cuando llegue el agente de la Fase 3
-    // el criterio sigue valiendo, porque va a escribir por el mismo camino.
-    query = query.is("assigned_to", null);
-  } else if (assignment) {
-    // Una persona: el chat a su cargo, o es setter o vendedor del contacto
-    // (campo calculado `conversation_people`, 00255). Antes miraba solo el
-    // contacto y un chat asignado directo no aparecia.
-    const personId = assignment === ASSIGNMENT_MINE ? user.id : assignment;
-    query = query.filter("conversation_people", "cs", `{${personId}}`);
-  }
-
-  const from = (page - 1) * PAGE_SIZE;
+  const range = resolveDateRange(filters.datePreset, filters.dateFrom, filters.dateTo, new Date(), viewerTimezone);
+  const listInput = { workspaceId: workspace.id, userId: user.id, filters, range, channelRestriction };
 
   // Cuantas quedaron afuera: sin este numero, la lista baja de golpe y parece que se perdieron
   // chats. Mismo estado y mismas cuentas que la lista. La columna va primero: usa el indice parcial.
+  const statusValue = statusForQuery(filters.status);
   let hiddenQuery = supabase
     .from("conversations")
     .select("id", { count: "exact", head: true })
@@ -266,39 +137,15 @@ export default async function InboxPage({
   if (channelRestriction) {
     hiddenQuery = hiddenQuery.in("channel_id", channelRestriction.length > 0 ? channelRestriction : ["00000000-0000-0000-0000-000000000000"]);
   }
-  if (platforms.length > 0) hiddenQuery = hiddenQuery.in("platform", platforms as Platform[]);
-  if (channelIds.length > 0) hiddenQuery = hiddenQuery.in("channel_id", channelIds);
+  if (filters.platforms.length > 0) hiddenQuery = hiddenQuery.in("platform", filters.platforms as Platform[]);
+  if (filters.channelIds.length > 0) hiddenQuery = hiddenQuery.in("channel_id", filters.channelIds);
 
-  const filters: InboxFilters = {
-    search,
-    status,
-    // Con una comunidad la lista es de grupos: el Realtime de chats no tiene que meter ninguno.
-    listType: communityJid ? "grupos" : listType,
-    communityJid,
-    platforms,
-    channelIds,
-    tagIds,
-    assignment,
-    datePreset,
-    dateFrom,
-    dateTo,
-    agentError,
-    needsHuman,
-    awaiting,
-    hideKnown,
-    hideCustomers,
-    onlyUnidentified,
-  };
-
-  const [conversationsRes, assetsRes, permissionCtx, draftCounts, hiddenRes, allGroups, openGroup] = await Promise.all([
-    // Solo grupos: no se le pregunta nada a la base. Una fila de mas que la pagina: la primera de la siguiente dice
-    // hasta donde llegan los grupos de esta (lib/inbox/unified-list.ts).
+  const [chunk, assetsRes, permissionCtx, draftCounts, hiddenRes, allGroups, openGroup] = await Promise.all([
+    // La primera tanda (scroll infinito): las siguientes las pide la lista con un cursor
+    // (lib/inbox/list-cursor.ts). Solo grupos: no se le pregunta nada a la base.
     onlyGroups
-      ? Promise.resolve({ data: [], count: 0, error: null })
-      : query
-          .order("last_message_at", { ascending: false, nullsFirst: false })
-          .order("created_at", { ascending: false })
-          .range(from, from + PAGE_SIZE),
+      ? Promise.resolve(EMPTY_CHUNK)
+      : loadInboxChunk(supabase, listInput, { cursor: null, withCount: true }),
     // La banca de recursos del widget del composer (los seis tipos). Cualquier
     // miembro la lee. Sin URLs firmadas: las miniaturas cargan lazy y los
     // reproductores firman al apretar play. Los mas usados primero.
@@ -318,14 +165,15 @@ export default async function InboxPage({
     // mantiene al dia Realtime (useDraftCounts).
     countPendingDrafts(),
     hiddenQuery,
+    // Todos los grupos que cumplen los filtros: la lista los intercala por fecha a medida que se baja.
     groupsCanMatch(filters) ? loadInboxGroups(supabase, workspace.id, channelsRes.data ?? [], filters, range) : Promise.resolve([]),
     selectedGroupId
       ? loadSelectedGroup(supabase, workspace.id, selectedGroupId, channelsRes.data ?? [], { isAdmin: isAdminRole(role), permissions: access.permissions })
       : Promise.resolve(null),
   ]);
 
-  if (conversationsRes.error) {
-    console.error("[inbox] listado fallido:", conversationsRes.error.message);
+  if (chunk.error) {
+    console.error("[inbox] listado fallido:", chunk.error);
   }
   if (assetsRes.error) {
     console.error("[inbox] banca de recursos fallida:", assetsRes.error.message);
@@ -345,20 +193,7 @@ export default async function InboxPage({
   const canManageGroups = permissionCtx.can("channels.manage");
   if (openGroup && !canManageGroups) openGroup.group.manage = null;
 
-  const fetchedRows = toRows(conversationsRes.data);
-  let conversations = fetchedRows.slice(0, PAGE_SIZE);
-  const groupsOnPage = groupsForPage(allGroups, {
-    page,
-    newestOnPage: fetchedRows[0]?.last_message_at,
-    newestOnNextPage: fetchedRows[PAGE_SIZE]?.last_message_at,
-  });
-
-  // "Agente IA" necesita saber si un flow escribio en la conversacion, y eso
-  // esta en messages. Se resuelve despues de traer la pagina y no con un join:
-  // un inner join a messages duplicaria filas y romperia el conteo.
-  if (assignment === ASSIGNMENT_AI) {
-    conversations = await keepOnlyBotAnswered(supabase, conversations);
-  }
+  const conversations = chunk.rows;
 
   // La conversacion abierta se trae aparte y sin filtros: un link compartido
   // tiene que abrir ese hilo aunque no entre en la pagina que se este viendo.
@@ -400,9 +235,10 @@ export default async function InboxPage({
         <InboxView
       conversations={conversations}
       selected={selected}
-      total={conversationsRes.count ?? conversations.length}
-      page={page}
-      pageSize={PAGE_SIZE}
+      total={chunk.count ?? conversations.length}
+      listQuery={listQuery}
+      initialCursor={chunk.cursor}
+      initialHasMore={chunk.hasMore}
       workspaceId={workspace.id}
       workspaceName={workspace.name}
       assets={assets}
@@ -428,7 +264,7 @@ export default async function InboxPage({
       draftConversationIds={draftConversationIds}
       hasGroups={(groupsCount.count ?? 0) > 0}
       unidentifiedCount={hiddenRes.count ?? 0}
-      groups={groupsOnPage}
+      groups={allGroups}
       groupsTotal={allGroups.length}
       selectedGroup={openGroup?.group ?? null}
       groupThread={openGroup?.thread ?? []}
@@ -441,53 +277,4 @@ export default async function InboxPage({
   );
 }
 
-/** Un id de la URL solo vale si es de alguien del equipo. */
-function resolveAssignment(raw: string, memberIds: string[]): string {
-  if (!raw) return ASSIGNMENT_ANY;
-  if (raw === ASSIGNMENT_UNASSIGNED || raw === ASSIGNMENT_AI || raw === ASSIGNMENT_MINE) return raw;
-  return memberIds.includes(raw) ? raw : ASSIGNMENT_ANY;
-}
-
-/**
- * El select dinamico no se puede tipar en tiempo de compilacion. La forma que
- * vuelve es la fila de conversations tal cual mas el contacto embebido, que es
- * lo que ya esperan la lista y el hilo; el cast se hace aca, en un solo lugar.
- */
-function toRows(data: unknown): ConversationRow[] {
-  return (data ?? []) as unknown as ConversationRow[];
-}
-
-/** Deja solo las conversaciones donde algun mensaje salio de un flow. */
-async function keepOnlyBotAnswered(
-  supabase: Awaited<ReturnType<typeof getWorkspace>>["supabase"],
-  conversations: ConversationRow[],
-): Promise<ConversationRow[]> {
-  if (conversations.length === 0) return conversations;
-
-  const { data } = await supabase
-    .from("messages")
-    .select("conversation_id")
-    .in("conversation_id", conversations.map((c) => c.id))
-    .not("sent_by_flow_id", "is", null);
-
-  const answered = new Set((data ?? []).map((m) => m.conversation_id));
-  return conversations.filter((c) => answered.has(c.id));
-}
-
-/** De estas conversaciones, cuales tienen un borrador vivo del agente. */
-async function loadDraftConversationIds(
-  supabase: Awaited<ReturnType<typeof getWorkspace>>["supabase"],
-  conversationIds: string[],
-): Promise<string[]> {
-  if (conversationIds.length === 0) return [];
-  const { data, error } = await supabase
-    .from("agent_drafts")
-    .select("conversation_id")
-    .in("conversation_id", conversationIds)
-    .in("status", LIVE_DRAFT_STATUSES);
-  if (error) {
-    console.error("[inbox] no pude leer los borradores de la pagina:", error.message);
-    return [];
-  }
-  return [...new Set((data ?? []).map((d) => d.conversation_id))];
-}
+const EMPTY_CHUNK: InboxChunk = { rows: [], hasMore: false, cursor: null, newestOnNext: undefined, count: 0, error: null };

@@ -22,6 +22,7 @@ import type { FilterSummaryCatalog } from "@/lib/inbox/filter-summary";
 import type { GroupListRow, SelectedGroup, ThreadMessage } from "@/lib/whatsapp-groups/thread";
 import { countActiveFilters, type InboxFilters } from "@/lib/inbox/filters";
 import type { DateRange } from "@/lib/dates";
+import type { ListCursor } from "@/lib/inbox/list-cursor";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
 import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 
@@ -44,8 +45,9 @@ export function InboxView({
   workspaceName,
   selected: selectedFromServer,
   total,
-  page,
-  pageSize,
+  listQuery,
+  initialCursor = null,
+  initialHasMore = false,
   filters,
   dateRange,
   tags,
@@ -96,8 +98,11 @@ export function InboxView({
    */
   selected: Conversation | null;
   total: number;
-  page: number;
-  pageSize: number;
+  /** La parte de la URL con los filtros: la lista la manda al pedir mas chats o los que cambiaron en vivo. */
+  listQuery: string;
+  /** Donde arranca la segunda tanda (scroll infinito). */
+  initialCursor?: ListCursor | null;
+  initialHasMore?: boolean;
   filters: InboxFilters;
   dateRange: DateRange;
   tags: { id: string; name: string; color: string | null; disablesAgent?: boolean; assignsTo?: string | null }[];
@@ -168,13 +173,6 @@ export function InboxView({
 
   const hasFilters = countActiveFilters(filters) > 0;
 
-  function goToPage(next: number) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (next <= 1) params.delete("page");
-    else params.set("page", String(next));
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }
-
   /**
    * Abrir una conversacion cambia la URL en vez de guardar la fila en un
    * estado local. Asi el hilo sobrevive a un refresh y el link se puede
@@ -191,8 +189,13 @@ export function InboxView({
   const selectedId = searchParams.get("c");
   const groupId = searchParams.get("g");
   // Un grupo abierto le gana a la conversacion: abrir uno saca ?c= y al reves.
+  // Una fila cargada al bajar (scroll infinito) no esta en `conversations`, que es solo la primera tanda:
+  // se recuerda la que se eligio.
+  const [pickedRow, setPickedRow] = useState<Conversation | null>(null);
   const selected = selectedId && !groupId
-    ? (conversations.find((c) => c.id === selectedId) ?? (selectedFromServer?.id === selectedId ? selectedFromServer : null))
+    ? (conversations.find((c) => c.id === selectedId) ??
+      (pickedRow?.id === selectedId ? pickedRow : null) ??
+      (selectedFromServer?.id === selectedId ? selectedFromServer : null))
     : null;
 
   // Conocido (00256) y Cliente (00268): quien no lo marco ni lo tiene a cargo
@@ -215,6 +218,7 @@ export function InboxView({
 
   const handleSelect = useCallback(
     (c: Conversation) => {
+      setPickedRow(c);
       const next = new URLSearchParams(searchParams.toString());
       next.delete("g");
       next.set("c", c.id);
@@ -330,9 +334,9 @@ export function InboxView({
           filters={filters}
           dateRange={dateRange}
           total={total}
-          page={page}
-          pageSize={pageSize}
-          onPageChange={goToPage}
+          listQuery={listQuery}
+          initialCursor={initialCursor}
+          initialHasMore={initialHasMore}
           draftCounts={draftCounts}
           draftConversationIds={draftConversationIds}
           accounts={accounts}
