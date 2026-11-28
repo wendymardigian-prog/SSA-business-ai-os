@@ -395,6 +395,7 @@ export function ServiceRecordView({
   challenge,
   assistantCard,
   meetings,
+  downloads,
   activity,
   pointsHistory,
   series,
@@ -412,6 +413,8 @@ export function ServiceRecordView({
   assistantCard: ReactNode;
   /** Servicios A4 (F137): el bloque Reuniones. */
   meetings?: ReactNode;
+  /** 00538: «Descargas», los archivos que bajó del portal. */
+  downloads?: ReactNode;
   /** Servicios A3 (F130.4): el gráfico «Actividad en el portal». */
   activity?: ReactNode;
   /** Servicios A3 (F129): el plegable «Historial de puntos». */
@@ -570,6 +573,8 @@ export function ServiceRecordView({
         {certificate}
 
         {meetings}
+
+        {downloads}
 
         {pointsHistory}
         {data.hasPortal && accesses && (

@@ -150,6 +150,21 @@ sin contestar).
     el estudiante, las citas y la marca; filtros Todas / No le sirvió / Le sirvió / Sin clases (respondió sin citar
     ninguna clase). Lee `app_servicio.tutor_conversations` con `services.view` o `tutor.manage`.
 
+## Archivos para descargar (zip, plugins, plantillas) y quién los bajó
+
+Cada clase puede tener **recursos descargables** (editor del programa → la clase → «Recurso descargable»): PDF, imágenes,
+Office y, desde la 00538, **.zip** (un plugin de Claude, una plantilla, un proyecto para llevarse), hasta **45 MB** cada uno.
+
+- Se guardan en el bucket privado `program-resources`: no hay link público. Solo los baja quien tiene esa clase abierta
+  (`portal_file_grant`), con un link firmado que vence a los **5 minutos**. Pasarle el link a otra persona no sirve.
+- Un zip se acepta solo si sus bytes son un ZIP **y** quien sube dice que es un zip (por el tipo o por el nombre):
+  `checkResource` (`lib/program/lesson.ts`). `sniffUploadMime` no cambió (contenido y chat no aceptan zips).
+- **Registro de descargas** (00538): cada vez que SSA firma un link de un recurso para un estudiante, anota cuenta,
+  servicio, clase, recurso y hora en `app_servicio_portal.resource_downloads`. Se ve en la ficha del servicio, bloque
+  «Descargas» (`svc_resource_downloads`, mismo alcance que la ficha). La vista previa del equipo no se anota.
+  **Anotar nunca frena una descarga**: va en `after()` y la función no lanza.
+- Lo que nadie puede impedir: que alguien que ya bajó un archivo se lo pase a otro. El registro sirve para saber quién lo tuvo.
+
 ## Las cards de Portal › Programas
 
 Ocho números por programa en una consulta (`program_card_metrics`), con «Últimos 7 / 30 días»: estudiantes nuevos,

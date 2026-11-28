@@ -409,7 +409,7 @@ function ItemDrawer({
         )}
         {item.kind === "lesson" && canManage && (
           <label className="block text-xs text-muted-foreground">
-            Recurso (archivo, hasta 20 MB)
+            Recurso descargable (PDF, imagen, Office, zip… hasta 45 MB)
             <input type="file" onChange={(e) => upload("resource", e.target.files?.[0])} className="mt-1 block text-xs" />
           </label>
         )}

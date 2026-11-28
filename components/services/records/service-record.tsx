@@ -50,6 +50,7 @@ import { RecordModal } from "./record-modal";
 import { RecordNotFound } from "./record-not-found";
 import { ServiceRecordView, ServiceRecordHeader, type ServiceRecordData } from "./service-record-view";
 import { ServiceMeetingsBlock } from "./service-meetings-block";
+import { ServiceDownloadsBlock, type ResourceDownloadRow } from "./service-downloads-block";
 import { loadServiceMeetings } from "@/lib/services/screens/service-meetings-load";
 import { loadServiceChurn } from "@/lib/calls/contact-section";
 import { ChurnNotice } from "@/components/calls/churn-notice";
@@ -105,6 +106,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
   let assistantCard: React.ReactNode = null;
   let pointsDaily: PointsDaily | null = null;
   let pointsRows: PointsHistoryRow[] = [];
+  let downloads: ResourceDownloadRow[] | null = null;
   if (hasPortal) {
     // F129/F130.4: el gráfico y el historial (00380). Si la lectura falla, la ficha se ve igual, sin esas partes.
     const [daily, hist] = await Promise.all([
@@ -114,7 +116,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
     pointsDaily = daily.ok ? daily.data : null;
     pointsRows = hist.ok ? hist.data ?? [] : [];
     const canOverride = ctx.can("services.access");
-    const [cls, att, rev, pickerVariants] = await Promise.all([
+    const [cls, att, rev, pickerVariants, dl] = await Promise.all([
       svcRpc<{ items: ClassroomItem[] }>(supabase, "service_classroom", { p_service_id: s.id }),
       svcRpc<AttendanceOccurrence[]>(supabase, "service_attendance", { p_service_id: s.id }),
       // Las entregas de esa persona en este programa, con el cliente de servicio: la sesión ya vio el servicio.
@@ -123,7 +125,10 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
       canOverride
         ? loadServicePicker(supabase, workspace.id).then((o) => o.products.find((x) => x.id === s.product_id)?.variants ?? []).catch(() => [])
         : Promise.resolve([]),
+      // 00538: los archivos que bajó del portal. Si la lectura falla, la ficha se ve igual, sin esa parte.
+      svcRpc<ResourceDownloadRow[]>(supabase, "svc_resource_downloads", { p_service_id: s.id }),
     ]);
+    downloads = dl.ok ? dl.data ?? [] : null;
     classroom = cls.ok ? classroomProgressView(cls.data?.items ?? []) : null;
     if (canOverride && cls.ok) {
       const rows = (cls.data?.items ?? []).map((i) => ({ id: i.id, parent_id: i.parent_id, kind: i.kind, lesson_type: i.lesson_type, title: i.title, position: i.position, status: "active" as const }));
@@ -382,6 +387,7 @@ export async function ServiceRecord({ ctx, serviceId, tab }: { ctx: Ctx; service
         challenge={challengeCard}
         assistantCard={assistantCard}
         meetings={meetings}
+        downloads={downloads ? <ServiceDownloadsBlock rows={downloads} timeZone={timeZone} /> : null}
         series={seriesBlock}
         activity={pointsDaily ? <PortalActivityChart serviceId={s.id} initial={pointsDaily} /> : null}
         pointsHistory={
