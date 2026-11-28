@@ -2426,7 +2426,7 @@ Un recurso de una clase puede ser un **.zip** (un plugin, una plantilla) de hast
 - **Anotar nunca frena una descarga**: `/api/portal/file` llama `portal_log_resource_download` (solo `service_role`, nunca lanza) en `after()`, después de firmar. El contrato con el portal no cambió.
 - `app_servicio_portal.resource_downloads` no lleva `contact_id` a propósito (`merge_contacts` no la toca). La ficha lee con `svc_resource_downloads` (`can_see_service_row`).
 
-`00538_program_resource_downloads` (aditiva: bucket a 45 MB, la tabla y dos funciones) puede ir antes o después del deploy. **La próxima libre es la `00539`** (confirmar con `list_migrations` y las ramas locales).
+`00538_program_resource_downloads` (aditiva: bucket a 45 MB, la tabla y dos funciones) puede ir antes o después del deploy: **aplicada y registrada** el 28/11/2026 UTC (versión `20261128062731`), después de ensayarla en una transacción que se deshizo sola. **La próxima libre es la `00539`** (confirmar con `list_migrations` y las ramas locales).
 
 # Seguridad
 
