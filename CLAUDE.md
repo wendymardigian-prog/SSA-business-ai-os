@@ -2418,6 +2418,16 @@ El correo de la copia firmada se personaliza por contrato, un enlace de un corre
 - **No se guarda un `{{form_link.<slug>}}` a un formulario sin publicar** (`saveContractConfig`), y un link que no se pudo firmar se saca del correo.
 - **La sangría y los espacios dobles no cambian la huella** (es sobre el texto guardado) ni la regla de los renglones vacíos.
 
+## Recursos descargables: zip y registro de descargas (00538, 28/11/2026)
+
+Un recurso de una clase puede ser un **.zip** (un plugin, una plantilla) de hasta 45 MB, y cada descarga queda anotada. Detalle en [docs/portal-admin.md](docs/portal-admin.md) («Archivos para descargar»).
+
+- **El zip se acepta solo en `checkResource`** (bytes de ZIP y declarado zip por tipo o nombre); `sniffUploadMime` no cambia.
+- **Anotar nunca frena una descarga**: `/api/portal/file` llama `portal_log_resource_download` (solo `service_role`, nunca lanza) en `after()`, después de firmar. El contrato con el portal no cambió.
+- `app_servicio_portal.resource_downloads` no lleva `contact_id` a propósito (`merge_contacts` no la toca). La ficha lee con `svc_resource_downloads` (`can_see_service_row`).
+
+`00538_program_resource_downloads` (aditiva: bucket a 45 MB, la tabla y dos funciones) puede ir antes o después del deploy. **La próxima libre es la `00539`** (confirmar con `list_migrations` y las ramas locales).
+
 # Seguridad
 
 ## Autenticacion y sesiones

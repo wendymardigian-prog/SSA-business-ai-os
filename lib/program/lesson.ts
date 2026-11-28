@@ -8,7 +8,7 @@ import { sniffMime, sniffUploadMime } from "@/lib/content/media";
 export const HTML_MAX = 1024 * 1024;
 export const DOCUMENT_MAX = 20 * 1024 * 1024;
 export const IMAGE_MAX = 2 * 1024 * 1024;
-export const RESOURCE_MAX = 20 * 1024 * 1024;
+export const RESOURCE_MAX = 45 * 1024 * 1024;
 
 export type UploadCheck = { ok: true; mime: string } | { ok: false; error: string };
 
@@ -33,10 +33,23 @@ export function checkImage(bytes: Uint8Array): UploadCheck {
   return m === "image/jpeg" || m === "image/png" || m === "image/webp" ? { ok: true, mime: m } : { ok: false, error: "La imagen tiene que ser JPG, PNG o WebP" };
 }
 
-export function checkResource(bytes: Uint8Array, declaredMime?: string | null): UploadCheck {
-  if (bytes.length > RESOURCE_MAX) return { ok: false, error: "Cada recurso tiene hasta 20 MB" };
+/** Lo que un navegador declara para un .zip (Windows dice x-zip-compressed; a veces no dice nada). */
+const ZIP_DECLARED = new Set(["application/zip", "application/x-zip-compressed", "application/x-zip", "multipart/x-zip"]);
+
+/**
+ * Un recurso descargable de una clase. Además de lo que admite `sniffUploadMime`, acepta un `.zip` (un plugin, una
+ * plantilla, un proyecto para llevarse): los bytes tienen que ser un ZIP Y quien sube tiene que decir que es un zip
+ * (por el tipo o por el nombre). `sniffUploadMime` no se toca: la usan contenido y chat, que no aceptan zips.
+ */
+export function checkResource(bytes: Uint8Array, declaredMime?: string | null, fileName?: string | null): UploadCheck {
+  if (bytes.length > RESOURCE_MAX) return { ok: false, error: "Cada recurso tiene hasta 45 MB" };
   const m = sniffUploadMime(bytes, declaredMime);
-  return m ? { ok: true, mime: m } : { ok: false, error: "No reconozco ese tipo de archivo" };
+  if (m) return { ok: true, mime: m };
+  const declared = (declaredMime ?? "").split(";")[0].trim().toLowerCase();
+  const saysZip = ZIP_DECLARED.has(declared) || /\.zip$/i.test((fileName ?? "").trim());
+  const isZip = bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+  if (isZip && saysZip) return { ok: true, mime: "application/zip" };
+  return { ok: false, error: "No reconozco ese tipo de archivo" };
 }
 
 export const LESSON_TYPE_LABELS: Record<string, string> = {

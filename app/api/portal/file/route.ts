@@ -4,7 +4,7 @@
  * el archivo de una clase, la foto propia o dónde subir una; la base decide si es de la persona
  * (`app_servicio.portal_file_grant`, con la sesión del estudiante) y SSA devuelve un link que vence en 5 minutos.
  */
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { svcRpc } from "@/lib/services/db";
 import { verifyPortalRequest } from "@/lib/portal-admin/portal-signature";
@@ -52,5 +52,18 @@ export async function POST(request: NextRequest) {
   }
   const { data, error } = await service.storage.from(bucket).createSignedUrl(path, TTL_SECONDS);
   if (error || !data) return NextResponse.json({ ok: false }, { status: 404 });
+  // 00538: quién bajó cada recurso. Después de responder y nunca frena la descarga (la función tampoco lanza).
+  if (input.kind === "resource" && typeof input.item_id === "string" && typeof input.ref === "string") {
+    const session = input.session;
+    const itemId = input.item_id;
+    const ref = input.ref;
+    after(async () => {
+      try {
+        await svcRpc(service, "portal_log_resource_download", { p_session: session, p_item_id: itemId, p_ref: ref });
+      } catch {
+        // Anotar es secundario: la descarga ya salió.
+      }
+    });
+  }
   return NextResponse.json({ ok: true, url: data.signedUrl });
 }

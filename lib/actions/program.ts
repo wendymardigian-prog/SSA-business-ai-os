@@ -106,7 +106,7 @@ export async function uploadProgramFile(productId: string, itemId: string, kind:
   const file = form.get("file");
   if (!(file instanceof File)) return fail("Elegí un archivo");
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const check = kind === "html" ? checkHtml(bytes) : kind === "document" ? checkDocument(bytes) : kind === "resource" ? checkResource(bytes, file.type) : checkImage(bytes);
+  const check = kind === "html" ? checkHtml(bytes) : kind === "document" ? checkDocument(bytes) : kind === "resource" ? checkResource(bytes, file.type, file.name) : checkImage(bytes);
   if (!check.ok) return fail(check.error);
   // El ítem tiene que ser de este negocio y de este producto (lo lee la sesión: si no lo ve, no existe).
   const { data: item } = await svcSchema(ctx.supabase).from("program_items").select("id, resources").eq("id", itemId).eq("product_id", productId).eq("workspace_id", ctx.workspace.id).maybeSingle();
