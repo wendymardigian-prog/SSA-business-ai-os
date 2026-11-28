@@ -40,6 +40,10 @@ import { parseMeetingsShown } from "@/lib/scheduling/calendar-show";
 import { canSeeTeamAvailability, parseTeamLayout } from "@/lib/scheduling/team-view";
 import { loadTeamBusy, type TeamBusy } from "@/lib/scheduling/data/team-busy";
 import { EMPTY_AGENDA_GOOGLE, loadAgendaGoogle, type AgendaGoogleData } from "@/lib/google-calendar/agenda-load";
+import type { AgendaClass } from "@/lib/scheduling/calendar-classes";
+import { parseClassesLayer } from "@/lib/scheduling/calendar-classes"; // @plantilla-quitar(servicios)
+import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
+import { loadAgendaClasses } from "@/lib/program/agenda-classes"; // @plantilla-quitar(servicios)
 
 export const dynamic = "force-dynamic";
 
@@ -284,6 +288,18 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         })
       : Promise.resolve(null);
 
+  // Las clases en vivo del Portal que da quien mira (y, en la vista de equipo, cada persona elegida). Sin el módulo de
+  // Servicios no hay capa ni interruptor; con el interruptor apagado no se consulta nada.
+  const classesPromise: Promise<{ on: boolean; items: AgendaClass[] } | undefined> =
+    // @plantilla-desde(servicios)
+    view === "calendar" && calendarRange && isModuleEnabled(ctx.workspace as { services_enabled?: boolean | null })
+      ? parseClassesLayer(query.clases)
+        ? loadAgendaClasses(service, { workspaceId: ctx.workspace.id, userIds: teamOn ? teamUserIds : [ctx.user.id], range: calendarRange }).then((items) => ({ on: true, items }))
+        : Promise.resolve({ on: false, items: [] })
+      :
+    // @plantilla-hasta(servicios)
+    Promise.resolve(undefined);
+
   const [{ items, total, bookingMatches, metaNames, lastTouches }, forCounts, meetContext, google, teamBusy] = await Promise.all([
     listPromise.then(async (list) => ({ ...list, ...(await loadListLinks(list.items)) })),
     listBookingStatuses(ctx.supabase, ctx.workspace.id, { from: resolvedPeriod.from, to: resolvedPeriod.to, ...base, statuses: fineStatuses }),
@@ -292,6 +308,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     googlePromise,
     teamPromise,
   ]);
+  const liveClasses = await classesPromise;
   const quickCounts = quickFilterCounts(forCounts, now);
   const counts: Record<QuickPick, number> = { all: forCounts.length, ...quickCounts };
 
@@ -411,6 +428,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       needsProfile={ctx.can("scheduling.use") && !profile}
       tasks={agendaTasks} // @plantilla-quitar(tareas)
       google={google}
+      liveClasses={liveClasses}
       meetingsShown={meetingsShown}
       canSeeTeam={canSeeTeam}
       team={

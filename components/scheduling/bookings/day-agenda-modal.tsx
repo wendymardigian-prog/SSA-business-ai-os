@@ -6,7 +6,7 @@
  * reglas (orden, filtro) viven en `lib/calendar/day-agenda.ts`.
  */
 import { useEffect, useState } from "react";
-import { CalendarDays, CheckSquare, X } from "lucide-react";
+import { CalendarDays, CheckSquare, GraduationCap, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { filterDayEntries, type DayEntry } from "@/lib/calendar/day-agenda";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ import { Tip } from "@/components/ui/tooltip";
 
 function EntryIcon({ kind }: { kind: DayEntry["kind"] }) {
   if (kind === "booking") return <CalendarDays className="h-4 w-4 shrink-0 text-primary-ink" aria-hidden />;
+  if (kind === "class") return <GraduationCap className="h-4 w-4 shrink-0 text-primary-ink" aria-hidden />;
   if (kind === "task") return <CheckSquare className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />;
   // eslint-disable-next-line @next/next/no-img-element
   return <img src="/brand/google-calendar.svg" alt="" aria-hidden className="h-4 w-4 shrink-0 opacity-60" />;

@@ -2,7 +2,7 @@
  * «Ver todo» de un día del calendario de la Agenda: la lista de todo lo de ese día (reuniones, tareas y eventos de
  * Google) ordenada, el filtro de los interruptores del modal y el resumen que aparece al pasar el mouse. PURO.
  */
-export type DayEntryKind = "booking" | "task" | "google" | "busy";
+export type DayEntryKind = "booking" | "task" | "google" | "busy" | "class";
 
 export interface DayEntry {
   kind: DayEntryKind;
@@ -19,7 +19,7 @@ export interface DayEntry {
 }
 
 /** Sin hora (todo el día, tarea sin hora) primero; después por hora; a igual hora, reuniones, tareas y Google. */
-const KIND_ORDER: Record<DayEntryKind, number> = { booking: 0, task: 1, google: 2, busy: 3 };
+const KIND_ORDER: Record<DayEntryKind, number> = { booking: 0, class: 1, task: 2, google: 3, busy: 4 };
 
 export function sortDayEntries(entries: readonly DayEntry[]): DayEntry[] {
   return [...entries].sort((a, b) => {
@@ -51,8 +51,10 @@ export function daySummary(entries: readonly DayEntry[]): string {
   const bookings = entries.filter((e) => e.kind === "booking").length;
   const google = entries.filter((e) => e.kind === "google" || e.kind === "busy").length;
   const tasks = entries.filter((e) => e.kind === "task").length;
+  const classes = entries.filter((e) => e.kind === "class").length;
   const parts: string[] = [];
   if (bookings) parts.push(plural(bookings, "reunión", "reuniones"));
+  if (classes) parts.push(plural(classes, "clase", "clases"));
   if (google) parts.push(plural(google, "evento de Google", "eventos de Google"));
   if (tasks) parts.push(plural(tasks, "tarea", "tareas"));
   return parts.length ? parts.join(" · ") : "Nada agendado";

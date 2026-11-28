@@ -27,6 +27,8 @@ import {
 } from "@/lib/actions/live-sessions";
 import { attendanceCell, baseCounts, hasRecording, type DateRecording, type OverviewDate } from "@/lib/program/calendar-view";
 import { classSections } from "@/lib/program/class-drawer";
+import { isLiveNow } from "@/lib/program/occurrence-time";
+import { sameClock, zoneName } from "@/lib/business-time";
 import { splitOpenDone } from "@/lib/tasks/contact-tasks";
 import type { ContactTasksPayload } from "@/lib/tasks/contact-section";
 import type { TaskRow } from "@/lib/tasks/types";
@@ -133,6 +135,18 @@ function ClassPanel({
   const dayRaw = fmt(occurrence.starts_at, { weekday: "long", day: "numeric", month: "long" });
   const day = dayRaw.charAt(0).toUpperCase() + dayRaw.slice(1);
   const hours = `${fmt(occurrence.starts_at, { hour: "2-digit", minute: "2-digit" })} – ${fmt(occurrence.ends_at, { hour: "2-digit", minute: "2-digit" })}`;
+  // La hora es la de quien mira, con su zona; si la clase está configurada en otra zona, se aclara su hora allá.
+  const zone = zoneName(tz);
+  const sessionTz = session.timezone || tz;
+  let configured: string | null = null;
+  try {
+    if (!sameClock(sessionTz, tz, new Date(occurrence.starts_at))) {
+      configured = `Configurada en hora de ${zoneName(sessionTz)}: ${new Intl.DateTimeFormat("es", { timeZone: sessionTz, hour: "2-digit", minute: "2-digit" }).format(new Date(occurrence.starts_at))}`;
+    }
+  } catch {
+    configured = null;
+  }
+  const live = occurrence.status !== "cancelled" && isLiveNow(occurrence, now);
   const host = data.team.find((t) => t.id === session.host_user_id) ?? null;
   const key = `${session.id}|${occurrence.occurs_on}`;
   const outside = session.variant_ids?.length ? data.variants.filter((x) => !session.variant_ids!.includes(x.id)) : [];
@@ -155,8 +169,10 @@ function ClassPanel({
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold leading-snug">{session.title}</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {day} · {hours}
+              {day} · {hours} <span className="text-xs">({zone})</span>
             </p>
+            {configured && <p className="text-xs text-muted-foreground">{configured}</p>}
+            {live && <span className="mt-1 mr-1 inline-block rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary-ink">En curso</span>}
             {occurrence.status !== "normal" && (
               <span className={cn("mt-1 inline-block rounded px-1.5 py-0.5 text-[11px] font-medium", occurrence.status === "cancelled" ? "bg-destructive/10 text-destructive" : "bg-accent")}>
                 {occurrence.status === "cancelled" ? "Cancelada" : "Movida"}
@@ -267,7 +283,7 @@ function MoveBox({ pending, timezone, onCancel, onMove }: { pending: boolean; ti
         </button>
         <button type="button" onClick={onCancel} className="rounded-md px-3 py-1.5 text-sm hover:bg-accent">Cancelar</button>
       </div>
-      <p className="text-[11px] text-muted-foreground">En la zona de la sesión ({timezone}). La asistencia queda en la fecha original.</p>
+      <p className="text-[11px] text-muted-foreground">En la hora de {zoneName(timezone)}, la zona de la sesión. La asistencia queda en la fecha original.</p>
     </section>
   );
 }

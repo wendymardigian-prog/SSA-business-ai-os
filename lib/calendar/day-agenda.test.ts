@@ -22,3 +22,13 @@ describe("«Ver todo» de un día", () => {
     expect(daySummary([])).toBe("Nada agendado");
   });
 });
+
+describe("clases en vivo en el día", () => {
+  it("van después de las reuniones a la misma hora, siempre se muestran y se cuentan", () => {
+    const entry = (kind: DayEntry["kind"], id: string, startMinutes: number | null): DayEntry => ({ kind, id, title: id, startMinutes, timeLabel: "", sub: null, openable: kind !== "class" });
+    const all = [entry("task", "t", 600), entry("class", "c", 600), entry("booking", "b", 600)];
+    expect(sortDayEntries(all).map((x) => x.id)).toEqual(["b", "c", "t"]);
+    expect(filterDayEntries(all, { tasks: false, google: false }).map((x) => x.id)).toEqual(["b", "c"]);
+    expect(daySummary([entry("booking", "b", 1), entry("class", "c", 2), entry("class", "d", 3)])).toBe("1 reunión · 2 clases");
+  });
+});

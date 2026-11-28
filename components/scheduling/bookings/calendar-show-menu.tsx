@@ -2,7 +2,7 @@
 
 /**
  * «Qué mostrar» del calendario de la Agenda: un desplegable de selección múltiple con las reuniones del sistema (todas
- * o estado por estado, agrupados), las tareas (mías o todas) y los eventos de Google. Los estados son el mismo filtro
+ * o estado por estado, agrupados), las tareas (mías o todas), los eventos de Google y las clases en vivo del Portal. Los estados son el mismo filtro
  * «Estado» del menú Filtros (`?estado=`); las reglas, en `lib/scheduling/calendar-show.ts`.
  */
 import { useEffect, useRef } from "react";
@@ -43,6 +43,7 @@ export function CalendarShowMenu({
   onMeetings,
   tasks,
   google,
+  liveClasses,
 }: {
   /** El filtro «Estado» (vacío = todo menos las canceladas). */
   statuses: BookingStatus[];
@@ -53,9 +54,11 @@ export function CalendarShowMenu({
   tasks?: { mode: TasksMode; onMode: (mode: TasksMode) => void };
   /** Sin esto (sin Google), no hay sección de Google. */
   google?: { on: boolean; onToggle: (on: boolean) => void };
+  /** Sin esto (sin el módulo de Servicios), no hay sección de clases. */
+  liveClasses?: { on: boolean; onToggle: (on: boolean) => void };
 }) {
   const visible = meetingsShown ? visibleCalendarStatuses(statuses) : [];
-  const layers = (meetingsShown ? 1 : 0) + (tasks && tasks.mode !== "off" ? 1 : 0) + (google?.on ? 1 : 0);
+  const layers = (meetingsShown ? 1 : 0) + (tasks && tasks.mode !== "off" ? 1 : 0) + (google?.on ? 1 : 0) + (liveClasses?.on ? 1 : 0);
 
   const setStatus = (status: BookingStatus, on: boolean) => onStatuses(on ? [...visible, status] : visible.filter((s) => s !== status));
   const setGroup = (group: (typeof STATUS_GROUPS)[number], on: boolean) => {
@@ -135,6 +138,14 @@ export function CalendarShowMenu({
           <PortalMenuSeparator />
           <PortalMenuLabel>Google Calendar</PortalMenuLabel>
           <Check strong label="Eventos de Google (no están en el sistema)" checked={google.on} onChange={google.onToggle} />
+        </>
+      )}
+
+      {liveClasses && (
+        <>
+          <PortalMenuSeparator />
+          <PortalMenuLabel>Portal</PortalMenuLabel>
+          <Check strong label="Clases en vivo que das" checked={liveClasses.on} onChange={liveClasses.onToggle} />
         </>
       )}
     </PortalMenu>
