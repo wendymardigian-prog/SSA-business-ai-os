@@ -2820,3 +2820,8 @@ Portal → programa → Calendario (Lista): pestañas **Próximas / Pasadas** y 
 - **Paneles apilados** (`components/tasks/overlay.tsx`): Esc y Tab los maneja solo la capa de arriba.
 
 `00537_tasks_live_session` (aditiva). **La próxima libre es la `00538`** (confirmar con `list_migrations` y las ramas locales).
+
+# Clases: próxima por hora y en la Agenda (27/11/2026, sin migración)
+
+- **Una clase es próxima hasta que TERMINA** (`lib/program/occurrence-time.ts`); nunca cortar por `toISOString().slice(0, 10)` (fecha UTC: de noche en América la clase de hoy desaparecía). Los rangos se cuentan con el día del negocio.
+- **La capa «Clases» de la Agenda** (`?clases=0` la apaga) muestra lo que da cada anfitrión, con el color de la marca y solo lectura. Lo genérico vive en `lib/scheduling/calendar-classes.ts`; lo que lee `app_servicio`, en `lib/program/agenda-classes.ts` (se poda con Servicios). Detalle en docs/agendamiento.md.

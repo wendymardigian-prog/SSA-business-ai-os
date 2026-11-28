@@ -95,3 +95,21 @@ export function busyHover(busy: AgendaGoogleBusy, ownerName: string | undefined,
     lines: [googleWhen(busy, timezone, timeFormat), "Evento de su Google Calendar (sin detalle)"],
   };
 }
+
+/** Una clase en vivo del Portal (capa «Clases»): programa, horario con la zona de quien mira y cómo entrar. */
+export function classHover(
+  cls: { title: string; productTitle: string | null; startAt: string; endAt: string; meetingUrl: string | null; moved: boolean },
+  hostName: string | null,
+  timezone: string,
+  timeFormat: TimeFormat,
+): HoverContent {
+  const zone = (timezone.split("/").pop() ?? timezone).replace(/_/g, " ");
+  const lines = [
+    `${dayText(cls.startAt, timezone)} · ${formatSlotLabel(cls.startAt, timezone, timeFormat)} a ${formatSlotLabel(cls.endAt, timezone, timeFormat)} (${zone})`,
+    cls.productTitle ? `Clase en vivo · ${cls.productTitle}` : "Clase en vivo",
+  ];
+  if (hostName) lines.push(`Anfitrión: ${hostName}`);
+  if (cls.moved) lines.push("Esta fecha se movió de su horario habitual");
+  lines.push(cls.meetingUrl ? "Clic para entrar a la reunión" : "Sin link de reunión cargado");
+  return { title: cls.title, lines };
+}

@@ -60,6 +60,7 @@ import { changeBookingStatus, cancelBookingAsHost, searchContactsForBooking } fr
 import { DEFAULT_CONFIG_SECTION } from "@/lib/scheduling/config-sections";
 import { durationMinutesOf, googleLayerParam, type AgendaGoogleEvent } from "@/lib/google-calendar/agenda";
 import type { AgendaGoogleData } from "@/lib/google-calendar/agenda-load";
+import { classesLayerParam, type AgendaClass } from "@/lib/scheduling/calendar-classes";
 import { refreshMyGoogleEvents } from "@/lib/actions/scheduling/google-events";
 import { CalendarShowMenu } from "./calendar-show-menu";
 import { showsCancelled, statusParams } from "@/lib/scheduling/calendar-show";
@@ -139,6 +140,7 @@ export function BookingsScreen({
   needsProfile,
   tasks,
   google,
+  liveClasses,
   meetingsShown = true,
   canSeeTeam = false,
   team,
@@ -204,6 +206,8 @@ export function BookingsScreen({
   tasks?: AgendaTasksProps;
   /** 00510: los eventos de Google Calendar de quien mira (solo en el calendario y con `scheduling.use`). */
   google?: AgendaGoogleData;
+  /** Las clases en vivo del Portal que da quien mira (solo con el módulo de Servicios; sin esto no hay interruptor). */
+  liveClasses?: { on: boolean; items: AgendaClass[] };
   /** «Qué mostrar»: `?reuniones=0` oculta las reuniones del calendario. */
   meetingsShown?: boolean;
   /** Quien mira ve las agendas de todos: en «Día» puede elegir «Por persona» (la vista de equipo) o «Todo junto». */
@@ -639,8 +643,10 @@ export function BookingsScreen({
                     onMeetings={(on) => setParams(on ? { reuniones: null } : { reuniones: "0", estado: null })}
                     tasks={tasks ? { mode: tasks.mode, onMode: (m) => setParam("tareas", tasksModeParam(m)) } : undefined} // @plantilla-quitar(tareas)
                     google={google ? { on: google.on, onToggle: (on) => setParam("google", googleLayerParam(on)) } : undefined}
+                    liveClasses={liveClasses ? { on: liveClasses.on, onToggle: (on) => setParam("clases", classesLayerParam(on)) } : undefined}
                   />
                 }
+                liveClasses={liveClasses?.on ? liveClasses.items : undefined}
                 google={
                   google
                     ? {

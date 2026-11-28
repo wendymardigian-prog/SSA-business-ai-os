@@ -106,6 +106,12 @@ sin contestar).
   (`tasks.live_session_id` + `live_session_on`, las escribe el servidor). En una pasada, además, grabación (link a
   Grabaciones si es de Fathom) y asistencia. El formulario de toda la serie quedó solo en «Editar sesión» y «+ Sesión».
   Guardar notas: gana el último que guarda.
+- **Próxima o pasada se decide por la HORA, no por la fecha (27/11/2026)**: una clase está en Próximas hasta que
+  termina (`ends_at > ahora`, con la marca «En curso» mientras dura) y recién ahí pasa a Pasadas
+  (`lib/program/occurrence-time.ts`). Antes se cortaba por la fecha en UTC y, de noche en América, la clase de hoy
+  desaparecía de las dos listas. Los rangos que se piden (90 días atrás, 60 adelante) se cuentan con el día del
+  NEGOCIO (`workspaces.timezone`) y un día de margen. Cada hora dice su zona: la de quien mira («19:00 (Costa
+  Rica)»); si la sesión está configurada en otra, el drawer agrega «Configurada en hora de …».
 - **Comunidad**: posts y comentarios (un nivel), reacciones y reportes. Un comentario en una clase es un post del
   espacio reservado «clases». Lo borrado se oculta y se purga a los 30 días.
   **Autor del equipo (00505)**: un post o comentario del equipo se ve en el portal con el nombre de quien lo escribió

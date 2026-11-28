@@ -197,6 +197,20 @@ la misma regla que `google_busy_blocks`) ve en «Día» una columna por persona:
 (`ssa:agenda:equipo`, en `try/catch`). En la vista de equipo el «Ocupado» de `google_busy_blocks` no se pide. Semana y
 Mes no cambian, y quien solo ve su agenda ve el «Día» de siempre.
 
+## Clases en vivo en el calendario (27/11/2026, sin migración)
+
+Con el módulo de Servicios prendido, la vista calendario de la Agenda suma la capa **Clases**: las clases en vivo del
+Portal que da cada persona como anfitriona (`live_sessions.host_user_id`), con el color de la marca.
+
+- **Quién ve qué**: quien mira ve las clases que da; en la vista de equipo del «Día», cada clase va en la columna de su
+  anfitrión. Se lee con el cliente de servicio filtrando por el workspace de la sesión (`lib/program/agenda-classes.ts`,
+  se poda con el módulo); nunca lanza.
+- **Interruptor** en «Qué mostrar» → Portal (`?clases=0` la apaga; prendida por defecto). Sin el módulo, no hay
+  interruptor ni consulta.
+- **Solo lectura**: no se arrastra ni se estira (se mueve desde el Portal). Al pasar el mouse, el resumen (horario con la
+  zona, programa, anfitrión); un clic abre el link de la reunión. Una fecha cancelada no aparece; una movida, en su
+  horario nuevo. Lo puro está en `lib/scheduling/calendar-classes.ts`; el dibujo, en `class-layer.tsx`.
+
 ## Reuniones sin evento (00289, 4/11/2026)
 
 Una reunión con título libre se cuelga del evento interno, que no se edita ni tiene pestaña Flujos.

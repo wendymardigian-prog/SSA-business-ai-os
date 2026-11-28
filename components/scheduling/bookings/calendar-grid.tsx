@@ -40,7 +40,9 @@ import { DayAgendaModal } from "./day-agenda-modal";
 import { daySummary, type DayEntry } from "@/lib/calendar/day-agenda";
 import { statusLabel } from "@/lib/scheduling/booking-status";
 import { useCalendarHover } from "./calendar-hover-card";
-import { bookingHover, busyHover, googleHover } from "@/lib/calendar/hover-content";
+import { bookingHover, busyHover, classHover, googleHover } from "@/lib/calendar/hover-content";
+import { classInColumn, placeClassesInCalendar, type AgendaClass, type ClassPlaced } from "@/lib/scheduling/calendar-classes";
+import { ClassCard, ClassChip } from "./class-layer";
 import { clampStyle, linesThatFit } from "@/lib/calendar/card-lines";
 import { useIsDesktop } from "./use-desktop";
 
@@ -124,6 +126,7 @@ export function BookingsCalendar({
   onCreateRange,
   onResizeBooking,
   google,
+  liveClasses,
   showMenu,
   includeCancelled = false,
   team,
@@ -158,6 +161,8 @@ export function BookingsCalendar({
   onResizeBooking?: (item: BookingListItem, durationMinutes: number) => void;
   /** 00510: los eventos de Google Calendar. */
   google?: GoogleLayerControls;
+  /** Las clases en vivo del Portal que da quien mira (y, en la vista de equipo, cada persona). Sin esto, no se dibujan. */
+  liveClasses?: AgendaClass[];
   /** «Qué mostrar»: el desplegable de reuniones (estados), tareas y Google. */
   showMenu?: ReactNode;
   /** Se eligió algún estado cancelado en «Qué mostrar»: se dibujan. */
@@ -234,6 +239,12 @@ export function BookingsCalendar({
   const googleEventsById = useMemo(() => new Map((google?.events ?? []).map((e) => [e.id, e])), [google]);
   const googleDraggable = (ev: AgendaGoogleEvent) => isDesktop && googleOn && !!google?.onDrop && canEditGoogleEvent(ev) && !ev.allDay;
   const googleResizable = (ev: AgendaGoogleEvent) => googleDraggable(ev) && !!google?.onResize;
+  // Las clases en vivo del Portal (solo lectura, con el color de la marca).
+  const classPlacement = useMemo(
+    () => (liveClasses && liveClasses.length ? placeClassesInCalendar({ classes: liveClasses, viewerTz: timezone, range }) : null),
+    [liveClasses, timezone, range],
+  );
+  const classesIn = (date: string, userId: string | null): ClassPlaced[] => (classPlacement?.[date] ?? []).filter((c) => classInColumn(c.cls, userId));
   const hasAllDay = !!googlePlacement && Object.values(googlePlacement.byDate).some((list) => list.some((i) => !i.timed));
 
   // El reparto lado a lado de lo que se superpone (solo con tareas o Google: sin ellas, el dibujo no cambia).
@@ -241,7 +252,7 @@ export function BookingsCalendar({
     const out = new Map<string, Map<string, { column: number; columns: number }>>();
     const layered = !!googlePlacement || !!taskPlacement; // @plantilla-quitar(tareas)
     // @plantilla-sin(tareas): const layered = !!googlePlacement;
-    if (!layered) return out;
+    if (!layered && !classPlacement) return out;
     const minMinutes = Math.ceil((MIN_CARD_PX / HOUR_PX) * 60);
     // Las mismas columnas que la rejilla (días, o personas en la vista de equipo), armadas acá adentro para el memo.
     const memoDays = Object.keys(placement.byDate).sort();
@@ -262,12 +273,14 @@ export function BookingsCalendar({
       if (googlePlacement && self(colUser)) {
         for (const g of googlePlacement.byDate[date] ?? []) if (g.timed) spans.push({ id: g.key, start: g.startMinutes, end: g.endMinutes });
       }
+      for (const c of classPlacement?.[date] ?? []) if (classInColumn(c.cls, colUser)) spans.push({ id: c.key, start: c.startMinutes, end: c.endMinutes });
       out.set(colKey, new Map(layoutOverlaps(spans, minMinutes).map((p) => [p.id, { column: p.column, columns: p.columns }])));
     }
     return out;
   }, [
     taskPlacement, // @plantilla-quitar(tareas)
     googlePlacement,
+    classPlacement,
     placement,
     team,
     view,
@@ -299,6 +312,7 @@ export function BookingsCalendar({
   // La tarjeta al pasar el mouse: al instante, nunca mientras se arrastra, se crea o se estira.
   const hover = useCalendarHover(!!dragging || !!selecting || !!resizing);
   const hoverBooking = (item: BookingListItem) => hover.bind(bookingHover(item, hostNames[item.hostUserId] ?? item.hostName ?? null, timezone, timeFormat));
+  const hoverClass = (c: ClassPlaced) => hover.bind(classHover(c.cls, hostNames[c.cls.hostUserId] ?? null, timezone, timeFormat));
   const hoverGoogle = (gi: import("@/lib/google-calendar/agenda").GooglePlaced) =>
     hover.bind(gi.kind === "event" ? googleHover(gi.event, timezone, timeFormat) : busyHover(gi.busy, hostNames[gi.busy.userId], timezone, timeFormat));
   const minutesAt = (e: PointerEvent<HTMLElement>, column: HTMLElement) =>
@@ -501,6 +515,17 @@ export function BookingsCalendar({
         openable: gi.kind === "event",
       });
     }
+    for (const c of classPlacement?.[date] ?? []) {
+      out.push({
+        kind: "class",
+        id: c.key,
+        title: c.cls.title,
+        startMinutes: c.startMinutes,
+        timeLabel: `${formatSlotLabel(c.cls.startAt, timezone, timeFormat)} a ${formatSlotLabel(c.cls.endAt, timezone, timeFormat)}`,
+        sub: [c.cls.productTitle ? `Clase en vivo · ${c.cls.productTitle}` : "Clase en vivo", hostNames[c.cls.hostUserId]].filter(Boolean).join(" · "),
+        openable: false,
+      });
+    }
     // @plantilla-desde(tareas)
     for (const ti of taskPlacement?.byDate[date] ?? []) out.push(taskDayEntry(ti, timeFormat));
     // @plantilla-hasta(tareas)
@@ -545,6 +570,9 @@ export function BookingsCalendar({
                   </button>
                 );
               })}
+              {(classPlacement?.[date] ?? []).map((c) => (
+                <ClassChip key={c.key} item={c} timezone={timezone} timeFormat={timeFormat} hover={hoverClass(c)} />
+              ))}
               {/* @plantilla-desde(tareas) */}
               {taskPlacement &&
                 (taskPlacement.byDate[date] ?? []).map((ti) => (
@@ -739,6 +767,24 @@ export function BookingsCalendar({
                     card
                   );
                 })}
+                {classesIn(date, colUser).map((c) => {
+                  const lane = columnsByDate.get(colKey)?.get(c.key);
+                  const rawTop = ((c.startMinutes - FIRST_HOUR * 60) / 60) * HOUR_PX;
+                  const top = Math.max(0, Math.min(rawTop, (LAST_HOUR - FIRST_HOUR) * HOUR_PX - MIN_CARD_PX));
+                  const height = Math.max(MIN_CARD_PX, ((c.endMinutes - c.startMinutes) / 60) * HOUR_PX);
+                  return (
+                    <ClassCard
+                      key={c.key}
+                      item={c}
+                      timezone={timezone}
+                      timeFormat={timeFormat}
+                      style={{ top, height, ...(lane ? laneStyle(lane) : null) }}
+                      className={lane ? "absolute" : "absolute inset-x-1"}
+                      lines={linesThatFit(height)}
+                      hover={hoverClass(c)}
+                    />
+                  );
+                })}
                 {selecting && selecting.date === date && selecting.userId === colUser && (() => {
                   const r = dragCreateRange(selecting.from, selecting.to);
                   return (
@@ -851,9 +897,9 @@ export function BookingsCalendar({
             <li key={date} className={date === today ? "bg-primary/[0.08] p-3" : "p-3"}>
               <p className={date === today ? "mb-1.5 text-xs font-semibold text-primary-ink" : "mb-1.5 text-xs font-medium text-muted-foreground"}>{dayLabel(date)}{date === today ? " · Hoy" : ""}</p>
               {/* @plantilla-desde(tareas) */}
-              {(placement.byDate[date] ?? []).length === 0 && !(taskPlacement?.byDate[date] ?? []).length && !(googlePlacement?.byDate[date] ?? []).length && <p className="text-xs text-muted-foreground">Sin agendas</p>}
+              {(placement.byDate[date] ?? []).length === 0 && !(classPlacement?.[date] ?? []).length && !(taskPlacement?.byDate[date] ?? []).length && !(googlePlacement?.byDate[date] ?? []).length && <p className="text-xs text-muted-foreground">Sin agendas</p>}
               {/* @plantilla-hasta(tareas) */}
-              {/* @plantilla-sin(tareas): {(placement.byDate[date] ?? []).length === 0 && !(googlePlacement?.byDate[date] ?? []).length && <p className="text-xs text-muted-foreground">Sin agendas</p>} */}
+              {/* @plantilla-sin(tareas): {(placement.byDate[date] ?? []).length === 0 && !(classPlacement?.[date] ?? []).length && !(googlePlacement?.byDate[date] ?? []).length && <p className="text-xs text-muted-foreground">Sin agendas</p>} */}
               <div className="flex flex-col gap-1.5">
                 {(placement.byDate[date] ?? []).map((it) => {
                   const item = it.booking as unknown as BookingListItem;
@@ -877,6 +923,9 @@ export function BookingsCalendar({
                     </button>
                   );
                 })}
+                {(classPlacement?.[date] ?? []).map((c) => (
+                  <ClassChip key={c.key} item={c} timezone={timezone} timeFormat={timeFormat} hover={hoverClass(c)} large />
+                ))}
                 {/* @plantilla-desde(tareas) */}
                 {taskPlacement &&
                   (taskPlacement.byDate[date] ?? []).map((ti) => (

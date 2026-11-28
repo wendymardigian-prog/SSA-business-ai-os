@@ -5,6 +5,7 @@ import { svcRpc, svcSchema } from "@/lib/services/db";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import type { DateRecording, OverviewDate } from "@/lib/program/calendar-view";
 import type { AttendanceBase } from "@/lib/program/occurrences";
+import { calendarWindows, pastOnly, upcomingOnly } from "@/lib/program/occurrence-time";
 
 export interface CalendarSession {
   id: string;
@@ -38,6 +39,8 @@ export interface CalendarOccurrence {
 }
 
 export interface CalendarData {
+  /** El instante con el que se separaron próximas y pasadas (ms). */
+  now: number;
   sessions: CalendarSession[];
   upcoming: CalendarOccurrence[];
   /** Las del mes que se mira (para la vista Mes), pasadas y próximas. */
@@ -78,18 +81,19 @@ export async function loadCalendar(
   focusRef: { sessionId: string; occursOn: string } | null = null,
 ): Promise<CalendarData> {
   const today = new Date();
+  const nowMs = today.getTime();
   const [y, m] = monthYm.split("-").map(Number);
   const monthFrom = iso(new Date(Date.UTC(y, m - 1, 1) - 7 * 86_400_000));
   const monthTo = iso(new Date(Date.UTC(y, m, 0) + 7 * 86_400_000));
-  const pastFrom = iso(new Date(today.getTime() - 90 * 86_400_000));
-  const upTo = iso(new Date(today.getTime() + 60 * 86_400_000));
+  // Las fechas se cuentan con el día del NEGOCIO y un día de margen; qué es próxima o pasada lo decide la hora real.
+  const win = calendarWindows(today, (ctx.workspace as { timezone?: string | null }).timezone ?? "UTC");
   const service = await createServiceClient();
   const [{ data: sessions }, { data: links }, upcoming, month, past, { data: phasesRaw }, members] = await Promise.all([
     svcSchema(ctx.supabase).from("live_sessions").select(SESSION_COLS).eq("product_id", productId).eq("workspace_id", ctx.workspace.id).order("created_at"),
     svcSchema(service).from("live_sessions").select("id, meeting_url").eq("product_id", productId).eq("workspace_id", ctx.workspace.id),
-    svcRpc<CalendarOccurrence[]>(ctx.supabase, "live_session_occurrences", { p_product_id: productId, p_from: iso(today), p_to: upTo }),
+    svcRpc<CalendarOccurrence[]>(ctx.supabase, "live_session_occurrences", { p_product_id: productId, p_from: win.upcomingFrom, p_to: win.upcomingTo }),
     svcRpc<CalendarOccurrence[]>(ctx.supabase, "live_session_occurrences", { p_product_id: productId, p_from: monthFrom, p_to: monthTo }),
-    svcRpc<OverviewDate[]>(ctx.supabase, "live_attendance_overview", { p_product_id: productId, p_from: pastFrom, p_to: iso(today) }),
+    svcRpc<OverviewDate[]>(ctx.supabase, "live_attendance_overview", { p_product_id: productId, p_from: win.pastFrom, p_to: win.pastTo }),
     ctx.supabase.from("product_variants").select("journey_template" as never).eq("product_id", productId),
     getWorkspaceMembers(ctx.workspace.id),
   ]);
@@ -116,16 +120,16 @@ export async function loadCalendar(
     recordings[`${d.live_session_id}|${d.occurs_on}`] = { recording_url: d.recording_url, recording_call_id: d.recording_call_id, recording_source: d.recording_source, recording_active: d.recording_active };
     if (d.extra_variant_ids?.length) extras[`${d.live_session_id}|${d.occurs_on}`] = d.extra_variant_ids;
   }
-  const pastDates = past.ok ? past.data ?? [] : [];
+  const pastDates = pastOnly(past.ok ? past.data ?? [] : [], nowMs);
   // La clase de la URL que no quedó en las listas: se pide su día (y su asistencia, si ya pasó).
   let focus: CalendarData["focus"] = null;
-  const upcomingList = upcoming.ok ? upcoming.data ?? [] : [];
+  const upcomingList = upcomingOnly(upcoming.ok ? upcoming.data ?? [] : [], nowMs);
   const monthList = month.ok ? month.data ?? [] : [];
   const same = (o: { live_session_id: string; occurs_on: string }) => focusRef && o.live_session_id === focusRef.sessionId && o.occurs_on === focusRef.occursOn;
   if (focusRef && ids.includes(focusRef.sessionId) && !pastDates.some(same) && !upcomingList.some(same) && !monthList.some(same)) {
     const [occ, ov] = await Promise.all([
       svcRpc<CalendarOccurrence[]>(ctx.supabase, "live_session_occurrences", { p_product_id: productId, p_from: focusRef.occursOn, p_to: focusRef.occursOn }),
-      focusRef.occursOn <= iso(today)
+      focusRef.occursOn <= win.pastTo
         ? svcRpc<OverviewDate[]>(ctx.supabase, "live_attendance_overview", { p_product_id: productId, p_from: focusRef.occursOn, p_to: focusRef.occursOn })
         : Promise.resolve({ ok: true as const, data: [] as OverviewDate[] }),
     ]);
@@ -142,6 +146,7 @@ export async function loadCalendar(
   for (const v of (phasesRaw ?? []) as unknown as Array<{ journey_template: { phases?: Array<{ key: string; name: string }> } | null }>) for (const ph of v.journey_template?.phases ?? []) if (!phases.has(ph.key)) phases.set(ph.key, ph.name);
   const team = members.map((t) => ({ id: t.userId, name: t.name }));
   return {
+    now: nowMs,
     sessions: list,
     upcoming: upcomingList,
     month: monthList,

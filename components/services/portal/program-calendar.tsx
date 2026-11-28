@@ -32,6 +32,9 @@ import { Tabs } from "@/components/ui/tabs";
 import { ClickableBox } from "@/components/ui/clickable-row";
 import { ClassDrawer, type ClassOccurrence } from "@/components/services/portal/class-drawer";
 import { withClassRef, withListTab, type ClassRef, type ListTab } from "@/lib/program/class-drawer";
+import { isLiveNow } from "@/lib/program/occurrence-time";
+import { zoneName } from "@/lib/business-time";
+import { todayInputValue } from "@/lib/dates";
 
 type View = "lista" | "mes" | "series" | "grilla";
 
@@ -83,6 +86,8 @@ export function ProgramCalendar({
   const fmt = (iso: string, opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("es", { timeZone: tz, ...opts }).format(new Date(iso));
   const when = (iso: string) => fmt(iso, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const hhmm = (iso: string) => fmt(iso, { hour: "2-digit", minute: "2-digit" });
+  // La zona de quien mira, para que cada hora diga de dónde es: «19:00 (Costa Rica)».
+  const zone = zoneName(tz);
   const href = (v: View, extra: Record<string, string> = {}) => `/dashboard/portal/${productId}?${new URLSearchParams({ tab: "calendario", vista: v, mes: month, ...extra })}`;
   const series = active.filter((s) => s.kind === "weekly");
   const variantName = (id: string | undefined) => data.variants.find((v) => v.id === id)?.name ?? null;
@@ -211,11 +216,12 @@ export function ProgramCalendar({
             { k: "Asistencia promedio", v: pctLabel(kpis.rate), link: href("grilla") },
             { k: "Sesiones sin grabación", v: String(kpis.withoutRecording) },
             { k: "Clics sin confirmar", v: String(kpis.unconfirmedClicks) },
-            { k: "Próxima sesión", v: kpis.next ? when(kpis.next.starts_at) : "—" },
+            { k: "Próxima sesión", v: kpis.next ? when(kpis.next.starts_at) : "—", sub: kpis.next ? `Hora de ${zone}` : undefined },
           ].map((x) => (
             <div key={x.k} className="rounded-lg border border-border p-3">
               <dt className="text-xs text-muted-foreground">{x.k}</dt>
               <dd className="mt-1 text-lg font-semibold">{x.link ? <Link href={x.link} className="hover:underline">{x.v}</Link> : x.v}</dd>
+              {"sub" in x && x.sub && <dd className="text-xs text-muted-foreground">{x.sub}</dd>}
             </div>
           ))}
         </dl>
@@ -239,8 +245,11 @@ export function ProgramCalendar({
                   return (
                     <li key={dateKey(o.live_session_id, o.occurs_on)}>
                       <ClickableBox onOpen={() => openOccurrence(o)} aria-label={`Abrir ${s.title} del ${when(o.starts_at)}`} className={cn(rowClass, o.status === "cancelled" && "text-muted-foreground")}>
-                        <span className={cn("w-40 shrink-0 tabular-nums", o.status === "cancelled" && "line-through")}>{when(o.starts_at)}</span>
+                        <span className={cn("w-52 shrink-0 tabular-nums", o.status === "cancelled" && "line-through")}>
+                          {when(o.starts_at)} <span className="text-xs text-muted-foreground">({zone})</span>
+                        </span>
                         <span className={cn("font-medium", o.status === "cancelled" && "line-through")}>{s.title}</span>
+                        {o.status !== "cancelled" && isLiveNow(o, data.now) && <span className="rounded bg-primary/15 px-1.5 text-xs font-medium text-primary-ink">En curso</span>}
                         {o.status === "moved" && <span className="rounded bg-accent px-1.5 text-xs">Movida</span>}
                         {o.status === "cancelled" && <span className="rounded bg-destructive/10 px-1.5 text-xs text-destructive">Cancelada</span>}
                         <span className="hidden text-xs text-muted-foreground lg:inline">Se mide sobre: {baseText(s)}</span>
@@ -267,7 +276,9 @@ export function ProgramCalendar({
                 return (
                   <li key={dateKey(d.live_session_id, d.occurs_on)}>
                     <ClickableBox onOpen={() => openOccurrence(d)} aria-label={`Abrir ${s.title} del ${when(d.starts_at)}`} className={rowClass}>
-                      <span className="w-40 shrink-0 tabular-nums">{when(d.starts_at)}</span>
+                      <span className="w-52 shrink-0 tabular-nums">
+                        {when(d.starts_at)} <span className="text-xs text-muted-foreground">({zone})</span>
+                      </span>
                       <span className="font-medium">{s.title}</span>
                       <span className="flex-1" />
                       {marks(d.live_session_id, d.occurs_on)}
@@ -286,7 +297,7 @@ export function ProgramCalendar({
   function MonthView() {
     const [y, m] = month.split("-").map(Number);
     const weeks = monthGrid(y, m);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInputValue(undefined, tz);
     const label = new Intl.DateTimeFormat("es", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 15)));
     const byDay = new Map<string, CalendarOccurrence[]>();
     for (const o of data.month) {
@@ -323,7 +334,7 @@ export function ProgramCalendar({
                       <ul className="mt-1 space-y-0.5">
                         {(byDay.get(d.date) ?? []).map((o) => {
                           const s = byId.get(o.live_session_id);
-                          const isPast = Date.parse(o.starts_at) <= Date.now();
+                          const isPast = Date.parse(o.ends_at) <= data.now;
                           const noRec = isPast && o.status !== "cancelled" && !recordings.get(dateKey(o.live_session_id, o.occurs_on))?.recording_url && !recordings.get(dateKey(o.live_session_id, o.occurs_on))?.recording_call_id;
                           return (
                             <li key={dateKey(o.live_session_id, o.occurs_on)}>
